@@ -1,0 +1,2458 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Decentralized identity for developers. One identity, multiple devices, Git-native storage.">
+      
+      
+      
+        <link rel="canonical" href="https://docs.auths.dev/architecture/crates/auths-sdk/">
+      
+      
+        <link rel="prev" href="../auths-verifier/">
+      
+      
+        <link rel="next" href="../../../contributing/development-setup/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+    
+    
+      
+        <title>auths-sdk - Auths</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#auths-sdk" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Auths" class="md-header__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Auths
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              auths-sdk
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/install/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/identity/multi-device/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../sdk/rust/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  SDK & Libraries
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../contributing/development-setup/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Auths" class="md-nav__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Auths
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../getting-started/install/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../guides/identity/multi-device/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../sdk/rust/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK & Libraries
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../identity-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identity Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../git-as-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git as Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../attestation-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Attestation Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cryptography/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cryptography
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crate Deep Dives
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Crate Deep Dives
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auths-core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-core
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auths-id/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-id
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../auths-verifier/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-verifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-sdk
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-sdk
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#role-in-the-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Role in the Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public Modules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authscontext-the-dependency-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AuthsContext -- The Dependency Container
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AuthsContext -- The Dependency Container">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#injected-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Injected Adapters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#builder-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Builder Pattern
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clock-injection-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clock Injection Pattern
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#eventsink-trait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EventSink Trait
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#port-traits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port Traits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflow-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow Modules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workflow Modules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#device" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        device
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        signing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflows-higher-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        workflows (higher-level)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-types-and-translation-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Types and Translation Boundaries
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Types and Translation Boundaries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Enums
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#translation-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Translation Boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sdkstorageerror-transitional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SdkStorageError (Transitional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-variant-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Variant Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-structs-vs-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config Structs vs. Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#presentation-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Presentation Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lint-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lint Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../../contributing/development-setup/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#role-in-the-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Role in the Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#public-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public Modules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authscontext-the-dependency-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AuthsContext -- The Dependency Container
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AuthsContext -- The Dependency Container">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#injected-adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Injected Adapters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#builder-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Builder Pattern
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clock-injection-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clock Injection Pattern
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#eventsink-trait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EventSink Trait
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#port-traits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port Traits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflow-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow Modules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workflow Modules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#device" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        device
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        signing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflows-higher-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        workflows (higher-level)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-types-and-translation-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Types and Translation Boundaries
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Types and Translation Boundaries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-enums" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Enums
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#translation-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Translation Boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sdkstorageerror-transitional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SdkStorageError (Transitional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-variant-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Variant Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-structs-vs-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config Structs vs. Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#presentation-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Presentation Module
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lint-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lint Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../../overview/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../auths-core/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Crate Deep Dives
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="auths-sdk">auths-sdk<a class="headerlink" href="#auths-sdk" title="Permanent link">&para;</a></h1>
+<p>Application services layer providing high-level workflow orchestration for Auths identity operations.</p>
+<h2 id="role-in-the-architecture">Role in the Architecture<a class="headerlink" href="#role-in-the-architecture" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    CLI["auths-cli&lt;br/&gt;&lt;i&gt;I/O adapter&lt;/i&gt;"]
+    SDK["auths-sdk&lt;br/&gt;&lt;i&gt;orchestration&lt;/i&gt;"]
+    CORE["auths-core"]
+    ID["auths-id"]
+    CLI --&gt; SDK
+    SDK --&gt; CORE
+    SDK --&gt; ID</code></pre>
+<p><code>auths-sdk</code> sits between the CLI (presentation layer) and the domain crates (<code>auths-core</code>, <code>auths-id</code>). It provides workflow functions that accept typed config structs, read from injected infrastructure adapters via <code>AuthsContext</code>, and return structured <code>Result</code> types. SDK functions never prompt for input, print to stdout, or call <code>process::exit()</code>.</p>
+<h2 id="public-modules">Public Modules<a class="headerlink" href="#public-modules" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>context</code></td>
+<td><code>AuthsContext</code> dependency container and <code>EventSink</code> trait</td>
+</tr>
+<tr>
+<td><code>setup</code></td>
+<td>Identity provisioning for developer, CI, and agent environments</td>
+</tr>
+<tr>
+<td><code>device</code></td>
+<td>Device linking, revocation, and authorization extension</td>
+</tr>
+<tr>
+<td><code>signing</code></td>
+<td>Artifact signing pipeline and attestation creation</td>
+</tr>
+<tr>
+<td><code>registration</code></td>
+<td>Remote registry publication for public DID discovery</td>
+</tr>
+<tr>
+<td><code>platform</code></td>
+<td>Platform identity claim creation and verification</td>
+</tr>
+<tr>
+<td><code>pairing</code></td>
+<td>Device pairing orchestration over ephemeral ECDH sessions</td>
+</tr>
+<tr>
+<td><code>workflows</code></td>
+<td>Higher-level multi-step workflows (rotation, provisioning, auditing)</td>
+</tr>
+<tr>
+<td><code>ports</code></td>
+<td>Port traits for external I/O adapters</td>
+</tr>
+<tr>
+<td><code>types</code></td>
+<td>Plain-old-data config structs for all SDK workflows</td>
+</tr>
+<tr>
+<td><code>result</code></td>
+<td>Return types for SDK workflow functions</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>Domain error types (<code>SetupError</code>, <code>DeviceError</code>, <code>RotationError</code>, etc.)</td>
+</tr>
+<tr>
+<td><code>presentation</code></td>
+<td>HTML and structured report rendering</td>
+</tr>
+</tbody>
+</table>
+<h2 id="authscontext-the-dependency-container"><code>AuthsContext</code> -- The Dependency Container<a class="headerlink" href="#authscontext-the-dependency-container" title="Permanent link">&para;</a></h2>
+<p><code>AuthsContext</code> is the central runtime dependency container. It carries all injected infrastructure adapters as <code>Arc&lt;dyn Trait&gt;</code> fields, enabling the SDK to operate in headless, storage-agnostic environments.</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">AuthsContext</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">registry</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">RegistryBackend</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">key_storage</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">KeyStorage</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">clock</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">ClockProvider</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">event_sink</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">EventSink</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">identity_storage</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">IdentityStorage</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">attestation_sink</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">AttestationSink</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">attestation_source</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">AttestationSource</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">passphrase_provider</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">PassphraseProvider</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">uuid_provider</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="k">dyn</span><span class="w"> </span><span class="n">UuidProvider</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="injected-adapters">Injected Adapters<a class="headerlink" href="#injected-adapters" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Trait Source</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>registry</code></td>
+<td><code>auths_id::ports::registry::RegistryBackend</code></td>
+<td>Packed registry storage backend</td>
+</tr>
+<tr>
+<td><code>key_storage</code></td>
+<td><code>auths_core::storage::keychain::KeyStorage</code></td>
+<td>Platform keychain or test fake</td>
+</tr>
+<tr>
+<td><code>clock</code></td>
+<td><code>auths_core::ports::clock::ClockProvider</code></td>
+<td>Wall-clock for deterministic testing</td>
+</tr>
+<tr>
+<td><code>event_sink</code></td>
+<td><code>auths_sdk::context::EventSink</code></td>
+<td>Telemetry/audit event sink</td>
+</tr>
+<tr>
+<td><code>identity_storage</code></td>
+<td><code>auths_id::storage::identity::IdentityStorage</code></td>
+<td>Identity document load/save</td>
+</tr>
+<tr>
+<td><code>attestation_sink</code></td>
+<td><code>auths_id::attestation::export::AttestationSink</code></td>
+<td>Write signed attestations</td>
+</tr>
+<tr>
+<td><code>attestation_source</code></td>
+<td><code>auths_id::storage::attestation::AttestationSource</code></td>
+<td>Read existing attestations</td>
+</tr>
+<tr>
+<td><code>passphrase_provider</code></td>
+<td><code>auths_core::signing::PassphraseProvider</code></td>
+<td>Key decryption passphrase source</td>
+</tr>
+<tr>
+<td><code>uuid_provider</code></td>
+<td><code>auths_core::ports::id::UuidProvider</code></td>
+<td>UUID generation (deterministic in tests)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="builder-pattern">Builder Pattern<a class="headerlink" href="#builder-pattern" title="Permanent link">&para;</a></h3>
+<p><code>AuthsContext</code> uses a typestate builder to enforce compile-time correctness. The three required fields (<code>registry</code>, <code>key_storage</code>, <code>clock</code>) use typestate markers (<code>Missing</code> / <code>Set&lt;T&gt;</code>) so that <code>build()</code> is only callable once all three are set.</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kd">let</span><span class="w"> </span><span class="n">ctx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">AuthsContext</span><span class="p">::</span><span class="n">builder</span><span class="p">()</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="p">.</span><span class="n">registry</span><span class="p">(</span><span class="n">Arc</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">my_registry</span><span class="p">))</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="p">.</span><span class="n">key_storage</span><span class="p">(</span><span class="n">Arc</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">my_keychain</span><span class="p">))</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="p">.</span><span class="n">clock</span><span class="p">(</span><span class="n">Arc</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">SystemClock</span><span class="p">))</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="p">.</span><span class="n">identity_storage</span><span class="p">(</span><span class="n">Arc</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">my_identity_store</span><span class="p">))</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="p">.</span><span class="n">attestation_sink</span><span class="p">(</span><span class="n">Arc</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">my_att_sink</span><span class="p">))</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="p">.</span><span class="n">attestation_source</span><span class="p">(</span><span class="n">Arc</span><span class="p">::</span><span class="n">new</span><span class="p">(</span><span class="n">my_att_source</span><span class="p">))</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="p">.</span><span class="n">build</span><span class="p">();</span>
+</span></code></pre></div>
+<p>Optional fields with defaults:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>event_sink</code></td>
+<td><code>NoopSink</code> (discards all events)</td>
+</tr>
+<tr>
+<td><code>passphrase_provider</code></td>
+<td><code>NoopPassphraseProvider</code> (returns error if called)</td>
+</tr>
+<tr>
+<td><code>uuid_provider</code></td>
+<td><code>SystemUuidProvider</code> (random v4 UUIDs)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="clock-injection-pattern">Clock Injection Pattern<a class="headerlink" href="#clock-injection-pattern" title="Permanent link">&para;</a></h2>
+<p><code>Utc::now()</code> is banned in <code>auths-core/src/</code> and <code>auths-id/src/</code> via a clippy lint. The SDK enforces this boundary:</p>
+<ol>
+<li><code>AuthsContext</code> holds an <code>Arc&lt;dyn ClockProvider&gt;</code> (injected at construction)</li>
+<li>SDK workflow functions call <code>ctx.clock.now()</code> to obtain the current time</li>
+<li>The resulting <code>DateTime&lt;Utc&gt;</code> is passed down to all domain functions as the <code>now</code> parameter</li>
+<li>In tests, a <code>MockClock</code> with a fixed timestamp is injected for deterministic behavior</li>
+<li>The CLI calls <code>Utc::now()</code> at the presentation boundary -- the only place where wall-clock reads are permitted</li>
+</ol>
+<p>This pattern ensures all time-sensitive logic is fully testable without flaky timing dependencies.</p>
+<h2 id="eventsink-trait"><code>EventSink</code> Trait<a class="headerlink" href="#eventsink-trait" title="Permanent link">&para;</a></h2>
+<p>Fire-and-forget telemetry interface for structured audit events:</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">pub</span><span class="w"> </span><span class="k">trait</span><span class="w"> </span><span class="n">EventSink</span><span class="p">:</span><span class="w"> </span><span class="nb">Send</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Sync</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="o">&#39;</span><span class="nb">static</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">emit</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">payload</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="kt">str</span><span class="p">);</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">flush</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">);</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><code>emit()</code> must not block. <code>flush()</code> blocks until all previously emitted payloads are written. Implement this to route audit events to a SIEM, structured logging backend, or stdout.</p>
+<h2 id="port-traits">Port Traits<a class="headerlink" href="#port-traits" title="Permanent link">&para;</a></h2>
+<p>The <code>ports</code> module defines I/O adapter traits that the CLI implements:</p>
+<table>
+<thead>
+<tr>
+<th>Port</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>artifact</code></td>
+<td><code>ArtifactSource</code> for computing digests and metadata</td>
+</tr>
+<tr>
+<td><code>git</code></td>
+<td><code>GitLogProvider</code> for audit and compliance workflows</td>
+</tr>
+<tr>
+<td><code>git_config</code></td>
+<td><code>GitConfigPort</code> for setting signing-related git config keys</td>
+</tr>
+<tr>
+<td><code>diagnostics</code></td>
+<td><code>DiagnosticsProvider</code> for system health checks</td>
+</tr>
+</tbody>
+</table>
+<p>These ports allow the SDK to remain free of filesystem, Git, or process dependencies.</p>
+<h2 id="workflow-modules">Workflow Modules<a class="headerlink" href="#workflow-modules" title="Permanent link">&para;</a></h2>
+<h3 id="setup"><code>setup</code><a class="headerlink" href="#setup" title="Permanent link">&para;</a></h3>
+<p>Identity provisioning with three environment targets:</p>
+<ul>
+<li><strong>Developer setup</strong>: Generate Ed25519 key pair, create KERI identity, store in keychain, configure Git signing</li>
+<li><strong>CI setup</strong>: Provision a workload identity from OIDC tokens</li>
+<li><strong>Agent setup</strong>: Provision an autonomous agent identity</li>
+</ul>
+<h3 id="device"><code>device</code><a class="headerlink" href="#device" title="Permanent link">&para;</a></h3>
+<p>Device lifecycle management:</p>
+<ul>
+<li>Link a new device to an identity (create attestation)</li>
+<li>Revoke a device (set <code>revoked_at</code>)</li>
+<li>Extend device authorization (refresh expiration)</li>
+<li>List devices for an identity</li>
+</ul>
+<h3 id="signing"><code>signing</code><a class="headerlink" href="#signing" title="Permanent link">&para;</a></h3>
+<p>Artifact signing pipeline:</p>
+<ul>
+<li>Compute content digest</li>
+<li>Create attestation linking signer to artifact</li>
+<li>Dual-sign with identity and device keys</li>
+</ul>
+<h3 id="registration"><code>registration</code><a class="headerlink" href="#registration" title="Permanent link">&para;</a></h3>
+<p>Remote registry publication:</p>
+<ul>
+<li>Register identity at a public registry endpoint</li>
+<li>Push attestation chains for discoverability</li>
+</ul>
+<h3 id="workflows-higher-level"><code>workflows</code> (higher-level)<a class="headerlink" href="#workflows-higher-level" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Submodule</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rotation</code></td>
+<td>Full key rotation workflow (load state, rotate, re-attest devices)</td>
+</tr>
+<tr>
+<td><code>provision</code></td>
+<td>Multi-step provisioning combining setup + registration</td>
+</tr>
+<tr>
+<td><code>audit</code></td>
+<td>Audit log generation and compliance reporting</td>
+</tr>
+<tr>
+<td><code>diagnostics</code></td>
+<td>System health check orchestration</td>
+</tr>
+<tr>
+<td><code>artifact</code></td>
+<td>Artifact verification workflows</td>
+</tr>
+<tr>
+<td><code>org</code></td>
+<td>Organization member management</td>
+</tr>
+<tr>
+<td><code>policy_diff</code></td>
+<td>Policy change detection and diffing</td>
+</tr>
+</tbody>
+</table>
+<h2 id="error-types-and-translation-boundaries">Error Types and Translation Boundaries<a class="headerlink" href="#error-types-and-translation-boundaries" title="Permanent link">&para;</a></h2>
+<p>The SDK defines domain-specific <code>thiserror</code> enums. <code>anyhow</code> is banned in Core/SDK -- it is only used at the CLI/server translation boundary.</p>
+<h3 id="error-enums">Error Enums<a class="headerlink" href="#error-enums" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Error Type</th>
+<th>Domain</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SetupError</code></td>
+<td>Identity provisioning failures</td>
+</tr>
+<tr>
+<td><code>DeviceError</code></td>
+<td>Device linking/revocation failures</td>
+</tr>
+<tr>
+<td><code>DeviceExtensionError</code></td>
+<td>Authorization extension failures</td>
+</tr>
+<tr>
+<td><code>RotationError</code></td>
+<td>Key rotation failures</td>
+</tr>
+<tr>
+<td><code>RegistrationError</code></td>
+<td>Remote registry failures</td>
+</tr>
+<tr>
+<td><code>OrgError</code></td>
+<td>Organization member management failures</td>
+</tr>
+<tr>
+<td><code>SdkStorageError</code></td>
+<td>Opaque storage error wrapper (transitional)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="translation-boundary">Translation Boundary<a class="headerlink" href="#translation-boundary" title="Permanent link">&para;</a></h3>
+<p>The CLI wraps SDK domain errors with operational context using <code>anyhow::Context</code>:</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1">// CLI (presentation layer)</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kd">let</span><span class="w"> </span><span class="n">signature</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sign_artifact</span><span class="p">(</span><span class="o">&amp;</span><span class="n">config</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="p">)</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="p">.</span><span class="n">with_context</span><span class="p">(</span><span class="o">||</span><span class="w"> </span><span class="fm">format!</span><span class="p">(</span><span class="s">&quot;Failed to sign artifact for namespace: {}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">config</span><span class="p">.</span><span class="n">namespace</span><span class="p">))</span><span class="o">?</span><span class="p">;</span>
+</span></code></pre></div>
+<p><code>From</code> impls connect domain errors:</p>
+<ul>
+<li><code>AgentError -&gt; SetupError::CryptoError</code></li>
+<li><code>AgentError -&gt; DeviceError::CryptoError</code></li>
+<li><code>RegistrationError -&gt; SetupError::RegistrationFailed</code></li>
+<li><code>NetworkError -&gt; RegistrationError::NetworkError</code></li>
+</ul>
+<h3 id="sdkstorageerror-transitional"><code>SdkStorageError</code> (Transitional)<a class="headerlink" href="#sdkstorageerror-transitional" title="Permanent link">&para;</a></h3>
+<p>Currently wraps storage errors as <code>OperationFailed(String)</code>. This is a transitional pattern -- the plan is to migrate <code>auths-id</code> storage traits from <code>anyhow::Result</code> to typed <code>StorageError</code> variants, replacing <code>map_storage_err()</code> helpers with direct <code>From</code> impls.</p>
+<h3 id="error-variant-examples">Error Variant Examples<a class="headerlink" href="#error-variant-examples" title="Permanent link">&para;</a></h3>
+<p><code>SetupError</code>:</p>
+<ul>
+<li><code>IdentityAlreadyExists { did }</code> -- an identity already exists at the configured path</li>
+<li><code>KeychainUnavailable { backend, reason }</code> -- platform keychain inaccessible</li>
+<li><code>CryptoError(AgentError)</code> -- cryptographic operation failed</li>
+<li><code>StorageError(SdkStorageError)</code> -- storage I/O failure</li>
+<li><code>GitConfigError(String)</code> -- git config key write failed</li>
+</ul>
+<p><code>RotationError</code>:</p>
+<ul>
+<li><code>IdentityNotFound { path }</code> -- identity missing at expected path</li>
+<li><code>KeyNotFound(String)</code> -- keychain alias not found</li>
+<li><code>KeyDecryptionFailed(String)</code> -- wrong passphrase</li>
+<li><code>KelHistoryFailed(String)</code> -- KEL read/validation error</li>
+<li><code>RotationFailed(String)</code> -- rotation protocol error</li>
+<li><code>PartialRotation(String)</code> -- KEL committed but keychain write failed (requires manual recovery)</li>
+</ul>
+<p><code>OrgError</code>:</p>
+<ul>
+<li><code>AdminNotFound { org }</code> -- no admin with matching public key</li>
+<li><code>MemberNotFound { org, did }</code> -- member not in organization</li>
+<li><code>AlreadyRevoked { did }</code> -- member already revoked</li>
+<li><code>InvalidCapability { cap, reason }</code> -- capability string parsing failed</li>
+</ul>
+<h2 id="config-structs-vs-context">Config Structs vs. Context<a class="headerlink" href="#config-structs-vs-context" title="Permanent link">&para;</a></h2>
+<p>The SDK enforces a clear separation:</p>
+<ul>
+<li><strong>Config structs</strong> (<code>types</code> module): Plain-old-data with no trait objects. Serializable. Carry parameters for a specific workflow invocation (e.g., <code>DeveloperSetupConfig</code>, <code>DeviceLinkConfig</code>).</li>
+<li><strong><code>AuthsContext</code></strong>: Carries injected infrastructure adapters (<code>Arc&lt;dyn Trait&gt;</code>). Not serializable. Shared across workflow invocations.</li>
+</ul>
+<p>This separation allows the SDK to be embedded in cloud SaaS, WASM, or C-FFI runtimes without pulling in tokio, git2, or std::fs.</p>
+<h2 id="presentation-module">Presentation Module<a class="headerlink" href="#presentation-module" title="Permanent link">&para;</a></h2>
+<p>The <code>presentation</code> module provides rendering utilities:</p>
+<table>
+<thead>
+<tr>
+<th>Submodule</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>html</code></td>
+<td>HTML report generation for verification results</td>
+</tr>
+</tbody>
+</table>
+<p>Output formatting is the CLI's responsibility -- the SDK only provides data-to-markup transformation.</p>
+<h2 id="key-dependencies">Key Dependencies<a class="headerlink" href="#key-dependencies" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Crate</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auths-core</code></td>
+<td>Keychain, signing, encryption, agent, clock ports</td>
+</tr>
+<tr>
+<td><code>auths-id</code></td>
+<td>Identity storage, attestation, KERI</td>
+</tr>
+<tr>
+<td><code>auths-policy</code></td>
+<td>Policy evaluation</td>
+</tr>
+<tr>
+<td><code>auths-crypto</code></td>
+<td>Ed25519 operations</td>
+</tr>
+<tr>
+<td><code>auths-verifier</code></td>
+<td>Verification types and functions</td>
+</tr>
+<tr>
+<td><code>reqwest</code></td>
+<td>HTTP client for registry operations</td>
+</tr>
+<tr>
+<td><code>json-canon</code></td>
+<td>Deterministic JSON canonicalization</td>
+</tr>
+<tr>
+<td><code>html-escape</code></td>
+<td>Safe HTML rendering</td>
+</tr>
+<tr>
+<td><code>zeroize</code></td>
+<td>Secure memory cleanup for key material</td>
+</tr>
+</tbody>
+</table>
+<h2 id="lint-configuration">Lint Configuration<a class="headerlink" href="#lint-configuration" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>deny(clippy::print_stdout, clippy::print_stderr, clippy::exit, clippy::dbg_macro)</code> -- SDK functions must not perform I/O</li>
+<li><code>deny(clippy::disallowed_methods)</code> -- <code>Utc::now()</code> is banned; time is injected via <code>ClockProvider</code></li>
+<li><code>deny(rustdoc::broken_intra_doc_links)</code> -- documentation integrity</li>
+<li><code>warn(missing_docs)</code> -- all public items should be documented</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/auths-dev/auths" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.prune", "navigation.path", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tabs.link", "announce.dismiss"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
