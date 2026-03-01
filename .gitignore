@@ -119,6 +119,7 @@ RustAgentDemo/*.a
 
 # Product specific
 concat_output.txt
+CLAUDE.md
 
 # Git worktrees
 .worktrees/

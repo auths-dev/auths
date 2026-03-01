@@ -116,8 +116,8 @@ See `TESTING_STRATEGY.md` for full details.
 
 Tests require Git configuration:
 ```bash
-git config --global user.name "Test User"
-git config --global user.email "test@example.com"
+git config --global user.name "{user_current_name}"
+git config --global user.email "{user_current_email}"
 ```
 
 CI runs on: Ubuntu (x86_64), macOS (aarch64), Windows (x86_64). Rust 1.93 with clippy and rustfmt.
