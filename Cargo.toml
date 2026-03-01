@@ -30,6 +30,7 @@ ring = "0.17.14"
 base64 = "0.22.1"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
+git2 = "0.20.4"
 
 # Intra-workspace crates — path only, version inherited automatically.
 auths-core = { path = "crates/auths-core" }

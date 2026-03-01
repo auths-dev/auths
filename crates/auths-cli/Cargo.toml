@@ -3,6 +3,7 @@ name = "auths-cli"
 version.workspace = true
 edition = "2024"
 description = "Command-line interface for Auths decentralized identity system"
+publish = true
 license.workspace = true
 repository = "https://github.com/bordumb/auths"
 readme = "README.md"

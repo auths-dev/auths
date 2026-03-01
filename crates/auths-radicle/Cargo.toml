@@ -4,6 +4,7 @@ version.workspace = true
 edition = "2024"
 authors = ["bordumb <bordumbb@gmail.com>"]
 description = "Radicle protocol integration for Auths - identity resolution and policy bridge"
+publish = true
 license.workspace = true
 repository = "https://github.com/bordumb/auths"
 readme = "README.md"

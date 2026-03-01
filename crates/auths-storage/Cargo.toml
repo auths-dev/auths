@@ -2,6 +2,7 @@
 name = "auths-storage"
 version.workspace = true
 edition = "2024"
+publish = true
 license.workspace = true
 
 [dependencies]

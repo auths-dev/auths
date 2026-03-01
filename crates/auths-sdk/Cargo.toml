@@ -3,6 +3,7 @@ name = "auths-sdk"
 version.workspace = true
 edition = "2024"
 description = "Application services layer for Auths identity operations"
+publish = true
 license.workspace = true
 repository = "https://github.com/bordumb/auths"
 

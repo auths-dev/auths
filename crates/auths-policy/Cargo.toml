@@ -3,6 +3,7 @@ name = "auths-policy"
 version.workspace = true
 edition = "2024"
 description = "Policy expression engine for Auths - composable authorization logic"
+publish = true
 license.workspace = true
 repository = "https://github.com/bordumb/auths"
 readme = "README.md"

@@ -7,7 +7,8 @@ repository = "https://github.com/bordumb/auths"
 readme = "README.md"
 keywords = ["sqlite", "index", "attestation", "database"]
 categories = ["database"]
-publish = false
+publish = true
+license.workspace = true
 
 [dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }

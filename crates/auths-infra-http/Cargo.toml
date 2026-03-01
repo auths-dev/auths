@@ -1,8 +1,9 @@
 [package]
 name = "auths-infra-http"
 version.workspace = true
-license.workspace = true
 edition = "2024"
+publish = true
+license.workspace = true
 
 [dependencies]
 async-trait = "0.1"

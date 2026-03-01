@@ -2,7 +2,7 @@
 name = "auths-crypto"
 version.workspace = true
 edition = "2024"
-publish = false
+publish = true
 license.workspace = true
 description = "Cryptographic primitives for Auths: KERI key parsing and DID:key encoding"
 

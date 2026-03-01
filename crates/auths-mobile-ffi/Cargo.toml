@@ -3,6 +3,7 @@ name = "auths-mobile-ffi"
 version.workspace = true
 edition = "2024"
 description = "UniFFI bindings for Auths mobile identity creation (iOS/Android)"
+publish = true
 license.workspace = true
 
 # Exclude from main workspace - built separately with UniFFI
