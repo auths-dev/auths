@@ -90,4 +90,4 @@ nix = { version = "0.29", features = ["signal", "process"] }
 auths-test-utils.workspace = true
 assert_cmd = "2"
 tempfile = "3"
-predicates = "2"
+predicates = "3"
