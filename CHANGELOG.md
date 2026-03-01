@@ -88,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Support for homebrew install via `brew install bordumb/auths-cli/auths`
+- Support for homebrew install via `brew install auths-dev/auths-cli/auths`
 
 ## [0.0.1-rc.8] to [0.0.1-rc.9] - 2026-02-17
 

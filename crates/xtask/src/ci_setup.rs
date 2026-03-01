@@ -396,25 +396,25 @@ mod tests {
     #[test]
     fn extract_repo_https() {
         let url = "https://github.com/auths-dev/auths.git";
-        assert_eq!(extract_github_repo_from_url(url).unwrap(), "bordumb/auths");
+        assert_eq!(extract_github_repo_from_url(url).unwrap(), "auths-dev/auths");
     }
 
     #[test]
     fn extract_repo_https_no_suffix() {
         let url = "https://github.com/auths-dev/auths";
-        assert_eq!(extract_github_repo_from_url(url).unwrap(), "bordumb/auths");
+        assert_eq!(extract_github_repo_from_url(url).unwrap(), "auths-dev/auths");
     }
 
     #[test]
     fn extract_repo_ssh() {
-        let url = "git@github.com:bordumb/auths.git";
-        assert_eq!(extract_github_repo_from_url(url).unwrap(), "bordumb/auths");
+        let url = "git@github.com:auths-dev/auths.git";
+        assert_eq!(extract_github_repo_from_url(url).unwrap(), "auths-dev/auths");
     }
 
     #[test]
     fn extract_repo_ssh_no_suffix() {
-        let url = "git@github.com:bordumb/auths";
-        assert_eq!(extract_github_repo_from_url(url).unwrap(), "bordumb/auths");
+        let url = "git@github.com:auths-dev/auths";
+        assert_eq!(extract_github_repo_from_url(url).unwrap(), "auths-dev/auths");
     }
 
     #[test]

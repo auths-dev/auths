@@ -6,7 +6,7 @@ Decentralized identity for developers. One identity, multiple devices, Git-nativ
 
 Homebrew:
 ```bash
-brew install bordumb/auths-cli/auths
+brew install auths-dev/auths-cli/auths
 ```
 
 Install from source:

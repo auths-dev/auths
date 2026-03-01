@@ -1,55 +1,55 @@
 # Release Process
 
-Auths follows Semantic Versioning (SemVer). The project is currently pre-1.0 (`0.x.y`).
+## Versioning
 
-## Versioning (pre-1.0)
+Auths follows Semantic Versioning (SemVer). The project is currently pre-1.0 (`0.x.y`).
 
 | Increment | Meaning |
 |-----------|---------|
-| `0.y.z` → `0.y.(z+1)` | Bug fixes, minor additions |
-| `0.y.z` → `0.(y+1).0` | Breaking changes, significant features |
+| `0.y.z` to `0.y.(z+1)` | Bug fixes, minor additions |
+| `0.y.z` to `0.(y+1).0` | Breaking changes, significant features |
 
 All pre-1.0 versions are unstable. The public API may change at any time.
 
+The current workspace version is defined in the root `Cargo.toml`:
+
+```toml
+[workspace.package]
+version = "0.0.1-rc.5"
+```
+
 ## Release steps
 
-> **Use the justfile.** The [`justfile`](../../justfile) at the repo root automates all release steps.
-> Read it to understand the manual steps behind each recipe.
+### Using the justfile (recommended)
 
-### Step 0 — One-time CI signing setup (required before first release)
+The `justfile` at the repo root automates all release steps:
 
-Before `just release` can sign artifacts, GitHub Actions needs a device key and identity bundle. Run this once from your local machine (requires an existing `auths` identity — run `auths init` first if needed):
+```bash
+just release 0.x.y
+```
+
+This handles pre-flight checks (clean working tree, branch, remote sync), creates and pushes the annotated tag, and opens the GitHub Actions run in your browser. GitHub Actions then builds binaries, creates the release, and triggers the Homebrew formula update.
+
+### One-time CI signing setup
+
+Before the first release, GitHub Actions needs a device key and identity bundle for artifact signing:
 
 ```bash
 just ci-setup
 ```
 
-This creates a limited-capability CI device key, exports it as an encrypted keychain, and sets three GitHub secrets automatically: `AUTHS_CI_PASSPHRASE`, `AUTHS_CI_KEYCHAIN`, and `AUTHS_CI_IDENTITY_BUNDLE`. Artifact signing in the release workflow is skipped gracefully if these secrets are missing, so releases still work — but artifacts won't be signed.
+This creates a limited-capability CI device key, exports it as an encrypted keychain, and sets three GitHub secrets: `AUTHS_CI_PASSPHRASE`, `AUTHS_CI_KEYCHAIN`, and `AUTHS_CI_IDENTITY_BUNDLE`. Artifact signing is skipped gracefully if these secrets are missing.
 
-You only need to re-run `ci-setup` if the CI device key is revoked or the identity repo changes significantly.
-
-### Step 1 — Release
-
-```bash
-# Bump version in all Cargo.toml files, commit, then:
-just release 0.x.y
-```
-
-`just release` handles the pre-flight checks (clean working tree, branch, remote sync), creates and pushes the annotated tag, and opens the GitHub Actions run in your browser. GitHub Actions then builds binaries, creates the release, and triggers the Homebrew formula update automatically.
-
-See [`justfile`](../../justfile) for what each recipe does step by step.
-
----
+Re-run `ci-setup` only if the CI device key is revoked or the identity repo changes significantly.
 
 ### Manual steps (if needed)
-
-The justfile recipes are thin wrappers around standard commands. If you need to run steps individually:
 
 #### 1. Ensure main is stable
 
 ```bash
 cargo build
-cargo test --all
+cargo nextest run --workspace
+cargo test --all --doc
 cargo fmt --check --all
 cargo clippy --all-targets --all-features -- -D warnings
 ```
@@ -75,7 +75,7 @@ git push origin v0.x.y
 
 GitHub Actions picks up the `v*` tag and runs `.github/workflows/release.yml`.
 
-#### 4. Publish crates (optional)
+#### 4. Publish Rust crates (optional)
 
 ```bash
 cargo publish -p auths_core
@@ -102,33 +102,24 @@ npm publish
 
 ## SDK versioning
 
-SDK packages (Python, TypeScript, Go, Swift) have **independent version numbers** from the Rust crates.
+SDK packages (Python, TypeScript, Go, Swift) have independent version numbers from the Rust crates.
 
-| Component | Current version | Registry |
-|-----------|----------------|----------|
-| Rust crates (`auths-core`, `auths-verifier`, ...) | `0.0.1-rc.9` | crates.io |
-| Python SDK (`auths-verifier`) | `0.1.0` | PyPI |
-| TypeScript SDK (`@auths/verifier`) | `0.1.0` | npm |
+| Component | Registry |
+|-----------|----------|
+| Rust crates (`auths-core`, `auths-verifier`, ...) | crates.io |
+| Python SDK (`auths-verifier`) | PyPI |
+| TypeScript SDK (`@auths/verifier`) | npm |
 
-SDK versions track their own binding API stability. A breaking change in the Python wrapper (e.g. renaming a function) bumps the Python minor version even if the underlying Rust API didn't change. Conversely, an internal Rust refactor that doesn't affect the binding surface doesn't require an SDK version bump.
+SDK versions track their own binding API stability. A breaking change in the Python wrapper bumps the Python version even if the underlying Rust API did not change. An internal Rust refactor that does not affect the binding surface does not require an SDK version bump.
 
-### Publishing SDKs
+### Automated SDK publishing
 
-SDK publishing is automated via GitHub Actions workflows triggered by `v*` tags:
+SDK publishing is automated via GitHub Actions triggered by `v*` tags:
 
 - **Python**: `.github/workflows/publish-python.yml` -- builds platform wheels with maturin and publishes to PyPI using Trusted Publisher.
 - **TypeScript**: `.github/workflows/publish-typescript.yml` -- builds WASM + TypeScript and publishes to npm.
 
-To publish, create and push a version tag:
-
-```bash
-git tag -a v0.1.1 -m "SDK release v0.1.1"
-git push origin v0.1.1
-```
-
 ## CI matrix
-
-CI runs on:
 
 | Platform | Architecture |
 |----------|-------------|
@@ -136,4 +127,15 @@ CI runs on:
 | macOS | aarch64 |
 | Windows | x86_64 |
 
-Rust version: 1.93+ (check `rust-toolchain.toml`)
+Rust version: 1.93+ (check `rust-toolchain.toml`).
+
+## What CI does on a release tag
+
+When a `v*` tag is pushed:
+
+1. Runs the full test suite across all three platforms.
+2. Builds release binaries for each platform.
+3. Creates a GitHub Release with the binaries attached.
+4. Signs artifacts with the CI device key (if secrets are configured).
+5. Triggers the Homebrew formula update.
+6. Triggers SDK publishing workflows (Python, TypeScript).

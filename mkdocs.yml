@@ -2,7 +2,7 @@ site_name: Auths
 site_description: Decentralized identity for developers. One identity, multiple devices, Git-native storage.
 site_url: https://docs.auths.dev
 repo_url: https://github.com/auths-dev/auths
-repo_name: bordumb/auths
+repo_name: auths-dev/auths
 
 theme:
   name: material
@@ -35,7 +35,7 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.expand
+    - navigation.prune
     - navigation.path
     - navigation.indexes
     - toc.follow
@@ -92,99 +92,68 @@ nav:
   - Home: index.md
 
   - Getting Started:
-      - What is Auths?: getting-started/what-is-auths.md
       - Installation: getting-started/install.md
-      - Quickstart: getting-started/quickstart.md
-      - First Success: getting-started/first-success.md
+      - Your First Identity: getting-started/your-first-identity.md
+      - Signing Commits: getting-started/signing-commits.md
+      - Sharing Your Identity: getting-started/sharing-your-identity.md
+      - How It Works: getting-started/how-it-works.md
+      - Identity Lifecycle: getting-started/identity-lifecycle.md
+      - Trust Model: getting-started/trust-model.md
 
-  - Concepts:
-      - Mental Model: concepts/mental-model.md
-      - Identity:
-          - concepts/identity/index.md
-          - Human Identity: concepts/identity/human.md
-          - Agent Identity: concepts/identity/agent.md
-      - Devices: concepts/devices.md
-      - Attestations: concepts/attestations.md
-      - Verification: concepts/verification.md
-      - Key Rotation: concepts/key-rotation.md
-      - Policy: concepts/policy.md
-      - Git Layouts: concepts/git-layouts.md
+  - Guides:
+      - Identity Management:
+          - Multi-Device: guides/identity/multi-device.md
+          - Key Rotation: guides/identity/key-rotation.md
+          - Backup & Recovery: guides/identity/backup-and-recovery.md
+          - Profiles: guides/identity/profiles.md
+      - Git Integration:
+          - Signing Configuration: guides/git/signing-configuration.md
+          - Verifying Commits: guides/git/verifying-commits.md
+          - Team Workflows: guides/git/team-workflows.md
+      - Platform Integrations:
+          - GitHub Claims: guides/platforms/github-claims.md
+          - Radicle: guides/platforms/radicle.md
+          - CI/CD: guides/platforms/ci-cd.md
+      - Advanced:
+          - Custom Policies: guides/advanced/custom-policies.md
+          - WASM Verification: guides/advanced/wasm-verification.md
+
+  - SDK & Libraries:
+      - Rust SDK:
+          - Overview: sdk/rust/overview.md
+          - Quickstart: sdk/rust/quickstart.md
+          - Identity Operations: sdk/rust/identity-operations.md
+          - Signing & Verification: sdk/rust/signing-and-verification.md
+          - Error Handling: sdk/rust/error-handling.md
+          - Storage Backends: sdk/rust/storage-backends.md
+      - Verifier Embedding:
+          - FFI (C/C++): sdk/verifier/ffi.md
+          - WASM: sdk/verifier/wasm.md
+          - Python: sdk/verifier/python.md
+      - API Reference: sdk/crate-index.md
 
   - Architecture:
-      - Overview: architecture/index.md
-      - Key Management: architecture/key-management.md
-      - OIDC Bridge: architecture/oidc-bridge.md
-
-  - CLI:
-      - Overview: cli/overview.md
-      - Workflows:
-          - Choose Your Workflow: cli/workflows/index.md
-          - Single Device: cli/workflows/single-device.md
-          - Multi Device:
-              - cli/workflows/multi-device/index.md
-              - Pairing (QR Code): cli/workflows/multi-device/pairing.md
-              - Manual Linking: cli/workflows/multi-device/linking.md
-          - Organizations:
-              - cli/workflows/organizations/index.md
-              - Management: cli/workflows/organizations/management.md
-              - Policy: cli/workflows/organizations/policy.md
-          - Releases:
-              - cli/workflows/releases/index.md
-              - Signing Commits: cli/workflows/releases/signing-commits.md
-              - Signing Tarballs: cli/workflows/releases/signing-tarballs.md
-              - GitHub Actions: cli/workflows/releases/github-actions.md
-          - Radicle: cli/workflows/radicle.md
-      - Commands:
-          - Overview: cli/commands/index.md
-          - Primary: cli/commands/primary.md
-          - Advanced: cli/commands/advanced.md
-      - Troubleshooting:
-          - cli/troubleshooting/troubleshooting.md
-          - Commit Signing: cli/troubleshooting/commit-signing.md
-
-  - SDKs:
-      - Overview: sdks/overview.md
-      - Python: sdks/python/quickstart.md
-      - JavaScript: sdks/javascript/quickstart.md
-      - Go: sdks/go/quickstart.md
-      - Swift: sdks/swift/mobile-identity.md
-
-  - Cloud & CI:
-      - Overview: cloud-ci/index.md
-      - OIDC Bridge API: cloud-ci/oidc-bridge-api.md
-      - AWS Integration: cloud-ci/aws-integration.md
-      - GitHub Actions OIDC: cloud-ci/github-actions-oidc.md
-      - CI Verification: cloud-ci/ci-verification.md
-      - Enterprise Security: cloud-ci/enterprise-security.md
-
-  - Security:
-      - Overview: security/index.md
-      - Threat Model: security/threat-model.md
-      - Revocation Design: security/revocation-design.md
-      - Key Compromise Recovery: security/key-compromise-recovery.md
-      - Git Linearity: security/git-linearity.md
-
-  - Examples:
-      - Overview: examples/index.md
-      - Local Development: examples/local-dev.md
-      - Server Verification: examples/server-verification.md
-      - Mobile Onboarding: examples/mobile-onboarding.md
-      - Agent Usage: examples/agent-usage.md
-      - Agentic Identity & Governance: agentic_identity.md
-      - Failure Modes: examples/failure-modes.md
-
-  - Reference:
-      - Overview: reference/index.md
-      - DID Formats: reference/did-formats.md
-      - Attestation Schema: reference/attestation-schema.md
-      - Action Envelope: reference/action-envelope.md
-      - Verification Statuses: reference/verification-statuses.md
-      - Exit Codes: reference/exit-codes.md
-      - Glossary: reference/glossary.md
+      - Design:
+          - Overview: architecture/overview.md
+          - Identity Model: architecture/identity-model.md
+          - Git as Storage: architecture/git-as-storage.md
+          - Attestation Format: architecture/attestation-format.md
+          - Cryptography: architecture/cryptography.md
+      - Crate Deep Dives:
+          - auths-core: architecture/crates/auths-core.md
+          - auths-id: architecture/crates/auths-id.md
+          - auths-verifier: architecture/crates/auths-verifier.md
+          - auths-sdk: architecture/crates/auths-sdk.md
 
   - Contributing:
-      - Overview: contributing/index.md
-      - Repo Layout: contributing/repo-layout.md
-      - Adding a Binding: contributing/adding-a-binding.md
-      - Release Process: contributing/release-process.md
-      - Security Notes: contributing/security-notes.md
+      - Getting Started:
+          - Development Setup: contributing/development-setup.md
+          - Project Structure: contributing/project-structure.md
+          - Coding Standards: contributing/coding-standards.md
+      - Workflow:
+          - Testing Guide: contributing/testing-guide.md
+          - Pull Request Process: contributing/pull-request-process.md
+          - Release Process: contributing/release-process.md
+      - Reference:
+          - Architecture Decisions: contributing/architecture-decisions.md
+          - Glossary: contributing/glossary.md

@@ -1,15 +1,19 @@
 # Installation
 
-## CLI (primary)
+## System Requirements
 
-### From source (recommended)
+| Requirement | Minimum Version |
+|-------------|-----------------|
+| Rust        | 1.93+           |
+| Git         | 2.x             |
+| OS          | macOS, Linux, or Windows |
+
+## From Cargo
+
+The recommended way to install Auths is via `cargo install`:
 
 ```bash
-cargo install --git https://github.com/auths-dev/auths.git auths_cli
-```
-Or from local repo:
-```bash
-cargo install --path crates/auths-cli
+cargo install auths-cli
 ```
 
 This installs three binaries:
@@ -20,27 +24,26 @@ This installs three binaries:
 | `auths-sign` | Git SSH signing program (used by `gpg.ssh.program`) |
 | `auths-verify` | Signature verification tool |
 
-### From local checkout
+!!! tip
+    Make sure `~/.cargo/bin` is in your `PATH`. Most Rust installations add this automatically.
+
+## From Source
 
 ```bash
 git clone https://github.com/auths-dev/auths.git
 cd auths
+cargo install --path crates/auths-cli
+```
+
+Use `--force` to overwrite a previous installation:
+
+```bash
 cargo install --path crates/auths-cli --force
 ```
 
-### Verify installation
-
-```bash
-auths --version
-```
-
-Ensure `~/.cargo/bin` is in your `PATH`:
-
-```bash
-echo $PATH | grep -q ".cargo/bin" || echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
-```
-
 ### Run without installing
+
+You can also run directly from the source tree without installing:
 
 ```bash
 cargo run -p auths-cli -- <arguments>
@@ -55,44 +58,61 @@ auths = "run -p auths-cli --"
 
 Then: `cargo auths key list`
 
-## Platform requirements
+## Pre-built Binaries
 
-| Platform | Keychain backend | Notes |
-|----------|-----------------|-------|
-| macOS | Security Framework (Keychain) | Default, no extra setup |
-| Linux | Secret Service (GNOME Keyring) | Or encrypted file fallback |
-| Windows | Credential Manager | Requires `keychain-windows` feature |
-| CI/headless | Encrypted file | Set `AUTHS_KEYCHAIN_BACKEND=file` |
+Pre-built binaries for macOS, Linux, and Windows are available on the
+[GitHub Releases](https://github.com/auths-dev/auths/releases) page.
 
-## SDK installation
+## Platform Keychain Support
 
-SDKs are for **verification only** -- they embed `auths-verifier` for your language.
+=== "macOS"
 
-=== "Python"
+    Uses the system Security Framework (Keychain). No extra setup required.
 
-    ```bash
-    pip install auths-verifier
-    ```
+=== "Linux"
 
-=== "JavaScript"
+    Uses Secret Service (GNOME Keyring) by default. Falls back to an encrypted file if
+    Secret Service is unavailable.
 
-    ```bash
-    npm install @auths/verifier
-    ```
+=== "Windows"
 
-=== "Go"
+    Uses the Windows Credential Manager. Requires the `keychain-windows` feature:
 
     ```bash
-    go get github.com/auths/auths/packages/auths-verifier-go
+    cargo install auths-cli --features keychain-windows
     ```
 
-=== "Swift"
+!!! note
+    For CI or headless environments, set `AUTHS_KEYCHAIN_BACKEND=file` to use the
+    encrypted file backend instead of a platform keychain.
 
-    ```swift
-    // Package.swift
-    dependencies: [
-        .package(url: "https://github.com/auths/auths", from: "0.1.0")
-    ]
-    ```
+## Shell Completions
 
-See [SDKs](../sdks/overview.md) for detailed SDK setup.
+Shell completions are planned for a future release.
+
+## Verify Installation
+
+```bash
+auths --version
+```
+
+Expected output:
+
+```
+auths 0.0.1-rc.5
+```
+
+!!! tip
+    If `auths` is not found, ensure `~/.cargo/bin` is on your `PATH`:
+
+    === "macOS / Linux"
+
+        ```bash
+        echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
+        source ~/.zshrc
+        ```
+
+    === "Windows"
+
+        Cargo's installer typically adds `%USERPROFILE%\.cargo\bin` to your `PATH`
+        automatically. If not, add it manually via **System Properties > Environment Variables**.

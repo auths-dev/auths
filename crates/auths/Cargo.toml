@@ -1,0 +1,15 @@
+[package]
+name = "auths"
+version.workspace = true
+edition = "2024"
+description = "Decentralized identity for developers — cryptographic commit signing with Git-native storage"
+license.workspace = true
+repository = "https://github.com/auths-dev/auths"
+homepage = "https://auths.dev"
+readme = "README.md"
+keywords = ["identity", "cryptography", "did", "git", "signing"]
+categories = ["authentication", "cryptography"]
+
+# Re-exports will be added once all crates are published under hyphenated names.
+# See: https://github.com/auths-dev/auths
+[dependencies]
