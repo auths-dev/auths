@@ -114,7 +114,7 @@ See `TESTING_STRATEGY.md` for full details.
 
 ## CI Requirements
 
-Tests require Git configuration:
+Tests require Git configuration, ask the user for this and help them find it:
 ```bash
 git config --global user.name "{user_current_name}"
 git config --global user.email "{user_current_email}"
