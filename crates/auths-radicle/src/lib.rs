@@ -24,9 +24,11 @@
 //! - `heartwood` - Enable direct integration with Radicle's heartwood crates.
 //!   When disabled, the bridge uses generic byte-based APIs.
 
+pub mod attestation;
 pub mod bridge;
 pub mod identity;
 pub mod refs;
+pub mod storage;
 pub mod verify;
 
 pub use bridge::{BridgeError, RadicleAuthsBridge, VerifyResult};
