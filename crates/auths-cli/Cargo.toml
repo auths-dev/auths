@@ -84,7 +84,7 @@ default = ["lan-pairing"]
 lan-pairing = ["dep:axum", "dep:tower", "dep:tower-http", "dep:mdns-sd", "dep:tokio-util"]
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal", "process"] }
+nix = { version = "0.31", features = ["signal", "process"] }
 
 [dev-dependencies]
 auths-test-utils.workspace = true
