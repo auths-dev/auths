@@ -1,0 +1,7 @@
+# cbindgen.toml
+language = "C"
+include_version = true
+namespace = "mobile_crypto_agent"
+
+[defines]
+"target_os = ios" = "IOS"

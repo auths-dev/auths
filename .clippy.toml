@@ -1,0 +1,3 @@
+disallowed-methods = [
+    { path = "uuid::Uuid::new_v4", reason = "Use UuidProvider::new_id() instead. Inject SystemUuidProvider in production and DeterministicUuidProvider in tests." },
+]

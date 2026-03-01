@@ -1,0 +1,31 @@
+[package]
+name = "auths-policy-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dependencies.auths_policy]
+package = "auths-policy"
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "policy_eval"
+path = "fuzz_targets/policy_eval.rs"
+test = false
+doc = false
+bench = false

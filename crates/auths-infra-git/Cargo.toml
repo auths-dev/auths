@@ -1,0 +1,18 @@
+[package]
+name = "auths-infra-git"
+version.workspace = true
+license.workspace = true
+edition = "2024"
+
+[dependencies]
+auths-core = { workspace = true }
+auths-sdk = { workspace = true }
+auths-verifier = { workspace = true }
+git2 = "0.20.4"
+thiserror.workspace = true
+chrono = "0.4"
+log = "0.4"
+
+[dev-dependencies]
+auths-test-utils.workspace = true
+tempfile = "3"

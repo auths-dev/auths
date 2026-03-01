@@ -1,0 +1,43 @@
+# Verify Commit Signatures with Auths Python SDK
+#
+# Lightweight alternative to the CLI-based verify-commits.yml.
+# Uses the Python SDK -- no Rust toolchain needed in CI.
+#
+# Setup:
+# 1. Export your identity bundle locally:
+#    auths id export-bundle --alias mykey --output .auths/identity-bundle.json
+#
+# 2. Commit the bundle to your repo (it contains only public data).
+#
+# 3. Add this workflow to .github/workflows/verify-signatures.yml
+
+name: Verify Commit Signatures
+on: [pull_request]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install auths-verifier
+
+      - name: Verify commit signatures
+        run: |
+          python -c "
+          from auths_verifier import verify_commit_range
+          result = verify_commit_range('origin/main..HEAD',
+              identity_bundle='.auths/identity-bundle.json',
+              mode='enforce')
+          print(result.summary)
+          for c in result.commits:
+              if not c.is_valid:
+                  print(f'  FAIL {c.commit_sha[:8]}: {c.error_code} -- {c.error}')
+          raise SystemExit(0 if result.passed else 1)
+          "

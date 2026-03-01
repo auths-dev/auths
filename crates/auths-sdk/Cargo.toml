@@ -1,0 +1,34 @@
+[package]
+name = "auths-sdk"
+version.workspace = true
+edition = "2024"
+description = "Application services layer for Auths identity operations"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bordumb/auths"
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+auths-core.workspace = true
+auths-id.workspace = true
+auths-policy.workspace = true
+auths-crypto.workspace = true
+auths-verifier.workspace = true
+ring.workspace = true
+thiserror.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+json-canon = "0.1"
+base64 = "0.22"
+reqwest = { version = "0.13.2", features = ["json"] }
+chrono = "0.4"
+hex = "0.4"
+html-escape = "0.2"
+zeroize = "1.8"
+
+[dev-dependencies]
+auths-test-utils.workspace = true
+auths-storage = { workspace = true, features = ["backend-git"] }
+git2 = "0.20.4"
+sha2 = "0.10"
+tempfile = "3"

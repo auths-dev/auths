@@ -1,0 +1,68 @@
+# Reusable Auths Verification Workflow
+#
+# Store this in your org's .github repo:
+#   org/.github/.github/workflows/auths-verify.yml
+#
+# Then each repo opts in with:
+#
+#   # .github/workflows/verify.yml
+#   name: Verify
+#   on: [pull_request]
+#   jobs:
+#     auths:
+#       uses: org/.github/.github/workflows/auths-verify.yml@main
+#       with:
+#         mode: enforce
+#
+# Rollout plan:
+#   Week 1: Add this workflow to org's .github repo
+#   Week 2: Enable with mode: warn on 3 pilot repos
+#   Week 3: Review logs, fix false positives
+#   Week 4: Flip pilot repos to mode: enforce
+#   Month 2: Roll out warn to all repos
+#   Month 3: Roll out enforce to all repos
+
+name: Auths Verify
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: "Verification mode: warn (log only) or enforce (block merge)"
+        type: string
+        default: "warn"
+      identity_bundle:
+        description: "Path to identity-bundle.json relative to repo root"
+        type: string
+        default: ".auths/identity-bundle.json"
+      python_version:
+        description: "Python version for verification"
+        type: string
+        default: "3.12"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - run: pip install auths-verifier
+
+      - name: Verify commit signatures
+        run: |
+          python -c "
+          from auths_verifier import verify_commit_range
+          result = verify_commit_range('origin/main..HEAD',
+              identity_bundle='${{ inputs.identity_bundle }}',
+              mode='${{ inputs.mode }}')
+          print(result.summary)
+          for c in result.commits:
+              if not c.is_valid:
+                  print(f'  FAIL {c.commit_sha[:8]}: {c.error_code} -- {c.error}')
+          raise SystemExit(0 if result.passed else 1)
+          "

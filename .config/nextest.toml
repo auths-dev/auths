@@ -1,0 +1,34 @@
+[profile.default]
+# Fail-fast: stop after first failure in CI-like runs
+fail-fast = true
+# Status update every 5 seconds for long-running tests
+status-level = "pass"
+final-status-level = "slow"
+
+[profile.default.junit]
+# JUnit XML output for CI integrations
+path = "target/nextest/junit.xml"
+
+[profile.pre-commit]
+# Fast subset for pre-commit: unit tests only (no slow lifecycle/integration tests).
+# Clippy already validates compilation with --all-features; CI runs the full suite.
+fail-fast = true
+
+[[profile.pre-commit.overrides]]
+# Kill any test that hangs longer than 30s (catches infinite loops, deadlocks).
+filter = 'all()'
+slow-timeout = { period = "30s", terminate-after = 1 }
+
+[profile.ci]
+fail-fast = false
+retries = 2
+
+# Integration tests: serial execution to avoid global state races.
+# Matches any test binary built from tests/ dirs.
+[[profile.default.overrides]]
+filter = 'kind(test)'
+threads-required = "num-test-threads"
+
+[[profile.ci.overrides]]
+filter = 'kind(test)'
+threads-required = "num-test-threads"

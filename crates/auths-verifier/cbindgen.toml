@@ -1,0 +1,6 @@
+language = "C"
+header = "/* Auths Verifier FFI Header */"
+include_guard = "AUTHS_VERIFIER_FFI_H"
+
+[export]
+include = ["ffi_verify_attestation_json", "VERIFY_SUCCESS", "ERR_VERIFY_*"] # Export function and constants

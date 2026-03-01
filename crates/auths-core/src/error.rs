@@ -1,0 +1,199 @@
+//! Error types for agent and core operations.
+
+use thiserror::Error;
+
+/// Trait for error metadata providing structured error codes and actionable suggestions.
+///
+/// All Auths error types implement this trait to provide:
+/// - A unique error code for programmatic handling (e.g., "AUTHS_KEY_NOT_FOUND")
+/// - An optional human-readable suggestion for how to resolve the error
+pub trait AuthsErrorInfo {
+    /// Returns a unique error code string following the AUTHS_* naming convention.
+    ///
+    /// Error codes are stable identifiers that can be used for:
+    /// - Programmatic error handling in scripts
+    /// - Internationalization of error messages
+    /// - Logging and debugging
+    fn error_code(&self) -> &'static str;
+
+    /// Returns an optional actionable suggestion for resolving the error.
+    ///
+    /// Suggestions should be clear, concise commands or instructions
+    /// that help the user fix the problem.
+    fn suggestion(&self) -> Option<&'static str>;
+}
+
+/// Errors from the Auths agent and core operations.
+#[derive(Debug, Error)]
+pub enum AgentError {
+    /// The requested key was not found.
+    #[error("Key not found")]
+    KeyNotFound,
+
+    /// The provided passphrase is incorrect.
+    #[error("Incorrect passphrase")]
+    IncorrectPassphrase,
+
+    /// A passphrase is required but was not provided.
+    #[error("Missing Passphrase")]
+    MissingPassphrase,
+
+    /// A platform security framework error occurred.
+    #[error("Security error: {0}")]
+    SecurityError(String),
+
+    /// A cryptographic operation failed.
+    #[error("Crypto error: {0}")]
+    CryptoError(String),
+
+    /// Failed to deserialize a key.
+    #[error("Key deserialization error: {0}")]
+    KeyDeserializationError(String),
+
+    /// Signing operation failed.
+    #[error("Signing failed: {0}")]
+    SigningFailed(String),
+
+    /// A protocol error occurred.
+    #[error("Protocol error: {0}")]
+    Proto(String),
+
+    /// An I/O error occurred.
+    #[error("IO error: {0}")]
+    IO(#[from] std::io::Error),
+
+    /// A Git operation failed.
+    #[error("git error: {0}")]
+    GitError(String),
+
+    /// Invalid input was provided.
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    /// A mutex lock was poisoned.
+    #[error("Mutex lock poisoned: {0}")]
+    MutexError(String),
+
+    /// A storage operation failed.
+    #[error("Storage error: {0}")]
+    StorageError(String),
+
+    /// The user cancelled an interactive prompt.
+    #[error("User input cancelled")]
+    UserInputCancelled,
+
+    // --- Platform backend errors ---
+    /// Backend is not available on this platform or configuration
+    #[error("Keychain backend unavailable: {backend} - {reason}")]
+    BackendUnavailable {
+        /// Name of the failing backend.
+        backend: &'static str,
+        /// Reason the backend is unavailable.
+        reason: String,
+    },
+
+    /// Storage is locked and requires authentication
+    #[error("Storage is locked, authentication required")]
+    StorageLocked,
+
+    /// Backend initialization failed
+    #[error("Failed to initialize keychain backend: {backend} - {error}")]
+    BackendInitFailed {
+        /// Name of the failing backend.
+        backend: &'static str,
+        /// Initialization error message.
+        error: String,
+    },
+
+    /// Credential size exceeds platform limit
+    #[error("Credential too large for backend (max {max_bytes} bytes, got {actual_bytes})")]
+    CredentialTooLarge {
+        /// Maximum credential size in bytes.
+        max_bytes: usize,
+        /// Actual credential size in bytes.
+        actual_bytes: usize,
+    },
+
+    /// Agent is locked due to idle timeout
+    #[error("Agent is locked. Unlock with 'auths agent unlock' or restart the agent.")]
+    AgentLocked,
+
+    /// The passphrase does not meet strength requirements.
+    #[error("Passphrase too weak: {0}")]
+    WeakPassphrase(String),
+}
+
+impl AuthsErrorInfo for AgentError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::KeyNotFound => "AUTHS_KEY_NOT_FOUND",
+            Self::IncorrectPassphrase => "AUTHS_INCORRECT_PASSPHRASE",
+            Self::MissingPassphrase => "AUTHS_MISSING_PASSPHRASE",
+            Self::SecurityError(_) => "AUTHS_SECURITY_ERROR",
+            Self::CryptoError(_) => "AUTHS_CRYPTO_ERROR",
+            Self::KeyDeserializationError(_) => "AUTHS_KEY_DESERIALIZATION_ERROR",
+            Self::SigningFailed(_) => "AUTHS_SIGNING_FAILED",
+            Self::Proto(_) => "AUTHS_PROTOCOL_ERROR",
+            Self::IO(_) => "AUTHS_IO_ERROR",
+            Self::GitError(_) => "AUTHS_GIT_ERROR",
+            Self::InvalidInput(_) => "AUTHS_INVALID_INPUT",
+            Self::MutexError(_) => "AUTHS_MUTEX_ERROR",
+            Self::StorageError(_) => "AUTHS_STORAGE_ERROR",
+            Self::UserInputCancelled => "AUTHS_USER_CANCELLED",
+            Self::BackendUnavailable { .. } => "AUTHS_BACKEND_UNAVAILABLE",
+            Self::StorageLocked => "AUTHS_STORAGE_LOCKED",
+            Self::BackendInitFailed { .. } => "AUTHS_BACKEND_INIT_FAILED",
+            Self::CredentialTooLarge { .. } => "AUTHS_CREDENTIAL_TOO_LARGE",
+            Self::AgentLocked => "AUTHS_AGENT_LOCKED",
+            Self::WeakPassphrase(_) => "AUTHS_WEAK_PASSPHRASE",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::KeyNotFound => Some("Run `auths key list` to see available keys"),
+            Self::IncorrectPassphrase => Some("Check your passphrase and try again"),
+            Self::MissingPassphrase => {
+                Some("Provide a passphrase with --passphrase or set AUTHS_PASSPHRASE")
+            }
+            Self::BackendUnavailable { .. } => {
+                Some("Run `auths doctor` to diagnose keychain issues")
+            }
+            Self::StorageLocked => Some("Authenticate with your platform keychain"),
+            Self::BackendInitFailed { .. } => {
+                Some("Run `auths doctor` to diagnose keychain issues")
+            }
+            Self::GitError(_) => Some("Ensure you're in a Git repository"),
+            Self::AgentLocked => {
+                Some("Run `auths agent unlock` or restart with `auths agent start`")
+            }
+            Self::UserInputCancelled => {
+                Some("Run the command again and provide the required input")
+            }
+            Self::StorageError(_) => Some("Check file permissions and disk space"),
+            // These errors typically don't have actionable suggestions
+            Self::SecurityError(_)
+            | Self::CryptoError(_)
+            | Self::KeyDeserializationError(_)
+            | Self::SigningFailed(_)
+            | Self::Proto(_)
+            | Self::IO(_)
+            | Self::InvalidInput(_)
+            | Self::MutexError(_)
+            | Self::CredentialTooLarge { .. } => None,
+            Self::WeakPassphrase(_) => {
+                Some("Use at least 12 characters with uppercase, lowercase, and a digit or symbol")
+            }
+        }
+    }
+}
+
+impl From<AgentError> for ssh_agent_lib::error::AgentError {
+    fn from(err: AgentError) -> Self {
+        match err {
+            AgentError::KeyNotFound => Self::Failure,
+            AgentError::IncorrectPassphrase => Self::Failure,
+            _ => Self::Failure,
+        }
+    }
+}

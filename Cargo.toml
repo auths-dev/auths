@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/auths-core",
+  "crates/auths-cli",
+  "crates/auths-id",
+  "crates/auths-index",
+  "crates/auths-policy",
+  "crates/auths-radicle",
+  "crates/auths-verifier",
+  "crates/auths-telemetry",
+  "crates/auths-test-utils",
+  "crates/auths-crypto",
+  "crates/auths-sdk",
+  "crates/auths-infra-git",
+  "crates/auths-infra-http",
+  "crates/auths-storage",
+  "crates/xtask",
+]
+
+[workspace.package]
+version = "0.0.1-rc.13"
+license = "MIT OR Apache-2.0"
+rust-version = "1.93"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+bs58 = "0.5.1"
+ring = "0.17.14"
+base64 = "0.22.1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+
+# Intra-workspace crates — path only, version inherited automatically.
+auths-core = { path = "crates/auths-core" }
+auths-id = { path = "crates/auths-id" }
+auths-verifier = { path = "crates/auths-verifier" }
+auths-policy = { path = "crates/auths-policy" }
+auths-index = { path = "crates/auths-index" }
+auths-telemetry = { path = "crates/auths-telemetry" }
+auths-crypto = { path = "crates/auths-crypto", default-features = false }
+auths-sdk = { path = "crates/auths-sdk" }
+auths-test-utils = { path = "crates/auths-test-utils" }
+auths-infra-git = { path = "crates/auths-infra-git" }
+auths-infra-http = { path = "crates/auths-infra-http" }
+auths-storage = { path = "crates/auths-storage" }

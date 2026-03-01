@@ -1,0 +1,10 @@
+target/
+*.so
+*.pyc
+__pycache__/
+.eggs/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+Cargo.lock

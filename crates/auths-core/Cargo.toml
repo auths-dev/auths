@@ -1,0 +1,101 @@
+[package]
+name = "auths-core"
+version.workspace = true
+edition = "2024"
+authors = ["bordumb <bordumbb@gmail.com>"]
+description = "Core cryptography and keychain integration for Auths"
+license.workspace = true
+repository = "https://github.com/bordumb/auths"
+homepage = "https://github.com/bordumb/auths"
+documentation = "https://docs.rs/auths_core"
+readme = "README.md"
+keywords = ["cryptography", "keychain", "ed25519", "ssh", "identity"]
+categories = ["cryptography", "authentication"]
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+log = "0.4"
+once_cell = "1.19"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ssh-agent-lib = "0.5.1"
+ssh-key = { version = "0.6.7", features = ["ed25519"] }
+thiserror.workspace = true
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+zeroize = { version = "1.8.1", features = ["serde", "derive"] }
+aes-gcm = "0.10.3"
+hkdf = "0.12.4"
+sha2 = "0.10.8"
+argon2 = "0.5"
+libc = "0.2.171"
+rand = "0.8"
+base64.workspace = true
+byteorder = "1.5.0"
+dirs = "6.0.0"
+multibase = "0.9.1"
+anyhow = "1.0"
+auths-crypto = { workspace = true, features = ["native"] }
+blake3 = "1.5"
+pkcs8 = "0.10.2"
+hex = "0.4.3"
+tempfile = "3.19.1"
+chrono = { version = "0.4", features = ["serde"] }
+qrcode = "0.14"
+schemars = "0.8"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+
+auths-verifier.workspace = true
+uuid.workspace = true
+
+# Optional secp256k1/BIP340 Schnorr support for Nostr
+k256 = { version = "0.13", features = ["schnorr"], optional = true }
+
+# Optional witness server dependencies
+axum = { version = "0.8", optional = true }
+tower = { version = "0.5", features = ["util"], optional = true }
+tower-http = { version = "0.6", features = ["trace"], optional = true }
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
+
+# macOS/iOS keychain dependencies
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+core-foundation = "0.9"
+security-framework = { version = "2.10", features = ["OSX_10_15"] }
+security-framework-sys = "2.9"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+secret-service = { version = "5.0", features = ["rt-tokio-crypto-rust"], optional = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = ["Security_Credentials", "Foundation_Collections"], optional = true }
+
+[dev-dependencies]
+auths-test-utils.workspace = true
+ring.workspace = true
+anyhow = "1.0"
+assert_matches = "1.5.0"
+criterion = { version = "0.5", features = ["html_reports"] }
+mockall = "0.13.1"
+rand = "0.8"
+tokio = { version = "1", features = ["full"] }
+[[bench]]
+name = "crypto"
+harness = false
+
+[features]
+default = []
+test-utils = []
+keychain-linux-secretservice = ["dep:secret-service"]
+keychain-windows = ["dep:windows"]
+keychain-file-fallback = []
+crypto-secp256k1 = ["dep:k256"]
+witness-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:rusqlite"]
+tls = ["dep:axum-server", "witness-server"]
+
+[lints.clippy]
+print_stdout = "deny"
+print_stderr = "deny"

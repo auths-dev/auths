@@ -1,0 +1,35 @@
+[package]
+name = "auths-verifier-uniffi"
+version = "0.1.0"
+edition = "2021"
+description = "UniFFI bindings for Auths attestation verification (Swift/Kotlin)"
+license = "MIT"
+
+# Exclude from main workspace - built separately with UniFFI
+[workspace]
+
+[lib]
+name = "auths_verifier_uniffi"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+# UniFFI for Swift/Kotlin bindings (cli feature for bindgen)
+uniffi = { version = "0.28", features = ["cli"] }
+
+# Auths verifier
+auths-verifier = { path = "../../crates/auths-verifier" }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4.3"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "2.0"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"

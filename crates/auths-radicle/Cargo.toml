@@ -1,0 +1,29 @@
+[package]
+name = "auths-radicle"
+version.workspace = true
+edition = "2024"
+authors = ["bordumb <bordumbb@gmail.com>"]
+description = "Radicle protocol integration for Auths - identity resolution and policy bridge"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bordumb/auths"
+readme = "README.md"
+keywords = ["radicle", "identity", "did", "git", "cryptography"]
+categories = ["cryptography", "authentication"]
+
+[features]
+default = []
+
+[dependencies]
+auths-id.workspace = true
+auths-verifier.workspace = true
+
+anyhow = "1"
+bs58 = "0.5.1"
+chrono = { version = "0.4", features = ["serde"] }
+git2 = "0.20.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.19.1"

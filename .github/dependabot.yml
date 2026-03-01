@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # Enable version updates for Cargo
+  - package-ecosystem: "cargo"
+    # Look for `Cargo.toml` and `Cargo.lock` in the root directory (`/`)
+    directory: "/"
+    # Check for updates daily
+    schedule:
+      interval: "daily"
+    # Optional: Add labels to Dependabot PRs
+    # labels:
+    #   - "dependencies"
+    # Optional: Assign reviewers
+    # reviewers:
+    #  - "bordumb"
+
+  # Optional: Enable updates for GitHub Actions used in workflows
+  # - package-ecosystem: "github-actions"
+  #   directory: "/"
+  #   schedule:
+  #     interval: "weekly"

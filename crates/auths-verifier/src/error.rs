@@ -1,0 +1,136 @@
+//! Error types for attestation and verification operations.
+
+use crate::core::Capability;
+use thiserror::Error;
+
+/// Trait for error metadata providing structured error codes and actionable suggestions.
+///
+/// All Auths error types implement this trait to provide:
+/// - A unique error code for programmatic handling (e.g., "AUTHS_VERIFICATION_ERROR")
+/// - An optional human-readable suggestion for how to resolve the error
+pub trait AuthsErrorInfo {
+    /// Returns a unique error code string following the AUTHS_* naming convention.
+    fn error_code(&self) -> &'static str;
+
+    /// Returns an optional actionable suggestion for resolving the error.
+    fn suggestion(&self) -> Option<&'static str>;
+}
+
+/// Errors returned by attestation signing, verification, and related operations.
+#[derive(Error, Debug)]
+pub enum AttestationError {
+    /// Cryptographic signature verification failed.
+    #[error("Signature verification failed: {0}")]
+    VerificationError(String),
+
+    /// The attestation does not grant the required capability.
+    #[error("Missing required capability: required {required:?}, available {available:?}")]
+    MissingCapability {
+        /// The capability that was required.
+        required: Capability,
+        /// The capabilities present in the attestation.
+        available: Vec<Capability>,
+    },
+
+    /// Signing the attestation data failed.
+    #[error("Signing failed: {0}")]
+    SigningError(String),
+
+    /// DID resolution failed.
+    #[error("DID resolution failed: {0}")]
+    DidResolutionError(String),
+
+    /// JSON serialization or deserialization failed.
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    /// Caller provided invalid input data.
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    /// A cryptographic primitive (key parsing, hashing) failed.
+    #[error("Crypto error: {0}")]
+    CryptoError(String),
+
+    /// The JSON input exceeds the allowed size limit.
+    #[error("Input too large: {0}")]
+    InputTooLarge(String),
+
+    /// An unexpected internal error occurred.
+    #[error("Internal error: {0}")]
+    InternalError(String),
+
+    /// Organizational attestation signature verification failed.
+    #[error("Organizational Attestation verification failed: {0}")]
+    OrgVerificationFailed(String),
+
+    /// The organizational attestation has expired.
+    #[error("Organizational Attestation expired")]
+    OrgAttestationExpired,
+
+    /// DID resolution for the organization failed.
+    #[error("Organizational DID resolution failed: {0}")]
+    OrgDidResolutionFailed(String),
+
+    /// The identity bundle is older than its declared maximum age.
+    #[error("Bundle is {age_secs}s old (max {max_secs}s). Refresh with: auths id export-bundle")]
+    BundleExpired {
+        /// Actual bundle age in seconds.
+        age_secs: u64,
+        /// Maximum permitted age in seconds.
+        max_secs: u64,
+    },
+}
+
+impl AuthsErrorInfo for AttestationError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::VerificationError(_) => "AUTHS_VERIFICATION_ERROR",
+            Self::MissingCapability { .. } => "AUTHS_MISSING_CAPABILITY",
+            Self::SigningError(_) => "AUTHS_SIGNING_ERROR",
+            Self::DidResolutionError(_) => "AUTHS_DID_RESOLUTION_ERROR",
+            Self::SerializationError(_) => "AUTHS_SERIALIZATION_ERROR",
+            Self::InputTooLarge(_) => "AUTHS_INPUT_TOO_LARGE",
+            Self::InvalidInput(_) => "AUTHS_INVALID_INPUT",
+            Self::CryptoError(_) => "AUTHS_CRYPTO_ERROR",
+            Self::InternalError(_) => "AUTHS_INTERNAL_ERROR",
+            Self::OrgVerificationFailed(_) => "AUTHS_ORG_VERIFICATION_FAILED",
+            Self::OrgAttestationExpired => "AUTHS_ORG_ATTESTATION_EXPIRED",
+            Self::OrgDidResolutionFailed(_) => "AUTHS_ORG_DID_RESOLUTION_FAILED",
+            Self::BundleExpired { .. } => "AUTHS_BUNDLE_EXPIRED",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::VerificationError(_) => {
+                Some("Verify the attestation was signed with the correct key")
+            }
+            Self::MissingCapability { .. } => {
+                Some("Request an attestation with the required capability")
+            }
+            Self::DidResolutionError(_) => Some("Check that the DID is valid and resolvable"),
+            Self::OrgVerificationFailed(_) => {
+                Some("Verify organizational identity is properly configured")
+            }
+            Self::OrgAttestationExpired => {
+                Some("Request a new organizational attestation from the admin")
+            }
+            Self::OrgDidResolutionFailed(_) => {
+                Some("Check that the organization's DID is correctly configured")
+            }
+            // These typically don't have actionable suggestions
+            Self::InputTooLarge(_) => {
+                Some("Reduce the size of the JSON input or split into smaller batches")
+            }
+            Self::BundleExpired { .. } => Some(
+                "Re-export the bundle: auths id export-bundle --alias <ALIAS> --output bundle.json --max-age-secs <SECS>",
+            ),
+            Self::SigningError(_)
+            | Self::SerializationError(_)
+            | Self::InvalidInput(_)
+            | Self::CryptoError(_)
+            | Self::InternalError(_) => None,
+        }
+    }
+}

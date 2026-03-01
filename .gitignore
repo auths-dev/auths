@@ -1,0 +1,124 @@
+# === Rust ===
+/target/
+/target
+**/target/
+**/fuzz/target/
+**/*.rs.bk
+*.rs.bk
+*.rmeta
+
+# === Build artifacts ===
+/build/
+/dist/
+/*.wasm
+*.dSYM
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.rlib
+
+# === Logs and diagnostics ===
+*.log
+*.tmp
+*.swp
+*.bak
+*.old
+*.orig
+*.rej
+*.swo
+*.swn
+*.DS_Store
+
+# === Tauri-specific ===
+/src-tauri/gen/
+/src-tauri/node_modules/
+/src-tauri/.output/
+/src-tauri/.vite/
+/src-tauri/.parcel-cache/
+/src-tauri/.tauri-build/
+/src-tauri/bundle/
+/src-tauri/target/
+/src-tauri/debug.log
+/src-tauri/Cargo.lock
+/src-tauri/src/generated/
+
+# === Node/npm ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.vscode/
+.idea/
+.eslintcache
+
+# === iOS / Xcode ===
+*.xcworkspace
+*.xcuserstate
+*.xcuserdata
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserdatad
+*.ipa
+*.app
+*.lldb
+*.plist
+*.entitlements
+UniversalOutput/*
+*.xcframework/*
+*.a
+
+# === iOS Simulator & Derived Data ===
+~/Library/Developer/Xcode/DerivedData/
+~/Library/Developer/CoreSimulator/Devices/
+.DS_Store
+
+# === Python scripts & testing ===
+__pycache__/
+/*.pyc
+/.mypy_cache/
+.venv/
+**/.venv/
+/failing_tests_with_sources.txt
+/concat_files.txt
+/project_tree.txt
+
+# === MkDocs ===
+/site/
+
+# === Release artifacts & signatures ===
+*.zip
+*.tar
+*.tgz
+*.gz
+*.auths.json
+
+# === Misc ===
+*.lock
+*.code-workspace
+*.iml
+*.sublime-workspace
+*.sublime-project
+*.flow
+
+# === Local environment ===
+.env
+
+# === Ignore build artifacts ===
+RustAgentDemo/DerivedData/
+RustAgentDemo/build/
+# Rust build artifacts
+RustAgentDemo/*.a
+
+# Product specific
+concat_output.txt
+
+# Git worktrees
+.worktrees/

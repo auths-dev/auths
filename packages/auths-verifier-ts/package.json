@@ -1,0 +1,52 @@
+{
+  "name": "@auths/verifier",
+  "version": "0.1.0",
+  "description": "Auths attestation verification library for TypeScript/JavaScript",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/types/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "wasm"
+  ],
+  "scripts": {
+    "build": "npm run build:wasm && npm run build:ts",
+    "build:wasm": "cd ../../crates/auths-verifier && wasm-pack build --target bundler --features wasm --out-dir ../../packages/auths-verifier-ts/wasm",
+    "build:ts": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json",
+    "test": "jest",
+    "clean": "rm -rf dist wasm",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auths",
+    "attestation",
+    "verification",
+    "cryptography",
+    "wasm"
+  ],
+  "author": "auths",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bordumb/auths.git",
+    "directory": "packages/auths-verifier-ts"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.10.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.2"
+  },
+  "peerDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

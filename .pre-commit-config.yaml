@@ -1,0 +1,104 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+
+  # check-yaml above only validates YAML syntax. actionlint validates GitHub
+  # Actions semantics: invalid context names (e.g. bare `secrets.X` in `if:`
+  # expressions), unknown action inputs, wrong event names, etc.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.4
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      # ── Fast gates (commit) ──────────────────────────────────────────────
+      # These run on every `git commit`. They should take < 3 seconds incrementally.
+
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: bash -c 'SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings'
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-deny
+        name: cargo deny (licenses + bans)
+        entry: cargo deny check
+        language: system
+        files: (Cargo\.(toml|lock)|deny\.toml)$
+        pass_filenames: false
+
+      # ── Slow gates (push only) ──────────────────────────────────────────
+      # These run on `git push`. They require linking binaries, compiling
+      # alternative targets, or cross-compilation.
+
+      - id: cargo-test
+        name: cargo test (unit tests)
+        entry: cargo nextest run --workspace --profile pre-commit -E 'not kind(test)'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-check-python-bindings
+        name: cargo check (python bindings)
+        # OPTIMIZATION: We pass CARGO_TARGET_DIR so the python workspace shares
+        # the main workspace's compiled dependencies, preventing a duplicate build.
+        entry: bash -c 'CARGO_TARGET_DIR=../../target cargo check --manifest-path packages/auths-verifier-python/Cargo.toml'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-check-wasm
+        name: cargo check (wasm32)
+        entry: bash -c 'rustup target add wasm32-unknown-unknown 2>/dev/null; cd crates/auths-verifier && cargo check --target wasm32-unknown-unknown --features wasm'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: wasm-pack-build
+        name: wasm-pack build (auths-verifier)
+        entry: bash -c 'command -v wasm-pack >/dev/null 2>&1 || { echo "Skipping wasm-pack build — not installed."; exit 0; }; cd crates/auths-verifier && wasm-pack build --target bundler --features wasm'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cross-check-aarch64
+        name: cross check (aarch64-linux)
+        entry: bash -c 'command -v cross >/dev/null 2>&1 || { echo "Skipping aarch64 check — cross not installed."; exit 0; }; docker info >/dev/null 2>&1 || { echo "Skipping aarch64 check — Docker not running"; exit 0; }; cross check --package auths-cli --target aarch64-unknown-linux-gnu'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-check-linux
+        name: cargo check (linux)
+        entry: bash -c 'rustup target add x86_64-unknown-linux-gnu 2>/dev/null; cargo clippy --target x86_64-unknown-linux-gnu -- -D warnings 2>&1 && echo "Linux OK" || echo "Linux check failed - CI will verify"; exit 0'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-check-windows
+        name: cargo check (windows)
+        entry: bash -c 'rustup target add x86_64-pc-windows-msvc 2>/dev/null; cargo clippy --target x86_64-pc-windows-msvc --features keychain-windows -- -D warnings 2>&1 && echo "Windows OK" || echo "Windows check failed - CI will verify"; exit 0'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]

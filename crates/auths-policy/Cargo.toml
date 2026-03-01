@@ -1,0 +1,18 @@
+[package]
+name = "auths-policy"
+version.workspace = true
+edition = "2024"
+description = "Policy expression engine for Auths - composable authorization logic"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bordumb/auths"
+readme = "README.md"
+keywords = ["authorization", "policy", "permissions", "access-control"]
+categories = ["authentication"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+blake3 = "1.5"
+
+[dev-dependencies]

@@ -1,0 +1,71 @@
+[package]
+name = "auths-id"
+version.workspace = true
+edition = "2024"
+description = "Multi-device identity and attestation crate for Auths"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bordumb/auths"
+readme = "README.md"
+keywords = ["identity", "did", "cryptography", "git", "attestation"]
+categories = ["cryptography", "authentication"]
+
+[features]
+default = ["git-storage"]
+git-storage = ["dep:git2", "dep:dirs", "dep:tempfile", "dep:tokio"]
+indexed-storage = ["auths-index"]
+witness-client = ["dep:auths-infra-http"]
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+auths-core.workspace = true
+auths-crypto.workspace = true
+auths-policy.workspace = true
+auths-verifier.workspace = true
+base64.workspace = true
+bs58 = "0.5.1"
+chrono = { version = "0.4.40", features = ["serde"] }
+der = "0.8.0"
+dirs = { version = "6.0.0", optional = true }
+git2 = { version = "0.20.4", optional = true }
+hex = { version = "0.4.3", features = ["serde"] }
+json-canon = "0.1.3"
+jsonschema = "0.42.2"
+log = "0.4.27"
+multibase = "0.9.1"
+pkcs8 = "0.10"
+rand = "0.10.0"
+ring.workspace = true
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.140"
+tempfile = { version = "3.19.1", optional = true }
+thiserror.workspace = true
+tokio = { version = "1", features = ["rt", "sync"], optional = true }
+uuid = "1.16.0"
+zerocopy = "0.8.24"
+
+# Optional dependencies
+auths-index = { workspace = true, optional = true }
+auths-infra-http = { workspace = true, optional = true }
+
+[dev-dependencies]
+auths-core = { workspace = true, features = ["test-utils"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
+rand = "0.10.0"
+base58 = "0.2"
+anyhow = "1.0"
+proptest = "1.4"
+serial_test = "3"
+auths-test-utils.workspace = true
+auths-storage = { workspace = true, features = ["backend-git"] }
+futures = "0.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[bench]]
+name = "registry"
+harness = false
+
+[lints.clippy]
+print_stdout = "deny"
+print_stderr = "deny"

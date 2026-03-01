@@ -1,0 +1,48 @@
+[package]
+name = "auths-verifier-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1.0"
+
+[dependencies.auths_verifier]
+package = "auths-verifier"
+path = ".."
+
+[dependencies.auths_crypto]
+package = "auths-crypto"
+path = "../../auths-crypto"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "attestation_parse"
+path = "fuzz_targets/attestation_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "verify_chain"
+path = "fuzz_targets/verify_chain.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "did_parse"
+path = "fuzz_targets/did_parse.rs"
+test = false
+doc = false
+bench = false

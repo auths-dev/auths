@@ -1,0 +1,33 @@
+[package]
+name = "auths-crypto"
+version.workspace = true
+edition = "2024"
+publish = false
+license.workspace = true
+description = "Cryptographic primitives for Auths: KERI key parsing and DID:key encoding"
+
+[features]
+default = ["native"]
+native = ["dep:ring", "dep:tokio"]
+wasm = []
+
+[dependencies]
+async-trait = "0.1"
+base64.workspace = true
+bs58 = "0.5.1"
+ssh-key = { version = "0.6", features = ["ed25519"] }
+thiserror.workspace = true
+zeroize = { version = "1.8", features = ["derive"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ring = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+auths-test-utils.workspace = true
+ring.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints.clippy]
+print_stdout = "deny"
+print_stderr = "deny"

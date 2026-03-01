@@ -1,0 +1,21 @@
+name: Verify Commit Signatures
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit signatures
+        uses: bordumb/auths-verify-action@v1
+        with:
+          allowed-signers: '.auths/allowed_signers'
+          fail-on-unsigned: 'true'
+          skip-merge-commits: 'true'

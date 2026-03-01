@@ -1,0 +1,14 @@
+language = "C"
+
+include_guard = "MOBILE_SSH_AGENT_H"
+
+[defines]
+"__APPLE__" = "APPLE"
+
+[parse]
+parse_deps = false
+clean = true
+
+[export]
+include = ["ffi_*", "TAG_LEN", "NONCE_LEN", "SALT_LEN", "SYMMETRIC_KEY_LEN"]
+prefix = ""

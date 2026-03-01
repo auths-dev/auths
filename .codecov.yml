@@ -1,0 +1,16 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+    patch:
+      default:
+        target: 60%
+
+ignore:
+  - "crates/auths-verifier/src/ffi.rs"
+  - "crates/auths-verifier/src/wasm.rs"
+  - "crates/auths-mobile-ffi/**"
+  - "crates/auths-chat-ffi/**"
+  - "**/tests/**"
+  - "**/benches/**"

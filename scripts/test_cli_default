@@ -1,0 +1,213 @@
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# Ensure auths is installed/updated
+echo "--- Building/Installing auths-cli ---"
+cargo install --path crates/auths-cli --force
+echo "--- Installation Complete ---"
+
+
+echo "--- SCENARIO 1: Testing Default Layout ---"
+echo "Starting Test: $(date)"
+echo "======================================================"
+
+# --- Configuration ---
+TEST_DIR_DEFAULT="test_repo_default"
+# Default repo path is inside the test dir relative to execution
+REPO_ARG="." # Use current dir for --repo when running inside TEST_DIR_DEFAULT
+GIT_DIR=".git" # Relative .git path inside TEST_DIR_DEFAULT
+ID_ALIAS="default_id_key"
+ID_ALIAS_ROTATED="default_id_key_rotated" # Alias for the key after rotation
+DEVICE_ALIAS="default_dev1_key"
+PASSPHRASE_ID="pass_id_123"
+PASSPHRASE_ID_ROTATED="pass_id_rotated_789" # Passphrase for the rotated key
+PASSPHRASE_DEV="pass_dev_456"
+METADATA_FILE="metadata_default.json"
+DEVICE_SEED_FILE="device1_default.seed"
+# Ensure we handle potential CR characters (\r) from windowsy output
+CR=$(printf '\r')
+
+# --- Cleanup Function ---
+cleanup() {
+  echo "" # Newline before cleanup
+  echo "--- Cleaning up Scenario 1 ---"
+  # Use || true to ignore errors if alias/files don't exist
+  # Go up one level to delete the test dir, as script runs inside it
+  cd ..
+  auths key delete --alias "$ID_ALIAS" || true
+  # *** Add rotated key alias to cleanup ***
+  auths key delete --alias "$ID_ALIAS_ROTATED" || true
+  auths key delete --alias "$DEVICE_ALIAS" || true
+  rm -rf "$TEST_DIR_DEFAULT"
+  rm -f "$METADATA_FILE" "$DEVICE_SEED_FILE" # Clean up files created outside test dir
+  echo "Cleanup complete."
+}
+# Execute cleanup on exit or interruption signals
+trap cleanup EXIT HUP INT QUIT TERM
+
+# --- Setup ---
+echo ""
+echo "--- Setup ---"
+rm -rf "$TEST_DIR_DEFAULT" # Ensure clean start
+mkdir "$TEST_DIR_DEFAULT"
+cd "$TEST_DIR_DEFAULT" # Run subsequent commands inside the test dir
+
+# Create sample metadata file
+echo '{ "name": "Default Test User", "email": "default@example.com" }' > "$METADATA_FILE"
+# Create sample 32-byte seed file for the device
+head -c 32 /dev/urandom > "$DEVICE_SEED_FILE"
+echo "Setup complete."
+
+# --- Test Initialization ---
+echo ""
+echo "--- Testing: id init (Default Layout) ---"
+# Use --repo . because we are inside the test dir
+# Feed passphrase via stdin
+echo "$PASSPHRASE_ID" | auths --repo "$REPO_ARG" id init \
+  --metadata-file "$METADATA_FILE" \
+  --local-key-alias "$ID_ALIAS"
+
+# --- Verification ---
+echo ""
+echo "--- Verifying Initialization ---"
+echo "[Verifying] Listing keys..."
+auths key list | grep "$ID_ALIAS"
+echo "[Verifying] Showing identity info..."
+# Use --repo . ; Use more robust awk; Ignore KEL errors
+CONTROLLER_DID=$(auths --repo "$REPO_ARG" id show 2>/dev/null | grep 'Controller DID:' | awk -F': ' '{print $2}')
+echo "[Verification] Controller DID found: [$CONTROLLER_DID]"
+auths --repo "$REPO_ARG" id show 2>/dev/null | grep 'default@example.com'
+echo "[Verifying] Checking Git repository structure..."
+ls "$GIT_DIR" # Check .git exists
+# Check if the default identity ref exists using rev-parse
+echo "[Verifying] git rev-parse --verify 'refs/auths/identity'..."
+git --git-dir="$GIT_DIR" rev-parse --verify "refs/auths/identity" > /dev/null
+echo "[Verification] Default identity ref 'refs/auths/identity' found and verified."
+# Check identity blob name
+COMMIT_HASH=$(git --git-dir="$GIT_DIR" rev-parse "refs/auths/identity")
+git --git-dir="$GIT_DIR" ls-tree "$COMMIT_HASH" | grep "identity.json"
+echo "[Verification] Default identity blob 'identity.json' found."
+# Check KEL ref exists
+DID_PREFIX=${CONTROLLER_DID#"did:keri:"}
+KEL_REF_PATH="refs/did/keri/${DID_PREFIX}/kel"
+echo "[Verifying] git rev-parse --verify '$KEL_REF_PATH'..."
+git --git-dir="$GIT_DIR" rev-parse --verify "$KEL_REF_PATH" > /dev/null
+echo "[Verification] KEL ref '$KEL_REF_PATH' found and verified."
+
+
+# --- Test Key Import ---
+echo ""
+echo "--- Testing: key import ---"
+# Feed passphrase via stdin
+echo "$PASSPHRASE_DEV" | auths key import \
+  --alias "$DEVICE_ALIAS" \
+  --seed-file "$DEVICE_SEED_FILE" \
+  --controller-did "$CONTROLLER_DID"
+
+# --- Verification ---
+echo ""
+echo "--- Verifying Key Import ---"
+echo "[Verifying] Listing keys..."
+auths key list | grep "$ID_ALIAS"
+auths key list | grep "$DEVICE_ALIAS"
+
+# --- Test Device Link ---
+echo ""
+echo "--- Testing: device link ---"
+# Derive device DID using shell expansion
+DERIVE_DID_OUTPUT_RAW=$(auths util derive-did --seed-hex $(xxd -p -c 256 "$DEVICE_SEED_FILE"))
+DERIVE_DID_OUTPUT=${DERIVE_DID_OUTPUT_RAW%$CR}
+DEVICE_DID=${DERIVE_DID_OUTPUT##*DID: }
+DEVICE_DID=$(echo "$DEVICE_DID" | awk '{$1=$1};1') # Trim whitespace
+echo "Debug: Device DID extracted: [$DEVICE_DID]"
+
+# Link device, providing passphrases via stdin (Device, Identity, Device)
+echo -e "$PASSPHRASE_DEV\n$PASSPHRASE_ID\n$PASSPHRASE_DEV" | auths --repo "$REPO_ARG" device link \
+  --identity-key-alias "$ID_ALIAS" \
+  --device-key-alias "$DEVICE_ALIAS" \
+  --device-did "$DEVICE_DID" \
+  --note "Default layout test device" \
+  --expires-in-days 30
+
+# --- Verification ---
+echo ""
+echo "--- Verifying Device Link ---"
+echo "[Verifying] Showing devices..."
+# Use --repo . ; Ignore KEL errors
+auths --repo "$REPO_ARG" id show-devices 2>/dev/null | grep "$DEVICE_DID" | grep "active"
+auths --repo "$REPO_ARG" id show-devices 2>/dev/null | grep "Default layout test device"
+echo "[Verifying] Checking Git repository structure..."
+# Calculate expected ref path
+shopt -s extglob # Enable extended globbing (bash)
+SANITIZED_DID=${DEVICE_DID//[^[:alnum:]]/_} # Replace non-alphanumeric with _
+shopt -u extglob # Disable extended globbing
+DEVICE_REF_PATH="refs/auths/devices/nodes/${SANITIZED_DID}/signatures"
+echo "Debug: Calculated Device Ref Path: [$DEVICE_REF_PATH]"
+# Check if the default attestation ref exists using rev-parse
+echo "[Verifying] git rev-parse --verify '$DEVICE_REF_PATH'..."
+git --git-dir="$GIT_DIR" rev-parse --verify "$DEVICE_REF_PATH" > /dev/null
+echo "[Verification] Default device ref '$DEVICE_REF_PATH' found and verified."
+# Check attestation blob name
+DEV_COMMIT_HASH=$(git --git-dir="$GIT_DIR" rev-parse "$DEVICE_REF_PATH")
+git --git-dir="$GIT_DIR" ls-tree "$DEV_COMMIT_HASH" | grep "attestation.json"
+echo "[Verification] Default attestation blob 'attestation.json' found."
+
+
+# *** ADDED Test Identity Rotation ***
+echo ""
+echo "--- Testing: id rotate ---"
+# Feed passphrases via stdin (current key, then new key)
+echo -e "$PASSPHRASE_ID\n$PASSPHRASE_ID_ROTATED" | auths --repo "$REPO_ARG" id rotate \
+    --current-key-alias "$ID_ALIAS" \
+    --next-key-alias "$ID_ALIAS_ROTATED"
+    # Can add witness args here if needed: --add-witness B... --remove-witness B... --witness-threshold 1
+
+# --- Verification ---
+echo ""
+echo "--- Verifying Identity Rotation ---"
+echo "[Verifying] Listing keys (should include rotated key)..."
+auths key list | grep "$ID_ALIAS" # Original alias should still exist
+auths key list | grep "$ID_ALIAS_ROTATED" # New alias should exist
+echo "[Verifying] Checking KEL for rotation event..."
+# Check the last commit message on the KEL ref
+git --git-dir="$GIT_DIR" log -n 1 "$KEL_REF_PATH" --pretty=format:%s | grep "Rotation"
+echo "[Verification] Rotation event found in KEL."
+
+
+# --- Test Device Revoke ---
+echo ""
+echo "--- Testing: device revoke ---"
+# *** Use the ROTATED identity key alias and passphrase ***
+# Feed identity passphrase via stdin
+echo "$PASSPHRASE_ID_ROTATED" | auths --repo "$REPO_ARG" device revoke \
+    --identity-key-alias "$ID_ALIAS_ROTATED" \
+    --device-did "$DEVICE_DID" \
+    --note "Revoking default test device post-rotation"
+
+# --- Verification ---
+echo ""
+echo "--- Verifying Device Revoke ---"
+echo "[Verifying] Showing devices (should be empty)..."
+# Use --repo . ; Ignore KEL errors
+if auths --repo "$REPO_ARG" id show-devices 2>/dev/null | grep "$DEVICE_DID"; then
+    echo "ERROR: Revoked device still listed without --include-revoked!"
+    exit 1
+else
+    echo "OK: Revoked device not listed by default."
+fi
+echo "[Verifying] Showing devices (including revoked)..."
+# Use --repo . ; Ignore KEL errors
+auths --repo "$REPO_ARG" id show-devices --include-revoked 2>/dev/null | grep "$DEVICE_DID" | grep "revoked"
+# Check for the updated revoke note
+auths --repo "$REPO_ARG" id show-devices --include-revoked 2>/dev/null | grep "Revoking default test device post-rotation"
+echo "[Verifying] git ref '$DEVICE_REF_PATH' still exists..." # Revoke adds commit, doesn't delete ref
+git --git-dir="$GIT_DIR" rev-parse --verify "$DEVICE_REF_PATH" > /dev/null
+echo "[Verification] Device ref '$DEVICE_REF_PATH' still found and verified after revoke."
+
+
+echo ""
+echo "======================================================"
+echo "--- SCENARIO 1: PASSED ---"
+echo "Finished Test: $(date)"

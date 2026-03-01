@@ -1,0 +1,76 @@
+name: Go Bindings CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - "crates/auths-verifier/**"
+      - "packages/auths-verifier-go/**"
+      - ".github/workflows/go-bindings.yml"
+  pull_request:
+    branches: [ "main", "master" ]
+    paths:
+      - "crates/auths-verifier/**"
+      - "packages/auths-verifier-go/**"
+      - ".github/workflows/go-bindings.yml"
+
+jobs:
+  build-rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93"
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ubuntu-go-ffi-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ubuntu-go-ffi-cargo-
+
+      - name: Build FFI library
+        run: cargo build --release --package auths-verifier --features ffi
+
+      - name: Upload FFI library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libauths-verifier
+          path: target/release/libauths_verifier.so
+
+  test-go:
+    runs-on: ubuntu-latest
+    needs: build-rust
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Download FFI library
+        uses: actions/download-artifact@v4
+        with:
+          name: libauths-verifier
+          path: lib/
+
+      - name: Run Go tests
+        working-directory: packages/auths-verifier-go
+        run: go test -v ./...
+        env:
+          CGO_LDFLAGS: "-L${{ github.workspace }}/lib"
+          LD_LIBRARY_PATH: "${{ github.workspace }}/lib"

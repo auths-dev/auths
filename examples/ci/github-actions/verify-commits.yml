@@ -1,0 +1,64 @@
+# Verify Commit Signatures with Auths
+#
+# This workflow verifies that commits are signed by authorized identities
+# using Auths's stateless verification mode. This is ideal for CI/CD pipelines
+# that cannot run the Auths daemon or clone identity repositories.
+#
+# Setup:
+# 1. Export your identity bundle locally:
+#    auths id export-bundle --alias mykey --output bundle.json
+#
+# 2. Add the bundle content as a GitHub secret named AUTHS_IDENTITY_BUNDLE:
+#    gh secret set AUTHS_IDENTITY_BUNDLE < bundle.json
+#
+# 3. Add this workflow to your repository at .github/workflows/verify-commits.yml
+
+name: Verify Commit Signatures
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for commit verification
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Install Auths CLI
+        run: cargo install auths_cli
+
+      - name: Write identity bundle
+        run: echo '${{ secrets.AUTHS_IDENTITY_BUNDLE }}' > /tmp/identity-bundle.json
+
+      - name: Verify commit signatures
+        run: |
+          # For push events, verify the pushed commits
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Verify commits between before and after
+            if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              auths verify-commit --identity-bundle /tmp/identity-bundle.json \
+                ${{ github.event.before }}..${{ github.sha }}
+            else
+              # New branch, verify just the HEAD commit
+              auths verify-commit --identity-bundle /tmp/identity-bundle.json HEAD
+            fi
+          fi
+
+          # For pull requests, verify all commits in the PR
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            auths verify-commit --identity-bundle /tmp/identity-bundle.json \
+              ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: rm -f /tmp/identity-bundle.json
