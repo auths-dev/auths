@@ -6,7 +6,7 @@ Set up Auths for everyday development on a single machine.
 
 ```bash
 # Install
-cargo install --git https://github.com/bordumb/auths.git auths_cli
+cargo install --git https://github.com/auths-dev/auths.git auths_cli
 
 # Create identity
 cat > ~/auths-meta.json << 'EOF'

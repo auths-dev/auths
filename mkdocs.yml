@@ -1,7 +1,7 @@
 site_name: Auths
 site_description: Decentralized identity for developers. One identity, multiple devices, Git-native storage.
 site_url: https://docs.auths.dev
-repo_url: https://github.com/bordumb/auths
+repo_url: https://github.com/auths-dev/auths
 repo_name: bordumb/auths
 
 theme:
@@ -86,7 +86,7 @@ extra_css:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/bordumb/auths
+      link: https://github.com/auths-dev/auths
 
 nav:
   - Home: index.md

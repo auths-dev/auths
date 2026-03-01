@@ -144,4 +144,4 @@ flowchart LR
 
 Auths is fully open source under the Apache 2.0 license.
 
-[View on GitHub :material-github:](https://github.com/bordumb/auths){ .md-button }
+[View on GitHub :material-github:](https://github.com/auths-dev/auths){ .md-button }

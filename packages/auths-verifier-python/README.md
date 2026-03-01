@@ -112,5 +112,5 @@ MIT -- see [LICENSE](../../LICENSE).
 
 ## Links
 
-- [Documentation](https://github.com/bordumb/auths/tree/main/packages/auths-verifier-python)
-- [Repository](https://github.com/bordumb/auths)
+- [Documentation](https://github.com/auths-dev/auths/tree/main/packages/auths-verifier-python)
+- [Repository](https://github.com/auths-dev/auths)

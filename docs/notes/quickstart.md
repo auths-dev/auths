@@ -18,7 +18,7 @@ git --version     # 2.34.0 or higher
 
 Install from source:
 ```bash
-cargo install --git https://github.com/bordumb/auths auths_cli
+cargo install --git https://github.com/auths-dev/auths auths_cli
 ```
 
 This installs three binaries:

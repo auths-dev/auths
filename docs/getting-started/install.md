@@ -5,7 +5,7 @@
 ### From source (recommended)
 
 ```bash
-cargo install --git https://github.com/bordumb/auths.git auths_cli
+cargo install --git https://github.com/auths-dev/auths.git auths_cli
 ```
 Or from local repo:
 ```bash
@@ -23,7 +23,7 @@ This installs three binaries:
 ### From local checkout
 
 ```bash
-git clone https://github.com/bordumb/auths.git
+git clone https://github.com/auths-dev/auths.git
 cd auths
 cargo install --path crates/auths-cli --force
 ```

@@ -119,7 +119,7 @@ The `--json` flag is used by the [GitHub Actions integration](github-actions.md)
 
 ## Enforcing in CI
 
-Use the [`bordumb/auths-verify-action`](https://github.com/bordumb/auths-verify-action) to block PRs with unsigned commits:
+Use the [`bordumb/auths-verify-action`](https://github.com/auths-dev/auths-verify-action) to block PRs with unsigned commits:
 
 ```yaml
 - uses: actions/checkout@v4

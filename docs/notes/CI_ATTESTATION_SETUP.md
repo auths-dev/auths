@@ -120,7 +120,7 @@ Implement similar steps for Windows (adjust paths and commands for PowerShell).
 
 3. Verify the release includes `.auths.json` files:
    ```bash
-   curl -sL https://github.com/bordumb/auths/releases/download/v0.0.1-rc.9/auths-macos-aarch64.tar.gz.auths.json | jq
+   curl -sL https://github.com/auths-dev/auths/releases/download/v0.0.1-rc.9/auths-macos-aarch64.tar.gz.auths.json | jq
    ```
 
 4. Verify the Homebrew formula update was triggered:

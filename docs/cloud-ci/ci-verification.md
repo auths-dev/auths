@@ -63,7 +63,7 @@ jobs:
       - uses: checkout@v4
 
       - name: Install Auths
-        run: cargo install --git https://github.com/bordumb/auths.git auths_cli
+        run: cargo install --git https://github.com/auths-dev/auths.git auths_cli
 
       - name: Verify HEAD
         run: auths verify-commit HEAD --json
@@ -71,7 +71,7 @@ jobs:
 
 ### Full CLI workflow (push + PR)
 
-See [`examples/ci/github-actions/verify-commits.yml`](https://github.com/bordumb/auths/blob/main/examples/ci/github-actions/verify-commits.yml) for a complete workflow that handles both push events and pull requests with identity bundle support.
+See [`examples/ci/github-actions/verify-commits.yml`](https://github.com/auths-dev/auths/blob/main/examples/ci/github-actions/verify-commits.yml) for a complete workflow that handles both push events and pull requests with identity bundle support.
 
 ## JavaScript SDK
 

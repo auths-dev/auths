@@ -119,7 +119,7 @@ For a drop-in verification badge (no code required), use the [`auths-verify`](ht
 ></auths-verify>
 ```
 
-It wraps `@auths/verifier` WASM in a custom element with badge, detail, and tooltip display modes. See the [GitHub repo](https://github.com/bordumb/auths-verify-widget) and [npm package](https://www.npmjs.com/package/auths-verify) for full documentation.
+It wraps `@auths/verifier` WASM in a custom element with badge, detail, and tooltip display modes. See the [GitHub repo](https://github.com/auths-dev/auths-verify-widget) and [npm package](https://www.npmjs.com/package/auths-verify) for full documentation.
 
 ## Building from source
 

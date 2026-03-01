@@ -12,7 +12,7 @@ Thank you for contributing to Auths.
 ## Quick start for contributors
 
 ```bash
-git clone https://github.com/bordumb/auths.git
+git clone https://github.com/auths-dev/auths.git
 cd auths
 cargo build
 cargo test --all

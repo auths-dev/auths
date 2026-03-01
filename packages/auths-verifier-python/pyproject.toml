@@ -25,9 +25,9 @@ classifiers = [
 keywords = ["auths", "attestation", "verification", "cryptography"]
 
 [project.urls]
-Homepage = "https://github.com/bordumb/auths"
-Repository = "https://github.com/bordumb/auths"
-Documentation = "https://github.com/bordumb/auths/tree/main/packages/auths-verifier-python"
+Homepage = "https://github.com/auths-dev/auths"
+Repository = "https://github.com/auths-dev/auths"
+Documentation = "https://github.com/auths-dev/auths/tree/main/packages/auths-verifier-python"
 
 [project.optional-dependencies]
 dev = [

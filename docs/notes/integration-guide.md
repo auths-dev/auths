@@ -8,14 +8,14 @@ This guide shows how to integrate `auths-core` and `auths-verifier` into your Ru
 
 ```toml
 [dependencies]
-auths_core = { git = "https://github.com/bordumb/auths" }
+auths_core = { git = "https://github.com/auths-dev/auths" }
 
 # Platform-specific features (pick one or more):
 [target.'cfg(target_os = "linux")'.dependencies]
-auths_core = { git = "https://github.com/bordumb/auths", features = ["keychain-linux-secretservice"] }
+auths_core = { git = "https://github.com/auths-dev/auths", features = ["keychain-linux-secretservice"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-auths_core = { git = "https://github.com/bordumb/auths", features = ["keychain-windows"] }
+auths_core = { git = "https://github.com/auths-dev/auths", features = ["keychain-windows"] }
 ```
 
 **Available features:**
@@ -31,10 +31,10 @@ macOS/iOS keychain support is enabled by default.
 
 ```toml
 [dependencies]
-auths_verifier = { git = "https://github.com/bordumb/auths" }
+auths_verifier = { git = "https://github.com/auths-dev/auths" }
 
 # For WASM targets:
-auths_verifier = { git = "https://github.com/bordumb/auths", features = ["wasm"] }
+auths_verifier = { git = "https://github.com/auths-dev/auths", features = ["wasm"] }
 ```
 
 The verifier is lightweight and has no platform-specific dependencies.

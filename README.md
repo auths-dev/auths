@@ -11,7 +11,7 @@ brew install bordumb/auths-cli/auths
 
 Install from source:
 ```bash
-cargo install --git https://github.com/bordumb/auths.git auths_cli
+cargo install --git https://github.com/auths-dev/auths.git auths_cli
 ```
 
 This installs `auths`, `auths-sign`, and `auths-verify`.

@@ -10,7 +10,7 @@ Get up and running with Auths in under 60 seconds. By the end, you'll have a cry
 ## 1. Install
 
 ```bash
-cargo install --git https://github.com/bordumb/auths.git auths_cli
+cargo install --git https://github.com/auths-dev/auths.git auths_cli
 ```
 
 ## 2. Set up everything

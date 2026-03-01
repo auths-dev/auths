@@ -5,7 +5,7 @@ edition = "2024"
 description = "Application services layer for Auths identity operations"
 publish = true
 license.workspace = true
-repository = "https://github.com/bordumb/auths"
+repository = "https://github.com/auths-dev/auths"
 
 [dependencies]
 auths-core.workspace = true

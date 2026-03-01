@@ -11,7 +11,7 @@ SDKs are for **verification only**. They let your application verify attestation
 | [Python](python/quickstart.md) | PyO3 (native) | `pip install auths-verifier` | Beta |
 | [JavaScript](javascript/quickstart.md) | WASM | `npm install @auths/verifier` | Beta |
 | [Web Component](javascript/quickstart.md#web-component) | WASM (via JS SDK) | [`npm install auths-verify`](https://www.npmjs.com/package/auths-verify) | Beta |
-| [Go](go/quickstart.md) | CGo (FFI) | `go get github.com/bordumb/auths/packages/auths-verifier-go` | Alpha |
+| [Go](go/quickstart.md) | CGo (FFI) | `go get github.com/auths-dev/auths/packages/auths-verifier-go` | Alpha |
 | [Swift](swift/mobile-identity.md) | UniFFI | Swift Package Manager | Alpha |
 
 ## Common API surface

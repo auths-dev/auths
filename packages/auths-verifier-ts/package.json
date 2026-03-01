@@ -35,7 +35,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bordumb/auths.git",
+    "url": "https://github.com/auths-dev/auths.git",
     "directory": "packages/auths-verifier-ts"
   },
   "devDependencies": {
