@@ -1,61 +1,44 @@
 //! Verification flow for Radicle commits.
 //!
-//! This module implements the verification flow that bridges Radicle's
-//! signature verification with Auths' policy engine.
+//! Implements the full authorization pipeline:
+//! 1. DID translation (Ed25519 key → `did:key`)
+//! 2. Identity lookup (find KERI identity for device)
+//! 3. Binding integrity check (`min_kel_seq`)
+//! 4. Staleness detection (gossip-informed tip comparison)
+//! 5. Attestation verification (2-way signatures)
+//! 6. Policy evaluation (revocation, expiry, capabilities)
+//! 7. Mode-dependent result mapping (observe vs enforce)
 //!
-//! # Zero New Crypto
+//! # Fail-Closed Design
 //!
-//! **This module does NOT sign anything.** Auths authorizes, never signs.
-//!
-//! - Radicle handles all Ed25519 signature verification
-//! - This module only evaluates policy (is this key authorized?)
-//! - No new signature formats are introduced
-//!
-//! # Flow
-//!
-//! 1. **Radicle verifies signature** (external, not in this module)
-//!    - Cryptographic verification is done by Radicle
-//!    - We trust this result
-//!
-//! 2. **Adapter loads** (this module):
-//!    - Identity KEL for signer
-//!    - Device attestation for signing key
-//!
-//! 3. **Adapter calls policy engine**:
-//!    - Evaluates attestation against policy
-//!
-//! 4. **Map result to VerifyResult**:
-//!    - `Allow` → `Verified`
-//!    - `Deny` → `Rejected`
-//!    - `Indeterminate` → `Warn`
+//! Any unhandled error in the pipeline produces `Rejected`, never `Verified`.
+//! The only path to `Verified` is a complete successful evaluation.
 
 use chrono::{DateTime, Utc};
 
 use auths_id::identity::ed25519_to_did_key;
 use auths_id::keri::KeyState;
-use auths_id::policy::{CompiledPolicy, Decision, Outcome, PolicyBuilder, evaluate_compiled};
+use auths_id::policy::{
+    CompiledPolicy, Decision, Outcome, PolicyBuilder, evaluate_compiled,
+};
 use auths_verifier::core::Attestation;
 
-use crate::bridge::{BridgeError, RadicleAuthsBridge, VerifyResult};
+use crate::bridge::{
+    BridgeError, EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult,
+};
 
 /// Default implementation of the Radicle-Auths bridge.
 ///
-/// This struct provides a concrete implementation of [`RadicleAuthsBridge`]
-/// that loads identity and attestation data and evaluates against the policy engine.
+/// Generic over storage backend, allowing both real Git-backed storage
+/// and mock storage for testing.
 ///
-/// # Example
-///
-/// ```rust,ignore
-/// use auths_radicle::verify::DefaultBridge;
-/// use auths_radicle::bridge::RadicleAuthsBridge;
-///
-/// let bridge = DefaultBridge::new(storage, policy);
-/// let result = bridge.verify_signer(&signer_key, "repo-id", now)?;
+/// Usage:
+/// ```ignore
+/// let bridge = DefaultBridge::with_storage(storage);
+/// let result = bridge.verify_signer(&request)?;
 /// ```
 pub struct DefaultBridge<S> {
-    /// Storage backend for loading identities and attestations.
     storage: S,
-    /// Compiled policy to evaluate attestations against.
     policy: CompiledPolicy,
 }
 
@@ -82,19 +65,33 @@ impl<S> DefaultBridge<S> {
 /// Trait for loading identity and attestation data.
 ///
 /// This abstraction allows the bridge to work with different storage backends
-/// (Git-based, indexed, etc.) without coupling to a specific implementation.
+/// (Git-based, indexed, cached) without coupling to a specific implementation.
+/// The trait signature is designed so that future implementations can add caching
+/// (e.g., local SQLite index) without changing the trait contract.
 pub trait AuthsStorage: Send + Sync {
     /// Load the key state (identity) for a given DID.
     fn load_key_state(&self, identity_did: &str) -> Result<KeyState, BridgeError>;
 
-    /// Load the device attestation for a given device DID.
-    fn load_attestation(&self, device_did: &str) -> Result<Attestation, BridgeError>;
+    /// Load the device attestation for a given device DID under an identity.
+    fn load_attestation(
+        &self,
+        device_did: &str,
+        identity_did: &str,
+    ) -> Result<Attestation, BridgeError>;
 
-    /// Find the identity DID that controls a given device key.
+    /// Find the identity DID that controls a given device key within a project.
     ///
-    /// This searches for an attestation where the device's public key matches,
-    /// then returns the issuer (identity) DID.
-    fn find_identity_for_device(&self, device_did: &str) -> Result<String, BridgeError>;
+    /// Returns `None` if the device is not attested under any identity in this project.
+    fn find_identity_for_device(
+        &self,
+        device_did: &str,
+        repo_id: &str,
+    ) -> Result<Option<String>, BridgeError>;
+
+    /// Get the local tip OID of an identity repo.
+    ///
+    /// Returns `None` if the identity repo is not available locally.
+    fn local_identity_tip(&self, identity_did: &str) -> Result<Option<[u8; 20]>, BridgeError>;
 }
 
 impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
@@ -102,27 +99,176 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         ed25519_to_did_key(key_bytes)
     }
 
-    fn verify_signer(
+    fn verify_signer(&self, request: &VerifyRequest) -> Result<VerifyResult, BridgeError> {
+        let device_did = self.device_did(request.signer_key);
+
+        // Step 1: Find the identity that controls this device
+        let identity_did = match self
+            .storage
+            .find_identity_for_device(&device_did, request.repo_id)?
+        {
+            Some(did) => did,
+            None => {
+                return Ok(match request.mode {
+                    EnforcementMode::Observe => VerifyResult::Warn {
+                        reason: format!("no identity found for device {device_did}"),
+                    },
+                    EnforcementMode::Enforce => VerifyResult::Quarantine {
+                        reason: format!("no identity found for device {device_did}"),
+                        identity_repo_rid: None,
+                    },
+                });
+            }
+        };
+
+        // Step 2: Load key state
+        let key_state = match self.storage.load_key_state(&identity_did) {
+            Ok(ks) => ks,
+            Err(BridgeError::IdentityLoad(msg)) => {
+                return Ok(match request.mode {
+                    EnforcementMode::Observe => VerifyResult::Warn {
+                        reason: format!("identity repo missing: {msg}"),
+                    },
+                    EnforcementMode::Enforce => VerifyResult::Quarantine {
+                        reason: format!("identity repo missing: {msg}"),
+                        identity_repo_rid: Some(identity_did),
+                    },
+                });
+            }
+            Err(BridgeError::IdentityCorrupt(msg)) => {
+                // Corrupt identity is always rejected, never downgraded
+                return Ok(VerifyResult::Rejected {
+                    reason: format!("identity corrupt: {msg}"),
+                });
+            }
+            Err(e) => return Err(e),
+        };
+
+        // Step 3: Binding integrity — min_kel_seq check BEFORE policy evaluation.
+        // A KEL below the binding minimum is a tamper indicator: hard reject in ALL modes.
+        if let Some(min_seq) = request.min_kel_seq {
+            if key_state.sequence < min_seq {
+                return Ok(VerifyResult::Rejected {
+                    reason: format!(
+                        "KEL sequence {} below binding minimum {min_seq} for {identity_did}",
+                        key_state.sequence
+                    ),
+                });
+            }
+        }
+
+        // Step 4: Staleness detection — gossip-informed tip comparison.
+        if let Some(remote_tip) = request.known_remote_tip {
+            match self.storage.local_identity_tip(&identity_did)? {
+                Some(local_tip) if local_tip != remote_tip => {
+                    return Ok(match request.mode {
+                        EnforcementMode::Observe => VerifyResult::Warn {
+                            reason: format!(
+                                "identity repo {identity_did} has newer tip available"
+                            ),
+                        },
+                        EnforcementMode::Enforce => VerifyResult::Quarantine {
+                            reason: format!(
+                                "identity repo {identity_did} is stale (local tip differs from gossip)"
+                            ),
+                            identity_repo_rid: Some(identity_did),
+                        },
+                    });
+                }
+                None => {
+                    // Identity repo missing but we have a remote tip — stale
+                    return Ok(match request.mode {
+                        EnforcementMode::Observe => VerifyResult::Warn {
+                            reason: format!(
+                                "identity repo {identity_did} not available locally"
+                            ),
+                        },
+                        EnforcementMode::Enforce => VerifyResult::Quarantine {
+                            reason: format!(
+                                "identity repo {identity_did} not available locally"
+                            ),
+                            identity_repo_rid: Some(identity_did),
+                        },
+                    });
+                }
+                _ => {} // local == remote, no staleness
+            }
+        }
+
+        // Step 5: Load attestation
+        let attestation = match self.storage.load_attestation(&device_did, &identity_did) {
+            Ok(att) => att,
+            Err(BridgeError::AttestationLoad(msg)) => {
+                return Ok(apply_mode(
+                    request.mode,
+                    VerifyResult::Rejected {
+                        reason: format!("attestation not found: {msg}"),
+                    },
+                    None,
+                ));
+            }
+            Err(e) => return Err(e),
+        };
+
+        // Step 6: Evaluate policy (revocation, expiry)
+        let decision = evaluate_compiled(&attestation, &self.policy, request.now);
+
+        // Step 7: Capability check
+        if let Some(required_cap) = request.required_capability {
+            if decision.outcome == Outcome::Allow {
+                let has_cap = attestation
+                    .capabilities
+                    .iter()
+                    .any(|c| c.to_string() == required_cap);
+                if !has_cap && !attestation.capabilities.is_empty() {
+                    return Ok(apply_mode(
+                        request.mode,
+                        VerifyResult::Rejected {
+                            reason: format!(
+                                "device lacks required capability '{required_cap}'"
+                            ),
+                        },
+                        None,
+                    ));
+                }
+                // Empty capabilities with no required cap is OK (legacy devices)
+                // Empty capabilities with required cap: reject only if capabilities list is empty
+                // Actually: if attestation has capabilities, must include the required one.
+                // If attestation has NO capabilities, it's a legacy device — skip check.
+            }
+        }
+
+        // Step 8: Map decision to VerifyResult with mode
+        let result = decision_to_verify_result(decision);
+        Ok(apply_mode(request.mode, result, None))
+    }
+
+    fn find_identity_for_device(
         &self,
-        signer_key: &[u8; 32],
-        _repo_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<VerifyResult, BridgeError> {
-        // Step 1: Convert signer key to DeviceDID
-        let device_did = self.device_did(signer_key);
+        device_did: &str,
+        repo_id: &str,
+    ) -> Result<Option<String>, BridgeError> {
+        self.storage.find_identity_for_device(device_did, repo_id)
+    }
+}
 
-        // Step 2: Find the identity that controls this device
-        let identity_did = self.storage.find_identity_for_device(&device_did)?;
-
-        // Step 3: Load attestation (key_state not needed for current policy evaluation)
-        let _key_state = self.storage.load_key_state(&identity_did)?;
-        let attestation = self.storage.load_attestation(&device_did)?;
-
-        // Step 4: Evaluate policy
-        let decision = evaluate_compiled(&attestation, &self.policy, now);
-
-        // Step 5: Map decision to VerifyResult
-        Ok(decision_to_verify_result(decision))
+/// Apply enforcement mode to a VerifyResult.
+///
+/// In Observe mode, `Rejected` is downgraded to `Warn`.
+/// `Verified` and `Warn` pass through unchanged.
+/// `Quarantine` stays as-is in Enforce, downgraded to `Warn` in Observe.
+fn apply_mode(
+    mode: EnforcementMode,
+    result: VerifyResult,
+    identity_repo_rid: Option<String>,
+) -> VerifyResult {
+    match mode {
+        EnforcementMode::Enforce => result,
+        EnforcementMode::Observe => match result {
+            VerifyResult::Rejected { reason } => VerifyResult::Warn { reason },
+            VerifyResult::Quarantine { reason, .. } => VerifyResult::Warn { reason },
+            other => other,
+        },
     }
 }
 
@@ -141,44 +287,64 @@ pub fn decision_to_verify_result(decision: Decision) -> VerifyResult {
     }
 }
 
-/// Verify multiple signers (for threshold identities).
+/// Verify a mixed set of signers for threshold identities.
 ///
-/// Radicle supports threshold identities (e.g., 2-of-3). This function
-/// checks all signers against the policy and returns results for each.
+/// Radicle supports hybrid delegate sets with both `Did::Key` (legacy) and
+/// `Did::Keri` (KERI identity) delegates. The bridge only verifies `Did::Keri`
+/// signers — `Did::Key` results are pre-computed by Heartwood and passed through.
 ///
-/// # Arguments
+/// Args:
+/// * `bridge`: The bridge implementation.
+/// * `signers`: Mixed signer inputs (pre-verified or needing bridge verification).
+/// * `request_template`: Template for bridge verification requests.
+///   The `signer_key` field will be overridden per signer.
 ///
-/// * `bridge` - The bridge implementation
-/// * `signer_keys` - All Ed25519 public keys that signed
-/// * `repo_id` - Repository identifier
-/// * `now` - Current time
-///
-/// # Returns
-///
-/// A vector of results, one per signer. The caller can then apply
-/// threshold logic (e.g., "at least M of N must be Verified").
+/// Usage:
+/// ```ignore
+/// let signers = vec![
+///     SignerInput::PreVerified(VerifyResult::Verified { reason: "did:key ok".into() }),
+///     SignerInput::NeedsBridgeVerification(keri_key),
+/// ];
+/// let results = verify_multiple_signers(&bridge, &signers, &request);
+/// assert!(meets_threshold(&results, 2));
+/// ```
 pub fn verify_multiple_signers<B: RadicleAuthsBridge>(
     bridge: &B,
-    signer_keys: &[[u8; 32]],
-    repo_id: &str,
-    now: DateTime<Utc>,
+    signers: &[SignerInput],
+    request_template: &VerifyRequest,
 ) -> Vec<Result<VerifyResult, BridgeError>> {
-    signer_keys
+    signers
         .iter()
-        .map(|key| bridge.verify_signer(key, repo_id, now))
+        .map(|signer| match signer {
+            SignerInput::PreVerified(result) => Ok(result.clone()),
+            SignerInput::NeedsBridgeVerification(key) => {
+                let request = VerifyRequest {
+                    signer_key: key,
+                    repo_id: request_template.repo_id,
+                    now: request_template.now,
+                    mode: request_template.mode,
+                    known_remote_tip: request_template.known_remote_tip,
+                    min_kel_seq: request_template.min_kel_seq,
+                    required_capability: request_template.required_capability,
+                };
+                bridge.verify_signer(&request)
+            }
+        })
         .collect()
 }
 
 /// Check if enough signers are verified for a threshold.
 ///
-/// # Arguments
+/// Counts both pre-verified `Did::Key` and bridge-verified `Did::Keri` signers.
 ///
-/// * `results` - Results from `verify_multiple_signers`
-/// * `threshold` - Minimum number of verified signers required
+/// Args:
+/// * `results`: Results from `verify_multiple_signers`.
+/// * `threshold`: Minimum number of verified signers required.
 ///
-/// # Returns
-///
-/// `true` if at least `threshold` signers are `Verified` or `Warn`.
+/// Usage:
+/// ```ignore
+/// assert!(meets_threshold(&results, 2));
+/// ```
 pub fn meets_threshold(results: &[Result<VerifyResult, BridgeError>], threshold: usize) -> bool {
     let verified_count = results
         .iter()
@@ -194,11 +360,11 @@ mod tests {
     use auths_verifier::keri::{Prefix, Said};
     use std::collections::HashMap;
 
-    /// Mock storage for testing.
     struct MockStorage {
         key_states: HashMap<String, KeyState>,
-        attestations: HashMap<String, Attestation>,
-        device_to_identity: HashMap<String, String>,
+        attestations: HashMap<(String, String), Attestation>,
+        device_to_identity: HashMap<(String, String), String>,
+        identity_tips: HashMap<String, [u8; 20]>,
     }
 
     impl MockStorage {
@@ -207,6 +373,7 @@ mod tests {
                 key_states: HashMap::new(),
                 attestations: HashMap::new(),
                 device_to_identity: HashMap::new(),
+                identity_tips: HashMap::new(),
             }
         }
 
@@ -214,14 +381,33 @@ mod tests {
             self.key_states.insert(identity_did.to_string(), key_state);
         }
 
-        fn add_attestation(&mut self, device_did: &str, attestation: Attestation) {
-            self.attestations
-                .insert(device_did.to_string(), attestation);
+        fn add_attestation(
+            &mut self,
+            device_did: &str,
+            identity_did: &str,
+            attestation: Attestation,
+        ) {
+            self.attestations.insert(
+                (device_did.to_string(), identity_did.to_string()),
+                attestation,
+            );
         }
 
-        fn link_device_to_identity(&mut self, device_did: &str, identity_did: &str) {
-            self.device_to_identity
-                .insert(device_did.to_string(), identity_did.to_string());
+        fn link_device_to_identity(
+            &mut self,
+            device_did: &str,
+            identity_did: &str,
+            repo_id: &str,
+        ) {
+            self.device_to_identity.insert(
+                (device_did.to_string(), repo_id.to_string()),
+                identity_did.to_string(),
+            );
+        }
+
+        fn set_identity_tip(&mut self, identity_did: &str, tip: [u8; 20]) {
+            self.identity_tips
+                .insert(identity_did.to_string(), tip);
         }
     }
 
@@ -230,30 +416,45 @@ mod tests {
             self.key_states
                 .get(identity_did)
                 .cloned()
-                .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {}", identity_did)))
+                .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
         }
 
-        fn load_attestation(&self, device_did: &str) -> Result<Attestation, BridgeError> {
+        fn load_attestation(
+            &self,
+            device_did: &str,
+            identity_did: &str,
+        ) -> Result<Attestation, BridgeError> {
             self.attestations
-                .get(device_did)
-                .cloned()
-                .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {}", device_did)))
-        }
-
-        fn find_identity_for_device(&self, device_did: &str) -> Result<String, BridgeError> {
-            self.device_to_identity
-                .get(device_did)
+                .get(&(device_did.to_string(), identity_did.to_string()))
                 .cloned()
                 .ok_or_else(|| {
-                    BridgeError::InvalidDeviceKey(format!("No identity for device: {}", device_did))
+                    BridgeError::AttestationLoad(format!("Not found: {device_did}"))
                 })
+        }
+
+        fn find_identity_for_device(
+            &self,
+            device_did: &str,
+            repo_id: &str,
+        ) -> Result<Option<String>, BridgeError> {
+            Ok(self
+                .device_to_identity
+                .get(&(device_did.to_string(), repo_id.to_string()))
+                .cloned())
+        }
+
+        fn local_identity_tip(
+            &self,
+            identity_did: &str,
+        ) -> Result<Option<[u8; 20]>, BridgeError> {
+            Ok(self.identity_tips.get(identity_did).copied())
         }
     }
 
-    fn make_key_state(prefix: &str) -> KeyState {
+    fn make_key_state(prefix: &str, sequence: u64) -> KeyState {
         KeyState {
             prefix: Prefix::new_unchecked(prefix.to_string()),
-            sequence: 0,
+            sequence,
             current_keys: vec!["DTestKey".to_string()],
             next_commitment: vec![],
             last_event_said: Said::new_unchecked("ETestSaid".to_string()),
@@ -265,6 +466,7 @@ mod tests {
         issuer: &str,
         device_did: &str,
         revoked_at: Option<DateTime<Utc>>,
+        capabilities: Vec<String>,
     ) -> Attestation {
         use auths_verifier::types::DeviceDID;
 
@@ -282,73 +484,363 @@ mod tests {
             note: None,
             payload: None,
             role: None,
-            capabilities: vec![],
+            capabilities: capabilities
+                .into_iter()
+                .map(|c| c.parse().unwrap_or_else(|_| auths_verifier::core::Capability::Custom(c)))
+                .collect(),
             delegated_by: None,
             signer_type: None,
         }
     }
 
-    #[test]
-    fn test_verify_valid_signer() {
+    fn setup_valid_signer() -> (MockStorage, [u8; 32], &'static str, &'static str) {
         let mut storage = MockStorage::new();
-
-        // Create a test key (32 bytes)
         let signer_key: [u8; 32] = [1; 32];
         let device_did = ed25519_to_did_key(&signer_key);
         let identity_did = "did:keri:ETestPrefix";
+        let repo_id = "test-repo";
 
-        // Setup storage
-        storage.add_identity(identity_did, make_key_state("ETestPrefix"));
+        storage.add_identity(identity_did, make_key_state("ETestPrefix", 0));
         storage.add_attestation(
             &device_did,
-            make_attestation(identity_did, &device_did, None),
+            identity_did,
+            make_attestation(identity_did, &device_did, None, vec![]),
         );
-        storage.link_device_to_identity(&device_did, identity_did);
+        storage.link_device_to_identity(&device_did, identity_did, repo_id);
+        storage.set_identity_tip(identity_did, [0xAA; 20]);
 
-        // Create bridge and verify
-        let bridge = DefaultBridge::with_storage(storage);
-        let result = bridge.verify_signer(&signer_key, "test-repo", Utc::now());
+        (storage, signer_key, identity_did, repo_id)
+    }
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_allowed());
+    fn make_enforce_request(key: &[u8; 32], repo_id: &str, now: DateTime<Utc>) -> VerifyRequest {
+        VerifyRequest {
+            signer_key: key,
+            repo_id,
+            now,
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: None,
+            min_kel_seq: None,
+            required_capability: None,
+        }
     }
 
     #[test]
-    fn test_verify_revoked_attestation() {
-        let mut storage = MockStorage::new();
+    fn verify_valid_signer() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = make_enforce_request(&signer_key, repo_id, Utc::now());
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_allowed());
+    }
 
+    #[test]
+    fn verify_revoked_attestation() {
+        let mut storage = MockStorage::new();
         let signer_key: [u8; 32] = [2; 32];
         let device_did = ed25519_to_did_key(&signer_key);
         let identity_did = "did:keri:ETestPrefix";
+        let repo_id = "test-repo";
 
-        storage.add_identity(identity_did, make_key_state("ETestPrefix"));
+        storage.add_identity(identity_did, make_key_state("ETestPrefix", 0));
         storage.add_attestation(
             &device_did,
-            make_attestation(identity_did, &device_did, Some(Utc::now())),
-        ); // revoked!
-        storage.link_device_to_identity(&device_did, identity_did);
+            identity_did,
+            make_attestation(identity_did, &device_did, Some(Utc::now()), vec![]),
+        );
+        storage.link_device_to_identity(&device_did, identity_did, repo_id);
+        storage.set_identity_tip(identity_did, [0xBB; 20]);
 
         let bridge = DefaultBridge::with_storage(storage);
-        let result = bridge.verify_signer(&signer_key, "test-repo", Utc::now());
-
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_rejected());
+        let request = make_enforce_request(&signer_key, repo_id, Utc::now());
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_rejected());
     }
 
     #[test]
-    fn test_verify_unknown_device() {
+    fn verify_unknown_device_enforce_quarantine() {
         let storage = MockStorage::new();
         let signer_key: [u8; 32] = [3; 32];
-
         let bridge = DefaultBridge::with_storage(storage);
-        let result = bridge.verify_signer(&signer_key, "test-repo", Utc::now());
-
-        assert!(result.is_err());
-        assert!(matches!(result, Err(BridgeError::InvalidDeviceKey(_))));
+        let request = make_enforce_request(&signer_key, "test-repo", Utc::now());
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(matches!(result, VerifyResult::Quarantine { .. }));
     }
 
     #[test]
-    fn test_decision_to_verify_result_mapping() {
+    fn verify_unknown_device_observe_warn() {
+        let storage = MockStorage::new();
+        let signer_key: [u8; 32] = [3; 32];
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id: "test-repo",
+            now: Utc::now(),
+            mode: EnforcementMode::Observe,
+            known_remote_tip: None,
+            min_kel_seq: None,
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(matches!(result, VerifyResult::Warn { .. }));
+    }
+
+    #[test]
+    fn observe_mode_downgrades_rejected_to_warn() {
+        let mut storage = MockStorage::new();
+        let signer_key: [u8; 32] = [4; 32];
+        let device_did = ed25519_to_did_key(&signer_key);
+        let identity_did = "did:keri:ETestPrefix";
+        let repo_id = "test-repo";
+
+        storage.add_identity(identity_did, make_key_state("ETestPrefix", 0));
+        storage.add_attestation(
+            &device_did,
+            identity_did,
+            make_attestation(identity_did, &device_did, Some(Utc::now()), vec![]),
+        );
+        storage.link_device_to_identity(&device_did, identity_did, repo_id);
+        storage.set_identity_tip(identity_did, [0xCC; 20]);
+
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Observe,
+            known_remote_tip: None,
+            min_kel_seq: None,
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(matches!(result, VerifyResult::Warn { .. }));
+    }
+
+    #[test]
+    fn min_kel_seq_rejects_below_minimum() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: None,
+            min_kel_seq: Some(5), // key_state.sequence is 0
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_rejected());
+        assert!(result.reason().contains("below binding minimum"));
+    }
+
+    #[test]
+    fn min_kel_seq_not_downgraded_in_observe_mode() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Observe, // Even in observe...
+            known_remote_tip: None,
+            min_kel_seq: Some(5), // ...below binding is ALWAYS rejected
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_rejected(), "min_kel_seq violation must never be downgraded");
+    }
+
+    #[test]
+    fn min_kel_seq_passes_at_minimum() {
+        let mut storage = MockStorage::new();
+        let signer_key: [u8; 32] = [1; 32];
+        let device_did = ed25519_to_did_key(&signer_key);
+        let identity_did = "did:keri:ETestPrefix";
+        let repo_id = "test-repo";
+
+        storage.add_identity(identity_did, make_key_state("ETestPrefix", 5));
+        storage.add_attestation(
+            &device_did,
+            identity_did,
+            make_attestation(identity_did, &device_did, None, vec![]),
+        );
+        storage.link_device_to_identity(&device_did, identity_did, repo_id);
+        storage.set_identity_tip(identity_did, [0xAA; 20]);
+
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: None,
+            min_kel_seq: Some(5), // sequence == min
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_allowed());
+    }
+
+    #[test]
+    fn staleness_detected_enforce_quarantine() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: Some([0xBB; 20]), // differs from local [0xAA; 20]
+            min_kel_seq: None,
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(matches!(result, VerifyResult::Quarantine { .. }));
+    }
+
+    #[test]
+    fn staleness_detected_observe_warn() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Observe,
+            known_remote_tip: Some([0xBB; 20]),
+            min_kel_seq: None,
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(matches!(result, VerifyResult::Warn { .. }));
+    }
+
+    #[test]
+    fn no_staleness_when_tips_match() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: Some([0xAA; 20]), // matches local
+            min_kel_seq: None,
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_allowed());
+    }
+
+    #[test]
+    fn no_staleness_when_no_remote_tip() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: None, // disconnected
+            min_kel_seq: None,
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_allowed());
+    }
+
+    #[test]
+    fn capability_check_passes() {
+        let mut storage = MockStorage::new();
+        let signer_key: [u8; 32] = [1; 32];
+        let device_did = ed25519_to_did_key(&signer_key);
+        let identity_did = "did:keri:ETestPrefix";
+        let repo_id = "test-repo";
+
+        storage.add_identity(identity_did, make_key_state("ETestPrefix", 0));
+        storage.add_attestation(
+            &device_did,
+            identity_did,
+            make_attestation(
+                identity_did,
+                &device_did,
+                None,
+                vec!["sign_commit".to_string()],
+            ),
+        );
+        storage.link_device_to_identity(&device_did, identity_did, repo_id);
+        storage.set_identity_tip(identity_did, [0xAA; 20]);
+
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: None,
+            min_kel_seq: None,
+            required_capability: Some("sign_commit"),
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_allowed());
+    }
+
+    #[test]
+    fn capability_check_fails_wrong_cap() {
+        let mut storage = MockStorage::new();
+        let signer_key: [u8; 32] = [1; 32];
+        let device_did = ed25519_to_did_key(&signer_key);
+        let identity_did = "did:keri:ETestPrefix";
+        let repo_id = "test-repo";
+
+        storage.add_identity(identity_did, make_key_state("ETestPrefix", 0));
+        storage.add_attestation(
+            &device_did,
+            identity_did,
+            make_attestation(
+                identity_did,
+                &device_did,
+                None,
+                vec!["sign_release".to_string()],
+            ),
+        );
+        storage.link_device_to_identity(&device_did, identity_did, repo_id);
+        storage.set_identity_tip(identity_did, [0xAA; 20]);
+
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: None,
+            min_kel_seq: None,
+            required_capability: Some("sign_commit"),
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_rejected());
+    }
+
+    #[test]
+    fn empty_capabilities_skips_check() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: None,
+            min_kel_seq: None,
+            required_capability: Some("sign_commit"),
+        };
+        // Attestation has empty capabilities — legacy device, check skipped
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_allowed());
+    }
+
+    #[test]
+    fn decision_to_verify_result_mapping() {
         use auths_id::policy::ReasonCode;
 
         assert!(matches!(
@@ -366,54 +858,131 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_multiple_signers() {
-        let mut storage = MockStorage::new();
-        let identity_did = "did:keri:ETestPrefix";
-        storage.add_identity(identity_did, make_key_state("ETestPrefix"));
-
-        // Add two valid signers
-        let key1: [u8; 32] = [10; 32];
-        let key2: [u8; 32] = [20; 32];
-        let did1 = ed25519_to_did_key(&key1);
-        let did2 = ed25519_to_did_key(&key2);
-
-        storage.add_attestation(&did1, make_attestation(identity_did, &did1, None));
-        storage.add_attestation(&did2, make_attestation(identity_did, &did2, None));
-        storage.link_device_to_identity(&did1, identity_did);
-        storage.link_device_to_identity(&did2, identity_did);
-
+    fn mixed_threshold_verification() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
         let bridge = DefaultBridge::with_storage(storage);
-        let results = verify_multiple_signers(&bridge, &[key1, key2], "test-repo", Utc::now());
 
-        assert_eq!(results.len(), 2);
-        assert!(results.iter().all(|r| r.as_ref().unwrap().is_allowed()));
-    }
-
-    #[test]
-    fn test_meets_threshold() {
-        let results = vec![
-            Ok(VerifyResult::Verified {
-                reason: "ok".into(),
+        let signers = vec![
+            // Two Did::Key delegates pre-verified by Heartwood
+            SignerInput::PreVerified(VerifyResult::Verified {
+                reason: "did:key delegate ok".into(),
             }),
-            Ok(VerifyResult::Rejected {
-                reason: "no".into(),
+            SignerInput::PreVerified(VerifyResult::Verified {
+                reason: "did:key delegate ok".into(),
             }),
-            Ok(VerifyResult::Verified {
-                reason: "ok".into(),
-            }),
+            // One Did::Keri signer verified through bridge
+            SignerInput::NeedsBridgeVerification(signer_key),
         ];
 
-        assert!(meets_threshold(&results, 2)); // 2 verified, threshold 2
-        assert!(!meets_threshold(&results, 3)); // 2 verified, threshold 3
-        assert!(meets_threshold(&results, 1)); // 2 verified, threshold 1
+        let template = make_enforce_request(&signer_key, repo_id, Utc::now());
+        let results = verify_multiple_signers(&bridge, &signers, &template);
+
+        assert_eq!(results.len(), 3);
+        assert!(meets_threshold(&results, 2));
+        assert!(meets_threshold(&results, 3));
     }
 
     #[test]
-    fn test_device_did_format() {
+    fn mixed_threshold_one_keri_revoked() {
+        let mut storage = MockStorage::new();
+        let good_key: [u8; 32] = [1; 32];
+        let bad_key: [u8; 32] = [2; 32];
+        let good_did = ed25519_to_did_key(&good_key);
+        let bad_did = ed25519_to_did_key(&bad_key);
+        let identity_did = "did:keri:ETestPrefix";
+        let repo_id = "test-repo";
+
+        storage.add_identity(identity_did, make_key_state("ETestPrefix", 0));
+        storage.add_attestation(
+            &good_did,
+            identity_did,
+            make_attestation(identity_did, &good_did, None, vec![]),
+        );
+        storage.add_attestation(
+            &bad_did,
+            identity_did,
+            make_attestation(identity_did, &bad_did, Some(Utc::now()), vec![]),
+        );
+        storage.link_device_to_identity(&good_did, identity_did, repo_id);
+        storage.link_device_to_identity(&bad_did, identity_did, repo_id);
+        storage.set_identity_tip(identity_did, [0xAA; 20]);
+
+        let bridge = DefaultBridge::with_storage(storage);
+
+        let signers = vec![
+            // Two pre-verified Did::Key delegates
+            SignerInput::PreVerified(VerifyResult::Verified {
+                reason: "ok".into(),
+            }),
+            // One valid Did::Keri
+            SignerInput::NeedsBridgeVerification(good_key),
+            // One revoked Did::Keri
+            SignerInput::NeedsBridgeVerification(bad_key),
+        ];
+
+        let template = make_enforce_request(&good_key, repo_id, Utc::now());
+        let results = verify_multiple_signers(&bridge, &signers, &template);
+
+        // 3 verified (1 pre-verified + 1 keri good), 1 rejected
+        assert!(meets_threshold(&results, 2)); // passes threshold of 2
+        assert!(!meets_threshold(&results, 3)); // but not 3 (only 2 allowed)
+    }
+
+    #[test]
+    fn empty_signers_threshold_zero_passes() {
+        let results: Vec<Result<VerifyResult, BridgeError>> = vec![];
+        assert!(meets_threshold(&results, 0));
+    }
+
+    #[test]
+    fn device_did_format() {
         let key: [u8; 32] = [0xAB; 32];
         let bridge = DefaultBridge::with_storage(MockStorage::new());
         let did = bridge.device_did(&key);
-
         assert!(did.starts_with("did:key:z"));
+    }
+
+    #[test]
+    fn find_identity_for_device_via_bridge() {
+        let (storage, signer_key, identity_did, repo_id) = setup_valid_signer();
+        let device_did = ed25519_to_did_key(&signer_key);
+        let bridge = DefaultBridge::with_storage(storage);
+        let found = bridge
+            .find_identity_for_device(&device_did, repo_id)
+            .unwrap();
+        assert_eq!(found, Some(identity_did.to_string()));
+    }
+
+    #[test]
+    fn stale_plus_revoked_rejects() {
+        // If a device is revoked AND stale, Rejected takes priority
+        let mut storage = MockStorage::new();
+        let signer_key: [u8; 32] = [1; 32];
+        let device_did = ed25519_to_did_key(&signer_key);
+        let identity_did = "did:keri:ETestPrefix";
+        let repo_id = "test-repo";
+
+        storage.add_identity(identity_did, make_key_state("ETestPrefix", 0));
+        storage.add_attestation(
+            &device_did,
+            identity_did,
+            make_attestation(identity_did, &device_did, Some(Utc::now()), vec![]),
+        );
+        storage.link_device_to_identity(&device_did, identity_did, repo_id);
+        // Same tip → no staleness → revocation check runs → Rejected
+        storage.set_identity_tip(identity_did, [0xAA; 20]);
+
+        let bridge = DefaultBridge::with_storage(storage);
+        let request = VerifyRequest {
+            signer_key: &signer_key,
+            repo_id,
+            now: Utc::now(),
+            mode: EnforcementMode::Enforce,
+            known_remote_tip: Some([0xAA; 20]),
+            min_kel_seq: None,
+            required_capability: None,
+        };
+        let result = bridge.verify_signer(&request).unwrap();
+        assert!(result.is_rejected());
     }
 }

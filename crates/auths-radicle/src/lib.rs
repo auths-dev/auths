@@ -18,11 +18,6 @@
 //! - `auths-core` has zero Radicle dependencies
 //! - `auths-id` has zero Radicle dependencies
 //! - Only this crate imports Radicle/heartwood types
-//!
-//! # Features
-//!
-//! - `heartwood` - Enable direct integration with Radicle's heartwood crates.
-//!   When disabled, the bridge uses generic byte-based APIs.
 
 pub mod attestation;
 pub mod bridge;
@@ -31,8 +26,13 @@ pub mod refs;
 pub mod storage;
 pub mod verify;
 
-pub use bridge::{BridgeError, RadicleAuthsBridge, VerifyResult};
-pub use identity::{RadicleIdentity, RadicleIdentityDocument, RadicleIdentityResolver};
+pub use attestation::{RadAttestation, RadAttestationError, RadCanonicalPayload};
+pub use bridge::{
+    BridgeError, EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult,
+};
+pub use identity::{
+    IdentityError, RadicleIdentity, RadicleIdentityDocument, RadicleIdentityResolver,
+};
 pub use verify::{
     AuthsStorage, DefaultBridge, decision_to_verify_result, meets_threshold,
     verify_multiple_signers,
