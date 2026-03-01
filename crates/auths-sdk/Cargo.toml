@@ -3,10 +3,8 @@ name = "auths-sdk"
 version.workspace = true
 edition = "2024"
 description = "Application services layer for Auths identity operations"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/bordumb/auths"
-version.workspace = true
 license.workspace = true
+repository = "https://github.com/bordumb/auths"
 
 [dependencies]
 auths-core.workspace = true
