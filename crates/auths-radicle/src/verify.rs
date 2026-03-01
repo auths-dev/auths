@@ -486,7 +486,7 @@ mod tests {
             role: None,
             capabilities: capabilities
                 .into_iter()
-                .map(|c| c.parse().unwrap_or_else(|_| auths_verifier::core::Capability::Custom(c)))
+                .filter_map(|c| c.parse().ok())
                 .collect(),
             delegated_by: None,
             signer_type: None,
@@ -512,7 +512,7 @@ mod tests {
         (storage, signer_key, identity_did, repo_id)
     }
 
-    fn make_enforce_request(key: &[u8; 32], repo_id: &str, now: DateTime<Utc>) -> VerifyRequest {
+    fn make_enforce_request<'a>(key: &'a [u8; 32], repo_id: &'a str, now: DateTime<Utc>) -> VerifyRequest<'a> {
         VerifyRequest {
             signer_key: key,
             repo_id,
