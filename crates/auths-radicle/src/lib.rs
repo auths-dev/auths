@@ -26,6 +26,7 @@
 
 pub mod bridge;
 pub mod identity;
+pub mod refs;
 pub mod verify;
 
 pub use bridge::{BridgeError, RadicleAuthsBridge, VerifyResult};
