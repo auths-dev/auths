@@ -43,7 +43,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Check CLI docs are up to date
-        run: cargo xtask gen-docs --check
+        run: cargo run -p xtask -- gen-docs --check
 
   deploy:
     name: Deploy docs
