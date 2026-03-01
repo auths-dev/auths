@@ -177,9 +177,7 @@ pub fn device_did_keri_ref(nid: &str) -> String {
 /// ```
 pub fn identity_namespace_prefix(keri_prefix: &str) -> String {
     // Strip the "did:keri:" method prefix if present, then reconstruct with dashes
-    let bare_prefix = keri_prefix
-        .strip_prefix("did:keri:")
-        .unwrap_or(keri_prefix);
+    let bare_prefix = keri_prefix.strip_prefix("did:keri:").unwrap_or(keri_prefix);
     format!("refs/namespaces/did-keri-{bare_prefix}")
 }
 
@@ -282,7 +280,10 @@ mod tests {
         let extracted = component
             .strip_prefix("did-keri-")
             .expect("must have did-keri- prefix");
-        assert_eq!(extracted, prefix, "round-trip must preserve the KERI prefix");
+        assert_eq!(
+            extracted, prefix,
+            "round-trip must preserve the KERI prefix"
+        );
     }
 
     #[test]

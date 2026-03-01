@@ -64,10 +64,7 @@ impl AuthsStorage for MockStorage {
             .cloned())
     }
 
-    fn local_identity_tip(
-        &self,
-        identity_did: &str,
-    ) -> Result<Option<[u8; 20]>, BridgeError> {
+    fn local_identity_tip(&self, identity_did: &str) -> Result<Option<[u8; 20]>, BridgeError> {
         Ok(self.identity_tips.get(identity_did).copied())
     }
 }
@@ -83,11 +80,7 @@ fn make_key_state(prefix: &str, sequence: u64) -> KeyState {
     }
 }
 
-fn make_attestation(
-    issuer: &str,
-    device_did: &str,
-    revoked: bool,
-) -> Attestation {
+fn make_attestation(issuer: &str, device_did: &str, revoked: bool) -> Attestation {
     Attestation {
         version: 1,
         rid: "test".to_string(),
@@ -130,9 +123,10 @@ fn observe_stale_node_accepts_then_converges() {
         (device_did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &device_did, false),
     );
-    stale_storage
-        .device_to_identity
-        .insert((device_did.clone(), repo_id.to_string()), identity_did.to_string());
+    stale_storage.device_to_identity.insert(
+        (device_did.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
     stale_storage
         .identity_tips
         .insert(identity_did.to_string(), [0xAA; 20]);
@@ -150,7 +144,10 @@ fn observe_stale_node_accepts_then_converges() {
 
     // Stale node accepts (no staleness signal)
     let result = bridge.verify_signer(&request).unwrap();
-    assert!(result.is_allowed(), "stale node should accept without gossip signal");
+    assert!(
+        result.is_allowed(),
+        "stale node should accept without gossip signal"
+    );
 
     // After "sync" — simulate updated storage with revocation
     let mut synced_storage = MockStorage::new();
@@ -161,9 +158,10 @@ fn observe_stale_node_accepts_then_converges() {
         (device_did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &device_did, true), // now revoked
     );
-    synced_storage
-        .device_to_identity
-        .insert((device_did.clone(), repo_id.to_string()), identity_did.to_string());
+    synced_storage.device_to_identity.insert(
+        (device_did.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
     synced_storage
         .identity_tips
         .insert(identity_did.to_string(), [0xBB; 20]);
@@ -187,9 +185,10 @@ fn enforce_staleness_detected_quarantine_then_resolves() {
         (device_did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &device_did, false),
     );
-    storage
-        .device_to_identity
-        .insert((device_did.clone(), repo_id.to_string()), identity_did.to_string());
+    storage.device_to_identity.insert(
+        (device_did.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
     storage
         .identity_tips
         .insert(identity_did.to_string(), [0xAA; 20]);
@@ -217,9 +216,10 @@ fn enforce_staleness_detected_quarantine_then_resolves() {
         (device_did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &device_did, true),
     );
-    synced_storage
-        .device_to_identity
-        .insert((device_did.clone(), repo_id.to_string()), identity_did.to_string());
+    synced_storage.device_to_identity.insert(
+        (device_did.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
     synced_storage
         .identity_tips
         .insert(identity_did.to_string(), [0xBB; 20]); // now matches remote
@@ -230,7 +230,10 @@ fn enforce_staleness_detected_quarantine_then_resolves() {
         ..request
     };
     let result = synced_bridge.verify_signer(&synced_request).unwrap();
-    assert!(result.is_rejected(), "after sync, revoked device should be rejected");
+    assert!(
+        result.is_rejected(),
+        "after sync, revoked device should be rejected"
+    );
 }
 
 /// Enforce mode: no staleness signal → Verified (irreducible risk).
@@ -246,9 +249,10 @@ fn enforce_no_staleness_signal_accepts() {
         (device_did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &device_did, false),
     );
-    storage
-        .device_to_identity
-        .insert((device_did.clone(), repo_id.to_string()), identity_did.to_string());
+    storage.device_to_identity.insert(
+        (device_did.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
     storage
         .identity_tips
         .insert(identity_did.to_string(), [0xAA; 20]);
@@ -315,15 +319,13 @@ fn below_min_kel_seq_rejected_in_both_modes() {
 #[test]
 fn corrupt_identity_rejected_regardless_of_mode() {
     let signer_key: [u8; 32] = [42; 32];
-    let device_did = ed25519_to_did_key(&signer_key);
+    let _device_did = ed25519_to_did_key(&signer_key);
     let identity_did = "did:keri:ECorrupt";
     let repo_id = "test-repo";
 
     // Storage that returns IdentityCorrupt error
     struct CorruptStorage {
-        device_did: String,
         identity_did: String,
-        repo_id: String,
     }
 
     impl AuthsStorage for CorruptStorage {
@@ -347,9 +349,7 @@ fn corrupt_identity_rejected_regardless_of_mode() {
 
     for mode in [EnforcementMode::Observe, EnforcementMode::Enforce] {
         let storage = CorruptStorage {
-            device_did: device_did.clone(),
             identity_did: identity_did.to_string(),
-            repo_id: repo_id.to_string(),
         };
         let bridge = DefaultBridge::with_storage(storage);
         let request = VerifyRequest {

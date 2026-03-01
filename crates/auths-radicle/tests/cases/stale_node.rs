@@ -38,17 +38,32 @@ impl MockStorage {
 
 impl AuthsStorage for MockStorage {
     fn load_key_state(&self, identity_did: &str) -> Result<KeyState, BridgeError> {
-        self.key_states.get(identity_did).cloned()
+        self.key_states
+            .get(identity_did)
+            .cloned()
             .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
     }
 
-    fn load_attestation(&self, device_did: &str, identity_did: &str) -> Result<Attestation, BridgeError> {
-        self.attestations.get(&(device_did.to_string(), identity_did.to_string())).cloned()
+    fn load_attestation(
+        &self,
+        device_did: &str,
+        identity_did: &str,
+    ) -> Result<Attestation, BridgeError> {
+        self.attestations
+            .get(&(device_did.to_string(), identity_did.to_string()))
+            .cloned()
             .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
     }
 
-    fn find_identity_for_device(&self, device_did: &str, repo_id: &str) -> Result<Option<String>, BridgeError> {
-        Ok(self.device_to_identity.get(&(device_did.to_string(), repo_id.to_string())).cloned())
+    fn find_identity_for_device(
+        &self,
+        device_did: &str,
+        repo_id: &str,
+    ) -> Result<Option<String>, BridgeError> {
+        Ok(self
+            .device_to_identity
+            .get(&(device_did.to_string(), repo_id.to_string()))
+            .cloned())
     }
 
     fn local_identity_tip(&self, identity_did: &str) -> Result<Option<[u8; 20]>, BridgeError> {
@@ -91,7 +106,6 @@ fn make_attestation(issuer: &str, device_did: &str, revoked: bool) -> Attestatio
 fn setup_scenario() -> ([u8; 32], String, &'static str, &'static str) {
     let key: [u8; 32] = [0xDE; 32];
     let did = ed25519_to_did_key(&key);
-    ("test-repo", "did:keri:EStaleNode");
     (key, did, "did:keri:EStaleNode", "test-repo")
 }
 
@@ -103,9 +117,13 @@ fn build_storage(
     revoked: bool,
     tip: [u8; 20],
 ) -> MockStorage {
-    let prefix = identity_did.strip_prefix("did:keri:").unwrap_or(identity_did);
+    let prefix = identity_did
+        .strip_prefix("did:keri:")
+        .unwrap_or(identity_did);
     let mut storage = MockStorage::new();
-    storage.key_states.insert(identity_did.to_string(), make_key_state(prefix, seq));
+    storage
+        .key_states
+        .insert(identity_did.to_string(), make_key_state(prefix, seq));
     storage.attestations.insert(
         (device_did.to_string(), identity_did.to_string()),
         make_attestation(identity_did, device_did, revoked),
@@ -138,13 +156,19 @@ fn observe_stale_node_accepts_then_converges() {
         required_capability: None,
     };
     let result = bridge.verify_signer(&request).unwrap();
-    assert!(result.is_allowed(), "stale node should accept without gossip");
+    assert!(
+        result.is_allowed(),
+        "stale node should accept without gossip"
+    );
 
     // After sync: seq 3, revoked, tip BB
     let synced = build_storage(identity_did, &did, repo_id, 3, true, [0xBB; 20]);
     let synced_bridge = DefaultBridge::with_storage(synced);
     let result = synced_bridge.verify_signer(&request).unwrap();
-    assert!(matches!(result, VerifyResult::Warn { .. }), "observe + revoked → Warn");
+    assert!(
+        matches!(result, VerifyResult::Warn { .. }),
+        "observe + revoked → Warn"
+    );
 }
 
 /// Enforce, staleness detected: stale node quarantines, resolves after sync.
@@ -165,7 +189,10 @@ fn enforce_staleness_detected_quarantine_then_resolves() {
         required_capability: None,
     };
     let result = bridge.verify_signer(&request).unwrap();
-    assert!(matches!(result, VerifyResult::Quarantine { .. }), "stale → Quarantine");
+    assert!(
+        matches!(result, VerifyResult::Quarantine { .. }),
+        "stale → Quarantine"
+    );
 
     // After sync
     let synced = build_storage(identity_did, &did, repo_id, 3, true, [0xBB; 20]);
@@ -202,7 +229,10 @@ fn enforce_no_staleness_signal_accepts_irreducible_risk() {
         required_capability: None,
     };
     let result = bridge.verify_signer(&request).unwrap();
-    assert!(result.is_allowed(), "irreducible risk: disconnected node accepts based on local state");
+    assert!(
+        result.is_allowed(),
+        "irreducible risk: disconnected node accepts based on local state"
+    );
 }
 
 /// Below min_kel_seq → hard Rejected in both modes.
@@ -236,14 +266,12 @@ fn below_min_kel_seq_hard_reject_both_modes() {
 #[test]
 fn tamper_forged_kel_rejected() {
     let key: [u8; 32] = [0xDE; 32];
-    let did = ed25519_to_did_key(&key);
+    let _did = ed25519_to_did_key(&key);
     let identity_did = "did:keri:ETamper";
     let repo_id = "test-repo";
 
     struct CorruptKelStorage {
-        did: String,
         identity_did: String,
-        repo_id: String,
     }
 
     impl AuthsStorage for CorruptKelStorage {
@@ -255,7 +283,11 @@ fn tamper_forged_kel_rejected() {
         fn load_attestation(&self, _: &str, _: &str) -> Result<Attestation, BridgeError> {
             unreachable!()
         }
-        fn find_identity_for_device(&self, _: &str, _: &str) -> Result<Option<String>, BridgeError> {
+        fn find_identity_for_device(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Option<String>, BridgeError> {
             Ok(Some(self.identity_did.clone()))
         }
         fn local_identity_tip(&self, _: &str) -> Result<Option<[u8; 20]>, BridgeError> {
@@ -265,9 +297,7 @@ fn tamper_forged_kel_rejected() {
 
     for mode in [EnforcementMode::Observe, EnforcementMode::Enforce] {
         let storage = CorruptKelStorage {
-            did: did.clone(),
             identity_did: identity_did.to_string(),
-            repo_id: repo_id.to_string(),
         };
         let bridge = DefaultBridge::with_storage(storage);
         let request = VerifyRequest {

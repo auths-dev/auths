@@ -944,7 +944,7 @@ mod tests {
 
             // Point the KEL ref to the merge commit
             let ref_name = format!("refs/did/keri/{}/kel", prefix);
-            repo.reference(ref_name, merge_oid, true, "Force merge commit")
+            repo.reference(&ref_name, merge_oid, true, "Force merge commit")
                 .unwrap();
 
             // Now get_state() should fail with ChainIntegrity error

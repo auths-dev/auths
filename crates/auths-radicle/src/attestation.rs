@@ -139,8 +139,7 @@ impl RadAttestation {
     ) -> Result<(), RadAttestationError> {
         let canonical = self.canonical_payload.canonicalize();
 
-        let device_vk =
-            UnparsedPublicKey::new(&ring::signature::ED25519, device_pubkey.as_slice());
+        let device_vk = UnparsedPublicKey::new(&ring::signature::ED25519, device_pubkey.as_slice());
         device_vk
             .verify(&canonical, &self.device_signature)
             .map_err(|_| RadAttestationError::DeviceSignatureFailed)?;
@@ -206,8 +205,7 @@ mod tests {
     fn round_trip_blobs() {
         let (att, _, _) = make_test_attestation();
         let (dk, dkeri) = att.to_blobs();
-        let att2 =
-            RadAttestation::from_blobs(&dk, &dkeri, att.canonical_payload.clone()).unwrap();
+        let att2 = RadAttestation::from_blobs(&dk, &dkeri, att.canonical_payload.clone()).unwrap();
         assert_eq!(att.device_signature, att2.device_signature);
         assert_eq!(att.identity_signature, att2.identity_signature);
     }
@@ -253,8 +251,7 @@ mod tests {
             did: "did:keri:EXq5abc".into(),
             rid: "rad:TAMPERED".into(),
         };
-        let att =
-            RadAttestation::from_blobs(&device_sig, &identity_sig, tampered_payload).unwrap();
+        let att = RadAttestation::from_blobs(&device_sig, &identity_sig, tampered_payload).unwrap();
 
         let device_pk: [u8; 32] = device_kp.public_key().as_ref().try_into().unwrap();
         let identity_pk: [u8; 32] = identity_kp.public_key().as_ref().try_into().unwrap();

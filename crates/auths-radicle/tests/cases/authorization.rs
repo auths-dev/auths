@@ -8,11 +8,9 @@ use std::collections::HashMap;
 
 use auths_id::identity::ed25519_to_did_key;
 use auths_id::keri::KeyState;
-use auths_radicle::bridge::{
-    BridgeError, EnforcementMode, RadicleAuthsBridge, VerifyRequest, VerifyResult,
-};
-use auths_radicle::verify::{AuthsStorage, DefaultBridge};
 use auths_id::policy::PolicyBuilder;
+use auths_radicle::bridge::{BridgeError, EnforcementMode, RadicleAuthsBridge, VerifyRequest};
+use auths_radicle::verify::{AuthsStorage, DefaultBridge};
 use auths_verifier::IdentityDID;
 use auths_verifier::core::{Attestation, Capability};
 use auths_verifier::keri::{Prefix, Said};
@@ -44,14 +42,22 @@ impl AuthsStorage for MockStorage {
             .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
     }
 
-    fn load_attestation(&self, device_did: &str, identity_did: &str) -> Result<Attestation, BridgeError> {
+    fn load_attestation(
+        &self,
+        device_did: &str,
+        identity_did: &str,
+    ) -> Result<Attestation, BridgeError> {
         self.attestations
             .get(&(device_did.to_string(), identity_did.to_string()))
             .cloned()
             .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
     }
 
-    fn find_identity_for_device(&self, device_did: &str, repo_id: &str) -> Result<Option<String>, BridgeError> {
+    fn find_identity_for_device(
+        &self,
+        device_did: &str,
+        repo_id: &str,
+    ) -> Result<Option<String>, BridgeError> {
         Ok(self
             .device_to_identity
             .get(&(device_did.to_string(), repo_id.to_string()))
@@ -121,9 +127,17 @@ fn authorized_device_verified() {
         (did_b.clone(), identity_did.to_string()),
         make_attestation_with_caps(identity_did, &did_b, vec![Capability::sign_commit()]),
     );
-    storage.device_to_identity.insert((did_a.clone(), repo_id.to_string()), identity_did.to_string());
-    storage.device_to_identity.insert((did_b.clone(), repo_id.to_string()), identity_did.to_string());
-    storage.identity_tips.insert(identity_did.to_string(), [0xAA; 20]);
+    storage.device_to_identity.insert(
+        (did_a.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
+    storage.device_to_identity.insert(
+        (did_b.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
+    storage
+        .identity_tips
+        .insert(identity_did.to_string(), [0xAA; 20]);
 
     let policy = PolicyBuilder::new().not_revoked().not_expired().build();
     let bridge = DefaultBridge::new(storage, policy);
@@ -160,7 +174,10 @@ fn unauthorized_device_rejected() {
         required_capability: None,
     };
     let result = bridge.verify_signer(&request).unwrap();
-    assert!(!result.is_allowed(), "unauthorized device should not be allowed");
+    assert!(
+        !result.is_allowed(),
+        "unauthorized device should not be allowed"
+    );
 }
 
 /// Device with wrong capabilities → Rejected.
@@ -187,13 +204,14 @@ fn wrong_capability_rejected() {
         (did.clone(), identity_did.to_string()),
         make_attestation_with_caps(identity_did, &did, vec![Capability::sign_release()]),
     );
-    storage.device_to_identity.insert((did.clone(), repo_id.to_string()), identity_did.to_string());
-    storage.identity_tips.insert(identity_did.to_string(), [0xAA; 20]);
+    storage
+        .device_to_identity
+        .insert((did.clone(), repo_id.to_string()), identity_did.to_string());
+    storage
+        .identity_tips
+        .insert(identity_did.to_string(), [0xAA; 20]);
 
-    let policy = PolicyBuilder::new()
-        .not_revoked()
-        .not_expired()
-        .build();
+    let policy = PolicyBuilder::new().not_revoked().not_expired().build();
     let bridge = DefaultBridge::new(storage, policy);
 
     let request = VerifyRequest {

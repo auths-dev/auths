@@ -235,9 +235,24 @@ mod tests {
 
     #[test]
     fn verify_result_is_allowed() {
-        assert!(VerifyResult::Verified { reason: "ok".into() }.is_allowed());
-        assert!(VerifyResult::Warn { reason: "warn".into() }.is_allowed());
-        assert!(!VerifyResult::Rejected { reason: "no".into() }.is_allowed());
+        assert!(
+            VerifyResult::Verified {
+                reason: "ok".into()
+            }
+            .is_allowed()
+        );
+        assert!(
+            VerifyResult::Warn {
+                reason: "warn".into()
+            }
+            .is_allowed()
+        );
+        assert!(
+            !VerifyResult::Rejected {
+                reason: "no".into()
+            }
+            .is_allowed()
+        );
         assert!(
             !VerifyResult::Quarantine {
                 reason: "fetch".into(),
@@ -249,9 +264,24 @@ mod tests {
 
     #[test]
     fn verify_result_is_rejected() {
-        assert!(!VerifyResult::Verified { reason: "ok".into() }.is_rejected());
-        assert!(!VerifyResult::Warn { reason: "warn".into() }.is_rejected());
-        assert!(VerifyResult::Rejected { reason: "no".into() }.is_rejected());
+        assert!(
+            !VerifyResult::Verified {
+                reason: "ok".into()
+            }
+            .is_rejected()
+        );
+        assert!(
+            !VerifyResult::Warn {
+                reason: "warn".into()
+            }
+            .is_rejected()
+        );
+        assert!(
+            VerifyResult::Rejected {
+                reason: "no".into()
+            }
+            .is_rejected()
+        );
         assert!(
             !VerifyResult::Quarantine {
                 reason: "q".into(),

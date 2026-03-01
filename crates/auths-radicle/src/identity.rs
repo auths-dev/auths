@@ -96,12 +96,12 @@ impl RadicleIdentityResolver {
         })?;
 
         let identity_ref = &self.layout.identity_ref;
-        let reference = repo.find_reference(identity_ref).map_err(|_| {
-            IdentityError::RefNotFound {
-                ref_name: identity_ref.clone(),
-                path: self.repo_path.display().to_string(),
-            }
-        })?;
+        let reference =
+            repo.find_reference(identity_ref)
+                .map_err(|_| IdentityError::RefNotFound {
+                    ref_name: identity_ref.clone(),
+                    path: self.repo_path.display().to_string(),
+                })?;
 
         let commit = reference
             .peel_to_commit()
@@ -112,9 +112,9 @@ impl RadicleIdentityResolver {
             .map_err(|e| IdentityError::InvalidDocument(format!("get tree: {e}")))?;
 
         let blob_name = &self.layout.identity_blob_name;
-        let entry = tree
-            .get_name(blob_name)
-            .ok_or_else(|| IdentityError::InvalidDocument(format!("blob '{blob_name}' not found")))?;
+        let entry = tree.get_name(blob_name).ok_or_else(|| {
+            IdentityError::InvalidDocument(format!("blob '{blob_name}' not found"))
+        })?;
 
         let blob = entry
             .to_object(&repo)

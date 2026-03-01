@@ -36,17 +36,32 @@ impl MockStorage {
 
 impl AuthsStorage for MockStorage {
     fn load_key_state(&self, identity_did: &str) -> Result<KeyState, BridgeError> {
-        self.key_states.get(identity_did).cloned()
+        self.key_states
+            .get(identity_did)
+            .cloned()
             .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
     }
 
-    fn load_attestation(&self, device_did: &str, identity_did: &str) -> Result<Attestation, BridgeError> {
-        self.attestations.get(&(device_did.to_string(), identity_did.to_string())).cloned()
+    fn load_attestation(
+        &self,
+        device_did: &str,
+        identity_did: &str,
+    ) -> Result<Attestation, BridgeError> {
+        self.attestations
+            .get(&(device_did.to_string(), identity_did.to_string()))
+            .cloned()
             .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
     }
 
-    fn find_identity_for_device(&self, device_did: &str, repo_id: &str) -> Result<Option<String>, BridgeError> {
-        Ok(self.device_to_identity.get(&(device_did.to_string(), repo_id.to_string())).cloned())
+    fn find_identity_for_device(
+        &self,
+        device_did: &str,
+        repo_id: &str,
+    ) -> Result<Option<String>, BridgeError> {
+        Ok(self
+            .device_to_identity
+            .get(&(device_did.to_string(), repo_id.to_string()))
+            .cloned())
     }
 
     fn local_identity_tip(&self, identity_did: &str) -> Result<Option<[u8; 20]>, BridgeError> {
@@ -96,13 +111,19 @@ fn enforce_revocation_rejects_device() {
 
     // Before revocation
     let mut storage = MockStorage::new();
-    storage.key_states.insert(identity_did.to_string(), make_key_state("ERevTest", 2));
+    storage
+        .key_states
+        .insert(identity_did.to_string(), make_key_state("ERevTest", 2));
     storage.attestations.insert(
         (did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &did, false),
     );
-    storage.device_to_identity.insert((did.clone(), repo_id.to_string()), identity_did.to_string());
-    storage.identity_tips.insert(identity_did.to_string(), [0xAA; 20]);
+    storage
+        .device_to_identity
+        .insert((did.clone(), repo_id.to_string()), identity_did.to_string());
+    storage
+        .identity_tips
+        .insert(identity_did.to_string(), [0xAA; 20]);
 
     let bridge = DefaultBridge::with_storage(storage);
     let request = VerifyRequest {
@@ -119,13 +140,19 @@ fn enforce_revocation_rejects_device() {
 
     // After revocation (simulate storage update)
     let mut revoked_storage = MockStorage::new();
-    revoked_storage.key_states.insert(identity_did.to_string(), make_key_state("ERevTest", 3));
+    revoked_storage
+        .key_states
+        .insert(identity_did.to_string(), make_key_state("ERevTest", 3));
     revoked_storage.attestations.insert(
         (did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &did, true),
     );
-    revoked_storage.device_to_identity.insert((did.clone(), repo_id.to_string()), identity_did.to_string());
-    revoked_storage.identity_tips.insert(identity_did.to_string(), [0xBB; 20]);
+    revoked_storage
+        .device_to_identity
+        .insert((did.clone(), repo_id.to_string()), identity_did.to_string());
+    revoked_storage
+        .identity_tips
+        .insert(identity_did.to_string(), [0xBB; 20]);
 
     let revoked_bridge = DefaultBridge::with_storage(revoked_storage);
     let result = revoked_bridge.verify_signer(&request).unwrap();
@@ -141,13 +168,19 @@ fn observe_revocation_warns_device() {
     let repo_id = "test-repo";
 
     let mut storage = MockStorage::new();
-    storage.key_states.insert(identity_did.to_string(), make_key_state("ERevObs", 3));
+    storage
+        .key_states
+        .insert(identity_did.to_string(), make_key_state("ERevObs", 3));
     storage.attestations.insert(
         (did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &did, true), // revoked
     );
-    storage.device_to_identity.insert((did.clone(), repo_id.to_string()), identity_did.to_string());
-    storage.identity_tips.insert(identity_did.to_string(), [0xAA; 20]);
+    storage
+        .device_to_identity
+        .insert((did.clone(), repo_id.to_string()), identity_did.to_string());
+    storage
+        .identity_tips
+        .insert(identity_did.to_string(), [0xAA; 20]);
 
     let bridge = DefaultBridge::with_storage(storage);
     let request = VerifyRequest {
@@ -160,7 +193,10 @@ fn observe_revocation_warns_device() {
         required_capability: None,
     };
     let result = bridge.verify_signer(&request).unwrap();
-    assert!(matches!(result, VerifyResult::Warn { .. }), "observe mode: revoked → Warn");
+    assert!(
+        matches!(result, VerifyResult::Warn { .. }),
+        "observe mode: revoked → Warn"
+    );
 }
 
 /// Revocation of one device does not affect other authorized devices.
@@ -174,7 +210,9 @@ fn revocation_does_not_affect_other_devices() {
     let repo_id = "test-repo";
 
     let mut storage = MockStorage::new();
-    storage.key_states.insert(identity_did.to_string(), make_key_state("ERevMulti", 3));
+    storage
+        .key_states
+        .insert(identity_did.to_string(), make_key_state("ERevMulti", 3));
     // Device A: revoked
     storage.attestations.insert(
         (did_a.clone(), identity_did.to_string()),
@@ -185,9 +223,17 @@ fn revocation_does_not_affect_other_devices() {
         (did_b.clone(), identity_did.to_string()),
         make_attestation(identity_did, &did_b, false),
     );
-    storage.device_to_identity.insert((did_a.clone(), repo_id.to_string()), identity_did.to_string());
-    storage.device_to_identity.insert((did_b.clone(), repo_id.to_string()), identity_did.to_string());
-    storage.identity_tips.insert(identity_did.to_string(), [0xAA; 20]);
+    storage.device_to_identity.insert(
+        (did_a.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
+    storage.device_to_identity.insert(
+        (did_b.clone(), repo_id.to_string()),
+        identity_did.to_string(),
+    );
+    storage
+        .identity_tips
+        .insert(identity_did.to_string(), [0xAA; 20]);
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -210,8 +256,14 @@ fn revocation_does_not_affect_other_devices() {
         required_capability: None,
     };
 
-    assert!(bridge.verify_signer(&req_a).unwrap().is_rejected(), "device A should be rejected");
-    assert!(bridge.verify_signer(&req_b).unwrap().is_allowed(), "device B should still be allowed");
+    assert!(
+        bridge.verify_signer(&req_a).unwrap().is_rejected(),
+        "device A should be rejected"
+    );
+    assert!(
+        bridge.verify_signer(&req_b).unwrap().is_allowed(),
+        "device B should still be allowed"
+    );
 }
 
 /// Re-authorization after revocation works.
@@ -224,13 +276,19 @@ fn reauthorization_after_revocation() {
 
     // New attestation (not revoked) replaces the old one
     let mut storage = MockStorage::new();
-    storage.key_states.insert(identity_did.to_string(), make_key_state("EReauth", 4));
+    storage
+        .key_states
+        .insert(identity_did.to_string(), make_key_state("EReauth", 4));
     storage.attestations.insert(
         (did.clone(), identity_did.to_string()),
         make_attestation(identity_did, &did, false), // new attestation, not revoked
     );
-    storage.device_to_identity.insert((did.clone(), repo_id.to_string()), identity_did.to_string());
-    storage.identity_tips.insert(identity_did.to_string(), [0xAA; 20]);
+    storage
+        .device_to_identity
+        .insert((did.clone(), repo_id.to_string()), identity_did.to_string());
+    storage
+        .identity_tips
+        .insert(identity_did.to_string(), [0xAA; 20]);
 
     let bridge = DefaultBridge::with_storage(storage);
     let request = VerifyRequest {
@@ -243,5 +301,8 @@ fn reauthorization_after_revocation() {
         required_capability: None,
     };
     let result = bridge.verify_signer(&request).unwrap();
-    assert!(result.is_allowed(), "re-authorized device should be Verified");
+    assert!(
+        result.is_allowed(),
+        "re-authorized device should be Verified"
+    );
 }

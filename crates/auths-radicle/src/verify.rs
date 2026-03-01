@@ -14,13 +14,9 @@
 //! Any unhandled error in the pipeline produces `Rejected`, never `Verified`.
 //! The only path to `Verified` is a complete successful evaluation.
 
-use chrono::{DateTime, Utc};
-
 use auths_id::identity::ed25519_to_did_key;
 use auths_id::keri::KeyState;
-use auths_id::policy::{
-    CompiledPolicy, Decision, Outcome, PolicyBuilder, evaluate_compiled,
-};
+use auths_id::policy::{CompiledPolicy, Decision, Outcome, PolicyBuilder, evaluate_compiled};
 use auths_verifier::core::Attestation;
 
 use crate::bridge::{
@@ -146,15 +142,15 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
 
         // Step 3: Binding integrity — min_kel_seq check BEFORE policy evaluation.
         // A KEL below the binding minimum is a tamper indicator: hard reject in ALL modes.
-        if let Some(min_seq) = request.min_kel_seq {
-            if key_state.sequence < min_seq {
-                return Ok(VerifyResult::Rejected {
-                    reason: format!(
-                        "KEL sequence {} below binding minimum {min_seq} for {identity_did}",
-                        key_state.sequence
-                    ),
-                });
-            }
+        if let Some(min_seq) = request.min_kel_seq
+            && key_state.sequence < min_seq
+        {
+            return Ok(VerifyResult::Rejected {
+                reason: format!(
+                    "KEL sequence {} below binding minimum {min_seq} for {identity_did}",
+                    key_state.sequence
+                ),
+            });
         }
 
         // Step 4: Staleness detection — gossip-informed tip comparison.
@@ -163,9 +159,7 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
                 Some(local_tip) if local_tip != remote_tip => {
                     return Ok(match request.mode {
                         EnforcementMode::Observe => VerifyResult::Warn {
-                            reason: format!(
-                                "identity repo {identity_did} has newer tip available"
-                            ),
+                            reason: format!("identity repo {identity_did} has newer tip available"),
                         },
                         EnforcementMode::Enforce => VerifyResult::Quarantine {
                             reason: format!(
@@ -179,14 +173,10 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
                     // Identity repo missing but we have a remote tip — stale
                     return Ok(match request.mode {
                         EnforcementMode::Observe => VerifyResult::Warn {
-                            reason: format!(
-                                "identity repo {identity_did} not available locally"
-                            ),
+                            reason: format!("identity repo {identity_did} not available locally"),
                         },
                         EnforcementMode::Enforce => VerifyResult::Quarantine {
-                            reason: format!(
-                                "identity repo {identity_did} not available locally"
-                            ),
+                            reason: format!("identity repo {identity_did} not available locally"),
                             identity_repo_rid: Some(identity_did),
                         },
                     });
@@ -214,27 +204,21 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         let decision = evaluate_compiled(&attestation, &self.policy, request.now);
 
         // Step 7: Capability check
-        if let Some(required_cap) = request.required_capability {
-            if decision.outcome == Outcome::Allow {
-                let has_cap = attestation
-                    .capabilities
-                    .iter()
-                    .any(|c| c.to_string() == required_cap);
-                if !has_cap && !attestation.capabilities.is_empty() {
-                    return Ok(apply_mode(
-                        request.mode,
-                        VerifyResult::Rejected {
-                            reason: format!(
-                                "device lacks required capability '{required_cap}'"
-                            ),
-                        },
-                        None,
-                    ));
-                }
-                // Empty capabilities with no required cap is OK (legacy devices)
-                // Empty capabilities with required cap: reject only if capabilities list is empty
-                // Actually: if attestation has capabilities, must include the required one.
-                // If attestation has NO capabilities, it's a legacy device — skip check.
+        if let Some(required_cap) = request.required_capability
+            && decision.outcome == Outcome::Allow
+        {
+            let has_cap = attestation
+                .capabilities
+                .iter()
+                .any(|c| c.to_string() == required_cap);
+            if !has_cap && !attestation.capabilities.is_empty() {
+                return Ok(apply_mode(
+                    request.mode,
+                    VerifyResult::Rejected {
+                        reason: format!("device lacks required capability '{required_cap}'"),
+                    },
+                    None,
+                ));
             }
         }
 
@@ -260,7 +244,7 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
 fn apply_mode(
     mode: EnforcementMode,
     result: VerifyResult,
-    identity_repo_rid: Option<String>,
+    _identity_repo_rid: Option<String>,
 ) -> VerifyResult {
     match mode {
         EnforcementMode::Enforce => result,
@@ -358,6 +342,7 @@ mod tests {
     use super::*;
     use auths_verifier::IdentityDID;
     use auths_verifier::keri::{Prefix, Said};
+    use chrono::{DateTime, Utc};
     use std::collections::HashMap;
 
     struct MockStorage {
@@ -393,12 +378,7 @@ mod tests {
             );
         }
 
-        fn link_device_to_identity(
-            &mut self,
-            device_did: &str,
-            identity_did: &str,
-            repo_id: &str,
-        ) {
+        fn link_device_to_identity(&mut self, device_did: &str, identity_did: &str, repo_id: &str) {
             self.device_to_identity.insert(
                 (device_did.to_string(), repo_id.to_string()),
                 identity_did.to_string(),
@@ -406,8 +386,7 @@ mod tests {
         }
 
         fn set_identity_tip(&mut self, identity_did: &str, tip: [u8; 20]) {
-            self.identity_tips
-                .insert(identity_did.to_string(), tip);
+            self.identity_tips.insert(identity_did.to_string(), tip);
         }
     }
 
@@ -427,9 +406,7 @@ mod tests {
             self.attestations
                 .get(&(device_did.to_string(), identity_did.to_string()))
                 .cloned()
-                .ok_or_else(|| {
-                    BridgeError::AttestationLoad(format!("Not found: {device_did}"))
-                })
+                .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
         }
 
         fn find_identity_for_device(
@@ -443,10 +420,7 @@ mod tests {
                 .cloned())
         }
 
-        fn local_identity_tip(
-            &self,
-            identity_did: &str,
-        ) -> Result<Option<[u8; 20]>, BridgeError> {
+        fn local_identity_tip(&self, identity_did: &str) -> Result<Option<[u8; 20]>, BridgeError> {
             Ok(self.identity_tips.get(identity_did).copied())
         }
     }
@@ -512,7 +486,11 @@ mod tests {
         (storage, signer_key, identity_did, repo_id)
     }
 
-    fn make_enforce_request<'a>(key: &'a [u8; 32], repo_id: &'a str, now: DateTime<Utc>) -> VerifyRequest<'a> {
+    fn make_enforce_request<'a>(
+        key: &'a [u8; 32],
+        repo_id: &'a str,
+        now: DateTime<Utc>,
+    ) -> VerifyRequest<'a> {
         VerifyRequest {
             signer_key: key,
             repo_id,
@@ -647,7 +625,10 @@ mod tests {
             required_capability: None,
         };
         let result = bridge.verify_signer(&request).unwrap();
-        assert!(result.is_rejected(), "min_kel_seq violation must never be downgraded");
+        assert!(
+            result.is_rejected(),
+            "min_kel_seq violation must never be downgraded"
+        );
     }
 
     #[test]
