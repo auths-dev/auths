@@ -7,7 +7,7 @@ repo_name: auths-dev/auths
 theme:
   name: material
   custom_dir: overrides
-  # logo: assets/logo.png  # TODO: Add logo
+  logo: images/logo.png
   # favicon: assets/favicon.ico  # TODO: Add favicon
   palette:
     # Dark Mode (default)
