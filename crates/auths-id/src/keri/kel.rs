@@ -52,14 +52,40 @@ fn kel_ref(prefix: &Prefix) -> String {
 pub struct GitKel<'a> {
     repo: &'a Repository,
     prefix: Prefix,
+    ref_path: String,
 }
 
 impl<'a> GitKel<'a> {
-    /// Create a new GitKel instance for the given prefix.
+    /// Create a new GitKel instance for the given prefix using the default ref path.
     pub fn new(repo: &'a Repository, prefix: impl Into<String>) -> Self {
+        let prefix = Prefix::new_unchecked(prefix.into());
+        let ref_path = kel_ref(&prefix);
+        Self {
+            repo,
+            prefix,
+            ref_path,
+        }
+    }
+
+    /// Create a GitKel instance with a custom ref path.
+    ///
+    /// This allows reading KELs stored at non-default locations, such as
+    /// `refs/keri/kel` in Radicle's RIP-X identity repository layout.
+    ///
+    /// Args:
+    /// * `repo`: The Git repository containing the KEL.
+    /// * `prefix`: The KERI identifier prefix.
+    /// * `ref_path`: The Git ref path to read/write the KEL.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let kel = GitKel::with_ref(&repo, "EPrefix", "refs/keri/kel".into());
+    /// ```
+    pub fn with_ref(repo: &'a Repository, prefix: impl Into<String>, ref_path: String) -> Self {
         Self {
             repo,
             prefix: Prefix::new_unchecked(prefix.into()),
+            ref_path,
         }
     }
 
@@ -80,7 +106,7 @@ impl<'a> GitKel<'a> {
 
     /// Check if a KEL exists for this prefix.
     pub fn exists(&self) -> bool {
-        self.repo.find_reference(&kel_ref(&self.prefix)).is_ok()
+        self.repo.find_reference(&self.ref_path).is_ok()
     }
 
     /// Create a new KEL with an inception event.
@@ -116,7 +142,7 @@ impl<'a> GitKel<'a> {
 
         let sig = self.signature()?;
         let commit_oid = self.repo.commit(
-            Some(&kel_ref(&self.prefix)),
+            Some(&self.ref_path),
             &sig,
             &sig,
             &format!("KERI inception: {}", event.i.as_str()),
@@ -141,9 +167,9 @@ impl<'a> GitKel<'a> {
     /// let hash = kel.append(&rot_event)?;
     /// ```
     pub fn append(&self, event: &Event) -> Result<EventHash, KelError> {
-        let ref_name = kel_ref(&self.prefix);
+        let ref_name = &self.ref_path;
 
-        let reference = self.repo.find_reference(&ref_name).map_err(|e| {
+        let reference = self.repo.find_reference(ref_name).map_err(|e| {
             if e.code() == ErrorCode::NotFound {
                 KelError::NotFound(self.prefix.as_str().to_string())
             } else {
@@ -176,15 +202,15 @@ impl<'a> GitKel<'a> {
         let sig = self.signature()?;
         let commit_oid =
             self.repo
-                .commit(Some(&ref_name), &sig, &sig, &msg, &tree, &[&parent_commit])?;
+                .commit(Some(ref_name), &sig, &sig, &msg, &tree, &[&parent_commit])?;
 
         Ok(oid_to_event_hash(commit_oid))
     }
 
     /// Read all events from the KEL (oldest to newest).
     pub fn get_events(&self) -> Result<Vec<Event>, KelError> {
-        let ref_name = kel_ref(&self.prefix);
-        let reference = self.repo.find_reference(&ref_name).map_err(|e| {
+        let ref_name = &self.ref_path;
+        let reference = self.repo.find_reference(ref_name).map_err(|e| {
             if e.code() == ErrorCode::NotFound {
                 KelError::NotFound(self.prefix.as_str().to_string())
             } else {
@@ -330,8 +356,8 @@ impl<'a> GitKel<'a> {
 
     /// Get the latest event from the KEL.
     pub fn get_latest_event(&self) -> Result<Event, KelError> {
-        let ref_name = kel_ref(&self.prefix);
-        let reference = self.repo.find_reference(&ref_name).map_err(|e| {
+        let ref_name = &self.ref_path;
+        let reference = self.repo.find_reference(ref_name).map_err(|e| {
             if e.code() == ErrorCode::NotFound {
                 KelError::NotFound(self.prefix.as_str().to_string())
             } else {
@@ -367,8 +393,8 @@ impl<'a> GitKel<'a> {
 
     /// Get the hash of the tip commit for this KEL.
     pub fn tip_commit_hash(&self) -> Result<EventHash, KelError> {
-        let ref_name = kel_ref(&self.prefix);
-        let reference = self.repo.find_reference(&ref_name).map_err(|e| {
+        let ref_name = &self.ref_path;
+        let reference = self.repo.find_reference(ref_name).map_err(|e| {
             if e.code() == ErrorCode::NotFound {
                 KelError::NotFound(self.prefix.as_str().to_string())
             } else {
@@ -918,7 +944,7 @@ mod tests {
 
             // Point the KEL ref to the merge commit
             let ref_name = format!("refs/did/keri/{}/kel", prefix);
-            repo.reference(&ref_name, merge_oid, true, "Force merge commit")
+            repo.reference(ref_name, merge_oid, true, "Force merge commit")
                 .unwrap();
 
             // Now get_state() should fail with ChainIntegrity error
