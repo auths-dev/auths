@@ -64,7 +64,7 @@ axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
 
 # macOS/iOS keychain dependencies
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-core-foundation = "0.9"
+core-foundation = "0.10"
 security-framework = { version = "2.10", features = ["OSX_10_15"] }
 security-framework-sys = "2.9"
 
