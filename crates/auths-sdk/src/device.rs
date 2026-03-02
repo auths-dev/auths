@@ -269,12 +269,6 @@ fn extract_device_key(
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
 ) -> Result<(DeviceDID, Vec<u8>), DeviceError> {
-    if let Some(ref did) = config.device_did {
-        return Err(DeviceError::AttestationError(format!(
-            "linking by pre-existing DID ({did}) not yet supported — provide a key alias instead"
-        )));
-    }
-
     let alias = config
         .device_key_alias
         .as_ref()
@@ -292,6 +286,15 @@ fn extract_device_key(
             "public key is not 32 bytes".into(),
         ))
     })?);
+
+    if let Some(ref expected) = config.device_did
+        && expected != &device_did.to_string()
+    {
+        return Err(DeviceError::AttestationError(format!(
+            "--device-did {} does not match key-derived DID {}",
+            expected, device_did
+        )));
+    }
 
     Ok((device_did, pk_bytes))
 }

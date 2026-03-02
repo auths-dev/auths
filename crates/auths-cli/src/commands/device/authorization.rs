@@ -242,7 +242,7 @@ pub fn handle_device(
             let link_config = auths_sdk::types::DeviceLinkConfig {
                 identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
                 device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
-                device_did: None,
+                device_did: Some(device_did.clone()),
                 capabilities: caps,
                 expires_in_days: expires_in_days.map(|d| d as u32),
                 note,

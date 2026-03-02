@@ -26,7 +26,15 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 AUTHS_BIN="$REPO_ROOT/target/release/auths"
+AUTHS_SIGN_BIN="$REPO_ROOT/target/release/auths-sign"
 DEMO_DIR="$(mktemp -d)"
+
+# Existing Radicle project to push patches to
+PROJECT_RID="rad:zTfsUzHQFrAUMsMgTqT5hFwfGon1"
+
+# rosa.radicle.xyz is PERMISSIVE (seeds all public repos).
+# seed.radicle.xyz is SELECTIVE (Radicle team repos only) — will not host our project.
+ROSA_NID="z6Mkmqogy2qEM2ummccUthFEaaHvyYmYBYh3dbe9W4ebScxo"
 
 # Auths storage
 AUTHS_HOME="$DEMO_DIR/.auths"
@@ -142,6 +150,7 @@ if [[ ! -x "$AUTHS_BIN" ]]; then
         | sed 's/^/    /' || true
 fi
 assert_ok "auths binary is executable" test -x "$AUTHS_BIN"
+assert_ok "auths-sign binary is executable" test -x "$AUTHS_SIGN_BIN"
 
 info "Demo directory: $DEMO_DIR"
 mkdir -p "$AUTHS_HOME" "$RAD_NODE1_HOME" "$RAD_NODE2_HOME"
@@ -288,36 +297,67 @@ assert_contains "device list contains node 2" "$DEVICE_LIST" "$NODE2_DID"
 phase_pass
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Phase 5 — Create a Radicle project (from node 1)
+#  Phase 5 — Clone existing Radicle project (from node 1)
 # ══════════════════════════════════════════════════════════════════════════════
-phase_start "Phase 5: Create a Radicle project"
+phase_start "Phase 5: Clone existing Radicle project"
 
 PROJECT_DIR="$DEMO_DIR/e2e-project"
-mkdir -p "$PROJECT_DIR"
+E2E_PORT1=19876
 
-info "Initializing git repo and Radicle project..."
+info "Project RID: $PROJECT_RID"
+info "Starting Radicle node 1 for clone (port $E2E_PORT1)..."
+RAD_HOME="$RAD_NODE1_HOME" rad node start -- --listen 0.0.0.0:$E2E_PORT1 2>&1 | sed 's/^/    /' || true
+sleep 2
+
+info "Connecting node 1 to rosa seed..."
+RAD_HOME="$RAD_NODE1_HOME" rad node connect "${ROSA_NID}@rosa.radicle.xyz:8776" --timeout 10 2>&1 | sed 's/^/    /' || true
+
+info "Waiting for seed connection to establish..."
+for i in $(seq 1 10); do
+    if RAD_HOME="$RAD_NODE1_HOME" rad node sessions 2>/dev/null | grep -q "$ROSA_NID"; then
+        echo -e "  ${GREEN}✓${NC} Connected to rosa seed"
+        break
+    fi
+    if [ "$i" -eq 10 ]; then
+        echo -e "  ${YELLOW}⚠${NC} Seed connection not confirmed after 10s — attempting clone anyway"
+    fi
+    sleep 1
+done
+
+info "Cloning project from network..."
+CLONE_OK=false
+for attempt in 1 2 3; do
+    CLONE_OUTPUT=$(RAD_HOME="$RAD_NODE1_HOME" rad clone "$PROJECT_RID" "$PROJECT_DIR" --seed "$ROSA_NID" --timeout 30 2>&1) && {
+        CLONE_OK=true
+        echo "$CLONE_OUTPUT" | sed 's/^/    /'
+        break
+    }
+    echo "$CLONE_OUTPUT" | sed 's/^/    /'
+    if [ "$attempt" -lt 3 ]; then
+        info "Clone attempt $attempt failed, retrying in 5s..."
+        sleep 5
+    fi
+done
+
+info "Stopping node 1..."
+RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
+
+if ! $CLONE_OK || [ ! -d "$PROJECT_DIR/.git" ]; then
+    echo -e "  ${RED}✗${NC} Clone failed after 3 attempts — is rosa.radicle.xyz reachable?"
+    phase_fail "clone failed"
+    exit 1
+fi
+
+# Configure git identity for commits
 (
     cd "$PROJECT_DIR"
-    git init --quiet
     git config user.name "E2E Tester"
     git config user.email "e2e@test.local"
     git config commit.gpgsign false
-    echo "# Radicle E2E Test Project" > README.md
-    git add README.md
-    git commit -m "init" --quiet
-    RAD_HOME="$RAD_NODE1_HOME" rad init --name e2e-test-project --description "E2E test" --default-branch main --public --no-confirm 2>&1 | sed 's/^/    /' || true
 )
 
-assert_ok "project directory exists" test -d "$PROJECT_DIR/.git"
-
-# Extract the Repository ID (RID) for later use
-PROJECT_RID=$(cd "$PROJECT_DIR" && RAD_HOME="$RAD_NODE1_HOME" rad inspect --rid 2>/dev/null | tr -d '[:space:]') || true
-if [ -n "$PROJECT_RID" ]; then
-    info "Radicle project RID: $PROJECT_RID"
-else
-    info "Could not extract RID (rad init may have partially failed)"
-fi
-echo -e "  ${GREEN}✓${NC} Radicle project created"
+info "Radicle project RID: $PROJECT_RID"
+echo -e "  ${GREEN}✓${NC} Radicle project cloned"
 
 phase_pass
 
@@ -362,140 +402,239 @@ REGISTRY_TREE=$(git -C "$AUTHS_HOME" ls-tree -r --name-only refs/auths/registry 
 assert_contains "node 1 device entry in registry" "$REGISTRY_TREE" "$NODE1_SANITIZED"
 assert_contains "node 2 device entry in registry" "$REGISTRY_TREE" "$NODE2_SANITIZED"
 
+RESOLVE_OK=true
+
 info "Resolving device 1 DID to controller..."
-RESOLVED_DID_1=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE1_DID" 2>/dev/null | tr -d '[:space:]')
-if [ "$RESOLVED_DID_1" = "$CONTROLLER_DID" ]; then
-    echo -e "  ${GREEN}✓${NC} Device 1 resolves to controller DID"
-else
-    echo -e "  ${RED}✗${NC} Device 1 resolved to '$RESOLVED_DID_1', expected '$CONTROLLER_DID'"
-    phase_fail "device 1 resolution mismatch"
-    exit 1
+RESOLVE_OUTPUT_1=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE1_DID" 2>&1) || {
+    echo -e "  ${RED}✗${NC} device resolve failed for $NODE1_DID"
+    echo "$RESOLVE_OUTPUT_1" | sed 's/^/    /'
+    phase_fail "device 1 resolution"
+    RESOLVE_OK=false
+}
+RESOLVED_DID_1=$(echo "$RESOLVE_OUTPUT_1" | tr -d '[:space:]')
+
+if $RESOLVE_OK; then
+    if [ "$RESOLVED_DID_1" = "$CONTROLLER_DID" ]; then
+        echo -e "  ${GREEN}✓${NC} Device 1 resolves to controller DID"
+    else
+        echo -e "  ${RED}✗${NC} Device 1 resolved to '$RESOLVED_DID_1', expected '$CONTROLLER_DID'"
+        phase_fail "device 1 resolution mismatch"
+        RESOLVE_OK=false
+    fi
 fi
 
 info "Resolving device 2 DID to controller..."
-RESOLVED_DID_2=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE2_DID" 2>/dev/null | tr -d '[:space:]')
-if [ "$RESOLVED_DID_2" = "$CONTROLLER_DID" ]; then
-    echo -e "  ${GREEN}✓${NC} Device 2 resolves to controller DID"
-else
-    echo -e "  ${RED}✗${NC} Device 2 resolved to '$RESOLVED_DID_2', expected '$CONTROLLER_DID'"
-    phase_fail "device 2 resolution mismatch"
-    exit 1
+RESOLVE_OUTPUT_2=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE2_DID" 2>&1) || {
+    echo -e "  ${RED}✗${NC} device resolve failed for $NODE2_DID"
+    echo "$RESOLVE_OUTPUT_2" | sed 's/^/    /'
+    phase_fail "device 2 resolution"
+    RESOLVE_OK=false
+}
+RESOLVED_DID_2=$(echo "$RESOLVE_OUTPUT_2" | tr -d '[:space:]')
+
+if $RESOLVE_OK; then
+    if [ "$RESOLVED_DID_2" = "$CONTROLLER_DID" ]; then
+        echo -e "  ${GREEN}✓${NC} Device 2 resolves to controller DID"
+    else
+        echo -e "  ${RED}✗${NC} Device 2 resolved to '$RESOLVED_DID_2', expected '$CONTROLLER_DID'"
+        phase_fail "device 2 resolution mismatch"
+        RESOLVE_OK=false
+    fi
 fi
 
-if [ "$RESOLVED_DID_1" = "$RESOLVED_DID_2" ]; then
-    echo -e "  ${GREEN}✓${NC} Both devices resolve to the same controller identity"
-else
-    echo -e "  ${RED}✗${NC} Devices resolved to different identities"
-    phase_fail "identity mismatch between devices"
-    exit 1
+if $RESOLVE_OK; then
+    if [ "$RESOLVED_DID_1" = "$RESOLVED_DID_2" ]; then
+        echo -e "  ${GREEN}✓${NC} Both devices resolve to the same controller identity"
+    else
+        echo -e "  ${RED}✗${NC} Devices resolved to different identities"
+        phase_fail "identity mismatch between devices"
+        RESOLVE_OK=false
+    fi
 fi
 
-phase_pass
+if $RESOLVE_OK; then
+    phase_pass
+fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Phase 7 — Push patches from both devices
+#  Phase 7 — Signed commits + Radicle patches from both devices
 # ══════════════════════════════════════════════════════════════════════════════
-phase_start "Phase 7: Push patches from both devices"
+phase_start "Phase 7: Signed commits + Radicle patches from both devices"
 
 PHASE7_OK=true
 
-if [ -z "$PROJECT_RID" ]; then
-    info "Skipping — no RID (rad init did not complete in Phase 5)"
-    phase_fail "no RID available"
+# ── Export public keys for allowed_signers ─────────────────────────────
+info "Exporting public keys for both devices..."
+PUB1=$("$AUTHS_BIN" key export --alias node1-key --passphrase "$AUTHS_PASSPHRASE" --format pub 2>&1) || {
+    echo -e "  ${RED}✗${NC} Failed to export node1-key public key"
+    echo "$PUB1" | sed 's/^/    /'
+    phase_fail "node1 key export"
     PHASE7_OK=false
-else
-    # Use high ports to avoid conflicts with a running personal Radicle node (default 8776)
+}
+PUB2=$("$AUTHS_BIN" key export --alias node2-key --passphrase "$AUTHS_PASSPHRASE" --format pub 2>&1) || {
+    echo -e "  ${RED}✗${NC} Failed to export node2-key public key"
+    echo "$PUB2" | sed 's/^/    /'
+    phase_fail "node2 key export"
+    PHASE7_OK=false
+}
+
+if $PHASE7_OK; then
+    info "Node 1 pubkey: $PUB1"
+    info "Node 2 pubkey: $PUB2"
+
+    # ── Create allowed_signers file ────────────────────────────────────
+    ALLOWED_SIGNERS="$DEMO_DIR/allowed_signers"
+    echo "e2e@test.local $PUB1" > "$ALLOWED_SIGNERS"
+    echo "e2e@test.local $PUB2" >> "$ALLOWED_SIGNERS"
+    echo -e "  ${GREEN}✓${NC} Created allowed_signers file"
+
+    # ── Configure git for SSH signing in project dir ───────────────────
+    (
+        cd "$PROJECT_DIR"
+        git config gpg.format ssh
+        git config gpg.ssh.program "$AUTHS_SIGN_BIN"
+        git config gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+        git config commit.gpgsign true
+    )
+    echo -e "  ${GREEN}✓${NC} Configured git for auths-sign SSH signing"
+
+    # ── Start Radicle nodes ────────────────────────────────────────────
     E2E_PORT1=19876
     E2E_PORT2=19877
 
-    # Start node 1
     info "Starting Radicle node 1 (port $E2E_PORT1)..."
     RAD_HOME="$RAD_NODE1_HOME" rad node start -- --listen 0.0.0.0:$E2E_PORT1 2>&1 | sed 's/^/    /' || true
     sleep 2
 
-    # Start node 2
     info "Starting Radicle node 2 (port $E2E_PORT2)..."
     RAD_HOME="$RAD_NODE2_HOME" rad node start -- --listen 0.0.0.0:$E2E_PORT2 2>&1 | sed 's/^/    /' || true
     sleep 2
 
-    # Connect node 2 to node 1
+    info "Connecting nodes to rosa seed..."
+    RAD_HOME="$RAD_NODE1_HOME" rad node connect "${ROSA_NID}@rosa.radicle.xyz:8776" --timeout 10 2>&1 | sed 's/^/    /' || true
+    RAD_HOME="$RAD_NODE2_HOME" rad node connect "${ROSA_NID}@rosa.radicle.xyz:8776" --timeout 10 2>&1 | sed 's/^/    /' || true
+
     info "Connecting node 2 to node 1..."
     RAD_HOME="$RAD_NODE2_HOME" rad node connect "$NODE1_NID@127.0.0.1:$E2E_PORT1" --timeout 10 2>&1 | sed 's/^/    /' || true
     sleep 1
 
-    # Connect both nodes to permissive public seeds (rosa & iris)
-    # seed.radicle.xyz is SELECTIVE (Radicle team repos only) — will not host our project.
-    # rosa.radicle.xyz and iris.radicle.xyz are PERMISSIVE (seed all public repos).
-    ROSA_NID="z6Mkmqogy2qEM2ummccUthFEaaHvyYmYBYh3dbe9W4ebScxo"
-    info "Connecting both nodes to permissive public seeds..."
-    RAD_HOME="$RAD_NODE1_HOME" rad node connect "${ROSA_NID}@rosa.radicle.xyz:8776" --timeout 10 2>&1 | sed 's/^/    /' || true
-    RAD_HOME="$RAD_NODE2_HOME" rad node connect "${ROSA_NID}@rosa.radicle.xyz:8776" --timeout 10 2>&1 | sed 's/^/    /' || true
-
-    # Seed the project on node 1 (should already be seeded from rad init)
+    # Seed the project on node 1 (should already be seeded from Phase 5 clone)
     RAD_HOME="$RAD_NODE1_HOME" rad seed "$PROJECT_RID" 2>/dev/null || true
 
-    # ── Device 1: push a patch ────────────────────────────────────────────
-    info "Device 1: creating a feature branch and pushing a patch..."
-    PUSH1_OUTPUT=$(
+    # ── Device 1: signed commit + push patch ──────────────────────────
+    info "Device 1: creating a signed commit and pushing a patch..."
+    COMMIT1_OUTPUT=$(
         cd "$PROJECT_DIR"
-        export RAD_HOME="$RAD_NODE1_HOME"
+        git config user.signingKey "auths:node1-key"
         git checkout -b feature-device1 2>/dev/null
         echo "Change from device 1" >> README.md
         git add README.md
-        git commit -m "Feature from device 1" --quiet
-        git push rad HEAD:refs/patches 2>&1
-    ) || true
-    echo "$PUSH1_OUTPUT" | sed 's/^/    /'
+        git commit -m "Signed commit from device 1" 2>&1
+    ) || {
+        echo -e "  ${RED}✗${NC} Device 1 signed commit failed"
+        echo "$COMMIT1_OUTPUT" | sed 's/^/    /'
+        phase_fail "device 1 signed commit"
+        PHASE7_OK=false
+    }
 
-    # Extract patch ID from push output ("Patch <hex> opened")
-    PATCH1_ID=$(echo "$PUSH1_OUTPUT" | grep -oE 'Patch [0-9a-f]{40} opened' | awk '{print $2}') || true
+    if $PHASE7_OK; then
+        echo "$COMMIT1_OUTPUT" | sed 's/^/    /'
 
-    if [ -n "$PATCH1_ID" ]; then
-        PATCH1_URL="https://app.radicle.xyz/nodes/rosa.radicle.xyz/${PROJECT_RID}/patches/${PATCH1_ID}"
-        echo -e "  ${GREEN}✓${NC} Device 1 patch created: ${CYAN}${PATCH1_ID}${NC}"
-        echo -e "    ${DIM}URL: ${PATCH1_URL}${NC}"
-    else
-        echo -e "  ${YELLOW}⚠${NC} Could not extract device 1 patch ID"
-    fi
+        info "Verifying device 1 commit signature..."
+        VERIFY1_OUTPUT=$(cd "$PROJECT_DIR" && git verify-commit HEAD 2>&1) || {
+            echo -e "  ${RED}✗${NC} Device 1 commit verification failed"
+            echo "$VERIFY1_OUTPUT" | sed 's/^/    /'
+            phase_fail "device 1 signature verification"
+            PHASE7_OK=false
+        }
+        if $PHASE7_OK; then
+            echo -e "  ${GREEN}✓${NC} Device 1 signed commit verified"
+        fi
 
-    # ── Device 2: clone and push a patch ──────────────────────────────────
-    info "Device 2: cloning project and pushing a patch..."
-    NODE2_PROJECT="$DEMO_DIR/e2e-project-node2"
-
-    RAD_HOME="$RAD_NODE2_HOME" rad clone "$PROJECT_RID" "$NODE2_PROJECT" --seed "$NODE1_NID" --timeout 15 2>&1 | sed 's/^/    /' || true
-
-    if [ -d "$NODE2_PROJECT" ]; then
-        PUSH2_OUTPUT=$(
-            cd "$NODE2_PROJECT"
-            export RAD_HOME="$RAD_NODE2_HOME"
-            git config user.name "E2E Tester Node2"
-            git config user.email "e2e-node2@test.local"
-            git config commit.gpgsign false
-            git checkout -b feature-device2 2>/dev/null
-            echo "Change from device 2" >> README.md
-            git add README.md
-            git commit -m "Feature from device 2" --quiet
+        info "Pushing device 1 patch to Radicle..."
+        PUSH1_OUTPUT=$(
+            cd "$PROJECT_DIR"
+            export RAD_HOME="$RAD_NODE1_HOME"
             git push rad HEAD:refs/patches 2>&1
         ) || true
-        echo "$PUSH2_OUTPUT" | sed 's/^/    /'
+        echo "$PUSH1_OUTPUT" | sed 's/^/    /'
 
-        # Extract patch ID from push output
-        PATCH2_ID=$(echo "$PUSH2_OUTPUT" | grep -oE 'Patch [0-9a-f]{40} opened' | awk '{print $2}') || true
-
-        if [ -n "$PATCH2_ID" ]; then
-            PATCH2_URL="https://app.radicle.xyz/nodes/rosa.radicle.xyz/${PROJECT_RID}/patches/${PATCH2_ID}"
-            echo -e "  ${GREEN}✓${NC} Device 2 patch created: ${CYAN}${PATCH2_ID}${NC}"
-            echo -e "    ${DIM}URL: ${PATCH2_URL}${NC}"
+        PATCH1_ID=$(echo "$PUSH1_OUTPUT" | grep -oE 'Patch [0-9a-f]{40} opened' | awk '{print $2}') || true
+        if [ -n "$PATCH1_ID" ]; then
+            PATCH1_URL="https://app.radicle.xyz/nodes/rosa.radicle.xyz/${PROJECT_RID}/patches/${PATCH1_ID}"
+            echo -e "  ${GREEN}✓${NC} Device 1 patch created: ${CYAN}${PATCH1_ID}${NC}"
+            echo -e "    ${DIM}URL: ${PATCH1_URL}${NC}"
         else
-            echo -e "  ${YELLOW}⚠${NC} Could not extract device 2 patch ID"
+            echo -e "  ${YELLOW}⚠${NC} Could not extract device 1 patch ID"
         fi
-    else
-        echo -e "  ${YELLOW}⚠${NC} Node 2 clone failed — skipping device 2 patch"
     fi
 
-    # ── Sync to permissive public seeds (best effort) ───────────────────
-    # rosa.radicle.xyz and iris.radicle.xyz are permissive — they seed all public repos.
-    # seed.radicle.xyz is selective (Radicle team only) and will NOT host our project.
+    # ── Device 2: clone, signed commit + push patch ───────────────────
+    if $PHASE7_OK; then
+        NODE2_PROJECT="$DEMO_DIR/e2e-project-node2"
+
+        info "Device 2: cloning project..."
+        RAD_HOME="$RAD_NODE2_HOME" rad clone "$PROJECT_RID" "$NODE2_PROJECT" --seed "$NODE1_NID" --timeout 15 2>&1 | sed 's/^/    /' || true
+
+        if [ -d "$NODE2_PROJECT" ]; then
+            info "Device 2: creating a signed commit and pushing a patch..."
+            COMMIT2_OUTPUT=$(
+                cd "$NODE2_PROJECT"
+                git config user.name "E2E Tester Node2"
+                git config user.email "e2e@test.local"
+                git config gpg.format ssh
+                git config gpg.ssh.program "$AUTHS_SIGN_BIN"
+                git config gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+                git config commit.gpgsign true
+                git config user.signingKey "auths:node2-key"
+                git checkout -b feature-device2 2>/dev/null
+                echo "Change from device 2" >> README.md
+                git add README.md
+                git commit -m "Signed commit from device 2" 2>&1
+            ) || {
+                echo -e "  ${RED}✗${NC} Device 2 signed commit failed"
+                echo "$COMMIT2_OUTPUT" | sed 's/^/    /'
+                phase_fail "device 2 signed commit"
+                PHASE7_OK=false
+            }
+
+            if $PHASE7_OK; then
+                echo "$COMMIT2_OUTPUT" | sed 's/^/    /'
+
+                info "Verifying device 2 commit signature..."
+                VERIFY2_OUTPUT=$(cd "$NODE2_PROJECT" && git verify-commit HEAD 2>&1) || {
+                    echo -e "  ${RED}✗${NC} Device 2 commit verification failed"
+                    echo "$VERIFY2_OUTPUT" | sed 's/^/    /'
+                    phase_fail "device 2 signature verification"
+                    PHASE7_OK=false
+                }
+                if $PHASE7_OK; then
+                    echo -e "  ${GREEN}✓${NC} Device 2 signed commit verified"
+                fi
+
+                info "Pushing device 2 patch to Radicle..."
+                PUSH2_OUTPUT=$(
+                    cd "$NODE2_PROJECT"
+                    export RAD_HOME="$RAD_NODE2_HOME"
+                    git push rad HEAD:refs/patches 2>&1
+                ) || true
+                echo "$PUSH2_OUTPUT" | sed 's/^/    /'
+
+                PATCH2_ID=$(echo "$PUSH2_OUTPUT" | grep -oE 'Patch [0-9a-f]{40} opened' | awk '{print $2}') || true
+                if [ -n "$PATCH2_ID" ]; then
+                    PATCH2_URL="https://app.radicle.xyz/nodes/rosa.radicle.xyz/${PROJECT_RID}/patches/${PATCH2_ID}"
+                    echo -e "  ${GREEN}✓${NC} Device 2 patch created: ${CYAN}${PATCH2_ID}${NC}"
+                    echo -e "    ${DIM}URL: ${PATCH2_URL}${NC}"
+                else
+                    echo -e "  ${YELLOW}⚠${NC} Could not extract device 2 patch ID"
+                fi
+            fi
+        else
+            echo -e "  ${YELLOW}⚠${NC} Node 2 clone failed — skipping device 2 patch"
+        fi
+    fi
+
+    # ── Sync to rosa (best effort) ────────────────────────────────────
     info "Syncing to rosa.radicle.xyz (best effort)..."
     RAD_HOME="$RAD_NODE1_HOME" rad sync --announce "$PROJECT_RID" --seed "$ROSA_NID" --timeout 15 2>&1 | sed 's/^/    /' || true
     RAD_HOME="$RAD_NODE2_HOME" rad sync --announce "$PROJECT_RID" --seed "$ROSA_NID" --timeout 15 2>&1 | sed 's/^/    /' || true
@@ -508,14 +647,16 @@ else
     echo -e "  ${DIM}Note: URLs require successful sync. If behind NAT, the seed may not be able to fetch from you.${NC}"
 
     # Verify at least device 1 pushed a patch
-    if [ -n "$PATCH1_ID" ]; then
-        echo -e "  ${GREEN}✓${NC} At least one patch pushed successfully"
+    if [ -n "${PATCH1_ID:-}" ]; then
+        echo -e "  ${GREEN}✓${NC} At least one signed patch pushed successfully"
     else
-        phase_fail "no patches created"
-        PHASE7_OK=false
+        if $PHASE7_OK; then
+            phase_fail "no patches created"
+            PHASE7_OK=false
+        fi
     fi
 
-    # Stop nodes for subsequent phases
+    # ── Stop nodes ─────────────────────────────────────────────────────
     info "Stopping Radicle nodes..."
     RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
     RAD_HOME="$RAD_NODE2_HOME" rad node stop 2>/dev/null || true
