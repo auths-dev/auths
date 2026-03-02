@@ -297,6 +297,25 @@ impl RadicleIdentityResolver {
         Ok(path)
     }
 
+    /// Resolves the raw KERI event log for a DID, handling repo discovery.
+    ///
+    /// Args:
+    /// * `did`: The KERI DID whose KEL to retrieve.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let resolver = RadicleIdentityResolver::new(storage_path);
+    /// let events = resolver.resolve_kel(&did)?;
+    /// ```
+    pub fn resolve_kel(&self, did: &Did) -> Result<Vec<Event>, IdentityError> {
+        let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
+        let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
+            path: id_path.display().to_string(),
+            detail: e.to_string(),
+        })?;
+        self.resolve_kel_events(&repo)
+    }
+
     pub fn resolve_keri_state(&self, did: &Did) -> Result<KeyState, IdentityError> {
         let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
         let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
