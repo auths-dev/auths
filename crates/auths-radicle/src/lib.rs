@@ -26,7 +26,9 @@ pub mod refs;
 pub mod storage;
 pub mod verify;
 
-pub use attestation::{RadAttestation, RadAttestationError, RadCanonicalPayload};
+pub use attestation::{
+    AttestationConversionError, RadAttestation, RadAttestationError, RadCanonicalPayload,
+};
 pub use bridge::{
     BridgeError, EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult,
 };
