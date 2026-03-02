@@ -44,10 +44,10 @@ use auths_storage::git::{
 /// Storage layout presets for different ecosystems.
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
 pub enum LayoutPreset {
-    /// Default Auths layout (refs/auths/*)
+    /// RIP-X layout (refs/rad/id, refs/keys)
     #[default]
     Default,
-    /// Radicle-compatible layout (refs/rad/*)
+    /// Alias for default — explicitly Radicle-compatible
     Radicle,
     /// Gitoxide-compatible layout (refs/auths/id, refs/auths/devices)
     Gitoxide,

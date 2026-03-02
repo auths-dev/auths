@@ -122,47 +122,36 @@ pub struct StorageLayoutConfig {
     pub identity_blob_name: String,
 }
 
-/// Provides generic default layout settings for `did:key` identity and attestations.
+/// Default layout uses the RIP-X (Radicle) convention.
+///
+/// Pre-launch decision: Radicle is the primary integration target, so the
+/// RIP-X layout is the only layout. Legacy `refs/auths/...` paths are removed.
 impl Default for StorageLayoutConfig {
     fn default() -> Self {
-        Self {
-            // Generic default identity ref (stores controller DID + metadata)
-            identity_ref: "refs/auths/identity".to_string(),
-            // Generic default attestation prefix (for device linking)
-            device_attestation_prefix: "refs/auths/devices/nodes".to_string(),
-            // Standard blob names (less likely to need configuration)
-            attestation_blob_name: ATTESTATION_JSON.to_string(), // Use constant
-            identity_blob_name: "identity.json".to_string(),
-        }
-    }
-}
-
-impl StorageLayoutConfig {
-    /// Creates a Radicle-compatible storage layout configuration (RIP-X).
-    ///
-    /// Uses RIP-X conventions for Git reference paths:
-    /// - Identity: `refs/rad/id`
-    /// - Attestations: `refs/keys` (2-blob format under `<nid>/signatures/`)
-    /// - Blob names: `link-attestation.json`, `radicle-identity.json`
-    ///
-    /// Args:
-    /// None — returns a pre-configured layout for Radicle repos.
-    ///
-    /// Usage:
-    /// ```
-    /// use auths_id::storage::layout::StorageLayoutConfig;
-    ///
-    /// let config = StorageLayoutConfig::radicle();
-    /// assert_eq!(config.identity_ref, "refs/rad/id");
-    /// assert_eq!(config.device_attestation_prefix, "refs/keys");
-    /// ```
-    pub fn radicle() -> Self {
         Self {
             identity_ref: "refs/rad/id".to_string(),
             device_attestation_prefix: "refs/keys".to_string(),
             attestation_blob_name: "link-attestation.json".to_string(),
             identity_blob_name: "radicle-identity.json".to_string(),
         }
+    }
+}
+
+impl StorageLayoutConfig {
+    /// Alias for `Default::default()`.
+    ///
+    /// The RIP-X (Radicle) layout is now the default. This method is kept for
+    /// call sites that want to be explicit about Radicle compatibility.
+    ///
+    /// Usage:
+    /// ```
+    /// use auths_id::storage::layout::StorageLayoutConfig;
+    ///
+    /// let config = StorageLayoutConfig::radicle();
+    /// assert_eq!(config, StorageLayoutConfig::default());
+    /// ```
+    pub fn radicle() -> Self {
+        Self::default()
     }
 
     /// Creates a gitoxide-compatible storage layout configuration.
@@ -344,21 +333,17 @@ mod tests {
     // --- Tests for Configurable Layout ---
 
     #[test]
-    fn test_config_defaults() {
+    fn test_config_defaults_are_radicle() {
         let config = StorageLayoutConfig::default();
-        assert_eq!(config.identity_ref, "refs/auths/identity");
-        assert_eq!(config.device_attestation_prefix, "refs/auths/devices/nodes");
-        assert_eq!(config.attestation_blob_name, "attestation.json");
-        assert_eq!(config.identity_blob_name, "identity.json");
-    }
-
-    #[test]
-    fn test_config_radicle() {
-        let config = StorageLayoutConfig::radicle();
         assert_eq!(config.identity_ref, "refs/rad/id");
         assert_eq!(config.device_attestation_prefix, "refs/keys");
         assert_eq!(config.attestation_blob_name, "link-attestation.json");
         assert_eq!(config.identity_blob_name, "radicle-identity.json");
+    }
+
+    #[test]
+    fn test_radicle_is_default() {
+        assert_eq!(StorageLayoutConfig::radicle(), StorageLayoutConfig::default());
     }
 
     #[test]
@@ -373,13 +358,13 @@ mod tests {
     #[test]
     fn test_identity_ref_from_config() {
         let config = StorageLayoutConfig::default();
-        assert_eq!(identity_ref(&config), "refs/auths/identity");
+        assert_eq!(identity_ref(&config), "refs/rad/id");
 
         let custom_config = StorageLayoutConfig {
-            identity_ref: "rad/id".to_string(),
+            identity_ref: "refs/custom/id".to_string(),
             ..Default::default()
         };
-        assert_eq!(identity_ref(&custom_config), "rad/id");
+        assert_eq!(identity_ref(&custom_config), "refs/custom/id");
     }
 
     #[test]
@@ -388,39 +373,21 @@ mod tests {
         let expected_sanitized_suffix = "did_key_zExampleDeviceDID_With_Special_Chars_/signatures";
 
         let config = StorageLayoutConfig::default();
-        let expected_default_ref = format!(
+        let expected_ref = format!(
             "{}/{}",
             config.device_attestation_prefix, expected_sanitized_suffix
         );
+        assert_eq!(attestation_ref_for_device(&config, &did), expected_ref);
         assert_eq!(
-            attestation_ref_for_device(&config, &did),
-            expected_default_ref
-        );
-
-        let rad_config = StorageLayoutConfig::radicle();
-        let expected_rad_ref = format!(
-            "{}/{}",
-            rad_config.device_attestation_prefix, expected_sanitized_suffix
-        );
-        assert_eq!(
-            attestation_ref_for_device(&rad_config, &did),
-            expected_rad_ref
+            expected_ref,
+            format!("refs/keys/{expected_sanitized_suffix}")
         );
     }
 
     #[test]
     fn test_default_attestation_prefixes() {
         let config = StorageLayoutConfig::default();
-        assert_eq!(
-            default_attestation_prefixes(&config),
-            vec!["refs/auths/devices/nodes"]
-        );
-
-        let rad_config = StorageLayoutConfig::radicle();
-        assert_eq!(
-            default_attestation_prefixes(&rad_config),
-            vec!["refs/keys"]
-        );
+        assert_eq!(default_attestation_prefixes(&config), vec!["refs/keys"]);
     }
 
     // --- Tests for KERI Layout ---

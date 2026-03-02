@@ -35,14 +35,6 @@ AUTHS_HOME="$DEMO_DIR/.auths"
 RAD_NODE1_HOME="$DEMO_DIR/rad-node-1"
 RAD_NODE2_HOME="$DEMO_DIR/rad-node-2"
 
-# RIP-X layout args (needed for all commands except `id create --preset`)
-LAYOUT_ARGS=(
-    --identity-ref    refs/rad/id
-    --identity-blob   radicle-identity.json
-    --attestation-prefix refs/keys
-    --attestation-blob   link-attestation.json
-)
-
 # ── Headless environment ──────────────────────────────────────────────────────
 export AUTHS_KEYCHAIN_BACKEND=file
 export AUTHS_KEYCHAIN_FILE="$DEMO_DIR/keys.enc"
@@ -167,6 +159,10 @@ phase_start "Phase 1: Set up two Radicle nodes"
 NODE1_SEED_HEX=$(openssl rand -hex 32)
 NODE2_SEED_HEX=$(openssl rand -hex 32)
 
+# TEST-ONLY: Write seed bytes to disk so `auths key import --seed-file` can
+# read them. In production, `rad auth` will pass the seed directly to the
+# auths SDK without touching the filesystem. This is the only place where
+# seed material hits disk, and the temp directory is cleaned up on exit.
 NODE1_SEED="$DEMO_DIR/node1.seed"
 NODE2_SEED="$DEMO_DIR/node2.seed"
 echo -n "$NODE1_SEED_HEX" | xxd -r -p > "$NODE1_SEED"
@@ -214,9 +210,8 @@ cat > "$DEMO_DIR/metadata.json" <<'METAJSON'
 }
 METAJSON
 
-info "Creating identity with Radicle preset..."
+info "Creating identity (RIP-X layout is the default)..."
 CREATE_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" id create \
-    --preset radicle \
     --metadata-file "$DEMO_DIR/metadata.json" \
     --local-key-alias identity-key \
     2>&1) || true
@@ -225,7 +220,7 @@ echo "$CREATE_OUTPUT" | sed 's/^/    /'
 # Extract Controller DID from create output, fall back to id show
 CONTROLLER_DID=$(echo "$CREATE_OUTPUT" | grep 'Controller DID:' | head -1 | awk -F': ' '{print $NF}' | tr -d '[:space:]')
 if [ -z "$CONTROLLER_DID" ]; then
-    ID_SHOW_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" id "${LAYOUT_ARGS[@]}" show 2>&1 || true)
+    ID_SHOW_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" id show 2>&1 || true)
     CONTROLLER_DID=$(echo "$ID_SHOW_OUTPUT" | grep 'Controller DID' | head -1 | awk -F': ' '{print $NF}' | tr -d '[:space:]')
 fi
 
@@ -248,7 +243,7 @@ IMPORT1_OUTPUT=$("$AUTHS_BIN" key import \
 echo "$IMPORT1_OUTPUT" | sed 's/^/    /'
 
 info "Linking node 1 as a device..."
-LINK1_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" link \
+LINK1_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device link \
     --identity-key-alias identity-key \
     --device-key-alias node1-key \
     --device-did "$NODE1_DID" \
@@ -257,7 +252,7 @@ LINK1_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" link
 echo "$LINK1_OUTPUT" | sed 's/^/    /'
 
 # Verify device 1 appears in the list
-DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" list 2>/dev/null || true)
+DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list 2>/dev/null || true)
 assert_contains "device list contains node 1 DID" "$DEVICE_LIST" "$NODE1_DID"
 
 phase_pass
@@ -276,7 +271,7 @@ IMPORT2_OUTPUT=$("$AUTHS_BIN" key import \
 echo "$IMPORT2_OUTPUT" | sed 's/^/    /'
 
 info "Linking node 2 as a device..."
-LINK2_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" link \
+LINK2_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device link \
     --identity-key-alias identity-key \
     --device-key-alias node2-key \
     --device-did "$NODE2_DID" \
@@ -286,7 +281,7 @@ LINK2_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" link
 echo "$LINK2_OUTPUT" | sed 's/^/    /'
 
 # Verify both devices appear
-DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" list 2>/dev/null || true)
+DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list 2>/dev/null || true)
 assert_contains "device list contains node 1" "$DEVICE_LIST" "$NODE1_DID"
 assert_contains "device list contains node 2" "$DEVICE_LIST" "$NODE2_DID"
 
@@ -331,7 +326,7 @@ phase_pass
 # ══════════════════════════════════════════════════════════════════════════════
 phase_start "Phase 6: Verify both devices are authorized"
 
-DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" list 2>/dev/null || true)
+DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list 2>/dev/null || true)
 
 info "Device list output:"
 echo "$DEVICE_LIST" | sed 's/^/    /'
@@ -346,9 +341,26 @@ assert_ok "exactly 2 devices listed" test "$DEVICE_COUNT" -eq 2
 phase_pass
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Phase 6b — Verify identity resolution
+#  Phase 6b — Verify RIP-X ref paths
 # ══════════════════════════════════════════════════════════════════════════════
-phase_start "Phase 6b: Verify identity resolution"
+phase_start "Phase 6b: Verify RIP-X ref paths"
+
+info "Checking identity ref at refs/rad/id..."
+ID_REF_EXISTS=$(git -C "$AUTHS_HOME" show-ref refs/rad/id 2>/dev/null || true)
+assert_ok "refs/rad/id exists" test -n "$ID_REF_EXISTS"
+
+info "Checking attestation refs under refs/keys/..."
+# Sanitized NID format: did_key_z6Mk... (colons replaced with underscores)
+NODE1_REF_NID=$(echo "$NODE1_DID" | sed 's/[^a-zA-Z0-9]/_/g')
+NODE2_REF_NID=$(echo "$NODE2_DID" | sed 's/[^a-zA-Z0-9]/_/g')
+
+NODE1_SIG_REF="refs/keys/${NODE1_REF_NID}/signatures"
+NODE2_SIG_REF="refs/keys/${NODE2_REF_NID}/signatures"
+
+ALL_REFS=$(git -C "$AUTHS_HOME" show-ref 2>/dev/null || true)
+
+assert_contains "node 1 attestation refs exist" "$ALL_REFS" "$NODE1_SIG_REF"
+assert_contains "node 2 attestation refs exist" "$ALL_REFS" "$NODE2_SIG_REF"
 
 info "Resolving device 1 DID to controller..."
 RESOLVED_DID_1=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE1_DID" 2>/dev/null | tr -d '[:space:]')
@@ -519,7 +531,7 @@ fi
 phase_start "Phase 8: Revoke device 2"
 
 info "Revoking node 2..."
-REVOKE_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" revoke \
+REVOKE_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device revoke \
     --device-did "$NODE2_DID" \
     --identity-key-alias identity-key \
     --note "E2E revocation test" \
@@ -527,12 +539,12 @@ REVOKE_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" rev
 echo "$REVOKE_OUTPUT" | sed 's/^/    /'
 
 # Without --include-revoked, node 2 should not appear
-ACTIVE_DEVICES=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" list 2>/dev/null || true)
+ACTIVE_DEVICES=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list 2>/dev/null || true)
 assert_contains     "node 1 still active"            "$ACTIVE_DEVICES" "$NODE1_DID"
 assert_not_contains "node 2 not in active list"      "$ACTIVE_DEVICES" "$NODE2_DID"
 
 # With --include-revoked, node 2 should appear as revoked
-ALL_DEVICES=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device "${LAYOUT_ARGS[@]}" list --include-revoked 2>/dev/null || true)
+ALL_DEVICES=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list --include-revoked 2>/dev/null || true)
 assert_contains "node 2 shows as revoked" "$ALL_DEVICES" "$NODE2_DID"
 
 info "All-devices list (including revoked):"

@@ -3,15 +3,14 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-echo "--- SCENARIO 2: Testing Custom (Radicle-like) Layout ---"
+echo "--- SCENARIO 2: Testing RIP-X Layout (Default) ---"
 echo "Starting Test: $(date)"
 echo "======================================================"
 
 # --- Configuration ---
 TEST_DIR_RADICLE="test_repo_radicle"
-# Specify repo path directly, auths should use it as is
 REPO_PATH_RADICLE="$TEST_DIR_RADICLE"
-GIT_DIR_RADICLE="$REPO_PATH_RADICLE/.git" # Path to .git dir
+GIT_DIR_RADICLE="$REPO_PATH_RADICLE/.git"
 ID_ALIAS_RAD="rad_id_key"
 DEVICE_ALIAS_RAD="rad_dev1_key"
 PASSPHRASE_ID_RAD="pass_rad_id_123"
@@ -19,38 +18,32 @@ PASSPHRASE_DEV_RAD="pass_rad_dev_456"
 METADATA_FILE_RAD="metadata_radicle.json"
 DEVICE_SEED_FILE_RAD="device1_radicle.seed"
 
-# Custom Layout Args (matching RIP 5 examples/conventions)
-# Using a qualified ref name under refs/ for better tool compatibility
+# RIP-X layout is the default — no override flags needed
 IDENTITY_REF="refs/rad/id"
-IDENTITY_BLOB="radicle-identity.json" # Custom identity blob name
+IDENTITY_BLOB="radicle-identity.json"
 ATTESTATION_PREFIX="refs/keys"
-ATTESTATION_BLOB="link-attestation.json" # Custom attestation blob name
-# Corrected argument names: --identity-blob, --attestation-blob
-LAYOUT_ARGS="--identity-ref $IDENTITY_REF --identity-blob $IDENTITY_BLOB --attestation-prefix $ATTESTATION_PREFIX --attestation-blob $ATTESTATION_BLOB"
+ATTESTATION_BLOB="link-attestation.json"
 
 # Ensure we handle potential CR characters (\r) from windowsy output
 CR=$(printf '\r')
 
 # --- Cleanup Function ---
 cleanup() {
-  echo "" # Newline before cleanup
+  echo ""
   echo "--- Cleaning up Scenario 2 ---"
-  # Use || true to ignore errors if alias/files don't exist
   auths key delete --alias "$ID_ALIAS_RAD" || true
   auths key delete --alias "$DEVICE_ALIAS_RAD" || true
   rm -rf "$TEST_DIR_RADICLE"
   rm -f "$METADATA_FILE_RAD" "$DEVICE_SEED_FILE_RAD"
   echo "Cleanup complete."
 }
-# Execute cleanup on exit or interruption signals
 trap cleanup EXIT HUP INT QUIT TERM
 
 # --- Setup ---
 echo ""
 echo "--- Setup ---"
 rm -rf "$TEST_DIR_RADICLE"
-mkdir "$TEST_DIR_RADICLE" # Create the directory that will become the repo
-# Create sample metadata file (mimicking xyz.radicle.agent structure, NO comments)
+mkdir "$TEST_DIR_RADICLE"
 echo '{
   "xyz.radicle.agent": {
     "alias": "rad_tester",
@@ -60,17 +53,13 @@ echo '{
      "name": "Radicle Test User"
   }
 }' > "$METADATA_FILE_RAD"
-# Create sample 32-byte seed file
 head -c 32 /dev/urandom > "$DEVICE_SEED_FILE_RAD"
 echo "Setup complete."
 
 # --- Test Initialization ---
 echo ""
-echo "--- Testing: id init-did (Custom Layout) ---"
-# Pass layout args directly. Use --repo to specify the exact directory.
-# Feed passphrase via stdin
+echo "--- Testing: id init-did (Default/RIP-X Layout) ---"
 echo "$PASSPHRASE_ID_RAD" | auths --repo "$REPO_PATH_RADICLE" id init-did \
-  $LAYOUT_ARGS \
   --metadata-file "$METADATA_FILE_RAD" \
   --local-key-alias "$ID_ALIAS_RAD"
 
@@ -80,25 +69,21 @@ echo "--- Verifying Initialization ---"
 echo "[Verifying] Listing keys..."
 auths key list | grep "$ID_ALIAS_RAD"
 echo "[Verifying] Showing identity info..."
-# Use --repo and LAYOUT_ARGS for show command (ignore KEL errors)
-CONTROLLER_DID_RAD=$(auths --repo "$REPO_PATH_RADICLE" $LAYOUT_ARGS id show 2>/dev/null | grep 'Controller DID:' | awk -F': ' '{print $2}')
+CONTROLLER_DID_RAD=$(auths --repo "$REPO_PATH_RADICLE" id show 2>/dev/null | grep 'Controller DID:' | awk -F': ' '{print $2}')
 echo "[Verification] Controller DID found: [$CONTROLLER_DID_RAD]"
-auths --repo "$REPO_PATH_RADICLE" $LAYOUT_ARGS id show 2>/dev/null | grep 'rad_tester'
+auths --repo "$REPO_PATH_RADICLE" id show 2>/dev/null | grep 'rad_tester'
 echo "[Verifying] Checking Git repository structure..."
-ls "$GIT_DIR_RADICLE" # Check .git exists directly in the repo path
-# Check if the *custom* identity ref exists (use rev-parse --verify)
+ls "$GIT_DIR_RADICLE"
 echo "[Verifying] git rev-parse --verify '$IDENTITY_REF'..."
 git --git-dir="$GIT_DIR_RADICLE" rev-parse --verify "$IDENTITY_REF" > /dev/null
-echo "[Verification] Custom identity ref '$IDENTITY_REF' found and verified."
-# Check if the *custom* blob name exists in the commit
+echo "[Verification] Identity ref '$IDENTITY_REF' found and verified."
 COMMIT_HASH_RAD=$(git --git-dir="$GIT_DIR_RADICLE" rev-parse "$IDENTITY_REF")
 git --git-dir="$GIT_DIR_RADICLE" ls-tree "$COMMIT_HASH_RAD" | grep "$IDENTITY_BLOB"
-echo "[Verification] Custom identity blob '$IDENTITY_BLOB' found."
+echo "[Verification] Identity blob '$IDENTITY_BLOB' found."
 
 # --- Test Key Import ---
 echo ""
 echo "--- Testing: key import ---"
-# Feed passphrase via stdin
 echo "$PASSPHRASE_DEV_RAD" | auths key import \
   --alias "$DEVICE_ALIAS_RAD" \
   --seed-file "$DEVICE_SEED_FILE_RAD" \
@@ -113,24 +98,19 @@ auths key list | grep "$DEVICE_ALIAS_RAD"
 
 # --- Test Device Link ---
 echo ""
-echo "--- Testing: device link (Custom Layout) ---"
-# Derive device DID using shell expansion
+echo "--- Testing: device link (Default/RIP-X Layout) ---"
 DERIVE_DID_OUTPUT_RAW=$(auths util derive-did --seed-hex $(xxd -p -c 256 "$DEVICE_SEED_FILE_RAD"))
 DERIVE_DID_OUTPUT=${DERIVE_DID_OUTPUT_RAW%$CR}
 DEVICE_DID_RAD=${DERIVE_DID_OUTPUT##*DID: }
-DEVICE_DID_RAD=$(echo "$DEVICE_DID_RAD" | awk '{$1=$1};1') # Trim
+DEVICE_DID_RAD=$(echo "$DEVICE_DID_RAD" | awk '{$1=$1};1')
 echo "Debug: Device DID extracted: [$DEVICE_DID_RAD]"
-# Sanitize using shell parameter expansion
 shopt -s extglob
 SANITIZED_DID_RAD=${DEVICE_DID_RAD//[^[:alnum:]]/_}
 shopt -u extglob
 echo "Debug: Sanitized DID for path: [$SANITIZED_DID_RAD]"
 if [[ ! "$SANITIZED_DID_RAD" == did_key_z* ]]; then echo "ERROR: Sanitization failed!"; exit 1; fi
 
-# Use --repo and LAYOUT_ARGS for device link
-# Corrected Passphrase Order: Device, Identity, Device
 echo -e "$PASSPHRASE_DEV_RAD\n$PASSPHRASE_ID_RAD\n$PASSPHRASE_DEV_RAD" | auths --repo "$REPO_PATH_RADICLE" device link \
-  $LAYOUT_ARGS \
   --identity-key-alias "$ID_ALIAS_RAD" \
   --device-key-alias "$DEVICE_ALIAS_RAD" \
   --device-did "$DEVICE_DID_RAD" \
@@ -140,28 +120,22 @@ echo -e "$PASSPHRASE_DEV_RAD\n$PASSPHRASE_ID_RAD\n$PASSPHRASE_DEV_RAD" | auths -
 echo ""
 echo "--- Verifying Device Link ---"
 echo "[Verifying] Showing devices..."
-# Use --repo and LAYOUT_ARGS for show-devices (ignore KEL errors)
-auths --repo "$REPO_PATH_RADICLE" $LAYOUT_ARGS id show-devices 2>/dev/null | grep "$DEVICE_DID_RAD" | grep "active"
-auths --repo "$REPO_PATH_RADICLE" $LAYOUT_ARGS id show-devices 2>/dev/null | grep "Radicle layout test device"
+auths --repo "$REPO_PATH_RADICLE" id show-devices 2>/dev/null | grep "$DEVICE_DID_RAD" | grep "active"
+auths --repo "$REPO_PATH_RADICLE" id show-devices 2>/dev/null | grep "Radicle layout test device"
 echo "[Verifying] Checking Git repository structure..."
-# Check if the *custom* attestation ref exists
 DEVICE_REF_PATH_RAD="${ATTESTATION_PREFIX}/${SANITIZED_DID_RAD}/signatures"
 echo "Debug: Calculated Device Ref Path: [$DEVICE_REF_PATH_RAD]"
-# Corrected verification: Use rev-parse --verify
 echo "[Verifying] git rev-parse --verify '$DEVICE_REF_PATH_RAD'..."
 git --git-dir="$GIT_DIR_RADICLE" rev-parse --verify "$DEVICE_REF_PATH_RAD" > /dev/null
-echo "[Verification] Custom device ref '$DEVICE_REF_PATH_RAD' found and verified."
-# Check if the *custom* blob name exists in the commit
+echo "[Verification] Device ref '$DEVICE_REF_PATH_RAD' found and verified."
 DEV_COMMIT_HASH_RAD=$(git --git-dir="$GIT_DIR_RADICLE" rev-parse "$DEVICE_REF_PATH_RAD")
 git --git-dir="$GIT_DIR_RADICLE" ls-tree "$DEV_COMMIT_HASH_RAD" | grep "$ATTESTATION_BLOB"
-echo "[Verification] Custom attestation blob '$ATTESTATION_BLOB' found."
+echo "[Verification] Attestation blob '$ATTESTATION_BLOB' found."
 
 # --- Test Device Revoke ---
 echo ""
-echo "--- Testing: device revoke (Custom Layout) ---"
-# Feed identity passphrase via stdin; use LAYOUT_ARGS
+echo "--- Testing: device revoke (Default/RIP-X Layout) ---"
 echo "$PASSPHRASE_ID_RAD" | auths --repo "$REPO_PATH_RADICLE" device revoke \
-    $LAYOUT_ARGS \
     --identity-key-alias "$ID_ALIAS_RAD" \
     --device-did "$DEVICE_DID_RAD" \
     --note "Revoking radicle test device"
@@ -170,17 +144,15 @@ echo "$PASSPHRASE_ID_RAD" | auths --repo "$REPO_PATH_RADICLE" device revoke \
 echo ""
 echo "--- Verifying Device Revoke ---"
 echo "[Verifying] Showing devices (should be empty)..."
-# Use --repo and LAYOUT_ARGS; Ignore KEL errors
-if auths --repo "$REPO_PATH_RADICLE" $LAYOUT_ARGS id show-devices 2>/dev/null | grep "$DEVICE_DID_RAD"; then
+if auths --repo "$REPO_PATH_RADICLE" id show-devices 2>/dev/null | grep "$DEVICE_DID_RAD"; then
     echo "ERROR: Revoked device still listed without --include-revoked!"
     exit 1
 else
     echo "OK: Revoked device not listed by default."
 fi
 echo "[Verifying] Showing devices (including revoked)..."
-# Use --repo and LAYOUT_ARGS; Ignore KEL errors
-auths --repo "$REPO_PATH_RADICLE" $LAYOUT_ARGS id show-devices --include-revoked 2>/dev/null | grep "$DEVICE_DID_RAD" | grep "revoked"
-auths --repo "$REPO_PATH_RADICLE" $LAYOUT_ARGS id show-devices --include-revoked 2>/dev/null | grep "Revoking radicle test device"
+auths --repo "$REPO_PATH_RADICLE" id show-devices --include-revoked 2>/dev/null | grep "$DEVICE_DID_RAD" | grep "revoked"
+auths --repo "$REPO_PATH_RADICLE" id show-devices --include-revoked 2>/dev/null | grep "Revoking radicle test device"
 echo "[Verifying] git ref '$DEVICE_REF_PATH_RAD' still exists..."
 git --git-dir="$GIT_DIR_RADICLE" rev-parse --verify "$DEVICE_REF_PATH_RAD" > /dev/null
 echo "[Verification] Device ref '$DEVICE_REF_PATH_RAD' still found and verified after revoke."
