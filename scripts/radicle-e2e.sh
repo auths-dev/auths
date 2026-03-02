@@ -346,6 +346,41 @@ assert_ok "exactly 2 devices listed" test "$DEVICE_COUNT" -eq 2
 phase_pass
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  Phase 6b — Verify identity resolution
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 6b: Verify identity resolution"
+
+info "Resolving device 1 DID to controller..."
+RESOLVED_DID_1=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE1_DID" 2>/dev/null | tr -d '[:space:]')
+if [ "$RESOLVED_DID_1" = "$CONTROLLER_DID" ]; then
+    echo -e "  ${GREEN}✓${NC} Device 1 resolves to controller DID"
+else
+    echo -e "  ${RED}✗${NC} Device 1 resolved to '$RESOLVED_DID_1', expected '$CONTROLLER_DID'"
+    phase_fail "device 1 resolution mismatch"
+    exit 1
+fi
+
+info "Resolving device 2 DID to controller..."
+RESOLVED_DID_2=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE2_DID" 2>/dev/null | tr -d '[:space:]')
+if [ "$RESOLVED_DID_2" = "$CONTROLLER_DID" ]; then
+    echo -e "  ${GREEN}✓${NC} Device 2 resolves to controller DID"
+else
+    echo -e "  ${RED}✗${NC} Device 2 resolved to '$RESOLVED_DID_2', expected '$CONTROLLER_DID'"
+    phase_fail "device 2 resolution mismatch"
+    exit 1
+fi
+
+if [ "$RESOLVED_DID_1" = "$RESOLVED_DID_2" ]; then
+    echo -e "  ${GREEN}✓${NC} Both devices resolve to the same controller identity"
+else
+    echo -e "  ${RED}✗${NC} Devices resolved to different identities"
+    phase_fail "identity mismatch between devices"
+    exit 1
+fi
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  Phase 7 — Push patches from both devices
 # ══════════════════════════════════════════════════════════════════════════════
 phase_start "Phase 7: Push patches from both devices"
