@@ -47,6 +47,7 @@ impl RadCanonicalPayload {
 
 /// Errors from RIP-X attestation operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum RadAttestationError {
     #[error("device signature verification failed")]
     DeviceSignatureFailed,

@@ -13,6 +13,7 @@ use auths_id::storage::layout::StorageLayoutConfig;
 
 /// Errors from identity resolution.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum IdentityError {
     #[error("repository error at {path}: {detail}")]
     Repository { path: String, detail: String },

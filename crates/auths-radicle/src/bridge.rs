@@ -25,6 +25,7 @@ use thiserror::Error;
 /// - `Warn` -> Allow but flag for review (observe mode)
 /// - `Quarantine` -> Insufficient local state to decide (fetch more data)
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum VerifyResult {
     /// Signer is authorized by policy.
     Verified { reason: String },
@@ -74,6 +75,7 @@ impl VerifyResult {
 ///
 /// Controls how the bridge handles rejection and missing state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum EnforcementMode {
     /// Detection-and-flagging only. Rejections are downgraded to warnings.
     /// The bridge never blocks updates.
@@ -125,6 +127,7 @@ pub struct VerifyRequest<'a> {
 
 /// Error type for bridge operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum BridgeError {
     /// Identity repo missing or unreadable. Actionable: "fetch identity repo X".
     #[error("failed to load identity: {0}")]
@@ -222,6 +225,7 @@ pub trait RadicleAuthsBridge: Send + Sync {
 /// `Did::Keri` signers — `Did::Key` verification results are pre-computed
 /// by Heartwood and passed through.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum SignerInput {
     /// `Did::Key` signer already verified by Heartwood's Ed25519 delegate check.
     PreVerified(VerifyResult),
