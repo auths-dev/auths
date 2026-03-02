@@ -32,6 +32,8 @@ pub mod context;
 pub mod device;
 /// Domain error types for all SDK operations.
 pub mod error;
+/// Key import and management operations.
+pub mod keys;
 /// Device pairing orchestration over ephemeral ECDH sessions.
 pub mod pairing;
 /// Platform identity claim creation and verification.

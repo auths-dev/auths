@@ -1,17 +1,11 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
-use der::{
-    Encode,
-    asn1::{ObjectIdentifier, OctetStringRef},
-};
-use pkcs8::{AlgorithmIdentifierRef, PrivateKeyInfo};
 use serde::Serialize;
 use std::ffi::CString;
 use std::fs;
 use std::path::PathBuf;
 
 use auths_core::api::ffi;
-use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::error::AgentError;
 use auths_core::storage::encrypted_file::EncryptedFileStorage;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage, get_platform_keychain};
@@ -19,10 +13,6 @@ use zeroize::{Zeroize, Zeroizing};
 
 use crate::core::types::ExportFormat;
 use crate::ux::format::{JsonResponse, is_json_mode};
-
-// Standard Object Identifier (OID) for the Ed25519 signature algorithm (RFC 8410),
-// required for standards-compliant structures like PKCS#8 PrivateKeyInfo.
-const OID_ED25519: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
 
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -300,23 +290,6 @@ fn key_delete(alias: &str) -> Result<()> {
 
 /// Imports an Ed25519 key from a 32-byte seed file, encrypts, and stores it.
 fn key_import(alias: &str, seed_file_path: &PathBuf, controller_did: &IdentityDID) -> Result<()> {
-    println!("🔑 Importing key...");
-    println!("   Local Keychain Alias: {}", alias);
-    println!("   Seed File:           {:?}", seed_file_path);
-    println!("   Controller DID:      {}", controller_did);
-
-    // Input validation
-    if alias.trim().is_empty() {
-        return Err(anyhow!("Key alias cannot be empty."));
-    }
-    if !controller_did.as_str().starts_with("did:") {
-        return Err(anyhow!("Invalid Controller DID format: {}", controller_did));
-    }
-
-    // Read and validate seed file
-    if !seed_file_path.exists() {
-        return Err(anyhow!("Seed file not found: {:?}", seed_file_path));
-    }
     let seed_bytes = fs::read(seed_file_path)
         .with_context(|| format!("Failed to read seed file: {:?}", seed_file_path))?;
     if seed_bytes.len() != 32 {
@@ -325,60 +298,35 @@ fn key_import(alias: &str, seed_file_path: &PathBuf, controller_did: &IdentityDI
             seed_bytes.len()
         ));
     }
-
-    println!("   Generating standard PKCS#8 v1 DER representation from seed...");
-
-    // Generate PKCS#8 DER from Seed
-    let key_algo = AlgorithmIdentifierRef {
-        oid: OID_ED25519,
-        parameters: None,
-    };
-    let private_key_octet_string_ref = OctetStringRef::new(&seed_bytes)?;
-    let pkcs8_info_to_encode = PrivateKeyInfo {
-        algorithm: key_algo,
-        private_key: private_key_octet_string_ref.as_bytes(),
-        public_key: None,
-    };
-    let pkcs8_bytes = pkcs8_info_to_encode
-        .to_der()
-        .map_err(|e| anyhow!("Failed to encode PKCS#8 structure to DER: {}", e))?;
+    let seed: [u8; 32] = seed_bytes.try_into().expect("validated 32 bytes above");
+    let seed = Zeroizing::new(seed);
 
     let passphrase = if let Ok(env_pass) = std::env::var("AUTHS_PASSPHRASE") {
-        env_pass
+        Zeroizing::new(env_pass)
     } else {
-        rpassword::prompt_password(format!("Enter passphrase to encrypt the key '{}': ", alias))
-            .context("Failed to read passphrase")?
+        Zeroizing::new(
+            rpassword::prompt_password(format!(
+                "Enter passphrase to encrypt the key '{}': ",
+                alias
+            ))
+            .context("Failed to read passphrase")?,
+        )
     };
     if passphrase.is_empty() {
         return Err(anyhow!("Passphrase cannot be empty."));
     }
 
-    // Encrypt Private Key (PKCS#8 bytes)
-    println!("   Encrypting private key...");
-    let encrypted_private_key =
-        encrypt_keypair(&pkcs8_bytes, &passphrase).context("Failed to encrypt private key")?;
-
-    // Store Encrypted Key
     let keychain = get_platform_keychain()?;
+    let result =
+        auths_sdk::keys::import_seed(&seed, &passphrase, alias, controller_did, keychain.as_ref())
+            .with_context(|| format!("Failed to import key '{alias}'"))?;
+
     println!(
-        "   Storing encrypted key in platform Keychain/secure storage ({})",
-        keychain.backend_name()
+        "Imported key '{}' (public key: {})",
+        result.alias,
+        hex::encode(result.public_key)
     );
-    match keychain.store_key(
-        &KeyAlias::new_unchecked(alias),
-        controller_did,
-        &encrypted_private_key,
-    ) {
-        Ok(_) => {
-            println!(
-                "\n✅ Successfully imported and stored key with alias '{}'",
-                alias
-            );
-            println!("   Associated with Controller DID: {}", controller_did);
-            Ok(())
-        }
-        Err(e) => Err(anyhow!("Failed to store imported key: {}", e)),
-    }
+    Ok(())
 }
 
 /// Copies a key from the current (source) keychain to a different destination backend.
