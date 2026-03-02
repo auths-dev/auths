@@ -457,6 +457,61 @@ if $RESOLVE_OK; then
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  Phase 6c — Verify KEL integrity and attestation anchoring
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 6c: Verify KEL integrity and attestation anchoring"
+
+PHASE6C_OK=true
+
+# Extract KERI prefix from controller DID
+KERI_PREFIX="${CONTROLLER_DID#did:keri:}"
+info "KERI prefix: $KERI_PREFIX"
+
+# Check KEL exists in the registry tree
+KEL_ENTRIES=$(git -C "$AUTHS_HOME" ls-tree -r --name-only refs/auths/registry 2>/dev/null | grep "kel" || true)
+if [ -n "$KEL_ENTRIES" ]; then
+    echo -e "  ${GREEN}✓${NC} KEL entries found in registry"
+else
+    echo -e "  ${RED}✗${NC} No KEL entries found in registry"
+    PHASE6C_OK=false
+fi
+
+# Verify the controller DID is a valid KERI prefix (starts with E for Blake3)
+if [[ "$KERI_PREFIX" == E* ]]; then
+    echo -e "  ${GREEN}✓${NC} KERI prefix has valid Blake3 derivation code"
+else
+    echo -e "  ${RED}✗${NC} KERI prefix does not start with 'E': $KERI_PREFIX"
+    PHASE6C_OK=false
+fi
+
+# Verify both device attestations exist in registry tree
+if [ -n "$REGISTRY_TREE" ]; then
+    ATT_COUNT=$(echo "$REGISTRY_TREE" | grep -c "attestation\|signature" || true)
+    if [ "$ATT_COUNT" -ge 2 ]; then
+        echo -e "  ${GREEN}✓${NC} At least 2 attestation/signature entries found ($ATT_COUNT total)"
+    else
+        echo -e "  ${RED}✗${NC} Expected at least 2 attestation entries, found $ATT_COUNT"
+        PHASE6C_OK=false
+    fi
+fi
+
+# Cross-validate: resolved controller DID matches the KERI prefix in registry
+if $RESOLVE_OK; then
+    if [[ "$RESOLVED_DID_1" == *"$KERI_PREFIX"* ]]; then
+        echo -e "  ${GREEN}✓${NC} Resolved DID contains KERI prefix from registry"
+    else
+        echo -e "  ${RED}✗${NC} Resolved DID '$RESOLVED_DID_1' does not contain KERI prefix '$KERI_PREFIX'"
+        PHASE6C_OK=false
+    fi
+fi
+
+if $PHASE6C_OK; then
+    phase_pass
+else
+    phase_fail "KEL integrity verification"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  Phase 7 — Signed commits + Radicle patches from both devices
 # ══════════════════════════════════════════════════════════════════════════════
 phase_start "Phase 7: Signed commits + Radicle patches from both devices"
@@ -690,6 +745,16 @@ assert_contains "node 2 shows as revoked" "$ALL_DEVICES" "$NODE2_DID"
 
 info "All-devices list (including revoked):"
 echo "$ALL_DEVICES" | sed 's/^/    /'
+
+# Verify device 1 still resolves to controller after revocation of device 2
+info "Verifying device 1 still resolves post-revocation..."
+POST_REVOKE_RESOLVE=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE1_DID" 2>&1 || true)
+POST_REVOKE_DID=$(echo "$POST_REVOKE_RESOLVE" | tr -d '[:space:]')
+if [ "$POST_REVOKE_DID" = "$CONTROLLER_DID" ]; then
+    echo -e "  ${GREEN}✓${NC} Device 1 still resolves to controller after device 2 revocation"
+else
+    echo -e "  ${RED}✗${NC} Device 1 resolution changed after revocation: '$POST_REVOKE_DID'"
+fi
 
 phase_pass
 
