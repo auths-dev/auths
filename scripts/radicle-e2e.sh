@@ -341,26 +341,26 @@ assert_ok "exactly 2 devices listed" test "$DEVICE_COUNT" -eq 2
 phase_pass
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Phase 6b — Verify RIP-X ref paths
+#  Phase 6b — Verify storage layout
 # ══════════════════════════════════════════════════════════════════════════════
-phase_start "Phase 6b: Verify RIP-X ref paths"
+phase_start "Phase 6b: Verify storage layout"
 
-info "Checking identity ref at refs/rad/id..."
-ID_REF_EXISTS=$(git -C "$AUTHS_HOME" show-ref refs/rad/id 2>/dev/null || true)
-assert_ok "refs/rad/id exists" test -n "$ID_REF_EXISTS"
+# The CLI stores all state under a single packed ref: refs/auths/registry
+# Identity, attestations, and KEL events are tree paths within that ref.
+info "Checking packed registry ref..."
+REGISTRY_REF_EXISTS=$(git -C "$AUTHS_HOME" show-ref refs/auths/registry 2>/dev/null || true)
+assert_ok "refs/auths/registry exists" test -n "$REGISTRY_REF_EXISTS"
 
-info "Checking attestation refs under refs/keys/..."
-# Sanitized NID format: did_key_z6Mk... (colons replaced with underscores)
-NODE1_REF_NID=$(echo "$NODE1_DID" | sed 's/[^a-zA-Z0-9]/_/g')
-NODE2_REF_NID=$(echo "$NODE2_DID" | sed 's/[^a-zA-Z0-9]/_/g')
+info "Checking device attestation entries in registry tree..."
+# Sanitized DID format: did_key_z6Mk... (non-alphanumeric replaced with underscores)
+NODE1_SANITIZED=$(echo "$NODE1_DID" | sed 's/[^a-zA-Z0-9]/_/g')
+NODE2_SANITIZED=$(echo "$NODE2_DID" | sed 's/[^a-zA-Z0-9]/_/g')
 
-NODE1_SIG_REF="refs/keys/${NODE1_REF_NID}/signatures"
-NODE2_SIG_REF="refs/keys/${NODE2_REF_NID}/signatures"
+# List the full registry tree to find device entries
+REGISTRY_TREE=$(git -C "$AUTHS_HOME" ls-tree -r --name-only refs/auths/registry 2>/dev/null || true)
 
-ALL_REFS=$(git -C "$AUTHS_HOME" show-ref 2>/dev/null || true)
-
-assert_contains "node 1 attestation refs exist" "$ALL_REFS" "$NODE1_SIG_REF"
-assert_contains "node 2 attestation refs exist" "$ALL_REFS" "$NODE2_SIG_REF"
+assert_contains "node 1 device entry in registry" "$REGISTRY_TREE" "$NODE1_SANITIZED"
+assert_contains "node 2 device entry in registry" "$REGISTRY_TREE" "$NODE2_SANITIZED"
 
 info "Resolving device 1 DID to controller..."
 RESOLVED_DID_1=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE1_DID" 2>/dev/null | tr -d '[:space:]')
