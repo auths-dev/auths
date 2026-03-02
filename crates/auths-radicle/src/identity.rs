@@ -8,13 +8,14 @@ use auths_crypto::KeriPublicKey;
 use auths_id::identity::{DidMethod, DidResolver, DidResolverError, ResolvedDid};
 use auths_id::keri::event::Event;
 use auths_id::keri::validate::replay_kel;
-use auths_id::storage::layout::StorageLayoutConfig;
 use git2::{ErrorCode, Repository};
+use radicle_core::Did;
+use radicle_crypto::PublicKey;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use crate::refs;
+use crate::refs::{self, Layout};
 
 /// Errors from identity resolution.
 #[derive(Debug, Error)]
@@ -43,6 +44,9 @@ pub enum IdentityError {
 
     #[error("no current signing keys in key state")]
     NoSigningKeys,
+
+    #[error("invalid DID: {0}")]
+    InvalidDid(#[from] radicle_core::identity::DidError),
 }
 
 /// A Radicle identity document stored at `refs/rad/id`.
@@ -52,7 +56,7 @@ pub enum IdentityError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RadicleIdentityDocument {
     /// List of delegate DIDs (typically `did:key:z6Mk...` format)
-    pub delegates: Vec<String>,
+    pub delegates: Vec<Did>,
     /// Threshold for multi-sig operations
     pub threshold: u32,
     /// Optional payload containing project metadata
@@ -65,10 +69,10 @@ pub struct RadicleIdentityDocument {
 pub struct RadicleIdentity {
     /// The original identity document
     pub document: RadicleIdentityDocument,
-    /// The primary delegate's Ed25519 public key bytes (32 bytes)
-    pub primary_public_key: Vec<u8>,
+    /// The primary delegate's Ed25519 public key
+    pub primary_public_key: PublicKey,
     /// The primary delegate's DID
-    pub primary_did: String,
+    pub primary_did: Did,
 }
 
 /// Resolver for Radicle peer identities.
@@ -79,7 +83,7 @@ pub struct RadicleIdentity {
 pub struct RadicleIdentityResolver {
     repo_path: PathBuf,
     identity_repo_path: Option<PathBuf>,
-    layout: StorageLayoutConfig,
+    layout: Layout,
 }
 
 impl RadicleIdentityResolver {
@@ -90,12 +94,12 @@ impl RadicleIdentityResolver {
         Self {
             repo_path: repo_path.into(),
             identity_repo_path: None,
-            layout: StorageLayoutConfig::radicle(),
+            layout: Layout::radicle(),
         }
     }
 
     /// Creates a resolver with a custom storage layout.
-    pub fn with_layout(repo_path: impl Into<PathBuf>, layout: StorageLayoutConfig) -> Self {
+    pub fn with_layout(repo_path: impl Into<PathBuf>, layout: Layout) -> Self {
         Self {
             repo_path: repo_path.into(),
             identity_repo_path: None,
@@ -122,7 +126,7 @@ impl RadicleIdentityResolver {
             detail: e.to_string(),
         })?;
 
-        let identity_ref = &self.layout.identity_ref;
+        let identity_ref = &self.layout.rad_id_ref;
         let reference =
             repo.find_reference(identity_ref)
                 .map_err(|_| IdentityError::RefNotFound {
@@ -138,7 +142,7 @@ impl RadicleIdentityResolver {
             .tree()
             .map_err(|e| IdentityError::InvalidDocument(format!("get tree: {e}")))?;
 
-        let blob_name = &self.layout.identity_blob_name;
+        let blob_name = &self.layout.identity_blob;
         let entry = tree.get_name(blob_name).ok_or_else(|| {
             IdentityError::InvalidDocument(format!("blob '{blob_name}' not found"))
         })?;
@@ -161,7 +165,7 @@ impl RadicleIdentityResolver {
             .ok_or(IdentityError::NoDelegates)?
             .clone();
 
-        let primary_public_key = resolve_did_key_bytes(&primary_did)?;
+        let primary_public_key = resolve_did_key(&primary_did)?;
 
         Ok(RadicleIdentity {
             document,
@@ -267,30 +271,21 @@ fn read_kel_events(repo: &Repository, path: &Path) -> Result<Vec<Event>, Identit
     Ok(events)
 }
 
+/// Resolves a `Did` to its `PublicKey`.
+pub fn resolve_did_key(did: &Did) -> Result<PublicKey, IdentityError> {
+    did.as_key().copied().ok_or_else(|| {
+        IdentityError::InvalidDidKey(format!("{did}: not a did:key (expected Ed25519)"))
+    })
+}
+
 /// Resolves a `did:key:z...` to its Ed25519 public key bytes.
 ///
 /// Handles the `did:key:z6Mk...` format used by Radicle, where:
 /// - `z` indicates base58btc encoding
 /// - `6Mk` is the Ed25519 multicodec prefix (0xED01)
 pub fn resolve_did_key_bytes(did: &str) -> Result<Vec<u8>, IdentityError> {
-    let prefix = "did:key:z";
-    if !did.starts_with(prefix) {
-        return Err(IdentityError::InvalidDidKey(did.to_string()));
-    }
-
-    let encoded = &did[prefix.len()..];
-    let decoded = bs58::decode(encoded)
-        .into_vec()
-        .map_err(|e| IdentityError::InvalidDidKey(format!("{did}: {e}")))?;
-
-    const ED25519_PREFIX: &[u8] = &[0xED, 0x01];
-    if decoded.len() != 34 || !decoded.starts_with(ED25519_PREFIX) {
-        return Err(IdentityError::InvalidDidKey(format!(
-            "{did}: invalid multicodec (expected Ed25519)"
-        )));
-    }
-
-    Ok(decoded[2..].to_vec())
+    let did: Did = did.parse()?;
+    Ok(resolve_did_key(&did)?.to_vec())
 }
 
 impl DidResolver for RadicleIdentityResolver {
@@ -315,8 +310,8 @@ impl DidResolver for RadicleIdentityResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_id::identity::ed25519_to_did_key;
-    use auths_id::keri::{create_keri_identity, rotate_keys};
+    
+    
     use git2::Signature;
     use tempfile::TempDir;
 
@@ -325,17 +320,18 @@ mod tests {
         let repo = Repository::init(temp_dir.path()).unwrap();
 
         let doc = RadicleIdentityDocument {
-            delegates: delegates.iter().map(|s| s.to_string()).collect(),
+            delegates: delegates.iter().map(|s| s.parse().unwrap()).collect(),
             threshold,
             payload: serde_json::json!({"name": "test-project"}),
         };
         let content = serde_json::to_string_pretty(&doc).unwrap();
         let blob_oid = repo.blob(content.as_bytes()).unwrap();
 
+        let layout = Layout::radicle();
         let commit_oid = {
             let mut tree_builder = repo.treebuilder(None).unwrap();
             tree_builder
-                .insert("radicle-identity.json", blob_oid, 0o100644)
+                .insert(&layout.identity_blob, blob_oid, 0o100644)
                 .unwrap();
             let tree_oid = tree_builder.write().unwrap();
             drop(tree_builder);
@@ -347,7 +343,7 @@ mod tests {
         };
 
         repo.reference(
-            "refs/rad/id",
+            &layout.rad_id_ref,
             commit_oid,
             true,
             "Create Radicle identity ref",
@@ -361,7 +357,7 @@ mod tests {
     fn create_keri_repo() -> (TempDir, auths_id::keri::InceptionResult) {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
-        let result = create_keri_identity(&repo, None).unwrap();
+        let result = auths_id::keri::create_keri_identity(&repo, None).unwrap();
 
         // Copy from refs/did/keri/<prefix>/kel to refs/keri/kel (Radicle layout)
         let src_ref = format!("refs/did/keri/{}/kel", result.prefix.as_str());
@@ -383,8 +379,8 @@ mod tests {
 
         assert_eq!(identity.document.delegates.len(), 1);
         assert_eq!(identity.document.threshold, 1);
-        assert_eq!(identity.primary_did, valid_did);
-        assert_eq!(identity.primary_public_key.len(), 32);
+        assert_eq!(identity.primary_did.to_string(), valid_did);
+        assert_eq!(identity.primary_public_key.as_ref().len(), 32);
     }
 
     #[test]
@@ -417,8 +413,8 @@ mod tests {
         ));
 
         // Verify round-trip: resolved key → did:key matches ed25519_to_did_key
-        let expected_did_key = ed25519_to_did_key(&inception.current_public_key);
-        let actual_did_key = ed25519_to_did_key(&resolved.public_key);
+        let expected_did_key = auths_id::identity::ed25519_to_did_key(&inception.current_public_key);
+        let actual_did_key = auths_id::identity::ed25519_to_did_key(&resolved.public_key);
         assert_eq!(actual_did_key, expected_did_key);
     }
 
@@ -428,7 +424,7 @@ mod tests {
         let did = inception.did();
         let repo = Repository::open(dir.path()).unwrap();
 
-        let rotation = rotate_keys(
+        let rotation = auths_id::keri::rotate_keys(
             &repo,
             &inception.prefix,
             &inception.next_keypair_pkcs8,

@@ -1,59 +1,61 @@
+use std::str::FromStr;
 use chrono::Utc;
 
-use auths_id::identity::ed25519_to_did_key;
 use auths_id::policy::PolicyBuilder;
 use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, VerifyRequest};
 use auths_radicle::verify::DefaultBridge;
 use auths_verifier::core::Capability;
+use radicle_core::{Did, RepoId};
+use radicle_crypto::PublicKey;
 
 use super::helpers::{MockStorage, make_key_state, make_test_attestation};
 
 #[test]
 fn authorized_device_verified() {
     let mut storage = MockStorage::new();
-    let identity_did = "did:keri:EMultiDevice";
-    let repo_id = "test-project";
+    let identity_did: Did = "did:keri:EMultiDevice".parse().unwrap();
+    let repo_id = RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap();
 
-    let key_a: [u8; 32] = [10; 32];
-    let key_b: [u8; 32] = [20; 32];
-    let did_a = ed25519_to_did_key(&key_a);
-    let did_b = ed25519_to_did_key(&key_b);
+    let key_a = PublicKey::from([10; 32]);
+    let key_b = PublicKey::from([20; 32]);
+    let did_a = Did::from(key_a);
+    let did_b = Did::from(key_b);
 
     storage
         .key_states
-        .insert(identity_did.to_string(), make_key_state("EMultiDevice", 1));
+        .insert(identity_did.clone(), make_key_state("EMultiDevice", 1));
 
     storage.attestations.insert(
-        (did_a.clone(), identity_did.to_string()),
+        (did_a.clone(), identity_did.clone()),
         make_test_attestation(
-            identity_did,
+            &identity_did,
             &did_a,
-            repo_id,
+            &repo_id,
             false,
             vec![Capability::sign_commit()],
         ),
     );
     storage.attestations.insert(
-        (did_b.clone(), identity_did.to_string()),
+        (did_b.clone(), identity_did.clone()),
         make_test_attestation(
-            identity_did,
+            &identity_did,
             &did_b,
-            repo_id,
+            &repo_id,
             false,
             vec![Capability::sign_commit()],
         ),
     );
     storage.device_to_identity.insert(
-        (did_a.clone(), repo_id.to_string()),
-        identity_did.to_string(),
+        (did_a.clone(), repo_id),
+        identity_did.clone(),
     );
     storage.device_to_identity.insert(
-        (did_b.clone(), repo_id.to_string()),
-        identity_did.to_string(),
+        (did_b.clone(), repo_id),
+        identity_did.clone(),
     );
     storage
         .identity_tips
-        .insert(identity_did.to_string(), [0xAA; 20]);
+        .insert(identity_did.clone(), [0xAA; 20]);
 
     let policy = PolicyBuilder::new().not_revoked().not_expired().build();
     let bridge = DefaultBridge::new(storage, policy);
@@ -61,7 +63,7 @@ fn authorized_device_verified() {
     for key in [key_a, key_b] {
         let request = VerifyRequest {
             signer_key: &key,
-            repo_id,
+            repo_id: &repo_id,
             now: Utc::now(),
             mode: EnforcementMode::Enforce,
             known_remote_tip: None,
@@ -76,12 +78,13 @@ fn authorized_device_verified() {
 #[test]
 fn unauthorized_device_rejected() {
     let storage = MockStorage::new();
-    let key: [u8; 32] = [99; 32];
+    let key = PublicKey::from([99; 32]);
+    let repo_id = RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap();
 
     let bridge = DefaultBridge::with_storage(storage);
     let request = VerifyRequest {
         signer_key: &key,
-        repo_id: "test-project",
+        repo_id: &repo_id,
         now: Utc::now(),
         mode: EnforcementMode::Enforce,
         known_remote_tip: None,
@@ -98,43 +101,52 @@ fn unauthorized_device_rejected() {
 #[test]
 fn wrong_capability_rejected() {
     let mut storage = MockStorage::new();
-    let identity_did = "did:keri:ECapTest";
-    let repo_id = "test-project";
-    let key: [u8; 32] = [30; 32];
-    let did = ed25519_to_did_key(&key);
+    let identity_did: Did = "did:keri:ECapCheck".parse().unwrap();
+    let repo_id = RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap();
+    let key = PublicKey::from([1; 32]);
+    let device_did = Did::from(key);
 
-    storage
-        .key_states
-        .insert(identity_did.to_string(), make_key_state("ECapTest", 0));
+    storage.key_states.insert(identity_did.clone(), make_key_state("ECapCheck", 1));
     storage.attestations.insert(
-        (did.clone(), identity_did.to_string()),
+        (device_did.clone(), identity_did.clone()),
         make_test_attestation(
-            identity_did,
-            &did,
-            repo_id,
+            &identity_did,
+            &device_did,
+            &repo_id,
             false,
-            vec![Capability::sign_release()],
+            vec![Capability::parse("sign_commit").unwrap()],
         ),
     );
-    storage
-        .device_to_identity
-        .insert((did.clone(), repo_id.to_string()), identity_did.to_string());
-    storage
-        .identity_tips
-        .insert(identity_did.to_string(), [0xAA; 20]);
+    storage.device_to_identity.insert(
+        (device_did.clone(), repo_id),
+        identity_did.clone(),
+    );
 
-    let policy = PolicyBuilder::new().not_revoked().not_expired().build();
-    let bridge = DefaultBridge::new(storage, policy);
+    let bridge = DefaultBridge::with_storage(storage);
 
-    let request = VerifyRequest {
+    // Requesting a capability the device DOES have
+    let req_ok = VerifyRequest {
         signer_key: &key,
-        repo_id,
+        repo_id: &repo_id,
         now: Utc::now(),
         mode: EnforcementMode::Enforce,
         known_remote_tip: None,
         min_kel_seq: None,
         required_capability: Some("sign_commit"),
     };
-    let result = bridge.verify_signer(&request).unwrap();
-    assert!(result.is_rejected(), "wrong capability should be rejected");
+    assert!(bridge.verify_signer(&req_ok).unwrap().is_allowed());
+
+    // Requesting a capability the device DOES NOT have
+    let req_fail = VerifyRequest {
+        signer_key: &key,
+        repo_id: &repo_id,
+        now: Utc::now(),
+        mode: EnforcementMode::Enforce,
+        known_remote_tip: None,
+        min_kel_seq: None,
+        required_capability: Some("sign_release"),
+    };
+    let res = bridge.verify_signer(&req_fail).unwrap();
+    assert!(!res.is_allowed());
+    assert!(res.reason().contains("lacks required capability"));
 }

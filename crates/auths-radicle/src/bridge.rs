@@ -14,6 +14,8 @@
 //!
 //! Auths **authorizes**, never signs. Radicle handles all cryptography.
 
+use radicle_core::{Did, RepoId};
+use radicle_crypto::PublicKey;
 use thiserror::Error;
 
 /// Timestamp type for verification requests.
@@ -53,7 +55,7 @@ pub enum VerifyResult {
     Quarantine {
         reason: String,
         /// The RID of the identity repo to fetch, if known.
-        identity_repo_rid: Option<String>,
+        identity_repo_rid: Option<RepoId>,
     },
 }
 
@@ -106,8 +108,8 @@ pub enum EnforcementMode {
 /// Usage:
 /// ```ignore
 /// let request = VerifyRequest {
-///     signer_key: &key_bytes,
-///     repo_id: "rad:z3gqabc",
+///     signer_key: &key,
+///     repo_id: &rid,
 ///     now: Utc::now(),
 ///     mode: EnforcementMode::Enforce,
 ///     known_remote_tip: None,
@@ -117,10 +119,10 @@ pub enum EnforcementMode {
 /// let result = bridge.verify_signer(&request)?;
 /// ```
 pub struct VerifyRequest<'a> {
-    /// The Ed25519 public key that signed the update (32 bytes).
-    pub signer_key: &'a [u8; 32],
+    /// The Ed25519 public key that signed the update.
+    pub signer_key: &'a PublicKey,
     /// The Radicle repository ID (for scoped identity lookup).
-    pub repo_id: &'a str,
+    pub repo_id: &'a RepoId,
     /// Current time for checking attestation expiry.
     pub now: Timestamp,
     /// Enforcement mode (observe vs enforce).
@@ -168,7 +170,7 @@ pub enum BridgeError {
 /// Bridge between Radicle and Auths.
 ///
 /// This trait defines the adapter boundary. Implementations:
-/// 1. Accept raw Ed25519 keys and repository IDs (no Heartwood type imports)
+/// 1. Accept Radicle types (PublicKey, RepoId)
 /// 2. Load Auths data (identities, attestations)
 /// 3. Evaluate against Auths policy engine
 /// 4. Return verification results
@@ -178,8 +180,8 @@ pub enum BridgeError {
 /// use auths_radicle::bridge::{RadicleAuthsBridge, VerifyRequest, EnforcementMode};
 ///
 /// let request = VerifyRequest {
-///     signer_key: &key_bytes,
-///     repo_id: "rad:z3gqabc",
+///     signer_key: &key,
+///     repo_id: &rid,
 ///     now: Utc::now(),
 ///     mode: EnforcementMode::Enforce,
 ///     known_remote_tip: None,
@@ -190,9 +192,7 @@ pub enum BridgeError {
 /// ```
 pub trait RadicleAuthsBridge: Send + Sync {
     /// Map a Radicle public key to an Auths DeviceDID.
-    ///
-    /// Converts Radicle's Ed25519 public key format to Auths' `did:key:z...` format.
-    fn device_did(&self, key_bytes: &[u8; 32]) -> String;
+    fn device_did(&self, key: &PublicKey) -> Did;
 
     /// Verify a signer against Auths policy.
     ///
@@ -214,18 +214,18 @@ pub trait RadicleAuthsBridge: Send + Sync {
     /// has attested this device.
     ///
     /// Args:
-    /// * `device_did`: The device's DID (`did:key:z6Mk...`).
+    /// * `device_did`: The device's DID.
     /// * `repo_id`: The project repository ID for scoped lookup.
     ///
     /// Usage:
     /// ```ignore
-    /// let identity = bridge.find_identity_for_device("did:key:z6Mk...", "rad:z3gq...")?;
+    /// let identity = bridge.find_identity_for_device(&device_did, &rid)?;
     /// ```
     fn find_identity_for_device(
         &self,
-        device_did: &str,
-        repo_id: &str,
-    ) -> Result<Option<String>, BridgeError>;
+        device_did: &Did,
+        repo_id: &RepoId,
+    ) -> Result<Option<Did>, BridgeError>;
 }
 
 /// Input for mixed-delegate threshold verification.
@@ -241,12 +241,12 @@ pub enum SignerInput {
     /// The `did` field carries the `did:key:z6Mk...` for identity deduplication.
     PreVerified {
         /// The legacy device DID (used as the identity DID for grouping).
-        did: String,
+        did: Did,
         /// The pre-computed verification result.
         result: VerifyResult,
     },
     /// `Did::Keri` signer needing bridge verification.
-    NeedsBridgeVerification([u8; 32]),
+    NeedsBridgeVerification(PublicKey),
 }
 
 #[cfg(test)]
@@ -323,7 +323,7 @@ mod tests {
         assert_eq!(
             VerifyResult::Quarantine {
                 reason: "fetch me".into(),
-                identity_repo_rid: Some("rad:z3gq".into()),
+                identity_repo_rid: Some("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5".parse().unwrap()),
             }
             .reason(),
             "fetch me"

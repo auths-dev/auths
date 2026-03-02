@@ -13,7 +13,7 @@ use auths_core::storage::keychain::IdentityDID;
 /// This structure defines the minimal data stored in the identity blob.
 /// The `metadata` field is intended to hold arbitrary JSON defined by the
 /// consumer/application, allowing flexibility for different identity standards
-/// (like Radicle's `xyz.radicle.agent` payload or other custom schemas).
+/// (like application-specific profile data).
 #[derive(Serialize, Deserialize, Debug)]
 struct StoredIdentityData {
     /// Version number for the stored data format.
@@ -22,8 +22,7 @@ struct StoredIdentityData {
     controller_did: String,
     /// Optional, arbitrary JSON metadata associated with the identity.
     /// Consumers are responsible for defining and interpreting the structure
-    /// within this field (e.g., storing profile information, specific payload keys
-    /// like `xyz.radicle.agent`, etc.).
+    /// within this field (e.g., storing profile information, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<serde_json::Value>,
 }
@@ -87,7 +86,7 @@ impl GitIdentityStorage {
     /// Creates a new `GitIdentityStorage` instance using the *generic default*
     /// layout configuration defined in `StorageLayoutConfig::default()`.
     ///
-    /// Use `::new()` to provide a custom layout (e.g., for Radicle compatibility).
+    /// Use `::new()` to provide a custom layout (e.g., for custom interoperability).
     pub fn new_with_defaults(repo_path: impl Into<PathBuf>) -> Self {
         Self::new(repo_path, StorageLayoutConfig::default())
     }

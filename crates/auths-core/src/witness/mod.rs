@@ -65,7 +65,7 @@
 //! appropriate for:
 //! - Private repositories
 //! - Single-user setups
-//! - Systems with existing consistency mechanisms (e.g., Radicle gossip)
+//! - Systems with existing consistency mechanisms (e.g., P2P gossip)
 //!
 //! Enable witness checks for public ecosystems where split-view attacks
 //! are a concern.

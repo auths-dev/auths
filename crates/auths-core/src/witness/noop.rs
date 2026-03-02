@@ -4,7 +4,7 @@
 //! Use this when:
 //! - You don't need split-view protection
 //! - You're in a private/trusted environment
-//! - The system has other consistency mechanisms (e.g., Radicle gossip)
+//! - The system has other consistency mechanisms (e.g., external consistency logic)
 
 use auths_verifier::keri::Prefix;
 

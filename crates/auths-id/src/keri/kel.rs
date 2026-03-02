@@ -3,7 +3,7 @@
 //! The KEL is stored as a chain of Git commits where:
 //! - Each commit contains a single event as `event.json`
 //! - The commit chain mirrors the KERI event chain
-//! - The ref path follows RIP-5: `refs/did/keri/<prefix>/kel`
+//! - The ref path follows standard conventions
 
 use chrono::{DateTime, Utc};
 use git2::{Commit, ErrorCode, Repository, Signature};
@@ -69,8 +69,7 @@ impl<'a> GitKel<'a> {
 
     /// Create a GitKel instance with a custom ref path.
     ///
-    /// This allows reading KELs stored at non-default locations, such as
-    /// `refs/keri/kel` in Radicle's RIP-X identity repository layout.
+    /// This allows reading KELs stored at non-default locations.
     ///
     /// Args:
     /// * `repo`: The Git repository containing the KEL.

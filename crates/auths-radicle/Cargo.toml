@@ -28,6 +28,8 @@ wasm = ["dep:wasm-bindgen", "auths-verifier/wasm"]
 auths-verifier = { workspace = true, default-features = false }
 bs58 = "0.5.1"
 json-canon = "0.1"
+radicle-core = { path = "../../../../heartwood/crates/radicle-core", features = ["serde"] }
+radicle-crypto = { path = "../../../../heartwood/crates/radicle-crypto" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 thiserror.workspace = true

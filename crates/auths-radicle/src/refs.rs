@@ -112,91 +112,107 @@ pub const DID_KERI_BLOB: &str = "did-keri";
 /// ```
 pub const RAD_ID_REF: &str = "refs/rad/id";
 
-/// Returns the signatures ref for a device.
+/// Blob name for the Radicle identity document inside `refs/rad/id`.
 ///
-/// Args:
-/// * `nid`: The device's Node ID (e.g., `z6MkhaXg...`).
-///
-/// Usage:
-/// ```ignore
-/// let r = auths_radicle::refs::device_signatures_ref("z6MkhaXg");
-/// assert_eq!(r, "refs/keys/z6MkhaXg/signatures");
-/// ```
-pub fn device_signatures_ref(nid: &str) -> String {
-    format!("{KEYS_PREFIX}/{nid}/{SIGNATURES_DIR}")
-}
+/// RIP-X Section 2: Project namespace layout.
+pub const IDENTITY_BLOB: &str = "radicle-identity.json";
 
-/// Returns the `did-key` signature blob ref for a device.
-///
-/// Args:
-/// * `nid`: The device's Node ID.
-///
-/// Usage:
-/// ```ignore
-/// let r = auths_radicle::refs::device_did_key_ref("z6MkhaXg");
-/// assert_eq!(r, "refs/keys/z6MkhaXg/signatures/did-key");
-/// ```
+/// Compatibility function for `Layout::radicle().device_did_key_ref(nid)`.
 pub fn device_did_key_ref(nid: &str) -> String {
-    format!("{KEYS_PREFIX}/{nid}/{SIGNATURES_DIR}/{DID_KEY_BLOB}")
+    Layout::radicle().device_did_key_ref(nid)
 }
 
-/// Returns the `did-keri` signature blob ref for a device.
-///
-/// Args:
-/// * `nid`: The device's Node ID.
-///
-/// Usage:
-/// ```ignore
-/// let r = auths_radicle::refs::device_did_keri_ref("z6MkhaXg");
-/// assert_eq!(r, "refs/keys/z6MkhaXg/signatures/did-keri");
-/// ```
+/// Compatibility function for `Layout::radicle().device_did_keri_ref(nid)`.
 pub fn device_did_keri_ref(nid: &str) -> String {
-    format!("{KEYS_PREFIX}/{nid}/{SIGNATURES_DIR}/{DID_KERI_BLOB}")
+    Layout::radicle().device_did_keri_ref(nid)
 }
 
-/// Returns the namespace ref prefix for a KERI identity in a project repo.
+/// Configuration for the Radicle identity repository and namespace layout.
 ///
-/// Replaces `:` with `-` in the input to produce a valid Git ref component,
-/// per the RIP-X convention (e.g., `did:keri:EXq5...` → `did-keri-EXq5...`).
-/// If the input is already a bare prefix (no colons), it is used as-is.
-///
-/// RIP-X Section 2: Project namespace layout.
-///
-/// Args:
-/// * `keri_prefix`: Either a full DID (`did:keri:EXq5...`) or bare prefix (`EXq5...`).
+/// This struct holds the ref path components used by the bridge and storage
+/// to discover KELs and attestations. It defaults to the RIP-X specification.
 ///
 /// Usage:
 /// ```ignore
-/// // With full DID
-/// let r = auths_radicle::refs::identity_namespace_prefix("did:keri:EXq5abc");
-/// assert_eq!(r, "refs/namespaces/did-keri-EXq5abc");
+/// use auths_radicle::refs::Layout;
 ///
-/// // With bare prefix
-/// let r = auths_radicle::refs::identity_namespace_prefix("EXq5abc");
-/// assert_eq!(r, "refs/namespaces/did-keri-EXq5abc");
+/// let layout = Layout::radicle(); // RIP-X defaults
+/// let kel = layout.keri_kel_ref();
+/// assert_eq!(kel, "refs/keri/kel");
 /// ```
-pub fn identity_namespace_prefix(keri_prefix: &str) -> String {
-    // Strip the "did:keri:" method prefix if present, then reconstruct with dashes
-    let bare_prefix = keri_prefix.strip_prefix("did:keri:").unwrap_or(keri_prefix);
-    format!("refs/namespaces/did-keri-{bare_prefix}")
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Layout {
+    /// Ref for the KERI Key Event Log (e.g., "refs/keri/kel")
+    pub keri_kel_ref: String,
+    /// Root ref prefix for device keys (e.g., "refs/keys")
+    pub keys_prefix: String,
+    /// Subdirectory name for signatures (e.g., "signatures")
+    pub signatures_dir: String,
+    /// Blob name for device signature (e.g., "did-key")
+    pub did_key_blob: String,
+    /// Blob name for identity signature (e.g., "did-keri")
+    pub did_keri_blob: String,
+    /// Blob name for Radicle identity document (e.g., "radicle-identity.json")
+    pub identity_blob: String,
+    /// Ref for identity pointer in namespaces (e.g., "refs/rad/id")
+    pub rad_id_ref: String,
 }
 
-/// Returns the `refs/rad/id` pointer ref inside a KERI identity namespace.
-///
-/// The blob at this ref contains the RID of the identity repository.
-///
-/// RIP-X Section 2: Project namespace layout.
-///
-/// Args:
-/// * `keri_prefix`: Either a full DID (`did:keri:EXq5...`) or bare prefix (`EXq5...`).
-///
-/// Usage:
-/// ```ignore
-/// let r = auths_radicle::refs::identity_rad_id_ref("EXq5abc");
-/// assert_eq!(r, "refs/namespaces/did-keri-EXq5abc/refs/rad/id");
-/// ```
-pub fn identity_rad_id_ref(keri_prefix: &str) -> String {
-    format!("{}/{RAD_ID_REF}", identity_namespace_prefix(keri_prefix))
+impl Default for Layout {
+    fn default() -> Self {
+        Self::radicle()
+    }
+}
+
+impl Layout {
+    /// Create a new Layout with RIP-X defaults.
+    pub fn radicle() -> Self {
+        Self {
+            keri_kel_ref: KERI_KEL_REF.to_string(),
+            keys_prefix: KEYS_PREFIX.to_string(),
+            signatures_dir: SIGNATURES_DIR.to_string(),
+            did_key_blob: DID_KEY_BLOB.to_string(),
+            did_keri_blob: DID_KERI_BLOB.to_string(),
+            identity_blob: IDENTITY_BLOB.to_string(),
+            rad_id_ref: RAD_ID_REF.to_string(),
+        }
+    }
+
+    /// Returns the signatures ref for a device NID.
+    ///
+    /// Usage: `refs/keys/<nid>/signatures`
+    pub fn device_signatures_ref(&self, nid: &str) -> String {
+        format!("{}/{}/{}", self.keys_prefix, nid, self.signatures_dir)
+    }
+
+    /// Returns the `did-key` signature blob ref for a device NID.
+    ///
+    /// Usage: `refs/keys/<nid>/signatures/did-key`
+    pub fn device_did_key_ref(&self, nid: &str) -> String {
+        format!("{}/{}", self.device_signatures_ref(nid), self.did_key_blob)
+    }
+
+    /// Returns the `did-keri` signature blob ref for a device NID.
+    ///
+    /// Usage: `refs/keys/<nid>/signatures/did-keri`
+    pub fn device_did_keri_ref(&self, nid: &str) -> String {
+        format!("{}/{}", self.device_signatures_ref(nid), self.did_keri_blob)
+    }
+
+    /// Returns the namespace ref prefix for a KERI identity prefix.
+    ///
+    /// Usage: `refs/namespaces/did-keri-<prefix>`
+    pub fn identity_namespace_prefix(&self, keri_prefix: &str) -> String {
+        let bare_prefix = keri_prefix.strip_prefix("did:keri:").unwrap_or(keri_prefix);
+        format!("refs/namespaces/did-keri-{bare_prefix}")
+    }
+
+    /// Returns the full ref path for the identity pointer inside a namespace.
+    ///
+    /// Usage: `refs/namespaces/did-keri-<prefix>/refs/rad/id`
+    pub fn identity_rad_id_ref(&self, keri_prefix: &str) -> String {
+        format!("{}/{}", self.identity_namespace_prefix(keri_prefix), self.rad_id_ref)
+    }
 }
 
 #[cfg(test)]
@@ -215,61 +231,67 @@ mod tests {
 
     #[test]
     fn device_ref_helpers() {
+        let layout = Layout::radicle();
         let nid = "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK";
 
         assert_eq!(
-            device_signatures_ref(nid),
+            layout.device_signatures_ref(nid),
             "refs/keys/z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK/signatures"
         );
         assert_eq!(
-            device_did_key_ref(nid),
+            layout.device_did_key_ref(nid),
             "refs/keys/z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK/signatures/did-key"
         );
         assert_eq!(
-            device_did_keri_ref(nid),
+            layout.device_did_keri_ref(nid),
             "refs/keys/z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK/signatures/did-keri"
         );
     }
 
     #[test]
     fn identity_namespace_with_bare_prefix() {
+        let layout = Layout::radicle();
         assert_eq!(
-            identity_namespace_prefix("EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"),
+            layout.identity_namespace_prefix("EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"),
             "refs/namespaces/did-keri-EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"
         );
     }
 
     #[test]
     fn identity_namespace_with_full_did() {
+        let layout = Layout::radicle();
         assert_eq!(
-            identity_namespace_prefix("did:keri:EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"),
+            layout.identity_namespace_prefix("did:keri:EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"),
             "refs/namespaces/did-keri-EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"
         );
     }
 
     #[test]
     fn character_replacement_colon_to_dash() {
+        let layout = Layout::radicle();
         // Verifies the `:` to `-` replacement per RIP-X spec
-        let result = identity_namespace_prefix("did:keri:ABC123");
+        let result = layout.identity_namespace_prefix("did:keri:ABC123");
         assert_eq!(result, "refs/namespaces/did-keri-ABC123");
         assert!(!result.contains(':'), "colons must be replaced with dashes");
     }
 
     #[test]
     fn identity_rad_id_ref_produces_full_path() {
+        let layout = Layout::radicle();
         assert_eq!(
-            identity_rad_id_ref("EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"),
+            layout.identity_rad_id_ref("EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"),
             "refs/namespaces/did-keri-EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148/refs/rad/id"
         );
     }
 
     #[test]
     fn heartwood_compatibility() {
+        let layout = Layout::radicle();
         // The output of identity_namespace_prefix() must be compatible with
         // Heartwood's IdentityNamespace::from_ref_component() which parses
         // "did-keri-<prefix>" from the component after "refs/namespaces/".
         let prefix = "EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148";
-        let full_ref = identity_namespace_prefix(prefix);
+        let full_ref = layout.identity_namespace_prefix(prefix);
         let component = full_ref
             .strip_prefix("refs/namespaces/")
             .expect("must start with refs/namespaces/");
@@ -288,16 +310,17 @@ mod tests {
 
     #[test]
     fn refs_contain_no_invalid_characters() {
+        let layout = Layout::radicle();
         let nid = "z6MkTest";
         let prefix = "EXq5Test";
 
         // Git refnames cannot contain: space, ~, ^, :, ?, *, [, \, or ..
         let refs_to_check = [
-            device_signatures_ref(nid),
-            device_did_key_ref(nid),
-            device_did_keri_ref(nid),
-            identity_namespace_prefix(prefix),
-            identity_rad_id_ref(prefix),
+            layout.device_signatures_ref(nid),
+            layout.device_did_key_ref(nid),
+            layout.device_did_keri_ref(nid),
+            layout.identity_namespace_prefix(prefix),
+            layout.identity_rad_id_ref(prefix),
         ];
 
         for r in &refs_to_check {

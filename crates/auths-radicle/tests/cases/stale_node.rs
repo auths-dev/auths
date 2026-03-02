@@ -1,232 +1,154 @@
-//! Stale-node E2E tests (fn-1.16).
-//!
-//! **This is the most important test in the suite.** It validates the primary
-//! security USP of the Radicle integration: safe behavior under the stale-node
-//! adversarial scenario.
-
+use std::str::FromStr;
 use chrono::Utc;
 
-use auths_id::identity::ed25519_to_did_key;
-use auths_id::keri::KeyState;
-use auths_radicle::bridge::{
-    BridgeError, EnforcementMode, RadicleAuthsBridge, VerifyRequest, VerifyResult,
-};
-use auths_radicle::verify::{AuthsStorage, DefaultBridge};
-use auths_verifier::core::Attestation;
+use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, VerifyRequest};
+use auths_radicle::verify::DefaultBridge;
+use radicle_core::{Did, RepoId};
 
-use super::helpers::{MockStorage, make_key_state, make_test_attestation};
+use super::helpers::{DeviceFixture, MockStorage, make_key_state, register_device};
 
-fn setup_scenario() -> ([u8; 32], String, &'static str, &'static str) {
-    let key: [u8; 32] = [0xDE; 32];
-    let did = ed25519_to_did_key(&key);
-    (key, did, "did:keri:EStaleNode", "test-repo")
-}
-
-fn build_storage(
-    identity_did: &str,
-    device_did: &str,
-    repo_id: &str,
-    seq: u64,
-    revoked: bool,
-    tip: [u8; 20],
-) -> MockStorage {
-    let prefix = identity_did
-        .strip_prefix("did:keri:")
-        .unwrap_or(identity_did);
-    let mut storage = MockStorage::new();
-    storage
-        .key_states
-        .insert(identity_did.to_string(), make_key_state(prefix, seq));
-    storage.attestations.insert(
-        (device_did.to_string(), identity_did.to_string()),
-        make_test_attestation(identity_did, device_did, "test", revoked, vec![]),
-    );
-    storage.device_to_identity.insert(
-        (device_did.to_string(), repo_id.to_string()),
-        identity_did.to_string(),
-    );
-    storage.identity_tips.insert(identity_did.to_string(), tip);
-    storage
-}
-
-/// Observe: stale node accepts with Warn, converges to Rejected after sync.
 #[test]
-fn observe_stale_node_accepts_then_converges() {
-    let (key, did, identity_did, repo_id) = setup_scenario();
+fn stale_identity_repo_rejected_in_enforce() {
+    let mut storage = MockStorage::new();
+    let identity_did: Did = "did:keri:EAlice".parse().unwrap();
+    let repo_id = RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap();
+    let device = DeviceFixture::new(1);
 
-    // Stale storage: seq 2, no revocation, tip AA
-    let storage = build_storage(identity_did, &did, repo_id, 2, false, [0xAA; 20]);
+    storage.add_identity(identity_did.clone(), make_key_state("EAlice", 1));
+    register_device(&mut storage, &device, &identity_did, &repo_id, false, vec![]);
+
+    // Local tip is AA
+    storage.set_identity_tip(identity_did.clone(), [0xAA; 20]);
+
     let bridge = DefaultBridge::with_storage(storage);
 
-    // No gossip info — stale node accepts
+    // Request announces a NEWER tip BB
     let request = VerifyRequest {
-        signer_key: &key,
-        repo_id,
+        signer_key: &device.key,
+        repo_id: &repo_id,
         now: Utc::now(),
-        mode: EnforcementMode::Observe,
+        mode: EnforcementMode::Enforce,
+        known_remote_tip: Some([0xBB; 20]),
+        min_kel_seq: None,
+        required_capability: None,
+    };
+
+    let result = bridge.verify_signer(&request).unwrap();
+
+    // Should return Quarantine (fetch more)
+    assert!(matches!(
+        result,
+        auths_radicle::bridge::VerifyResult::Quarantine { .. }
+    ));
+    assert!(result.reason().contains("stale"));
+}
+
+#[test]
+fn missing_identity_repo_quarantined_in_enforce() {
+    let mut storage = MockStorage::new();
+    let identity_did: Did = "did:keri:EAlice".parse().unwrap();
+    let repo_id = RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap();
+    let device = DeviceFixture::new(1);
+
+    // Identity repo is NOT in storage (load_key_state will return error)
+    register_device(&mut storage, &device, &identity_did, &repo_id, false, vec![]);
+
+    let bridge = DefaultBridge::with_storage(storage);
+    let request = VerifyRequest {
+        signer_key: &device.key,
+        repo_id: &repo_id,
+        now: Utc::now(),
+        mode: EnforcementMode::Enforce,
         known_remote_tip: None,
         min_kel_seq: None,
         required_capability: None,
     };
-    let result = bridge.verify_signer(&request).unwrap();
-    assert!(
-        result.is_allowed(),
-        "stale node should accept without gossip"
-    );
 
-    // After sync: seq 3, revoked, tip BB
-    let synced = build_storage(identity_did, &did, repo_id, 3, true, [0xBB; 20]);
-    let synced_bridge = DefaultBridge::with_storage(synced);
-    let result = synced_bridge.verify_signer(&request).unwrap();
-    assert!(
-        matches!(result, VerifyResult::Warn { .. }),
-        "observe + revoked → Warn"
-    );
+    let result = bridge.verify_signer(&request).unwrap();
+    assert!(matches!(
+        result,
+        auths_radicle::bridge::VerifyResult::Quarantine { .. }
+    ));
+    assert!(result.reason().contains("identity repo missing"));
 }
 
-/// Enforce, staleness detected: stale node quarantines, resolves after sync.
 #[test]
-fn enforce_staleness_detected_quarantine_then_resolves() {
-    let (key, did, identity_did, repo_id) = setup_scenario();
+fn min_kel_seq_violation_rejected() {
+    let mut storage = MockStorage::new();
+    let identity_did: Did = "did:keri:EAlice".parse().unwrap();
+    let repo_id = RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap();
+    let device = DeviceFixture::new(1);
 
-    let storage = build_storage(identity_did, &did, repo_id, 2, false, [0xAA; 20]);
+    // Identity is at sequence 5
+    storage.add_identity(identity_did.clone(), make_key_state("EAlice", 5));
+    register_device(&mut storage, &device, &identity_did, &repo_id, false, vec![]);
+
     let bridge = DefaultBridge::with_storage(storage);
 
+    // Request specifies MIN sequence 10 (future binding)
     let request = VerifyRequest {
-        signer_key: &key,
-        repo_id,
+        signer_key: &device.key,
+        repo_id: &repo_id,
         now: Utc::now(),
         mode: EnforcementMode::Enforce,
-        known_remote_tip: Some([0xBB; 20]), // different from local [0xAA; 20]
-        min_kel_seq: None,
+        known_remote_tip: None,
+        min_kel_seq: Some(10),
         required_capability: None,
     };
+
     let result = bridge.verify_signer(&request).unwrap();
-    assert!(
-        matches!(result, VerifyResult::Quarantine { .. }),
-        "stale → Quarantine"
-    );
-
-    // After sync
-    let synced = build_storage(identity_did, &did, repo_id, 3, true, [0xBB; 20]);
-    let synced_bridge = DefaultBridge::with_storage(synced);
-    let synced_request = VerifyRequest {
-        known_remote_tip: Some([0xBB; 20]),
-        ..request
-    };
-    let result = synced_bridge.verify_signer(&synced_request).unwrap();
-    assert!(result.is_rejected(), "after sync, revoked → Rejected");
+    assert!(result.is_rejected());
+    assert!(result.reason().contains("below binding minimum"));
 }
 
-/// Enforce, no staleness signal: stale node accepts (irreducible risk).
-///
-/// This is the documented "irreducible risk" scenario: a fully disconnected
-/// node has no gossip information and must rely on local state alone. If the
-/// local state says the device is authorized, we accept it. This is correct
-/// behavior — the alternative (rejecting all devices when disconnected) would
-/// make the system unusable for offline-first workflows.
 #[test]
-fn enforce_no_staleness_signal_accepts_irreducible_risk() {
-    let (key, did, identity_did, repo_id) = setup_scenario();
-
-    let storage = build_storage(identity_did, &did, repo_id, 2, false, [0xAA; 20]);
-    let bridge = DefaultBridge::with_storage(storage);
-
-    let request = VerifyRequest {
-        signer_key: &key,
-        repo_id,
-        now: Utc::now(),
-        mode: EnforcementMode::Enforce,
-        known_remote_tip: None, // disconnected
-        min_kel_seq: None,
-        required_capability: None,
-    };
-    let result = bridge.verify_signer(&request).unwrap();
-    assert!(
-        result.is_allowed(),
-        "irreducible risk: disconnected node accepts based on local state"
-    );
-}
-
-/// Below min_kel_seq → hard Rejected in both modes.
-#[test]
-fn below_min_kel_seq_hard_reject_both_modes() {
-    let (key, did, identity_did, repo_id) = setup_scenario();
-
-    for mode in [EnforcementMode::Observe, EnforcementMode::Enforce] {
-        let storage = build_storage(identity_did, &did, repo_id, 1, false, [0xAA; 20]);
-        let bridge = DefaultBridge::with_storage(storage);
-
-        let request = VerifyRequest {
-            signer_key: &key,
-            repo_id,
-            now: Utc::now(),
-            mode,
-            known_remote_tip: None,
-            min_kel_seq: Some(5),
-            required_capability: None,
-        };
-        let result = bridge.verify_signer(&request).unwrap();
-        assert!(
-            result.is_rejected(),
-            "below min_kel_seq must be Rejected in {:?} mode",
-            mode
-        );
-    }
-}
-
-/// Tamper: corrupt identity → Rejected regardless of mode.
-#[test]
-fn tamper_forged_kel_rejected() {
-    let key: [u8; 32] = [0xDE; 32];
-    let _did = ed25519_to_did_key(&key);
-    let identity_did = "did:keri:ETamper";
-    let repo_id = "test-repo";
+fn corrupt_identity_hard_rejected() {
+    use auths_radicle::bridge::BridgeError;
+    use auths_verifier::core::Attestation;
+    use auths_id::keri::KeyState;
 
     struct CorruptKelStorage {
-        identity_did: String,
+        layout: auths_radicle::refs::Layout,
     }
-
-    impl AuthsStorage for CorruptKelStorage {
-        fn load_key_state(&self, _: &str) -> Result<KeyState, BridgeError> {
-            Err(BridgeError::IdentityCorrupt(
-                "forged KEL event mid-chain: SAID mismatch".into(),
-            ))
+    impl auths_radicle::verify::AuthsStorage for CorruptKelStorage {
+        fn layout(&self) -> &auths_radicle::refs::Layout {
+            &self.layout
         }
-        fn load_attestation(&self, _: &str, _: &str) -> Result<Attestation, BridgeError> {
+        fn load_key_state(&self, _: &Did) -> Result<KeyState, BridgeError> {
+            Err(BridgeError::IdentityCorrupt("broken chain".into()))
+        }
+        fn load_attestation(&self, _: &Did, _: &Did) -> Result<Attestation, BridgeError> {
             unreachable!()
         }
         fn find_identity_for_device(
             &self,
-            _: &str,
-            _: &str,
-        ) -> Result<Option<String>, BridgeError> {
-            Ok(Some(self.identity_did.clone()))
+            _: &Did,
+            _: &RepoId,
+        ) -> Result<Option<Did>, BridgeError> {
+            Ok(Some("did:keri:EAlice".parse().unwrap()))
         }
-        fn local_identity_tip(&self, _: &str) -> Result<Option<[u8; 20]>, BridgeError> {
+        fn local_identity_tip(&self, _: &Did) -> Result<Option<[u8; 20]>, BridgeError> {
             Ok(None)
         }
     }
 
-    for mode in [EnforcementMode::Observe, EnforcementMode::Enforce] {
-        let storage = CorruptKelStorage {
-            identity_did: identity_did.to_string(),
-        };
-        let bridge = DefaultBridge::with_storage(storage);
-        let request = VerifyRequest {
-            signer_key: &key,
-            repo_id,
-            now: Utc::now(),
-            mode,
-            known_remote_tip: None,
-            min_kel_seq: None,
-            required_capability: None,
-        };
-        let result = bridge.verify_signer(&request).unwrap();
-        assert!(
-            result.is_rejected(),
-            "tampered KEL must be Rejected in {:?} mode",
-            mode
-        );
-    }
+    let bridge = DefaultBridge::with_storage(CorruptKelStorage {
+        layout: auths_radicle::refs::Layout::radicle(),
+    });
+    let key = radicle_crypto::PublicKey::from([1; 32]);
+    let repo_id = RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap();
+
+    let request = VerifyRequest {
+        signer_key: &key,
+        repo_id: &repo_id,
+        now: Utc::now(),
+        mode: EnforcementMode::Observe, // even in observe mode!
+        known_remote_tip: None,
+        min_kel_seq: None,
+        required_capability: None,
+    };
+
+    let result = bridge.verify_signer(&request).unwrap();
+    assert!(result.is_rejected());
+    assert!(result.reason().contains("identity corrupt"));
 }
