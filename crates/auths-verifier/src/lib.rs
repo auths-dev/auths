@@ -86,7 +86,10 @@ pub use verify::{
 };
 
 // Re-export sync utility functions (always available)
-pub use verify::{did_to_ed25519, is_device_listed};
+pub use verify::{
+    DeviceLinkVerification, compute_attestation_seal_digest, did_to_ed25519, is_device_listed,
+    verify_device_link,
+};
 
 // Re-export witness types
 pub use witness::{WitnessQuorum, WitnessReceipt, WitnessReceiptResult, WitnessVerifyConfig};
@@ -94,8 +97,8 @@ pub use witness::{WitnessQuorum, WitnessReceipt, WitnessReceiptResult, WitnessVe
 // Re-export KERI verification types (key parsing lives in auths-crypto)
 pub use keri::{
     IcpEvent as KeriIcpEvent, IxnEvent as KeriIxnEvent, KeriEvent, KeriKeyState, KeriTypeError,
-    KeriVerifyError, Prefix, RotEvent as KeriRotEvent, Said, Seal as KeriSeal, find_seal_in_kel,
-    parse_kel_json, verify_kel,
+    KeriVerifyError, Prefix, RotEvent as KeriRotEvent, Said, Seal as KeriSeal, compute_said,
+    find_seal_in_kel, parse_kel_json, verify_kel,
 };
 
 // Re-export crypto provider trait for downstream consumers

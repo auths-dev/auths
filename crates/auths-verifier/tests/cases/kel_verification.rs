@@ -1,4 +1,7 @@
-use auths_verifier::{KeriKeyState, KeriVerifyError, Prefix, Said, parse_kel_json, verify_kel};
+use auths_verifier::{
+    DeviceLinkVerification, KeriKeyState, KeriVerifyError, Prefix, Said, parse_kel_json,
+    verify_device_link, verify_kel,
+};
 
 use auths_crypto::RingCryptoProvider;
 
@@ -82,4 +85,88 @@ async fn verify_kel_rejects_empty_events() {
 fn parse_kel_json_rejects_non_array_json() {
     let result = parse_kel_json(r#"{"t": "icp"}"#);
     assert!(result.is_err());
+}
+
+// --- DeviceLinkVerification tests ---
+
+#[tokio::test]
+async fn verify_device_link_fails_on_empty_kel() {
+    let att = minimal_attestation("did:keri:ETest", "did:key:z6MkTest");
+    let result = verify_device_link(
+        &[],
+        &att,
+        "did:key:z6MkTest",
+        chrono::Utc::now(),
+        &provider(),
+    )
+    .await;
+
+    assert!(!result.valid);
+    assert!(result.error.as_ref().unwrap().contains("KEL verification failed"));
+    assert!(result.key_state.is_none());
+}
+
+#[test]
+fn device_link_verification_success_serializes_correctly() {
+    let result = DeviceLinkVerification {
+        valid: true,
+        error: None,
+        key_state: Some(KeriKeyState {
+            prefix: Prefix::new_unchecked("EPrefix".to_string()),
+            current_key: vec![],
+            current_key_encoded: "DKey".to_string(),
+            next_commitment: None,
+            sequence: 1,
+            is_abandoned: false,
+            last_event_said: Said::new_unchecked("ESaid".to_string()),
+        }),
+        seal_sequence: Some(2),
+    };
+
+    let json = serde_json::to_string(&result).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(parsed["valid"], true);
+    assert!(parsed.get("error").is_none());
+    assert_eq!(parsed["key_state"]["sequence"], 1);
+    assert_eq!(parsed["seal_sequence"], 2);
+}
+
+#[test]
+fn device_link_verification_failure_serializes_correctly() {
+    let result = DeviceLinkVerification {
+        valid: false,
+        error: Some("Device DID mismatch".to_string()),
+        key_state: None,
+        seal_sequence: None,
+    };
+
+    let json = serde_json::to_string(&result).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(parsed["valid"], false);
+    assert_eq!(parsed["error"], "Device DID mismatch");
+    assert!(parsed.get("key_state").is_none());
+    assert!(parsed.get("seal_sequence").is_none());
+}
+
+fn minimal_attestation(issuer: &str, subject: &str) -> auths_verifier::core::Attestation {
+    auths_verifier::core::Attestation {
+        version: 1,
+        rid: String::new(),
+        issuer: auths_verifier::IdentityDID(issuer.to_string()),
+        subject: auths_verifier::DeviceDID::new(subject),
+        device_public_key: vec![0u8; 32],
+        identity_signature: vec![],
+        device_signature: vec![],
+        revoked_at: None,
+        expires_at: None,
+        timestamp: None,
+        note: None,
+        payload: None,
+        role: None,
+        capabilities: vec![],
+        delegated_by: None,
+        signer_type: None,
+    }
 }

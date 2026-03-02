@@ -349,3 +349,63 @@ pub async fn wasm_verify_kel_json(kel_json: &str) -> Result<String, JsValue> {
     serde_json::to_string(&key_state)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize key state: {}", e)))
 }
+
+/// Verifies that a device is cryptographically linked to a KERI identity.
+///
+/// Composes KEL verification, attestation signature verification, device DID matching,
+/// and seal anchoring. Returns a JSON result (never throws for verification failures).
+///
+/// Args:
+/// * `kel_json`: JSON array of KEL events.
+/// * `attestation_json`: JSON attestation linking identity to device.
+/// * `device_did`: Expected device DID string (e.g. `"did:key:z6Mk..."`).
+///
+/// Usage:
+/// ```ignore
+/// let result = verifyDeviceLink(kelJson, attestationJson, "did:key:z6Mk...").await;
+/// // result: {"valid": true, "key_state": {...}, "seal_sequence": 2}
+/// // or:     {"valid": false, "error": "..."}
+/// ```
+#[wasm_bindgen(js_name = verifyDeviceLink)]
+pub async fn wasm_verify_device_link(
+    kel_json: &str,
+    attestation_json: &str,
+    device_did: &str,
+) -> Result<String, JsValue> {
+    console_log!("WASM: Verifying device link for {}", device_did);
+
+    if kel_json.len() > MAX_JSON_BATCH_SIZE {
+        return Err(JsValue::from_str(&format!(
+            "KEL JSON too large: {} bytes, max {}",
+            kel_json.len(),
+            MAX_JSON_BATCH_SIZE
+        )));
+    }
+    if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
+        return Err(JsValue::from_str(&format!(
+            "Attestation JSON too large: {} bytes, max {}",
+            attestation_json.len(),
+            MAX_ATTESTATION_JSON_SIZE
+        )));
+    }
+
+    let events = keri::parse_kel_json(kel_json)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse KEL JSON: {}", e)))?;
+
+    let attestation: Attestation = serde_json::from_str(attestation_json)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse attestation JSON: {}", e)))?;
+
+    let result = crate::verify::verify_device_link(
+        &events,
+        &attestation,
+        device_did,
+        SystemClock.now(),
+        &provider(),
+    )
+    .await;
+
+    console_log!("WASM: Device link verification result: valid={}", result.valid);
+
+    serde_json::to_string(&result)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+}

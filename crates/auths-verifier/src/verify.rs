@@ -12,6 +12,7 @@ use crate::witness::WitnessVerifyConfig;
 use auths_crypto::{CryptoProvider, ED25519_PUBLIC_KEY_LEN};
 use chrono::{DateTime, Duration, Utc};
 use log::debug;
+use serde::Serialize;
 
 /// Maximum allowed clock skew in seconds for timestamp validation.
 const MAX_SKEW_SECS: i64 = 5 * 60;
@@ -189,6 +190,133 @@ pub fn is_device_listed(
         }
         true
     })
+}
+
+// ---------------------------------------------------------------------------
+// Device-link verification — stateless, provider-agnostic
+// ---------------------------------------------------------------------------
+
+/// Result of verifying a device's link to a KERI identity.
+///
+/// Verification failures are expressed as `valid: false` with an error message,
+/// not as Rust `Err` values. Only infrastructure errors (bad input, serialization)
+/// produce `Err`.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeviceLinkVerification {
+    /// Whether the device link verified successfully.
+    pub valid: bool,
+    /// Human-readable reason if verification failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// The KERI key state after KEL replay (present on success).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_state: Option<crate::keri::KeriKeyState>,
+    /// Sequence number of the IXN event anchoring the attestation seal (if found).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seal_sequence: Option<u64>,
+}
+
+impl DeviceLinkVerification {
+    fn success(
+        key_state: crate::keri::KeriKeyState,
+        seal_sequence: Option<u64>,
+    ) -> Self {
+        Self {
+            valid: true,
+            error: None,
+            key_state: Some(key_state),
+            seal_sequence,
+        }
+    }
+
+    fn failure(reason: impl Into<String>) -> Self {
+        Self {
+            valid: false,
+            error: Some(reason.into()),
+            key_state: None,
+            seal_sequence: None,
+        }
+    }
+}
+
+/// Verify that a device (`did:key`) is cryptographically linked to a KERI identity.
+///
+/// Composes: KEL verification, attestation signature verification, device DID matching,
+/// and optional seal anchoring. Provider-agnostic — works with any `CryptoProvider`.
+///
+/// Args:
+/// * `events`: Parsed KEL events (inception first).
+/// * `attestation`: The attestation linking identity to device.
+/// * `device_did`: The expected device DID (checked against attestation subject).
+/// * `now`: Reference time for expiration/revocation checks.
+/// * `provider`: Cryptographic provider for Ed25519 verification.
+///
+/// Usage:
+/// ```ignore
+/// let result = verify_device_link(&events, &att, "did:key:z6Mk...", now, &provider).await;
+/// if result.valid { /* ... */ }
+/// ```
+pub async fn verify_device_link(
+    events: &[crate::keri::KeriEvent],
+    attestation: &Attestation,
+    device_did: &str,
+    now: DateTime<Utc>,
+    provider: &dyn CryptoProvider,
+) -> DeviceLinkVerification {
+    let key_state = match crate::keri::verify_kel(events, provider).await {
+        Ok(ks) => ks,
+        Err(e) => return DeviceLinkVerification::failure(format!("KEL verification failed: {e}")),
+    };
+
+    if attestation.subject.to_string() != device_did {
+        return DeviceLinkVerification::failure(format!(
+            "Device DID mismatch: attestation subject is '{}', expected '{device_did}'",
+            attestation.subject
+        ));
+    }
+
+    if let Err(e) =
+        verify_with_keys_at(attestation, &key_state.current_key, now, true, provider).await
+    {
+        return DeviceLinkVerification::failure(format!("Attestation verification failed: {e}"));
+    }
+
+    let seal_sequence = compute_attestation_seal_digest(attestation)
+        .ok()
+        .and_then(|digest| crate::keri::find_seal_in_kel(events, digest.as_str()));
+
+    DeviceLinkVerification::success(key_state, seal_sequence)
+}
+
+/// Compute the KERI SAID (Blake3 digest) of an attestation's canonical form.
+///
+/// This is the digest that should appear in a KEL IXN seal when the attestation
+/// is anchored. Returns the SAID string (E-prefixed base64url Blake3).
+pub fn compute_attestation_seal_digest(
+    attestation: &Attestation,
+) -> Result<String, AttestationError> {
+    let data = CanonicalAttestationData {
+        version: attestation.version,
+        rid: &attestation.rid,
+        issuer: &attestation.issuer,
+        subject: &attestation.subject,
+        device_public_key: &attestation.device_public_key,
+        payload: &attestation.payload,
+        timestamp: &attestation.timestamp,
+        expires_at: &attestation.expires_at,
+        revoked_at: &attestation.revoked_at,
+        note: &attestation.note,
+        role: attestation.role.as_deref(),
+        capabilities: if attestation.capabilities.is_empty() {
+            None
+        } else {
+            Some(&attestation.capabilities)
+        },
+        delegated_by: attestation.delegated_by.as_ref(),
+        signer_type: attestation.signer_type.as_ref(),
+    };
+    let canonical = canonicalize_attestation_data(&data)?;
+    Ok(crate::keri::compute_said(&canonical).to_string())
 }
 
 // ---------------------------------------------------------------------------
