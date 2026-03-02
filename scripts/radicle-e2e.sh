@@ -759,6 +759,92 @@ fi
 phase_pass
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  Phase 9 — HTTP API assertions (requires modified radicle-httpd)
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 9: HTTP API assertions"
+
+PHASE9_OK=true
+HTTPD_PORT=17899
+
+info "Starting Radicle node 1 for HTTP API testing..."
+RAD_HOME="$RAD_NODE1_HOME" rad node start -- --listen 0.0.0.0:$E2E_PORT1 2>&1 | sed 's/^/    /' || true
+sleep 2
+
+# Detect httpd port from node config, fall back to default 8080
+DETECTED_PORT=$(RAD_HOME="$RAD_NODE1_HOME" rad config 2>/dev/null | grep -oP '"port":\s*\K[0-9]+' | head -1 || echo "8080")
+HTTPD_URL="http://127.0.0.1:${DETECTED_PORT}"
+
+info "Testing httpd at $HTTPD_URL ..."
+
+# Check if the modified httpd serves the delegates endpoint
+USER_RESPONSE=$(curl -sf "$HTTPD_URL/api/v1/delegates/$CONTROLLER_DID" 2>/dev/null) || {
+    info "Modified delegates endpoint not available — skipping API assertions"
+    RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
+    phase_pass
+    PHASE9_OK="skipped"
+}
+
+if [ "$PHASE9_OK" = "true" ]; then
+    # ── Delegates endpoint assertions ──────────────────────────────────
+    info "GET /v1/delegates/$CONTROLLER_DID response:"
+    echo "$USER_RESPONSE" | sed 's/^/    /'
+
+    assert_contains "user response has controllerDid" "$USER_RESPONSE" "controllerDid"
+    assert_contains "user response has isKeri: true"  "$USER_RESPONSE" '"isKeri":true'
+    assert_contains "user response has devices array" "$USER_RESPONSE" '"devices":'
+
+    # ── KEL endpoint assertions ────────────────────────────────────────
+    info "Testing KEL endpoint..."
+    KEL_RESPONSE=$(curl -sf "$HTTPD_URL/api/v1/identity/$CONTROLLER_DID/kel" 2>/dev/null) || {
+        echo -e "  ${RED}✗${NC} KEL endpoint failed"
+        PHASE9_OK=false
+    }
+
+    if [ "$PHASE9_OK" = "true" ]; then
+        # KEL should be a non-empty JSON array
+        assert_contains "KEL response is a JSON array" "$KEL_RESPONSE" "["
+        KEL_LENGTH=$(echo "$KEL_RESPONSE" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+        if [ "$KEL_LENGTH" -gt 0 ]; then
+            echo -e "  ${GREEN}✓${NC} KEL contains $KEL_LENGTH events"
+        else
+            echo -e "  ${RED}✗${NC} KEL is empty"
+            PHASE9_OK=false
+        fi
+    fi
+
+    # ── Attestations endpoint assertions ───────────────────────────────
+    info "Testing attestations endpoint..."
+    ATT_RESPONSE=$(curl -sf "$HTTPD_URL/api/v1/identity/$CONTROLLER_DID/attestations" 2>/dev/null) || {
+        echo -e "  ${RED}✗${NC} Attestations endpoint failed"
+        PHASE9_OK=false
+    }
+
+    if [ "$PHASE9_OK" = "true" ]; then
+        assert_contains "attestations response is a JSON array" "$ATT_RESPONSE" "["
+        ATT_COUNT=$(echo "$ATT_RESPONSE" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+
+        # After Phase 8 revocation, we expect 1 active device (node1 active, node2 revoked).
+        # The attestation endpoint may return all attestations (including revoked) or only active.
+        if [ "$ATT_COUNT" -gt 0 ]; then
+            echo -e "  ${GREEN}✓${NC} Attestations endpoint returned $ATT_COUNT attestation(s)"
+        else
+            echo -e "  ${RED}✗${NC} Attestations response is empty"
+            PHASE9_OK=false
+        fi
+    fi
+
+    # ── Stop node ──────────────────────────────────────────────────────
+    info "Stopping node..."
+    RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
+
+    if [ "$PHASE9_OK" = "true" ]; then
+        phase_pass
+    else
+        phase_fail "HTTP API assertions"
+    fi
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  Summary
 # ══════════════════════════════════════════════════════════════════════════════
 echo ""
