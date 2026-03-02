@@ -145,6 +145,12 @@ pub enum DeviceSubcommand {
         note: Option<String>,
     },
 
+    /// Resolve a device DID to its controller identity DID.
+    Resolve {
+        #[arg(long, help = "The device DID to resolve (e.g. did:key:z6Mk...).")]
+        device_did: String,
+    },
+
     /// Link devices to your identity via QR code or short code.
     Pair(super::pair::PairCommand),
 
@@ -209,6 +215,9 @@ pub fn handle_device(
     match cmd.command {
         DeviceSubcommand::List { include_revoked } => {
             list_devices(&repo_path, &config, include_revoked)
+        }
+        DeviceSubcommand::Resolve { device_did } => {
+            resolve_device(&repo_path, &device_did)
         }
         DeviceSubcommand::Pair(pair_cmd) => {
             super::pair::handle_pair(pair_cmd, http_client, env_config)
@@ -400,6 +409,21 @@ fn handle_extend(
         result.device_did,
         result.new_expires_at.date_naive()
     );
+    Ok(())
+}
+
+fn resolve_device(repo_path: &Path, device_did_str: &str) -> Result<()> {
+    let attestation_storage = RegistryAttestationStorage::new(repo_path.to_path_buf());
+    let device_did = auths_verifier::types::DeviceDID::new(device_did_str);
+    let attestations = attestation_storage
+        .load_attestations_for_device(&device_did)
+        .with_context(|| format!("Failed to load attestations for device {device_did_str}"))?;
+
+    let latest = attestations
+        .last()
+        .ok_or_else(|| anyhow!("No attestation found for device {device_did_str}"))?;
+
+    println!("{}", latest.issuer);
     Ok(())
 }
 
