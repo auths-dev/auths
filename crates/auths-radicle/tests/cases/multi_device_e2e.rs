@@ -395,9 +395,12 @@ fn multi_device_lifecycle() {
 
     let signers = vec![
         // Did::Key delegate pre-verified by Heartwood
-        SignerInput::PreVerified(VerifyResult::Verified {
-            reason: "did:key delegate ok".into(),
-        }),
+        SignerInput::PreVerified {
+            did: "did:key:zLegacyDelegate".into(),
+            result: VerifyResult::Verified {
+                reason: "did:key delegate ok".into(),
+            },
+        },
         // Did::Keri signers verified through bridge
         SignerInput::NeedsBridgeVerification(alice_laptop.key),
         SignerInput::NeedsBridgeVerification(bob_desktop.key),
@@ -414,14 +417,15 @@ fn multi_device_lifecycle() {
     };
     let results = verify_multiple_signers(&bridge, &signers, &template);
 
+    // 3 unique identities: legacy delegate + Alice KERI + Bob KERI
     assert_eq!(results.len(), 3);
     assert!(
         meets_threshold(&results, 2),
-        "phase 6: 3 verified signers should meet 2-of-3 threshold"
+        "phase 6: 3 verified identities should meet 2-of-3 threshold"
     );
     assert!(
         meets_threshold(&results, 3),
-        "phase 6: 3 verified signers should meet 3-of-3 threshold"
+        "phase 6: 3 verified identities should meet 3-of-3 threshold"
     );
 }
 

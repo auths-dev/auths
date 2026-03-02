@@ -36,6 +36,6 @@ pub use identity::{
     IdentityError, RadicleIdentity, RadicleIdentityDocument, RadicleIdentityResolver,
 };
 pub use verify::{
-    AuthsStorage, DefaultBridge, decision_to_verify_result, meets_threshold,
+    AuthsStorage, DefaultBridge, IdentityDid, decision_to_verify_result, meets_threshold,
     verify_multiple_signers,
 };

@@ -228,7 +228,13 @@ pub trait RadicleAuthsBridge: Send + Sync {
 #[non_exhaustive]
 pub enum SignerInput {
     /// `Did::Key` signer already verified by Heartwood's Ed25519 delegate check.
-    PreVerified(VerifyResult),
+    /// The `did` field carries the `did:key:z6Mk...` for identity deduplication.
+    PreVerified {
+        /// The legacy device DID (used as the identity DID for grouping).
+        did: String,
+        /// The pre-computed verification result.
+        result: VerifyResult,
+    },
     /// `Did::Keri` signer needing bridge verification.
     NeedsBridgeVerification([u8; 32]),
 }

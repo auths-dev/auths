@@ -14,6 +14,8 @@
 //! Any unhandled error in the pipeline produces `Rejected`, never `Verified`.
 //! The only path to `Verified` is a complete successful evaluation.
 
+use std::collections::BTreeMap;
+
 use auths_id::identity::ed25519_to_did_key;
 use auths_id::keri::KeyState;
 use auths_id::policy::{CompiledPolicy, Decision, Outcome, PolicyBuilder, evaluate_compiled};
@@ -22,6 +24,32 @@ use auths_verifier::core::Attestation;
 use crate::bridge::{
     BridgeError, EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult,
 };
+
+/// An identity-level DID used for threshold deduplication.
+///
+/// For `did:keri:` signers, this is the controller identity DID (all devices
+/// under the same identity share one `IdentityDid`). For legacy `did:key:`
+/// signers, the device DID itself is the identity DID (one device = one vote).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct IdentityDid(String);
+
+impl IdentityDid {
+    /// Creates a new `IdentityDid` from a DID string.
+    pub fn new(did: impl Into<String>) -> Self {
+        Self(did.into())
+    }
+
+    /// Returns the DID string.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for IdentityDid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 /// Default implementation of the Radicle-Auths bridge.
 ///
@@ -271,37 +299,51 @@ pub fn decision_to_verify_result(decision: Decision) -> VerifyResult {
     }
 }
 
-/// Verify a mixed set of signers for threshold identities.
+/// Verify a mixed set of signers and group results by identity.
 ///
-/// Radicle supports hybrid delegate sets with both `Did::Key` (legacy) and
-/// `Did::Keri` (KERI identity) delegates. The bridge only verifies `Did::Keri`
-/// signers — `Did::Key` results are pre-computed by Heartwood and passed through.
+/// Implements Radicle's "Person Rule": one identity = one vote, regardless of
+/// how many devices that identity has. Results are grouped by `IdentityDid`:
+/// - `did:keri:` signers: grouped by their controller identity DID
+/// - `did:key:` signers (legacy): each device is its own identity
 ///
 /// Args:
 /// * `bridge`: The bridge implementation.
 /// * `signers`: Mixed signer inputs (pre-verified or needing bridge verification).
 /// * `request_template`: Template for bridge verification requests.
-///   The `signer_key` field will be overridden per signer.
 ///
 /// Usage:
 /// ```ignore
 /// let signers = vec![
-///     SignerInput::PreVerified(VerifyResult::Verified { reason: "did:key ok".into() }),
+///     SignerInput::PreVerified { did: "did:key:z6Mk...".into(), result: VerifyResult::Verified { reason: "ok".into() } },
 ///     SignerInput::NeedsBridgeVerification(keri_key),
 /// ];
-/// let results = verify_multiple_signers(&bridge, &signers, &request);
-/// assert!(meets_threshold(&results, 2));
+/// let grouped = verify_multiple_signers(&bridge, &signers, &request);
+/// assert!(meets_threshold(&grouped, 2));
 /// ```
 pub fn verify_multiple_signers<B: RadicleAuthsBridge>(
     bridge: &B,
     signers: &[SignerInput],
     request_template: &VerifyRequest,
-) -> Vec<Result<VerifyResult, BridgeError>> {
-    signers
-        .iter()
-        .map(|signer| match signer {
-            SignerInput::PreVerified(result) => Ok(result.clone()),
+) -> BTreeMap<IdentityDid, Vec<VerifyResult>> {
+    let mut grouped: BTreeMap<IdentityDid, Vec<VerifyResult>> = BTreeMap::new();
+
+    for signer in signers {
+        match signer {
+            SignerInput::PreVerified { did, result } => {
+                grouped
+                    .entry(IdentityDid::new(did))
+                    .or_default()
+                    .push(result.clone());
+            }
             SignerInput::NeedsBridgeVerification(key) => {
+                let device_did = bridge.device_did(key);
+
+                let identity_did = bridge
+                    .find_identity_for_device(&device_did, request_template.repo_id)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| device_did.clone());
+
                 let request = VerifyRequest {
                     signer_key: key,
                     repo_id: request_template.repo_id,
@@ -311,30 +353,47 @@ pub fn verify_multiple_signers<B: RadicleAuthsBridge>(
                     min_kel_seq: request_template.min_kel_seq,
                     required_capability: request_template.required_capability,
                 };
-                bridge.verify_signer(&request)
+
+                let result = match bridge.verify_signer(&request) {
+                    Ok(r) => r,
+                    Err(_) => VerifyResult::Rejected {
+                        reason: format!("bridge error for device {device_did}"),
+                    },
+                };
+
+                grouped
+                    .entry(IdentityDid::new(&identity_did))
+                    .or_default()
+                    .push(result);
             }
-        })
-        .collect()
+        }
+    }
+
+    grouped
 }
 
-/// Check if enough signers are verified for a threshold.
+/// Check if enough unique identities have verified results for a threshold.
 ///
-/// Counts both pre-verified `Did::Key` and bridge-verified `Did::Keri` signers.
+/// Counts unique identity DIDs that have at least one `is_allowed()` result.
+/// Multiple devices under the same `did:keri:` identity count as one vote.
 ///
 /// Args:
-/// * `results`: Results from `verify_multiple_signers`.
-/// * `threshold`: Minimum number of verified signers required.
+/// * `results`: Grouped results from `verify_multiple_signers`.
+/// * `threshold`: Minimum number of unique verified identities required.
 ///
 /// Usage:
 /// ```ignore
-/// assert!(meets_threshold(&results, 2));
+/// assert!(meets_threshold(&grouped, 2));
 /// ```
-pub fn meets_threshold(results: &[Result<VerifyResult, BridgeError>], threshold: usize) -> bool {
-    let verified_count = results
-        .iter()
-        .filter(|r| matches!(r, Ok(v) if v.is_allowed()))
+pub fn meets_threshold(
+    results: &BTreeMap<IdentityDid, Vec<VerifyResult>>,
+    threshold: usize,
+) -> bool {
+    let verified_identities = results
+        .values()
+        .filter(|results| results.iter().any(|r| r.is_allowed()))
         .count();
-    verified_count >= threshold
+    verified_identities >= threshold
 }
 
 #[cfg(test)]
@@ -844,23 +903,118 @@ mod tests {
         let bridge = DefaultBridge::with_storage(storage);
 
         let signers = vec![
-            // Two Did::Key delegates pre-verified by Heartwood
-            SignerInput::PreVerified(VerifyResult::Verified {
-                reason: "did:key delegate ok".into(),
-            }),
-            SignerInput::PreVerified(VerifyResult::Verified {
-                reason: "did:key delegate ok".into(),
-            }),
-            // One Did::Keri signer verified through bridge
+            SignerInput::PreVerified {
+                did: "did:key:zAlice".into(),
+                result: VerifyResult::Verified { reason: "did:key delegate ok".into() },
+            },
+            SignerInput::PreVerified {
+                did: "did:key:zBob".into(),
+                result: VerifyResult::Verified { reason: "did:key delegate ok".into() },
+            },
             SignerInput::NeedsBridgeVerification(signer_key),
         ];
 
         let template = make_enforce_request(&signer_key, repo_id, Utc::now());
         let results = verify_multiple_signers(&bridge, &signers, &template);
 
+        // 3 unique identities: Alice, Bob, and the KERI identity
         assert_eq!(results.len(), 3);
         assert!(meets_threshold(&results, 2));
         assert!(meets_threshold(&results, 3));
+    }
+
+    #[test]
+    fn same_keri_identity_multiple_devices_one_vote() {
+        let mut storage = MockStorage::new();
+        let key_a: [u8; 32] = [1; 32];
+        let key_b: [u8; 32] = [2; 32];
+        let key_c: [u8; 32] = [3; 32];
+        let did_a = ed25519_to_did_key(&key_a);
+        let did_b = ed25519_to_did_key(&key_b);
+        let did_c = ed25519_to_did_key(&key_c);
+        let identity_did = "did:keri:EAlice";
+        let repo_id = "test-repo";
+
+        storage.add_identity(identity_did, make_key_state("EAlice", 0));
+        for (device_did, key) in [(&did_a, &key_a), (&did_b, &key_b), (&did_c, &key_c)] {
+            storage.add_attestation(
+                device_did,
+                identity_did,
+                make_attestation(identity_did, device_did, None, vec![]),
+            );
+            storage.link_device_to_identity(device_did, identity_did, repo_id);
+            let _ = key; // used for creating DIDs
+        }
+        storage.set_identity_tip(identity_did, [0xAA; 20]);
+
+        let bridge = DefaultBridge::with_storage(storage);
+        let signers = vec![
+            SignerInput::NeedsBridgeVerification(key_a),
+            SignerInput::NeedsBridgeVerification(key_b),
+            SignerInput::NeedsBridgeVerification(key_c),
+        ];
+
+        let template = make_enforce_request(&key_a, repo_id, Utc::now());
+        let results = verify_multiple_signers(&bridge, &signers, &template);
+
+        // All 3 devices are under the same identity → 1 entry in map → 1 vote
+        assert_eq!(results.len(), 1);
+        assert!(meets_threshold(&results, 1));
+        assert!(!meets_threshold(&results, 2));
+    }
+
+    #[test]
+    fn two_different_keri_identities_two_votes() {
+        let mut storage = MockStorage::new();
+        let alice_key: [u8; 32] = [1; 32];
+        let bob_key: [u8; 32] = [2; 32];
+        let alice_did = ed25519_to_did_key(&alice_key);
+        let bob_did = ed25519_to_did_key(&bob_key);
+        let alice_id = "did:keri:EAlice";
+        let bob_id = "did:keri:EBob";
+        let repo_id = "test-repo";
+
+        storage.add_identity(alice_id, make_key_state("EAlice", 0));
+        storage.add_identity(bob_id, make_key_state("EBob", 0));
+        storage.add_attestation(&alice_did, alice_id, make_attestation(alice_id, &alice_did, None, vec![]));
+        storage.add_attestation(&bob_did, bob_id, make_attestation(bob_id, &bob_did, None, vec![]));
+        storage.link_device_to_identity(&alice_did, alice_id, repo_id);
+        storage.link_device_to_identity(&bob_did, bob_id, repo_id);
+        storage.set_identity_tip(alice_id, [0xAA; 20]);
+        storage.set_identity_tip(bob_id, [0xBB; 20]);
+
+        let bridge = DefaultBridge::with_storage(storage);
+        let signers = vec![
+            SignerInput::NeedsBridgeVerification(alice_key),
+            SignerInput::NeedsBridgeVerification(bob_key),
+        ];
+
+        let template = make_enforce_request(&alice_key, repo_id, Utc::now());
+        let results = verify_multiple_signers(&bridge, &signers, &template);
+
+        assert_eq!(results.len(), 2);
+        assert!(meets_threshold(&results, 2));
+    }
+
+    #[test]
+    fn mixed_did_key_and_did_keri_correct_count() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+
+        let signers = vec![
+            SignerInput::PreVerified {
+                did: "did:key:zLegacyNode".into(),
+                result: VerifyResult::Verified { reason: "ok".into() },
+            },
+            SignerInput::NeedsBridgeVerification(signer_key),
+        ];
+
+        let template = make_enforce_request(&signer_key, repo_id, Utc::now());
+        let results = verify_multiple_signers(&bridge, &signers, &template);
+
+        // 1 legacy did:key + 1 KERI identity = 2 votes
+        assert_eq!(results.len(), 2);
+        assert!(meets_threshold(&results, 2));
     }
 
     #[test]
@@ -891,28 +1045,39 @@ mod tests {
         let bridge = DefaultBridge::with_storage(storage);
 
         let signers = vec![
-            // Two pre-verified Did::Key delegates
-            SignerInput::PreVerified(VerifyResult::Verified {
-                reason: "ok".into(),
-            }),
-            // One valid Did::Keri
+            SignerInput::PreVerified {
+                did: "did:key:zLegacy".into(),
+                result: VerifyResult::Verified { reason: "ok".into() },
+            },
+            // Both devices under same identity — one good, one revoked
             SignerInput::NeedsBridgeVerification(good_key),
-            // One revoked Did::Keri
             SignerInput::NeedsBridgeVerification(bad_key),
         ];
 
         let template = make_enforce_request(&good_key, repo_id, Utc::now());
         let results = verify_multiple_signers(&bridge, &signers, &template);
 
-        // 3 verified (1 pre-verified + 1 keri good), 1 rejected
-        assert!(meets_threshold(&results, 2)); // passes threshold of 2
-        assert!(!meets_threshold(&results, 3)); // but not 3 (only 2 allowed)
+        // 2 unique identities: legacy + KERI. KERI has one good device → 1 vote.
+        assert_eq!(results.len(), 2);
+        assert!(meets_threshold(&results, 2)); // both identities have at least one verified
     }
 
     #[test]
     fn empty_signers_threshold_zero_passes() {
-        let results: Vec<Result<VerifyResult, BridgeError>> = vec![];
+        let results: BTreeMap<IdentityDid, Vec<VerifyResult>> = BTreeMap::new();
         assert!(meets_threshold(&results, 0));
+    }
+
+    #[test]
+    fn threshold_one_met_by_any_single_device() {
+        let (storage, signer_key, _, repo_id) = setup_valid_signer();
+        let bridge = DefaultBridge::with_storage(storage);
+
+        let signers = vec![SignerInput::NeedsBridgeVerification(signer_key)];
+        let template = make_enforce_request(&signer_key, repo_id, Utc::now());
+        let results = verify_multiple_signers(&bridge, &signers, &template);
+
+        assert!(meets_threshold(&results, 1));
     }
 
     #[test]
