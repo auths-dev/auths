@@ -6,6 +6,7 @@ This plan outlines the multi-repository effort to unify decentralized multi-devi
 1.  `/Users/bordumb/workspace/repositories/auths-base/auths/crates`: The identity and bridge logic.
 2.  `/Users/bordumb/workspace/repositories/heartwood/crates`: The Radicle node, storage, and API.
 3.  `/Users/bordumb/workspace/repositories/radicle.xyz`: The Svelte-based frontend (or relevant UI repo).
+4. `/Users/bordumb/workspace/repositories/radicle-base/radicle-explorer/radicle-httpd`: crate that holds the API logic from heartwood to radicle.xyz
 
 ## Phase 1: Bridge & Logic (Repository: `auths-base/auths`)
 
@@ -151,17 +152,19 @@ This plan outlines the multi-repository effort to unify decentralized multi-devi
 - [ ] **WASM Binding Audit**: Ensure `wasm_verify_device_link` in `auths-verifier` returns exactly the JSON structure required by Phase 3.2.
 
 ### Phase 2: Heartwood API (Pending)
-- [ ] **Locate API Routes**: Find the `radicle-httpd` or `radicle-node` API v1 implementation (likely in a separate `radicle-httpd` repository or internal module).
+- Repo: /Users/bordumb/workspace/repositories/radicle-base/radicle-explorer/radicle-httpd
+- [ ] **Locate API Routes**: update `radicle-httpd` API v1 implementation
 - [ ] **Extend User Endpoint**: Modify `GET /v1/users/:did` to perform a bridge lookup for the controller identity.
 - [ ] **New Identity Endpoints**:
     - Implement `GET /v1/identity/:did/kel` to serve the full KERI Event Log from the identity repo.
     - Implement `GET /v1/identity/:did/attestations` to serve all device signatures for that identity.
 
 ### Phase 3: Frontend / UI (Pending)
+- Repo: /Users/bordumb/workspace/repositories/radicle-base/radicle.xyz
 - [ ] **`auths-verifier-ts` Integration**: Add the WASM verifier dependency to the frontend `package.json`.
 - [ ] **Profile Unification**: Update the User profile component to check for `controller_did` and toggle between "Device View" and "Person View".
 - [ ] **Local Verification Link**: Implement the `auths.ts` helper to fetch KEL/Attestations and run the WASM verifier on page load.
 
 ### Phase 4: Verification & E2E (Pending)
 - [ ] **API Assertions**: Add `curl` checks to `scripts/radicle-e2e.sh` to verify that `controller_did` is correctly populated after a `pair` operation.
-- [ ] **UI Integration Test**: (Optional) Add a basic Playwright/Cypress test to verify the "Verified" badge appears in the browser.
+- [ ] **UI Integration Test**: (Optional) Add a basic Playwright test to verify the "Verified" badge appears in the browser.

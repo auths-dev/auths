@@ -134,6 +134,9 @@ pub trait AuthsStorage: Send + Sync {
         repo_id: &RepoId,
     ) -> Result<Option<Did>, BridgeError>;
 
+    /// List all device DIDs that are attested by a given identity in this project.
+    fn list_devices(&self, identity_did: &Did) -> Result<Vec<Did>, BridgeError>;
+
     /// Get the local tip OID of an identity repo.
     ///
     /// Returns `None` if the identity repo is not available locally.
@@ -287,6 +290,10 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         repo_id: &RepoId,
     ) -> Result<Option<Did>, BridgeError> {
         self.storage.find_identity_for_device(device_did, repo_id)
+    }
+
+    fn list_devices(&self, identity_did: &Did) -> Result<Vec<Did>, BridgeError> {
+        self.storage.list_devices(identity_did)
     }
 }
 

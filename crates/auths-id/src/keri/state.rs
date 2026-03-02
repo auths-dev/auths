@@ -34,6 +34,10 @@ pub struct KeyState {
 
     /// Whether this identity has been abandoned (empty next commitment)
     pub is_abandoned: bool,
+    /// Current signing threshold
+    pub threshold: u64,
+    /// Next signing threshold (committed)
+    pub next_threshold: u64,
 }
 
 impl KeyState {
@@ -43,11 +47,15 @@ impl KeyState {
     /// * `prefix` - The KERI identifier (same as inception SAID)
     /// * `keys` - The initial signing key(s)
     /// * `next` - The next-key commitment(s)
+    /// * `threshold` - Initial signing threshold
+    /// * `next_threshold` - Committed next signing threshold
     /// * `said` - The inception event SAID
     pub fn from_inception(
         prefix: Prefix,
         keys: Vec<String>,
         next: Vec<String>,
+        threshold: u64,
+        next_threshold: u64,
         said: Said,
     ) -> Self {
         Self {
@@ -57,6 +65,8 @@ impl KeyState {
             sequence: 0,
             last_event_said: said,
             is_abandoned: next.is_empty(),
+            threshold,
+            next_threshold,
         }
     }
 
@@ -70,11 +80,15 @@ impl KeyState {
         &mut self,
         new_keys: Vec<String>,
         new_next: Vec<String>,
+        threshold: u64,
+        next_threshold: u64,
         sequence: u64,
         said: Said,
     ) {
         self.current_keys = new_keys;
         self.next_commitment = new_next.clone();
+        self.threshold = threshold;
+        self.next_threshold = next_threshold;
         self.sequence = sequence;
         self.last_event_said = said;
         self.is_abandoned = new_next.is_empty();
@@ -118,6 +132,8 @@ mod tests {
             Prefix::new_unchecked("EPrefix".to_string()),
             vec!["DKey1".to_string()],
             vec!["ENext1".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESAID".to_string()),
         );
         assert_eq!(state.sequence, 0);
@@ -133,12 +149,16 @@ mod tests {
             Prefix::new_unchecked("EPrefix".to_string()),
             vec!["DKey1".to_string()],
             vec!["ENext1".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESAID1".to_string()),
         );
 
         state.apply_rotation(
             vec!["DKey2".to_string()],
             vec!["ENext2".to_string()],
+            1,
+            1,
             1,
             Said::new_unchecked("ESAID2".to_string()),
         );
@@ -156,6 +176,8 @@ mod tests {
             Prefix::new_unchecked("EPrefix".to_string()),
             vec!["DKey1".to_string()],
             vec!["ENext1".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESAID1".to_string()),
         );
 
@@ -173,6 +195,8 @@ mod tests {
             Prefix::new_unchecked("EPrefix".to_string()),
             vec!["DKey1".to_string()],
             vec![], // Empty next commitment = abandoned
+            1,
+            0,
             Said::new_unchecked("ESAID".to_string()),
         );
         assert!(state.is_abandoned);
@@ -185,6 +209,8 @@ mod tests {
             Prefix::new_unchecked("EPrefix".to_string()),
             vec!["DKey1".to_string()],
             vec!["ENext1".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESAID".to_string()),
         );
 

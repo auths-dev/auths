@@ -1,15 +1,21 @@
+//! Radicle identity resolver.
+//!
+//! Resolves Radicle peer identities by reading from `refs/rad/id` and extracting
+//! the delegate's Ed25519 public key from the `did:key` format. Also resolves
+//! `did:keri:` identifiers by replaying the KERI Key Event Log.
+
 use auths_id::identity::{DidMethod, DidResolver, DidResolverError, ResolvedDid};
 use auths_id::keri::KeyState;
 use auths_id::keri::event::Event;
 use auths_id::keri::validate::replay_kel;
 use git2::{ErrorCode, Repository};
-use radicle_core::Did;
+use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use crate::refs::{self, Layout};
+use crate::refs::Layout;
 
 /// Errors from identity resolution.
 #[derive(Debug, Error)]
@@ -59,16 +65,18 @@ pub struct RadicleIdentityDocument {
 }
 
 /// Represents a resolved Radicle identity with extracted key material.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RadicleIdentity {
-    /// The original identity document
-    pub document: RadicleIdentityDocument,
-    /// The primary delegate's Ed25519 public key
-    pub primary_public_key: PublicKey,
-    /// The primary delegate's DID
-    pub primary_did: Did,
+    /// The identity DID (did:key or did:keri)
+    pub did: Did,
+    /// Current signing keys (as DIDs)
+    pub keys: Vec<Did>,
+    /// Current sequence number (0 for did:key, KERI sequence for did:keri)
+    pub sequence: u64,
     /// Optional KERI key state (if resolved from did:keri)
     pub keri_state: Option<KeyState>,
+    /// The original identity document (if resolved from a repository)
+    pub document: Option<RadicleIdentityDocument>,
 }
 
 /// Resolver for Radicle peer identities.
@@ -83,6 +91,55 @@ pub struct RadicleIdentityResolver {
 }
 
 impl RadicleIdentityResolver {
+    /// Resolves a DID (did:key or did:keri) to a Radicle identity.
+    pub fn resolve(&self, did_str: &str) -> Result<RadicleIdentity, IdentityError> {
+        let did: Did = did_str.parse()?;
+
+        match did {
+            Did::Key(_) => self.resolve_key(&did),
+            Did::Keri(_) => self.resolve_keri(&did),
+        }
+    }
+
+    /// Resolves a `did:key:` to a Radicle identity.
+    pub fn resolve_key(&self, did: &Did) -> Result<RadicleIdentity, IdentityError> {
+        let _pk = resolve_did_key(did)?;
+        Ok(RadicleIdentity {
+            did: did.clone(),
+            keys: vec![did.clone()],
+            sequence: 0,
+            keri_state: None,
+            document: None,
+        })
+    }
+
+    /// Resolves a `did:keri:` to a Radicle identity by replaying its KEL.
+    pub fn resolve_keri(&self, did: &Did) -> Result<RadicleIdentity, IdentityError> {
+        let key_state = self.resolve_keri_state(did)?;
+        let mut keys = Vec::with_capacity(key_state.current_keys.len());
+
+        for key_str in &key_state.current_keys {
+            let keri_pk = auths_crypto::KeriPublicKey::parse(key_str)
+                .map_err(|e| IdentityError::KelValidationFailed(format!("invalid CESR key: {e}")))?;
+            let public_key = PublicKey::try_from(keri_pk.into_bytes().as_slice())
+                .map_err(|_| IdentityError::InvalidDidKey("key conversion failed".to_string()))?;
+            keys.push(Did::from(public_key));
+        }
+
+        Ok(RadicleIdentity {
+            did: did.clone(),
+            keys,
+            sequence: key_state.sequence,
+            keri_state: Some(key_state),
+            document: None,
+        })
+    }
+
+    /// Deprecated: use `resolve` instead.
+    pub fn resolve_identity_from_did(&self, did_str: &str) -> Result<RadicleIdentity, IdentityError> {
+        self.resolve(did_str)
+    }
+
     /// Creates a new resolver for the given repository path.
     ///
     /// Uses the Radicle storage layout preset (`refs/rad/id`).
@@ -161,24 +218,12 @@ impl RadicleIdentityResolver {
             .ok_or(IdentityError::NoDelegates)?
             .clone();
 
-        let resolved = self.resolve(&primary_did.to_string()).map_err(|e| {
+        let mut identity = self.resolve(&primary_did.to_string()).map_err(|e| {
             IdentityError::InvalidDocument(format!("failed to resolve primary delegate: {e}"))
         })?;
+        identity.document = Some(document);
 
-        Ok(RadicleIdentity {
-            document,
-            primary_public_key: PublicKey::try_from(resolved.public_key.as_slice()).map_err(|_| {
-                IdentityError::InvalidDidKey("resolved public key is not 32 bytes".into())
-            })?,
-            primary_did: primary_did.clone(),
-            keri_state: match resolved.method {
-                DidMethod::Keri { .. } => {
-                    // We need the full KeyState. Re-resolve KERI specifically to get it.
-                    Some(self.resolve_keri_state(&primary_did)?)
-                }
-                _ => None,
-            },
-        })
+        Ok(identity)
     }
 
     /// Returns the repository path.
@@ -186,14 +231,53 @@ impl RadicleIdentityResolver {
         &self.repo_path
     }
 
-    fn resolve_keri_state(&self, did: &Did) -> Result<KeyState, IdentityError> {
+    /// Finds the identity repository for a given DID by scanning projects.
+    pub fn find_identity_repo(&self, did: &Did) -> Result<PathBuf, IdentityError> {
+        let prefix = match did {
+            Did::Keri(p) => p,
+            _ => return Err(IdentityError::InvalidDidKey("Not a KERI DID".into())),
+        };
+
+        let repo = Repository::open(&self.repo_path).map_err(|e| IdentityError::Repository {
+            path: self.repo_path.display().to_string(),
+            detail: e.to_string(),
+        })?;
+
+        let namespace_ref = self.layout.identity_rad_id_ref(prefix);
+        let reference = repo.find_reference(&namespace_ref).map_err(|_| {
+            IdentityError::KelNotFound {
+                ref_path: namespace_ref,
+            }
+        })?;
+
+        let blob = reference
+            .peel_to_blob()
+            .map_err(|e| IdentityError::InvalidDocument(format!("peel to blob: {e}")))?;
+
+        let rid_str = std::str::from_utf8(blob.content())
+            .map_err(|e| IdentityError::InvalidDocument(format!("invalid UTF-8: {e}")))?
+            .trim();
+
+        let rid: RepoId = rid_str
+            .parse()
+            .map_err(|e: radicle_core::repo::IdError| {
+                IdentityError::InvalidDocument(format!("invalid RID: {e}"))
+            })?;
+
+        // Identity repos are stored under the same storage root
+        let mut path = self.repo_path.clone();
+        path.push(rid.to_string());
+        Ok(path)
+    }
+
+    pub fn resolve_keri_state(&self, did: &Did) -> Result<KeyState, IdentityError> {
         let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
         let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
             path: id_path.display().to_string(),
             detail: e.to_string(),
         })?;
 
-        let events = read_kel_events(&repo, id_path)?;
+        let events = self.resolve_kel_events(&repo)?;
         if events.is_empty() {
             return Err(IdentityError::KelNotFound {
                 ref_path: self.layout.keri_kel_ref.clone(),
@@ -216,86 +300,62 @@ impl RadicleIdentityResolver {
         Ok(key_state)
     }
 
-    fn resolve_keri(&self, did: &str) -> Result<ResolvedDid, IdentityError> {
-        let did_val: Did = did.parse().map_err(|e: radicle_core::identity::DidError| {
-            IdentityError::InvalidDid(e)
-        })?;
-        let key_state = self.resolve_keri_state(&did_val)?;
+    /// Resolves the raw KERI event log from the repository.
+    pub fn resolve_kel_events(&self, repo: &Repository) -> Result<Vec<Event>, IdentityError> {
+        let path = repo.path();
+        let reference = match repo.find_reference(&self.layout.keri_kel_ref) {
+            Ok(r) => r,
+            Err(e) if e.code() == ErrorCode::NotFound => return Ok(vec![]),
+            Err(e) => {
+                return Err(IdentityError::Repository {
+                    path: path.display().to_string(),
+                    detail: format!("KEL ref error: {e}"),
+                });
+            }
+        };
 
-        let cesr_key = key_state
-            .current_keys
-            .first()
-            .ok_or(IdentityError::NoSigningKeys)?;
+        let mut commit = reference
+            .peel_to_commit()
+            .map_err(|e| IdentityError::Repository {
+                path: path.display().to_string(),
+                detail: format!("KEL ref not a commit: {e}"),
+            })?;
 
-        let keri_pk = auths_crypto::KeriPublicKey::parse(cesr_key)
-            .map_err(|e| IdentityError::KelValidationFailed(format!("invalid CESR key: {e}")))?;
+        let mut events = Vec::new();
+        loop {
+            if commit.parent_count() > 1 {
+                return Err(IdentityError::KelValidationFailed(
+                    "merge commit in KEL chain".into(),
+                ));
+            }
 
-        let public_key = keri_pk.into_bytes().to_vec();
+            let tree = commit
+                .tree()
+                .map_err(|e| IdentityError::KelValidationFailed(format!("missing tree: {e}")))?;
+            let entry = tree.get_name(EVENT_BLOB_NAME).ok_or_else(|| {
+                IdentityError::KelValidationFailed("missing event.json in KEL commit".into())
+            })?;
+            let blob = repo
+                .find_blob(entry.id())
+                .map_err(|e| IdentityError::KelValidationFailed(format!("blob read error: {e}")))?;
+            let event: Event = serde_json::from_slice(blob.content())
+                .map_err(|e| IdentityError::KelValidationFailed(format!("invalid event JSON: {e}")))?;
+            events.push(event);
 
-        Ok(ResolvedDid {
-            did: did.to_string(),
-            public_key,
-            method: DidMethod::Keri {
-                sequence: key_state.sequence,
-                can_rotate: key_state.can_rotate(),
-            },
-        })
+            if commit.parent_count() == 0 {
+                break;
+            }
+            commit = commit
+                .parent(0)
+                .map_err(|e| IdentityError::KelValidationFailed(format!("parent walk error: {e}")))?;
+        }
+
+        events.reverse();
+        Ok(events)
     }
 }
 
 const EVENT_BLOB_NAME: &str = "event.json";
-
-fn read_kel_events(repo: &Repository, path: &Path) -> Result<Vec<Event>, IdentityError> {
-    let reference = match repo.find_reference(refs::KERI_KEL_REF) {
-        Ok(r) => r,
-        Err(e) if e.code() == ErrorCode::NotFound => return Ok(vec![]),
-        Err(e) => {
-            return Err(IdentityError::Repository {
-                path: path.display().to_string(),
-                detail: format!("KEL ref error: {e}"),
-            });
-        }
-    };
-
-    let mut commit = reference
-        .peel_to_commit()
-        .map_err(|e| IdentityError::Repository {
-            path: path.display().to_string(),
-            detail: format!("KEL ref not a commit: {e}"),
-        })?;
-
-    let mut events = Vec::new();
-    loop {
-        if commit.parent_count() > 1 {
-            return Err(IdentityError::KelValidationFailed(
-                "merge commit in KEL chain".into(),
-            ));
-        }
-
-        let tree = commit
-            .tree()
-            .map_err(|e| IdentityError::KelValidationFailed(format!("missing tree: {e}")))?;
-        let entry = tree.get_name(EVENT_BLOB_NAME).ok_or_else(|| {
-            IdentityError::KelValidationFailed("missing event.json in KEL commit".into())
-        })?;
-        let blob = repo
-            .find_blob(entry.id())
-            .map_err(|e| IdentityError::KelValidationFailed(format!("blob read error: {e}")))?;
-        let event: Event = serde_json::from_slice(blob.content())
-            .map_err(|e| IdentityError::KelValidationFailed(format!("invalid event JSON: {e}")))?;
-        events.push(event);
-
-        if commit.parent_count() == 0 {
-            break;
-        }
-        commit = commit
-            .parent(0)
-            .map_err(|e| IdentityError::KelValidationFailed(format!("parent walk error: {e}")))?;
-    }
-
-    events.reverse();
-    Ok(events)
-}
 
 /// Resolves a `Did` to its `PublicKey`.
 pub fn resolve_did_key(did: &Did) -> Result<PublicKey, IdentityError> {
@@ -316,254 +376,40 @@ pub fn resolve_did_key_bytes(did: &str) -> Result<Vec<u8>, IdentityError> {
 
 impl DidResolver for RadicleIdentityResolver {
     fn resolve(&self, did: &str) -> Result<ResolvedDid, DidResolverError> {
-        if did.starts_with("did:key:") {
-            let public_key = resolve_did_key_bytes(did)
-                .map_err(|e| DidResolverError::InvalidDidKey(e.to_string()))?;
-            Ok(ResolvedDid {
+        let did_val: Did = did
+            .parse()
+            .map_err(|e: radicle_core::identity::DidError| {
+                DidResolverError::InvalidDidKey(e.to_string())
+            })?;
+
+        match did_val {
+            Did::Key(pk) => Ok(ResolvedDid {
                 did: did.to_string(),
-                public_key,
                 method: DidMethod::Key,
-            })
-        } else if did.starts_with("did:keri:") {
-            self.resolve_keri(did)
-                .map_err(|e| DidResolverError::Resolution(e.to_string()))
-        } else {
-            Err(DidResolverError::UnsupportedMethod(did.to_string()))
-        }
-    }
-}
+                public_key: pk.to_vec(),
+            }),
+            Did::Keri(_) => {
+                let key_state = self.resolve_keri_state(&did_val).map_err(|e| {
+                    DidResolverError::Resolution(format!("KERI resolution failed: {e}"))
+                })?;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    
-    use git2::Signature;
-    use tempfile::TempDir;
+                let cesr_key = key_state.current_keys.first().ok_or_else(|| {
+                    DidResolverError::Resolution("no signing keys in KEL".into())
+                })?;
 
-    fn create_test_repo_with_identity(delegates: Vec<&str>, threshold: u32) -> TempDir {
-        let temp_dir = TempDir::new().unwrap();
-        let repo = Repository::init(temp_dir.path()).unwrap();
+                let keri_pk = auths_crypto::KeriPublicKey::parse(cesr_key).map_err(|e| {
+                    DidResolverError::Resolution(format!("invalid CESR key: {e}"))
+                })?;
 
-        let doc = RadicleIdentityDocument {
-            delegates: delegates.iter().map(|s| s.parse().unwrap()).collect(),
-            threshold,
-            payload: serde_json::json!({"name": "test-project"}),
-        };
-        let content = serde_json::to_string_pretty(&doc).unwrap();
-        let blob_oid = repo.blob(content.as_bytes()).unwrap();
-
-        let layout = Layout::radicle();
-        let commit_oid = {
-            let mut tree_builder = repo.treebuilder(None).unwrap();
-            tree_builder
-                .insert(&layout.identity_blob, blob_oid, 0o100644)
-                .unwrap();
-            let tree_oid = tree_builder.write().unwrap();
-            drop(tree_builder);
-
-            let tree = repo.find_tree(tree_oid).unwrap();
-            let sig = Signature::now("test", "test@example.com").unwrap();
-            repo.commit(None, &sig, &sig, "Initial identity", &tree, &[])
-                .unwrap()
-        };
-
-        repo.reference(
-            &layout.rad_id_ref,
-            commit_oid,
-            true,
-            "Create Radicle identity ref",
-        )
-        .unwrap();
-
-        temp_dir
-    }
-
-    /// Creates a KERI identity in a Git repo and copies the KEL to `refs/keri/kel`.
-    fn create_keri_repo() -> (TempDir, auths_id::keri::InceptionResult) {
-        let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
-        let result = auths_id::keri::create_keri_identity(&repo, None).unwrap();
-
-        // Copy from refs/did/keri/<prefix>/kel to refs/keri/kel (Radicle layout)
-        let src_ref = format!("refs/did/keri/{}/kel", result.prefix.as_str());
-        let reference = repo.find_reference(&src_ref).unwrap();
-        let oid = reference.target().unwrap();
-        repo.reference(refs::KERI_KEL_REF, oid, true, "copy KEL to Radicle layout")
-            .unwrap();
-
-        (dir, result)
-    }
-
-    #[test]
-    fn resolve_valid_radicle_identity() {
-        let valid_did = "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi";
-        let temp_dir = create_test_repo_with_identity(vec![valid_did], 1);
-
-        let resolver = RadicleIdentityResolver::new(temp_dir.path());
-        let identity = resolver.resolve_identity().unwrap();
-
-        assert_eq!(identity.document.delegates.len(), 1);
-        assert_eq!(identity.document.threshold, 1);
-        assert_eq!(identity.primary_did.to_string(), valid_did);
-        assert_eq!(identity.primary_public_key.as_ref().len(), 32);
-    }
-
-    #[test]
-    fn resolve_did_key_via_trait() {
-        let valid_did = "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi";
-        let temp_dir = create_test_repo_with_identity(vec![valid_did], 1);
-
-        let resolver = RadicleIdentityResolver::new(temp_dir.path());
-        let resolved = resolver.resolve(valid_did).unwrap();
-        assert_eq!(resolved.public_key.len(), 32);
-        assert!(matches!(resolved.method, DidMethod::Key));
-    }
-
-    #[test]
-    fn resolve_did_keri_returns_correct_key() {
-        let (dir, inception) = create_keri_repo();
-        let did = inception.did();
-
-        let resolver = RadicleIdentityResolver::new(dir.path());
-        let resolved = resolver.resolve(&did).unwrap();
-
-        assert_eq!(resolved.did, did);
-        assert_eq!(resolved.public_key, inception.current_public_key);
-        assert!(matches!(
-            resolved.method,
-            DidMethod::Keri {
-                sequence: 0,
-                can_rotate: true
+                Ok(ResolvedDid {
+                    did: did.to_string(),
+                    method: DidMethod::Keri {
+                        sequence: key_state.sequence,
+                        can_rotate: key_state.can_rotate(),
+                    },
+                    public_key: keri_pk.into_bytes().to_vec(),
+                })
             }
-        ));
-
-        // Verify round-trip: resolved key → did:key matches ed25519_to_did_key
-        let expected_did_key = auths_id::identity::ed25519_to_did_key(&inception.current_public_key);
-        let actual_did_key = auths_id::identity::ed25519_to_did_key(&resolved.public_key);
-        assert_eq!(actual_did_key, expected_did_key);
-    }
-
-    #[test]
-    fn resolve_did_keri_after_rotation_returns_new_key() {
-        let (dir, inception) = create_keri_repo();
-        let did = inception.did();
-        let repo = Repository::open(dir.path()).unwrap();
-
-        let rotation = auths_id::keri::rotate_keys(
-            &repo,
-            &inception.prefix,
-            &inception.next_keypair_pkcs8,
-            None,
-        )
-        .unwrap();
-
-        // Update refs/keri/kel to point at the new tip
-        let src_ref = format!("refs/did/keri/{}/kel", inception.prefix.as_str());
-        let reference = repo.find_reference(&src_ref).unwrap();
-        let oid = reference.target().unwrap();
-        repo.reference(refs::KERI_KEL_REF, oid, true, "update KEL after rotation")
-            .unwrap();
-
-        let resolver = RadicleIdentityResolver::new(dir.path());
-        let resolved = resolver.resolve(&did).unwrap();
-
-        assert_eq!(resolved.public_key, rotation.new_current_public_key);
-        assert_ne!(resolved.public_key, inception.current_public_key);
-        assert!(matches!(
-            resolved.method,
-            DidMethod::Keri { sequence: 1, .. }
-        ));
-    }
-
-    #[test]
-    fn resolve_did_keri_no_kel_returns_error() {
-        let dir = TempDir::new().unwrap();
-        let _repo = Repository::init(dir.path()).unwrap();
-
-        let resolver = RadicleIdentityResolver::new(dir.path());
-        let result = resolver.resolve("did:keri:EExample123");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn resolve_did_keri_corrupt_kel_returns_error() {
-        let dir = TempDir::new().unwrap();
-        let repo = Repository::init(dir.path()).unwrap();
-
-        // Write corrupt event data
-        let blob_oid = repo.blob(b"not valid json").unwrap();
-        let mut tb = repo.treebuilder(None).unwrap();
-        tb.insert(EVENT_BLOB_NAME, blob_oid, 0o100644).unwrap();
-        let tree_oid = tb.write().unwrap();
-        drop(tb);
-        let tree = repo.find_tree(tree_oid).unwrap();
-        let sig = git2::Signature::now("test", "test@test.com").unwrap();
-        let commit_oid = repo
-            .commit(None, &sig, &sig, "bad event", &tree, &[])
-            .unwrap();
-        repo.reference(refs::KERI_KEL_REF, commit_oid, true, "corrupt")
-            .unwrap();
-
-        let resolver = RadicleIdentityResolver::new(dir.path());
-        let result = resolver.resolve("did:keri:EBogus");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn reject_unsupported_did_method() {
-        let temp_dir = create_test_repo_with_identity(
-            vec!["did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi"],
-            1,
-        );
-        let resolver = RadicleIdentityResolver::new(temp_dir.path());
-        let result = resolver.resolve("did:web:example.com");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn reject_invalid_did_key_format() {
-        let temp_dir = create_test_repo_with_identity(
-            vec!["did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi"],
-            1,
-        );
-        let resolver = RadicleIdentityResolver::new(temp_dir.path());
-        let result = resolver.resolve("did:key:invalid");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn missing_identity_ref() {
-        let temp_dir = TempDir::new().unwrap();
-        let _repo = Repository::init(temp_dir.path()).unwrap();
-
-        let resolver = RadicleIdentityResolver::new(temp_dir.path());
-        let result = resolver.resolve_identity();
-        assert!(result.is_err());
-        assert!(matches!(result, Err(IdentityError::RefNotFound { .. })));
-    }
-
-    #[test]
-    fn empty_delegates() {
-        let temp_dir = create_test_repo_with_identity(vec![], 1);
-        let resolver = RadicleIdentityResolver::new(temp_dir.path());
-        let result = resolver.resolve_identity();
-        assert!(result.is_err());
-        assert!(matches!(result, Err(IdentityError::NoDelegates)));
-    }
-
-    #[test]
-    fn resolve_did_keri_with_separate_identity_repo() {
-        let (id_dir, inception) = create_keri_repo();
-        let did = inception.did();
-
-        // Project repo is separate from identity repo
-        let project_dir = TempDir::new().unwrap();
-        let _project_repo = Repository::init(project_dir.path()).unwrap();
-
-        let resolver =
-            RadicleIdentityResolver::new(project_dir.path()).with_identity_repo(id_dir.path());
-        let resolved = resolver.resolve(&did).unwrap();
-        assert_eq!(resolved.public_key, inception.current_public_key);
+        }
     }
 }

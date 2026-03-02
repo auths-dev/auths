@@ -237,6 +237,37 @@ impl AuthsStorage for GitRadicleStorage {
         Ok(Some(Did::Keri(key_state.prefix.to_string())))
     }
 
+    fn list_devices(&self, _identity_did: &Did) -> Result<Vec<Did>, BridgeError> {
+        let repo = self.lock_repo();
+        let mut devices = Vec::new();
+        let prefix = &self.layout.keys_prefix;
+        let blob_name = &self.layout.did_keri_blob;
+
+        let glob_pattern = format!("{prefix}/*/signatures/{blob_name}");
+        let references = repo
+            .references_glob(&glob_pattern)
+            .map_err(|e| BridgeError::Repository(format!("failed to list device refs: {e}")))?;
+
+        for reference in references {
+            let reference = reference
+                .map_err(|e| BridgeError::Repository(format!("reference error: {e}")))?;
+            let name = reference
+                .name()
+                .ok_or_else(|| BridgeError::Repository("invalid ref name".into()))?;
+
+            // Ref format: refs/keys/<nid>/signatures/did-keri
+            let components: Vec<&str> = name.split('/').collect();
+            if components.len() >= 3 {
+                let nid = components[2];
+                if let Ok(did) = format!("did:key:{nid}").parse::<Did>() {
+                    devices.push(did);
+                }
+            }
+        }
+
+        Ok(devices)
+    }
+
     fn local_identity_tip(&self, _identity_did: &Did) -> Result<Option<[u8; 20]>, BridgeError> {
         let repo = self.lock_repo();
         match repo.find_reference(&self.layout.keri_kel_ref) {

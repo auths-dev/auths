@@ -342,6 +342,8 @@ mod tests {
             Prefix::new_unchecked("ETestPrefix".to_string()),
             vec!["DKey1".to_string()],
             vec!["ENext1".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESaid123".to_string()),
         )
     }

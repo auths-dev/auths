@@ -1,63 +1,43 @@
-# Radicle Integration Cleanup & Type Safety Plan
+# Radicle Identity Unification: Cleanup & Feedback
 
-## Objective
-Enhance the integration between `auths` and `radicle` (Heartwood) by enforcing extreme type safety, centralizing Radicle-specific logic within the `auths-radicle` crate, and ensuring a seamless "just works" experience for Radicle users.
+This document provides a review and evaluation of tasks `fn-5.1` through `fn-5.18` regarding the frontend identity unification effort.
 
-## 1. Extreme Type Safety & Architectural Alignment
+## Overall Plan Evaluation
 
-### Problem
-Current implementations in `auths-radicle` use generic types like `String` and `Vec<u8>` for domain-specific identifiers (DIDs, RIDs) and cryptographic keys. This increases the risk of runtime errors and makes the code less expressive compared to the `radicle` codebase.
+### 1. Code Quality & Architecture
+- **Type Safety**: The refactoring of `RadicleIdentity` (fn-5.5) correctly moves away from "string-ly typed" DIDs to structured objects. The integration of Zod schemas in the frontend (fn-5.14) ensures that the contract between the Rust API and the Svelte UI is enforced at the boundary.
+- **DRY (Don't Repeat Yourself)**: The plan successfully centralizes KERI resolution logic in `auths-radicle`. Making `resolve_kel_events` public (fn-5.6) prevents `radicle-httpd` from having to re-implement complex Git commit-walking logic.
+- **Ports & Adapters**: The use of the `AuthsStorage` trait is a strong architectural choice. It decouples the bridge logic from specific Git implementations, facilitating testing and future optimization (e.g., adding an SQLite cache layer).
 
-### Proposed Changes
-- **Dependency Integration**: Add the `radicle` crate (from Heartwood) as a dependency to `auths-radicle`. This allows direct use of established types.
-- **Unified DID Type**: Replace `String` with `radicle::identity::Did` in:
-    - `RadicleIdentity::primary_did`
-    - `RadicleIdentityDocument::delegates`
-    - `RadCanonicalPayload::did`
-    - `RadAttestation::device_did`
-- **Unified Repository ID (RID)**: Replace `String` with `radicle::identity::RepoId` in:
-    - `RadCanonicalPayload::rid`
-- **Stronger Key Types**: Use `radicle::crypto::PublicKey` instead of `Vec<u8>` or `[u8; 32]` where appropriate, ensuring alignment with Radicle's cryptographic expectations.
-- **Document Alignment**: Consider using `radicle::identity::Doc` or a subset that is strictly compatible, instead of the simplified `RadicleIdentityDocument`.
+### 2. Implementation Strategy
+- **Failure Handling**: The plan addresses the "swallowed errors" in `delegate_handler` (fn-5.8) by introducing a proper `IdentityError` variant in the HTTP API. This is critical for debugging resolution failures in production.
+- **Frontend Integration**: The specific "Gotchas" identified in `fn-5.12` (Vite + WASM + Svelte 5) demonstrate a deep understanding of the current tooling constraints, particularly avoiding `top-level-await`.
 
-## 2. Centralizing Radicle Logic in `auths-radicle`
+---
 
-### Problem
-Radicle-specific logic (e.g., RIP-X ref paths, 2-blob attestation formats) should be contained within `auths-radicle` to keep the core `auths` crates (`auths-id`, `auths-verifier`) protocol-agnostic.
+## Per-Task Feedback
 
-### Proposed Changes
-- **Ref Path Isolation**: Ensure all RIP-X ref path construction (e.g., `refs/keri/kel`, `refs/keys/<nid>/signatures/did-key`) remains exclusively in `auths-radicle::refs`.
-- **Bridge-Based Verification**: The `RadAttestation` type in `auths-radicle` should continue to act as the primary bridge, converting to the core `Attestation` type only when necessary for policy evaluation in `auths-verifier`.
-- **Identity Resolution**: `RadicleIdentityResolver` should be the high-level entry point that abstracts away KERI/KEL complexities.
+### Phase 1: Infrastructure Cleanup (fn-5.1 - fn-5.4)
+- **fn-5.1 & fn-5.2**: Essential syntax fixes. Prematurely closed `impl` blocks are common but silent killers of IDE intelligence.
+- **fn-5.3**: Critical. The shift from `:did` to `{did}` is mandatory for Axum 0.8 compatibility.
+- **fn-5.4**: Completes the wiring of the identity module.
 
-## 3. "Just Works" User Experience
+### Phase 2: Core Logic Refactoring (fn-5.5 - fn-5.7)
+- **fn-5.5**: Correctly identifies `is_abandoned` and `devices` as necessary fields for a "Person View." 
+- **fn-5.6**: Exposing `resolve_keri` as the "rich" API while keeping the `DidResolver` trait implementation separate is the right move for internal vs. external consumption.
+- **fn-5.7**: The WASM binding audit is vital. Mismatched JSON field names between Rust and TS are the most frequent cause of WASM integration bugs.
 
-### Goal
-Radicle users should interact with high-level Radicle concepts without needing to understand the underlying KERI machinery.
+### Phase 3: API Implementation (fn-5.8 - fn-5.11)
+- **fn-5.8**: Good focus on `camelCase` consistency.
+- **fn-5.9**: Corrects a major misconception in the previous stub regarding repo discovery. KERI data *must* be found via RIP-X namespace refs.
+- **fn-5.10**: Implementing the 2-blob resolution here is the correct place to hide the complexity of Radicle's attestation storage format from the frontend.
+- **fn-5.11**: This is the "UX glue." Without this lookup, searching for repos by a KERI DID would return nothing, breaking the mental model of identity unification.
 
-### Proposed Changes
-- **Abstract KERI Complexity**: The `RadicleIdentityResolver` should handle KEL discovery and replay internally. A user should simply "resolve a DID" and get back a verified identity.
-- **Seamless Attestation**: Loading a `RadAttestation` from Git should automatically verify both the device and identity signatures if the necessary keys are available in the local repository or identity repo.
-- **Unified Storage Access**: Use the `auths-radicle::refs` constants to ensure `auths` tools and `radicle` tools are always looking at the same Git refs.
+### Phase 4: Frontend Implementation (fn-5.12 - fn-5.16)
+- **fn-5.13**: Smart catch on the Avatar component. Seeding blockies from a KERI prefix ensures consistent visual identity for "Persons" vs "Devices."
+- **fn-5.15**: The use of Svelte 5 runes (`$state`, `$derived`) ensures the profile view remains reactive when toggling modes.
+- **fn-5.16**: Lazy WASM initialization is best practice to avoid blocking the initial page paint.
 
-## 4. Implementation Checklist
-
-### Phase 1: Dependency & Type Refactoring
-- [ ] Add `radicle = { path = "../../../../heartwood/crates/radicle" }` to `auths-radicle/Cargo.toml`.
-- [ ] Update `crates/auths-radicle/src/identity.rs`:
-    - Replace `primary_did: String` with `primary_did: Did`.
-    - Replace `primary_public_key: Vec<u8>` with `primary_public_key: PublicKey`.
-    - Update `RadicleIdentityDocument` to use `Did` and `RepoId`.
-- [ ] Update `crates/auths-radicle/src/attestation.rs`:
-    - Update `RadCanonicalPayload` to use `Did` and `RepoId`.
-    - Update `RadAttestation` to use `Did` and `PublicKey`.
-
-### Phase 2: Logic Audit & Cleanup
-- [ ] Audit `auths-id` for any leaked Radicle logic (e.g., ref paths).
-- [ ] Audit `auths-verifier` for Radicle-specific payload handling.
-- [ ] Ensure `auths-radicle` is the only crate that knows about `refs/rad/id` or `refs/keri/kel`.
-
-### Phase 3: Verification & UX
-- [ ] Update existing tests in `auths-radicle` to use the new types.
-- [ ] Add integration tests verifying that a Radicle `Doc` can be resolved via `RadicleIdentityResolver`.
-- [ ] Ensure `cargo clippy` and `cargo test` pass across all crates.
+### Phase 5: Verification (fn-5.17 - fn-5.18)
+- **fn-5.17**: Adding these assertions to the existing `radicle-e2e.sh` ensures that future changes to the bridge don't break the API contract.
+- **fn-5.18**: Playwright coverage for the "Verified" badge provides the final layer of confidence that the WASM verifier is actually running in the browser.

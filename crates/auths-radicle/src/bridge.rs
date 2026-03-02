@@ -226,6 +226,9 @@ pub trait RadicleAuthsBridge: Send + Sync {
         device_did: &Did,
         repo_id: &RepoId,
     ) -> Result<Option<Did>, BridgeError>;
+
+    /// List all device DIDs that are attested by a given identity in this project.
+    fn list_devices(&self, identity_did: &Did) -> Result<Vec<Did>, BridgeError>;
 }
 
 /// Input for mixed-delegate threshold verification.

@@ -314,8 +314,21 @@ impl<'a> GitKel<'a> {
             ));
         };
 
-        let mut state =
-            KeyState::from_inception(icp.i.clone(), icp.k.clone(), icp.n.clone(), icp.d.clone());
+        let threshold = icp.kt.parse::<u64>().map_err(|_| {
+            KelError::InvalidData(format!("Malformed sequence number: {:?}", icp.kt))
+        })?;
+        let next_threshold = icp.nt.parse::<u64>().map_err(|_| {
+            KelError::InvalidData(format!("Malformed sequence number: {:?}", icp.nt))
+        })?;
+
+        let mut state = KeyState::from_inception(
+            icp.i.clone(),
+            icp.k.clone(),
+            icp.n.clone(),
+            threshold,
+            next_threshold,
+            icp.d.clone(),
+        );
 
         // Apply remaining events
         for event in events.iter().skip(1) {
@@ -324,7 +337,21 @@ impl<'a> GitKel<'a> {
                     let seq = rot.s.parse::<u64>().map_err(|_| {
                         KelError::InvalidData(format!("Malformed sequence number: {:?}", rot.s))
                     })?;
-                    state.apply_rotation(rot.k.clone(), rot.n.clone(), seq, rot.d.clone());
+                    let threshold = rot.kt.parse::<u64>().map_err(|_| {
+                        KelError::InvalidData(format!("Malformed sequence number: {:?}", rot.kt))
+                    })?;
+                    let next_threshold = rot.nt.parse::<u64>().map_err(|_| {
+                        KelError::InvalidData(format!("Malformed sequence number: {:?}", rot.nt))
+                    })?;
+
+                    state.apply_rotation(
+                        rot.k.clone(),
+                        rot.n.clone(),
+                        threshold,
+                        next_threshold,
+                        seq,
+                        rot.d.clone(),
+                    );
                 }
                 Event::Ixn(ixn) => {
                     let seq = ixn.s.parse::<u64>().map_err(|_| {
