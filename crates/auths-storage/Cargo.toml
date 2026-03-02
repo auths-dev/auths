@@ -22,7 +22,7 @@ ring.workspace = true
 git2 = { version = "0.20", optional = true }
 fs2 = { version = "0.4", optional = true }
 tempfile = { version = "3", optional = true }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true, default-features = false }
 tokio = { workspace = true, optional = true }
 async-trait = { version = "0.1", optional = true }
 auths-index = { workspace = true, optional = true }

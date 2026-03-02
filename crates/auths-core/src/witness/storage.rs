@@ -17,7 +17,7 @@ use std::path::Path;
 
 use auths_verifier::keri::{Prefix, Said};
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, params};
+use sqlite::Connection;
 
 use super::error::WitnessError;
 use super::receipt::Receipt;
@@ -39,7 +39,7 @@ impl WitnessStorage {
             .map_err(|e| WitnessError::Storage(format!("failed to open database: {}", e)))?;
 
         // Enable WAL mode for better concurrency
-        conn.pragma_update(None, "journal_mode", "WAL")
+        conn.execute("PRAGMA journal_mode=WAL")
             .map_err(|e| WitnessError::Storage(format!("failed to enable WAL: {}", e)))?;
 
         let storage = Self { conn };
@@ -49,7 +49,7 @@ impl WitnessStorage {
 
     /// Create an in-memory storage (for testing).
     pub fn in_memory() -> Result<Self, WitnessError> {
-        let conn = Connection::open_in_memory()
+        let conn = Connection::open(":memory:")
             .map_err(|e| WitnessError::Storage(format!("failed to open in-memory db: {}", e)))?;
 
         let storage = Self { conn };
@@ -60,7 +60,7 @@ impl WitnessStorage {
     /// Initialize the database schema.
     fn init_schema(&self) -> Result<(), WitnessError> {
         self.conn
-            .execute_batch(
+            .execute(
                 r#"
                 CREATE TABLE IF NOT EXISTS first_seen (
                     prefix TEXT NOT NULL,
@@ -98,31 +98,42 @@ impl WitnessStorage {
     ) -> Result<(), WitnessError> {
         let now = now.to_rfc3339();
 
-        self.conn
-            .execute(
-                "INSERT OR IGNORE INTO first_seen (prefix, seq, said, created_at) VALUES (?1, ?2, ?3, ?4)",
-                params![prefix.as_str(), seq as i64, said.as_str(), now],
-            )
-            .map_err(|e| WitnessError::Storage(format!("failed to record first_seen: {}", e)))?;
+        let mut stmt = self.conn.prepare(
+            "INSERT OR IGNORE INTO first_seen (prefix, seq, said, created_at) VALUES (?, ?, ?, ?)"
+        ).map_err(|e| WitnessError::Storage(format!("failed to prepare record_first_seen: {}", e)))?;
+
+        stmt.bind((1, prefix.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind prefix: {}", e)))?;
+        stmt.bind((2, seq as i64))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind seq: {}", e)))?;
+        stmt.bind((3, said.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind said: {}", e)))?;
+        stmt.bind((4, now.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind now: {}", e)))?;
+
+        stmt.next()
+            .map_err(|e| WitnessError::Storage(format!("failed to execute record_first_seen: {}", e)))?;
 
         Ok(())
     }
 
     /// Get the first-seen SAID for a (prefix, seq).
     pub fn get_first_seen(&self, prefix: &Prefix, seq: u64) -> Result<Option<Said>, WitnessError> {
-        let result: Result<String, _> = self.conn.query_row(
-            "SELECT said FROM first_seen WHERE prefix = ?1 AND seq = ?2",
-            params![prefix.as_str(), seq as i64],
-            |row| row.get(0),
-        );
+        let mut stmt = self.conn.prepare(
+            "SELECT said FROM first_seen WHERE prefix = ? AND seq = ?",
+        ).map_err(|e| WitnessError::Storage(format!("failed to prepare get_first_seen: {}", e)))?;
 
-        match result {
-            Ok(said) => Ok(Some(Said::new_unchecked(said))),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(WitnessError::Storage(format!(
-                "failed to get first_seen: {}",
-                e
-            ))),
+        stmt.bind((1, prefix.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind prefix: {}", e)))?;
+        stmt.bind((2, seq as i64))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind seq: {}", e)))?;
+
+        if let Ok(sqlite::State::Row) = stmt.next() {
+            let said: String = stmt.read(0)
+                .map_err(|e| WitnessError::Storage(format!("failed to read said: {}", e)))?;
+            Ok(Some(Said::new_unchecked(said)))
+        } else {
+            Ok(None)
         }
     }
 
@@ -166,12 +177,21 @@ impl WitnessStorage {
         let json = serde_json::to_string(receipt)
             .map_err(|e| WitnessError::Serialization(e.to_string()))?;
 
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO receipts (prefix, event_said, receipt_json, created_at) VALUES (?1, ?2, ?3, ?4)",
-                params![prefix.as_str(), receipt.a.as_str(), json, now],
-            )
-            .map_err(|e| WitnessError::Storage(format!("failed to store receipt: {}", e)))?;
+        let mut stmt = self.conn.prepare(
+            "INSERT OR REPLACE INTO receipts (prefix, event_said, receipt_json, created_at) VALUES (?, ?, ?, ?)"
+        ).map_err(|e| WitnessError::Storage(format!("failed to prepare store_receipt: {}", e)))?;
+
+        stmt.bind((1, prefix.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind prefix: {}", e)))?;
+        stmt.bind((2, receipt.a.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind event_said: {}", e)))?;
+        stmt.bind((3, json.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind json: {}", e)))?;
+        stmt.bind((4, now.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind now: {}", e)))?;
+
+        stmt.next()
+            .map_err(|e| WitnessError::Storage(format!("failed to execute store_receipt: {}", e)))?;
 
         Ok(())
     }
@@ -182,63 +202,70 @@ impl WitnessStorage {
         prefix: &Prefix,
         event_said: &Said,
     ) -> Result<Option<Receipt>, WitnessError> {
-        let result = self.conn.query_row(
-            "SELECT receipt_json FROM receipts WHERE prefix = ?1 AND event_said = ?2",
-            params![prefix.as_str(), event_said.as_str()],
-            |row| row.get::<_, String>(0),
-        );
+        let mut stmt = self.conn.prepare(
+            "SELECT receipt_json FROM receipts WHERE prefix = ? AND event_said = ?",
+        ).map_err(|e| WitnessError::Storage(format!("failed to prepare get_receipt: {}", e)))?;
 
-        match result {
-            Ok(json) => {
-                let receipt = serde_json::from_str(&json)
-                    .map_err(|e| WitnessError::Serialization(e.to_string()))?;
-                Ok(Some(receipt))
-            }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(WitnessError::Storage(format!(
-                "failed to get receipt: {}",
-                e
-            ))),
+        stmt.bind((1, prefix.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind prefix: {}", e)))?;
+        stmt.bind((2, event_said.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind event_said: {}", e)))?;
+
+        if let Ok(sqlite::State::Row) = stmt.next() {
+            let json: String = stmt.read(0)
+                .map_err(|e| WitnessError::Storage(format!("failed to read receipt_json: {}", e)))?;
+            let receipt = serde_json::from_str(&json)
+                .map_err(|e| WitnessError::Serialization(e.to_string()))?;
+            Ok(Some(receipt))
+        } else {
+            Ok(None)
         }
     }
 
     /// Get the latest sequence number seen for a prefix.
     pub fn get_latest_seq(&self, prefix: &Prefix) -> Result<Option<u64>, WitnessError> {
-        let result = self.conn.query_row(
-            "SELECT MAX(seq) FROM first_seen WHERE prefix = ?1",
-            params![prefix.as_str()],
-            |row| row.get::<_, Option<i64>>(0),
-        );
+        let mut stmt = self.conn.prepare(
+            "SELECT MAX(seq) FROM first_seen WHERE prefix = ?",
+        ).map_err(|e| WitnessError::Storage(format!("failed to prepare get_latest_seq: {}", e)))?;
 
-        match result {
-            Ok(Some(seq)) => Ok(Some(seq as u64)),
-            Ok(None) => Ok(None),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(WitnessError::Storage(format!(
-                "failed to get latest seq: {}",
-                e
-            ))),
+        stmt.bind((1, prefix.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind prefix: {}", e)))?;
+
+        if let Ok(sqlite::State::Row) = stmt.next() {
+            let seq: Option<i64> = stmt.read(0)
+                .map_err(|e| WitnessError::Storage(format!("failed to read max seq: {}", e)))?;
+            Ok(seq.map(|s| s as u64))
+        } else {
+            Ok(None)
         }
     }
 
     /// Count total first-seen records.
     pub fn count_first_seen(&self) -> Result<usize, WitnessError> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM first_seen", [], |row| row.get(0))
-            .map_err(|e| WitnessError::Storage(format!("failed to count: {}", e)))?;
+        let mut stmt = self.conn.prepare("SELECT COUNT(*) FROM first_seen")
+            .map_err(|e| WitnessError::Storage(format!("failed to prepare count_first_seen: {}", e)))?;
 
-        Ok(count as usize)
+        if let Ok(sqlite::State::Row) = stmt.next() {
+            let count: i64 = stmt.read(0)
+                .map_err(|e| WitnessError::Storage(format!("failed to read count: {}", e)))?;
+            Ok(count as usize)
+        } else {
+            Ok(0)
+        }
     }
 
     /// Count total receipts.
     pub fn count_receipts(&self) -> Result<usize, WitnessError> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM receipts", [], |row| row.get(0))
-            .map_err(|e| WitnessError::Storage(format!("failed to count: {}", e)))?;
+        let mut stmt = self.conn.prepare("SELECT COUNT(*) FROM receipts")
+            .map_err(|e| WitnessError::Storage(format!("failed to prepare count_receipts: {}", e)))?;
 
-        Ok(count as usize)
+        if let Ok(sqlite::State::Row) = stmt.next() {
+            let count: i64 = stmt.read(0)
+                .map_err(|e| WitnessError::Storage(format!("failed to read count: {}", e)))?;
+            Ok(count as usize)
+        } else {
+            Ok(0)
+        }
     }
 }
 

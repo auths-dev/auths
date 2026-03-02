@@ -57,15 +57,15 @@ CREATE INDEX IF NOT EXISTS idx_org_members_member ON org_members(member_did)
 "#;
 
 /// Initialize the database schema.
-pub fn init_schema(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    conn.execute_batch("PRAGMA journal_mode=WAL;")?;
-    conn.execute(CREATE_ATTESTATIONS_TABLE, [])?;
-    conn.execute(CREATE_DEVICE_INDEX, [])?;
-    conn.execute(CREATE_ISSUER_INDEX, [])?;
-    conn.execute(CREATE_EXPIRES_INDEX, [])?;
-    conn.execute(CREATE_IDENTITIES_TABLE, [])?;
-    conn.execute(CREATE_ORG_MEMBERS_TABLE, [])?;
-    conn.execute(CREATE_ORG_MEMBERS_ORG_INDEX, [])?;
-    conn.execute(CREATE_ORG_MEMBERS_MEMBER_INDEX, [])?;
+pub fn init_schema(conn: &sqlite::Connection) -> std::result::Result<(), sqlite::Error> {
+    conn.execute("PRAGMA journal_mode=WAL;")?;
+    conn.execute(CREATE_ATTESTATIONS_TABLE)?;
+    conn.execute(CREATE_DEVICE_INDEX)?;
+    conn.execute(CREATE_ISSUER_INDEX)?;
+    conn.execute(CREATE_EXPIRES_INDEX)?;
+    conn.execute(CREATE_IDENTITIES_TABLE)?;
+    conn.execute(CREATE_ORG_MEMBERS_TABLE)?;
+    conn.execute(CREATE_ORG_MEMBERS_ORG_INDEX)?;
+    conn.execute(CREATE_ORG_MEMBERS_MEMBER_INDEX)?;
     Ok(())
 }
