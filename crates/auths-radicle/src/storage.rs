@@ -3,6 +3,8 @@
 //! Implements `AuthsStorage` by reading KERI Key Event Logs and RIP-X
 //! 2-blob attestations from a bare Git repository.
 
+use std::sync::Mutex;
+
 use auths_id::keri::event::Event;
 use auths_id::keri::state::KeyState;
 use auths_id::keri::validate::replay_kel;
@@ -20,7 +22,8 @@ const EVENT_BLOB_NAME: &str = "event.json";
 /// Git-backed implementation of `AuthsStorage`.
 ///
 /// Reads KERI KEL events and RIP-X 2-blob attestations from a bare Git
-/// repository. All operations are read-only.
+/// repository. All operations are read-only. Wraps `git2::Repository` in
+/// a `Mutex` because `Repository` is `Send` but not `Sync`.
 ///
 /// Usage:
 /// ```ignore
@@ -28,7 +31,7 @@ const EVENT_BLOB_NAME: &str = "event.json";
 /// let key_state = storage.load_key_state("did:keri:EXq5abc")?;
 /// ```
 pub struct GitRadicleStorage {
-    repo: Repository,
+    repo: Mutex<Repository>,
 }
 
 impl GitRadicleStorage {
@@ -48,11 +51,17 @@ impl GitRadicleStorage {
                 path.as_ref().display()
             ))
         })?;
-        Ok(Self { repo })
+        Ok(Self {
+            repo: Mutex::new(repo),
+        })
     }
 
-    fn read_kel_events(&self) -> Result<Vec<Event>, BridgeError> {
-        let reference = match self.repo.find_reference(refs::KERI_KEL_REF) {
+    fn lock_repo(&self) -> std::sync::MutexGuard<'_, Repository> {
+        self.repo.lock().expect("repository mutex poisoned")
+    }
+
+    fn read_kel_events(repo: &Repository) -> Result<Vec<Event>, BridgeError> {
+        let reference = match repo.find_reference(refs::KERI_KEL_REF) {
             Ok(r) => r,
             Err(e) if e.code() == ErrorCode::NotFound => return Ok(vec![]),
             Err(e) => return Err(BridgeError::Repository(format!("KEL ref error: {e}"))),
@@ -76,13 +85,11 @@ impl GitRadicleStorage {
             let entry = tree.get_name(EVENT_BLOB_NAME).ok_or_else(|| {
                 BridgeError::IdentityCorrupt("missing event.json in KEL commit".into())
             })?;
-            let blob = self
-                .repo
+            let blob = repo
                 .find_blob(entry.id())
                 .map_err(|e| BridgeError::IdentityCorrupt(format!("blob read error: {e}")))?;
-            let event: Event = serde_json::from_slice(blob.content()).map_err(|e| {
-                BridgeError::IdentityCorrupt(format!("invalid event JSON: {e}"))
-            })?;
+            let event: Event = serde_json::from_slice(blob.content())
+                .map_err(|e| BridgeError::IdentityCorrupt(format!("invalid event JSON: {e}")))?;
             events.push(event);
 
             if commit.parent_count() == 0 {
@@ -97,33 +104,29 @@ impl GitRadicleStorage {
         Ok(events)
     }
 
-    fn read_blob_at_ref(&self, ref_path: &str) -> Result<Option<Vec<u8>>, BridgeError> {
-        let reference = match self.repo.find_reference(ref_path) {
+    fn read_blob_at_ref(repo: &Repository, ref_path: &str) -> Result<Option<Vec<u8>>, BridgeError> {
+        let reference = match repo.find_reference(ref_path) {
             Ok(r) => r,
             Err(e) if e.code() == ErrorCode::NotFound => return Ok(None),
             Err(e) => {
                 return Err(BridgeError::Repository(format!(
                     "ref lookup error for {ref_path}: {e}"
-                )))
+                )));
             }
         };
 
-        let commit = reference.peel_to_commit().map_err(|e| {
-            BridgeError::Repository(format!("{ref_path} is not a commit: {e}"))
-        })?;
-        let tree = commit.tree().map_err(|e| {
-            BridgeError::Repository(format!("missing tree at {ref_path}: {e}"))
-        })?;
+        let commit = reference
+            .peel_to_commit()
+            .map_err(|e| BridgeError::Repository(format!("{ref_path} is not a commit: {e}")))?;
+        let tree = commit
+            .tree()
+            .map_err(|e| BridgeError::Repository(format!("missing tree at {ref_path}: {e}")))?;
 
-        // The blob name is the last path component of the ref
-        let blob_name = ref_path
-            .rsplit('/')
-            .next()
-            .unwrap_or(ref_path);
+        let blob_name = ref_path.rsplit('/').next().unwrap_or(ref_path);
 
         match tree.get_name(blob_name) {
             Some(entry) => {
-                let blob = self.repo.find_blob(entry.id()).map_err(|e| {
+                let blob = repo.find_blob(entry.id()).map_err(|e| {
                     BridgeError::Repository(format!("blob read error at {ref_path}: {e}"))
                 })?;
                 Ok(Some(blob.content().to_vec()))
@@ -134,14 +137,15 @@ impl GitRadicleStorage {
 }
 
 fn device_did_to_nid(device_did: &str) -> Result<&str, BridgeError> {
-    device_did
-        .strip_prefix("did:key:")
-        .ok_or_else(|| BridgeError::InvalidDeviceKey(format!("expected did:key: prefix: {device_did}")))
+    device_did.strip_prefix("did:key:").ok_or_else(|| {
+        BridgeError::InvalidDeviceKey(format!("expected did:key: prefix: {device_did}"))
+    })
 }
 
 impl AuthsStorage for GitRadicleStorage {
     fn load_key_state(&self, _identity_did: &str) -> Result<KeyState, BridgeError> {
-        let events = self.read_kel_events()?;
+        let repo = self.lock_repo();
+        let events = Self::read_kel_events(&repo)?;
         if events.is_empty() {
             return Err(BridgeError::IdentityLoad("no KEL events found".into()));
         }
@@ -158,12 +162,14 @@ impl AuthsStorage for GitRadicleStorage {
         let did_key_ref = refs::device_did_key_ref(nid);
         let did_keri_ref = refs::device_did_keri_ref(nid);
 
-        let dk_blob = self
-            .read_blob_at_ref(&did_key_ref)?
-            .ok_or_else(|| BridgeError::AttestationLoad(format!("did-key blob missing for {nid}")))?;
-        let dkeri_blob = self
-            .read_blob_at_ref(&did_keri_ref)?
-            .ok_or_else(|| BridgeError::AttestationLoad(format!("did-keri blob missing for {nid}")))?;
+        let repo = self.lock_repo();
+        let dk_blob = Self::read_blob_at_ref(&repo, &did_key_ref)?.ok_or_else(|| {
+            BridgeError::AttestationLoad(format!("did-key blob missing for {nid}"))
+        })?;
+        let dkeri_blob = Self::read_blob_at_ref(&repo, &did_keri_ref)?.ok_or_else(|| {
+            BridgeError::AttestationLoad(format!("did-keri blob missing for {nid}"))
+        })?;
+        drop(repo);
 
         let device_pk_bytes = resolve_did_key_bytes(device_did).map_err(|e| {
             BridgeError::InvalidDeviceKey(format!("failed to resolve device public key: {e}"))
@@ -177,12 +183,18 @@ impl AuthsStorage for GitRadicleStorage {
             rid: String::new(),
         };
 
-        let rad_att =
-            RadAttestation::from_blobs(&dk_blob, &dkeri_blob, payload, device_did.to_string(), device_pk)
-                .map_err(|e| BridgeError::AttestationLoad(format!("malformed attestation blobs: {e}")))?;
+        let rad_att = RadAttestation::from_blobs(
+            &dk_blob,
+            &dkeri_blob,
+            payload,
+            device_did.to_string(),
+            device_pk,
+        )
+        .map_err(|e| BridgeError::AttestationLoad(format!("malformed attestation blobs: {e}")))?;
 
-        Attestation::try_from(rad_att)
-            .map_err(|e| BridgeError::AttestationLoad(format!("attestation conversion failed: {e}")))
+        Attestation::try_from(rad_att).map_err(|e| {
+            BridgeError::AttestationLoad(format!("attestation conversion failed: {e}"))
+        })
     }
 
     fn find_identity_for_device(
@@ -193,17 +205,16 @@ impl AuthsStorage for GitRadicleStorage {
         let nid = device_did_to_nid(device_did)?;
         let sig_ref = refs::device_signatures_ref(nid);
 
-        match self.repo.find_reference(&format!("{sig_ref}/{}", refs::DID_KEY_BLOB)) {
+        let repo = self.lock_repo();
+        match repo.find_reference(&format!("{sig_ref}/{}", refs::DID_KEY_BLOB)) {
             Ok(_) => {}
             Err(e) if e.code() == ErrorCode::NotFound => return Ok(None),
-            Err(e) => {
-                return Err(BridgeError::Repository(format!(
-                    "ref lookup error: {e}"
-                )))
-            }
+            Err(e) => return Err(BridgeError::Repository(format!("ref lookup error: {e}"))),
         }
 
-        let events = self.read_kel_events()?;
+        let events = Self::read_kel_events(&repo)?;
+        drop(repo);
+
         if events.is_empty() {
             return Ok(None);
         }
@@ -215,11 +226,12 @@ impl AuthsStorage for GitRadicleStorage {
     }
 
     fn local_identity_tip(&self, _identity_did: &str) -> Result<Option<[u8; 20]>, BridgeError> {
-        match self.repo.find_reference(refs::KERI_KEL_REF) {
+        let repo = self.lock_repo();
+        match repo.find_reference(refs::KERI_KEL_REF) {
             Ok(reference) => {
-                let commit = reference.peel_to_commit().map_err(|e| {
-                    BridgeError::Repository(format!("KEL ref not a commit: {e}"))
-                })?;
+                let commit = reference
+                    .peel_to_commit()
+                    .map_err(|e| BridgeError::Repository(format!("KEL ref not a commit: {e}")))?;
                 let oid = commit.id();
                 let raw = oid.as_bytes();
                 let mut tip = [0u8; 20];
@@ -309,16 +321,21 @@ mod tests {
         let tree_oid = tb.write().unwrap();
         drop(tb);
         let tree = repo.find_tree(tree_oid).unwrap();
-        let commit_oid = repo.commit(None, &sig, &sig, "did-key", &tree, &[]).unwrap();
+        let commit_oid = repo
+            .commit(None, &sig, &sig, "did-key", &tree, &[])
+            .unwrap();
         point_ref(repo, &dk_ref, commit_oid);
 
         // Write did-keri commit
         let mut tb = repo.treebuilder(None).unwrap();
-        tb.insert(refs::DID_KERI_BLOB, dkeri_blob, 0o100644).unwrap();
+        tb.insert(refs::DID_KERI_BLOB, dkeri_blob, 0o100644)
+            .unwrap();
         let tree_oid = tb.write().unwrap();
         drop(tb);
         let tree = repo.find_tree(tree_oid).unwrap();
-        let commit_oid = repo.commit(None, &sig, &sig, "did-keri", &tree, &[]).unwrap();
+        let commit_oid = repo
+            .commit(None, &sig, &sig, "did-keri", &tree, &[])
+            .unwrap();
         point_ref(repo, &dkeri_ref, commit_oid);
     }
 
@@ -330,7 +347,9 @@ mod tests {
         let commit_oid = write_kel_commit(&repo, &event, None);
         point_ref(&repo, refs::KERI_KEL_REF, commit_oid);
 
-        let storage = GitRadicleStorage { repo };
+        let storage = GitRadicleStorage {
+            repo: Mutex::new(repo),
+        };
         let ks = storage.load_key_state("did:keri:ETestPrefix").unwrap();
         assert_eq!(ks.prefix.as_str(), "ETestPrefix");
         assert_eq!(ks.sequence, 0);
@@ -339,7 +358,9 @@ mod tests {
     #[test]
     fn load_key_state_missing_kel_returns_error() {
         let (_dir, repo) = create_bare_repo();
-        let storage = GitRadicleStorage { repo };
+        let storage = GitRadicleStorage {
+            repo: Mutex::new(repo),
+        };
         let result = storage.load_key_state("did:keri:ETestPrefix");
         assert!(result.is_err());
     }
@@ -352,7 +373,9 @@ mod tests {
         let commit_oid = write_kel_commit(&repo, &event, None);
         point_ref(&repo, refs::KERI_KEL_REF, commit_oid);
 
-        let storage = GitRadicleStorage { repo };
+        let storage = GitRadicleStorage {
+            repo: Mutex::new(repo),
+        };
         let tip = storage.local_identity_tip("did:keri:ETestPrefix").unwrap();
         assert!(tip.is_some());
         let tip_bytes = tip.unwrap();
@@ -362,7 +385,9 @@ mod tests {
     #[test]
     fn local_identity_tip_missing_returns_none() {
         let (_dir, repo) = create_bare_repo();
-        let storage = GitRadicleStorage { repo };
+        let storage = GitRadicleStorage {
+            repo: Mutex::new(repo),
+        };
         let tip = storage.local_identity_tip("did:keri:ETestPrefix").unwrap();
         assert!(tip.is_none());
     }
@@ -379,7 +404,9 @@ mod tests {
         let nid = "z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi";
         write_attestation_blobs(&repo, nid, &[1; 64], &[2; 64]);
 
-        let storage = GitRadicleStorage { repo };
+        let storage = GitRadicleStorage {
+            repo: Mutex::new(repo),
+        };
         let identity = storage
             .find_identity_for_device(&format!("did:key:{nid}"), "rad:test")
             .unwrap();
@@ -395,7 +422,9 @@ mod tests {
         let commit_oid = write_kel_commit(&repo, &event, None);
         point_ref(&repo, refs::KERI_KEL_REF, commit_oid);
 
-        let storage = GitRadicleStorage { repo };
+        let storage = GitRadicleStorage {
+            repo: Mutex::new(repo),
+        };
         let identity = storage
             .find_identity_for_device("did:key:z6MkUnknownDevice", "rad:test")
             .unwrap();
@@ -411,22 +440,24 @@ mod tests {
         let c1 = write_kel_commit(&repo, &event, None);
         let c2 = write_kel_commit(&repo, &event, None);
 
-        // Create a merge commit
-        let sig = Signature::now("test", "test@test.com").unwrap();
-        let p1 = repo.find_commit(c1).unwrap();
-        let p2 = repo.find_commit(c2).unwrap();
-        let blob = repo.blob(b"{}").unwrap();
-        let mut tb = repo.treebuilder(None).unwrap();
-        tb.insert(EVENT_BLOB_NAME, blob, 0o100644).unwrap();
-        let tree_oid = tb.write().unwrap();
-        drop(tb);
-        let tree = repo.find_tree(tree_oid).unwrap();
-        let merge_oid = repo
-            .commit(None, &sig, &sig, "merge", &tree, &[&p1, &p2])
-            .unwrap();
+        let merge_oid = {
+            let sig = Signature::now("test", "test@test.com").unwrap();
+            let p1 = repo.find_commit(c1).unwrap();
+            let p2 = repo.find_commit(c2).unwrap();
+            let blob = repo.blob(b"{}").unwrap();
+            let mut tb = repo.treebuilder(None).unwrap();
+            tb.insert(EVENT_BLOB_NAME, blob, 0o100644).unwrap();
+            let tree_oid = tb.write().unwrap();
+            drop(tb);
+            let tree = repo.find_tree(tree_oid).unwrap();
+            repo.commit(None, &sig, &sig, "merge", &tree, &[&p1, &p2])
+                .unwrap()
+        };
         point_ref(&repo, refs::KERI_KEL_REF, merge_oid);
 
-        let storage = GitRadicleStorage { repo };
+        let storage = GitRadicleStorage {
+            repo: Mutex::new(repo),
+        };
         let result = storage.load_key_state("did:keri:ETestPrefix");
         assert!(result.is_err());
         let err = result.unwrap_err();

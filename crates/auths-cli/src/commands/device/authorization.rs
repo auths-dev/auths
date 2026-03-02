@@ -216,9 +216,7 @@ pub fn handle_device(
         DeviceSubcommand::List { include_revoked } => {
             list_devices(&repo_path, &config, include_revoked)
         }
-        DeviceSubcommand::Resolve { device_did } => {
-            resolve_device(&repo_path, &device_did)
-        }
+        DeviceSubcommand::Resolve { device_did } => resolve_device(&repo_path, &device_did),
         DeviceSubcommand::Pair(pair_cmd) => {
             super::pair::handle_pair(pair_cmd, http_client, env_config)
         }

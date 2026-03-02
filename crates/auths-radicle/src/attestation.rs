@@ -11,9 +11,9 @@
 //! to prevent the core from becoming a "God Object." The bridge converts
 //! between formats at the boundary via `TryFrom` impls.
 
+use auths_verifier::IdentityDID;
 use auths_verifier::core::Attestation;
 use auths_verifier::types::DeviceDID;
-use auths_verifier::IdentityDID;
 #[cfg(feature = "std")]
 use ring::signature::UnparsedPublicKey;
 use serde::{Deserialize, Serialize};
@@ -51,7 +51,8 @@ impl RadCanonicalPayload {
     ///
     /// Returns an error if serialization fails (should not happen for valid payloads).
     pub fn canonicalize(&self) -> Result<Vec<u8>, AttestationConversionError> {
-        json_canon::to_vec(self).map_err(|e| AttestationConversionError::Serialization(e.to_string()))
+        json_canon::to_vec(self)
+            .map_err(|e| AttestationConversionError::Serialization(e.to_string()))
     }
 }
 
@@ -238,11 +239,8 @@ impl TryFrom<&Attestation> for RadAttestation {
     type Error = AttestationConversionError;
 
     fn try_from(att: &Attestation) -> Result<Self, Self::Error> {
-        let device_public_key: [u8; 32] = att
-            .device_public_key
-            .as_slice()
-            .try_into()
-            .map_err(|_| {
+        let device_public_key: [u8; 32] =
+            att.device_public_key.as_slice().try_into().map_err(|_| {
                 AttestationConversionError::InvalidPublicKeyLength(att.device_public_key.len())
             })?;
 
@@ -326,7 +324,10 @@ mod tests {
         };
         let bytes1 = payload.canonicalize().unwrap();
         let bytes2 = payload.canonicalize().unwrap();
-        assert_eq!(bytes1, bytes2, "JCS output must be byte-for-byte deterministic");
+        assert_eq!(
+            bytes1, bytes2,
+            "JCS output must be byte-for-byte deterministic"
+        );
     }
 
     #[test]
@@ -425,22 +426,20 @@ mod tests {
             did: "did:keri:EXq5abc".into(),
             rid: "rad:z3gqabc".into(),
         };
-        assert!(RadAttestation::from_blobs(
-            &[],
-            &[1],
-            payload.clone(),
-            "did:key:z6MkTest".into(),
-            [0u8; 32],
-        )
-        .is_err());
-        assert!(RadAttestation::from_blobs(
-            &[1],
-            &[],
-            payload,
-            "did:key:z6MkTest".into(),
-            [0u8; 32],
-        )
-        .is_err());
+        assert!(
+            RadAttestation::from_blobs(
+                &[],
+                &[1],
+                payload.clone(),
+                "did:key:z6MkTest".into(),
+                [0u8; 32],
+            )
+            .is_err()
+        );
+        assert!(
+            RadAttestation::from_blobs(&[1], &[], payload, "did:key:z6MkTest".into(), [0u8; 32],)
+                .is_err()
+        );
     }
 
     // --- TryFrom conversion tests ---
@@ -543,7 +542,10 @@ mod tests {
         };
 
         let err = RadAttestation::try_from(&core).unwrap_err();
-        assert!(matches!(err, AttestationConversionError::InvalidPublicKeyLength(16)));
+        assert!(matches!(
+            err,
+            AttestationConversionError::InvalidPublicKeyLength(16)
+        ));
     }
 
     #[test]
@@ -554,6 +556,10 @@ mod tests {
         };
         let bytes = payload.canonicalize().unwrap();
         let expected = br#"{"did":"did:keri:EXq5abc","rid":"rad:z3gqabc"}"#;
-        assert_eq!(bytes, expected.to_vec(), "JCS output must be byte-for-byte stable");
+        assert_eq!(
+            bytes,
+            expected.to_vec(),
+            "JCS output must be byte-for-byte stable"
+        );
     }
 }

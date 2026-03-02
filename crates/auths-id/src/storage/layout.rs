@@ -343,7 +343,10 @@ mod tests {
 
     #[test]
     fn test_radicle_is_default() {
-        assert_eq!(StorageLayoutConfig::radicle(), StorageLayoutConfig::default());
+        assert_eq!(
+            StorageLayoutConfig::radicle(),
+            StorageLayoutConfig::default()
+        );
     }
 
     #[test]

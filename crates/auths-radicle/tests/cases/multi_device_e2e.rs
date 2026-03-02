@@ -10,7 +10,9 @@ use auths_id::policy::PolicyBuilder;
 use auths_radicle::bridge::{
     EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult,
 };
-use auths_radicle::verify::{AuthsStorage, DefaultBridge, meets_threshold, verify_multiple_signers};
+use auths_radicle::verify::{
+    AuthsStorage, DefaultBridge, meets_threshold, verify_multiple_signers,
+};
 use auths_verifier::core::Capability;
 
 use super::helpers::{DeviceFixture, MockStorage, make_key_state, register_device};
@@ -382,14 +384,7 @@ fn multi_device_lifecycle() {
         false,
         vec![],
     );
-    register_device(
-        &mut storage,
-        &bob_desktop,
-        bob_did,
-        repo_id,
-        false,
-        vec![],
-    );
+    register_device(&mut storage, &bob_desktop, bob_did, repo_id, false, vec![]);
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -445,8 +440,22 @@ fn two_devices_resolve_to_same_controller() {
         .identity_tips
         .insert(controller_did.to_string(), [0xAA; 20]);
 
-    register_device(&mut storage, &device_a, controller_did, repo_id, false, vec![]);
-    register_device(&mut storage, &device_b, controller_did, repo_id, false, vec![]);
+    register_device(
+        &mut storage,
+        &device_a,
+        controller_did,
+        repo_id,
+        false,
+        vec![],
+    );
+    register_device(
+        &mut storage,
+        &device_b,
+        controller_did,
+        repo_id,
+        false,
+        vec![],
+    );
 
     let resolved_a = storage
         .find_identity_for_device(&device_a.did, repo_id)
@@ -465,11 +474,17 @@ fn two_devices_resolve_to_same_controller() {
         Some(controller_did.to_string()),
         "device B should resolve to controller"
     );
-    assert_eq!(resolved_a, resolved_b, "both devices resolve to same identity");
+    assert_eq!(
+        resolved_a, resolved_b,
+        "both devices resolve to same identity"
+    );
 
     let unregistered = DeviceFixture::new(0xFF);
     let resolved_unknown = storage
         .find_identity_for_device(&unregistered.did, repo_id)
         .unwrap();
-    assert_eq!(resolved_unknown, None, "unregistered device should return None");
+    assert_eq!(
+        resolved_unknown, None,
+        "unregistered device should return None"
+    );
 }

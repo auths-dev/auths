@@ -905,11 +905,15 @@ mod tests {
         let signers = vec![
             SignerInput::PreVerified {
                 did: "did:key:zAlice".into(),
-                result: VerifyResult::Verified { reason: "did:key delegate ok".into() },
+                result: VerifyResult::Verified {
+                    reason: "did:key delegate ok".into(),
+                },
             },
             SignerInput::PreVerified {
                 did: "did:key:zBob".into(),
-                result: VerifyResult::Verified { reason: "did:key delegate ok".into() },
+                result: VerifyResult::Verified {
+                    reason: "did:key delegate ok".into(),
+                },
             },
             SignerInput::NeedsBridgeVerification(signer_key),
         ];
@@ -976,8 +980,16 @@ mod tests {
 
         storage.add_identity(alice_id, make_key_state("EAlice", 0));
         storage.add_identity(bob_id, make_key_state("EBob", 0));
-        storage.add_attestation(&alice_did, alice_id, make_attestation(alice_id, &alice_did, None, vec![]));
-        storage.add_attestation(&bob_did, bob_id, make_attestation(bob_id, &bob_did, None, vec![]));
+        storage.add_attestation(
+            &alice_did,
+            alice_id,
+            make_attestation(alice_id, &alice_did, None, vec![]),
+        );
+        storage.add_attestation(
+            &bob_did,
+            bob_id,
+            make_attestation(bob_id, &bob_did, None, vec![]),
+        );
         storage.link_device_to_identity(&alice_did, alice_id, repo_id);
         storage.link_device_to_identity(&bob_did, bob_id, repo_id);
         storage.set_identity_tip(alice_id, [0xAA; 20]);
@@ -1004,7 +1016,9 @@ mod tests {
         let signers = vec![
             SignerInput::PreVerified {
                 did: "did:key:zLegacyNode".into(),
-                result: VerifyResult::Verified { reason: "ok".into() },
+                result: VerifyResult::Verified {
+                    reason: "ok".into(),
+                },
             },
             SignerInput::NeedsBridgeVerification(signer_key),
         ];
@@ -1047,7 +1061,9 @@ mod tests {
         let signers = vec![
             SignerInput::PreVerified {
                 did: "did:key:zLegacy".into(),
-                result: VerifyResult::Verified { reason: "ok".into() },
+                result: VerifyResult::Verified {
+                    reason: "ok".into(),
+                },
             },
             // Both devices under same identity — one good, one revoked
             SignerInput::NeedsBridgeVerification(good_key),

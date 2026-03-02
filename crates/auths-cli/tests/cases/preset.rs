@@ -30,7 +30,10 @@ fn test_default_is_radicle() {
 /// `radicle()` is an alias for `default()`.
 #[test]
 fn test_radicle_equals_default() {
-    assert_eq!(StorageLayoutConfig::radicle(), StorageLayoutConfig::default());
+    assert_eq!(
+        StorageLayoutConfig::radicle(),
+        StorageLayoutConfig::default()
+    );
 }
 
 /// Gitoxide preset produces gitoxide-compatible ref paths.

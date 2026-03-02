@@ -83,21 +83,18 @@ pub fn import_seed(
     let pkcs8_bytes = build_ed25519_pkcs8_v2_from_seed(&secure_seed)
         .map_err(|e| KeyImportError::Pkcs8Generation(e.to_string()))?;
 
-    let encrypted =
-        encrypt_keypair(&pkcs8_bytes, passphrase).map_err(|e| KeyImportError::Encryption(e.to_string()))?;
+    let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase)
+        .map_err(|e| KeyImportError::Encryption(e.to_string()))?;
 
     keychain
-        .store_key(
-            &KeyAlias::new_unchecked(alias),
-            controller_did,
-            &encrypted,
-        )
+        .store_key(&KeyAlias::new_unchecked(alias), controller_did, &encrypted)
         .map_err(|e| KeyImportError::KeychainStore(e.to_string()))?;
 
-    let public_key = auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync(
-        &secure_seed,
-    )
-    .map_err(|e| KeyImportError::Pkcs8Generation(format!("failed to derive public key: {e}")))?;
+    let public_key =
+        auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync(&secure_seed)
+            .map_err(|e| {
+                KeyImportError::Pkcs8Generation(format!("failed to derive public key: {e}"))
+            })?;
 
     Ok(KeyImportResult {
         public_key,

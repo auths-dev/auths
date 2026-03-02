@@ -189,10 +189,13 @@ impl RadicleIdentityResolver {
             });
         }
 
-        let key_state = replay_kel(&events)
-            .map_err(|e| IdentityError::KelValidationFailed(e.to_string()))?;
+        let key_state =
+            replay_kel(&events).map_err(|e| IdentityError::KelValidationFailed(e.to_string()))?;
 
-        let cesr_key = key_state.current_keys.first().ok_or(IdentityError::NoSigningKeys)?;
+        let cesr_key = key_state
+            .current_keys
+            .first()
+            .ok_or(IdentityError::NoSigningKeys)?;
 
         let keri_pk = KeriPublicKey::parse(cesr_key)
             .map_err(|e| IdentityError::KelValidationFailed(format!("invalid CESR key: {e}")))?;
@@ -220,14 +223,16 @@ fn read_kel_events(repo: &Repository, path: &Path) -> Result<Vec<Event>, Identit
             return Err(IdentityError::Repository {
                 path: path.display().to_string(),
                 detail: format!("KEL ref error: {e}"),
-            })
+            });
         }
     };
 
-    let mut commit = reference.peel_to_commit().map_err(|e| IdentityError::Repository {
-        path: path.display().to_string(),
-        detail: format!("KEL ref not a commit: {e}"),
-    })?;
+    let mut commit = reference
+        .peel_to_commit()
+        .map_err(|e| IdentityError::Repository {
+            path: path.display().to_string(),
+            detail: format!("KEL ref not a commit: {e}"),
+        })?;
 
     let mut events = Vec::new();
     loop {
@@ -237,24 +242,25 @@ fn read_kel_events(repo: &Repository, path: &Path) -> Result<Vec<Event>, Identit
             ));
         }
 
-        let tree = commit.tree().map_err(|e| IdentityError::KelValidationFailed(format!("missing tree: {e}")))?;
+        let tree = commit
+            .tree()
+            .map_err(|e| IdentityError::KelValidationFailed(format!("missing tree: {e}")))?;
         let entry = tree.get_name(EVENT_BLOB_NAME).ok_or_else(|| {
             IdentityError::KelValidationFailed("missing event.json in KEL commit".into())
         })?;
-        let blob = repo.find_blob(entry.id()).map_err(|e| {
-            IdentityError::KelValidationFailed(format!("blob read error: {e}"))
-        })?;
-        let event: Event = serde_json::from_slice(blob.content()).map_err(|e| {
-            IdentityError::KelValidationFailed(format!("invalid event JSON: {e}"))
-        })?;
+        let blob = repo
+            .find_blob(entry.id())
+            .map_err(|e| IdentityError::KelValidationFailed(format!("blob read error: {e}")))?;
+        let event: Event = serde_json::from_slice(blob.content())
+            .map_err(|e| IdentityError::KelValidationFailed(format!("invalid event JSON: {e}")))?;
         events.push(event);
 
         if commit.parent_count() == 0 {
             break;
         }
-        commit = commit.parent(0).map_err(|e| {
-            IdentityError::KelValidationFailed(format!("parent walk error: {e}"))
-        })?;
+        commit = commit
+            .parent(0)
+            .map_err(|e| IdentityError::KelValidationFailed(format!("parent walk error: {e}")))?;
     }
 
     events.reverse();
@@ -402,7 +408,13 @@ mod tests {
 
         assert_eq!(resolved.did, did);
         assert_eq!(resolved.public_key, inception.current_public_key);
-        assert!(matches!(resolved.method, DidMethod::Keri { sequence: 0, can_rotate: true }));
+        assert!(matches!(
+            resolved.method,
+            DidMethod::Keri {
+                sequence: 0,
+                can_rotate: true
+            }
+        ));
 
         // Verify round-trip: resolved key → did:key matches ed25519_to_did_key
         let expected_did_key = ed25519_to_did_key(&inception.current_public_key);
@@ -436,7 +448,10 @@ mod tests {
 
         assert_eq!(resolved.public_key, rotation.new_current_public_key);
         assert_ne!(resolved.public_key, inception.current_public_key);
-        assert!(matches!(resolved.method, DidMethod::Keri { sequence: 1, .. }));
+        assert!(matches!(
+            resolved.method,
+            DidMethod::Keri { sequence: 1, .. }
+        ));
     }
 
     #[test]
@@ -462,8 +477,11 @@ mod tests {
         drop(tb);
         let tree = repo.find_tree(tree_oid).unwrap();
         let sig = git2::Signature::now("test", "test@test.com").unwrap();
-        let commit_oid = repo.commit(None, &sig, &sig, "bad event", &tree, &[]).unwrap();
-        repo.reference(refs::KERI_KEL_REF, commit_oid, true, "corrupt").unwrap();
+        let commit_oid = repo
+            .commit(None, &sig, &sig, "bad event", &tree, &[])
+            .unwrap();
+        repo.reference(refs::KERI_KEL_REF, commit_oid, true, "corrupt")
+            .unwrap();
 
         let resolver = RadicleIdentityResolver::new(dir.path());
         let result = resolver.resolve("did:keri:EBogus");
@@ -521,8 +539,8 @@ mod tests {
         let project_dir = TempDir::new().unwrap();
         let _project_repo = Repository::init(project_dir.path()).unwrap();
 
-        let resolver = RadicleIdentityResolver::new(project_dir.path())
-            .with_identity_repo(id_dir.path());
+        let resolver =
+            RadicleIdentityResolver::new(project_dir.path()).with_identity_repo(id_dir.path());
         let resolved = resolver.resolve(&did).unwrap();
         assert_eq!(resolved.public_key, inception.current_public_key);
     }
