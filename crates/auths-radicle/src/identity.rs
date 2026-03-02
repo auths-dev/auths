@@ -64,7 +64,17 @@ pub struct RadicleIdentityDocument {
     pub payload: serde_json::Value,
 }
 
-/// Represents a resolved Radicle identity with extracted key material.
+/// A resolved Radicle identity with extracted key material and KERI state.
+///
+/// This is the single type-safe representation that downstream consumers
+/// (radicle-httpd, frontend) depend on for identity display and verification.
+///
+/// Usage:
+/// ```ignore
+/// let resolver = RadicleIdentityResolver::new(repo_path);
+/// let identity = resolver.resolve("did:keri:EPrefix...")?;
+/// assert!(identity.is_keri());
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RadicleIdentity {
     /// The identity DID (did:key or did:keri)
@@ -73,10 +83,22 @@ pub struct RadicleIdentity {
     pub keys: Vec<Did>,
     /// Current sequence number (0 for did:key, KERI sequence for did:keri)
     pub sequence: u64,
-    /// Optional KERI key state (if resolved from did:keri)
+    /// Whether the KERI identity has been abandoned (no next-key commitment)
+    pub is_abandoned: bool,
+    /// Attested device DIDs linked to this identity
+    #[serde(default)]
+    pub devices: Vec<Did>,
+    /// Full KERI key state (if resolved from did:keri)
     pub keri_state: Option<KeyState>,
     /// The original identity document (if resolved from a repository)
     pub document: Option<RadicleIdentityDocument>,
+}
+
+impl RadicleIdentity {
+    /// Returns `true` if this is a KERI-backed identity.
+    pub fn is_keri(&self) -> bool {
+        matches!(self.did, Did::Keri(_))
+    }
 }
 
 /// Resolver for Radicle peer identities.
@@ -108,6 +130,8 @@ impl RadicleIdentityResolver {
             did: did.clone(),
             keys: vec![did.clone()],
             sequence: 0,
+            is_abandoned: false,
+            devices: Vec::new(),
             keri_state: None,
             document: None,
         })
@@ -126,10 +150,13 @@ impl RadicleIdentityResolver {
             keys.push(Did::from(public_key));
         }
 
+        let is_abandoned = key_state.is_abandoned;
         Ok(RadicleIdentity {
             did: did.clone(),
             keys,
             sequence: key_state.sequence,
+            is_abandoned,
+            devices: Vec::new(),
             keri_state: Some(key_state),
             document: None,
         })
