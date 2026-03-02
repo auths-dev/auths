@@ -15,6 +15,7 @@ categories = ["cryptography", "authentication"]
 default = []
 
 [dependencies]
+auths-crypto.workspace = true
 auths-id.workspace = true
 auths-verifier.workspace = true
 
