@@ -1,5 +1,6 @@
 use crate::clock::{ClockProvider, SystemClock};
 use crate::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
+use crate::keri;
 use crate::types::VerificationReport;
 use crate::verify;
 use crate::witness::{WitnessReceipt, WitnessVerifyConfig};
@@ -313,4 +314,38 @@ async fn verify_chain_with_witnesses_internal(
     }
 
     Ok(report)
+}
+
+/// Verifies a KERI Key Event Log and returns the resulting key state as JSON.
+///
+/// Args:
+/// * `kel_json`: JSON array of KEL events (inception, rotation, interaction).
+///
+/// Usage:
+/// ```ignore
+/// let key_state_json = verifyKelJson("[{\"v\":\"KERI10JSON\",\"t\":\"icp\",...}]").await?;
+/// ```
+#[wasm_bindgen(js_name = verifyKelJson)]
+pub async fn wasm_verify_kel_json(kel_json: &str) -> Result<String, JsValue> {
+    console_log!("WASM: Verifying KEL...");
+
+    if kel_json.len() > MAX_JSON_BATCH_SIZE {
+        return Err(JsValue::from_str(&format!(
+            "KEL JSON too large: {} bytes, max {}",
+            kel_json.len(),
+            MAX_JSON_BATCH_SIZE
+        )));
+    }
+
+    let events = keri::parse_kel_json(kel_json)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse KEL JSON: {}", e)))?;
+
+    let key_state = keri::verify_kel(&events, &provider())
+        .await
+        .map_err(|e| JsValue::from_str(&format!("KEL verification failed: {}", e)))?;
+
+    console_log!("WASM: KEL verification successful, sequence: {}", key_state.sequence);
+
+    serde_json::to_string(&key_state)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize key state: {}", e)))
 }

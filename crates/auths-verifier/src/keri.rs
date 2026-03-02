@@ -454,12 +454,13 @@ pub struct Seal {
 }
 
 /// Result of KEL verification.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct KeriKeyState {
     /// The KERI prefix
     pub prefix: Prefix,
 
     /// The current public key (raw bytes)
+    #[serde(skip)]
     pub current_key: Vec<u8>,
 
     /// The current public key (encoded, e.g. "D..." base64url)
