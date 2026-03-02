@@ -14,6 +14,7 @@
 use auths_verifier::core::Attestation;
 use auths_verifier::types::DeviceDID;
 use auths_verifier::IdentityDID;
+#[cfg(feature = "std")]
 use ring::signature::UnparsedPublicKey;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -163,6 +164,8 @@ impl RadAttestation {
     /// Both the device and identity sign the same JCS-canonical `(did, rid)` payload.
     /// Both must verify for the attestation to be valid.
     ///
+    /// Requires the `std` feature (uses `ring` for Ed25519 verification).
+    ///
     /// Args:
     /// * `device_pubkey`: The device's Ed25519 public key (32 bytes).
     /// * `identity_pubkey`: The identity's Ed25519 public key (32 bytes).
@@ -171,6 +174,7 @@ impl RadAttestation {
     /// ```ignore
     /// att.verify(&device_pk, &identity_pk)?;
     /// ```
+    #[cfg(feature = "std")]
     pub fn verify(
         &self,
         device_pubkey: &[u8; 32],
@@ -260,7 +264,7 @@ impl TryFrom<&Attestation> for RadAttestation {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     use ring::rand::SystemRandom;

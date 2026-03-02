@@ -14,8 +14,18 @@
 //!
 //! Auths **authorizes**, never signs. Radicle handles all cryptography.
 
-use chrono::{DateTime, Utc};
 use thiserror::Error;
+
+/// Timestamp type for verification requests.
+///
+/// With `std`: `chrono::DateTime<chrono::Utc>` (full datetime).
+/// Without `std` (WASM): `i64` (Unix epoch seconds).
+#[cfg(feature = "std")]
+pub type Timestamp = chrono::DateTime<chrono::Utc>;
+
+/// Timestamp type for verification requests (WASM-compatible).
+#[cfg(not(feature = "std"))]
+pub type Timestamp = i64;
 
 /// Result of verifying a signer against Auths policy.
 ///
@@ -112,7 +122,7 @@ pub struct VerifyRequest<'a> {
     /// The Radicle repository ID (for scoped identity lookup).
     pub repo_id: &'a str,
     /// Current time for checking attestation expiry.
-    pub now: DateTime<Utc>,
+    pub now: Timestamp,
     /// Enforcement mode (observe vs enforce).
     pub mode: EnforcementMode,
     /// Gossip-announced tip OID of the identity repo, if known.

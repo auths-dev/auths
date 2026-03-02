@@ -12,21 +12,39 @@ keywords = ["radicle", "identity", "did", "git", "cryptography"]
 categories = ["cryptography", "authentication"]
 
 [features]
-default = []
+default = ["std"]
+std = [
+    "dep:chrono",
+    "dep:git2",
+    "dep:auths-id",
+    "dep:auths-crypto",
+    "dep:ring",
+    "auths-verifier/native",
+]
+wasm = ["dep:wasm-bindgen", "auths-verifier/wasm"]
 
 [dependencies]
-auths-crypto.workspace = true
-auths-id.workspace = true
-auths-verifier.workspace = true
-
+# WASM-safe: always available
+auths-verifier = { workspace = true, default-features = false }
 bs58 = "0.5.1"
-chrono = { version = "0.4", features = ["serde"] }
-git2 = "0.20.4"
 json-canon = "0.1"
-ring.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 thiserror.workspace = true
 
+# std-only: git storage, crypto verification, time
+auths-crypto = { workspace = true, optional = true }
+auths-id = { workspace = true, optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
+git2 = { version = "0.20.4", optional = true }
+ring = { workspace = true, optional = true }
+
+# WASM-only
+wasm-bindgen = { version = "0.2", optional = true }
+
 [dev-dependencies]
+auths-id.workspace = true
+auths-crypto.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+ring.workspace = true
 tempfile = "3.19.1"

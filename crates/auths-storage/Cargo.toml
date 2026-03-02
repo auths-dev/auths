@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 auths-id = { workspace = true }
 auths-core = { workspace = true }
-auths-verifier = { workspace = true }
+auths-verifier = { workspace = true, features = ["native"] }
 thiserror.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

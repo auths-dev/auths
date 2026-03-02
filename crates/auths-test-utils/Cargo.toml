@@ -14,7 +14,7 @@ auths-id.workspace = true
 auths-storage = { workspace = true, features = ["backend-git"] }
 auths-sdk.workspace = true
 auths-telemetry.workspace = true
-auths-verifier.workspace = true
+auths-verifier = { workspace = true, features = ["native"] }
 base64.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 git2 = "0.20.4"

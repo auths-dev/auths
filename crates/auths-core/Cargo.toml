@@ -49,7 +49,7 @@ qrcode = "0.14"
 schemars = "0.8"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 
-auths-verifier.workspace = true
+auths-verifier = { workspace = true, features = ["native"] }
 uuid.workspace = true
 
 # Optional secp256k1/BIP340 Schnorr support for Nostr
