@@ -28,7 +28,7 @@ Radicle uses a different Git ref structure than the default Auths layout. Auths 
 |---|---|
 | `refs/auths/identity` | `refs/rad/id` |
 | `identity.json` | `radicle-identity.json` |
-| `refs/auths/devices/nodes` | `refs/rad/multidevice/nodes` |
+| `refs/auths/devices/nodes` | `refs/keys` |
 | `attestation.json` | `link-attestation.json` |
 
 ## Setup
@@ -57,7 +57,7 @@ auths id create \
   --preset radicle
 ```
 
-The `--preset radicle` flag sets the identity ref to `refs/rad/id`, the identity blob to `radicle-identity.json`, the attestation prefix to `refs/rad/multidevice/nodes`, and the attestation blob to `link-attestation.json`.
+The `--preset radicle` flag sets the identity ref to `refs/rad/id`, the identity blob to `radicle-identity.json`, the attestation prefix to `refs/keys`, and the attestation blob to `link-attestation.json`.
 
 ### 2. View identity details
 
@@ -68,7 +68,7 @@ auths id show \
   --repo "$RAD_REPO_PATH" \
   --identity-ref "refs/rad/id" \
   --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
+  --attestation-prefix "refs/keys" \
   --attestation-blob "link-attestation.json"
 ```
 
@@ -81,7 +81,7 @@ CONTROLLER_DID=$(auths id show \
   --repo "$RAD_REPO_PATH" \
   --identity-ref "refs/rad/id" \
   --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
+  --attestation-prefix "refs/keys" \
   --attestation-blob "link-attestation.json" \
   | grep 'Controller DID:' | awk -F': ' '{print $2}')
 
@@ -98,7 +98,7 @@ auths device link \
   --repo "$RAD_REPO_PATH" \
   --identity-ref "refs/rad/id" \
   --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
+  --attestation-prefix "refs/keys" \
   --attestation-blob "link-attestation.json" \
   --identity-key-alias radicle_id_key \
   --device-key-alias rad_device_key \
@@ -113,7 +113,7 @@ auths device list \
   --repo "$RAD_REPO_PATH" \
   --identity-ref "refs/rad/id" \
   --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
+  --attestation-prefix "refs/keys" \
   --attestation-blob "link-attestation.json"
 ```
 
@@ -126,7 +126,7 @@ alias auths-rad='auths \
   --repo "$RAD_REPO_PATH" \
   --identity-ref "refs/rad/id" \
   --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
+  --attestation-prefix "refs/keys" \
   --attestation-blob "link-attestation.json"'
 ```
 

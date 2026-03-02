@@ -35,11 +35,11 @@ AUTHS_HOME="$DEMO_DIR/.auths"
 RAD_NODE1_HOME="$DEMO_DIR/rad-node-1"
 RAD_NODE2_HOME="$DEMO_DIR/rad-node-2"
 
-# Radicle-preset layout args (needed for all commands except `id create --preset`)
+# RIP-X layout args (needed for all commands except `id create --preset`)
 LAYOUT_ARGS=(
     --identity-ref    refs/rad/id
     --identity-blob   radicle-identity.json
-    --attestation-prefix refs/rad/multidevice/nodes
+    --attestation-prefix refs/keys
     --attestation-blob   link-attestation.json
 )
 

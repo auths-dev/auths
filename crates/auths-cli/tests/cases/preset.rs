@@ -56,8 +56,8 @@ fn test_radicle_preset_ref_paths() {
     let device_did = DeviceDID::new("did:key:z6MkTest456");
     let attestation_ref = attestation_ref_for_device(&config, &device_did);
     assert!(
-        attestation_ref.starts_with("refs/rad/multidevice/nodes/"),
-        "Radicle preset attestation ref should start with refs/rad/multidevice/nodes/"
+        attestation_ref.starts_with("refs/keys/"),
+        "Radicle preset attestation ref should start with refs/keys/"
     );
     assert!(
         attestation_ref.ends_with("/signatures"),

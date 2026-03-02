@@ -56,7 +56,7 @@ Currently, the integration is at the "Bridge" level (verification only). This pl
 - **Goal:** Single source of truth for identity state.
 - **Action:** Default all `auths` operations to use Radicle's storage layout:
   - KEL: `refs/keri/kel`
-  - Attestations: `refs/rad/multidevice/nodes/<nid>/link-attestation.json`
+  - Attestations: `refs/keys/<nid>/link-attestation.json`
   - Identity Repo: A dedicated Radicle repo (RID) for the user's identity state.
 
 ### Phase 4: Identity Document Evolution

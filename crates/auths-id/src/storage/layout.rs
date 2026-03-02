@@ -103,7 +103,7 @@ pub struct StorageLayoutConfig {
     /// (like "/signatures") will be appended to this prefix to form the final
     /// reference path for a device's attestations.
     ///
-    /// E.g., "refs/rad/multidevice/nodes" (Radicle convention) or
+    /// E.g., "refs/keys" (RIP-X Radicle convention) or
     /// "refs/auths/devices/nodes" (generic default).
     ///
     /// Default: `"refs/auths/devices/nodes"`
@@ -138,27 +138,28 @@ impl Default for StorageLayoutConfig {
 }
 
 impl StorageLayoutConfig {
-    /// Creates a Radicle-compatible storage layout configuration.
+    /// Creates a Radicle-compatible storage layout configuration (RIP-X).
     ///
-    /// Uses Radicle conventions for Git reference paths:
+    /// Uses RIP-X conventions for Git reference paths:
     /// - Identity: `refs/rad/id`
-    /// - Attestations: `refs/rad/multidevice/nodes`
+    /// - Attestations: `refs/keys` (2-blob format under `<nid>/signatures/`)
     /// - Blob names: `link-attestation.json`, `radicle-identity.json`
     ///
-    /// This layout is suitable for Auths identities stored in Radicle repositories.
+    /// Args:
+    /// None — returns a pre-configured layout for Radicle repos.
     ///
-    /// # Example
-    ///
+    /// Usage:
     /// ```
     /// use auths_id::storage::layout::StorageLayoutConfig;
     ///
     /// let config = StorageLayoutConfig::radicle();
     /// assert_eq!(config.identity_ref, "refs/rad/id");
+    /// assert_eq!(config.device_attestation_prefix, "refs/keys");
     /// ```
     pub fn radicle() -> Self {
         Self {
             identity_ref: "refs/rad/id".to_string(),
-            device_attestation_prefix: "refs/rad/multidevice/nodes".to_string(),
+            device_attestation_prefix: "refs/keys".to_string(),
             attestation_blob_name: "link-attestation.json".to_string(),
             identity_blob_name: "radicle-identity.json".to_string(),
         }
@@ -313,7 +314,7 @@ pub fn attestation_blob_name(config: &StorageLayoutConfig) -> &str {
 ///
 /// Appends the sanitized device DID and "/signatures" to the configured prefix.
 /// Example (default config): `refs/auths/devices/nodes/<sanitized_did>/signatures`
-/// Example (Radicle config): `refs/rad/multidevice/nodes/<sanitized_did>/signatures`
+/// Example (Radicle config): `refs/keys/<sanitized_did>/signatures`
 pub fn attestation_ref_for_device(config: &StorageLayoutConfig, device_did: &DeviceDID) -> String {
     format!(
         "{}/{}/signatures",
@@ -355,10 +356,7 @@ mod tests {
     fn test_config_radicle() {
         let config = StorageLayoutConfig::radicle();
         assert_eq!(config.identity_ref, "refs/rad/id");
-        assert_eq!(
-            config.device_attestation_prefix,
-            "refs/rad/multidevice/nodes"
-        );
+        assert_eq!(config.device_attestation_prefix, "refs/keys");
         assert_eq!(config.attestation_blob_name, "link-attestation.json");
         assert_eq!(config.identity_blob_name, "radicle-identity.json");
     }
@@ -399,10 +397,7 @@ mod tests {
             expected_default_ref
         );
 
-        let rad_config = StorageLayoutConfig {
-            device_attestation_prefix: "refs/rad/multidevice/nodes".to_string(),
-            ..Default::default()
-        };
+        let rad_config = StorageLayoutConfig::radicle();
         let expected_rad_ref = format!(
             "{}/{}",
             rad_config.device_attestation_prefix, expected_sanitized_suffix
@@ -421,13 +416,10 @@ mod tests {
             vec!["refs/auths/devices/nodes"]
         );
 
-        let rad_config = StorageLayoutConfig {
-            device_attestation_prefix: "refs/rad/multidevice/nodes".to_string(),
-            ..Default::default()
-        };
+        let rad_config = StorageLayoutConfig::radicle();
         assert_eq!(
             default_attestation_prefixes(&rad_config),
-            vec!["refs/rad/multidevice/nodes"]
+            vec!["refs/keys"]
         );
     }
 

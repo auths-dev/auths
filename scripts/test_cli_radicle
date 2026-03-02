@@ -23,7 +23,7 @@ DEVICE_SEED_FILE_RAD="device1_radicle.seed"
 # Using a qualified ref name under refs/ for better tool compatibility
 IDENTITY_REF="refs/rad/id"
 IDENTITY_BLOB="radicle-identity.json" # Custom identity blob name
-ATTESTATION_PREFIX="refs/rad/multidevice/nodes"
+ATTESTATION_PREFIX="refs/keys"
 ATTESTATION_BLOB="link-attestation.json" # Custom attestation blob name
 # Corrected argument names: --identity-blob, --attestation-blob
 LAYOUT_ARGS="--identity-ref $IDENTITY_REF --identity-blob $IDENTITY_BLOB --attestation-prefix $ATTESTATION_PREFIX --attestation-blob $ATTESTATION_BLOB"
