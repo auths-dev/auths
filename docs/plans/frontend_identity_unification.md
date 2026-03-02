@@ -140,3 +140,28 @@ This plan outlines the multi-repository effort to unify decentralized multi-devi
     1.  Revoke `NODE2_DID` via `auths device revoke`.
     2.  Query API for `NODE2_DID`.
     3.  **Assert:** The response marks the device as `revoked: true` or the `controller_did` lookup now returns `None`.
+
+---
+
+## Remaining Tasks (Detailed)
+
+### Phase 1: Logic & WASM (In Progress)
+- [ ] **Refactor `RadicleIdentity`**: Update the struct in `auths-radicle/src/identity.rs` to include KERI-specific fields (current key set, sequence number) to support the unified profile view.
+- [ ] **Expose `resolve_keri`**: Make the KERI resolution logic public and ensure it returns the enriched `RadicleIdentity` instead of a flat `ResolvedDid`.
+- [ ] **WASM Binding Audit**: Ensure `wasm_verify_device_link` in `auths-verifier` returns exactly the JSON structure required by Phase 3.2.
+
+### Phase 2: Heartwood API (Pending)
+- [ ] **Locate API Routes**: Find the `radicle-httpd` or `radicle-node` API v1 implementation (likely in a separate `radicle-httpd` repository or internal module).
+- [ ] **Extend User Endpoint**: Modify `GET /v1/users/:did` to perform a bridge lookup for the controller identity.
+- [ ] **New Identity Endpoints**:
+    - Implement `GET /v1/identity/:did/kel` to serve the full KERI Event Log from the identity repo.
+    - Implement `GET /v1/identity/:did/attestations` to serve all device signatures for that identity.
+
+### Phase 3: Frontend / UI (Pending)
+- [ ] **`auths-verifier-ts` Integration**: Add the WASM verifier dependency to the frontend `package.json`.
+- [ ] **Profile Unification**: Update the User profile component to check for `controller_did` and toggle between "Device View" and "Person View".
+- [ ] **Local Verification Link**: Implement the `auths.ts` helper to fetch KEL/Attestations and run the WASM verifier on page load.
+
+### Phase 4: Verification & E2E (Pending)
+- [ ] **API Assertions**: Add `curl` checks to `scripts/radicle-e2e.sh` to verify that `controller_did` is correctly populated after a `pair` operation.
+- [ ] **UI Integration Test**: (Optional) Add a basic Playwright/Cypress test to verify the "Verified" badge appears in the browser.

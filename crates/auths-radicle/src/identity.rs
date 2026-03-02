@@ -1,11 +1,5 @@
-//! Radicle identity resolver.
-//!
-//! Resolves Radicle peer identities by reading from `refs/rad/id` and extracting
-//! the delegate's Ed25519 public key from the `did:key` format. Also resolves
-//! `did:keri:` identifiers by replaying the KERI Key Event Log.
-
-use auths_crypto::KeriPublicKey;
 use auths_id::identity::{DidMethod, DidResolver, DidResolverError, ResolvedDid};
+use auths_id::keri::KeyState;
 use auths_id::keri::event::Event;
 use auths_id::keri::validate::replay_kel;
 use git2::{ErrorCode, Repository};
@@ -73,6 +67,8 @@ pub struct RadicleIdentity {
     pub primary_public_key: PublicKey,
     /// The primary delegate's DID
     pub primary_did: Did,
+    /// Optional KERI key state (if resolved from did:keri)
+    pub keri_state: Option<KeyState>,
 }
 
 /// Resolver for Radicle peer identities.
@@ -165,12 +161,23 @@ impl RadicleIdentityResolver {
             .ok_or(IdentityError::NoDelegates)?
             .clone();
 
-        let primary_public_key = resolve_did_key(&primary_did)?;
+        let resolved = self.resolve(&primary_did.to_string()).map_err(|e| {
+            IdentityError::InvalidDocument(format!("failed to resolve primary delegate: {e}"))
+        })?;
 
         Ok(RadicleIdentity {
             document,
-            primary_public_key,
-            primary_did,
+            primary_public_key: PublicKey::try_from(resolved.public_key.as_slice()).map_err(|_| {
+                IdentityError::InvalidDidKey("resolved public key is not 32 bytes".into())
+            })?,
+            primary_did: primary_did.clone(),
+            keri_state: match resolved.method {
+                DidMethod::Keri { .. } => {
+                    // We need the full KeyState. Re-resolve KERI specifically to get it.
+                    Some(self.resolve_keri_state(&primary_did)?)
+                }
+                _ => None,
+            },
         })
     }
 
@@ -179,7 +186,7 @@ impl RadicleIdentityResolver {
         &self.repo_path
     }
 
-    fn resolve_keri(&self, did: &str) -> Result<ResolvedDid, IdentityError> {
+    fn resolve_keri_state(&self, did: &Did) -> Result<KeyState, IdentityError> {
         let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
         let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
             path: id_path.display().to_string(),
@@ -189,19 +196,38 @@ impl RadicleIdentityResolver {
         let events = read_kel_events(&repo, id_path)?;
         if events.is_empty() {
             return Err(IdentityError::KelNotFound {
-                ref_path: refs::KERI_KEL_REF.to_string(),
+                ref_path: self.layout.keri_kel_ref.clone(),
             });
         }
 
         let key_state =
             replay_kel(&events).map_err(|e| IdentityError::KelValidationFailed(e.to_string()))?;
 
+        // Validation: verify prefix matches DID
+        if let Some(prefix_str) = did.as_keri_prefix() {
+            if key_state.prefix.as_str() != prefix_str {
+                return Err(IdentityError::KelValidationFailed(format!(
+                    "KEL prefix mismatch: expected {prefix_str}, got {}",
+                    key_state.prefix.as_str()
+                )));
+            }
+        }
+
+        Ok(key_state)
+    }
+
+    fn resolve_keri(&self, did: &str) -> Result<ResolvedDid, IdentityError> {
+        let did_val: Did = did.parse().map_err(|e: radicle_core::identity::DidError| {
+            IdentityError::InvalidDid(e)
+        })?;
+        let key_state = self.resolve_keri_state(&did_val)?;
+
         let cesr_key = key_state
             .current_keys
             .first()
             .ok_or(IdentityError::NoSigningKeys)?;
 
-        let keri_pk = KeriPublicKey::parse(cesr_key)
+        let keri_pk = auths_crypto::KeriPublicKey::parse(cesr_key)
             .map_err(|e| IdentityError::KelValidationFailed(format!("invalid CESR key: {e}")))?;
 
         let public_key = keri_pk.into_bytes().to_vec();
