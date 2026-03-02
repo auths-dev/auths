@@ -343,10 +343,12 @@ fn key_import(alias: &str, seed_file_path: &PathBuf, controller_did: &IdentityDI
         .to_der()
         .map_err(|e| anyhow!("Failed to encode PKCS#8 structure to DER: {}", e))?;
 
-    // Get Passphrase interactively
-    let passphrase =
+    let passphrase = if let Ok(env_pass) = std::env::var("AUTHS_PASSPHRASE") {
+        env_pass
+    } else {
         rpassword::prompt_password(format!("Enter passphrase to encrypt the key '{}': ", alias))
-            .context("Failed to read passphrase")?;
+            .context("Failed to read passphrase")?
+    };
     if passphrase.is_empty() {
         return Err(anyhow!("Passphrase cannot be empty."));
     }

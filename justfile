@@ -96,8 +96,9 @@ build:
         exit 1
     fi
 
-# Private server recipes (e2e, sitedemo, logindemo, chatdemo) have been moved to auths-cloud.
-
+# Run the Radicle multi-device e2e demo (requires rad CLI).
+e2e-radicle:
+    bash scripts/radicle-e2e.sh
 
 # Private server recipes (e2e, sitedemo, logindemo, chatdemo) have been moved to auths-cloud.
 

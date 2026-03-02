@@ -3,7 +3,6 @@
 //! Simulates the stale-node scenario: Node A has revocation, Node B is stale.
 
 use chrono::Utc;
-use std::collections::HashMap;
 
 use auths_id::identity::ed25519_to_did_key;
 use auths_id::keri::KeyState;
@@ -11,95 +10,9 @@ use auths_radicle::bridge::{
     BridgeError, EnforcementMode, RadicleAuthsBridge, VerifyRequest, VerifyResult,
 };
 use auths_radicle::verify::{AuthsStorage, DefaultBridge};
-use auths_verifier::IdentityDID;
 use auths_verifier::core::Attestation;
-use auths_verifier::keri::{Prefix, Said};
-use auths_verifier::types::DeviceDID;
 
-struct MockStorage {
-    key_states: HashMap<String, KeyState>,
-    attestations: HashMap<(String, String), Attestation>,
-    device_to_identity: HashMap<(String, String), String>,
-    identity_tips: HashMap<String, [u8; 20]>,
-}
-
-impl MockStorage {
-    fn new() -> Self {
-        Self {
-            key_states: HashMap::new(),
-            attestations: HashMap::new(),
-            device_to_identity: HashMap::new(),
-            identity_tips: HashMap::new(),
-        }
-    }
-}
-
-impl AuthsStorage for MockStorage {
-    fn load_key_state(&self, identity_did: &str) -> Result<KeyState, BridgeError> {
-        self.key_states
-            .get(identity_did)
-            .cloned()
-            .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
-    }
-
-    fn load_attestation(
-        &self,
-        device_did: &str,
-        identity_did: &str,
-    ) -> Result<Attestation, BridgeError> {
-        self.attestations
-            .get(&(device_did.to_string(), identity_did.to_string()))
-            .cloned()
-            .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
-    }
-
-    fn find_identity_for_device(
-        &self,
-        device_did: &str,
-        repo_id: &str,
-    ) -> Result<Option<String>, BridgeError> {
-        Ok(self
-            .device_to_identity
-            .get(&(device_did.to_string(), repo_id.to_string()))
-            .cloned())
-    }
-
-    fn local_identity_tip(&self, identity_did: &str) -> Result<Option<[u8; 20]>, BridgeError> {
-        Ok(self.identity_tips.get(identity_did).copied())
-    }
-}
-
-fn make_key_state(prefix: &str, sequence: u64) -> KeyState {
-    KeyState {
-        prefix: Prefix::new_unchecked(prefix.to_string()),
-        sequence,
-        current_keys: vec!["DTestKey".to_string()],
-        next_commitment: vec![],
-        last_event_said: Said::new_unchecked("ETestSaid".to_string()),
-        is_abandoned: false,
-    }
-}
-
-fn make_attestation(issuer: &str, device_did: &str, revoked: bool) -> Attestation {
-    Attestation {
-        version: 1,
-        rid: "test".to_string(),
-        issuer: IdentityDID::new(issuer),
-        subject: DeviceDID::new(device_did),
-        device_public_key: vec![0; 32],
-        identity_signature: vec![0; 64],
-        device_signature: vec![0; 64],
-        revoked_at: if revoked { Some(Utc::now()) } else { None },
-        expires_at: None,
-        timestamp: None,
-        note: None,
-        payload: None,
-        role: None,
-        capabilities: vec![],
-        delegated_by: None,
-        signer_type: None,
-    }
-}
+use super::helpers::{MockStorage, make_key_state, make_test_attestation};
 
 fn setup_stale_scenario() -> ([u8; 32], String, &'static str, &'static str) {
     let signer_key: [u8; 32] = [42; 32];
@@ -121,7 +34,7 @@ fn observe_stale_node_accepts_then_converges() {
         .insert(identity_did.to_string(), make_key_state("EStaleTest", 2));
     stale_storage.attestations.insert(
         (device_did.clone(), identity_did.to_string()),
-        make_attestation(identity_did, &device_did, false),
+        make_test_attestation(identity_did, &device_did, "test", false, vec![]),
     );
     stale_storage.device_to_identity.insert(
         (device_did.clone(), repo_id.to_string()),
@@ -137,7 +50,7 @@ fn observe_stale_node_accepts_then_converges() {
         repo_id,
         now: Utc::now(),
         mode: EnforcementMode::Observe,
-        known_remote_tip: None, // No gossip info — stale node doesn't know
+        known_remote_tip: None,
         min_kel_seq: None,
         required_capability: None,
     };
@@ -156,7 +69,7 @@ fn observe_stale_node_accepts_then_converges() {
         .insert(identity_did.to_string(), make_key_state("EStaleTest", 3));
     synced_storage.attestations.insert(
         (device_did.clone(), identity_did.to_string()),
-        make_attestation(identity_did, &device_did, true), // now revoked
+        make_test_attestation(identity_did, &device_did, "test", true, vec![]),
     );
     synced_storage.device_to_identity.insert(
         (device_did.clone(), repo_id.to_string()),
@@ -183,7 +96,7 @@ fn enforce_staleness_detected_quarantine_then_resolves() {
         .insert(identity_did.to_string(), make_key_state("EStaleTest", 2));
     storage.attestations.insert(
         (device_did.clone(), identity_did.to_string()),
-        make_attestation(identity_did, &device_did, false),
+        make_test_attestation(identity_did, &device_did, "test", false, vec![]),
     );
     storage.device_to_identity.insert(
         (device_did.clone(), repo_id.to_string()),
@@ -214,7 +127,7 @@ fn enforce_staleness_detected_quarantine_then_resolves() {
         .insert(identity_did.to_string(), make_key_state("EStaleTest", 3));
     synced_storage.attestations.insert(
         (device_did.clone(), identity_did.to_string()),
-        make_attestation(identity_did, &device_did, true),
+        make_test_attestation(identity_did, &device_did, "test", true, vec![]),
     );
     synced_storage.device_to_identity.insert(
         (device_did.clone(), repo_id.to_string()),
@@ -247,7 +160,7 @@ fn enforce_no_staleness_signal_accepts() {
         .insert(identity_did.to_string(), make_key_state("EStaleTest", 2));
     storage.attestations.insert(
         (device_did.clone(), identity_did.to_string()),
-        make_attestation(identity_did, &device_did, false),
+        make_test_attestation(identity_did, &device_did, "test", false, vec![]),
     );
     storage.device_to_identity.insert(
         (device_did.clone(), repo_id.to_string()),
@@ -285,7 +198,7 @@ fn below_min_kel_seq_rejected_in_both_modes() {
             .insert(identity_did.to_string(), make_key_state("EStaleTest", 1));
         storage.attestations.insert(
             (device_did.clone(), identity_did.to_string()),
-            make_attestation(identity_did, &device_did, false),
+            make_test_attestation(identity_did, &device_did, "test", false, vec![]),
         );
         storage.device_to_identity.insert(
             (device_did.clone(), repo_id.to_string()),
@@ -323,7 +236,6 @@ fn corrupt_identity_rejected_regardless_of_mode() {
     let identity_did = "did:keri:ECorrupt";
     let repo_id = "test-repo";
 
-    // Storage that returns IdentityCorrupt error
     struct CorruptStorage {
         identity_did: String,
     }
