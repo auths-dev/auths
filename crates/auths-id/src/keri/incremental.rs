@@ -329,16 +329,18 @@ fn apply_event_to_state(state: &mut KeyState, event: &Event) -> Result<(), Incre
     // Apply the event
     match event {
         Event::Rot(rot) => {
-            let threshold = rot.kt.parse::<u64>().map_err(|_| {
-                IncrementalError::MalformedSequence {
-                    raw: rot.kt.clone(),
-                }
-            })?;
-            let next_threshold = rot.nt.parse::<u64>().map_err(|_| {
-                IncrementalError::MalformedSequence {
-                    raw: rot.nt.clone(),
-                }
-            })?;
+            let threshold =
+                rot.kt
+                    .parse::<u64>()
+                    .map_err(|_| IncrementalError::MalformedSequence {
+                        raw: rot.kt.clone(),
+                    })?;
+            let next_threshold =
+                rot.nt
+                    .parse::<u64>()
+                    .map_err(|_| IncrementalError::MalformedSequence {
+                        raw: rot.nt.clone(),
+                    })?;
 
             state.apply_rotation(
                 rot.k.clone(),

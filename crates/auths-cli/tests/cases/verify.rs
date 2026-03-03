@@ -68,10 +68,12 @@ fn create_signed_attestation(
     let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
     // Sign with issuer (identity) key
-    att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+    att.identity_signature =
+        Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
     // Sign with device key
-    att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
+    att.device_signature =
+        Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
     att
 }

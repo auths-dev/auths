@@ -572,10 +572,7 @@ fn display_agent_result(out: &Output, result: &auths_sdk::result::AgentSetupResu
         out.info(&short_did(&result.agent_did))
     ));
     let cap_display: Vec<String> = result.capabilities.iter().map(|c| c.to_string()).collect();
-    out.println(&format!(
-        "  Capabilities: {}",
-        cap_display.join(", ")
-    ));
+    out.println(&format!("  Capabilities: {}", cap_display.join(", ")));
     out.newline();
     out.print_success("Agent is ready to sign commits!");
     out.println("  Start the agent: auths agent start");

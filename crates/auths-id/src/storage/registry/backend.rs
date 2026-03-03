@@ -522,23 +522,23 @@ pub trait RegistryBackend: Send + Sync {
 
                 // Capabilities any: intersection non-empty
                 let member_caps: HashSet<&Capability> = att.capabilities.iter().collect();
-                if let Some(ref caps_any) = filter.capabilities_any {
-                    if !member_caps.iter().any(|c| caps_any.contains(*c)) {
-                        return ControlFlow::Continue(());
-                    }
+                if let Some(ref caps_any) = filter.capabilities_any
+                    && !member_caps.iter().any(|c| caps_any.contains(*c))
+                {
+                    return ControlFlow::Continue(());
                 }
 
                 // Capabilities all: filter_caps ⊆ member_caps
-                if let Some(ref caps_all) = filter.capabilities_all {
-                    if !caps_all.iter().all(|c| member_caps.contains(c)) {
-                        return ControlFlow::Continue(());
-                    }
+                if let Some(ref caps_all) = filter.capabilities_all
+                    && !caps_all.iter().all(|c| member_caps.contains(c))
+                {
+                    return ControlFlow::Continue(());
                 }
 
                 members.push(MemberView {
                     did: entry.did.clone(),
                     status,
-                    role: att.role.clone(),
+                    role: att.role,
                     capabilities: att.capabilities.clone(),
                     issuer: att.issuer.clone(),
                     rid: att.rid.clone(),

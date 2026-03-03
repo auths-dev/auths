@@ -298,7 +298,10 @@ pub fn attestation_blob_name(config: &StorageLayoutConfig) -> &str {
 pub fn attestation_ref_for_device(config: &StorageLayoutConfig, device_did: &DeviceDID) -> String {
     format!(
         "{}/{}/signatures",
-        config.device_attestation_prefix.as_str().trim_end_matches('/'),
+        config
+            .device_attestation_prefix
+            .as_str()
+            .trim_end_matches('/'),
         device_did.ref_name()
     )
 }
@@ -311,7 +314,6 @@ pub fn default_attestation_prefixes(config: &StorageLayoutConfig) -> Vec<String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_verifier::types::DeviceDID;
 
     #[test]
     fn test_config_defaults_are_agnostic() {
@@ -324,7 +326,6 @@ mod tests {
 
     #[test]
     fn test_attestation_ref_for_device() {
-
         let prefix = Prefix::new_unchecked("EABC123".to_string());
         let expected = "refs/did/keri/EABC123/kel";
         assert_eq!(keri_kel_ref(&prefix), expected);

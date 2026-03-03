@@ -16,8 +16,8 @@ const ORG: &str = "ETestOrg0001";
 const ADMIN_DID: &str = "did:key:z6MkAdminKey0001";
 const MEMBER_DID: &str = "did:key:z6MkMemberKey0001";
 const ADMIN_PUBKEY: [u8; 32] = [
-    0xAA, 0xBB, 0xCC, 0xDD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0,
+    0xAA, 0xBB, 0xCC, 0xDD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
 ];
 
 fn admin_pubkey_hex() -> String {

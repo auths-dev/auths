@@ -100,13 +100,13 @@ pub fn authorize_org_action(
     }
 
     // Rule 2: Not expired (expires_at <= now means expired)
-    if let Some(expires_at) = member_attestation.expires_at {
-        if expires_at <= now {
-            return Decision::deny(format!(
-                "membership expired at {}",
-                expires_at.format("%Y-%m-%dT%H:%M:%SZ")
-            ));
-        }
+    if let Some(expires_at) = member_attestation.expires_at
+        && expires_at <= now
+    {
+        return Decision::deny(format!(
+            "membership expired at {}",
+            expires_at.format("%Y-%m-%dT%H:%M:%SZ")
+        ));
     }
 
     // Rule 3: Issuer is the org

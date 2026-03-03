@@ -1,7 +1,7 @@
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
+use auths_verifier::Capability;
 use auths_verifier::core::ResourceId;
 use auths_verifier::types::DeviceDID;
-use auths_verifier::Capability;
 
 /// Outcome of a successful developer identity setup.
 ///

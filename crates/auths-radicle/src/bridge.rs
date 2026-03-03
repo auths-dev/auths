@@ -241,7 +241,10 @@ pub enum BridgeError {
 
     /// Failed to load attestation for device.
     #[error("failed to load attestation for device {device_did}: {reason}")]
-    AttestationLoad { device_did: DeviceDID, reason: String },
+    AttestationLoad {
+        device_did: DeviceDID,
+        reason: String,
+    },
 
     /// Identity is corrupt — KEL validation failed, broken chain, etc.
     /// Not actionable by fetching. Needs investigation.
@@ -360,19 +363,25 @@ mod tests {
         );
         assert!(
             VerifyResult::Warn {
-                reason: WarnReason::PolicyIndeterminate { message: "warn".into() },
+                reason: WarnReason::PolicyIndeterminate {
+                    message: "warn".into()
+                },
             }
             .is_allowed()
         );
         assert!(
             !VerifyResult::Rejected {
-                reason: RejectReason::PolicyDenied { message: "no".into() },
+                reason: RejectReason::PolicyDenied {
+                    message: "no".into()
+                },
             }
             .is_allowed()
         );
         assert!(
             !VerifyResult::Quarantine {
-                reason: QuarantineReason::MissingIdentityRepo { detail: "fetch".into() },
+                reason: QuarantineReason::MissingIdentityRepo {
+                    detail: "fetch".into()
+                },
                 identity_repo_rid: None,
             }
             .is_allowed()
@@ -389,13 +398,17 @@ mod tests {
         );
         assert!(
             !VerifyResult::Warn {
-                reason: WarnReason::PolicyIndeterminate { message: "warn".into() },
+                reason: WarnReason::PolicyIndeterminate {
+                    message: "warn".into()
+                },
             }
             .is_rejected()
         );
         assert!(
             VerifyResult::Rejected {
-                reason: RejectReason::PolicyDenied { message: "no".into() },
+                reason: RejectReason::PolicyDenied {
+                    message: "no".into()
+                },
             }
             .is_rejected()
         );
@@ -419,7 +432,9 @@ mod tests {
         );
         assert!(
             VerifyResult::Quarantine {
-                reason: QuarantineReason::MissingIdentityRepo { detail: "fetch needed".into() },
+                reason: QuarantineReason::MissingIdentityRepo {
+                    detail: "fetch needed".into()
+                },
                 identity_repo_rid: Some("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5".parse().unwrap()),
             }
             .reason()

@@ -183,10 +183,10 @@ pub fn is_device_listed(
         if att.is_revoked() {
             return false;
         }
-        if let Some(exp) = att.expires_at {
-            if now > exp {
-                return false;
-            }
+        if let Some(exp) = att.expires_at
+            && now > exp
+        {
+            return false;
         }
         true
     })
@@ -217,10 +217,7 @@ pub struct DeviceLinkVerification {
 }
 
 impl DeviceLinkVerification {
-    fn success(
-        key_state: crate::keri::KeriKeyState,
-        seal_sequence: Option<u64>,
-    ) -> Self {
+    fn success(key_state: crate::keri::KeriKeyState, seal_sequence: Option<u64>) -> Self {
         Self {
             valid: true,
             error: None,
@@ -333,34 +330,33 @@ pub(crate) async fn verify_with_keys_at(
     let reference_time = at;
 
     // --- 1. Check revocation (time-aware) ---
-    if let Some(revoked_at) = att.revoked_at {
-        if revoked_at <= reference_time {
-            return Err(AttestationError::VerificationError(
-                "Attestation revoked".to_string(),
-            ));
-        }
+    if let Some(revoked_at) = att.revoked_at
+        && revoked_at <= reference_time
+    {
+        return Err(AttestationError::VerificationError(
+            "Attestation revoked".to_string(),
+        ));
     }
 
     // --- 2. Check expiration against reference time ---
-    if let Some(exp) = att.expires_at {
-        if reference_time > exp {
-            return Err(AttestationError::VerificationError(format!(
-                "Attestation expired on {}",
-                exp.to_rfc3339()
-            )));
-        }
+    if let Some(exp) = att.expires_at
+        && reference_time > exp
+    {
+        return Err(AttestationError::VerificationError(format!(
+            "Attestation expired on {}",
+            exp.to_rfc3339()
+        )));
     }
 
     // --- 3. Check timestamp skew against reference time ---
-    if check_skew {
-        if let Some(ts) = att.timestamp {
-            if ts > reference_time + Duration::seconds(MAX_SKEW_SECS) {
-                return Err(AttestationError::VerificationError(format!(
-                    "Attestation timestamp ({}) is in the future",
-                    ts.to_rfc3339(),
-                )));
-            }
-        }
+    if check_skew
+        && let Some(ts) = att.timestamp
+        && ts > reference_time + Duration::seconds(MAX_SKEW_SECS)
+    {
+        return Err(AttestationError::VerificationError(format!(
+            "Attestation timestamp ({}) is in the future",
+            ts.to_rfc3339(),
+        )));
     }
 
     // --- 4. Check provided issuer public key length ---
@@ -402,7 +398,11 @@ pub(crate) async fn verify_with_keys_at(
     // --- 6. Verify issuer signature ---
     if !att.identity_signature.is_empty() {
         provider
-            .verify_ed25519(issuer_pk_bytes, data_to_verify, att.identity_signature.as_bytes())
+            .verify_ed25519(
+                issuer_pk_bytes,
+                data_to_verify,
+                att.identity_signature.as_bytes(),
+            )
             .await
             .map_err(|_| {
                 AttestationError::VerificationError(
@@ -546,17 +546,17 @@ async fn verify_single_attestation(
         ));
     }
 
-    if let Some(exp) = att.expires_at {
-        if now > exp {
-            return Err((
-                VerificationStatus::Expired { at: exp },
-                ChainLink::invalid(
-                    issuer,
-                    subject,
-                    format!("Attestation expired on {}", exp.to_rfc3339()),
-                ),
-            ));
-        }
+    if let Some(exp) = att.expires_at
+        && now > exp
+    {
+        return Err((
+            VerificationStatus::Expired { at: exp },
+            ChainLink::invalid(
+                issuer,
+                subject,
+                format!("Attestation expired on {}", exp.to_rfc3339()),
+            ),
+        ));
     }
 
     match verify_with_keys_at(att, issuer_pk, now, true, provider).await {
@@ -652,8 +652,10 @@ mod tests {
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
-        att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.identity_signature =
+            Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature =
+            Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }
@@ -1258,8 +1260,10 @@ mod tests {
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
-        att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.identity_signature =
+            Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature =
+            Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }
@@ -1604,8 +1608,10 @@ mod tests {
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
-        att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.identity_signature =
+            Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature =
+            Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }

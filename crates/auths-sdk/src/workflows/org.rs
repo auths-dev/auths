@@ -6,9 +6,9 @@ use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::id::UuidProvider;
 use auths_id::ports::registry::RegistryBackend;
 use auths_verifier::Capability;
-use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature};
-pub use auths_verifier::core::Role;
 use auths_verifier::core::ResourceId;
+pub use auths_verifier::core::Role;
+use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 
 use crate::error::OrgError;

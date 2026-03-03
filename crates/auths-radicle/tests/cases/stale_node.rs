@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use chrono::Utc;
+use std::str::FromStr;
 
 use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, VerifyRequest};
 use auths_radicle::verify::DefaultBridge;
@@ -15,7 +15,14 @@ fn stale_identity_repo_rejected_in_enforce() {
     let device = DeviceFixture::new(1);
 
     storage.add_identity(identity_did.clone(), make_key_state("EAlice", 1));
-    register_device(&mut storage, &device, &identity_did, &repo_id, false, vec![]);
+    register_device(
+        &mut storage,
+        &device,
+        &identity_did,
+        &repo_id,
+        false,
+        vec![],
+    );
 
     // Local tip is AA
     storage.set_identity_tip(identity_did.clone(), [0xAA; 20]);
@@ -51,7 +58,14 @@ fn missing_identity_repo_quarantined_in_enforce() {
     let device = DeviceFixture::new(1);
 
     // Identity repo is NOT in storage (load_key_state will return error)
-    register_device(&mut storage, &device, &identity_did, &repo_id, false, vec![]);
+    register_device(
+        &mut storage,
+        &device,
+        &identity_did,
+        &repo_id,
+        false,
+        vec![],
+    );
 
     let bridge = DefaultBridge::with_storage(storage);
     let request = VerifyRequest {
@@ -81,7 +95,14 @@ fn min_kel_seq_violation_rejected() {
 
     // Identity is at sequence 5
     storage.add_identity(identity_did.clone(), make_key_state("EAlice", 5));
-    register_device(&mut storage, &device, &identity_did, &repo_id, false, vec![]);
+    register_device(
+        &mut storage,
+        &device,
+        &identity_did,
+        &repo_id,
+        false,
+        vec![],
+    );
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -103,9 +124,9 @@ fn min_kel_seq_violation_rejected() {
 
 #[test]
 fn corrupt_identity_hard_rejected() {
+    use auths_id::keri::KeyState;
     use auths_radicle::bridge::BridgeError;
     use auths_verifier::core::Attestation;
-    use auths_id::keri::KeyState;
 
     struct CorruptKelStorage {
         layout: auths_radicle::refs::Layout,

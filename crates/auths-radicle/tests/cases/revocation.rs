@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use chrono::{Duration, Utc};
+use std::str::FromStr;
 
 use auths_id::policy::PolicyBuilder;
 use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, VerifyRequest};
@@ -60,7 +60,10 @@ fn revoked_device_warns_in_observe() {
     let result = bridge.verify_signer(&request).unwrap();
     // In observe mode, should allow but Warn
     assert!(result.is_allowed());
-    assert!(matches!(result, auths_radicle::bridge::VerifyResult::Warn { .. }));
+    assert!(matches!(
+        result,
+        auths_radicle::bridge::VerifyResult::Warn { .. }
+    ));
 }
 
 #[test]
@@ -73,7 +76,8 @@ fn expired_attestation_rejected() {
     storage.add_identity(identity_did.clone(), make_key_state("EAlice", 1));
 
     // Create an attestation that EXPIRES in the past
-    let mut attestation = super::helpers::make_test_attestation(&identity_did, &device.did, &repo_id, false, vec![]);
+    let mut attestation =
+        super::helpers::make_test_attestation(&identity_did, &device.did, &repo_id, false, vec![]);
     attestation.expires_at = Some(Utc::now() - Duration::days(1));
 
     storage.add_attestation(device.did.clone(), identity_did.clone(), attestation);

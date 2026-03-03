@@ -146,7 +146,7 @@ impl DidResolver for RegistryDidResolver {
 /// Parse a did:key to extract the Ed25519 public key.
 pub fn did_key_to_ed25519(did: &str) -> Result<Ed25519PublicKey, DidResolverError> {
     auths_crypto::did_key_to_ed25519(did)
-        .map(|k| Ed25519PublicKey::from_bytes(k))
+        .map(Ed25519PublicKey::from_bytes)
         .map_err(|e| DidResolverError::InvalidDidKey(e.to_string()))
 }
 
@@ -205,7 +205,10 @@ mod tests {
         let resolver = DefaultDidResolver::with_repo(dir.path());
         let resolved = resolver.resolve(&did).unwrap();
 
-        assert_eq!(resolved.public_key().as_bytes().as_slice(), init.current_public_key.as_slice());
+        assert_eq!(
+            resolved.public_key().as_bytes().as_slice(),
+            init.current_public_key.as_slice()
+        );
         assert!(matches!(
             resolved,
             ResolvedDid::Keri {

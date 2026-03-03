@@ -34,12 +34,19 @@ impl MockStorage {
         self.key_states.insert(identity_did, key_state);
     }
 
-    pub fn add_attestation(&mut self, device_did: Did, identity_did: Did, attestation: Attestation) {
-        self.attestations.insert((device_did, identity_did), attestation);
+    pub fn add_attestation(
+        &mut self,
+        device_did: Did,
+        identity_did: Did,
+        attestation: Attestation,
+    ) {
+        self.attestations
+            .insert((device_did, identity_did), attestation);
     }
 
     pub fn link_device_to_identity(&mut self, device_did: Did, identity_did: Did, repo_id: RepoId) {
-        self.device_to_identity.insert((device_did, repo_id), identity_did);
+        self.device_to_identity
+            .insert((device_did, repo_id), identity_did);
     }
 
     pub fn set_identity_tip(&mut self, identity_did: Did, tip: [u8; 20]) {
@@ -163,8 +170,7 @@ pub fn register_device(
         (device.did.clone(), identity_did.clone()),
         make_test_attestation(identity_did, &device.did, repo_id, revoked, capabilities),
     );
-    storage.device_to_identity.insert(
-        (device.did.clone(), *repo_id),
-        identity_did.clone(),
-    );
+    storage
+        .device_to_identity
+        .insert((device.did.clone(), *repo_id), identity_did.clone());
 }

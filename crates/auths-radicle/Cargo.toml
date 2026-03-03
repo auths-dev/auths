@@ -28,6 +28,7 @@ wasm = ["dep:wasm-bindgen", "auths-verifier/wasm"]
 auths-verifier = { workspace = true, default-features = false }
 bs58 = "0.5.1"
 json-canon = "0.1"
+# NOTE: we use local paths here as this requires using local, development branches of these crates.
 radicle-core = { path = "../../../../radicle-base/heartwood/crates/radicle-core", features = ["serde"] }
 radicle-crypto = { path = "../../../../radicle-base/heartwood/crates/radicle-crypto" }
 serde = { version = "1", features = ["derive"] }

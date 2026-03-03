@@ -213,9 +213,8 @@ impl Serialize for Ed25519PublicKey {
 impl<'de> Deserialize<'de> for Ed25519PublicKey {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
-        let bytes = hex::decode(&s).map_err(|e| {
-            serde::de::Error::custom(format!("invalid hex: {e}"))
-        })?;
+        let bytes =
+            hex::decode(&s).map_err(|e| serde::de::Error::custom(format!("invalid hex: {e}")))?;
         let arr: [u8; 32] = bytes.try_into().map_err(|v: Vec<u8>| {
             serde::de::Error::custom(format!("expected 32 bytes, got {}", v.len()))
         })?;
@@ -255,10 +254,12 @@ pub enum Ed25519KeyError {
 pub struct Ed25519Signature([u8; 64]);
 
 impl Ed25519Signature {
+    /// Creates a signature from a 64-byte array.
     pub fn from_bytes(bytes: [u8; 64]) -> Self {
         Self(bytes)
     }
 
+    /// Attempts to create a signature from a byte slice, returning an error if the length is not 64.
     pub fn try_from_slice(slice: &[u8]) -> Result<Self, SignatureLengthError> {
         let arr: [u8; 64] = slice
             .try_into()
@@ -266,14 +267,17 @@ impl Ed25519Signature {
         Ok(Self(arr))
     }
 
+    /// Creates an all-zero signature, used as a placeholder.
     pub fn empty() -> Self {
         Self([0u8; 64])
     }
 
+    /// Returns `true` if the signature is all zeros (placeholder).
     pub fn is_empty(&self) -> bool {
         self.0 == [0u8; 64]
     }
 
+    /// Returns a reference to the underlying 64-byte array.
     pub fn as_bytes(&self) -> &[u8; 64] {
         &self.0
     }
@@ -823,9 +827,9 @@ impl Attestation {
             self.rid,
             self.issuer,
             self.subject, // DeviceDID implements Display
-            hex::encode(&self.device_public_key),
-            hex::encode(&self.identity_signature),
-            hex::encode(&self.device_signature),
+            hex::encode(self.device_public_key.as_bytes()),
+            hex::encode(self.identity_signature.as_bytes()),
+            hex::encode(self.device_signature.as_bytes()),
             self.revoked_at,
             self.expires_at,
             self.note

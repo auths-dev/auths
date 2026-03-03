@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use chrono::Utc;
+use std::str::FromStr;
 
 use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, VerifyRequest, VerifyResult};
 use auths_radicle::verify::DefaultBridge;
@@ -56,7 +56,13 @@ fn local_identity_not_available_quarantined_in_enforce() {
     let device_did = Did::from(signer_key);
 
     // Identity repo tip is NOT set in local storage
-    register_device_to_storage(&mut storage, &signer_key, &device_did, &identity_did, &repo_id);
+    register_device_to_storage(
+        &mut storage,
+        &signer_key,
+        &device_did,
+        &identity_did,
+        &repo_id,
+    );
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -96,9 +102,9 @@ fn register_device_to_storage(
 
 #[test]
 fn corrupt_storage_hard_reject() {
+    use auths_id::keri::KeyState;
     use auths_radicle::bridge::BridgeError;
     use auths_verifier::core::Attestation;
-    use auths_id::keri::KeyState;
 
     struct CorruptStorage {
         layout: auths_radicle::refs::Layout,

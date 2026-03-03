@@ -205,15 +205,15 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
 
         // Step 3: Binding integrity — min_kel_seq check BEFORE policy evaluation.
         // A KEL below the binding minimum is a tamper indicator: hard reject in ALL modes.
-        if let Some(min_seq) = request.min_kel_seq {
-            if key_state.sequence < min_seq {
-                return Ok(VerifyResult::Rejected {
-                    reason: RejectReason::InsufficientKelSequence {
-                        have: key_state.sequence,
-                        need: min_seq,
-                    },
-                });
-            }
+        if let Some(min_seq) = request.min_kel_seq
+            && key_state.sequence < min_seq
+        {
+            return Ok(VerifyResult::Rejected {
+                reason: RejectReason::InsufficientKelSequence {
+                    have: key_state.sequence,
+                    need: min_seq,
+                },
+            });
         }
 
         // Step 4: Staleness detection — gossip-informed tip comparison.
@@ -221,9 +221,7 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
             match self.storage.local_identity_tip(&identity_did)? {
                 Some(local_tip) if local_tip != remote_tip => {
                     let qr = QuarantineReason::StaleNode {
-                        detail: format!(
-                            "{identity_did} local tip differs from gossip"
-                        ),
+                        detail: format!("{identity_did} local tip differs from gossip"),
                     };
                     return Ok(match request.mode {
                         EnforcementMode::Observe => VerifyResult::Warn {
@@ -271,22 +269,22 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         let decision = evaluate_compiled(&attestation, &self.policy, request.now);
 
         // Step 7: Capability check
-        if let Some(required_cap) = request.required_capability {
-            if decision.outcome == Outcome::Allow {
-                let has_cap = attestation
-                    .capabilities
-                    .iter()
-                    .any(|c| c.to_string() == required_cap);
-                if !has_cap && !attestation.capabilities.is_empty() {
-                    return Ok(apply_mode(
-                        request.mode,
-                        VerifyResult::Rejected {
-                            reason: RejectReason::MissingCapability {
-                                capability: required_cap.to_string(),
-                            },
+        if let Some(required_cap) = request.required_capability
+            && decision.outcome == Outcome::Allow
+        {
+            let has_cap = attestation
+                .capabilities
+                .iter()
+                .any(|c| c.to_string() == required_cap);
+            if !has_cap && !attestation.capabilities.is_empty() {
+                return Ok(apply_mode(
+                    request.mode,
+                    VerifyResult::Rejected {
+                        reason: RejectReason::MissingCapability {
+                            capability: required_cap.to_string(),
                         },
-                    ));
-                }
+                    },
+                ));
             }
         }
 
@@ -451,12 +449,12 @@ pub fn meets_threshold(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
     use auths_verifier::IdentityDID;
     use auths_verifier::keri::{Prefix, Said};
     use auths_verifier::types::DeviceDID as VerifierDeviceDID;
     use chrono::{DateTime, Utc};
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     struct MockStorage {
         key_states: HashMap<Did, KeyState>,
@@ -487,17 +485,13 @@ mod tests {
             identity_did: Did,
             attestation: Attestation,
         ) {
-            self.attestations.insert(
-                (device_did, identity_did),
-                attestation,
-            );
+            self.attestations
+                .insert((device_did, identity_did), attestation);
         }
 
         fn link_device_to_identity(&mut self, device_did: Did, identity_did: Did, repo_id: RepoId) {
-            self.device_to_identity.insert(
-                (device_did, repo_id),
-                identity_did,
-            );
+            self.device_to_identity
+                .insert((device_did, repo_id), identity_did);
         }
 
         fn set_identity_tip(&mut self, identity_did: Did, tip: [u8; 20]) {
@@ -648,8 +642,12 @@ mod tests {
         let (storage, signer_key, _, repo_id) = setup_valid_signer();
         let bridge = DefaultBridge::with_storage(storage);
 
-        let alice_did: Did = "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi".parse().unwrap();
-        let bob_did: Did = "did:key:z6Mkt67GdsW7715MEfRuP4pSZxT3tgCHHnQqBjgJs2ovUoND".parse().unwrap();
+        let alice_did: Did = "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi"
+            .parse()
+            .unwrap();
+        let bob_did: Did = "did:key:z6Mkt67GdsW7715MEfRuP4pSZxT3tgCHHnQqBjgJs2ovUoND"
+            .parse()
+            .unwrap();
 
         let signers = vec![
             SignerInput::PreVerified {

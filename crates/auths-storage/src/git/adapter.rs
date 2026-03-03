@@ -479,7 +479,14 @@ impl GitRegistryBackend {
                 let seq = event.sequence().value();
                 let threshold = rot.kt.parse::<u64>().unwrap_or(1);
                 let next_threshold = rot.nt.parse::<u64>().unwrap_or(1);
-                state.apply_rotation(rot.k.clone(), rot.n.clone(), threshold, next_threshold, seq, rot.d.clone());
+                state.apply_rotation(
+                    rot.k.clone(),
+                    rot.n.clone(),
+                    threshold,
+                    next_threshold,
+                    seq,
+                    rot.d.clone(),
+                );
                 Ok(state)
             }
             Event::Ixn(ixn) => {
@@ -2765,8 +2772,8 @@ mod tests {
                         attestation_subject,
                     }) = &entry.attestation
                 {
-                    assert_eq!(filename_did, "did:key:z6MkWRONG");
-                    assert_eq!(attestation_subject, "did:key:z6MkCorrect");
+                    assert_eq!(filename_did.to_string(), "did:key:z6MkWRONG");
+                    assert_eq!(attestation_subject.to_string(), "did:key:z6MkCorrect");
                     found_mismatch = true;
                 }
                 ControlFlow::Continue(())
@@ -2813,8 +2820,8 @@ mod tests {
                         actual_issuer,
                     }) = &entry.attestation
                 {
-                    assert_eq!(expected_issuer, &format!("did:keri:{}", org));
-                    assert_eq!(actual_issuer, "did:keri:EDifferentOrg");
+                    assert_eq!(expected_issuer.to_string(), format!("did:keri:{}", org));
+                    assert_eq!(actual_issuer.to_string(), "did:keri:EDifferentOrg");
                     found_mismatch = true;
                 }
                 ControlFlow::Continue(())
@@ -3108,7 +3115,7 @@ mod tests {
 
         // Filter by admin role
         let mut roles = HashSet::new();
-        roles.insert("admin".to_string());
+        roles.insert(Role::Admin);
         let filter = MemberFilter {
             roles_any: Some(roles),
             ..Default::default()
@@ -3174,7 +3181,7 @@ mod tests {
 
         // Filter by sign_commit capability
         let mut caps = HashSet::new();
-        caps.insert("sign_commit".to_string());
+        caps.insert(Capability::sign_commit());
         let filter = MemberFilter {
             capabilities_any: Some(caps),
             ..Default::default()
@@ -3240,8 +3247,8 @@ mod tests {
 
         // Filter requires both capabilities
         let mut caps = HashSet::new();
-        caps.insert("sign_commit".to_string());
-        caps.insert("sign_release".to_string());
+        caps.insert(Capability::sign_commit());
+        caps.insert(Capability::sign_release());
         let filter = MemberFilter {
             capabilities_all: Some(caps),
             ..Default::default()

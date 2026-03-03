@@ -230,17 +230,19 @@ impl TryFrom<RadAttestation> for Attestation {
             issuer: IdentityDID::new(rad.canonical_payload.did.to_string()),
             subject: DeviceDID::new(rad.device_did.to_string()),
             device_public_key: Ed25519PublicKey::try_from_slice(rad.device_public_key.as_ref())
-                .map_err(|e| AttestationConversionError::InvalidPublicKeyLength(
-                    rad.device_public_key.as_ref().len()
-                ))?,
-            identity_signature: Ed25519Signature::try_from_slice(&rad.identity_signature)
-                .map_err(|_| AttestationConversionError::InvalidPublicKeyLength(
-                    rad.identity_signature.len()
-                ))?,
-            device_signature: Ed25519Signature::try_from_slice(&rad.device_signature)
-                .map_err(|_| AttestationConversionError::InvalidPublicKeyLength(
-                    rad.device_signature.len()
-                ))?,
+                .map_err(|_e| {
+                    AttestationConversionError::InvalidPublicKeyLength(
+                        rad.device_public_key.as_ref().len(),
+                    )
+                })?,
+            identity_signature: Ed25519Signature::try_from_slice(&rad.identity_signature).map_err(
+                |_| {
+                    AttestationConversionError::InvalidPublicKeyLength(rad.identity_signature.len())
+                },
+            )?,
+            device_signature: Ed25519Signature::try_from_slice(&rad.device_signature).map_err(
+                |_| AttestationConversionError::InvalidPublicKeyLength(rad.device_signature.len()),
+            )?,
             revoked_at: None,
             expires_at: None,
             timestamp: None,
@@ -263,9 +265,8 @@ impl TryFrom<&Attestation> for RadAttestation {
 
     fn try_from(att: &Attestation) -> Result<Self, Self::Error> {
         let device_public_key: PublicKey =
-            PublicKey::try_from(att.device_public_key.as_bytes().as_slice()).map_err(|_| {
-                AttestationConversionError::InvalidPublicKeyLength(32)
-            })?;
+            PublicKey::try_from(att.device_public_key.as_bytes().as_slice())
+                .map_err(|_| AttestationConversionError::InvalidPublicKeyLength(32))?;
 
         let canonical_payload = RadCanonicalPayload {
             did: att.issuer.as_str().parse()?,
@@ -288,7 +289,7 @@ impl TryFrom<&Attestation> for RadAttestation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use ring::signature::KeyPair;
 
     fn make_keypair() -> ring::signature::Ed25519KeyPair {
@@ -301,7 +302,11 @@ mod tests {
         kp.sign(msg).as_ref().to_vec()
     }
 
-    fn make_test_rad_attestation() -> (RadAttestation, ring::signature::Ed25519KeyPair, ring::signature::Ed25519KeyPair) {
+    fn make_test_rad_attestation() -> (
+        RadAttestation,
+        ring::signature::Ed25519KeyPair,
+        ring::signature::Ed25519KeyPair,
+    ) {
         let device_kp = make_keypair();
         let identity_kp = make_keypair();
         let device_pk = PublicKey::try_from(device_kp.public_key().as_ref()).unwrap();
@@ -319,7 +324,9 @@ mod tests {
             &device_sig,
             &identity_sig,
             payload,
-            "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi".parse().unwrap(),
+            "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi"
+                .parse()
+                .unwrap(),
             device_pk,
         )
         .unwrap();
@@ -415,7 +422,9 @@ mod tests {
             &device_sig,
             &identity_sig,
             tampered_payload,
-            "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi".parse().unwrap(),
+            "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi"
+                .parse()
+                .unwrap(),
             device_pk,
         )
         .unwrap();
@@ -436,7 +445,9 @@ mod tests {
                 &[],
                 &[1],
                 payload.clone(),
-                "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi".parse().unwrap(),
+                "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi"
+                    .parse()
+                    .unwrap(),
                 device_pk,
             )
             .is_err()
@@ -459,9 +470,18 @@ mod tests {
         assert_eq!(core.rid.as_str(), rid.to_string());
         assert_eq!(core.issuer.as_str(), identity_did.to_string());
         assert_eq!(core.subject.as_str(), device_did.to_string());
-        assert_eq!(core.device_public_key.as_bytes().as_slice(), device_pk.as_ref());
-        assert_eq!(core.device_signature.as_bytes().as_slice(), device_sig.as_slice());
-        assert_eq!(core.identity_signature.as_bytes().as_slice(), identity_sig.as_slice());
+        assert_eq!(
+            core.device_public_key.as_bytes().as_slice(),
+            device_pk.as_ref()
+        );
+        assert_eq!(
+            core.device_signature.as_bytes().as_slice(),
+            device_sig.as_slice()
+        );
+        assert_eq!(
+            core.identity_signature.as_bytes().as_slice(),
+            identity_sig.as_slice()
+        );
     }
 
     #[test]
@@ -492,7 +512,10 @@ mod tests {
         let rad: RadAttestation = (&core).try_into().unwrap();
 
         assert_eq!(rad.canonical_payload.did.to_string(), "did:keri:EXq5abc");
-        assert_eq!(rad.canonical_payload.rid.to_string(), "rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5");
+        assert_eq!(
+            rad.canonical_payload.rid.to_string(),
+            "rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5"
+        );
         assert_eq!(rad.device_did, device_did);
         assert_eq!(rad.device_public_key, device_pk);
         assert_eq!(rad.device_signature, vec![0xEF; 64]);

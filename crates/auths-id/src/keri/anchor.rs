@@ -9,13 +9,13 @@ use ring::signature::Ed25519KeyPair;
 
 use auths_core::crypto::said::compute_said;
 
+use super::event::KeriSequence;
+use super::seal::SealType;
 use super::types::{Prefix, Said};
 use super::{
     Event, GitKel, IxnEvent, KERI_VERSION, KelError, Seal, ValidationError, parse_did_keri,
     validate_kel,
 };
-use super::event::KeriSequence;
-use super::seal::SealType;
 
 /// Error type for anchoring operations.
 #[derive(Debug, thiserror::Error)]
@@ -319,8 +319,14 @@ mod tests {
         let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
 
         let data = serde_json::json!({"delegation": "data"});
-        let anchor_said =
-            anchor_data(&repo, &init.prefix, &data, SealType::Delegation, &current_keypair).unwrap();
+        let anchor_said = anchor_data(
+            &repo,
+            &init.prefix,
+            &data,
+            SealType::Delegation,
+            &current_keypair,
+        )
+        .unwrap();
 
         let kel = GitKel::new(&repo, init.prefix.as_str());
         let events = kel.get_events().unwrap();

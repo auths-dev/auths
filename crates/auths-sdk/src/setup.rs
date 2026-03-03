@@ -447,10 +447,7 @@ pub fn setup_agent(
         agent_name: config.alias.to_string(),
         capabilities: cap_strings,
         expires_in_secs: config.expires_in_secs,
-        delegated_by: config
-            .parent_identity_did
-            .clone()
-            .map(IdentityDID::new),
+        delegated_by: config.parent_identity_did.clone().map(IdentityDID::new),
         storage_mode: AgentStorageMode::Persistent {
             repo_path: Some(config.registry_path.clone()),
         },

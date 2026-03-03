@@ -2,9 +2,9 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 
 use auths_core::crypto::said::{compute_next_commitment, compute_said};
+use auths_id::keri::KeriSequence;
 use auths_id::keri::event::{Event, IcpEvent, IxnEvent};
 use auths_id::keri::seal::Seal;
-use auths_id::keri::KeriSequence;
 use auths_id::keri::types::{Prefix, Said};
 use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
 use auths_id::storage::registry::backend::RegistryBackend;

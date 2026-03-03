@@ -74,6 +74,7 @@ fn generate_device_keypair(
 }
 
 /// Creates a signed attestation using the real `create_signed_attestation` API.
+#[allow(clippy::too_many_arguments)]
 fn create_test_attestation(
     rid: &str,
     identity_did: &str,

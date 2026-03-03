@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use chrono::Utc;
+use std::str::FromStr;
 
 use auths_id::policy::PolicyBuilder;
 use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, VerifyRequest};
@@ -45,14 +45,12 @@ fn authorized_device_verified() {
             vec![Capability::sign_commit()],
         ),
     );
-    storage.device_to_identity.insert(
-        (did_a.clone(), repo_id),
-        identity_did.clone(),
-    );
-    storage.device_to_identity.insert(
-        (did_b.clone(), repo_id),
-        identity_did.clone(),
-    );
+    storage
+        .device_to_identity
+        .insert((did_a.clone(), repo_id), identity_did.clone());
+    storage
+        .device_to_identity
+        .insert((did_b.clone(), repo_id), identity_did.clone());
     storage
         .identity_tips
         .insert(identity_did.clone(), [0xAA; 20]);
@@ -106,7 +104,9 @@ fn wrong_capability_rejected() {
     let key = PublicKey::from([1; 32]);
     let device_did = Did::from(key);
 
-    storage.key_states.insert(identity_did.clone(), make_key_state("ECapCheck", 1));
+    storage
+        .key_states
+        .insert(identity_did.clone(), make_key_state("ECapCheck", 1));
     storage.attestations.insert(
         (device_did.clone(), identity_did.clone()),
         make_test_attestation(
@@ -117,10 +117,9 @@ fn wrong_capability_rejected() {
             vec![Capability::parse("sign_commit").unwrap()],
         ),
     );
-    storage.device_to_identity.insert(
-        (device_did.clone(), repo_id),
-        identity_did.clone(),
-    );
+    storage
+        .device_to_identity
+        .insert((device_did.clone(), repo_id), identity_did.clone());
 
     let bridge = DefaultBridge::with_storage(storage);
 

@@ -108,7 +108,7 @@ impl RegistryIdentityStorage {
     ) -> Result<(String, auths_id::keri::InceptionResult), Error> {
         use auths_core::crypto::said::compute_next_commitment;
         use auths_id::keri::{
-            Event, IcpEvent, InceptionResult, KeriSequence, KERI_VERSION, Prefix, Said,
+            Event, IcpEvent, InceptionResult, KERI_VERSION, KeriSequence, Prefix, Said,
             finalize_icp_event, serialize_for_signing,
         };
         use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -143,7 +143,10 @@ impl RegistryIdentityStorage {
 
         // Determine witness fields from config
         let (bt, b) = match witness_config {
-            Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.iter().map(|u| u.to_string()).collect()),
+            Some(cfg) if cfg.is_enabled() => (
+                cfg.threshold.to_string(),
+                cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+            ),
             _ => ("0".to_string(), vec![]),
         };
 

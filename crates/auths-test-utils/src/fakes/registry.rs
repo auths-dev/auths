@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::sync::Mutex;
 
+use auths_core::storage::keychain::IdentityDID;
 use auths_id::keri::event::Event;
 use auths_id::keri::state::KeyState;
 use auths_id::storage::registry::backend::{RegistryBackend, RegistryError};
 use auths_id::storage::registry::org_member::{MemberInvalidReason, OrgMemberEntry};
 use auths_id::storage::registry::schemas::{RegistryMetadata, TipInfo};
-use auths_core::storage::keychain::IdentityDID;
 use auths_verifier::core::Attestation;
 use auths_verifier::keri::Prefix;
 use auths_verifier::types::DeviceDID;
@@ -140,10 +140,7 @@ impl RegistryBackend for FakeRegistryBackend {
             .events
             .get(key)
             .ok_or_else(|| RegistryError::identity_not_found(prefix))?;
-        for event in events
-            .iter()
-            .filter(|e| e.sequence().value() >= from_seq)
-        {
+        for event in events.iter().filter(|e| e.sequence().value() >= from_seq) {
             if visitor(event).is_break() {
                 break;
             }

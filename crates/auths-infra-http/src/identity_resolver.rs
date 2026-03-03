@@ -65,13 +65,12 @@ impl IdentityResolver for HttpIdentityResolver {
                 .await
                 .map_err(ResolutionError::Network)?;
 
-            let public_key =
-                Ed25519PublicKey::try_from_slice(&parsed.public_key).map_err(|e| {
-                    ResolutionError::InvalidDid {
-                        did: parsed.did.clone(),
-                        reason: format!("invalid public key: {e}"),
-                    }
-                })?;
+            let public_key = Ed25519PublicKey::try_from_slice(&parsed.public_key).map_err(|e| {
+                ResolutionError::InvalidDid {
+                    did: parsed.did.clone(),
+                    reason: format!("invalid public key: {e}"),
+                }
+            })?;
 
             match parsed.method.as_str() {
                 "key" => Ok(ResolvedIdentity::Key {

@@ -14,8 +14,8 @@ use std::path::Path;
 
 use crate::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
 use crate::keri::{
-    Event, IcpEvent, KERI_VERSION, KeriSequence, Prefix, Said, create_keri_identity, finalize_icp_event,
-    serialize_for_signing,
+    Event, IcpEvent, KERI_VERSION, KeriSequence, Prefix, Said, create_keri_identity,
+    finalize_icp_event, serialize_for_signing,
 };
 use crate::storage::identity::{GitIdentityStorage, IdentityStorage};
 use crate::storage::layout::StorageLayoutConfig;
@@ -118,7 +118,10 @@ pub fn initialize_registry_identity(
     let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
     let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.iter().map(|u| u.to_string()).collect()),
+        Some(cfg) if cfg.is_enabled() => (
+            cfg.threshold.to_string(),
+            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+        ),
         _ => ("0".to_string(), vec![]),
     };
 

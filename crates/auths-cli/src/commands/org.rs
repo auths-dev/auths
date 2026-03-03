@@ -308,14 +308,12 @@ pub fn handle_org(
             let rid = managed_identity.storage_id;
 
             // Resolve the org's own public key for self-attestation
-            let org_resolved = resolver
-                .resolve(controller_did.as_str())
-                .with_context(|| {
-                    format!(
-                        "Failed to resolve public key for org identity: {}",
-                        controller_did
-                    )
-                })?;
+            let org_resolved = resolver.resolve(controller_did.as_str()).with_context(|| {
+                format!(
+                    "Failed to resolve public key for org identity: {}",
+                    controller_did
+                )
+            })?;
             let org_pk_bytes = *org_resolved.public_key();
 
             let now = Utc::now();
@@ -437,9 +435,9 @@ pub fn handle_org(
             let subject_did = DeviceDID::new(subject.clone());
 
             // --- Resolve device public key using the custom resolver IF did:key ---
-            let device_resolved = resolver
-                .resolve(&subject)
-                .with_context(|| format!("Failed to resolve public key for subject: {}", subject))?;
+            let device_resolved = resolver.resolve(&subject).with_context(|| {
+                format!("Failed to resolve public key for subject: {}", subject)
+            })?;
             let device_pk_bytes = *device_resolved.public_key();
 
             let now = Utc::now();
@@ -713,7 +711,6 @@ pub fn handle_org(
                 .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
             let member_pk_bytes = *member_resolved.public_key();
 
-
             // Determine capabilities: use override if provided, otherwise use role defaults
             let member_capabilities = if let Some(cap_strs) = capabilities {
                 cap_strs
@@ -970,7 +967,7 @@ pub fn handle_org(
 
                 members.push((
                     att.subject.to_string(),
-                    att.role.clone(),
+                    att.role,
                     att.delegated_by.as_ref().map(|d| d.to_string()),
                     att.is_revoked(),
                     att.capabilities.clone(),

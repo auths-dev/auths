@@ -14,8 +14,8 @@ use ring::signature::{Ed25519KeyPair, KeyPair};
 
 use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
 
-use super::types::{Prefix, Said};
 use super::event::KeriSequence;
+use super::types::{Prefix, Said};
 use super::{
     Event, GitKel, KERI_VERSION, KelError, KeyState, RotEvent, ValidationError, validate_kel,
 };
@@ -133,7 +133,10 @@ pub fn rotate_keys(
 
     // Determine witness fields from config
     let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.iter().map(|u| u.to_string()).collect()),
+        Some(cfg) if cfg.is_enabled() => (
+            cfg.threshold.to_string(),
+            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+        ),
         _ => ("0".to_string(), vec![]),
     };
 
@@ -170,19 +173,18 @@ pub fn rotate_keys(
 
     // Collect witness receipts if configured
     #[cfg(feature = "witness-client")]
-    if let Some(config) = witness_config {
-        if config.is_enabled() {
-            let canonical_for_witness =
-                super::serialize_for_signing(&Event::Rot(rot.clone()))?;
-            super::witness_integration::collect_and_store_receipts(
-                repo.path().parent().unwrap_or(repo.path()),
-                prefix,
-                &rot.d,
-                &canonical_for_witness,
-                config,
-            )
-            .map_err(|e| RotationError::Serialization(e.to_string()))?;
-        }
+    if let Some(config) = witness_config
+        && config.is_enabled()
+    {
+        let canonical_for_witness = super::serialize_for_signing(&Event::Rot(rot.clone()))?;
+        super::witness_integration::collect_and_store_receipts(
+            repo.path().parent().unwrap_or(repo.path()),
+            prefix,
+            &rot.d,
+            &canonical_for_witness,
+            config,
+        )
+        .map_err(|e| RotationError::Serialization(e.to_string()))?;
     }
 
     Ok(RotationResult {
@@ -241,7 +243,10 @@ pub fn abandon_identity(
 
     // Determine witness fields from config
     let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.iter().map(|u| u.to_string()).collect()),
+        Some(cfg) if cfg.is_enabled() => (
+            cfg.threshold.to_string(),
+            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+        ),
         _ => ("0".to_string(), vec![]),
     };
 

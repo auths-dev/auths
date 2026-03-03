@@ -4,7 +4,7 @@ use auths_verifier::core::{Attestation, CanonicalAttestationData};
 use auths_verifier::error::AttestationError;
 use chrono::{DateTime, Duration, Utc};
 use log::debug;
-use ring::signature::{ED25519, ED25519_PUBLIC_KEY_LEN, UnparsedPublicKey};
+use ring::signature::{ED25519, UnparsedPublicKey};
 
 /// Maximum allowed time skew for attestation timestamps.
 const MAX_SKEW_SECS: i64 = 5 * 60;
@@ -21,23 +21,23 @@ pub fn verify_with_resolver(
             "Attestation revoked".to_string(),
         ));
     }
-    if let Some(exp) = att.expires_at {
-        if now > exp {
-            return Err(AttestationError::VerificationError(format!(
-                "Attestation expired on {}",
-                exp.to_rfc3339()
-            )));
-        }
+    if let Some(exp) = att.expires_at
+        && now > exp
+    {
+        return Err(AttestationError::VerificationError(format!(
+            "Attestation expired on {}",
+            exp.to_rfc3339()
+        )));
     }
     // Only reject timestamps in the future (clock drift protection)
     // Past timestamps are valid - attestations stored in Git are verified days/months later
-    if let Some(ts) = att.timestamp {
-        if ts > now + Duration::seconds(MAX_SKEW_SECS) {
-            return Err(AttestationError::VerificationError(format!(
-                "Attestation timestamp {} is in the future",
-                ts.to_rfc3339()
-            )));
-        }
+    if let Some(ts) = att.timestamp
+        && ts > now + Duration::seconds(MAX_SKEW_SECS)
+    {
+        return Err(AttestationError::VerificationError(format!(
+            "Attestation timestamp {} is in the future",
+            ts.to_rfc3339()
+        )));
     }
 
     // 2. Resolve issuer's public key

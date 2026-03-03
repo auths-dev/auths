@@ -102,7 +102,13 @@ async fn verify_device_link_fails_on_empty_kel() {
     .await;
 
     assert!(!result.valid);
-    assert!(result.error.as_ref().unwrap().contains("KEL verification failed"));
+    assert!(
+        result
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("KEL verification failed")
+    );
     assert!(result.key_state.is_none());
 }
 

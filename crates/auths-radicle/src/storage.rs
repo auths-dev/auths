@@ -49,13 +49,11 @@ impl GitRadicleStorage {
     /// let storage = GitRadicleStorage::open("/path/to/repo.git", Layout::radicle())?;
     /// ```
     pub fn open(path: impl AsRef<std::path::Path>, layout: Layout) -> Result<Self, BridgeError> {
-        let repo = Repository::open_bare(path.as_ref()).map_err(|e| {
-            BridgeError::Repository {
-                reason: format!(
-                    "failed to open bare repo at {}: {e}",
-                    path.as_ref().display()
-                ),
-            }
+        let repo = Repository::open_bare(path.as_ref()).map_err(|e| BridgeError::Repository {
+            reason: format!(
+                "failed to open bare repo at {}: {e}",
+                path.as_ref().display()
+            ),
         })?;
         Ok(Self {
             repo: Mutex::new(repo),
@@ -82,12 +80,12 @@ impl GitRadicleStorage {
             }
         };
 
-        let mut commit = reference.peel_to_commit().map_err(|e| {
-            BridgeError::IdentityCorrupt {
+        let mut commit = reference
+            .peel_to_commit()
+            .map_err(|e| BridgeError::IdentityCorrupt {
                 did: did.clone(),
                 reason: format!("KEL ref not a commit: {e}"),
-            }
-        })?;
+            })?;
 
         let mut events = Vec::new();
         loop {
@@ -102,18 +100,18 @@ impl GitRadicleStorage {
                 did: did.clone(),
                 reason: format!("missing tree: {e}"),
             })?;
-            let entry = tree.get_name(EVENT_BLOB_NAME).ok_or_else(|| {
-                BridgeError::IdentityCorrupt {
-                    did: did.clone(),
-                    reason: "missing event.json in KEL commit".into(),
-                }
-            })?;
-            let blob = repo.find_blob(entry.id()).map_err(|e| {
-                BridgeError::IdentityCorrupt {
+            let entry =
+                tree.get_name(EVENT_BLOB_NAME)
+                    .ok_or_else(|| BridgeError::IdentityCorrupt {
+                        did: did.clone(),
+                        reason: "missing event.json in KEL commit".into(),
+                    })?;
+            let blob = repo
+                .find_blob(entry.id())
+                .map_err(|e| BridgeError::IdentityCorrupt {
                     did: did.clone(),
                     reason: format!("blob read error: {e}"),
-                }
-            })?;
+                })?;
             let event: Event = serde_json::from_slice(blob.content()).map_err(|e| {
                 BridgeError::IdentityCorrupt {
                     did: did.clone(),
@@ -146,9 +144,11 @@ impl GitRadicleStorage {
             }
         };
 
-        let commit = reference.peel_to_commit().map_err(|e| BridgeError::Repository {
-            reason: format!("{ref_path} is not a commit: {e}"),
-        })?;
+        let commit = reference
+            .peel_to_commit()
+            .map_err(|e| BridgeError::Repository {
+                reason: format!("{ref_path} is not a commit: {e}"),
+            })?;
         let tree = commit.tree().map_err(|e| BridgeError::Repository {
             reason: format!("missing tree at {ref_path}: {e}"),
         })?;
@@ -157,9 +157,11 @@ impl GitRadicleStorage {
 
         match tree.get_name(blob_name) {
             Some(entry) => {
-                let blob = repo.find_blob(entry.id()).map_err(|e| BridgeError::Repository {
-                    reason: format!("blob read error at {ref_path}: {e}"),
-                })?;
+                let blob = repo
+                    .find_blob(entry.id())
+                    .map_err(|e| BridgeError::Repository {
+                        reason: format!("blob read error at {ref_path}: {e}"),
+                    })?;
                 Ok(Some(blob.content().to_vec()))
             }
             None => Ok(None),
@@ -296,21 +298,19 @@ impl AuthsStorage for GitRadicleStorage {
         let blob_name = &self.layout.did_keri_blob;
 
         let glob_pattern = format!("{prefix}/*/signatures/{blob_name}");
-        let references = repo
-            .references_glob(&glob_pattern)
-            .map_err(|e| BridgeError::Repository {
-                reason: format!("failed to list device refs: {e}"),
-            })?;
+        let references =
+            repo.references_glob(&glob_pattern)
+                .map_err(|e| BridgeError::Repository {
+                    reason: format!("failed to list device refs: {e}"),
+                })?;
 
         for reference in references {
             let reference = reference.map_err(|e| BridgeError::Repository {
                 reason: format!("reference error: {e}"),
             })?;
-            let name = reference
-                .name()
-                .ok_or_else(|| BridgeError::Repository {
-                    reason: "invalid ref name".into(),
-                })?;
+            let name = reference.name().ok_or_else(|| BridgeError::Repository {
+                reason: "invalid ref name".into(),
+            })?;
 
             // Ref format: refs/keys/<nid>/signatures/did-keri
             let components: Vec<&str> = name.split('/').collect();
@@ -329,11 +329,11 @@ impl AuthsStorage for GitRadicleStorage {
         let repo = self.lock_repo();
         match repo.find_reference(&self.layout.keri_kel_ref) {
             Ok(reference) => {
-                let commit = reference.peel_to_commit().map_err(|e| {
-                    BridgeError::Repository {
+                let commit = reference
+                    .peel_to_commit()
+                    .map_err(|e| BridgeError::Repository {
                         reason: format!("KEL ref not a commit: {e}"),
-                    }
-                })?;
+                    })?;
                 let oid = commit.id();
                 let raw = oid.as_bytes();
                 let mut tip = [0u8; 20];
@@ -351,11 +351,11 @@ impl AuthsStorage for GitRadicleStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
     use auths_id::keri::KeriSequence;
     use auths_id::keri::event::{Event, IcpEvent};
     use auths_id::keri::types::{Prefix, Said};
     use git2::Signature;
+    use std::str::FromStr;
     use tempfile::TempDir;
 
     fn create_bare_repo() -> (TempDir, Repository) {
@@ -462,7 +462,9 @@ mod tests {
             repo: Mutex::new(repo),
             layout,
         };
-        let ks = storage.load_key_state(&init.did().parse().unwrap()).unwrap();
+        let ks = storage
+            .load_key_state(&init.did().parse().unwrap())
+            .unwrap();
         assert_eq!(ks.prefix, init.prefix);
         assert_eq!(ks.sequence, 0);
     }
@@ -480,7 +482,9 @@ mod tests {
             repo: Mutex::new(repo),
             layout,
         };
-        let tip = storage.local_identity_tip(&"did:keri:ETestPrefix".parse().unwrap()).unwrap();
+        let tip = storage
+            .local_identity_tip(&"did:keri:ETestPrefix".parse().unwrap())
+            .unwrap();
         assert!(tip.is_some());
         let tip_bytes = tip.unwrap();
         assert_eq!(tip_bytes, commit_oid.as_bytes()[..20]);
@@ -506,7 +510,10 @@ mod tests {
             layout,
         };
         let identity = storage
-            .find_identity_for_device(&format!("did:key:{nid}").parse().unwrap(), &RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap())
+            .find_identity_for_device(
+                &format!("did:key:{nid}").parse().unwrap(),
+                &RepoId::from_str("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5").unwrap(),
+            )
             .unwrap();
         assert_eq!(identity.map(|d| d.to_string()), Some(init.did()));
     }

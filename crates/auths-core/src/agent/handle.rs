@@ -263,13 +263,13 @@ impl AgentHandle {
         }
 
         // Remove PID file if it exists
-        if let Some(ref pid_file) = self.pid_file {
-            if pid_file.exists() {
-                if let Err(e) = std::fs::remove_file(pid_file) {
-                    log::warn!("Failed to remove PID file {:?}: {}", pid_file, e);
-                } else {
-                    log::debug!("Removed PID file {:?}", pid_file);
-                }
+        if let Some(ref pid_file) = self.pid_file
+            && pid_file.exists()
+        {
+            if let Err(e) = std::fs::remove_file(pid_file) {
+                log::warn!("Failed to remove PID file {:?}: {}", pid_file, e);
+            } else {
+                log::debug!("Removed PID file {:?}", pid_file);
             }
         }
 
