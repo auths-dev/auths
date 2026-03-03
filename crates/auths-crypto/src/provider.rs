@@ -82,7 +82,8 @@ impl std::fmt::Debug for SecureSeed {
 ///     provider.verify_ed25519(&pk, b"msg", &sig).await.unwrap();
 /// }
 /// ```
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 pub trait CryptoProvider: Send + Sync {
     /// Verify an Ed25519 signature against a public key and message.
     async fn verify_ed25519(
