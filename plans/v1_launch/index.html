@@ -845,28 +845,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#01-implement-webcryptoproviderverify_ed25519" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        0.1 — Implement WebCryptoProvider::verify_ed25519()
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#02-seal-the-public-api-surface-of-auths-core" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        0.2 — Seal the public API surface of auths-core
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#03-remove-cross-crate-re-export-of-identitydid-from-auths-core" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -882,17 +860,6 @@
     <span class="md-ellipsis">
       
         0.4 — Add FFI smoke tests
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#05-add-wasm-binding-tests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        0.5 — Add WASM binding tests
       
     </span>
   </a>
@@ -1255,34 +1222,6 @@ work across 2-3 sprints.</p>
 <h2 id="tier-0-launch-blockers">Tier 0: Launch Blockers<a class="headerlink" href="#tier-0-launch-blockers" title="Permanent link">&para;</a></h2>
 <p>These must be resolved before tagging v0.1.0. A release with any of these
 creates real risk of broken consumers or security issues.</p>
-<h3 id="01-implement-webcryptoproviderverify_ed25519">0.1 — Implement <code>WebCryptoProvider::verify_ed25519()</code><a class="headerlink" href="#01-implement-webcryptoproviderverify_ed25519" title="Permanent link">&para;</a></h3>
-<p><strong>File:</strong> <code>crates/auths-crypto/src/webcrypto_provider.rs:38</code></p>
-<p>The WASM crypto provider's <code>verify_ed25519()</code> is a TODO stub. Any WASM consumer
-calling verification will get incorrect results. This is the single highest
-priority item because it blocks the entire WASM story — browser SDKs, mobile
-WebView integrations, and the npm package.</p>
-<p><strong>Fix:</strong> Implement using <code>web-sys</code> SubtleCrypto API</p>
-<p><strong>Effort:</strong> 1-2 days
-<strong>Owner:</strong> Crypto lead</p>
-<h3 id="02-seal-the-public-api-surface-of-auths-core">0.2 — Seal the public API surface of auths-core<a class="headerlink" href="#02-seal-the-public-api-surface-of-auths-core" title="Permanent link">&para;</a></h3>
-<p><strong>File:</strong> <code>crates/auths-core/src/lib.rs:80-85</code></p>
-<p><code>pub use api::*</code> and <code>pub use storage::*</code> export every platform-specific
-keychain implementation (MacOSKeychain, WindowsCredentialStorage,
-AndroidKeystoreStorage, IOSKeychain, etc.) as top-level public API. This means:</p>
-<ul>
-<li>Consumers can depend on internal types that will change</li>
-<li>Semver violations become inevitable on any internal refactor</li>
-<li>docs.rs will show noise that confuses SDK consumers</li>
-</ul>
-<p><strong>Fix:</strong>
-- Replace wildcard re-exports with explicit <code>pub use</code> of the types consumers
-  actually need
-- Make platform keychain structs <code>pub(crate)</code> — they should only be accessed
-  through <code>get_platform_keychain()</code>
-- Audit <code>KeriSequence</code> export from auths-id (implementation detail of serde
-  serialization, not a consumer type)</p>
-<p><strong>Effort:</strong> 1 day
-<strong>Owner:</strong> Core maintainer</p>
 <h3 id="03-remove-cross-crate-re-export-of-identitydid-from-auths-core">0.3 — Remove cross-crate re-export of <code>IdentityDID</code> from auths-core<a class="headerlink" href="#03-remove-cross-crate-re-export-of-identitydid-from-auths-core" title="Permanent link">&para;</a></h3>
 <p><strong>File:</strong> <code>crates/auths-core/src/storage/keychain.rs:36</code></p>
 <p><code>pub use auths_verifier::IdentityDID</code> creates a confusing re-export chain where
@@ -1306,15 +1245,6 @@ type mismatch errors when consumers use both crates.</p>
 - <code>ffi_verify_chain_json</code> with valid KEL returns success
 - <code>ffi_verify_chain_json</code> with empty input returns error code</p>
 <p><strong>Effort:</strong> 1-2 days
-<strong>Owner:</strong> Verifier maintainer</p>
-<h3 id="05-add-wasm-binding-tests">0.5 — Add WASM binding tests<a class="headerlink" href="#05-add-wasm-binding-tests" title="Permanent link">&para;</a></h3>
-<p><strong>File:</strong> <code>crates/auths-verifier/src/wasm.rs</code> (500+ lines, zero tests)</p>
-<p>Same story as FFI. The WASM bindings are the interface for browser and Node.js
-consumers. At minimum, add <code>wasm-pack test</code> coverage for:
-- <code>wasm_verify_attestation_json</code> happy path
-- <code>wasm_verify_attestation_json</code> with malformed JSON
-- <code>wasm_verify_artifact_signature</code> happy path</p>
-<p><strong>Effort:</strong> 1-2 days (requires wasm-pack test infrastructure)
 <strong>Owner:</strong> Verifier maintainer</p>
 <hr />
 <h2 id="tier-1-should-fix-before-launch">Tier 1: Should Fix Before Launch<a class="headerlink" href="#tier-1-should-fix-before-launch" title="Permanent link">&para;</a></h2>
