@@ -4,6 +4,8 @@ version.workspace = true
 edition = "2024"
 publish = true
 license.workspace = true
+keywords = ["http", "infrastructure", "client", "adapter"]
+categories = ["web-programming::http-client"]
 
 [dependencies]
 async-trait = "0.1"

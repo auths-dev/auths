@@ -6,6 +6,8 @@ description = "Application services layer for Auths identity operations"
 publish = true
 license.workspace = true
 repository = "https://github.com/auths-dev/auths"
+keywords = ["sdk", "identity", "did", "cryptography", "attestation"]
+categories = ["cryptography", "authentication"]
 
 [dependencies]
 auths-core.workspace = true

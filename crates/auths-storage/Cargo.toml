@@ -4,6 +4,8 @@ version.workspace = true
 edition = "2024"
 publish = true
 license.workspace = true
+keywords = ["storage", "git", "sqlite", "identity", "adapter"]
+categories = ["database"]
 
 [dependencies]
 auths-id = { workspace = true }
