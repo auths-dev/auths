@@ -147,15 +147,6 @@ pub struct ReportCommand {
     pub repo: Option<PathBuf>,
 }
 
-/// Incident type for interactive flow.
-#[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
-pub enum IncidentType {
-    DeviceLostStolen,
-    KeyExposed,
-    FreezeEverything,
-}
-
 /// Incident report output.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IncidentReport {

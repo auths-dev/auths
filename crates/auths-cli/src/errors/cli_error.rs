@@ -1,7 +1,6 @@
 //! Typed CLI error variants with actionable help text.
 
 /// Structured CLI errors with built-in suggestion and documentation links.
-#[allow(dead_code)]
 #[derive(thiserror::Error, Debug)]
 pub enum CliError {
     #[error("key rotation failed — no pre-rotation commitment found")]

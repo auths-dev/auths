@@ -360,22 +360,6 @@ impl GitRegistryBackend {
         Ok((commit, tree))
     }
 
-    /// Get the current registry tree, or None if not initialized.
-    #[allow(dead_code)]
-    fn current_tree_opt<'a>(
-        &self,
-        repo: &'a Repository,
-    ) -> Result<Option<Tree<'a>>, RegistryError> {
-        match repo.find_reference(REGISTRY_REF) {
-            Ok(reference) => {
-                let commit = reference.peel_to_commit().map_err(from_git2)?;
-                Ok(Some(commit.tree().map_err(from_git2)?))
-            }
-            Err(e) if e.code() == git2::ErrorCode::NotFound => Ok(None),
-            Err(e) => Err(from_git2(e)),
-        }
-    }
-
     /// Create a commit and update the registry ref atomically.
     ///
     /// Uses CAS to detect concurrent modifications. CAS failure aborts
@@ -535,7 +519,6 @@ impl GitRegistryBackend {
     ///
     /// Walks the `v1/orgs/` tree. Calls `visitor` for each org prefix string.
     /// Return `ControlFlow::Break(())` to stop early.
-    #[allow(dead_code)]
     fn visit_orgs<F>(&self, mut visitor: F) -> Result<(), RegistryError>
     where
         F: FnMut(&str) -> ControlFlow<()>,
@@ -1477,7 +1460,7 @@ impl AttestationSink for GitRegistryBackend {
 /// * `index` - The SQLite index to populate
 /// * `backend` - The registry backend to read identity data from
 #[cfg(feature = "indexed-storage")]
-#[allow(dead_code)]
+#[allow(dead_code)] // feature-gated public API — used when indexed-storage is enabled
 pub fn rebuild_identities_from_registry(
     index: &auths_index::AttestationIndex,
     backend: &GitRegistryBackend,
@@ -1536,7 +1519,7 @@ pub fn rebuild_identities_from_registry(
 /// * `index` - The SQLite index to populate
 /// * `backend` - The registry backend to read org member data from
 #[cfg(feature = "indexed-storage")]
-#[allow(dead_code)]
+#[allow(dead_code)] // feature-gated public API — used when indexed-storage is enabled
 pub fn rebuild_org_members_from_registry(
     index: &auths_index::AttestationIndex,
     backend: &GitRegistryBackend,

@@ -126,7 +126,7 @@ impl LanPairingServer {
     }
 
     /// Shut down the server without waiting for a response.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // public API for callers that need graceful shutdown without waiting
     pub fn shutdown(self) {
         self.cancel.cancel();
     }

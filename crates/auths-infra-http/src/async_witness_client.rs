@@ -30,7 +30,7 @@ pub struct HttpAsyncWitnessClient {
 
 #[derive(Debug, Deserialize)]
 struct HeadResponse {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // serde deserialize target — field must exist for JSON mapping
     prefix: String,
     latest_seq: Option<u64>,
 }

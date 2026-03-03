@@ -212,35 +212,6 @@ impl ReceiptBuilder {
     }
 }
 
-/// The signing payload for agent commit receipts.
-///
-/// Signs tree hash + parent hashes to avoid the chicken-and-egg problem
-/// where embedding a receipt in the commit message would change the commit hash.
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommitReceiptPayload {
-    /// Git tree object hash (20 bytes).
-    pub tree_hash: Vec<u8>,
-    /// Parent commit hashes (20 bytes each).
-    pub parent_hashes: Vec<Vec<u8>>,
-}
-
-#[allow(dead_code)]
-impl CommitReceiptPayload {
-    /// Produce deterministic bytes for signing.
-    ///
-    /// Format: `tree_hash || num_parents (4 bytes LE) || parent_1 || parent_2 || ...`
-    pub fn signing_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(20 + 4 + self.parent_hashes.len() * 20);
-        buf.extend_from_slice(&self.tree_hash);
-        buf.extend_from_slice(&(self.parent_hashes.len() as u32).to_le_bytes());
-        for parent in &self.parent_hashes {
-            buf.extend_from_slice(parent);
-        }
-        buf
-    }
-}
-
 impl From<Receipt> for auths_verifier::witness::WitnessReceipt {
     fn from(r: Receipt) -> Self {
         Self {
