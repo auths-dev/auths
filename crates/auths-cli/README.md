@@ -1,309 +1,614 @@
 # Auths CLI
 
-A command-line interface for managing Auths identities. It allows you to:
+Cryptographic identity for developers. Sign commits, link devices, verify signatures — all stored in Git, no central server.
 
-* Create and manage identities stored within Git repositories.
-* Securely store and manage associated private keys in your platform's keychain or secure storage.
-* Link multiple devices (each with their own key) to your identity via cryptographic attestations stored in the Git repository.
-* Configure the Git storage layout for identity and attestations to interoperate with different systems (like Radicle) or use your own conventions.
-
-## 🚀 Installation
-
-### From Source
-
-Ensure you have Rust and Cargo installed.
+## Installation
 
 ```bash
-# Clone the repository (if you haven't already)
-# git clone <repo-url>
-# cd <repo-name>
+cargo install --path crates/auths-cli --force
 ```
 
-# Install the CLI binary
-cargo install --path crates/auths-cli --force
+This installs three binaries to `~/.cargo/bin`:
 
-This installs the auths binary to your $CARGO_HOME/bin (typically ~/.cargo/bin). Make sure this directory is in your system's PATH:
+- `auths` — main CLI
+- `auths-sign` — standalone signing (for git hooks)
+- `auths-verify` — standalone verification
 
-# Example for zsh/bash: Check and add if missing
+Ensure `~/.cargo/bin` is in your PATH:
+
 ```bash
 echo $PATH | grep -q ".cargo/bin" || echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
 ```
-# Remember to source your shell profile (e.g., source ~/.zshrc) or open a new terminal
 
-Run Without Installing (from workspace root)
+### Run without installing
 
-cargo run -p auths-cli -- <auths arguments...>
-
-You can also set up a cargo alias in your workspace's .cargo/config.toml for convenience:
-```toml
-# .cargo/config.toml
-[alias]
-auths = "run -p auths-cli --"
-```
-
-Then run commands like: `cargo auths key list`.
-
-## 🔑 Core Concepts
-### Identity Repository
-A Git repository that stores the history and state of your Auths identity.
-
-### Identity Commit
-A specific commit (referenced by identity-ref, e.g., refs/auths/identity or rad/id) contains a blob (identity-blob, e.g., identity.json or radicle-identity.json) storing the Controller DID and arbitrary Metadata.
-
-### Device Attestation
-Commits stored under specific Git references (prefixed by attestation-prefix, e.g., `refs/auths/devices/nodes/...` or `refs/keys/...`) linking device keys/DIDs to the main identity.
-
-These contain attestation-blob files (e.g., `attestation.json`).
-
-### Local Keychain/Secure Storage
-Your platform's secure storage (e.g., macOS Keychain, iOS Keychain, Linux Secret Service, file-based fallback) is used to store the encrypted private keys associated with your Controller DID and any linked device DIDs you manage locally. Each stored key has a unique local alias.
-
-### Configurable Layout
-Auths doesn't enforce a single Git layout. You can use the default layout or specify a custom one (like Radicle's) using global command-line flags:
 ```bash
---repo <PATH>: Path to the Git repository directory. (Defaults to ~/.auths)
-
---identity-ref <GIT_REF>: Reference for the identity commit (Default: refs/auths/identity).
-
---identity-blob <FILENAME>: Blob name for identity data (Default: identity.json).
-
---attestation-prefix <GIT_REF_PREFIX>: Base ref prefix for device attestations (Default: refs/auths/devices/nodes).
-
---attestation-blob <FILENAME>: Blob name for attestation data (Default: attestation.json).
+cargo run -p auths-cli -- <arguments...>
 ```
 
-## 🛠 Usage
+### Global flags
 
-**Note:** Commands interacting with encrypted keys (`id init-did`, `key import`, `key export`, `device link`, `device revoke`, `device extend`) will prompt for passphrases when needed.
+These flags apply to all commands:
 
-### Workflow 1: Default Layout
+```
+--repo <PATH>       Override storage directory (default: ~/.auths)
+--output <FORMAT>   Output format: text or json
+--json              Shorthand for --output json
+-q, --quiet         Suppress non-essential output
+```
 
-This workflow uses the default Git layout settings (`refs/auths/identity`, etc.) within the default `~/.auths` repository path.
+---
 
-1.  **Initialize a new Identity & Repository:**
-    * Create a metadata file (e.g., `~/my_metadata.json`):
+## Quick Start
 
-        ```json
-        {
-          "name": "My Default Identity",
-          "email": "user@example.com"
-        }
-        ```
+Three commands to go from zero to signed commits:
 
-    * Run `id init-did`. This creates `~/.auths`, initializes it as a Git repo, generates a keypair, stores it locally under the alias `my_id_key`, derives the `controller_did`, and creates the identity commit using the metadata file.
+```bash
+# 1. Create your identity
+auths init
 
-        ```bash
-        auths id init-did --metadata-file ~/my_metadata.json --local-key-alias my_id_key
-        # Enter a strong passphrase when prompted
-        ```
+# 2. Verify everything is wired up
+auths doctor
 
-2.  **Verify Identity and Key:**
+# 3. Sign and verify a commit
+git commit -m "first signed commit"
+auths verify HEAD
+```
 
-    ```bash
-    # Check local keychain storage
-    auths key list
-    # Expected output includes: - my_id_key
+`auths init` handles everything: generates keys, creates your identity, links your device, and configures Git for automatic commit signing.
 
-    # Show identity details from the Git repo
-    auths id show
-    # Note the Controller DID output, e.g., did:keri:E...
-    # Verify metadata is shown
-    ```
+---
 
-3.  **Import a Device Key (from seed):**
-    * Assume you have a 32-byte seed file `~/device_key.seed`.
-    * Get the Controller DID from `auths id show`.
-    * Import the seed, associating it with the Controller DID.
+## Getting Started
 
-        ```bash
-        CONTROLLER_DID=$(auths id show | grep 'Controller DID:' | awk -F': ' '{print $2}')
-        auths key import --alias my_device1_key --seed-file ~/device_key.seed --controller-did "$CONTROLLER_DID"
-        # Enter a strong passphrase for the device key when prompted
-        ```
+### `auths init`
 
-    * Verify the new key:
+Interactive setup that creates your identity and configures Git signing.
 
-        ```bash
-        auths key list
-        # Expected output includes: - my_id_key, - my_device1_key
-        ```
+```bash
+auths init                              # Interactive developer setup
+auths init --profile developer          # Same as above, explicit
+auths init --profile ci                 # Ephemeral identity for CI/CD
+auths init --profile agent              # Scoped identity for AI agents
+auths init --non-interactive            # Skip prompts, use defaults
+```
 
-4.  **Link the Device:**
-    * Derive the device DID:
+| Flag | Description |
+|---|---|
+| `--profile <PROFILE>` | `developer`, `ci`, or `agent` |
+| `--key-alias <ALIAS>` | Key alias (default: `main`) |
+| `--non-interactive` | Skip interactive prompts |
+| `--force` | Overwrite existing identity |
+| `--dry-run` | Preview without creating files |
+| `--registry <URL>` | Registry URL for identity publication |
+| `--skip-registration` | Skip automatic registry registration |
 
-        ```bash
-        # Ensure xxd is installed or use another tool for hex conversion
-        DEVICE_DID=$(auths util derive-did --seed-hex $(xxd -p -c 256 ~/device_key.seed) | awk '{print $3}')
-        ```
+### `auths status`
 
-    * Run `device link`. This creates a signed attestation in `~/.auths`.
+Show current identity, agent, and device status at a glance.
 
-        ```bash
-        auths device link \
-          --identity-key-alias my_id_key \
-          --device-key-alias my_device1_key \
-          --device-did "$DEVICE_DID" \
-          --note "My Laptop Key" \
-          --expires-in-days 90
-        # Enter device passphrase, then identity passphrase, then device passphrase again when prompted
-        ```
+```bash
+auths status
+```
 
-5.  **Verify Device Link:**
+### `auths doctor`
 
-    ```bash
-    auths id show-devices
-    # Expected output shows the linked device as active with note/expiry
-    ```
+Run health checks on your setup: Git config, keychain access, identity state, allowed signers file.
 
-6.  **Export Keys (Example):**
+```bash
+auths doctor
+# Exit code 0 = all checks pass, 1 = something needs attention
+```
 
-    ```bash
-    # Export identity's public key
-    auths key export --alias my_id_key --format pub
-    # Enter passphrase for my_id_key
+### `auths tutorial`
 
-    # Export device's private key (PEM)
-    auths key export --alias my_device1_key --format pem
-    # Enter passphrase for my_device1_key
-    ```
+Interactive walkthrough covering identities, signing, verification, devices, and revocation.
 
-7.  **Revoke Device (Example):**
+```bash
+auths tutorial                # Start from beginning
+auths tutorial --list         # List all sections
+auths tutorial --skip 3       # Jump to section 3
+auths tutorial --reset        # Reset progress
+```
 
-    ```bash
-    auths device revoke --identity-key-alias my_id_key --device-did "$DEVICE_DID" --note "Laptop retired"
-    # Enter passphrase for my_id_key
-    ```
+---
 
-    * Verify revocation:
+## Verification & Signing
 
-        ```bash
-        auths id show-devices # Device should be gone
-        auths id show-devices --include-revoked # Device should show as revoked
-        ```
+### `auths verify`
 
-8.  **Delete Local Keys:**
+Verify commit signatures or attestation files. Accepts git refs, commit ranges, file paths, or stdin.
 
-    ```bash
-    auths key delete --alias my_device1_key
-    auths key delete --alias my_id_key
-    ```
+```bash
+auths verify                            # Verify HEAD
+auths verify HEAD~3..HEAD               # Verify a range
+auths verify abc1234                    # Verify specific commit
+auths verify path/to/attestation.json   # Verify attestation file
+cat attestation.json | auths verify -   # Verify from stdin
+```
 
-### Workflow 2: Custom Layout (Radicle Example)
+| Flag | Description |
+|---|---|
+| `--allowed-signers <PATH>` | Signers file (default: `.auths/allowed_signers`) |
+| `--identity-bundle <PATH>` | Identity bundle JSON for stateless CI verification |
+| `--issuer-did <DID>` | Issuer identity for trust-based key resolution |
+| `--witness-receipts <PATH>` | Witness receipts JSON file |
+| `--witness-threshold <N>` | Witness quorum threshold (default: 1) |
+| `--witness-keys <KEYS>...` | Witness public keys as DID:hex pairs |
 
-This workflow achieves a Radicle-compatible layout by specifying layout flags for relevant commands.
+### `auths sign`
 
-1.  **Initialize with Radicle Layout:**
-    * Create metadata (e.g., `~/radicle_meta.json`):
+Sign a commit or artifact file.
 
-        ```json
-        {
-          "xyz.radicle.agent": {"alias": "my_rad_alias", "controller": ""},
-          "profile": {"name": "Radicle User"}
-        }
-        ```
+```bash
+auths sign HEAD                         # Sign latest commit
+auths sign main..HEAD                   # Sign a range
+auths sign ./release.tar.gz             # Sign a file
+```
 
-    * Run `id init-did` specifying the repo path and all layout flags:
+| Flag | Description |
+|---|---|
+| `--device-key-alias <ALIAS>` | Device key for signing |
+| `--identity-key-alias <ALIAS>` | Identity key (for dual-signing) |
+| `--sig-output <PATH>` | Output path for signature file |
+| `--expires-in-days <N>` | Signature expiration |
+| `--note <NOTE>` | Embed a note in the attestation |
 
-        ```bash
-        RAD_REPO_PATH="$HOME/my_radicle_identity_repo"
-        auths id init-did \
-          --repo "$RAD_REPO_PATH" \
-          --identity-ref "refs/rad/id" \
-          --identity-blob "radicle-identity.json" \
-          --attestation-prefix "refs/keys" \
-          --attestation-blob "link-attestation.json" \
-          --metadata-file ~/radicle_meta.json \
-          --local-key-alias radicle_id_key
-        # Enter passphrase
-        ```
+---
 
-2.  **Verify (using flags):**
+## Devices
 
-    ```bash
-    # List key (no flags needed)
-    auths key list | grep radicle_id_key
+Link multiple machines to your identity. Each device has its own key; the identity key authorizes them.
 
-    # Show identity (MUST provide layout flags to find it)
-    auths id show \
-      --repo "$RAD_REPO_PATH" \
-      --identity-ref "refs/rad/id" \
-      --identity-blob "radicle-identity.json" \
-      --attestation-prefix "refs/keys" \
-      --attestation-blob "link-attestation.json"
-    # Note Controller DID, check metadata
-    ```
+### `auths device list`
 
-3.  **Import Device Key (as before):**
+```bash
+auths device list
+auths device list --include-revoked
+```
 
-    ```bash
-    # Get Controller DID using flags
-    CONTROLLER_DID=$(auths id show --repo "$RAD_REPO_PATH" --identity-ref "refs/rad/id" --identity-blob "radicle-identity.json" --attestation-prefix "refs/keys" --attestation-blob "link-attestation.json" | grep 'Controller DID:' | awk -F': ' '{print $2}')
-    auths key import --alias rad_device_key --seed-file ~/rad_device.seed --controller-did "$CONTROLLER_DID"
-    # Enter passphrase
-    ```
+### `auths device link`
 
-4.  **Link Device (using flags):**
-    * Derive device DID as before.
-    * Run `device link` providing all layout flags:
+Authorize a new device by creating a signed attestation.
 
-        ```bash
-        # Ensure xxd is installed or use another tool for hex conversion
-        DEVICE_DID=$(auths util derive-did --seed-hex $(xxd -p -c 256 ~/rad_device.seed) | awk '{print $3}')
-        auths device link \
-          --repo "$RAD_REPO_PATH" \
-          --identity-ref "refs/rad/id" \
-          --identity-blob "radicle-identity.json" \
-          --attestation-prefix "refs/keys" \
-          --attestation-blob "link-attestation.json" \
-          --identity-key-alias radicle_id_key \
-          --device-key-alias rad_device_key \
-          --device-did "$DEVICE_DID" \
-          --note "Radicle Laptop Key"
-        # Enter passphrases (Device, Identity, Device)
-        ```
+```bash
+auths device link \
+  --identity-key-alias main \
+  --device-key-alias laptop \
+  --device-did "did:key:z6Mk..." \
+  --note "Work laptop" \
+  --expires-in-days 90
+```
 
-5.  **Verify Device Link (using flags):**
+| Flag | Description |
+|---|---|
+| `--identity-key-alias <ALIAS>` | Identity key for signing (required) |
+| `--device-key-alias <ALIAS>` | Device key to authorize (required) |
+| `--device-did <DID>` | Device DID (required) |
+| `--capabilities <CAPS>` | Comma-separated permissions |
+| `--expires-in-days <N>` | Authorization expiration |
+| `--note <NOTE>` | Description |
+| `--payload <PATH>` | JSON payload file |
+| `--schema <PATH>` | JSON schema for payload validation |
 
-    ```bash
-    auths id show-devices \
-      --repo "$RAD_REPO_PATH" \
-      --identity-ref "refs/rad/id" \
-      --identity-blob "radicle-identity.json" \
-      --attestation-prefix "refs/keys" \
-      --attestation-blob "link-attestation.json"
-    # Check for linked device
-    ```
+### `auths device revoke`
 
-### Other Commands
+```bash
+auths device revoke \
+  --identity-key-alias main \
+  --device-did "did:key:z6Mk..." \
+  --note "Laptop retired"
+```
 
-* **Rotate Identity Keys:**
+### `auths device extend`
 
-    Auths uses KERI with pre-rotation commitment, allowing secure key rotation while preserving your identity (DID).
+Extend a device authorization's expiration.
 
-    ```bash
-    # Rotate keys using the current alias
-    auths id rotate --alias my_id_key
-    # Enter passphrase when prompted
-    # New key is stored as my_id_key-rotated-<timestamp>
+```bash
+auths device extend \
+  --device-did "did:key:z6Mk..." \
+  --days 90 \
+  --identity-key-alias main \
+  --device-key-alias laptop
+```
 
-    # Or specify a custom alias for the new key
-    auths id rotate --alias my_id_key --next-key-alias my_id_key_v2
-    ```
+### `auths device resolve`
 
-    After rotation:
-    - Your `did:keri:E...` remains the same
-    - The new key becomes active for signing
-    - Historical signatures verify against the key state at signing time
-    - The Key Event Log (KEL) records the rotation
+Look up a device by DID.
 
-* **Derive DID from Seed:**
+```bash
+auths device resolve --device-did "did:key:z6Mk..."
+```
 
-    ```bash
-    # Create a 32-byte seed file (replace with your actual seed)
-    head -c 32 /dev/urandom > my_seed.raw
-    # Derive and print the did:key
-    auths util derive-did --seed-hex $(xxd -p -c 256 my_seed.raw)
-    ```
+### `auths device pair`
+
+Link a device via QR code or short code (for cross-device pairing).
+
+### `auths device verify-attestation`
+
+Verify a device authorization's signatures directly.
+
+---
+
+## Identity Management
+
+### `auths id create`
+
+Create a new identity manually (most users should use `auths init` instead).
+
+```bash
+auths id create \
+  --local-key-alias main \
+  --metadata-file ~/metadata.json \
+  --preset default
+```
+
+| Flag | Description |
+|---|---|
+| `--local-key-alias <ALIAS>` | Alias for generated key |
+| `--metadata-file <PATH>` | JSON metadata to embed |
+| `--preset <PRESET>` | Storage layout: `default`, `radicle`, or `gitoxide` |
+
+### `auths id show`
+
+Display identity DID and metadata.
+
+```bash
+auths id show
+```
+
+### `auths id rotate`
+
+Rotate identity keys using KERI pre-rotation. Your `did:keri:E...` stays the same; only the active signing key changes.
+
+```bash
+auths id rotate --alias main
+auths id rotate --current-key-alias main --next-key-alias main_v2
+```
+
+| Flag | Description |
+|---|---|
+| `--alias <ALIAS>` | Key to rotate |
+| `--current-key-alias <ALIAS>` | Alternative to `--alias` |
+| `--next-key-alias <ALIAS>` | Alias for the new key |
+| `--add-witness <PREFIX>` | Add a witness server (repeatable) |
+| `--remove-witness <PREFIX>` | Remove a witness server (repeatable) |
+| `--witness-threshold <N>` | New witness quorum threshold |
+
+### `auths id export-bundle`
+
+Export an identity bundle for stateless verification (useful for CI).
+
+```bash
+auths id export-bundle --alias main -o bundle.json
+```
+
+### `auths id register`
+
+Publish your identity to a registry.
+
+```bash
+auths id register --registry https://auths-registry.fly.dev
+```
+
+### `auths id claim`
+
+Add a platform claim to your identity (e.g., GitHub, email).
+
+### `auths id migrate`
+
+Import existing GPG or SSH keys into an Auths identity.
+
+---
+
+## Key Management
+
+### `auths key list`
+
+List all key aliases in secure storage.
+
+### `auths key import`
+
+Import a 32-byte Ed25519 seed file.
+
+```bash
+auths key import \
+  --alias my_device \
+  --seed-file ~/device.seed \
+  --controller-did "did:keri:E..."
+```
+
+### `auths key export`
+
+Export a key in different formats.
+
+```bash
+auths key export --alias main --passphrase "..." --format pub   # Public key
+auths key export --alias main --passphrase "..." --format pem   # Private key (PEM)
+auths key export --alias main --passphrase "..." --format enc   # Encrypted
+```
+
+### `auths key delete`
+
+Remove a key from secure storage.
+
+```bash
+auths key delete --alias old_key
+```
+
+### `auths key copy-backend`
+
+Copy a key to a different storage backend (e.g., file keychain for CI).
+
+```bash
+auths key copy-backend --alias main --dst-backend file --dst-file ./keys.json
+```
+
+---
+
+## Organizations
+
+Manage organizations with member roles and authorization policies.
+
+### `auths org init`
+
+Create an organization identity.
+
+```bash
+auths org init --name "My Org"
+auths org init --name "My Org" --local-key-alias org_key --metadata-file org.json
+```
+
+### `auths org add-member`
+
+```bash
+auths org add-member \
+  --org "did:keri:E..." \
+  --member "did:keri:E..." \
+  --role admin \
+  --signer-alias org_key
+```
+
+Roles: `admin`, `member`, `readonly`.
+
+### `auths org revoke-member`
+
+```bash
+auths org revoke-member \
+  --org "did:keri:E..." \
+  --member "did:keri:E..." \
+  --signer-alias org_key \
+  --note "Access removed"
+```
+
+### `auths org list-members`
+
+```bash
+auths org list-members --org "did:keri:E..."
+auths org list-members --org "did:keri:E..." --include-revoked
+```
+
+### `auths org attest`
+
+Issue an organizational attestation for a subject.
+
+```bash
+auths org attest \
+  --subject "did:keri:E..." \
+  --payload-file claim.json \
+  --signer-alias org_key \
+  --expires-at "2025-12-31T00:00:00Z"
+```
+
+### `auths org revoke`
+
+Revoke an organizational attestation.
+
+```bash
+auths org revoke --subject "did:keri:E..." --signer-alias org_key
+```
+
+### `auths org show`
+
+Show attestations for a subject.
+
+```bash
+auths org show --subject "did:keri:E..."
+auths org show --subject "did:keri:E..." --include-revoked
+```
+
+### `auths org list`
+
+List all organizational attestations.
+
+### `auths policy`
+
+Validate, test, and compare authorization policies.
+
+| Subcommand | Description |
+|---|---|
+| `auths policy lint <file>` | Validate policy JSON syntax and structure |
+| `auths policy compile <file>` | Compile a policy to its canonical form |
+| `auths policy explain <file> -c context.json` | Explain how a policy evaluates against a context |
+| `auths policy test <file> -t tests.json` | Run a policy test suite |
+| `auths policy diff <old> <new>` | Show differences between two policy versions |
+
+---
+
+## Artifacts
+
+Sign, verify, and publish arbitrary files (binaries, packages, configs).
+
+### `auths artifact sign`
+
+```bash
+auths artifact sign release.tar.gz \
+  --device-key-alias laptop \
+  --identity-key-alias main \
+  --expires-in-days 365
+```
+
+### `auths artifact verify`
+
+```bash
+auths artifact verify release.tar.gz
+auths artifact verify release.tar.gz --signature release.tar.gz.auths.json
+```
+
+### `auths artifact publish`
+
+Publish a signature to a registry.
+
+```bash
+auths artifact publish \
+  --signature release.tar.gz.auths.json \
+  --package "npm:my-package@1.0.0" \
+  --registry https://auths-registry.fly.dev
+```
+
+---
+
+## Trust & Witnesses
+
+### `auths trust`
+
+Pin identity-to-key bindings locally (trust-on-first-use).
+
+| Subcommand | Description |
+|---|---|
+| `auths trust list` | Show all pinned identities |
+| `auths trust show <DID>` | Show details for a pinned identity |
+| `auths trust pin --did <DID> --key <HEX>` | Pin an identity's public key |
+| `auths trust remove <DID>` | Remove a pinned identity |
+
+### `auths witness`
+
+Run or manage KERI witness servers for independent event verification.
+
+| Subcommand | Description |
+|---|---|
+| `auths witness serve` | Run a witness server (`--bind`, `--db-path`) |
+| `auths witness add --url <URL>` | Register a witness |
+| `auths witness remove --url <URL>` | Unregister a witness |
+| `auths witness list` | Show configured witnesses |
+
+---
+
+## Git Integration
+
+### `auths git allowed-signers`
+
+Generate an `allowed_signers` file from your identity's device keys.
+
+```bash
+auths git allowed-signers -o .auths/allowed_signers
+```
+
+### `auths git install-hooks`
+
+Install Git hooks for automatic signature verification.
+
+```bash
+auths git install-hooks --repo .
+auths git install-hooks --repo . --force   # Overwrite existing hooks
+```
+
+---
+
+## Security & Compliance
+
+### `auths audit`
+
+Generate signing audit reports for compliance.
+
+```bash
+auths audit --since 2025-Q1 --format table
+auths audit --since 2025-01-01 --until 2025-03-31 --format csv -o report.csv
+auths audit --require-all-signed --exit-code   # Fail if unsigned commits found
+```
+
+| Flag | Description |
+|---|---|
+| `--since <DATE>` | Start date (YYYY-MM-DD or YYYY-QN) |
+| `--until <DATE>` | End date |
+| `--format <FMT>` | `table`, `csv`, `json`, or `html` |
+| `--author <EMAIL>` | Filter by author |
+| `--signer <DID>` | Filter by signing identity |
+| `-n, --count <N>` | Max commits (default: 100) |
+| `--require-all-signed` | Require all commits to be signed |
+| `--exit-code` | Exit 1 if unsigned commits found |
+| `-o, --output-file <PATH>` | Output file |
+
+### `auths emergency`
+
+Emergency response commands for key compromise or security incidents. Running without a subcommand starts an interactive flow.
+
+| Subcommand | Description |
+|---|---|
+| `auths emergency revoke-device` | Emergency device revocation (`--device`, `--dry-run`, `-y`) |
+| `auths emergency rotate-now` | Immediate key rotation (`--current-alias`, `--next-alias`, `--reason`) |
+| `auths emergency freeze` | Temporarily freeze identity operations (`--duration`, default 24h) |
+| `auths emergency unfreeze` | Resume operations after a freeze |
+| `auths emergency report` | Generate incident report (`--events <N>`, `-o <PATH>`) |
+
+---
+
+## SSH Agent
+
+The Auths agent daemon manages keys in memory and provides SSH agent protocol support.
+
+| Subcommand | Description |
+|---|---|
+| `auths agent start` | Start the daemon (`--socket`, `--foreground`, `--timeout`) |
+| `auths agent stop` | Stop the daemon |
+| `auths agent status` | Show daemon status |
+| `auths agent env` | Print shell environment variables (`--shell bash\|zsh\|fish`) |
+| `auths agent lock` | Clear keys from memory |
+| `auths agent unlock` | Load a key into the agent (`--key <ALIAS>`) |
+| `auths agent install-service` | Install as system service (launchd/systemd) |
+| `auths agent uninstall-service` | Remove system service |
+
+---
+
+## Utilities
+
+### `auths completions`
+
+Generate shell completions.
+
+```bash
+auths completions bash > ~/.bash_completion.d/auths
+auths completions zsh > ~/.zfunc/_auths
+auths completions fish > ~/.config/fish/completions/auths.fish
+```
+
+### `auths util derive-did`
+
+Derive a `did:key` from an Ed25519 seed.
+
+```bash
+auths util derive-did --seed-hex $(xxd -p -c 256 my_seed.raw)
+```
+
+### `auths util pubkey-to-did`
+
+Convert an OpenSSH Ed25519 public key to a DID.
+
+```bash
+auths util pubkey-to-did "ssh-ed25519 AAAA..."
+```
+
+### `auths util verify-attestation`
+
+Verify an attestation file directly with a known issuer public key.
+
+```bash
+auths util verify-attestation \
+  --attestation-file auth.json \
+  --issuer-pubkey <64-char-hex>
+```
+
+---
 
 ## CI Setup (GitHub Actions)
 
@@ -315,58 +620,66 @@ behind after the job ends.
 
 ```yaml
 name: Signed Commits
-
 on: [push, pull_request]
-
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      AUTHS_KEYCHAIN_BACKEND: memory   # No platform keychain in CI
+      AUTHS_KEYCHAIN_BACKEND: memory
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
+      - uses: dtolnay/rust-toolchain@stable
       - name: Install Auths
         run: cargo install --path crates/auths-cli --force
-
       - name: Set up Auths (CI profile)
         run: auths init --profile ci --non-interactive
-
       - name: Run doctor (verify setup)
         run: auths doctor
-
-      # All subsequent git commits are signed automatically because
-      # auths init --profile ci sets gpg.format=ssh globally.
       - name: Your build step
         run: cargo build --release
 ```
 
-### Verifying commit signatures in CI (no signing needed)
+### Verifying commit signatures in CI
 
 ```yaml
 name: Verify Commit Signatures
-
 on: [pull_request]
-
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history required for range verification
-
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
       - name: Install Auths
         run: cargo install --path crates/auths-cli --force
-
       - name: Verify commits on this PR
-        run: auths verify-commit HEAD
+        run: auths verify HEAD
 ```
 
 ### Troubleshooting CI
 
 Run `auths doctor` as the first step in any failing job.
 Exit code 0 = all checks pass. Exit code 1 = at least one check failed.
+
+---
+
+## Advanced: Layout Overrides
+
+Several commands accept layout override flags under the "Advanced Setup" heading. These are per-command flags (not global) for working with non-default Git ref layouts:
+
+```
+--identity-ref <GIT_REF>               Git ref for identity (e.g., refs/rad/id)
+--identity-blob <FILENAME>             Blob name for identity data
+--attestation-prefix <GIT_REF_PREFIX>  Base ref prefix for device attestations
+--attestation-blob <FILENAME>          Blob name for attestation data
+```
+
+For most users, the `--preset` flag on `auths id create` is simpler:
+
+```bash
+auths id create --preset default    # refs/rad/id, refs/keys (RIP-X layout)
+auths id create --preset radicle    # Same as default
+auths id create --preset gitoxide   # refs/auths/id, refs/auths/devices
+```
