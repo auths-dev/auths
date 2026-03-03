@@ -82,7 +82,7 @@ pub fn verify_with_resolver(
     // 4. Verify issuer signature
     let issuer_public_key_ring = UnparsedPublicKey::new(&ED25519, &issuer_pk_bytes);
     issuer_public_key_ring
-        .verify(data_to_verify, &att.identity_signature)
+        .verify(data_to_verify, att.identity_signature.as_bytes())
         .map_err(|e| {
             AttestationError::VerificationError(format!(
                 "Issuer signature verification failed: {}",
@@ -97,7 +97,7 @@ pub fn verify_with_resolver(
     // 5. Verify subject (device) signature using stored public key
     let device_public_key_ring = UnparsedPublicKey::new(&ED25519, att.device_public_key.as_bytes());
     device_public_key_ring
-        .verify(data_to_verify, &att.device_signature)
+        .verify(data_to_verify, att.device_signature.as_bytes())
         .map_err(|e| {
             AttestationError::VerificationError(format!(
                 "Device signature verification failed: {}",

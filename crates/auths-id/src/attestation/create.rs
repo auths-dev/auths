@@ -4,7 +4,7 @@ use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::Capability;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519PublicKey, ResourceId, Role,
+    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId, Role,
     canonicalize_attestation_data,
 };
 use auths_verifier::error::AttestationError;
@@ -128,10 +128,11 @@ pub fn create_signed_attestation(
                 ))
             })?;
         debug!("Identity signature obtained successfully");
-        sig
+        Ed25519Signature::try_from_slice(&sig)
+            .map_err(|e| AttestationError::SigningError(e.to_string()))?
     } else {
         debug!("No identity alias provided, skipping identity signature (device-only attestation)");
-        Vec::new()
+        Ed25519Signature::empty()
     };
 
     // Sign with the device key if alias provided
@@ -146,10 +147,11 @@ pub fn create_signed_attestation(
                 ))
             })?;
         debug!("Device signature obtained successfully");
-        sig
+        Ed25519Signature::try_from_slice(&sig)
+            .map_err(|e| AttestationError::SigningError(e.to_string()))?
     } else {
         debug!("No device alias provided, skipping device signature");
-        Vec::new()
+        Ed25519Signature::empty()
     };
 
     // Construct final attestation

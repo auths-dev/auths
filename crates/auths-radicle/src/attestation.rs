@@ -12,7 +12,7 @@
 //! between formats at the boundary via `TryFrom` impls.
 
 use auths_verifier::IdentityDID;
-use auths_verifier::core::{Attestation, Ed25519PublicKey, ResourceId};
+use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::types::DeviceDID;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
@@ -233,8 +233,14 @@ impl TryFrom<RadAttestation> for Attestation {
                 .map_err(|e| AttestationConversionError::InvalidPublicKeyLength(
                     rad.device_public_key.as_ref().len()
                 ))?,
-            identity_signature: rad.identity_signature,
-            device_signature: rad.device_signature,
+            identity_signature: Ed25519Signature::try_from_slice(&rad.identity_signature)
+                .map_err(|_| AttestationConversionError::InvalidPublicKeyLength(
+                    rad.identity_signature.len()
+                ))?,
+            device_signature: Ed25519Signature::try_from_slice(&rad.device_signature)
+                .map_err(|_| AttestationConversionError::InvalidPublicKeyLength(
+                    rad.device_signature.len()
+                ))?,
             revoked_at: None,
             expires_at: None,
             timestamp: None,
@@ -270,8 +276,8 @@ impl TryFrom<&Attestation> for RadAttestation {
         canonical_payload.canonicalize()?;
 
         Ok(RadAttestation {
-            device_signature: att.device_signature.clone(),
-            identity_signature: att.identity_signature.clone(),
+            device_signature: att.device_signature.as_bytes().to_vec(),
+            identity_signature: att.identity_signature.as_bytes().to_vec(),
             canonical_payload,
             device_did: att.subject.as_str().parse()?,
             device_public_key,
@@ -454,8 +460,8 @@ mod tests {
         assert_eq!(core.issuer.as_str(), identity_did.to_string());
         assert_eq!(core.subject.as_str(), device_did.to_string());
         assert_eq!(core.device_public_key.as_bytes().as_slice(), device_pk.as_ref());
-        assert_eq!(core.device_signature, device_sig);
-        assert_eq!(core.identity_signature, identity_sig);
+        assert_eq!(core.device_signature.as_bytes().as_slice(), device_sig.as_slice());
+        assert_eq!(core.identity_signature.as_bytes().as_slice(), identity_sig.as_slice());
     }
 
     #[test]
@@ -470,8 +476,8 @@ mod tests {
             issuer: IdentityDID::new("did:keri:EXq5abc"),
             subject: DeviceDID::new(device_did.to_string()),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk_bytes),
-            identity_signature: vec![0xCD; 64],
-            device_signature: vec![0xEF; 64],
+            identity_signature: Ed25519Signature::from_bytes([0xCD; 64]),
+            device_signature: Ed25519Signature::from_bytes([0xEF; 64]),
             revoked_at: None,
             expires_at: None,
             timestamp: None,

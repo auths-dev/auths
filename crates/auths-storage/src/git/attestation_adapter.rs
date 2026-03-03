@@ -232,7 +232,7 @@ impl AttestationSink for RegistryAttestationStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_verifier::core::{Ed25519PublicKey, ResourceId};
+    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::types::IdentityDID;
     use git2::Repository;
     use tempfile::TempDir;
@@ -258,8 +258,8 @@ mod tests {
             issuer: IdentityDID::new("did:keri:ETestIssuer"),
             subject: DeviceDID::new(subject),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at: None,
             timestamp: Some(chrono::Utc::now() + chrono::Duration::seconds(seq as i64)),

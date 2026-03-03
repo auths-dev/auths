@@ -233,7 +233,7 @@ pub fn expected_org_issuer(org: &str) -> String {
 mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;
-    use auths_verifier::core::{Capability, Ed25519PublicKey};
+    use auths_verifier::core::{Capability, Ed25519PublicKey, Ed25519Signature};
 
     #[test]
     fn member_filter_defaults_to_active_only() {
@@ -277,8 +277,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,
@@ -301,8 +301,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: Some(Utc::now()),
             expires_at: None,
             timestamp: None,
@@ -326,8 +326,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: Some(past),
             timestamp: None,
@@ -354,8 +354,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: Some(future),
             timestamp: None,
@@ -379,8 +379,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: Some(now), // Exactly at boundary
             timestamp: None,
@@ -434,8 +434,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,

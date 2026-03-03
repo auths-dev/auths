@@ -4,7 +4,7 @@ use assert_cmd::Command;
 use auths_test_utils::crypto::gen_keypair;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519PublicKey, ResourceId,
+    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
     canonicalize_attestation_data,
 };
 use auths_verifier::types::DeviceDID;
@@ -31,8 +31,8 @@ fn create_signed_attestation(
             hex::encode(device_kp.public_key().as_ref())
         )),
         device_public_key: Ed25519PublicKey::from_bytes(device_pk),
-        identity_signature: vec![],
-        device_signature: vec![],
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at: None,
         expires_at: Some(Utc::now() + Duration::days(365)),
         timestamp: Some(Utc::now()),
@@ -68,10 +68,10 @@ fn create_signed_attestation(
     let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
     // Sign with issuer (identity) key
-    att.identity_signature = issuer_kp.sign(&canonical_bytes).as_ref().to_vec();
+    att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
     // Sign with device key
-    att.device_signature = device_kp.sign(&canonical_bytes).as_ref().to_vec();
+    att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
     att
 }

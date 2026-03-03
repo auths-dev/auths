@@ -1,5 +1,5 @@
 use auths_verifier::core::{
-    Attestation, Capability, Ed25519PublicKey, ResourceId, Role, ThresholdPolicy,
+    Attestation, Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role, ThresholdPolicy,
 };
 use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::{DateTime, TimeZone, Utc};
@@ -38,8 +38,9 @@ fn arb_public_key() -> impl Strategy<Value = Ed25519PublicKey> {
 }
 
 /// Generate arbitrary signature (64 bytes for Ed25519)
-fn arb_signature() -> impl Strategy<Value = Vec<u8>> {
+fn arb_signature() -> impl Strategy<Value = Ed25519Signature> {
     proptest::collection::vec(any::<u8>(), 64)
+        .prop_map(|v| Ed25519Signature::try_from_slice(&v).unwrap())
 }
 
 /// Generate arbitrary optional DateTime in valid range

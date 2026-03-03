@@ -545,7 +545,7 @@ mod tests {
         revoked_at: Option<DateTime<Utc>>,
         capabilities: Vec<String>,
     ) -> Attestation {
-        use auths_verifier::core::{Ed25519PublicKey, ResourceId};
+        use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
         use auths_verifier::types::DeviceDID;
 
         Attestation {
@@ -554,8 +554,8 @@ mod tests {
             issuer: IdentityDID::new(issuer.to_string()),
             subject: DeviceDID::new(device_did.to_string()),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at: None,
             timestamp: None,

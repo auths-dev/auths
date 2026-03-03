@@ -75,7 +75,7 @@ impl Action {
 ///
 /// ```rust
 /// use auths_core::policy::{Decision, device::{Action, authorize_device}};
-/// use auths_verifier::core::{Attestation, Capability};
+/// use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature};
 /// use auths_verifier::types::DeviceDID;
 /// use chrono::Utc;
 ///
@@ -84,9 +84,9 @@ impl Action {
 ///     rid: "test".into(),
 ///     issuer: "did:keri:ETest".into(),
 ///     subject: DeviceDID::new("did:key:z6Mk..."),
-///     device_public_key: vec![0; 32],
-///     identity_signature: vec![0; 64],
-///     device_signature: vec![0; 64],
+///     device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+///     identity_signature: Ed25519Signature::empty(),
+///     device_signature: Ed25519Signature::empty(),
 ///     revoked_at: None,
 ///     expires_at: None,
 ///     timestamp: None,
@@ -169,7 +169,7 @@ fn capability_name(cap: &Capability) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_verifier::core::Ed25519PublicKey;
+    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature};
     use auths_verifier::types::DeviceDID;
     use chrono::Duration;
 
@@ -185,8 +185,8 @@ mod tests {
             issuer: issuer.into(),
             subject: DeviceDID::new("did:key:z6MkTest"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at,
             timestamp: None,

@@ -8,7 +8,7 @@ use auths_test_utils::fakes::clock::MockClock;
 use auths_test_utils::fakes::id::DeterministicUuidProvider;
 use auths_test_utils::fakes::registry::FakeRegistryBackend;
 use auths_verifier::Capability;
-use auths_verifier::core::{Attestation, Ed25519PublicKey, ResourceId};
+use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::TimeZone;
 
@@ -35,8 +35,8 @@ fn base_admin_attestation() -> Attestation {
         issuer: org_issuer(),
         subject: DeviceDID::new(ADMIN_DID),
         device_public_key: Ed25519PublicKey::from_bytes(ADMIN_PUBKEY),
-        identity_signature: vec![],
-        device_signature: vec![],
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at: None,
         expires_at: None,
         timestamp: None,
@@ -56,8 +56,8 @@ fn base_member_attestation() -> Attestation {
         issuer: org_issuer(),
         subject: DeviceDID::new(MEMBER_DID),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-        identity_signature: vec![],
-        device_signature: vec![],
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at: None,
         expires_at: None,
         timestamp: None,

@@ -6,7 +6,7 @@ use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::id::UuidProvider;
 use auths_id::ports::registry::RegistryBackend;
 use auths_verifier::Capability;
-use auths_verifier::core::{Attestation, Ed25519PublicKey};
+use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature};
 pub use auths_verifier::core::Role;
 use auths_verifier::core::ResourceId;
 use auths_verifier::types::{DeviceDID, IdentityDID};
@@ -194,8 +194,8 @@ pub fn add_organization_member(
         issuer: admin_att.issuer.clone(),
         subject: DeviceDID::new(&cmd.member_did),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-        identity_signature: vec![],
-        device_signature: vec![],
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at: None,
         expires_at: None,
         timestamp: Some(clock.now()),

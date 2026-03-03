@@ -402,7 +402,7 @@ pub(crate) async fn verify_with_keys_at(
     // --- 6. Verify issuer signature ---
     if !att.identity_signature.is_empty() {
         provider
-            .verify_ed25519(issuer_pk_bytes, data_to_verify, &att.identity_signature)
+            .verify_ed25519(issuer_pk_bytes, data_to_verify, att.identity_signature.as_bytes())
             .await
             .map_err(|_| {
                 AttestationError::VerificationError(
@@ -421,7 +421,7 @@ pub(crate) async fn verify_with_keys_at(
         .verify_ed25519(
             att.device_public_key.as_bytes(),
             data_to_verify,
-            &att.device_signature,
+            att.device_signature.as_bytes(),
         )
         .await
         .map_err(|_| {
@@ -572,7 +572,7 @@ async fn verify_single_attestation(
 mod tests {
     use super::*;
     use crate::clock::ClockProvider;
-    use crate::core::{Capability, Ed25519PublicKey, ResourceId, Role};
+    use crate::core::{Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
     use crate::keri::Said;
     use crate::types::{DeviceDID, IdentityDID};
     use crate::verifier::Verifier;
@@ -617,8 +617,8 @@ mod tests {
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
-            identity_signature: vec![],
-            device_signature: vec![],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at,
             timestamp: Some(fixed_now()),
@@ -652,8 +652,8 @@ mod tests {
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = issuer_kp.sign(&canonical_bytes).as_ref().to_vec();
-        att.device_signature = device_kp.sign(&canonical_bytes).as_ref().to_vec();
+        att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }
@@ -765,7 +765,9 @@ mod tests {
             None,
             Some(fixed_now() + Duration::days(365)),
         );
-        att.identity_signature[0] ^= 0xFF;
+        let mut tampered = *att.identity_signature.as_bytes();
+        tampered[0] ^= 0xFF;
+        att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
             .verify_chain(&[att], &root_pk)
@@ -959,7 +961,9 @@ mod tests {
             None,
             Some(fixed_now() + Duration::days(365)),
         );
-        att.identity_signature[0] ^= 0xFF;
+        let mut tampered = *att.identity_signature.as_bytes();
+        tampered[0] ^= 0xFF;
+        att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let verification_time = fixed_now() - Duration::days(10);
         let result = test_verifier()
@@ -1218,8 +1222,8 @@ mod tests {
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
-            identity_signature: vec![],
-            device_signature: vec![],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: Some(fixed_now() + Duration::days(365)),
             timestamp: Some(fixed_now()),
@@ -1254,8 +1258,8 @@ mod tests {
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = issuer_kp.sign(&canonical_bytes).as_ref().to_vec();
-        att.device_signature = device_kp.sign(&canonical_bytes).as_ref().to_vec();
+        att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }
@@ -1343,7 +1347,9 @@ mod tests {
             &device_did,
             vec![Capability::sign_commit()],
         );
-        att.identity_signature[0] ^= 0xFF;
+        let mut tampered = *att.identity_signature.as_bytes();
+        tampered[0] ^= 0xFF;
+        att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
             .verify_with_capability(&att, &Capability::sign_commit(), &root_pk)
@@ -1563,8 +1569,8 @@ mod tests {
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
-            identity_signature: vec![],
-            device_signature: vec![],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: Some(fixed_now() + Duration::days(365)),
             timestamp,
@@ -1598,8 +1604,8 @@ mod tests {
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = issuer_kp.sign(&canonical_bytes).as_ref().to_vec();
-        att.device_signature = device_kp.sign(&canonical_bytes).as_ref().to_vec();
+        att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }
@@ -1746,7 +1752,9 @@ mod tests {
             None,
             Some(fixed_now() + Duration::days(365)),
         );
-        att.identity_signature[0] ^= 0xFF;
+        let mut tampered = *att.identity_signature.as_bytes();
+        tampered[0] ^= 0xFF;
+        att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
             .verify_device_authorization(&root_did, &device_did, &[att], &root_pk)

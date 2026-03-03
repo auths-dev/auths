@@ -1,6 +1,6 @@
 use auths_test_utils::crypto::create_test_keypair;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519PublicKey, ResourceId,
+    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
     canonicalize_attestation_data,
 };
 use auths_verifier::types::{DeviceDID, IdentityDID};
@@ -27,8 +27,8 @@ fn create_signed_attestation(
         issuer: IdentityDID::new(issuer_did),
         subject: DeviceDID::new(subject_did),
         device_public_key: Ed25519PublicKey::from_bytes(device_pk),
-        identity_signature: vec![],
-        device_signature: vec![],
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at,
         expires_at: Some(expires_at),
         timestamp: Some(timestamp),
@@ -58,8 +58,8 @@ fn create_signed_attestation(
     };
     let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-    att.identity_signature = issuer_kp.sign(&canonical_bytes).as_ref().to_vec();
-    att.device_signature = device_kp.sign(&canonical_bytes).as_ref().to_vec();
+    att.identity_signature = Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+    att.device_signature = Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
     att
 }
 

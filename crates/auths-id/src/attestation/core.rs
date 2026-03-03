@@ -5,7 +5,9 @@
 
 use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::KeyAlias;
-use auths_verifier::core::{Attestation, CanonicalAttestationData, canonicalize_attestation_data};
+use auths_verifier::core::{
+    Attestation, CanonicalAttestationData, Ed25519Signature, canonicalize_attestation_data,
+};
 use auths_verifier::error::AttestationError;
 
 use chrono::{DateTime, Utc};
@@ -91,7 +93,7 @@ pub fn resign_attestation(
     // Sign with the identity key (if alias provided)
     if let Some(alias) = identity_alias {
         debug!("Re-signing attestation with identity alias '{}'", alias);
-        attestation.identity_signature = signer
+        let sig_bytes = signer
             .sign_with_alias(alias, passphrase_provider, &message_to_sign)
             .map_err(|e| {
                 AttestationError::SigningError(format!(
@@ -99,9 +101,11 @@ pub fn resign_attestation(
                     alias, e
                 ))
             })?;
+        attestation.identity_signature = Ed25519Signature::try_from_slice(&sig_bytes)
+            .map_err(|e| AttestationError::SigningError(e.to_string()))?;
     } else {
         debug!("No identity alias provided, skipping identity signature (device-only)");
-        attestation.identity_signature = Vec::new();
+        attestation.identity_signature = Ed25519Signature::empty();
     }
 
     // Sign with the device key
@@ -109,7 +113,7 @@ pub fn resign_attestation(
         "Re-signing attestation with device alias '{}'",
         device_alias
     );
-    attestation.device_signature = signer
+    let device_sig_bytes = signer
         .sign_with_alias(device_alias, passphrase_provider, &message_to_sign)
         .map_err(|e| {
             AttestationError::SigningError(format!(
@@ -117,6 +121,8 @@ pub fn resign_attestation(
                 device_alias, e
             ))
         })?;
+    attestation.device_signature = Ed25519Signature::try_from_slice(&device_sig_bytes)
+        .map_err(|e| AttestationError::SigningError(e.to_string()))?;
 
     Ok(())
 }

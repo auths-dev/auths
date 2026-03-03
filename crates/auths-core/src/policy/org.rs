@@ -56,24 +56,24 @@ use super::device::Action;
 ///
 /// ```rust
 /// use auths_core::policy::{Decision, device::Action, org::authorize_org_action};
-/// use auths_verifier::core::{Attestation, Capability};
+/// use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature, Role};
 /// use auths_verifier::types::DeviceDID;
 /// use chrono::Utc;
 ///
 /// let membership = Attestation {
 ///     version: 1,
 ///     rid: "member".into(),
-///     issuer: "did:keri:EOrg123".into(),  // issued BY the org
-///     subject: DeviceDID::new("did:key:z6MkAlice"),  // for this member
-///     device_public_key: vec![0; 32],
-///     identity_signature: vec![0; 64],
-///     device_signature: vec![0; 64],
+///     issuer: "did:keri:EOrg123".into(),
+///     subject: DeviceDID::new("did:key:z6MkAlice"),
+///     device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+///     identity_signature: Ed25519Signature::empty(),
+///     device_signature: Ed25519Signature::empty(),
 ///     revoked_at: None,
 ///     expires_at: None,
 ///     timestamp: None,
 ///     note: None,
 ///     payload: None,
-///     role: Some("admin".into()),
+///     role: Some(Role::Admin),
 ///     capabilities: vec![Capability::manage_members()],
 ///     delegated_by: None,
 ///     signer_type: None,
@@ -81,7 +81,7 @@ use super::device::Action;
 ///
 /// let decision = authorize_org_action(
 ///     &membership,
-///     "did:keri:EOrg123",  // expected org issuer
+///     "did:keri:EOrg123",
 ///     &Action::ManageMembers,
 ///     Utc::now(),
 /// );
@@ -170,7 +170,7 @@ fn capability_name(cap: &Capability) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_verifier::core::{Ed25519PublicKey, ResourceId, Role};
+    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
     use auths_verifier::types::DeviceDID;
     use chrono::Duration;
 
@@ -187,8 +187,8 @@ mod tests {
             issuer: issuer.into(),
             subject: DeviceDID::new("did:key:z6MkMember"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at,
             timestamp: None,

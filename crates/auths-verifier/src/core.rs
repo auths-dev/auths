@@ -247,6 +247,79 @@ pub enum Ed25519KeyError {
 }
 
 // =============================================================================
+// Ed25519Signature newtype
+// =============================================================================
+
+/// A validated Ed25519 signature (64 bytes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed25519Signature([u8; 64]);
+
+impl Ed25519Signature {
+    pub fn from_bytes(bytes: [u8; 64]) -> Self {
+        Self(bytes)
+    }
+
+    pub fn try_from_slice(slice: &[u8]) -> Result<Self, SignatureLengthError> {
+        let arr: [u8; 64] = slice
+            .try_into()
+            .map_err(|_| SignatureLengthError(slice.len()))?;
+        Ok(Self(arr))
+    }
+
+    pub fn empty() -> Self {
+        Self([0u8; 64])
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0 == [0u8; 64]
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 64] {
+        &self.0
+    }
+}
+
+impl Default for Ed25519Signature {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl std::fmt::Display for Ed25519Signature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl AsRef<[u8]> for Ed25519Signature {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl serde::Serialize for Ed25519Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&hex::encode(self.0))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Ed25519Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Ok(Self::empty());
+        }
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        Self::try_from_slice(&bytes).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Error when constructing an Ed25519Signature from a byte slice of wrong length.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("expected 64 bytes, got {0}")]
+pub struct SignatureLengthError(pub usize);
+
+// =============================================================================
 // Capability types
 // =============================================================================
 
@@ -569,11 +642,10 @@ pub struct Attestation {
     /// Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
     pub device_public_key: Ed25519PublicKey,
     /// Issuer's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).
-    #[serde(with = "hex::serde", default, skip_serializing_if = "Vec::is_empty")]
-    pub identity_signature: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Ed25519Signature::is_empty")]
+    pub identity_signature: Ed25519Signature,
     /// Device's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).
-    #[serde(with = "hex::serde")]
-    pub device_signature: Vec<u8>,
+    pub device_signature: Ed25519Signature,
     /// Timestamp when the attestation was revoked, if applicable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revoked_at: Option<DateTime<Utc>>,
@@ -1176,8 +1248,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,
@@ -1208,8 +1280,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,
@@ -1240,8 +1312,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,
@@ -1424,8 +1496,8 @@ mod tests {
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,

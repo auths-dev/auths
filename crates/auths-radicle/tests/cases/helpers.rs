@@ -5,7 +5,7 @@ use auths_radicle::bridge::BridgeError;
 use auths_radicle::refs::Layout;
 use auths_radicle::verify::AuthsStorage;
 use auths_verifier::IdentityDID;
-use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey};
+use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature};
 use auths_verifier::keri::{Prefix, Said};
 use auths_verifier::types::DeviceDID;
 use radicle_core::{Did, RepoId};
@@ -117,8 +117,8 @@ pub fn make_test_attestation(
         issuer: IdentityDID::new(issuer.to_string()),
         subject: DeviceDID::new(device_did.to_string()),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-        identity_signature: vec![0; 64],
-        device_signature: vec![0; 64],
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at: if revoked { Some(Utc::now()) } else { None },
         expires_at: None,
         timestamp: None,
