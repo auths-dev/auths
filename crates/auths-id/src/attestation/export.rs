@@ -1,8 +1,8 @@
 use crate::attestation::encoders::json_encoder;
+use crate::error::StorageError;
 use crate::storage::layout::{
     StorageLayoutConfig, attestation_blob_name, attestation_ref_for_device,
 };
-use anyhow::{Context, Result, anyhow};
 use auths_verifier::core::{Attestation, VerifiedAttestation};
 use git2::{Repository, Signature, Tree};
 use log::{debug, info};
@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Function signature for encoding an attestation into bytes.
-pub type AttestationEncoder = Arc<dyn Fn(&Attestation) -> Result<Vec<u8>> + Send + Sync>;
+pub type AttestationEncoder = Arc<dyn Fn(&Attestation) -> Result<Vec<u8>, StorageError> + Send + Sync>;
 
 /// Trait for destinations that can accept and store an attestation.
 pub trait AttestationSink {
@@ -18,7 +18,7 @@ pub trait AttestationSink {
     ///
     /// Accepts a [`VerifiedAttestation`] to enforce at the type level that
     /// signatures were checked before storage.
-    fn export(&self, attestation: &VerifiedAttestation) -> Result<()>;
+    fn export(&self, attestation: &VerifiedAttestation) -> Result<(), StorageError>;
 
     /// Update any secondary index after an attestation mutation.
     ///
@@ -69,36 +69,30 @@ impl GitRefSink {
 
     // Removed: get_ref_path_for_attestation (logic moved inside export)
 
-    /// Helper function to open the associated git repository.
-    fn open_repo(&self) -> Result<Repository> {
-        Repository::open(&self.repo_path).with_context(|| {
-            format!(
-                "GitRefSink failed to open repository at {:?}",
-                self.repo_path
-            )
-        })
+    fn open_repo(&self) -> Result<Repository, StorageError> {
+        Ok(Repository::open(&self.repo_path)?)
     }
 
-    /// Helper function to read an attestation from a Git commit's tree,
-    /// using the blob name defined in the configuration.
-    /// (Needed for determining the commit message based on previous state).
-    fn read_attestation_from_tree(&self, repo: &Repository, tree: &Tree) -> Result<Attestation> {
-        // Get the expected blob name from the configuration
+    fn read_attestation_from_tree(
+        &self,
+        repo: &Repository,
+        tree: &Tree,
+    ) -> Result<Attestation, StorageError> {
         let blob_filename = attestation_blob_name(&self.config);
-        let entry = tree
-            .get_name(blob_filename)
-            .ok_or_else(|| anyhow!("Attestation tree missing blob named '{}'", blob_filename))?;
+        let entry = tree.get_name(blob_filename).ok_or_else(|| {
+            StorageError::NotFound(format!(
+                "Attestation tree missing blob named '{}'",
+                blob_filename
+            ))
+        })?;
 
         let blob = repo.find_blob(entry.id())?;
-        serde_json::from_slice(blob.content())
-            .with_context(|| format!("Failed to deserialize attestation from blob {}", blob.id()))
+        Ok(serde_json::from_slice(blob.content())?)
     }
 }
 
 impl AttestationSink for GitRefSink {
-    /// Exports the attestation by creating a Git commit using the configured
-    /// ref path and blob name, then updating the specific device ref.
-    fn export(&self, attestation: &VerifiedAttestation) -> Result<()> {
+    fn export(&self, attestation: &VerifiedAttestation) -> Result<(), StorageError> {
         let attestation = attestation.inner();
         info!(
             "Exporting attestation for device {} using configured layout...",
@@ -107,13 +101,10 @@ impl AttestationSink for GitRefSink {
         let repo = self.open_repo()?;
 
         // 1. Encode the attestation payload
-        let content =
-            (self.encoder)(attestation).context("Failed to encode attestation payload")?;
+        let content = (self.encoder)(attestation)?;
 
         // 2. Write the blob
-        let blob_oid = repo
-            .blob(&content)
-            .context("Failed to write attestation blob to Git")?;
+        let blob_oid = repo.blob(&content)?;
 
         // 3. Create the tree using the configured blob name
         let blob_filename = attestation_blob_name(&self.config); // Use helper
@@ -169,33 +160,24 @@ impl AttestationSink for GitRefSink {
         // 7. Get Git signature
         let author = repo
             .signature()
-            .or_else(|_| Signature::now("auths", "auths@localhost"))
-            .context("GitRefSink failed to get Git signature")?;
+            .or_else(|_| Signature::now("auths", "auths@localhost"))?;
         debug!("Using Git author/committer: {}", author);
 
-        // 8. Create the commit object without trying to update the ref here
-        let commit_oid = repo
-            .commit(
-                None,     // Do not specify update_ref here
-                &author,  // Author
-                &author,  // Committer
-                message,  // Commit message
-                &tree,    // The tree containing the attestation blob
-                &parents, // Parent commit(s) on this ref
-            )
-            .with_context(|| "Failed to create attestation commit object".to_string())?;
+        // 8. Create the commit object
+        let commit_oid = repo.commit(
+            None,
+            &author,
+            &author,
+            message,
+            &tree,
+            &parents,
+        )?;
 
         debug!("Created attestation commit object {}", commit_oid);
 
         // 9. Explicitly create or update the target reference
         let ref_log_message = format!("commit (attestation): {}", message);
-        repo.reference(&ref_path, commit_oid, true, &ref_log_message) // force=true
-            .with_context(|| {
-                format!(
-                    "Failed to create/update reference '{}' to commit {}",
-                    ref_path, commit_oid
-                )
-            })?;
+        repo.reference(&ref_path, commit_oid, true, &ref_log_message)?;
 
         info!(
             "Saved attestation commit {} and updated ref '{}'", // Updated log message

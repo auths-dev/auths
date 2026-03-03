@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use crate::error::StorageError;
 use auths_verifier::core::Attestation;
 use jsonschema;
 use serde_json::{Value, to_vec_pretty};
@@ -21,12 +21,9 @@ impl JsonSchemaValidatingEncoder {
     ///
     /// Returns `Err` if schema validation fails for an existing payload, or if
     /// final JSON serialization fails.
-    pub fn encode(&self, att: &Attestation) -> Result<Vec<u8>> {
-        // Validate ONLY the payload field if it is present
+    pub fn encode(&self, att: &Attestation) -> Result<Vec<u8>, StorageError> {
         if let Some(payload_value) = &att.payload {
-            // Perform validation using the jsonschema crate
             if !jsonschema::is_valid(&self.schema_value, payload_value) {
-                // If invalid, try validating again to get detailed errors
                 let error_details = match jsonschema::validate(&self.schema_value, payload_value) {
                     Ok(_) => "Unknown validation error".to_string(),
                     Err(validation_error) => {
@@ -34,19 +31,13 @@ impl JsonSchemaValidatingEncoder {
                             "Path '/payload{}': {:?}",
                             validation_error.instance_path(),
                             validation_error.kind()
-                        ) // Adjust path display
+                        )
                     }
                 };
-                // Return an error indicating schema failure
-                return Err(anyhow!(
-                    "Schema validation failed for payload: {}",
-                    error_details
-                ));
+                return Err(StorageError::SchemaValidation(error_details));
             }
-            // If validation passes (or if there was no payload), proceed below
         }
 
-        // Serialize the original Attestation struct if validation passed or was skipped
-        to_vec_pretty(att).context("Failed to serialize validated attestation to JSON")
+        Ok(to_vec_pretty(att)?)
     }
 }

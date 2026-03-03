@@ -1,5 +1,4 @@
 use crate::identity::resolve::DidResolver;
-use anyhow::Result;
 use auths_verifier::core::{Attestation, CanonicalAttestationData};
 use auths_verifier::error::AttestationError;
 use chrono::{DateTime, Duration, Utc};
