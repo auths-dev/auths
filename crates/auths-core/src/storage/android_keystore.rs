@@ -20,7 +20,7 @@ use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 /// - Ed25519 support (with P-256 fallback and conversion layer)
 ///
 pub struct AndroidKeystoreStorage {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // stub platform impl — field required for API parity
     service_name: String,
 }
 

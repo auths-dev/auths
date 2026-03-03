@@ -91,22 +91,6 @@ impl LinuxSecretServiceStorage {
 
         Ok(collection)
     }
-
-    /// Build attributes map for a key.
-    #[allow(dead_code)]
-    fn build_attributes<'a>(
-        &'a self,
-        alias: &'a str,
-        identity_did: Option<&'a str>,
-    ) -> HashMap<&'a str, &'a str> {
-        let mut attrs = HashMap::new();
-        attrs.insert(ATTR_SERVICE, self.service_name.as_str());
-        attrs.insert(ATTR_ALIAS, alias);
-        if let Some(did) = identity_did {
-            attrs.insert(ATTR_IDENTITY, did);
-        }
-        attrs
-    }
 }
 
 impl KeyStorage for LinuxSecretServiceStorage {
@@ -356,30 +340,6 @@ impl KeyStorage for LinuxSecretServiceStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_build_attributes() {
-        let storage = LinuxSecretServiceStorage {
-            service_name: "test.service".to_string(),
-        };
-
-        let attrs = storage.build_attributes("my-alias", Some("did:keri:test"));
-        assert_eq!(attrs.get(ATTR_SERVICE), Some(&"test.service"));
-        assert_eq!(attrs.get(ATTR_ALIAS), Some(&"my-alias"));
-        assert_eq!(attrs.get(ATTR_IDENTITY), Some(&"did:keri:test"));
-    }
-
-    #[test]
-    fn test_build_attributes_without_identity() {
-        let storage = LinuxSecretServiceStorage {
-            service_name: "test.service".to_string(),
-        };
-
-        let attrs = storage.build_attributes("my-alias", None);
-        assert_eq!(attrs.get(ATTR_SERVICE), Some(&"test.service"));
-        assert_eq!(attrs.get(ATTR_ALIAS), Some(&"my-alias"));
-        assert!(!attrs.contains_key(ATTR_IDENTITY));
-    }
 
     #[test]
     fn test_backend_name() {

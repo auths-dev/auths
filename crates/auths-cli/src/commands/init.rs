@@ -17,6 +17,7 @@ use auths_id::attestation::export::AttestationSink;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
+use auths_infra_http::HttpRegistryClient;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::git_config::GitConfigProvider;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
@@ -634,12 +635,15 @@ fn submit_registration(
     let attestation_store = Arc::new(RegistryAttestationStorage::new(repo_path));
     let attestation_source: Arc<dyn AttestationSource + Send + Sync> = attestation_store;
 
+    let registry_client = HttpRegistryClient::new();
+
     match rt.block_on(auths_sdk::registration::register_identity(
         identity_storage,
         backend,
         attestation_source,
         registry_url,
         proof_url,
+        &registry_client,
     )) {
         Ok(outcome) => {
             out.print_success(&format!("Identity registered at {}", outcome.registry));

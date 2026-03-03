@@ -26,11 +26,9 @@ allow = [
 multiple-versions = "warn"
 
 deny = [
-  # reqwest is confined to adapter/infrastructure layer; auths-sdk usage is a tracked refactor debt
   { crate = "reqwest", wrappers = [
     "auths-infra-http",
     "auths-cli",
-    "auths-sdk",
   ], reason = "HTTP clients must be confined to adapter layer" },
 
   # dialoguer is a terminal UX dependency — CLI only

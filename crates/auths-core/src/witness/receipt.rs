@@ -212,35 +212,6 @@ impl ReceiptBuilder {
     }
 }
 
-/// The signing payload for agent commit receipts.
-///
-/// Signs tree hash + parent hashes to avoid the chicken-and-egg problem
-/// where embedding a receipt in the commit message would change the commit hash.
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommitReceiptPayload {
-    /// Git tree object hash (20 bytes).
-    pub tree_hash: Vec<u8>,
-    /// Parent commit hashes (20 bytes each).
-    pub parent_hashes: Vec<Vec<u8>>,
-}
-
-#[allow(dead_code)]
-impl CommitReceiptPayload {
-    /// Produce deterministic bytes for signing.
-    ///
-    /// Format: `tree_hash || num_parents (4 bytes LE) || parent_1 || parent_2 || ...`
-    pub fn signing_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(20 + 4 + self.parent_hashes.len() * 20);
-        buf.extend_from_slice(&self.tree_hash);
-        buf.extend_from_slice(&(self.parent_hashes.len() as u32).to_le_bytes());
-        for parent in &self.parent_hashes {
-            buf.extend_from_slice(parent);
-        }
-        buf
-    }
-}
-
 impl From<Receipt> for auths_verifier::witness::WitnessReceipt {
     fn from(r: Receipt) -> Self {
         Self {
@@ -406,30 +377,5 @@ mod tests {
         let encoded = URL_SAFE_NO_PAD.encode(b"not json");
         let result = Receipt::from_trailer_value(&encoded);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn commit_receipt_payload_signing_bytes_deterministic() {
-        let payload = CommitReceiptPayload {
-            tree_hash: vec![0xaa; 20],
-            parent_hashes: vec![vec![0xbb; 20], vec![0xcc; 20]],
-        };
-        let bytes1 = payload.signing_bytes();
-        let bytes2 = payload.signing_bytes();
-        assert_eq!(bytes1, bytes2);
-        // 20 (tree) + 4 (count) + 40 (2 parents)
-        assert_eq!(bytes1.len(), 64);
-    }
-
-    #[test]
-    fn commit_receipt_payload_no_parents() {
-        let payload = CommitReceiptPayload {
-            tree_hash: vec![0xaa; 20],
-            parent_hashes: vec![],
-        };
-        let bytes = payload.signing_bytes();
-        assert_eq!(bytes.len(), 24); // 20 + 4
-        // num_parents should be 0
-        assert_eq!(&bytes[20..24], &[0, 0, 0, 0]);
     }
 }

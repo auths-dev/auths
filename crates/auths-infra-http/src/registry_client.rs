@@ -1,6 +1,7 @@
-use auths_core::ports::network::{NetworkError, RegistryClient};
+use auths_core::ports::network::{NetworkError, RegistryClient, RegistryResponse};
 use std::future::Future;
 
+use crate::error::map_reqwest_error;
 use crate::request::{
     build_get_request, build_post_request, execute_request, parse_response_bytes,
 };
@@ -63,6 +64,35 @@ impl RegistryClient for HttpRegistryClient {
             let response = execute_request(request, registry_url).await?;
             let _ = parse_response_bytes(response, path).await?;
             Ok(())
+        }
+    }
+
+    fn post_json(
+        &self,
+        registry_url: &str,
+        path: &str,
+        json_body: &[u8],
+    ) -> impl Future<Output = Result<RegistryResponse, NetworkError>> + Send {
+        let url = format!("{}/{}", registry_url.trim_end_matches('/'), path);
+        let request = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(json_body.to_vec());
+        let endpoint = registry_url.to_string();
+
+        async move {
+            let response = request
+                .send()
+                .await
+                .map_err(|e| map_reqwest_error(e, &endpoint))?;
+            let status = response.status().as_u16();
+            let body = response.bytes().await.map(|b| b.to_vec()).map_err(|e| {
+                NetworkError::InvalidResponse {
+                    detail: e.to_string(),
+                }
+            })?;
+            Ok(RegistryResponse { status, body })
         }
     }
 }
