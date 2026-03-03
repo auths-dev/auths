@@ -10,10 +10,9 @@
 use console::{Style, Term};
 use serde::Serialize;
 use std::io::IsTerminal;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Global flag for whether we're in JSON output mode.
-/// Set this to true before any output to disable colors.
-pub static mut JSON_MODE: bool = false;
+static JSON_MODE: AtomicBool = AtomicBool::new(false);
 
 /// Standard JSON response structure for all commands.
 ///
@@ -62,8 +61,7 @@ impl<T: Serialize> JsonResponse<T> {
 
 /// Check if JSON mode is enabled.
 pub fn is_json_mode() -> bool {
-    // Safety: This is only read after main() sets it, so it's effectively single-threaded
-    unsafe { JSON_MODE }
+    JSON_MODE.load(Ordering::Relaxed)
 }
 
 /// Terminal output helper with color support.
@@ -122,9 +120,7 @@ impl Output {
 
     /// Determine if colors should be used.
     fn should_use_colors(term: &Term) -> bool {
-        // Check JSON mode first
-        // Safety: This is only read after main() sets it, so it's effectively single-threaded
-        if unsafe { JSON_MODE } {
+        if JSON_MODE.load(Ordering::Relaxed) {
             return false;
         }
 
@@ -293,10 +289,7 @@ impl Output {
 ///
 /// Call this at the start of command handling if `--json` flag is set.
 pub fn set_json_mode(enabled: bool) {
-    // Safety: This is called once at startup before any concurrent access
-    unsafe {
-        JSON_MODE = enabled;
-    }
+    JSON_MODE.store(enabled, Ordering::Relaxed);
 }
 
 #[cfg(test)]
