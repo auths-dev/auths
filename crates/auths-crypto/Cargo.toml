@@ -31,10 +31,13 @@ features = ["Crypto", "CryptoKey", "SubtleCrypto"]
 ring = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
-[dev-dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 auths-test-utils.workspace = true
 ring.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
 
 [lints.clippy]
 print_stdout = "deny"

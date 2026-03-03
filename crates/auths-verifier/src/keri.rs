@@ -722,7 +722,7 @@ pub fn parse_kel_json(json: &str) -> Result<Vec<KeriEvent>, KeriVerifyError> {
     serde_json::from_str(json).map_err(|e| KeriVerifyError::Serialization(e.to_string()))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use auths_crypto::RingCryptoProvider;
