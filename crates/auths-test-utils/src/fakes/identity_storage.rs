@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
-use anyhow::{Error, anyhow};
 use auths_core::storage::keychain::IdentityDID;
+use auths_id::error::StorageError;
 use auths_id::identity::helpers::ManagedIdentity;
 use auths_id::storage::identity::IdentityStorage;
 
@@ -29,16 +29,16 @@ impl IdentityStorage for FakeIdentityStorage {
         &self,
         controller_did: &str,
         metadata: Option<serde_json::Value>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         *self.state.lock().unwrap() = Some((controller_did.to_string(), metadata));
         Ok(())
     }
 
-    fn load_identity(&self) -> Result<ManagedIdentity, Error> {
+    fn load_identity(&self) -> Result<ManagedIdentity, StorageError> {
         let guard = self.state.lock().unwrap();
         let (did, metadata) = guard
             .as_ref()
-            .ok_or_else(|| anyhow!("no identity stored"))?;
+            .ok_or_else(|| StorageError::NotFound("no identity stored".into()))?;
 
         Ok(ManagedIdentity {
             controller_did: IdentityDID::new_unchecked(did.clone()),
@@ -47,7 +47,7 @@ impl IdentityStorage for FakeIdentityStorage {
         })
     }
 
-    fn get_identity_ref(&self) -> Result<String, Error> {
+    fn get_identity_ref(&self) -> Result<String, StorageError> {
         Ok("refs/auths/identity".to_string())
     }
 }

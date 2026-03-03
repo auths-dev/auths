@@ -25,7 +25,7 @@ pub enum WitnessIntegrationError {
     Collection(#[from] CollectionError),
 
     #[error("Receipt storage failed: {0}")]
-    Storage(#[from] anyhow::Error),
+    Storage(#[from] crate::error::StorageError),
 
     #[error("Tokio runtime error: {0}")]
     Runtime(#[from] std::io::Error),

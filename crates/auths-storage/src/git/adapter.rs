@@ -1359,8 +1359,18 @@ impl RegistryBackend for GitRegistryBackend {
 // AttestationSource Implementation
 // =============================================================================
 
-use anyhow::{Error, Result};
+use auths_id::error::StorageError;
 use auths_id::storage::attestation::AttestationSource;
+
+fn registry_to_storage_err(e: RegistryError) -> StorageError {
+    match e {
+        RegistryError::NotFound { entity_type, id } => {
+            StorageError::NotFound(format!("{} '{}'", entity_type, id))
+        }
+        RegistryError::Serialization(e) => StorageError::Serialization(e),
+        _ => StorageError::InvalidData(e.to_string()),
+    }
+}
 
 impl AttestationSource for GitRegistryBackend {
     /// Load all attestations for a specific device DID.
@@ -1370,15 +1380,15 @@ impl AttestationSource for GitRegistryBackend {
     fn load_attestations_for_device(
         &self,
         device_did: &DeviceDID,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         match self.load_attestation(device_did) {
             Ok(Some(att)) => Ok(vec![att]),
             Ok(None) => Ok(vec![]),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(registry_to_storage_err(e)),
         }
     }
 
-    fn load_all_attestations(&self) -> Result<Vec<Attestation>, Error> {
+    fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError> {
         self.load_all_attestations_paginated(usize::MAX, 0)
     }
 
@@ -1386,9 +1396,9 @@ impl AttestationSource for GitRegistryBackend {
         &self,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         let mut attestations = Vec::new();
-        let mut error: Option<Error> = None;
+        let mut error: Option<StorageError> = None;
         let mut skipped: usize = 0;
         let mut collected: usize = 0;
 
@@ -1406,7 +1416,7 @@ impl AttestationSource for GitRegistryBackend {
                 Ok(Some(att)) => attestations.push(att),
                 Ok(None) => {}
                 Err(e) => {
-                    error = Some(e.into());
+                    error = Some(registry_to_storage_err(e));
                     return ControlFlow::Break(());
                 }
             }
@@ -1414,7 +1424,7 @@ impl AttestationSource for GitRegistryBackend {
         });
 
         if let Err(e) = visit_result {
-            return Err(e.into());
+            return Err(registry_to_storage_err(e));
         }
         if let Some(e) = error {
             return Err(e);
@@ -1424,14 +1434,14 @@ impl AttestationSource for GitRegistryBackend {
     }
 
     /// Discover all device DIDs that have attestations stored.
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, Error> {
+    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
         let mut dids = Vec::new();
 
         self.visit_devices(&mut |did| {
             dids.push(did.clone());
             ControlFlow::Continue(())
         })
-        .map_err(|e| -> Error { e.into() })?;
+        .map_err(registry_to_storage_err)?;
 
         Ok(dids)
     }
@@ -1445,9 +1455,9 @@ use auths_id::attestation::AttestationSink;
 
 impl AttestationSink for GitRegistryBackend {
     /// Export/save a verified attestation to the packed registry.
-    fn export(&self, attestation: &VerifiedAttestation) -> Result<()> {
+    fn export(&self, attestation: &VerifiedAttestation) -> Result<(), StorageError> {
         self.store_attestation(attestation.inner())
-            .map_err(|e| e.into())
+            .map_err(registry_to_storage_err)
     }
 }
 
@@ -1591,33 +1601,33 @@ pub fn rebuild_org_members_from_registry(
 // ─────────────────────────────────────────────────────────────────────────────
 
 use async_trait::async_trait;
-use auths_id::storage::driver::{StorageDriver, StorageError};
+use auths_id::storage::driver::{StorageDriver, StorageError as DriverStorageError};
 
 impl GitRegistryBackend {
     /// Synchronous get_blob implementation.
-    fn get_blob_sync(&self, path: &str) -> Result<Vec<u8>, StorageError> {
-        let repo = self.open_repo().map_err(StorageError::io)?;
+    fn get_blob_sync(&self, path: &str) -> Result<Vec<u8>, DriverStorageError> {
+        let repo = self.open_repo().map_err(DriverStorageError::io)?;
         let tree = self.current_tree(&repo).map_err(|e| match e {
-            RegistryError::NotFound { .. } => StorageError::not_found(path),
-            other => StorageError::io(other),
+            RegistryError::NotFound { .. } => DriverStorageError::not_found(path),
+            other => DriverStorageError::io(other),
         })?;
 
         let navigator = TreeNavigator::new(&repo, tree);
         navigator.read_blob_path(path).map_err(|e| match e {
-            RegistryError::NotFound { .. } => StorageError::not_found(path),
-            other => StorageError::io(other),
+            RegistryError::NotFound { .. } => DriverStorageError::not_found(path),
+            other => DriverStorageError::io(other),
         })
     }
 
     /// Synchronous put_blob implementation.
-    fn put_blob_sync(&self, path: &str, data: &[u8]) -> Result<(), StorageError> {
-        let repo = self.open_repo().map_err(StorageError::io)?;
+    fn put_blob_sync(&self, path: &str, data: &[u8]) -> Result<(), DriverStorageError> {
+        let repo = self.open_repo().map_err(DriverStorageError::io)?;
 
         // Get current commit and tree (or None if registry not initialized)
         let (parent, base_tree) = match self.current_commit_and_tree(&repo) {
             Ok((commit, tree)) => (Some(commit), Some(tree)),
             Err(RegistryError::NotFound { .. }) => (None, None),
-            Err(e) => return Err(StorageError::io(e)),
+            Err(e) => return Err(DriverStorageError::io(e)),
         };
 
         let mut mutator = TreeMutator::new();
@@ -1625,27 +1635,27 @@ impl GitRegistryBackend {
 
         let tree_oid = mutator
             .build_tree(&repo, base_tree.as_ref())
-            .map_err(StorageError::io)?;
+            .map_err(DriverStorageError::io)?;
 
         self.create_commit(&repo, tree_oid, parent.as_ref(), &format!("put {}", path))
             .map_err(|e| match e {
                 RegistryError::ConcurrentModification(msg) => {
-                    StorageError::cas_conflict(None, Some(msg.into_bytes()))
+                    DriverStorageError::cas_conflict(None, Some(msg.into_bytes()))
                 }
-                other => StorageError::io(other),
+                other => DriverStorageError::io(other),
             })?;
 
         Ok(())
     }
 
     /// Synchronous delete implementation.
-    fn delete_sync(&self, path: &str) -> Result<(), StorageError> {
-        let repo = self.open_repo().map_err(StorageError::io)?;
+    fn delete_sync(&self, path: &str) -> Result<(), DriverStorageError> {
+        let repo = self.open_repo().map_err(DriverStorageError::io)?;
 
         let (parent, base_tree) = match self.current_commit_and_tree(&repo) {
             Ok((commit, tree)) => (Some(commit), Some(tree)),
             Err(RegistryError::NotFound { .. }) => return Ok(()), // Nothing to delete
-            Err(e) => return Err(StorageError::io(e)),
+            Err(e) => return Err(DriverStorageError::io(e)),
         };
 
         // Check if path exists
@@ -1659,7 +1669,7 @@ impl GitRegistryBackend {
 
         let tree_oid = mutator
             .build_tree(&repo, base_tree.as_ref())
-            .map_err(StorageError::io)?;
+            .map_err(DriverStorageError::io)?;
 
         self.create_commit(
             &repo,
@@ -1667,18 +1677,18 @@ impl GitRegistryBackend {
             parent.as_ref(),
             &format!("delete {}", path),
         )
-        .map_err(StorageError::io)?;
+        .map_err(DriverStorageError::io)?;
 
         Ok(())
     }
 
     /// Synchronous exists implementation.
-    fn exists_sync(&self, path: &str) -> Result<bool, StorageError> {
-        let repo = self.open_repo().map_err(StorageError::io)?;
+    fn exists_sync(&self, path: &str) -> Result<bool, DriverStorageError> {
+        let repo = self.open_repo().map_err(DriverStorageError::io)?;
         let tree = match self.current_tree(&repo) {
             Ok(t) => t,
             Err(RegistryError::NotFound { .. }) => return Ok(false),
-            Err(e) => return Err(StorageError::io(e)),
+            Err(e) => return Err(DriverStorageError::io(e)),
         };
 
         let navigator = TreeNavigator::new(&repo, tree);
@@ -1686,12 +1696,12 @@ impl GitRegistryBackend {
     }
 
     /// Synchronous list_prefix implementation.
-    fn list_prefix_sync(&self, prefix: &str) -> Result<Vec<String>, StorageError> {
-        let repo = self.open_repo().map_err(StorageError::io)?;
+    fn list_prefix_sync(&self, prefix: &str) -> Result<Vec<String>, DriverStorageError> {
+        let repo = self.open_repo().map_err(DriverStorageError::io)?;
         let tree = match self.current_tree(&repo) {
             Ok(t) => t,
             Err(RegistryError::NotFound { .. }) => return Ok(vec![]),
-            Err(e) => return Err(StorageError::io(e)),
+            Err(e) => return Err(DriverStorageError::io(e)),
         };
 
         let navigator = TreeNavigator::new(&repo, tree);
@@ -1709,7 +1719,7 @@ impl GitRegistryBackend {
         navigator: &TreeNavigator,
         prefix: &str,
         paths: &mut Vec<String>,
-    ) -> Result<(), StorageError> {
+    ) -> Result<(), DriverStorageError> {
         let parts = path_parts(prefix);
 
         // Try to visit the directory
@@ -1737,28 +1747,28 @@ impl GitRegistryBackend {
         match result {
             Ok(()) => Ok(()),
             Err(RegistryError::NotFound { .. }) => Ok(()), // Empty prefix is fine
-            Err(e) => Err(StorageError::io(e)),
+            Err(e) => Err(DriverStorageError::io(e)),
         }
     }
 }
 
 #[async_trait]
 impl StorageDriver for GitRegistryBackend {
-    async fn get_blob(&self, path: &str) -> Result<Vec<u8>, StorageError> {
+    async fn get_blob(&self, path: &str) -> Result<Vec<u8>, DriverStorageError> {
         let this = self.clone();
         let path = path.to_string();
         tokio::task::spawn_blocking(move || this.get_blob_sync(&path))
             .await
-            .map_err(StorageError::io)?
+            .map_err(DriverStorageError::io)?
     }
 
-    async fn put_blob(&self, path: &str, data: &[u8]) -> Result<(), StorageError> {
+    async fn put_blob(&self, path: &str, data: &[u8]) -> Result<(), DriverStorageError> {
         let this = self.clone();
         let path = path.to_string();
         let data = data.to_vec();
         tokio::task::spawn_blocking(move || this.put_blob_sync(&path, &data))
             .await
-            .map_err(StorageError::io)?
+            .map_err(DriverStorageError::io)?
     }
 
     async fn cas_update(
@@ -1766,46 +1776,46 @@ impl StorageDriver for GitRegistryBackend {
         ref_key: &str,
         expected: Option<&[u8]>,
         new: &[u8],
-    ) -> Result<(), StorageError> {
+    ) -> Result<(), DriverStorageError> {
         // For Git, CAS is implemented at the commit level, not blob level.
         // This is a simplified implementation: if expected matches current blob content,
         // update to new content.
         let current = match self.get_blob(ref_key).await {
             Ok(data) => Some(data),
-            Err(StorageError::NotFound(_)) => None,
+            Err(DriverStorageError::NotFound(_)) => None,
             Err(e) => return Err(e),
         };
 
         let expected_vec = expected.map(|b| b.to_vec());
         if current != expected_vec {
-            return Err(StorageError::cas_conflict(expected_vec, current));
+            return Err(DriverStorageError::cas_conflict(expected_vec, current));
         }
 
         self.put_blob(ref_key, new).await
     }
 
-    async fn list_prefix(&self, prefix: &str) -> Result<Vec<String>, StorageError> {
+    async fn list_prefix(&self, prefix: &str) -> Result<Vec<String>, DriverStorageError> {
         let this = self.clone();
         let prefix = prefix.to_string();
         tokio::task::spawn_blocking(move || this.list_prefix_sync(&prefix))
             .await
-            .map_err(StorageError::io)?
+            .map_err(DriverStorageError::io)?
     }
 
-    async fn exists(&self, path: &str) -> Result<bool, StorageError> {
+    async fn exists(&self, path: &str) -> Result<bool, DriverStorageError> {
         let this = self.clone();
         let path = path.to_string();
         tokio::task::spawn_blocking(move || this.exists_sync(&path))
             .await
-            .map_err(StorageError::io)?
+            .map_err(DriverStorageError::io)?
     }
 
-    async fn delete(&self, path: &str) -> Result<(), StorageError> {
+    async fn delete(&self, path: &str) -> Result<(), DriverStorageError> {
         let this = self.clone();
         let path = path.to_string();
         tokio::task::spawn_blocking(move || this.delete_sync(&path))
             .await
-            .map_err(StorageError::io)?
+            .map_err(DriverStorageError::io)?
     }
 }
 

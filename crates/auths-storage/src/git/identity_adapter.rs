@@ -27,7 +27,8 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Error, Result};
+use anyhow::Context;
+use auths_id::error::StorageError;
 use git2::Repository;
 use serde::{Deserialize, Serialize};
 
@@ -105,7 +106,7 @@ impl RegistryIdentityStorage {
         &self,
         metadata: Option<serde_json::Value>,
         witness_config: Option<&auths_id::witness_config::WitnessConfig>,
-    ) -> Result<(String, auths_id::keri::InceptionResult), Error> {
+    ) -> Result<(String, auths_id::keri::InceptionResult), anyhow::Error> {
         use auths_core::crypto::said::compute_next_commitment;
         use auths_id::keri::{
             Event, IcpEvent, InceptionResult, KERI_VERSION, KeriSequence, Prefix, Said,
@@ -206,7 +207,7 @@ impl RegistryIdentityStorage {
         &self,
         prefix: &auths_verifier::keri::Prefix,
         metadata: Option<serde_json::Value>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let repo = Repository::open(&self.repo_path)?;
 
         // Get current registry tree
@@ -215,8 +216,8 @@ impl RegistryIdentityStorage {
         let tree = commit.tree()?;
 
         // Build metadata path
-        let id_path =
-            identity_path(prefix).map_err(|e| anyhow::anyhow!("Invalid prefix: {}", e))?;
+        let id_path = identity_path(prefix)
+            .map_err(|e| StorageError::InvalidData(format!("Invalid prefix: {}", e)))?;
         let metadata_path = format!("{}/metadata.json", id_path);
 
         // Serialize metadata
@@ -226,7 +227,9 @@ impl RegistryIdentityStorage {
         // Write to tree
         let mut mutator = TreeMutator::new();
         mutator.write_blob(&metadata_path, json);
-        let new_tree_oid = mutator.build_tree(&repo, Some(&tree))?;
+        let new_tree_oid = mutator
+            .build_tree(&repo, Some(&tree))
+            .map_err(|e| StorageError::InvalidData(e.to_string()))?;
         let new_tree = repo.find_tree(new_tree_oid)?;
 
         // Create commit
@@ -248,7 +251,7 @@ impl RegistryIdentityStorage {
     fn load_metadata(
         &self,
         prefix: &auths_verifier::keri::Prefix,
-    ) -> Result<Option<serde_json::Value>, Error> {
+    ) -> Result<Option<serde_json::Value>, StorageError> {
         let repo = Repository::open(&self.repo_path)?;
 
         let registry_ref = match repo.find_reference(REGISTRY_REF) {
@@ -259,8 +262,8 @@ impl RegistryIdentityStorage {
         let commit = registry_ref.peel_to_commit()?;
         let tree = commit.tree()?;
 
-        let id_path =
-            identity_path(prefix).map_err(|e| anyhow::anyhow!("Invalid prefix: {}", e))?;
+        let id_path = identity_path(prefix)
+            .map_err(|e| StorageError::InvalidData(format!("Invalid prefix: {}", e)))?;
         let metadata_path = format!("{}/metadata.json", id_path);
 
         let nav = TreeNavigator::new(&repo, tree);
@@ -283,7 +286,7 @@ impl RegistryIdentityStorage {
     }
 
     /// Find the first identity prefix in the registry.
-    fn find_first_identity(&self) -> Result<Option<String>, Error> {
+    fn find_first_identity(&self) -> Result<Option<String>, StorageError> {
         use std::ops::ControlFlow;
 
         let mut prefix = None;
@@ -292,7 +295,7 @@ impl RegistryIdentityStorage {
                 prefix = Some(p.to_string());
                 ControlFlow::Break(())
             })
-            .map_err(|e| anyhow::anyhow!("Failed to visit identities: {}", e))?;
+            .map_err(|e| StorageError::InvalidData(format!("Failed to visit identities: {}", e)))?;
 
         Ok(prefix)
     }
@@ -303,13 +306,18 @@ impl IdentityStorage for RegistryIdentityStorage {
         &self,
         controller_did: &str,
         metadata: Option<serde_json::Value>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         use auths_verifier::keri::Prefix;
 
         // Extract prefix from controller_did (did:keri:{prefix})
         let prefix_str = controller_did
             .strip_prefix("did:keri:")
-            .ok_or_else(|| anyhow::anyhow!("Invalid controller DID format: {}", controller_did))?;
+            .ok_or_else(|| {
+                StorageError::InvalidData(format!(
+                    "Invalid controller DID format: {}",
+                    controller_did
+                ))
+            })?;
         let prefix = Prefix::new_unchecked(prefix_str.to_string());
 
         // Store metadata for this identity
@@ -318,19 +326,19 @@ impl IdentityStorage for RegistryIdentityStorage {
         Ok(())
     }
 
-    fn load_identity(&self) -> Result<ManagedIdentity, Error> {
+    fn load_identity(&self) -> Result<ManagedIdentity, StorageError> {
         use auths_verifier::keri::Prefix;
 
         // Find the first (and typically only) identity in the registry
         let prefix_str = self
             .find_first_identity()?
-            .ok_or_else(|| anyhow::anyhow!("No identity found in registry"))?;
+            .ok_or_else(|| StorageError::NotFound("No identity found in registry".to_string()))?;
         let prefix = Prefix::new_unchecked(prefix_str.clone());
 
         // Load key state to verify identity exists
         self.backend
             .get_key_state(&prefix)
-            .map_err(|e| anyhow::anyhow!("Failed to load key state: {}", e))?;
+            .map_err(|e| StorageError::InvalidData(format!("Failed to load key state: {}", e)))?;
 
         // Build controller DID
         let controller_did = format!("did:keri:{}", prefix_str);
@@ -345,7 +353,7 @@ impl IdentityStorage for RegistryIdentityStorage {
         })
     }
 
-    fn get_identity_ref(&self) -> Result<String, Error> {
+    fn get_identity_ref(&self) -> Result<String, StorageError> {
         Ok(REGISTRY_REF.to_string())
     }
 }

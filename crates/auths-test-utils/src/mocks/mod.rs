@@ -13,6 +13,7 @@
 //!     .returning(|| Ok(ManagedIdentity { .. }));
 //! ```
 
+use auths_id::error::StorageError;
 use auths_id::identity::helpers::ManagedIdentity;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
@@ -29,11 +30,11 @@ mock! {
             &self,
             controller_did: &str,
             metadata: Option<serde_json::Value>,
-        ) -> Result<(), anyhow::Error>;
+        ) -> Result<(), StorageError>;
 
-        fn load_identity(&self) -> Result<ManagedIdentity, anyhow::Error>;
+        fn load_identity(&self) -> Result<ManagedIdentity, StorageError>;
 
-        fn get_identity_ref(&self) -> Result<String, anyhow::Error>;
+        fn get_identity_ref(&self) -> Result<String, StorageError>;
     }
 }
 
@@ -45,17 +46,17 @@ mock! {
         fn load_attestations_for_device(
             &self,
             device_did: &DeviceDID,
-        ) -> Result<Vec<Attestation>, anyhow::Error>;
+        ) -> Result<Vec<Attestation>, StorageError>;
 
-        fn load_all_attestations(&self) -> Result<Vec<Attestation>, anyhow::Error>;
+        fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError>;
 
         fn load_all_attestations_paginated(
             &self,
             limit: usize,
             offset: usize,
-        ) -> Result<Vec<Attestation>, anyhow::Error>;
+        ) -> Result<Vec<Attestation>, StorageError>;
 
-        fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, anyhow::Error>;
+        fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError>;
     }
 }
 

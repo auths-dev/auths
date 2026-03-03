@@ -29,7 +29,7 @@
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 
-use anyhow::{Error, Result};
+use auths_id::error::StorageError;
 use auths_verifier::core::{Attestation, VerifiedAttestation};
 use auths_verifier::types::DeviceDID;
 
@@ -74,11 +74,11 @@ impl RegistryAttestationStorage {
     /// Initialize the registry if needed.
     ///
     /// Creates the initial registry commit if no registry exists.
-    pub fn init_if_needed(&self) -> Result<(), Error> {
+    pub fn init_if_needed(&self) -> Result<(), StorageError> {
         self.backend
             .init_if_needed()
             .map(|_| ())
-            .map_err(|e| anyhow::anyhow!("Failed to initialize registry: {}", e))
+            .map_err(|e| StorageError::InvalidData(format!("Failed to initialize registry: {}", e)))
     }
 
     /// Get a reference to the underlying backend.
@@ -104,7 +104,7 @@ impl AttestationSource for RegistryAttestationStorage {
     fn load_attestations_for_device(
         &self,
         device_did: &DeviceDID,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         let mut attestations = Vec::new();
 
         // Collect from history (oldest to newest)
@@ -113,7 +113,7 @@ impl AttestationSource for RegistryAttestationStorage {
                 attestations.push(att.clone());
                 ControlFlow::Continue(())
             })
-            .map_err(|e| anyhow::anyhow!("Failed to load attestation history: {}", e))?;
+            .map_err(|e| StorageError::InvalidData(format!("Failed to load attestation history: {}", e)))?;
 
         // If history is empty, this might be a legacy device with only current
         if attestations.is_empty()
@@ -125,7 +125,7 @@ impl AttestationSource for RegistryAttestationStorage {
         Ok(attestations)
     }
 
-    fn load_all_attestations(&self) -> Result<Vec<Attestation>, Error> {
+    fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError> {
         self.load_all_attestations_paginated(usize::MAX, 0)
     }
 
@@ -133,7 +133,7 @@ impl AttestationSource for RegistryAttestationStorage {
         &self,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         let mut all_attestations = Vec::new();
         let devices = self.discover_device_dids()?;
 
@@ -156,7 +156,7 @@ impl AttestationSource for RegistryAttestationStorage {
     }
 
     /// Discovers device DIDs that have attestations stored in the registry.
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, Error> {
+    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
         let mut devices = Vec::new();
 
         self.backend
@@ -164,7 +164,7 @@ impl AttestationSource for RegistryAttestationStorage {
                 devices.push(did.clone());
                 ControlFlow::Continue(())
             })
-            .map_err(|e| anyhow::anyhow!("Failed to discover devices: {}", e))?;
+            .map_err(|e| StorageError::InvalidData(format!("Failed to discover devices: {}", e)))?;
 
         Ok(devices)
     }
@@ -175,10 +175,10 @@ impl AttestationSink for RegistryAttestationStorage {
     ///
     /// Uses the backend's `store_attestation` which has overwrite semantics:
     /// the current attestation is replaced, but history is preserved.
-    fn export(&self, attestation: &VerifiedAttestation) -> Result<()> {
+    fn export(&self, attestation: &VerifiedAttestation) -> Result<(), StorageError> {
         self.backend
             .store_attestation(attestation.inner())
-            .map_err(|e| anyhow::anyhow!("Failed to store attestation: {}", e))
+            .map_err(|e| StorageError::InvalidData(format!("Failed to store attestation: {}", e)))
     }
 
     fn sync_index(&self, attestation: &Attestation) {
