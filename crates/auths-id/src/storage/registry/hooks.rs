@@ -4,6 +4,7 @@
 //! repository that touch a `.stale` sentinel file. This triggers cache
 //! invalidation on the next read operation.
 
+#[cfg(not(windows))]
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -22,15 +23,19 @@ pub enum HookError {
 }
 
 /// Hook types that invalidate the cache.
+#[cfg(not(windows))]
 const CACHE_HOOKS: &[&str] = &["post-merge", "post-checkout", "post-rewrite"];
 
 /// Marker comment to identify the linearity enforcement hook.
+#[cfg(not(windows))]
 const LINEARITY_MARKER: &str = "# auths-linearity-enforcement";
 
 /// Marker comment to identify our hooks.
+#[cfg(not(windows))]
 const HOOK_MARKER: &str = "# auths-cache-invalidation";
 
 /// The shell script snippet that touches the sentinel file.
+#[cfg(not(windows))]
 fn cache_invalidation_snippet(cache_dir: &Path) -> String {
     let sentinel = cache_dir.join(".stale");
     format!(
@@ -51,8 +56,7 @@ touch "{}" 2>/dev/null || true
 /// # Arguments
 /// * `repo_path` - Path to the Git repository (e.g., `~/.auths`)
 /// * `cache_dir` - Path to the cache directory (e.g., `~/.auths/.cache`)
-pub fn install_cache_hooks(repo_path: &Path, cache_dir: &Path) -> Result<(), HookError> {
-    // Skip on Windows - hooks are optional for cache functionality
+pub fn install_cache_hooks(_repo_path: &Path, _cache_dir: &Path) -> Result<(), HookError> {
     #[cfg(windows)]
     {
         return Ok(());
@@ -60,15 +64,14 @@ pub fn install_cache_hooks(repo_path: &Path, cache_dir: &Path) -> Result<(), Hoo
 
     #[cfg(not(windows))]
     {
-        let git_dir = find_git_dir(repo_path)?;
+        let git_dir = find_git_dir(_repo_path)?;
         let hooks_dir = git_dir.join("hooks");
 
-        // Create hooks directory if it doesn't exist
         if !hooks_dir.exists() {
             fs::create_dir_all(&hooks_dir)?;
         }
 
-        let snippet = cache_invalidation_snippet(cache_dir);
+        let snippet = cache_invalidation_snippet(_cache_dir);
 
         for hook_name in CACHE_HOOKS {
             install_hook(&hooks_dir, hook_name, &snippet)?;
@@ -149,7 +152,7 @@ fn find_git_dir(repo_path: &Path) -> Result<std::path::PathBuf, HookError> {
 /// Uninstall cache invalidation hooks from a Git repository.
 ///
 /// Removes our snippet from hooks but preserves other user content.
-pub fn uninstall_cache_hooks(repo_path: &Path) -> Result<(), HookError> {
+pub fn uninstall_cache_hooks(_repo_path: &Path) -> Result<(), HookError> {
     #[cfg(windows)]
     {
         return Ok(());
@@ -157,7 +160,7 @@ pub fn uninstall_cache_hooks(repo_path: &Path) -> Result<(), HookError> {
 
     #[cfg(not(windows))]
     {
-        let git_dir = find_git_dir(repo_path)?;
+        let git_dir = find_git_dir(_repo_path)?;
         let hooks_dir = git_dir.join("hooks");
 
         for hook_name in CACHE_HOOKS {
@@ -208,6 +211,7 @@ pub fn uninstall_cache_hooks(repo_path: &Path) -> Result<(), HookError> {
 
 /// The pre-receive hook script that rejects non-fast-forward pushes and ref
 /// deletions for Auths identity ref namespaces.
+#[cfg(not(windows))]
 const LINEARITY_HOOK_SCRIPT: &str = r#"#!/bin/sh
 # auths-linearity-enforcement
 # Reject non-fast-forward pushes and ref deletions for Auths identity refs.
@@ -263,7 +267,7 @@ exit 0
 ///
 /// # Arguments
 /// * `repo_path` - Path to the Git repository (e.g., `~/.auths`)
-pub fn install_linearity_hook(repo_path: &Path) -> Result<(), HookError> {
+pub fn install_linearity_hook(_repo_path: &Path) -> Result<(), HookError> {
     #[cfg(windows)]
     {
         return Ok(());
@@ -271,7 +275,7 @@ pub fn install_linearity_hook(repo_path: &Path) -> Result<(), HookError> {
 
     #[cfg(not(windows))]
     {
-        let git_dir = find_git_dir(repo_path)?;
+        let git_dir = find_git_dir(_repo_path)?;
         let hooks_dir = git_dir.join("hooks");
 
         if !hooks_dir.exists() {
@@ -320,7 +324,7 @@ pub fn install_linearity_hook(repo_path: &Path) -> Result<(), HookError> {
 ///
 /// Removes the auths linearity section from the pre-receive hook while
 /// preserving any other content.
-pub fn uninstall_linearity_hook(repo_path: &Path) -> Result<(), HookError> {
+pub fn uninstall_linearity_hook(_repo_path: &Path) -> Result<(), HookError> {
     #[cfg(windows)]
     {
         return Ok(());
@@ -328,7 +332,7 @@ pub fn uninstall_linearity_hook(repo_path: &Path) -> Result<(), HookError> {
 
     #[cfg(not(windows))]
     {
-        let git_dir = find_git_dir(repo_path)?;
+        let git_dir = find_git_dir(_repo_path)?;
         let hook_path = git_dir.join("hooks").join("pre-receive");
 
         if !hook_path.exists() {
