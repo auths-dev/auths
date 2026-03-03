@@ -30,7 +30,10 @@ impl IndexedAttestationStorage {
     /// Opens an indexed attestation storage.
     ///
     /// If the index doesn't exist, it will be created and populated from Git refs.
-    pub fn open(repo_path: impl AsRef<Path>, config: StorageLayoutConfig) -> Result<Self, StorageError> {
+    pub fn open(
+        repo_path: impl AsRef<Path>,
+        config: StorageLayoutConfig,
+    ) -> Result<Self, StorageError> {
         let repo_path = repo_path.as_ref().to_path_buf();
         let index_path = repo_path.join(".auths-index.db");
 
@@ -75,7 +78,12 @@ impl IndexedAttestationStorage {
     }
 
     /// Updates the index with a new or modified attestation.
-    pub fn update_index(&self, att: &Attestation, git_ref: &str, commit_oid: &str) -> Result<(), StorageError> {
+    pub fn update_index(
+        &self,
+        att: &Attestation,
+        git_ref: &str,
+        commit_oid: &str,
+    ) -> Result<(), StorageError> {
         let indexed = IndexedAttestation {
             rid: att.rid.to_string(),
             issuer_did: att.issuer.to_string(),
@@ -94,7 +102,10 @@ impl IndexedAttestationStorage {
 
     /// Loads attestations for a device using the index for lookup,
     /// then fetching full data from Git.
-    pub fn load_attestations_indexed(&self, device_did: &DeviceDID) -> Result<Vec<Attestation>, StorageError> {
+    pub fn load_attestations_indexed(
+        &self,
+        device_did: &DeviceDID,
+    ) -> Result<Vec<Attestation>, StorageError> {
         let indexed = self
             .index
             .query_by_device(&device_did.to_string())

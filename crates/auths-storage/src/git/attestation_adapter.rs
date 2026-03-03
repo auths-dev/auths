@@ -113,7 +113,9 @@ impl AttestationSource for RegistryAttestationStorage {
                 attestations.push(att.clone());
                 ControlFlow::Continue(())
             })
-            .map_err(|e| StorageError::InvalidData(format!("Failed to load attestation history: {}", e)))?;
+            .map_err(|e| {
+                StorageError::InvalidData(format!("Failed to load attestation history: {}", e))
+            })?;
 
         // If history is empty, this might be a legacy device with only current
         if attestations.is_empty()

@@ -310,9 +310,11 @@ fn extract_public_key(
     let kp = Ed25519KeyPair::from_pkcs8(&pkcs8)
         .map_err(|e| AgentProvisioningError::KeychainAccess(format!("bad pkcs8: {}", e)))?;
 
-    let pk: [u8; 32] = kp.public_key().as_ref().try_into().map_err(|_| {
-        AgentProvisioningError::KeychainAccess("unexpected key length".into())
-    })?;
+    let pk: [u8; 32] = kp
+        .public_key()
+        .as_ref()
+        .try_into()
+        .map_err(|_| AgentProvisioningError::KeychainAccess("unexpected key length".into()))?;
 
     Ok(pk)
 }

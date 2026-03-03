@@ -132,30 +132,28 @@ impl IdentityStorage for GitIdentityStorage {
 
         let mut parent_commits = Vec::new();
         match repo.find_reference(identity_ref_name) {
-            Ok(reference) => {
-                match reference.peel_to_commit() {
-                    Ok(commit) => {
-                        log::debug!(
-                            "Found existing commit {} for ref '{}'. Using as parent.",
-                            commit.id(),
-                            identity_ref_name
-                        );
-                        parent_commits.push(commit);
-                    }
-                    Err(e)
-                        if e.code() == ErrorCode::Peel
-                            || e.code() == ErrorCode::NotFound
-                            || e.code() == ErrorCode::InvalidSpec =>
-                    {
-                        log::warn!(
-                            "Ref '{}' exists but doesn't point to a valid commit ({:?}). Creating commit without parent.",
-                            identity_ref_name,
-                            e.code()
-                        );
-                    }
-                    Err(e) => return Err(e.into()),
+            Ok(reference) => match reference.peel_to_commit() {
+                Ok(commit) => {
+                    log::debug!(
+                        "Found existing commit {} for ref '{}'. Using as parent.",
+                        commit.id(),
+                        identity_ref_name
+                    );
+                    parent_commits.push(commit);
                 }
-            }
+                Err(e)
+                    if e.code() == ErrorCode::Peel
+                        || e.code() == ErrorCode::NotFound
+                        || e.code() == ErrorCode::InvalidSpec =>
+                {
+                    log::warn!(
+                        "Ref '{}' exists but doesn't point to a valid commit ({:?}). Creating commit without parent.",
+                        identity_ref_name,
+                        e.code()
+                    );
+                }
+                Err(e) => return Err(e.into()),
+            },
             Err(e) if e.code() == ErrorCode::NotFound => {
                 log::debug!(
                     "Reference '{}' not found. Creating initial commit.",
@@ -172,14 +170,7 @@ impl IdentityStorage for GitIdentityStorage {
             format!("Update Identity ({})", identity_ref_name)
         };
 
-        let commit_oid = repo.commit(
-            None,
-            &sig,
-            &sig,
-            &commit_msg,
-            &tree,
-            &parents_refs,
-        )?;
+        let commit_oid = repo.commit(None, &sig, &sig, &commit_msg, &tree, &parents_refs)?;
 
         log::debug!("Created commit {}", commit_oid);
 

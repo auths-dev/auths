@@ -165,7 +165,9 @@ pub fn resolve_trust(
                     store.pin(pin)?;
                     Ok(presented_pk)
                 } else {
-                    Err(TrustError::PolicyRejected("Identity rejected by user.".into()))
+                    Err(TrustError::PolicyRejected(
+                        "Identity rejected by user.".into(),
+                    ))
                 }
             }
             TrustPolicy::Explicit => {

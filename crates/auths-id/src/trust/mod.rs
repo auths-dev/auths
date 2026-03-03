@@ -50,15 +50,17 @@ impl KelContinuityChecker for GitKelContinuityChecker<'_> {
         presented_pk: &[u8],
     ) -> Result<Option<RotationProof>, auths_core::error::TrustError> {
         let pinned_said = Said::new_unchecked(pinned_tip_said.to_string());
-        let prefix = did_to_prefix(did)
-            .ok_or_else(|| auths_core::error::TrustError::InvalidData(format!("Invalid did:keri format: {}", did)))?;
+        let prefix = did_to_prefix(did).ok_or_else(|| {
+            auths_core::error::TrustError::InvalidData(format!("Invalid did:keri format: {}", did))
+        })?;
 
         let kel = GitKel::new(self.repo, prefix);
         if !kel.exists() {
             return Ok(None);
         }
 
-        let events = kel.get_events()
+        let events = kel
+            .get_events()
             .map_err(|e| auths_core::error::TrustError::InvalidData(e.to_string()))?;
 
         let pinned_idx = events.iter().position(|e| e.said() == pinned_tip_said);
@@ -77,8 +79,9 @@ impl KelContinuityChecker for GitKelContinuityChecker<'_> {
             Some(k) => k,
             None => return Ok(None),
         };
-        let current_key_bytes = KeriPublicKey::parse(current_key_encoded)
-            .map_err(|e| auths_core::error::TrustError::InvalidData(format!("KERI key decode failed: {e}")))?;
+        let current_key_bytes = KeriPublicKey::parse(current_key_encoded).map_err(|e| {
+            auths_core::error::TrustError::InvalidData(format!("KERI key decode failed: {e}"))
+        })?;
 
         if current_key_bytes.as_bytes().as_slice() != presented_pk {
             return Ok(None);

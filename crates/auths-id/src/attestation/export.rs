@@ -10,7 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Function signature for encoding an attestation into bytes.
-pub type AttestationEncoder = Arc<dyn Fn(&Attestation) -> Result<Vec<u8>, StorageError> + Send + Sync>;
+pub type AttestationEncoder =
+    Arc<dyn Fn(&Attestation) -> Result<Vec<u8>, StorageError> + Send + Sync>;
 
 /// Trait for destinations that can accept and store an attestation.
 pub trait AttestationSink {
@@ -164,14 +165,7 @@ impl AttestationSink for GitRefSink {
         debug!("Using Git author/committer: {}", author);
 
         // 8. Create the commit object
-        let commit_oid = repo.commit(
-            None,
-            &author,
-            &author,
-            message,
-            &tree,
-            &parents,
-        )?;
+        let commit_oid = repo.commit(None, &author, &author, message, &tree, &parents)?;
 
         debug!("Created attestation commit object {}", commit_oid);
 

@@ -141,8 +141,7 @@ pub fn initialize_registry_identity(
         x: String::new(),
     };
 
-    let mut finalized =
-        finalize_icp_event(icp).map_err(|e| InitError::Keri(e.to_string()))?;
+    let mut finalized = finalize_icp_event(icp).map_err(|e| InitError::Keri(e.to_string()))?;
     let prefix = finalized.i.clone();
 
     let canonical = serialize_for_signing(&Event::Icp(finalized.clone()))

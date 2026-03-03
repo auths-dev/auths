@@ -310,14 +310,9 @@ impl IdentityStorage for RegistryIdentityStorage {
         use auths_verifier::keri::Prefix;
 
         // Extract prefix from controller_did (did:keri:{prefix})
-        let prefix_str = controller_did
-            .strip_prefix("did:keri:")
-            .ok_or_else(|| {
-                StorageError::InvalidData(format!(
-                    "Invalid controller DID format: {}",
-                    controller_did
-                ))
-            })?;
+        let prefix_str = controller_did.strip_prefix("did:keri:").ok_or_else(|| {
+            StorageError::InvalidData(format!("Invalid controller DID format: {}", controller_did))
+        })?;
         let prefix = Prefix::new_unchecked(prefix_str.to_string());
 
         // Store metadata for this identity

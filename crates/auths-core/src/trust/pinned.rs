@@ -50,8 +50,9 @@ impl PinnedIdentity {
     ///
     /// Validates hex at construction; this should never fail on a well-formed pin.
     pub fn public_key_bytes(&self) -> Result<Vec<u8>, TrustError> {
-        hex::decode(&self.public_key_hex)
-            .map_err(|e| TrustError::InvalidData(format!("Corrupt pin for {}: invalid hex: {}", self.did, e)))
+        hex::decode(&self.public_key_hex).map_err(|e| {
+            TrustError::InvalidData(format!("Corrupt pin for {}: invalid hex: {}", self.did, e))
+        })
     }
 
     /// Check if the pinned key matches the given raw bytes.
@@ -240,7 +241,10 @@ impl LockGuard {
             let fd = file.as_raw_fd();
             let ret = unsafe { libc::flock(fd, libc::LOCK_EX) };
             if ret != 0 {
-                return Err(TrustError::Lock(format!("Failed to acquire lock on {:?}", path)));
+                return Err(TrustError::Lock(format!(
+                    "Failed to acquire lock on {:?}",
+                    path
+                )));
             }
         }
 

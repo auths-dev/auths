@@ -119,14 +119,7 @@ impl KeriGitStorage {
         debug!("Using Git signature: {}", sig);
 
         // 6. Create the Git commit object
-        let commit_oid = repo.commit(
-            None,
-            &sig,
-            &sig,
-            commit_message,
-            &tree,
-            &parents,
-        )?;
+        let commit_oid = repo.commit(None, &sig, &sig, commit_message, &tree, &parents)?;
         debug!("Created commit object: {}", commit_oid);
 
         // 7. Explicitly update the specific KEL Git reference to point to the new commit
@@ -339,8 +332,7 @@ impl KeriGitStorage {
                 Some(expected) if &event.previous_hash != expected => {
                     return Err(StorageError::InvalidData(format!(
                         "Chain integrity violation: event.previous_hash ({}) != current KEL tip hash ({})",
-                        event.previous_hash,
-                        expected
+                        event.previous_hash, expected
                     )));
                 }
                 None => {
@@ -610,7 +602,8 @@ mod tests {
     }
 
     #[test]
-    fn test_append_rotation_event_chain_integrity_failure() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_append_rotation_event_chain_integrity_failure() -> Result<(), Box<dyn std::error::Error>>
+    {
         use crate::identity::events::KeyRotationEvent;
         use chrono::Utc;
 

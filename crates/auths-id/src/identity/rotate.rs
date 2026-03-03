@@ -69,13 +69,14 @@ pub fn rotate_keri_identity(
 
     let (did, _encrypted_current) = keychain.load_key(current_alias)?;
 
-    let prefix = did
-        .as_str()
-        .strip_prefix("did:keri:")
-        .ok_or_else(|| InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did)))?;
+    let prefix = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
+        InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
+    })?;
 
     let kel = GitKel::new(&repo, prefix);
-    let events = kel.get_events().map_err(|e| InitError::Keri(e.to_string()))?;
+    let events = kel
+        .get_events()
+        .map_err(|e| InitError::Keri(e.to_string()))?;
     let state = validate_kel(&events).map_err(|e| InitError::Keri(e.to_string()))?;
 
     let derived_next_alias =
@@ -169,10 +170,9 @@ pub fn rotate_registry_identity(
 
     let (did, _encrypted_current) = keychain.load_key(current_alias)?;
 
-    let prefix_str = did
-        .as_str()
-        .strip_prefix("did:keri:")
-        .ok_or_else(|| InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did)))?;
+    let prefix_str = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
+        InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
+    })?;
     let prefix = Prefix::new_unchecked(prefix_str.to_string());
 
     let state = backend
@@ -198,7 +198,9 @@ pub fn rotate_registry_identity(
     let decrypted_next_pkcs8 = decrypt_keypair(&encrypted_next, &next_pass)?;
 
     if !state.can_rotate() {
-        return Err(InitError::InvalidData("Identity is abandoned (cannot rotate)".into()));
+        return Err(InitError::InvalidData(
+            "Identity is abandoned (cannot rotate)".into(),
+        ));
     }
 
     let next_keypair = load_keypair_from_der_or_seed(&decrypted_next_pkcs8)?;
