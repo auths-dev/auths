@@ -54,6 +54,7 @@
 pub mod agent_identity;
 pub mod attestation;
 pub mod domain;
+pub mod error;
 pub mod freeze;
 pub mod identity;
 pub mod keri;
