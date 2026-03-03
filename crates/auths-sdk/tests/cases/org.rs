@@ -1,14 +1,14 @@
 use auths_id::ports::registry::RegistryBackend;
 use auths_sdk::error::OrgError;
 use auths_sdk::workflows::org::{
-    AddMemberCommand, RevokeMemberCommand, UpdateCapabilitiesCommand, add_organization_member,
-    revoke_organization_member, update_member_capabilities,
+    AddMemberCommand, RevokeMemberCommand, Role, UpdateCapabilitiesCommand,
+    add_organization_member, revoke_organization_member, update_member_capabilities,
 };
 use auths_test_utils::fakes::clock::MockClock;
 use auths_test_utils::fakes::id::DeterministicUuidProvider;
 use auths_test_utils::fakes::registry::FakeRegistryBackend;
 use auths_verifier::Capability;
-use auths_verifier::core::Attestation;
+use auths_verifier::core::{Attestation, ResourceId};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::TimeZone;
 
@@ -28,7 +28,7 @@ fn org_issuer() -> IdentityDID {
 fn base_admin_attestation() -> Attestation {
     Attestation {
         version: 1,
-        rid: "admin-rid-001".to_string(),
+        rid: ResourceId::new("admin-rid-001"),
         issuer: org_issuer(),
         subject: DeviceDID::new(ADMIN_DID),
         device_public_key: ADMIN_PUBKEY.to_vec(),
@@ -39,7 +39,7 @@ fn base_admin_attestation() -> Attestation {
         timestamp: None,
         note: None,
         payload: None,
-        role: Some("admin".to_string()),
+        role: Some(Role::Admin),
         capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
         delegated_by: None,
         signer_type: None,
@@ -49,7 +49,7 @@ fn base_admin_attestation() -> Attestation {
 fn base_member_attestation() -> Attestation {
     Attestation {
         version: 1,
-        rid: "member-rid-001".to_string(),
+        rid: ResourceId::new("member-rid-001"),
         issuer: org_issuer(),
         subject: DeviceDID::new(MEMBER_DID),
         device_public_key: vec![],
@@ -60,7 +60,7 @@ fn base_member_attestation() -> Attestation {
         timestamp: None,
         note: None,
         payload: None,
-        role: Some("member".to_string()),
+        role: Some(Role::Member),
         capabilities: vec![Capability::sign_commit()],
         delegated_by: Some(IdentityDID::new(ADMIN_DID)),
         signer_type: None,
@@ -94,7 +94,7 @@ fn find_admin_returns_attestation_when_admin_exists() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            role: "member".to_string(),
+            role: Role::Member,
             capabilities: vec![],
             public_key_hex: admin_pubkey_hex(),
         },
@@ -119,7 +119,7 @@ fn find_admin_returns_not_found_when_pubkey_mismatch() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            role: "member".to_string(),
+            role: Role::Member,
             capabilities: vec![],
             public_key_hex: wrong_hex,
         },
@@ -141,7 +141,7 @@ fn find_admin_returns_not_found_when_no_manage_members_capability() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            role: "member".to_string(),
+            role: Role::Member,
             capabilities: vec![],
             public_key_hex: admin_pubkey_hex(),
         },
@@ -169,7 +169,7 @@ fn add_member_stores_attestation_with_injected_clock_and_uuid() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            role: "member".to_string(),
+            role: Role::Member,
             capabilities: vec!["sign_commit".to_string()],
             public_key_hex: admin_pubkey_hex(),
         },
@@ -178,7 +178,7 @@ fn add_member_stores_attestation_with_injected_clock_and_uuid() {
     assert!(result.is_ok(), "unexpected error: {:?}", result.err());
     let att = result.unwrap();
     assert_eq!(att.timestamp, Some(fixed_time));
-    assert_eq!(att.rid, expected_rid);
+    assert_eq!(att.rid, ResourceId::new(expected_rid));
 }
 
 #[test]
@@ -193,7 +193,7 @@ fn add_member_stores_attestation_with_empty_signatures() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            role: "member".to_string(),
+            role: Role::Member,
             capabilities: vec![],
             public_key_hex: admin_pubkey_hex(),
         },
@@ -216,7 +216,7 @@ fn add_member_fails_when_admin_not_found() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            role: "member".to_string(),
+            role: Role::Member,
             capabilities: vec![],
             public_key_hex: admin_pubkey_hex(),
         },
@@ -237,7 +237,7 @@ fn add_member_fails_with_invalid_capability() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            role: "member".to_string(),
+            role: Role::Member,
             capabilities: vec!["invalid cap!@#".to_string()],
             public_key_hex: admin_pubkey_hex(),
         },

@@ -12,7 +12,7 @@
 //! between formats at the boundary via `TryFrom` impls.
 
 use auths_verifier::IdentityDID;
-use auths_verifier::core::Attestation;
+use auths_verifier::core::{Attestation, ResourceId};
 use auths_verifier::types::DeviceDID;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
@@ -226,7 +226,7 @@ impl TryFrom<RadAttestation> for Attestation {
     fn try_from(rad: RadAttestation) -> Result<Self, Self::Error> {
         Ok(Attestation {
             version: 1,
-            rid: rad.canonical_payload.rid.to_string(),
+            rid: ResourceId::new(rad.canonical_payload.rid.to_string()),
             issuer: IdentityDID::new(rad.canonical_payload.did.to_string()),
             subject: DeviceDID::new(rad.device_did.to_string()),
             device_public_key: rad.device_public_key.to_vec(),
@@ -447,7 +447,7 @@ mod tests {
         let core: Attestation = rad.try_into().unwrap();
 
         assert_eq!(core.version, 1);
-        assert_eq!(core.rid, rid.to_string());
+        assert_eq!(core.rid.as_str(), rid.to_string());
         assert_eq!(core.issuer.as_str(), identity_did.to_string());
         assert_eq!(core.subject.as_str(), device_did.to_string());
         assert_eq!(core.device_public_key, device_pk.as_ref());
@@ -463,7 +463,7 @@ mod tests {
 
         let core = Attestation {
             version: 1,
-            rid: "rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5".to_string(),
+            rid: ResourceId::new("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5"),
             issuer: IdentityDID::new("did:keri:EXq5abc"),
             subject: DeviceDID::new(device_did.to_string()),
             device_public_key: device_pk_bytes.to_vec(),

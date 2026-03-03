@@ -153,7 +153,7 @@ fn device_link_verification_failure_serializes_correctly() {
 fn minimal_attestation(issuer: &str, subject: &str) -> auths_verifier::core::Attestation {
     auths_verifier::core::Attestation {
         version: 1,
-        rid: String::new(),
+        rid: auths_verifier::ResourceId::new(""),
         issuer: auths_verifier::IdentityDID(issuer.to_string()),
         subject: auths_verifier::DeviceDID::new(subject),
         device_public_key: vec![0u8; 32],

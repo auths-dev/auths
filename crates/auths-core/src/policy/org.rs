@@ -170,6 +170,7 @@ fn capability_name(cap: &Capability) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auths_verifier::core::{ResourceId, Role};
     use auths_verifier::types::DeviceDID;
     use chrono::Duration;
 
@@ -178,11 +179,11 @@ mod tests {
         expires_at: Option<DateTime<Utc>>,
         issuer: &str,
         capabilities: Vec<Capability>,
-        role: Option<&str>,
+        role: Option<Role>,
     ) -> Attestation {
         Attestation {
             version: 1,
-            rid: "membership".into(),
+            rid: ResourceId::new("membership"),
             issuer: issuer.into(),
             subject: DeviceDID::new("did:key:z6MkMember"),
             device_public_key: vec![0; 32],
@@ -193,7 +194,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: role.map(String::from),
+            role,
             capabilities,
             delegated_by: None,
             signer_type: None,
@@ -209,7 +210,7 @@ mod tests {
             None,
             ORG_ISSUER,
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -225,7 +226,7 @@ mod tests {
         // the caller should return Indeterminate or Deny before calling this.
         // This function requires a valid attestation to be passed in.
         // We test that an empty capabilities list is denied.
-        let att = make_membership(None, None, ORG_ISSUER, vec![], Some("guest"));
+        let att = make_membership(None, None, ORG_ISSUER, vec![], Some(Role::Readonly));
         let now = Utc::now();
 
         let decision = authorize_org_action(&att, ORG_ISSUER, &Action::SignCommit, now);
@@ -241,7 +242,7 @@ mod tests {
             None,
             ORG_ISSUER,
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -259,7 +260,7 @@ mod tests {
             Some(past), // expired
             ORG_ISSUER,
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -277,7 +278,7 @@ mod tests {
             Some(now), // exactly at boundary = expired
             ORG_ISSUER,
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
 
         let decision = authorize_org_action(&att, ORG_ISSUER, &Action::ManageMembers, now);
@@ -293,7 +294,7 @@ mod tests {
             None,
             "did:keri:EDifferentOrg", // wrong org
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -312,7 +313,7 @@ mod tests {
             None,
             ORG_ISSUER,
             vec![Capability::sign_commit()], // has SignCommit, not ManageMembers
-            Some("member"),
+            Some(Role::Member),
         );
         let now = Utc::now();
 
@@ -346,7 +347,7 @@ mod tests {
                 Capability::sign_release(),
                 Capability::manage_members(),
             ],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -374,7 +375,7 @@ mod tests {
             None,
             ORG_ISSUER,
             vec![Capability::sign_commit()],
-            Some("contributor"),
+            Some(Role::Member),
         );
         let now = Utc::now();
 

@@ -3,7 +3,9 @@
 use assert_cmd::Command;
 use auths_test_utils::crypto::gen_keypair;
 use auths_verifier::IdentityDID;
-use auths_verifier::core::{Attestation, CanonicalAttestationData, canonicalize_attestation_data};
+use auths_verifier::core::{
+    Attestation, CanonicalAttestationData, ResourceId, canonicalize_attestation_data,
+};
 use auths_verifier::types::DeviceDID;
 use chrono::{Duration, Utc};
 use ring::signature::KeyPair;
@@ -18,7 +20,7 @@ fn create_signed_attestation(
 
     let mut att = Attestation {
         version: 1,
-        rid: "test-rid".to_string(),
+        rid: ResourceId::new("test-rid"),
         issuer: IdentityDID::new(format!(
             "did:key:{}",
             hex::encode(issuer_kp.public_key().as_ref())
@@ -53,7 +55,7 @@ fn create_signed_attestation(
         expires_at: &att.expires_at,
         revoked_at: &att.revoked_at,
         note: &att.note,
-        role: att.role.as_deref(),
+        role: att.role.as_ref().map(|r| r.as_str()),
         capabilities: if att.capabilities.is_empty() {
             None
         } else {

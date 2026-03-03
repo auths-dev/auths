@@ -352,7 +352,7 @@ pub fn handle_org(
                 Some(&alias),
                 None, // Self-attestation, no device signature
                 admin_capabilities,
-                Some("admin".to_string()),
+                Some(Role::Admin),
                 None, // Root admin has no delegator
             )
             .context("Failed to create admin attestation")?;
@@ -777,7 +777,7 @@ pub fn handle_org(
                 Some(&signer_alias),
                 None, // No device signature for org membership attestations
                 member_capabilities.clone(),
-                Some(role.to_string()),
+                Some(role),
                 Some(invoker_did.clone()),
             )
             .context("Failed to create member attestation")?;
@@ -965,7 +965,7 @@ pub fn handle_org(
             #[allow(clippy::type_complexity)]
             let mut members: Vec<(
                 String,
-                Option<String>,
+                Option<Role>,
                 Option<String>,
                 bool,
                 Vec<Capability>,
@@ -1007,7 +1007,7 @@ pub fn handle_org(
             println!("─────────────────────────────────────────");
 
             for (member_did, role, delegated_by, revoked, capabilities) in &members {
-                let role_str = role.as_deref().unwrap_or("unknown");
+                let role_str = role.as_ref().map(|r| r.as_str()).unwrap_or("unknown");
                 let status = if *revoked { " (revoked)" } else { "" };
 
                 // Determine tree prefix based on delegator

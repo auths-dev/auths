@@ -325,7 +325,7 @@ fn sign_and_persist_attestation(
     )
     .map_err(|e| DeviceError::AttestationError(format!("attestation creation failed: {e}")))?;
 
-    let attestation_rid = attestation.rid.clone();
+    let attestation_rid = attestation.rid.to_string();
 
     attestation_sink
         .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))

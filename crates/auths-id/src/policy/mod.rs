@@ -88,7 +88,7 @@ pub fn context_from_attestation(att: &Attestation, now: DateTime<Utc>) -> EvalCo
     }
 
     if let Some(ref role) = att.role {
-        ctx = ctx.role(role.clone());
+        ctx = ctx.role(role.to_string());
     }
 
     if let Some(ref delegated_by) = att.delegated_by {
@@ -404,7 +404,7 @@ mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;
     use auths_core::witness::NoOpWitness;
-    use auths_verifier::core::Capability;
+    use auths_verifier::core::{Capability, ResourceId};
     use auths_verifier::keri::{Prefix, Said};
     use auths_verifier::types::DeviceDID;
     use chrono::Duration;
@@ -445,7 +445,7 @@ mod tests {
     ) -> Attestation {
         Attestation {
             version: 1,
-            rid: "test".to_string(),
+            rid: ResourceId::new("test"),
             issuer: IdentityDID::new(issuer),
             subject: DeviceDID::new("did:key:subject"),
             device_public_key: vec![0; 32],
@@ -492,11 +492,11 @@ mod tests {
     #[test]
     fn context_from_attestation_with_role() {
         let mut att = make_attestation("did:keri:ETest", None, None);
-        att.role = Some("maintainer".to_string());
+        att.role = Some(auths_verifier::core::Role::Member);
         let now = Utc::now();
         let ctx = context_from_attestation(&att, now);
 
-        assert_eq!(ctx.role.as_deref(), Some("maintainer"));
+        assert_eq!(ctx.role.as_deref(), Some("member"));
     }
 
     #[test]

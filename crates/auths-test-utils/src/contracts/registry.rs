@@ -193,7 +193,7 @@ macro_rules! registry_backend_contract_tests {
                 let att1 = auths_test_utils::fixtures::test_attestation(&did, "did:keri:EIssuer1");
                 let mut att2 =
                     auths_test_utils::fixtures::test_attestation(&did, "did:keri:EIssuer1");
-                att2.rid = "updated-rid".to_string();
+                att2.rid = auths_verifier::core::ResourceId::new("updated-rid");
 
                 store.store_attestation(&att1).unwrap();
                 store.store_attestation(&att2).unwrap();
@@ -215,7 +215,7 @@ macro_rules! registry_backend_contract_tests {
                 for i in 0..3u32 {
                     let mut att =
                         auths_test_utils::fixtures::test_attestation(&did, "did:keri:EIssuer1");
-                    att.rid = format!("rid-{}", i);
+                    att.rid = auths_verifier::core::ResourceId::new(format!("rid-{}", i));
                     store.store_attestation(&att).unwrap();
                 }
 
@@ -241,7 +241,7 @@ macro_rules! registry_backend_contract_tests {
                 for i in 0..3u32 {
                     let mut att =
                         auths_test_utils::fixtures::test_attestation(&did, "did:keri:EIssuer1");
-                    att.rid = format!("rid-{}", i);
+                    att.rid = auths_verifier::core::ResourceId::new(format!("rid-{}", i));
                     store.store_attestation(&att).unwrap();
                 }
 
@@ -294,7 +294,7 @@ macro_rules! registry_backend_contract_tests {
                 let did = DeviceDID::new("did:key:zMemberContract1");
                 let mut att =
                     auths_test_utils::fixtures::test_attestation(&did, "did:keri:ETestOrgPrefix");
-                att.rid = "org-rid".to_string();
+                att.rid = auths_verifier::core::ResourceId::new("org-rid");
 
                 store.store_org_member(org, &att).unwrap();
 

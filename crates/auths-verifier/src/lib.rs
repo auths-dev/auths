@@ -69,7 +69,7 @@ pub use types::{ChainLink, DeviceDID, IdentityDID, VerificationReport, Verificat
 // Re-export core types
 pub use core::{
     Capability, CapabilityError, IdentityBundle, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
-    ThresholdPolicy, VerifiedAttestation,
+    ResourceId, Role, RoleParseError, ThresholdPolicy, VerifiedAttestation,
 };
 
 // Re-export error types

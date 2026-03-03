@@ -35,13 +35,14 @@ pub fn determine_commit_message(
 mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;
+    use auths_verifier::core::ResourceId;
     use auths_verifier::types::DeviceDID;
     use chrono::Utc;
 
     fn make_attestation(subject: &str, revoked: bool) -> Attestation {
         Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: DeviceDID::new(subject),
             device_public_key: vec![0u8; 32],
@@ -82,7 +83,7 @@ mod tests {
     fn changed_attestation_returns_updated() {
         let att = make_attestation("did:key:z1", false);
         let mut prev = make_attestation("did:key:z1", false);
-        prev.rid = "different-rid".to_string();
+        prev.rid = ResourceId::new("different-rid");
         assert_eq!(
             determine_commit_message(&att, Some(&prev)),
             "Updated device attestation"

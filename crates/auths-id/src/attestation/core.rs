@@ -76,7 +76,7 @@ pub fn resign_attestation(
         expires_at: &attestation.expires_at,
         revoked_at: &attestation.revoked_at,
         note: &attestation.note,
-        role: attestation.role.as_deref(),
+        role: attestation.role.as_ref().map(|r| r.as_str()),
         capabilities: if attestation.capabilities.is_empty() {
             None
         } else {

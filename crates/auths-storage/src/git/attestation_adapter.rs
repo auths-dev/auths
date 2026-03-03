@@ -232,6 +232,7 @@ impl AttestationSink for RegistryAttestationStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auths_verifier::core::ResourceId;
     use auths_verifier::types::IdentityDID;
     use git2::Repository;
     use tempfile::TempDir;
@@ -253,7 +254,7 @@ mod tests {
         let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
         Attestation {
             version: 1,
-            rid: format!("test-rid-{}", seq),
+            rid: ResourceId::new(format!("test-rid-{}", seq)),
             issuer: IdentityDID::new("did:keri:ETestIssuer"),
             subject: DeviceDID::new(subject),
             device_public_key: vec![1, 2, 3, 4],

@@ -58,7 +58,7 @@ pub fn verify_with_resolver(
         expires_at: &att.expires_at,
         revoked_at: &att.revoked_at,
         note: &att.note,
-        role: att.role.as_deref(),
+        role: att.role.as_ref().map(|r| r.as_str()),
         capabilities: if att.capabilities.is_empty() {
             None
         } else {

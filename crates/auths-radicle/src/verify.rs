@@ -545,11 +545,12 @@ mod tests {
         revoked_at: Option<DateTime<Utc>>,
         capabilities: Vec<String>,
     ) -> Attestation {
+        use auths_verifier::core::ResourceId;
         use auths_verifier::types::DeviceDID;
 
         Attestation {
             version: 1,
-            rid: "test".to_string(),
+            rid: ResourceId::new("test"),
             issuer: IdentityDID::new(issuer.to_string()),
             subject: DeviceDID::new(device_did.to_string()),
             device_public_key: vec![0; 32],

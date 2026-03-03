@@ -9,6 +9,8 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
+use std::ops::Deref;
+use std::str::FromStr;
 
 /// Maximum allowed size for a single attestation JSON input (64 KiB).
 pub const MAX_ATTESTATION_JSON_SIZE: usize = 64 * 1024;
@@ -21,6 +23,142 @@ const SIGN_COMMIT: &str = "sign_commit";
 const SIGN_RELEASE: &str = "sign_release";
 const MANAGE_MEMBERS: &str = "manage_members";
 const ROTATE_KEYS: &str = "rotate_keys";
+
+// =============================================================================
+// ResourceId newtype
+// =============================================================================
+
+/// A validated resource identifier linking an attestation to its storage ref.
+///
+/// Wraps a `String` with `#[serde(transparent)]` so JSON output is identical to bare `String`.
+/// Prevents accidental substitution of a DID, Git ref, or other string where a
+/// resource ID is expected.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ResourceId(String);
+
+impl ResourceId {
+    /// Creates a new ResourceId.
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for ResourceId {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ResourceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for ResourceId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for ResourceId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl PartialEq<str> for ResourceId {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for ResourceId {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialEq<String> for ResourceId {
+    fn eq(&self, other: &String) -> bool {
+        self.0 == *other
+    }
+}
+
+// =============================================================================
+// Role enum
+// =============================================================================
+
+/// Role classification for organization members.
+///
+/// Governs the default capability set assigned at member authorization time.
+/// Serializes as lowercase strings: `"admin"`, `"member"`, `"readonly"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    /// Full admin access with all capabilities.
+    Admin,
+    /// Standard member with signing capabilities.
+    Member,
+    /// Read-only access; no signing capabilities.
+    Readonly,
+}
+
+impl Role {
+    /// Returns the canonical string representation.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Role::Admin => "admin",
+            Role::Member => "member",
+            Role::Readonly => "readonly",
+        }
+    }
+
+    /// Return the default capability set for this role.
+    pub fn default_capabilities(&self) -> Vec<Capability> {
+        match self {
+            Role::Admin => vec![
+                Capability::sign_commit(),
+                Capability::sign_release(),
+                Capability::manage_members(),
+                Capability::rotate_keys(),
+            ],
+            Role::Member => vec![Capability::sign_commit(), Capability::sign_release()],
+            Role::Readonly => vec![],
+        }
+    }
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for Role {
+    type Err = RoleParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "admin" => Ok(Role::Admin),
+            "member" => Ok(Role::Member),
+            "readonly" => Ok(Role::Readonly),
+            other => Err(RoleParseError(other.to_string())),
+        }
+    }
+}
+
+/// Error returned when parsing an invalid role string.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown role: '{0}' (expected admin, member, or readonly)")]
+pub struct RoleParseError(String);
 
 /// Error type for capability parsing and validation.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -333,7 +471,7 @@ pub struct Attestation {
     /// Schema version.
     pub version: u32,
     /// Record identifier linking this attestation to its storage ref.
-    pub rid: String,
+    pub rid: ResourceId,
     /// DID of the issuing identity.
     pub issuer: IdentityDID,
     /// DID of the device being attested.
@@ -362,9 +500,9 @@ pub struct Attestation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
 
-    /// Role for org membership attestations (e.g., "admin", "member", "readonly").
+    /// Role for org membership attestations.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
+    pub role: Option<Role>,
 
     /// Capabilities this attestation grants.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -945,7 +1083,7 @@ mod tests {
 
         let att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
             device_public_key: vec![1, 2, 3, 4],
@@ -956,7 +1094,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("admin".to_string()),
+            role: Some(Role::Admin),
             capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
             delegated_by: Some(IdentityDID::new("did:key:delegator")),
             signer_type: None,
@@ -977,7 +1115,7 @@ mod tests {
 
         let att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
             device_public_key: vec![1, 2, 3, 4],
@@ -1009,7 +1147,7 @@ mod tests {
 
         let original = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
             device_public_key: vec![1, 2, 3, 4],
@@ -1020,7 +1158,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
             delegated_by: Some(IdentityDID::new("did:key:admin")),
             signer_type: None,
@@ -1193,7 +1331,7 @@ mod tests {
 
         let attestation = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
             device_public_key: vec![1, 2, 3, 4],

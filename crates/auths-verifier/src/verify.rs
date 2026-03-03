@@ -306,7 +306,7 @@ pub fn compute_attestation_seal_digest(
         expires_at: &attestation.expires_at,
         revoked_at: &attestation.revoked_at,
         note: &attestation.note,
-        role: attestation.role.as_deref(),
+        role: attestation.role.as_ref().map(|r| r.as_str()),
         capabilities: if attestation.capabilities.is_empty() {
             None
         } else {
@@ -383,7 +383,7 @@ pub(crate) async fn verify_with_keys_at(
         expires_at: &att.expires_at,
         revoked_at: &att.revoked_at,
         note: &att.note,
-        role: att.role.as_deref(),
+        role: att.role.as_ref().map(|r| r.as_str()),
         capabilities: if att.capabilities.is_empty() {
             None
         } else {
@@ -578,7 +578,7 @@ async fn verify_single_attestation(
 mod tests {
     use super::*;
     use crate::clock::ClockProvider;
-    use crate::core::Capability;
+    use crate::core::{Capability, ResourceId, Role};
     use crate::keri::Said;
     use crate::types::{DeviceDID, IdentityDID};
     use crate::verifier::Verifier;
@@ -619,7 +619,7 @@ mod tests {
 
         let mut att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
             device_public_key: device_pk.to_vec(),
@@ -647,7 +647,7 @@ mod tests {
             expires_at: &att.expires_at,
             revoked_at: &att.revoked_at,
             note: &att.note,
-            role: att.role.as_deref(),
+            role: att.role.as_ref().map(|r| r.as_str()),
             capabilities: if att.capabilities.is_empty() {
                 None
             } else {
@@ -1213,14 +1213,14 @@ mod tests {
         device_kp: &Ed25519KeyPair,
         issuer_did: &str,
         subject_did: &str,
-        role: Option<&str>,
+        role: Option<Role>,
         capabilities: Vec<Capability>,
     ) -> Attestation {
         let device_pk: [u8; 32] = device_kp.public_key().as_ref().try_into().unwrap();
 
         let mut att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
             device_public_key: device_pk.to_vec(),
@@ -1231,7 +1231,7 @@ mod tests {
             timestamp: Some(fixed_now()),
             note: None,
             payload: None,
-            role: role.map(|s| s.to_string()),
+            role,
             capabilities: capabilities.clone(),
             delegated_by: None,
             signer_type: None,
@@ -1253,7 +1253,7 @@ mod tests {
             expires_at: &att.expires_at,
             revoked_at: &att.revoked_at,
             note: &att.note,
-            role: att.role.as_deref(),
+            role: att.role.as_ref().map(|r| r.as_str()),
             capabilities: caps_ref,
             delegated_by: att.delegated_by.as_ref(),
             signer_type: att.signer_type.as_ref(),
@@ -1452,14 +1452,14 @@ mod tests {
             &device_kp,
             &root_did,
             &device_did,
-            Some("member"),
+            Some(Role::Member),
             vec![Capability::sign_commit()],
         );
 
         let result = test_verifier().verify_with_keys(&att, &root_pk).await;
         assert!(result.is_ok(), "Attestation should verify before tampering");
 
-        att.role = Some("admin".to_string());
+        att.role = Some(Role::Admin);
         let result = test_verifier().verify_with_keys(&att, &root_pk).await;
         assert!(result.is_err(), "Attestation should reject tampered role");
         let err_msg = result.unwrap_err().to_string();
@@ -1482,7 +1482,7 @@ mod tests {
             &device_kp,
             &root_did,
             &device_did,
-            Some("member"),
+            Some(Role::Member),
             vec![Capability::sign_commit()],
         );
         assert!(
@@ -1512,7 +1512,7 @@ mod tests {
             &device_kp,
             &root_did,
             &device_did,
-            Some("member"),
+            Some(Role::Member),
             vec![Capability::sign_commit()],
         );
         assert!(
@@ -1542,7 +1542,7 @@ mod tests {
             &device_kp,
             &root_did,
             &device_did,
-            Some("admin"),
+            Some(Role::Admin),
             vec![Capability::sign_commit(), Capability::manage_members()],
         );
 
@@ -1565,7 +1565,7 @@ mod tests {
 
         let mut att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
             device_public_key: device_pk.to_vec(),
@@ -1593,7 +1593,7 @@ mod tests {
             expires_at: &att.expires_at,
             revoked_at: &att.revoked_at,
             note: &att.note,
-            role: att.role.as_deref(),
+            role: att.role.as_ref().map(|r| r.as_str()),
             capabilities: if att.capabilities.is_empty() {
                 None
             } else {

@@ -1,5 +1,7 @@
 use auths_test_utils::crypto::create_test_keypair;
-use auths_verifier::core::{Attestation, CanonicalAttestationData, canonicalize_attestation_data};
+use auths_verifier::core::{
+    Attestation, CanonicalAttestationData, ResourceId, canonicalize_attestation_data,
+};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 use auths_verifier::verify::verify_with_keys;
 use chrono::{DateTime, Duration, Utc};
@@ -20,7 +22,7 @@ fn create_signed_attestation(
 
     let mut att = Attestation {
         version: 1,
-        rid: "test-rid".to_string(),
+        rid: ResourceId::new("test-rid"),
         issuer: IdentityDID::new(issuer_did),
         subject: DeviceDID::new(subject_did),
         device_public_key: device_pk.to_vec(),

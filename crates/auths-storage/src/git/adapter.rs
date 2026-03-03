@@ -1819,6 +1819,7 @@ mod tests {
     use auths_id::keri::seal::Seal;
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{compute_event_said, finalize_icp_event, serialize_for_signing};
+    use auths_verifier::core::{ResourceId, Role};
     use auths_verifier::types::IdentityDID;
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -2187,7 +2188,7 @@ mod tests {
         let did = DeviceDID::new("did:key:z6MkTest123");
         let attestation = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1, 2, 3, 4],
@@ -2231,7 +2232,7 @@ mod tests {
         // Store first attestation with rid="original"
         let original = Attestation {
             version: 1,
-            rid: "original".to_string(),
+            rid: ResourceId::new("original"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2257,7 +2258,7 @@ mod tests {
         // Store updated attestation with same DID but different data
         let updated = Attestation {
             version: 1,
-            rid: "updated".to_string(),
+            rid: ResourceId::new("updated"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2288,7 +2289,7 @@ mod tests {
 
         let att = Attestation {
             version: 1,
-            rid: "same-rid".to_string(),
+            rid: ResourceId::new("same-rid"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2322,7 +2323,7 @@ mod tests {
 
         let newer = Attestation {
             version: 1,
-            rid: "rid-newer".to_string(),
+            rid: ResourceId::new("rid-newer"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2341,7 +2342,7 @@ mod tests {
 
         let older = Attestation {
             version: 1,
-            rid: "rid-older".to_string(),
+            rid: ResourceId::new("rid-older"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2370,7 +2371,7 @@ mod tests {
 
         let older = Attestation {
             version: 1,
-            rid: "rid-old".to_string(),
+            rid: ResourceId::new("rid-old"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2389,7 +2390,7 @@ mod tests {
 
         let newer = Attestation {
             version: 1,
-            rid: "rid-new".to_string(),
+            rid: ResourceId::new("rid-new"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2420,7 +2421,7 @@ mod tests {
 
         let revoked = Attestation {
             version: 1,
-            rid: "rid-revoked".to_string(),
+            rid: ResourceId::new("rid-revoked"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2439,7 +2440,7 @@ mod tests {
 
         let unrevoked_old = Attestation {
             version: 1,
-            rid: "rid-unrevoked".to_string(),
+            rid: ResourceId::new("rid-unrevoked"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2468,7 +2469,7 @@ mod tests {
 
         let att = Attestation {
             version: 1,
-            rid: "first-ever".to_string(),
+            rid: ResourceId::new("first-ever"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2495,7 +2496,7 @@ mod tests {
 
         let with_ts = Attestation {
             version: 1,
-            rid: "rid-with-ts".to_string(),
+            rid: ResourceId::new("rid-with-ts"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2514,7 +2515,7 @@ mod tests {
 
         let without_ts = Attestation {
             version: 1,
-            rid: "rid-no-ts".to_string(),
+            rid: ResourceId::new("rid-no-ts"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -2545,7 +2546,7 @@ mod tests {
 
         let att1 = Attestation {
             version: 1,
-            rid: "rid1".to_string(),
+            rid: ResourceId::new("rid1"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did1.clone(),
             device_public_key: vec![1],
@@ -2564,7 +2565,7 @@ mod tests {
 
         let att2 = Attestation {
             version: 1,
-            rid: "rid2".to_string(),
+            rid: ResourceId::new("rid2"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did2.clone(),
             device_public_key: vec![4],
@@ -2612,7 +2613,7 @@ mod tests {
         backend
             .store_attestation(&Attestation {
                 version: 1,
-                rid: "rid".to_string(),
+                rid: ResourceId::new("rid"),
                 issuer: IdentityDID::new("did:keri:EIssuer"),
                 subject: did,
                 device_public_key: vec![1],
@@ -2644,7 +2645,7 @@ mod tests {
 
         let member_att = Attestation {
             version: 1,
-            rid: "org-member".to_string(),
+            rid: ResourceId::new("org-member"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: member_did.clone(),
             device_public_key: vec![1],
@@ -2655,7 +2656,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -2729,7 +2730,7 @@ mod tests {
         let correct_did = DeviceDID::new("did:key:z6MkCorrect");
         let att = Attestation {
             version: 1,
-            rid: "mismatch-test".to_string(),
+            rid: ResourceId::new("mismatch-test"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: correct_did,
             device_public_key: vec![1],
@@ -2792,7 +2793,7 @@ mod tests {
         let member_did = DeviceDID::new("did:key:z6MkWrongIssuer");
         let att = Attestation {
             version: 1,
-            rid: "issuer-mismatch-test".to_string(),
+            rid: ResourceId::new("issuer-mismatch-test"),
             issuer: IdentityDID::new("did:keri:EDifferentOrg"), // WRONG issuer
             subject: member_did.clone(),
             device_public_key: vec![1],
@@ -2842,7 +2843,7 @@ mod tests {
         let active_did = DeviceDID::new("did:key:z6MkActive1");
         let active_att = Attestation {
             version: 1,
-            rid: "active".to_string(),
+            rid: ResourceId::new("active"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: active_did.clone(),
             device_public_key: vec![1],
@@ -2853,7 +2854,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -2864,7 +2865,7 @@ mod tests {
         let revoked_did = DeviceDID::new("did:key:z6MkRevoked");
         let revoked_att = Attestation {
             version: 1,
-            rid: "revoked".to_string(),
+            rid: ResourceId::new("revoked"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: revoked_did.clone(),
             device_public_key: vec![1],
@@ -2875,7 +2876,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -2909,7 +2910,7 @@ mod tests {
         let revoked_did = DeviceDID::new("did:key:z6MkRevoked");
         let revoked_att = Attestation {
             version: 1,
-            rid: "revoked".to_string(),
+            rid: ResourceId::new("revoked"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: revoked_did.clone(),
             device_public_key: vec![1],
@@ -2920,7 +2921,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -2950,7 +2951,7 @@ mod tests {
         let expired_did = DeviceDID::new("did:key:z6MkExpired");
         let expired_att = Attestation {
             version: 1,
-            rid: "expired".to_string(),
+            rid: ResourceId::new("expired"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: expired_did.clone(),
             device_public_key: vec![1],
@@ -2961,7 +2962,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -2994,7 +2995,7 @@ mod tests {
         let org_issuer = format!("did:keri:{}", org);
         let org_att = Attestation {
             version: 1,
-            rid: "org".to_string(),
+            rid: ResourceId::new("org"),
             issuer: IdentityDID::new(org_issuer.clone()),
             subject: org_member_did.clone(),
             device_public_key: vec![1],
@@ -3005,7 +3006,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -3016,7 +3017,7 @@ mod tests {
         let wrong_did = DeviceDID::new("did:key:z6MkWrongIssuer");
         let wrong_att = Attestation {
             version: 1,
-            rid: "wrong".to_string(),
+            rid: ResourceId::new("wrong"),
             issuer: IdentityDID::new("did:keri:EDifferentIssuer"), // WRONG!
             subject: wrong_did.clone(),
             device_public_key: vec![1],
@@ -3027,7 +3028,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -3073,7 +3074,7 @@ mod tests {
         let admin_did = DeviceDID::new("did:key:z6MkAdminUser");
         let admin_att = Attestation {
             version: 1,
-            rid: "admin".to_string(),
+            rid: ResourceId::new("admin"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: admin_did.clone(),
             device_public_key: vec![1],
@@ -3084,7 +3085,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("admin".to_string()),
+            role: Some(Role::Admin),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -3095,7 +3096,7 @@ mod tests {
         let member_did = DeviceDID::new("did:key:z6MkMemberUser");
         let member_att = Attestation {
             version: 1,
-            rid: "member".to_string(),
+            rid: ResourceId::new("member"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: member_did,
             device_public_key: vec![1],
@@ -3106,7 +3107,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -3139,7 +3140,7 @@ mod tests {
         let signer_did = DeviceDID::new("did:key:z6MkSigner1");
         let signer_att = Attestation {
             version: 1,
-            rid: "signer".to_string(),
+            rid: ResourceId::new("signer"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: signer_did.clone(),
             device_public_key: vec![1],
@@ -3150,7 +3151,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![Capability::sign_commit()],
             delegated_by: None,
             signer_type: None,
@@ -3161,7 +3162,7 @@ mod tests {
         let nocap_did = DeviceDID::new("did:key:z6MkNoCaps1");
         let nocap_att = Attestation {
             version: 1,
-            rid: "nocap".to_string(),
+            rid: ResourceId::new("nocap"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: nocap_did,
             device_public_key: vec![1],
@@ -3172,7 +3173,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -3205,7 +3206,7 @@ mod tests {
         let both_did = DeviceDID::new("did:key:z6MkBothCaps");
         let both_att = Attestation {
             version: 1,
-            rid: "both".to_string(),
+            rid: ResourceId::new("both"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: both_did.clone(),
             device_public_key: vec![1],
@@ -3216,7 +3217,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
             delegated_by: None,
             signer_type: None,
@@ -3227,7 +3228,7 @@ mod tests {
         let one_did = DeviceDID::new("did:key:z6MkOneCap1");
         let one_att = Attestation {
             version: 1,
-            rid: "one".to_string(),
+            rid: ResourceId::new("one"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: one_did,
             device_public_key: vec![1],
@@ -3238,7 +3239,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![Capability::sign_commit()],
             delegated_by: None,
             signer_type: None,
@@ -3270,7 +3271,7 @@ mod tests {
         let valid_did = DeviceDID::new("did:key:z6MkValid11");
         let valid_att = Attestation {
             version: 1,
-            rid: "valid".to_string(),
+            rid: ResourceId::new("valid"),
             issuer: IdentityDID::new(format!("did:keri:{}", org)),
             subject: valid_did.clone(),
             device_public_key: vec![1],
@@ -3281,7 +3282,7 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
@@ -3355,7 +3356,7 @@ mod tests {
             let did = DeviceDID::new(*did_str);
             let att = Attestation {
                 version: 1,
-                rid: "test".to_string(),
+                rid: ResourceId::new("test"),
                 issuer: IdentityDID::new(format!("did:keri:{}", org)),
                 subject: did,
                 device_public_key: vec![1],
@@ -3366,7 +3367,7 @@ mod tests {
                 timestamp: None,
                 note: None,
                 payload: None,
-                role: Some("member".to_string()),
+                role: Some(Role::Member),
                 capabilities: vec![],
                 delegated_by: None,
                 signer_type: None,
@@ -3404,7 +3405,7 @@ mod tests {
         let did = DeviceDID::new("did:key:z6MkSourceTest");
         let attestation = Attestation {
             version: 1,
-            rid: "source-test".to_string(),
+            rid: ResourceId::new("source-test"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1, 2, 3],
@@ -3447,7 +3448,7 @@ mod tests {
             let did = DeviceDID::new(format!("did:key:z6MkDevice{}", i));
             let attestation = Attestation {
                 version: 1,
-                rid: format!("rid-{}", i),
+                rid: ResourceId::new(format!("rid-{}", i)),
                 issuer: IdentityDID::new("did:keri:EIssuer"),
                 subject: did,
                 device_public_key: vec![i as u8],
@@ -3482,7 +3483,7 @@ mod tests {
         for did in &dids {
             let attestation = Attestation {
                 version: 1,
-                rid: "discover-test".to_string(),
+                rid: ResourceId::new("discover-test"),
                 issuer: IdentityDID::new("did:keri:EIssuer"),
                 subject: did.clone(),
                 device_public_key: vec![1],
@@ -3521,7 +3522,7 @@ mod tests {
         let did = DeviceDID::new("did:key:z6MkSinkTest");
         let attestation = Attestation {
             version: 1,
-            rid: "sink-test".to_string(),
+            rid: ResourceId::new("sink-test"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1, 2, 3],
@@ -3558,7 +3559,7 @@ mod tests {
         // First export
         let attestation1 = Attestation {
             version: 1,
-            rid: "original".to_string(),
+            rid: ResourceId::new("original"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -3581,7 +3582,7 @@ mod tests {
         // Second export (update)
         let attestation2 = Attestation {
             version: 1,
-            rid: "updated".to_string(),
+            rid: ResourceId::new("updated"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: vec![1],
@@ -3783,6 +3784,7 @@ mod index_consistency_tests {
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
     use auths_id::storage::registry::org_member::MemberFilter;
+    use auths_verifier::core::ResourceId;
     use auths_verifier::types::{DeviceDID, IdentityDID};
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -3839,7 +3841,7 @@ mod index_consistency_tests {
     fn make_org_attestation(org_prefix: &str, did_suffix: &str, rid: &str) -> Attestation {
         Attestation {
             version: 1,
-            rid: rid.to_string(),
+            rid: ResourceId::new(rid),
             issuer: IdentityDID::new(format!("did:keri:{}", org_prefix)),
             subject: DeviceDID::new(format!("did:key:z6Mk{}", did_suffix)),
             device_public_key: vec![1, 2, 3],
@@ -4012,7 +4014,7 @@ mod tenant_isolation_tests {
     use std::ops::ControlFlow;
     use std::sync::Arc;
 
-    use auths_verifier::core::Attestation;
+    use auths_verifier::core::{Attestation, ResourceId};
     use auths_verifier::types::{DeviceDID, IdentityDID};
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -4082,7 +4084,7 @@ mod tenant_isolation_tests {
         let did = DeviceDID::new(device_did);
         Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: did,
             device_public_key: vec![1, 2, 3],

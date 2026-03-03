@@ -3,7 +3,9 @@ use crate::storage::git_refs::AttestationMetadata;
 use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::Capability;
-use auths_verifier::core::{Attestation, CanonicalAttestationData, canonicalize_attestation_data};
+use auths_verifier::core::{
+    Attestation, CanonicalAttestationData, ResourceId, Role, canonicalize_attestation_data,
+};
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::DeviceDID;
 
@@ -66,7 +68,7 @@ pub fn create_signed_attestation(
     identity_alias: Option<&KeyAlias>,
     device_alias: Option<&KeyAlias>,
     capabilities: Vec<Capability>,
-    role: Option<String>,
+    role: Option<Role>,
     delegated_by: Option<IdentityDID>,
 ) -> Result<Attestation, AttestationError> {
     if device_public_key.len() != ED25519_PUBLIC_KEY_LEN {
@@ -100,7 +102,7 @@ pub fn create_signed_attestation(
         revoked_at: &None,
         note: &meta.note,
         // Org fields included in signed envelope
-        role: role.as_deref(),
+        role: role.as_ref().map(|r| r.as_str()),
         capabilities: if capabilities.is_empty() {
             None
         } else {
@@ -154,7 +156,7 @@ pub fn create_signed_attestation(
         version: ATTESTATION_VERSION,
         subject: device_did.clone(),
         issuer: identity_did.clone(),
-        rid: rid.to_string(),
+        rid: ResourceId::new(rid),
         payload: payload.clone(),
         timestamp: meta.timestamp,
         expires_at: meta.expires_at,

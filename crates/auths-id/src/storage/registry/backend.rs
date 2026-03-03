@@ -516,7 +516,7 @@ pub trait RegistryBackend: Send + Sync {
                 // Role filter: include if member.role is in set
                 if let Some(ref roles) = filter.roles_any {
                     match &att.role {
-                        Some(role) if roles.contains(role) => {}
+                        Some(role) if roles.contains(&role.to_string()) => {}
                         _ => return ControlFlow::Continue(()),
                     }
                 }
@@ -541,10 +541,10 @@ pub trait RegistryBackend: Send + Sync {
                 members.push(MemberView {
                     did: entry.did.clone(),
                     status,
-                    role: att.role.clone(),
+                    role: att.role.as_ref().map(|r| r.to_string()),
                     capabilities: attestation_capability_vec(att),
                     issuer: att.issuer.to_string(),
-                    rid: att.rid.clone(),
+                    rid: att.rid.to_string(),
                     revoked_at,
                     expires_at: att.expires_at,
                     timestamp: att.timestamp,

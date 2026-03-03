@@ -113,7 +113,7 @@ pub fn make_test_attestation(
     use chrono::Utc;
     Attestation {
         version: 1,
-        rid: rid.to_string(),
+        rid: auths_verifier::core::ResourceId::new(rid.to_string()),
         issuer: IdentityDID::new(issuer.to_string()),
         subject: DeviceDID::new(device_did.to_string()),
         device_public_key: vec![0; 32],
