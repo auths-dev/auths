@@ -1,6 +1,6 @@
 use auths_core::signing::StorageSigner;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias};
-use auths_core::testing::{MemoryKeychainHandle, TestPassphraseProvider, get_test_memory_keychain};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_core::testing::{IsolatedKeychainHandle, TestPassphraseProvider};
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::identity::initialize::initialize_keri_identity;
 use auths_id::identity::rotate::rotate_keri_identity;
@@ -14,41 +14,37 @@ use chrono::Utc;
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
-use serial_test::serial;
 use std::path::Path;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Initializes a KERI identity via the high-level API.
-/// Clears the memory keychain first (fresh state per test).
+/// Initializes a KERI identity with an isolated (per-test) keychain.
 /// Returns (identity_did, alias).
-fn init_identity(repo_path: &Path, alias: &str, passphrase: &str) -> (String, String) {
+fn init_identity(
+    repo_path: &Path,
+    alias: &str,
+    passphrase: &str,
+    keychain: &IsolatedKeychainHandle,
+) -> (String, String) {
     let provider = TestPassphraseProvider::new(passphrase);
-    // get_test_memory_keychain() clears global state - only call this once per test
-    let keychain = get_test_memory_keychain();
     let config = StorageLayoutConfig::default();
 
     let alias = KeyAlias::new_unchecked(alias);
     let (did, alias) =
-        initialize_keri_identity(repo_path, &alias, None, &provider, &config, &*keychain)
+        initialize_keri_identity(repo_path, &alias, None, &provider, &config, keychain)
             .expect("Failed to initialize identity");
     (did.to_string(), alias.into_inner())
 }
 
-/// Returns a MemoryKeychainHandle without clearing the keychain.
-/// Use this for all operations after init_identity.
-fn keychain_handle() -> MemoryKeychainHandle {
-    MemoryKeychainHandle
-}
-
-/// Generates a fresh Ed25519 device keypair and stores it in the memory keychain.
+/// Generates a fresh Ed25519 device keypair and stores it in the provided keychain.
 /// Returns (device_did, device_public_key_bytes_32).
 fn generate_device_keypair(
     identity_did: &str,
     device_alias: &str,
     passphrase: &str,
+    keychain: &IsolatedKeychainHandle,
 ) -> (DeviceDID, [u8; 32]) {
     let rng = SystemRandom::new();
     let device_pkcs8 =
@@ -63,13 +59,10 @@ fn generate_device_keypair(
 
     let device_did = DeviceDID::from_ed25519(&device_pk);
 
-    // Store device key in the memory keychain so the signer can find it
     let encrypted = auths_core::crypto::signer::encrypt_keypair(device_pkcs8.as_ref(), passphrase)
         .expect("Failed to encrypt device key");
     let identity_did_typed = IdentityDID::new(identity_did);
-    auths_core::testing::MEMORY_KEYCHAIN
-        .lock()
-        .unwrap()
+    keychain
         .store_key(
             &KeyAlias::new_unchecked(device_alias),
             &identity_did_typed,
@@ -81,7 +74,6 @@ fn generate_device_keypair(
 }
 
 /// Creates a signed attestation using the real `create_signed_attestation` API.
-/// Uses MemoryKeychainHandle directly (does NOT clear the keychain).
 fn create_test_attestation(
     rid: &str,
     identity_did: &str,
@@ -90,8 +82,9 @@ fn create_test_attestation(
     device_pk: &[u8],
     device_alias: Option<&str>,
     passphrase: &str,
+    keychain: &IsolatedKeychainHandle,
 ) -> auths_verifier::core::Attestation {
-    let signer = StorageSigner::new(keychain_handle());
+    let signer = StorageSigner::new(keychain.clone());
     let provider = TestPassphraseProvider::new(passphrase);
     let now = Utc::now();
     let meta = AttestationMetadata {
@@ -138,10 +131,14 @@ fn resolve_identity_public_key_at_sequence(repo_path: &Path, did: &str, sequence
 }
 
 /// Rotates a KERI identity via the high-level API.
-/// Uses MemoryKeychainHandle directly (does NOT clear the keychain).
-fn rotate_identity(repo_path: &Path, current_alias: &str, next_alias: &str, passphrase: &str) {
+fn rotate_identity(
+    repo_path: &Path,
+    current_alias: &str,
+    next_alias: &str,
+    passphrase: &str,
+    keychain: &IsolatedKeychainHandle,
+) {
     let provider = TestPassphraseProvider::new(passphrase);
-    let kc = keychain_handle();
     let config = StorageLayoutConfig::default();
 
     let current_alias = KeyAlias::new_unchecked(current_alias);
@@ -152,7 +149,7 @@ fn rotate_identity(repo_path: &Path, current_alias: &str, next_alias: &str, pass
         &next_alias,
         &provider,
         &config,
-        &kc,
+        keychain,
         None,
     )
     .expect("Failed to rotate identity");
@@ -164,14 +161,14 @@ fn rotate_identity(repo_path: &Path, current_alias: &str, next_alias: &str, pass
 
 /// Full lifecycle: init -> attest -> verify -> rotate -> historical verify -> new attest -> verify
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_full_identity_lifecycle() {
+    let kc = IsolatedKeychainHandle::new();
     let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
-    // 1. Initialize identity (clears keychain)
-    let (identity_did, identity_alias) = init_identity(&repo_path, "main", passphrase);
+    // 1. Initialize identity
+    let (identity_did, identity_alias) = init_identity(&repo_path, "main", passphrase, &kc);
     assert!(
         identity_did.starts_with("did:keri:"),
         "DID should be a KERI DID"
@@ -187,7 +184,7 @@ async fn test_full_identity_lifecycle() {
 
     // 3. Generate a device keypair and create attestation
     let (device_did, device_pk) =
-        generate_device_keypair(&identity_did, "device-laptop", passphrase);
+        generate_device_keypair(&identity_did, "device-laptop", passphrase, &kc);
     let attestation = create_test_attestation(
         "test-repo",
         &identity_did,
@@ -196,6 +193,7 @@ async fn test_full_identity_lifecycle() {
         &device_pk,
         Some("device-laptop"),
         passphrase,
+        &kc,
     );
 
     // 4. Verify the attestation with the identity's public key
@@ -204,7 +202,7 @@ async fn test_full_identity_lifecycle() {
         .expect("Attestation should verify");
 
     // 5. Rotate the identity key
-    rotate_identity(&repo_path, "main", "main-rot1", passphrase);
+    rotate_identity(&repo_path, "main", "main-rot1", passphrase, &kc);
 
     // 6. Verify OLD attestation still passes with historical key (sequence 0)
     let old_pk = resolve_identity_public_key_at_sequence(&repo_path, &identity_did, 0);
@@ -221,7 +219,7 @@ async fn test_full_identity_lifecycle() {
     );
 
     let (device_did2, device_pk2) =
-        generate_device_keypair(&identity_did, "device-phone", passphrase);
+        generate_device_keypair(&identity_did, "device-phone", passphrase, &kc);
     let new_attestation = create_test_attestation(
         "test-repo",
         &identity_did,
@@ -230,6 +228,7 @@ async fn test_full_identity_lifecycle() {
         &device_pk2,
         Some("device-phone"),
         passphrase,
+        &kc,
     );
 
     // 8. Verify new attestation with new public key
@@ -240,19 +239,19 @@ async fn test_full_identity_lifecycle() {
 
 /// Chain verification: identity -> device1 -> device2, then rotate and re-verify chain.
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_attestation_chain_after_rotation() {
+    let kc = IsolatedKeychainHandle::new();
     let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
-    // Init identity (clears keychain)
-    let (identity_did, identity_alias) = init_identity(&repo_path, "chain-id", passphrase);
+    // Init identity
+    let (identity_did, identity_alias) = init_identity(&repo_path, "chain-id", passphrase, &kc);
     let identity_pk = resolve_identity_public_key(&repo_path, &identity_did);
 
     // Create device1 and attestation: identity -> device1
     let (device1_did, device1_pk) =
-        generate_device_keypair(&identity_did, "chain-device1", passphrase);
+        generate_device_keypair(&identity_did, "chain-device1", passphrase, &kc);
     let att1 = create_test_attestation(
         "test-repo",
         &identity_did,
@@ -261,11 +260,12 @@ async fn test_attestation_chain_after_rotation() {
         &device1_pk,
         Some("chain-device1"),
         passphrase,
+        &kc,
     );
 
     // Create device2 and attestation: device1 -> device2
     let (device2_did, device2_pk) =
-        generate_device_keypair(&identity_did, "chain-device2", passphrase);
+        generate_device_keypair(&identity_did, "chain-device2", passphrase, &kc);
 
     let device1_did_str = device1_did.to_string();
     let att2 = create_test_attestation(
@@ -276,6 +276,7 @@ async fn test_attestation_chain_after_rotation() {
         &device2_pk,
         Some("chain-device2"),
         passphrase,
+        &kc,
     );
 
     // Verify 2-link chain
@@ -286,7 +287,7 @@ async fn test_attestation_chain_after_rotation() {
     assert_eq!(report.chain.len(), 2);
 
     // Rotate identity key
-    rotate_identity(&repo_path, "chain-id", "chain-id-rot1", passphrase);
+    rotate_identity(&repo_path, "chain-id", "chain-id-rot1", passphrase, &kc);
 
     // Verify the first link still works with historical key
     let old_pk = resolve_identity_public_key_at_sequence(&repo_path, &identity_did, 0);
@@ -297,19 +298,19 @@ async fn test_attestation_chain_after_rotation() {
 
 /// Device authorization lifecycle: create -> verify valid -> mark revoked -> verify revoked.
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_verify_device_authorization_lifecycle() {
+    let kc = IsolatedKeychainHandle::new();
     let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
-    // Init identity (clears keychain)
-    let (identity_did, identity_alias) = init_identity(&repo_path, "authz-id", passphrase);
+    // Init identity
+    let (identity_did, identity_alias) = init_identity(&repo_path, "authz-id", passphrase, &kc);
     let identity_pk = resolve_identity_public_key(&repo_path, &identity_did);
 
     // Create device and attestation
     let (device_did, device_pk) =
-        generate_device_keypair(&identity_did, "authz-device", passphrase);
+        generate_device_keypair(&identity_did, "authz-device", passphrase, &kc);
     let attestation = create_test_attestation(
         "test-repo",
         &identity_did,
@@ -318,6 +319,7 @@ async fn test_verify_device_authorization_lifecycle() {
         &device_pk,
         Some("authz-device"),
         passphrase,
+        &kc,
     );
 
     // Verify device is authorized
@@ -334,8 +336,6 @@ async fn test_verify_device_authorization_lifecycle() {
     // Create a "revoked" version of the attestation
     let mut revoked_att = attestation;
     revoked_att.revoked_at = Some(Utc::now());
-    // Note: The verifier checks the revoked flag before signature verification,
-    // so this tests the revocation check path.
 
     let report =
         verify_device_authorization(&identity_did, &device_did, &[revoked_att], &identity_pk)
@@ -354,19 +354,19 @@ async fn test_verify_device_authorization_lifecycle() {
 /// Multiple rotations: verify that the original attestation remains verifiable
 /// through the entire key history.
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_multiple_rotations_maintain_verification() {
+    let kc = IsolatedKeychainHandle::new();
     let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
-    // Init identity (clears keychain)
-    let (identity_did, _identity_alias) = init_identity(&repo_path, "multi-rot", passphrase);
+    // Init identity
+    let (identity_did, _identity_alias) = init_identity(&repo_path, "multi-rot", passphrase, &kc);
     let original_pk = resolve_identity_public_key(&repo_path, &identity_did);
 
     // Create attestation with initial key
     let (device_did, device_pk) =
-        generate_device_keypair(&identity_did, "multi-rot-device", passphrase);
+        generate_device_keypair(&identity_did, "multi-rot-device", passphrase, &kc);
     let original_attestation = create_test_attestation(
         "test-repo",
         &identity_did,
@@ -375,6 +375,7 @@ async fn test_multiple_rotations_maintain_verification() {
         &device_pk,
         Some("multi-rot-device"),
         passphrase,
+        &kc,
     );
 
     // Verify initial attestation
@@ -383,9 +384,9 @@ async fn test_multiple_rotations_maintain_verification() {
         .expect("Original attestation should verify");
 
     // Rotate 3 times: multi-rot -> multi-rot2 -> multi-rot3 -> multi-rot4
-    rotate_identity(&repo_path, "multi-rot", "multi-rot2", passphrase);
-    rotate_identity(&repo_path, "multi-rot2", "multi-rot3", passphrase);
-    rotate_identity(&repo_path, "multi-rot3", "multi-rot4", passphrase);
+    rotate_identity(&repo_path, "multi-rot", "multi-rot2", passphrase, &kc);
+    rotate_identity(&repo_path, "multi-rot2", "multi-rot3", passphrase, &kc);
+    rotate_identity(&repo_path, "multi-rot3", "multi-rot4", passphrase, &kc);
 
     // Verify original attestation still works with historical key (sequence 0)
     let historical_pk = resolve_identity_public_key_at_sequence(&repo_path, &identity_did, 0);
@@ -406,7 +407,7 @@ async fn test_multiple_rotations_maintain_verification() {
     );
 
     let (device_did2, device_pk2) =
-        generate_device_keypair(&identity_did, "multi-rot-device2", passphrase);
+        generate_device_keypair(&identity_did, "multi-rot-device2", passphrase, &kc);
     let new_attestation = create_test_attestation(
         "test-repo",
         &identity_did,
@@ -415,6 +416,7 @@ async fn test_multiple_rotations_maintain_verification() {
         &device_pk2,
         Some("multi-rot-device2"),
         passphrase,
+        &kc,
     );
 
     // Verify new attestation with current key
@@ -425,13 +427,13 @@ async fn test_multiple_rotations_maintain_verification() {
 
 /// Inception creates exactly one KEL event with the correct prefix.
 #[test]
-#[serial]
 fn test_init_creates_keri_kel() {
+    let kc = IsolatedKeychainHandle::new();
     let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
-    let (identity_did, _alias) = init_identity(&repo_path, "kel-test", passphrase);
+    let (identity_did, _alias) = init_identity(&repo_path, "kel-test", passphrase, &kc);
 
     // Extract prefix from DID
     let prefix = identity_did
@@ -457,13 +459,13 @@ fn test_init_creates_keri_kel() {
 
 /// Rotation appends to the KEL with correct sequence numbers.
 #[test]
-#[serial]
 fn test_rotation_appends_to_kel() {
+    let kc = IsolatedKeychainHandle::new();
     let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
-    let (identity_did, _alias) = init_identity(&repo_path, "kel-rot", passphrase);
+    let (identity_did, _alias) = init_identity(&repo_path, "kel-rot", passphrase, &kc);
     let prefix = identity_did
         .strip_prefix("did:keri:")
         .expect("Should be a did:keri");
@@ -475,7 +477,7 @@ fn test_rotation_appends_to_kel() {
     assert_eq!(events.len(), 1);
 
     // Rotate once
-    rotate_identity(&repo_path, "kel-rot", "kel-rot2", passphrase);
+    rotate_identity(&repo_path, "kel-rot", "kel-rot2", passphrase, &kc);
 
     // Reopen to see updates
     let repo = Repository::open(&repo_path).expect("Failed to reopen repo");
@@ -489,7 +491,7 @@ fn test_rotation_appends_to_kel() {
     assert_eq!(state.sequence, 1);
 
     // Rotate again
-    rotate_identity(&repo_path, "kel-rot2", "kel-rot3", passphrase);
+    rotate_identity(&repo_path, "kel-rot2", "kel-rot3", passphrase, &kc);
 
     let repo = Repository::open(&repo_path).expect("Failed to reopen repo");
     let kel = GitKel::new(&repo, prefix);

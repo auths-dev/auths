@@ -40,7 +40,8 @@ mod builder;
 
 // Re-export test utilities from storage::memory
 pub use crate::storage::memory::{
-    MEMORY_KEYCHAIN, MemoryKeychainHandle, MemoryStorage, get_test_memory_keychain,
+    IsolatedKeychainHandle, MEMORY_KEYCHAIN, MemoryKeychainHandle, MemoryStorage,
+    get_test_memory_keychain,
 };
 
 // Re-export builder types
