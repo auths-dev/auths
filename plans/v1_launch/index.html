@@ -855,17 +855,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#04-add-ffi-smoke-tests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        0.4 — Add FFI smoke tests
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1231,21 +1220,6 @@ type mismatch errors when consumers use both crates.</p>
 <code>auths_verifier</code> directly.</p>
 <p><strong>Effort:</strong> 2 hours (+ fixing downstream imports)
 <strong>Owner:</strong> Core maintainer</p>
-<h3 id="04-add-ffi-smoke-tests">0.4 — Add FFI smoke tests<a class="headerlink" href="#04-add-ffi-smoke-tests" title="Permanent link">&para;</a></h3>
-<p><strong>File:</strong> <code>crates/auths-verifier/src/ffi.rs</code> (450+ lines, zero tests)</p>
-<p>The FFI boundary is the interface for mobile apps (Swift, Kotlin, C). It has:
-- Null pointer handling
-- Buffer size validation
-- Error code mapping
-- Panic catch_unwind wrappers</p>
-<p>None of this is tested. A single regression here crashes the host process.</p>
-<p><strong>Minimum viable test set:</strong>
-- <code>ffi_verify_attestation_json</code> with valid input returns <code>VERIFY_SUCCESS</code>
-- <code>ffi_verify_attestation_json</code> with null pointer returns error code (not crash)
-- <code>ffi_verify_chain_json</code> with valid KEL returns success
-- <code>ffi_verify_chain_json</code> with empty input returns error code</p>
-<p><strong>Effort:</strong> 1-2 days
-<strong>Owner:</strong> Verifier maintainer</p>
 <hr />
 <h2 id="tier-1-should-fix-before-launch">Tier 1: Should Fix Before Launch<a class="headerlink" href="#tier-1-should-fix-before-launch" title="Permanent link">&para;</a></h2>
 <p>These don't break consumers but represent policy violations, test gaps, or
