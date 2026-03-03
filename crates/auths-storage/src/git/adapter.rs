@@ -3779,7 +3779,7 @@ mod index_consistency_tests {
     use super::*;
     use auths_core::crypto::said::compute_next_commitment;
     use auths_id::keri::KERI_VERSION;
-    use auths_id::keri::event::IcpEvent;
+    use auths_id::keri::event::{IcpEvent, KeriSequence};
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
     use auths_id::storage::registry::org_member::MemberFilter;

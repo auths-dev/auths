@@ -29,7 +29,7 @@ repos:
 
       - id: cargo-clippy
         name: cargo clippy
-        entry: bash -c 'SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings'
+        entry: bash -c 'SQLX_OFFLINE=true cargo clippy --all-targets --all-features -- -D warnings'
         language: system
         types: [rust]
         pass_filenames: false
@@ -65,7 +65,7 @@ repos:
 
       - id: cargo-check-wasm
         name: cargo check (wasm32)
-        entry: bash -c 'rustup target add wasm32-unknown-unknown 2>/dev/null; cd crates/auths-verifier && cargo check --target wasm32-unknown-unknown --features wasm'
+        entry: bash -c 'rustup target add wasm32-unknown-unknown 2>/dev/null; cd crates/auths-verifier && cargo check --target wasm32-unknown-unknown --no-default-features --features wasm'
         language: system
         types: [rust]
         pass_filenames: false

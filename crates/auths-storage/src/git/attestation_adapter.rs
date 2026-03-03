@@ -208,7 +208,7 @@ impl AttestationSink for RegistryAttestationStorage {
             );
 
             let indexed = IndexedAttestation {
-                rid: attestation.rid.clone(),
+                rid: attestation.rid.to_string(),
                 issuer_did: attestation.issuer.to_string(),
                 device_did: attestation.subject.to_string(),
                 git_ref,

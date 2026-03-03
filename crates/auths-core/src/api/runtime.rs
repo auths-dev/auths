@@ -16,8 +16,11 @@ use crate::error::AgentError;
 use crate::signing::PassphraseProvider;
 use crate::storage::keychain::{KeyAlias, KeyStorage};
 use log::{debug, error, info, warn};
+#[cfg(target_os = "macos")]
 use pkcs8::PrivateKeyInfo;
+#[cfg(target_os = "macos")]
 use pkcs8::der::Decode;
+#[cfg(target_os = "macos")]
 use pkcs8::der::asn1::OctetString;
 use serde::Serialize;
 #[cfg(unix)]
