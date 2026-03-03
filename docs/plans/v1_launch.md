@@ -35,29 +35,6 @@ work across 2-3 sprints.
 These must be resolved before tagging v0.1.0. A release with any of these
 creates real risk of broken consumers or security issues.
 
-### 0.2 — Seal the public API surface of auths-core
-
-**File:** `crates/auths-core/src/lib.rs:80-85`
-
-`pub use api::*` and `pub use storage::*` export every platform-specific
-keychain implementation (MacOSKeychain, WindowsCredentialStorage,
-AndroidKeystoreStorage, IOSKeychain, etc.) as top-level public API. This means:
-
-- Consumers can depend on internal types that will change
-- Semver violations become inevitable on any internal refactor
-- docs.rs will show noise that confuses SDK consumers
-
-**Fix:**
-- Replace wildcard re-exports with explicit `pub use` of the types consumers
-  actually need
-- Make platform keychain structs `pub(crate)` — they should only be accessed
-  through `get_platform_keychain()`
-- Audit `KeriSequence` export from auths-id (implementation detail of serde
-  serialization, not a consumer type)
-
-**Effort:** 1 day
-**Owner:** Core maintainer
-
 ### 0.3 — Remove cross-crate re-export of `IdentityDID` from auths-core
 
 **File:** `crates/auths-core/src/storage/keychain.rs:36`
