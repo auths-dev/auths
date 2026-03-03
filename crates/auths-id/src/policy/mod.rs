@@ -404,7 +404,7 @@ mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;
     use auths_core::witness::NoOpWitness;
-    use auths_verifier::core::{Capability, ResourceId};
+    use auths_verifier::core::{Capability, Ed25519PublicKey, ResourceId};
     use auths_verifier::keri::{Prefix, Said};
     use auths_verifier::types::DeviceDID;
     use chrono::Duration;
@@ -448,7 +448,7 @@ mod tests {
             rid: ResourceId::new("test"),
             issuer: IdentityDID::new(issuer),
             subject: DeviceDID::new("did:key:subject"),
-            device_public_key: vec![0; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![0; 64],
             device_signature: vec![0; 64],
             revoked_at,

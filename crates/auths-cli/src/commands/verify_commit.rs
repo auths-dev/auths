@@ -948,7 +948,7 @@ mod tests {
                 rid: "test".into(),
                 issuer: "did:keri:test".into(),
                 subject: auths_verifier::DeviceDID::new("did:key:test"),
-                device_public_key: vec![0u8; 32],
+                device_public_key: auths_verifier::Ed25519PublicKey::from_bytes([0u8; 32]),
                 identity_signature: vec![0u8; 64],
                 device_signature: vec![0u8; 64],
                 revoked_at: None,

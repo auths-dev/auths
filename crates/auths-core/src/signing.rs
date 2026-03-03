@@ -1,5 +1,7 @@
 //! Signing abstractions and DID resolution.
 
+use auths_verifier::core::Ed25519PublicKey;
+
 use crate::crypto::provider_bridge;
 use crate::crypto::signer::{decrypt_keypair, extract_seed_from_key_bytes};
 use crate::error::AgentError;
@@ -74,16 +76,17 @@ pub enum DidMethod {
 ///
 /// Args:
 /// * `did`: The resolved DID string.
-/// * `public_key`: Raw Ed25519 public key bytes.
+/// * `public_key`: The Ed25519 public key.
 /// * `method`: The DID method and associated metadata.
 ///
 /// Usage:
 /// ```ignore
 /// use auths_core::signing::{ResolvedDid, DidMethod};
+/// use auths_verifier::core::Ed25519PublicKey;
 ///
 /// let resolved = ResolvedDid {
 ///     did: "did:key:z6Mk...".to_string(),
-///     public_key: vec![1u8; 32],
+///     public_key: Ed25519PublicKey::from_bytes([1u8; 32]),
 ///     method: DidMethod::Key,
 /// };
 /// assert_eq!(resolved.method, DidMethod::Key);
@@ -92,8 +95,8 @@ pub enum DidMethod {
 pub struct ResolvedDid {
     /// The resolved DID string.
     pub did: String,
-    /// The raw Ed25519 public key.
-    pub public_key: Vec<u8>,
+    /// The Ed25519 public key.
+    pub public_key: Ed25519PublicKey,
     /// The DID method.
     pub method: DidMethod,
 }

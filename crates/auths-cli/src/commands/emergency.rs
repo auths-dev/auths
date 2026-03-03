@@ -286,6 +286,7 @@ fn handle_revoke_device(cmd: RevokeDeviceCommand) -> Result<()> {
     use auths_id::storage::identity::IdentityStorage;
     use auths_id::storage::layout;
     use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
+    use auths_verifier::Ed25519PublicKey;
     use auths_verifier::types::DeviceDID;
 
     let out = Output::new();
@@ -366,9 +367,9 @@ fn handle_revoke_device(cmd: RevokeDeviceCommand) -> Result<()> {
         .with_context(|| format!("Failed to load attestations for device {}", device_did_obj))?;
     let device_public_key = existing_attestations
         .iter()
-        .find(|a| !a.device_public_key.is_empty())
-        .map(|a| a.device_public_key.clone())
-        .unwrap_or_else(|| vec![0u8; 32]);
+        .find(|a| !a.device_public_key.is_zero())
+        .map(|a| a.device_public_key)
+        .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
 
     // Create passphrase provider from terminal
     let passphrase_provider = crate::core::provider::CliPassphraseProvider::new();
@@ -383,7 +384,7 @@ fn handle_revoke_device(cmd: RevokeDeviceCommand) -> Result<()> {
         &rid,
         &controller_did,
         &device_did_obj,
-        &device_public_key,
+        device_public_key.as_bytes(),
         cmd.note,
         None,
         revocation_timestamp,

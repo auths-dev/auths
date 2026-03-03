@@ -35,7 +35,7 @@ pub fn determine_commit_message(
 mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;
-    use auths_verifier::core::ResourceId;
+    use auths_verifier::core::{Ed25519PublicKey, ResourceId};
     use auths_verifier::types::DeviceDID;
     use chrono::Utc;
 
@@ -45,7 +45,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:keri:EIssuer"),
             subject: DeviceDID::new(subject),
-            device_public_key: vec![0u8; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![1u8; 64],
             device_signature: vec![2u8; 64],
             revoked_at: if revoked { Some(Utc::now()) } else { None },

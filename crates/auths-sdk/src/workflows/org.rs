@@ -6,7 +6,7 @@ use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::id::UuidProvider;
 use auths_id::ports::registry::RegistryBackend;
 use auths_verifier::Capability;
-use auths_verifier::core::Attestation;
+use auths_verifier::core::{Attestation, Ed25519PublicKey};
 pub use auths_verifier::core::Role;
 use auths_verifier::core::ResourceId;
 use auths_verifier::types::{DeviceDID, IdentityDID};
@@ -59,7 +59,7 @@ pub(crate) fn find_admin(
     backend
         .visit_org_member_attestations(org_prefix, &mut |entry| {
             if let Ok(att) = &entry.attestation
-                && att.device_public_key == signer_bytes
+                && att.device_public_key.as_bytes().as_slice() == signer_bytes.as_slice()
                 && !att.is_revoked()
                 && att.capabilities.contains(&Capability::manage_members())
             {
@@ -193,7 +193,7 @@ pub fn add_organization_member(
         rid: ResourceId::new(id_provider.new_id().to_string()),
         issuer: admin_att.issuer.clone(),
         subject: DeviceDID::new(&cmd.member_did),
-        device_public_key: vec![],
+        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: vec![],
         device_signature: vec![],
         revoked_at: None,

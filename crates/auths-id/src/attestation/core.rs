@@ -70,7 +70,7 @@ pub fn resign_attestation(
         rid: &attestation.rid,
         issuer: &attestation.issuer,
         subject: &attestation.subject,
-        device_public_key: &attestation.device_public_key,
+        device_public_key: attestation.device_public_key.as_bytes(),
         payload: &attestation.payload,
         timestamp: &attestation.timestamp,
         expires_at: &attestation.expires_at,

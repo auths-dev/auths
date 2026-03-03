@@ -2,6 +2,7 @@
 
 use std::future::Future;
 
+use auths_verifier::core::Ed25519PublicKey;
 use auths_verifier::keri::Prefix;
 
 use crate::signing::DidMethod;
@@ -126,8 +127,8 @@ pub enum ResolutionError {
 pub struct ResolvedIdentity {
     /// The resolved DID string.
     pub did: String,
-    /// The raw Ed25519 public key.
-    pub public_key: Vec<u8>,
+    /// The Ed25519 public key.
+    pub public_key: Ed25519PublicKey,
     /// The DID method.
     pub method: DidMethod,
 }

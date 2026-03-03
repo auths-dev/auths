@@ -4,7 +4,8 @@ use assert_cmd::Command;
 use auths_test_utils::crypto::gen_keypair;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, ResourceId, canonicalize_attestation_data,
+    Attestation, CanonicalAttestationData, Ed25519PublicKey, ResourceId,
+    canonicalize_attestation_data,
 };
 use auths_verifier::types::DeviceDID;
 use chrono::{Duration, Utc};
@@ -29,7 +30,7 @@ fn create_signed_attestation(
             "did:key:{}",
             hex::encode(device_kp.public_key().as_ref())
         )),
-        device_public_key: device_pk.to_vec(),
+        device_public_key: Ed25519PublicKey::from_bytes(device_pk),
         identity_signature: vec![],
         device_signature: vec![],
         revoked_at: None,
@@ -49,7 +50,7 @@ fn create_signed_attestation(
         rid: &att.rid,
         issuer: &att.issuer,
         subject: &att.subject,
-        device_public_key: &att.device_public_key,
+        device_public_key: att.device_public_key.as_bytes(),
         payload: &att.payload,
         timestamp: &att.timestamp,
         expires_at: &att.expires_at,

@@ -8,14 +8,17 @@ use auths_test_utils::fakes::clock::MockClock;
 use auths_test_utils::fakes::id::DeterministicUuidProvider;
 use auths_test_utils::fakes::registry::FakeRegistryBackend;
 use auths_verifier::Capability;
-use auths_verifier::core::{Attestation, ResourceId};
+use auths_verifier::core::{Attestation, Ed25519PublicKey, ResourceId};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::TimeZone;
 
 const ORG: &str = "ETestOrg0001";
 const ADMIN_DID: &str = "did:key:z6MkAdminKey0001";
 const MEMBER_DID: &str = "did:key:z6MkMemberKey0001";
-const ADMIN_PUBKEY: [u8; 4] = [0xAA, 0xBB, 0xCC, 0xDD];
+const ADMIN_PUBKEY: [u8; 32] = [
+    0xAA, 0xBB, 0xCC, 0xDD, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0,
+];
 
 fn admin_pubkey_hex() -> String {
     hex::encode(ADMIN_PUBKEY)
@@ -31,7 +34,7 @@ fn base_admin_attestation() -> Attestation {
         rid: ResourceId::new("admin-rid-001"),
         issuer: org_issuer(),
         subject: DeviceDID::new(ADMIN_DID),
-        device_public_key: ADMIN_PUBKEY.to_vec(),
+        device_public_key: Ed25519PublicKey::from_bytes(ADMIN_PUBKEY),
         identity_signature: vec![],
         device_signature: vec![],
         revoked_at: None,
@@ -52,7 +55,7 @@ fn base_member_attestation() -> Attestation {
         rid: ResourceId::new("member-rid-001"),
         issuer: org_issuer(),
         subject: DeviceDID::new(MEMBER_DID),
-        device_public_key: vec![],
+        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: vec![],
         device_signature: vec![],
         revoked_at: None,
@@ -202,7 +205,7 @@ fn add_member_stores_attestation_with_empty_signatures() {
 
     assert!(att.identity_signature.is_empty());
     assert!(att.device_signature.is_empty());
-    assert!(att.device_public_key.is_empty());
+    assert!(att.device_public_key.is_zero());
 }
 
 #[test]

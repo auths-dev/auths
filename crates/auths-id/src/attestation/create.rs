@@ -4,7 +4,8 @@ use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::Capability;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, ResourceId, Role, canonicalize_attestation_data,
+    Attestation, CanonicalAttestationData, Ed25519PublicKey, ResourceId, Role,
+    canonicalize_attestation_data,
 };
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::DeviceDID;
@@ -162,7 +163,8 @@ pub fn create_signed_attestation(
         expires_at: meta.expires_at,
         revoked_at: None,
         note: meta.note.clone(),
-        device_public_key: device_public_key.to_vec(),
+        device_public_key: Ed25519PublicKey::try_from_slice(device_public_key)
+            .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
         identity_signature,
         device_signature,
         role,

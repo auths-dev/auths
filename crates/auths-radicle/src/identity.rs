@@ -5,6 +5,7 @@
 //! `did:keri:` identifiers by replaying the KERI Key Event Log.
 
 use auths_id::identity::{DidMethod, DidResolver, DidResolverError, ResolvedDid};
+use auths_verifier::core::Ed25519PublicKey;
 use auths_id::keri::KeyState;
 use auths_id::keri::event::Event;
 use auths_id::keri::validate::replay_kel;
@@ -641,7 +642,9 @@ impl DidResolver for RadicleIdentityResolver {
             Did::Key(pk) => Ok(ResolvedDid {
                 did: did.to_string(),
                 method: DidMethod::Key,
-                public_key: pk.to_vec(),
+                public_key: Ed25519PublicKey::try_from_slice(pk.as_ref()).map_err(|e| {
+                    DidResolverError::InvalidDidKey(format!("invalid key bytes: {e}"))
+                })?,
             }),
             Did::Keri(_) => {
                 let key_state = self.resolve_keri_state(&did_val).map_err(|e| {
@@ -662,7 +665,7 @@ impl DidResolver for RadicleIdentityResolver {
                         sequence: key_state.sequence,
                         can_rotate: key_state.can_rotate(),
                     },
-                    public_key: keri_pk.into_bytes().to_vec(),
+                    public_key: Ed25519PublicKey::from_bytes(keri_pk.into_bytes()),
                 })
             }
         }

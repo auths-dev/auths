@@ -52,7 +52,7 @@ pub fn verify_with_resolver(
         rid: &att.rid,
         issuer: &att.issuer,
         subject: &att.subject,
-        device_public_key: &att.device_public_key,
+        device_public_key: att.device_public_key.as_bytes(),
         payload: &att.payload,
         timestamp: &att.timestamp,
         expires_at: &att.expires_at,
@@ -95,13 +95,7 @@ pub fn verify_with_resolver(
     );
 
     // 5. Verify subject (device) signature using stored public key
-    if att.device_public_key.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::VerificationError(format!(
-            "Stored device public key has invalid length: {}",
-            att.device_public_key.len()
-        )));
-    }
-    let device_public_key_ring = UnparsedPublicKey::new(&ED25519, &att.device_public_key);
+    let device_public_key_ring = UnparsedPublicKey::new(&ED25519, att.device_public_key.as_bytes());
     device_public_key_ring
         .verify(data_to_verify, &att.device_signature)
         .map_err(|e| {

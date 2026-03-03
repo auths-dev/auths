@@ -1,4 +1,6 @@
-use auths_verifier::core::{Attestation, Capability, ResourceId, Role, ThresholdPolicy};
+use auths_verifier::core::{
+    Attestation, Capability, Ed25519PublicKey, ResourceId, Role, ThresholdPolicy,
+};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::{DateTime, TimeZone, Utc};
 use proptest::prelude::*;
@@ -30,8 +32,9 @@ fn arb_device_did() -> impl Strategy<Value = DeviceDID> {
 }
 
 /// Generate arbitrary 32-byte public key
-fn arb_public_key() -> impl Strategy<Value = Vec<u8>> {
+fn arb_public_key() -> impl Strategy<Value = Ed25519PublicKey> {
     proptest::collection::vec(any::<u8>(), 32)
+        .prop_map(|v| Ed25519PublicKey::try_from_slice(&v).unwrap())
 }
 
 /// Generate arbitrary signature (64 bytes for Ed25519)

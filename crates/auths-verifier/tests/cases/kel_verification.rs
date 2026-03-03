@@ -156,7 +156,7 @@ fn minimal_attestation(issuer: &str, subject: &str) -> auths_verifier::core::Att
         rid: auths_verifier::ResourceId::new(""),
         issuer: auths_verifier::IdentityDID(issuer.to_string()),
         subject: auths_verifier::DeviceDID::new(subject),
-        device_public_key: vec![0u8; 32],
+        device_public_key: auths_verifier::Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: vec![],
         device_signature: vec![],
         revoked_at: None,

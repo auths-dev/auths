@@ -170,7 +170,7 @@ fn capability_name(cap: &Capability) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_verifier::core::{ResourceId, Role};
+    use auths_verifier::core::{Ed25519PublicKey, ResourceId, Role};
     use auths_verifier::types::DeviceDID;
     use chrono::Duration;
 
@@ -186,7 +186,7 @@ mod tests {
             rid: ResourceId::new("membership"),
             issuer: issuer.into(),
             subject: DeviceDID::new("did:key:z6MkMember"),
-            device_public_key: vec![0; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![0; 64],
             device_signature: vec![0; 64],
             revoked_at,

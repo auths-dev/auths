@@ -185,7 +185,7 @@ fn handle_install_hooks(
                     continue;
                 }
                 let principal = get_principal(&att);
-                if let Ok(ssh_key) = public_key_to_ssh(&att.device_public_key) {
+                if let Ok(ssh_key) = public_key_to_ssh(att.device_public_key.as_bytes()) {
                     entries.push(format!("{} namespaces=\"git\" {}", principal, ssh_key));
                 }
             }
@@ -313,7 +313,7 @@ fn handle_allowed_signers(
         let principal = get_principal(&att);
 
         // Convert device public key to SSH format
-        let ssh_key = match public_key_to_ssh(&att.device_public_key) {
+        let ssh_key = match public_key_to_ssh(att.device_public_key.as_bytes()) {
             Ok(key) => key,
             Err(e) => {
                 eprintln!("Warning: skipping device {} - {}", att.subject, e);

@@ -1,5 +1,6 @@
 use auths_core::ports::network::{IdentityResolver, ResolutionError, ResolvedIdentity};
 use auths_core::signing::DidMethod;
+use auths_verifier::core::Ed25519PublicKey;
 use serde::Deserialize;
 use std::future::Future;
 
@@ -79,9 +80,17 @@ impl IdentityResolver for HttpIdentityResolver {
                 }
             };
 
+            let public_key =
+                Ed25519PublicKey::try_from_slice(&parsed.public_key).map_err(|e| {
+                    ResolutionError::InvalidDid {
+                        did: parsed.did.clone(),
+                        reason: format!("invalid public key: {e}"),
+                    }
+                })?;
+
             Ok(ResolvedIdentity {
                 did: parsed.did,
-                public_key: parsed.public_key,
+                public_key,
                 method,
             })
         }

@@ -300,7 +300,7 @@ pub fn compute_attestation_seal_digest(
         rid: &attestation.rid,
         issuer: &attestation.issuer,
         subject: &attestation.subject,
-        device_public_key: &attestation.device_public_key,
+        device_public_key: attestation.device_public_key.as_bytes(),
         payload: &attestation.payload,
         timestamp: &attestation.timestamp,
         expires_at: &attestation.expires_at,
@@ -377,7 +377,7 @@ pub(crate) async fn verify_with_keys_at(
         rid: &att.rid,
         issuer: &att.issuer,
         subject: &att.subject,
-        device_public_key: &att.device_public_key,
+        device_public_key: att.device_public_key.as_bytes(),
         payload: &att.payload,
         timestamp: &att.timestamp,
         expires_at: &att.expires_at,
@@ -417,15 +417,9 @@ pub(crate) async fn verify_with_keys_at(
     }
 
     // --- 7. Verify device signature ---
-    if att.device_public_key.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::VerificationError(format!(
-            "Stored device public key has invalid length: {}",
-            att.device_public_key.len()
-        )));
-    }
     provider
         .verify_ed25519(
-            &att.device_public_key,
+            att.device_public_key.as_bytes(),
             data_to_verify,
             &att.device_signature,
         )
@@ -488,7 +482,7 @@ pub(crate) async fn verify_chain_inner(
             ));
         }
 
-        let issuer_pk = &prev_att.device_public_key;
+        let issuer_pk = prev_att.device_public_key.as_bytes().as_slice();
 
         match verify_single_attestation(att, issuer_pk, idx, provider, now).await {
             Ok(link) => chain_links.push(link),
@@ -578,7 +572,7 @@ async fn verify_single_attestation(
 mod tests {
     use super::*;
     use crate::clock::ClockProvider;
-    use crate::core::{Capability, ResourceId, Role};
+    use crate::core::{Capability, Ed25519PublicKey, ResourceId, Role};
     use crate::keri::Said;
     use crate::types::{DeviceDID, IdentityDID};
     use crate::verifier::Verifier;
@@ -622,7 +616,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
-            device_public_key: device_pk.to_vec(),
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: vec![],
             device_signature: vec![],
             revoked_at,
@@ -641,7 +635,7 @@ mod tests {
             rid: &att.rid,
             issuer: &att.issuer,
             subject: &att.subject,
-            device_public_key: &att.device_public_key,
+            device_public_key: att.device_public_key.as_bytes(),
             payload: &att.payload,
             timestamp: &att.timestamp,
             expires_at: &att.expires_at,
@@ -1223,7 +1217,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
-            device_public_key: device_pk.to_vec(),
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: vec![],
             device_signature: vec![],
             revoked_at: None,
@@ -1247,7 +1241,7 @@ mod tests {
             rid: &att.rid,
             issuer: &att.issuer,
             subject: &att.subject,
-            device_public_key: &att.device_public_key,
+            device_public_key: att.device_public_key.as_bytes(),
             payload: &att.payload,
             timestamp: &att.timestamp,
             expires_at: &att.expires_at,
@@ -1568,7 +1562,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
-            device_public_key: device_pk.to_vec(),
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: vec![],
             device_signature: vec![],
             revoked_at: None,
@@ -1587,7 +1581,7 @@ mod tests {
             rid: &att.rid,
             issuer: &att.issuer,
             subject: &att.subject,
-            device_public_key: &att.device_public_key,
+            device_public_key: att.device_public_key.as_bytes(),
             payload: &att.payload,
             timestamp: &att.timestamp,
             expires_at: &att.expires_at,

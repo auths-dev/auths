@@ -6,7 +6,6 @@ use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::identity::resolve::DidResolver;
 use chrono::{DateTime, Utc};
 use clap::{ArgAction, Parser, Subcommand};
-use ring::signature::ED25519_PUBLIC_KEY_LEN;
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
@@ -30,7 +29,7 @@ use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::types::DeviceDID;
-use auths_verifier::{Capability, Prefix};
+use auths_verifier::{Capability, Ed25519PublicKey, Prefix};
 
 use clap::ValueEnum;
 
@@ -341,7 +340,7 @@ pub fn handle_org(
                 &rid,
                 &controller_did,
                 &org_did,
-                &org_pk_bytes,
+                org_pk_bytes.as_bytes(),
                 Some(serde_json::json!({
                     "org_role": "admin",
                     "org_name": name
@@ -443,13 +442,6 @@ pub fn handle_org(
                 .with_context(|| format!("Failed to resolve public key for subject: {}", subject))?
                 .public_key;
 
-            if device_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-                return Err(anyhow!(
-                    "Device public key length must be 32, got {}",
-                    device_pk_bytes.len()
-                ));
-            }
-
             let now = Utc::now();
             let meta = AttestationMetadata {
                 note,
@@ -468,7 +460,7 @@ pub fn handle_org(
                 &rid,
                 &controller_did,
                 &subject_did,
-                &device_pk_bytes,
+                device_pk_bytes.as_bytes(),
                 Some(payload),
                 &meta,
                 &signer,
@@ -540,9 +532,9 @@ pub fn handle_org(
                 .context("Failed to load attestations for subject")?;
             let device_public_key = existing
                 .iter()
-                .find(|a| !a.device_public_key.is_empty())
-                .map(|a| a.device_public_key.clone())
-                .unwrap_or_else(|| vec![0u8; 32]);
+                .find(|a| !a.device_public_key.is_zero())
+                .map(|a| a.device_public_key)
+                .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
 
             println!("🔏 Creating signed revocation...");
             let signer = StorageSigner::new(get_platform_keychain()?);
@@ -550,7 +542,7 @@ pub fn handle_org(
                 &rid,
                 &controller_did,
                 &subject_did,
-                &device_public_key,
+                device_public_key.as_bytes(),
                 note,
                 None,
                 now,
@@ -721,12 +713,6 @@ pub fn handle_org(
                 .with_context(|| format!("Failed to resolve public key for member: {}", member))?
                 .public_key;
 
-            if member_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-                return Err(anyhow!(
-                    "Member public key length must be 32, got {}",
-                    member_pk_bytes.len()
-                ));
-            }
 
             // Determine capabilities: use override if provided, otherwise use role defaults
             let member_capabilities = if let Some(cap_strs) = capabilities {
@@ -766,7 +752,7 @@ pub fn handle_org(
                 &rid,
                 &invoker_did,
                 &member_did,
-                &member_pk_bytes,
+                member_pk_bytes.as_bytes(),
                 Some(serde_json::json!({
                     "org_role": role.to_string(),
                     "org_did": org
@@ -908,9 +894,9 @@ pub fn handle_org(
                 .context("Failed to load attestations for member")?;
             let member_public_key = existing
                 .iter()
-                .find(|a| !a.device_public_key.is_empty())
-                .map(|a| a.device_public_key.clone())
-                .unwrap_or_else(|| vec![0u8; 32]);
+                .find(|a| !a.device_public_key.is_zero())
+                .map(|a| a.device_public_key)
+                .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
 
             // Create revocation
             let now = Utc::now();
@@ -921,7 +907,7 @@ pub fn handle_org(
                 &rid,
                 &invoker_did,
                 &member_did,
-                &member_public_key,
+                member_public_key.as_bytes(),
                 note.clone(),
                 None, // No expiration for revocations
                 now,

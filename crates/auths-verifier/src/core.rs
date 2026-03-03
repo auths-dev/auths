@@ -160,6 +160,96 @@ impl FromStr for Role {
 #[error("unknown role: '{0}' (expected admin, member, or readonly)")]
 pub struct RoleParseError(String);
 
+// =============================================================================
+// Ed25519PublicKey newtype
+// =============================================================================
+
+/// A 32-byte Ed25519 public key.
+///
+/// Serializes as a hex string for JSON compatibility. Enforces exactly 32 bytes
+/// at construction time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ed25519PublicKey([u8; 32]);
+
+impl Ed25519PublicKey {
+    /// Creates a new Ed25519PublicKey from a 32-byte array.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
+    /// Creates a new Ed25519PublicKey from a byte slice.
+    ///
+    /// Args:
+    /// * `slice`: Byte slice that must be exactly 32 bytes.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let pk = Ed25519PublicKey::try_from_slice(&bytes)?;
+    /// ```
+    pub fn try_from_slice(slice: &[u8]) -> Result<Self, Ed25519KeyError> {
+        let arr: [u8; 32] = slice
+            .try_into()
+            .map_err(|_| Ed25519KeyError::InvalidLength(slice.len()))?;
+        Ok(Self(arr))
+    }
+
+    /// Returns the inner 32-byte array.
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// Returns `true` if all 32 bytes are zero (used for unsigned org-member attestations).
+    pub fn is_zero(&self) -> bool {
+        self.0 == [0u8; 32]
+    }
+}
+
+impl Serialize for Ed25519PublicKey {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&hex::encode(self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for Ed25519PublicKey {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        let bytes = hex::decode(&s).map_err(|e| {
+            serde::de::Error::custom(format!("invalid hex: {e}"))
+        })?;
+        let arr: [u8; 32] = bytes.try_into().map_err(|v: Vec<u8>| {
+            serde::de::Error::custom(format!("expected 32 bytes, got {}", v.len()))
+        })?;
+        Ok(Self(arr))
+    }
+}
+
+impl fmt::Display for Ed25519PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&hex::encode(self.0))
+    }
+}
+
+impl AsRef<[u8]> for Ed25519PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+/// Error type for Ed25519 public key construction.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum Ed25519KeyError {
+    /// The byte slice is not exactly 32 bytes.
+    #[error("expected 32 bytes, got {0}")]
+    InvalidLength(usize),
+    /// The hex string is not valid.
+    #[error("invalid hex: {0}")]
+    InvalidHex(String),
+}
+
+// =============================================================================
+// Capability types
+// =============================================================================
+
 /// Error type for capability parsing and validation.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CapabilityError {
@@ -476,9 +566,8 @@ pub struct Attestation {
     pub issuer: IdentityDID,
     /// DID of the device being attested.
     pub subject: DeviceDID,
-    /// Raw Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
-    #[serde(with = "hex::serde")]
-    pub device_public_key: Vec<u8>,
+    /// Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
+    pub device_public_key: Ed25519PublicKey,
     /// Issuer's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).
     #[serde(with = "hex::serde", default, skip_serializing_if = "Vec::is_empty")]
     pub identity_signature: Vec<u8>,
@@ -1086,7 +1175,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
-            device_public_key: vec![1, 2, 3, 4],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![5, 6, 7, 8],
             device_signature: vec![9, 10, 11, 12],
             revoked_at: None,
@@ -1118,7 +1207,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
-            device_public_key: vec![1, 2, 3, 4],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![5, 6, 7, 8],
             device_signature: vec![9, 10, 11, 12],
             revoked_at: None,
@@ -1150,7 +1239,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
-            device_public_key: vec![1, 2, 3, 4],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![5, 6, 7, 8],
             device_signature: vec![9, 10, 11, 12],
             revoked_at: None,
@@ -1334,7 +1423,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
-            device_public_key: vec![1, 2, 3, 4],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![5, 6, 7, 8],
             device_signature: vec![9, 10, 11, 12],
             revoked_at: None,

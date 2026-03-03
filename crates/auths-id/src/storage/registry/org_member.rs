@@ -233,7 +233,7 @@ pub fn expected_org_issuer(org: &str) -> String {
 mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;
-    use auths_verifier::core::Capability;
+    use auths_verifier::core::{Capability, Ed25519PublicKey};
 
     #[test]
     fn member_filter_defaults_to_active_only() {
@@ -276,7 +276,7 @@ mod tests {
             rid: "test".into(),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
-            device_public_key: vec![0; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![0; 64],
             device_signature: vec![0; 64],
             revoked_at: None,
@@ -300,7 +300,7 @@ mod tests {
             rid: "test".into(),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
-            device_public_key: vec![0; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![0; 64],
             device_signature: vec![0; 64],
             revoked_at: Some(Utc::now()),
@@ -325,7 +325,7 @@ mod tests {
             rid: "test".into(),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
-            device_public_key: vec![0; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![0; 64],
             device_signature: vec![0; 64],
             revoked_at: None,
@@ -353,7 +353,7 @@ mod tests {
             rid: "test".into(),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
-            device_public_key: vec![0; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![0; 64],
             device_signature: vec![0; 64],
             revoked_at: None,
@@ -378,7 +378,7 @@ mod tests {
             rid: "test".into(),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
-            device_public_key: vec![0; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![0; 64],
             device_signature: vec![0; 64],
             revoked_at: None,
@@ -433,7 +433,7 @@ mod tests {
             rid: "test".into(),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject"),
-            device_public_key: vec![0; 32],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: vec![0; 64],
             device_signature: vec![0; 64],
             revoked_at: None,
