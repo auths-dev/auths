@@ -29,7 +29,8 @@
 
 use std::collections::HashSet;
 
-use auths_verifier::core::Attestation;
+use auths_core::storage::keychain::IdentityDID;
+use auths_verifier::core::{Attestation, Capability, ResourceId, Role};
 use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
@@ -39,11 +40,11 @@ pub struct MemberFilter {
     /// Which statuses to include (default: {Active})
     pub include_statuses: HashSet<MemberStatusKind>,
     /// Optional role whitelist - include if member.role is in set
-    pub roles_any: Option<HashSet<String>>,
+    pub roles_any: Option<HashSet<Role>>,
     /// Include if intersection(member_caps, filter_caps) non-empty
-    pub capabilities_any: Option<HashSet<String>>,
+    pub capabilities_any: Option<HashSet<Capability>>,
     /// Include only if filter_caps ⊆ member_caps
-    pub capabilities_all: Option<HashSet<String>>,
+    pub capabilities_all: Option<HashSet<Capability>>,
     /// Injectable timestamp for deterministic tests
     pub now: Option<DateTime<Utc>>,
 }
@@ -127,8 +128,8 @@ pub enum MemberInvalidReason {
     /// which device/member this attestation is for, and the attestation's
     /// subject field must match.
     SubjectMismatch {
-        filename_did: String,
-        attestation_subject: String,
+        filename_did: DeviceDID,
+        attestation_subject: DeviceDID,
     },
 
     /// The attestation's issuer DID doesn't match the expected org issuer.
@@ -137,8 +138,8 @@ pub enum MemberInvalidReason {
     /// must be issued by `did:keri:{org}`. An attestation with a different
     /// issuer doesn't prove membership in this org.
     IssuerMismatch {
-        expected_issuer: String,
-        actual_issuer: String,
+        expected_issuer: IdentityDID,
+        actual_issuer: IdentityDID,
     },
 
     /// Other validation errors (e.g., file read errors).
@@ -147,7 +148,7 @@ pub enum MemberInvalidReason {
 
 /// Low-level entry for visit_org_member_attestations.
 pub struct OrgMemberEntry {
-    pub org: String,
+    pub org: IdentityDID,
     pub did: DeviceDID,
     pub filename: String,
     pub attestation: Result<Attestation, MemberInvalidReason>,
@@ -179,10 +180,10 @@ pub struct MemberView {
     /// Note: Backend does NOT compute Revoked/Expired - use `revoked_at` and
     /// `expires_at` fields to compute these statuses in the policy layer.
     pub status: MemberStatus,
-    pub role: Option<String>,
-    pub capabilities: Vec<String>,
-    pub issuer: String,
-    pub rid: String,
+    pub role: Option<Role>,
+    pub capabilities: Vec<Capability>,
+    pub issuer: IdentityDID,
+    pub rid: ResourceId,
     /// Timestamp when the attestation was revoked (`None` if not revoked).
     pub revoked_at: Option<DateTime<Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -232,8 +233,7 @@ pub fn expected_org_issuer(org: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_core::storage::keychain::IdentityDID;
-    use auths_verifier::core::{Capability, Ed25519PublicKey, Ed25519Signature};
+    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature};
 
     #[test]
     fn member_filter_defaults_to_active_only() {

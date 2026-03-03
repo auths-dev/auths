@@ -4,8 +4,55 @@
 //! registry server and the LAN pairing server. Keeping them in `auths-core`
 //! ensures a single source of truth.
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use auths_verifier::types::DeviceDID;
+
+/// A base64url-encoded (no padding) byte string.
+///
+/// Wraps a `String` that is expected to contain valid base64url-encoded data.
+/// Use [`encode`](Self::encode) to create from raw bytes and
+/// [`decode`](Self::decode) to recover the original bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(transparent)]
+pub struct Base64UrlEncoded(String);
+
+impl Base64UrlEncoded {
+    /// Wrap a raw base64url-encoded string (no validation).
+    pub fn from_raw(s: String) -> Self {
+        Self(s)
+    }
+
+    /// Encode raw bytes to base64url (no padding).
+    pub fn encode(bytes: &[u8]) -> Self {
+        Self(URL_SAFE_NO_PAD.encode(bytes))
+    }
+
+    /// Decode the contained base64url string back to bytes.
+    pub fn decode(&self) -> Result<Vec<u8>, base64::DecodeError> {
+        URL_SAFE_NO_PAD.decode(&self.0)
+    }
+
+    /// View the raw base64url string.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for Base64UrlEncoded {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Base64UrlEncoded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 /// Session status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -31,7 +78,7 @@ pub struct CreateSessionRequest {
     /// Controller DID of the initiator.
     pub controller_did: String,
     /// Initiator's ephemeral X25519 public key (base64url encoded).
-    pub ephemeral_pubkey: String,
+    pub ephemeral_pubkey: Base64UrlEncoded,
     /// 6-char alphanumeric short code.
     pub short_code: String,
     /// Capabilities to grant to the paired device.
@@ -60,13 +107,14 @@ pub struct CreateSessionResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SubmitResponseRequest {
     /// Responder's X25519 ephemeral public key (base64url encoded).
-    pub device_x25519_pubkey: String,
+    pub device_x25519_pubkey: Base64UrlEncoded,
     /// Responder's Ed25519 signing public key (base64url encoded).
-    pub device_signing_pubkey: String,
+    pub device_signing_pubkey: Base64UrlEncoded,
     /// Responder's DID (did:key:z6Mk...).
-    pub device_did: String,
+    #[schemars(with = "String")]
+    pub device_did: DeviceDID,
     /// Ed25519 signature over binding message (base64url encoded).
-    pub signature: String,
+    pub signature: Base64UrlEncoded,
     /// Optional device name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_name: Option<String>,

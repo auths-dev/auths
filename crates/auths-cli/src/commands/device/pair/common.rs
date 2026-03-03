@@ -80,7 +80,6 @@ pub(crate) fn handle_pairing_response(
 ) -> Result<()> {
     use auths_core::storage::keychain::get_platform_keychain_with_config;
     use auths_sdk::pairing::{self, DecryptedPairingResponse, PairingCompletionResult};
-    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
     println!();
     println!(
@@ -106,18 +105,21 @@ pub(crate) fn handle_pairing_response(
     println!();
 
     // Decode response fields
-    let device_x25519_bytes: [u8; 32] = URL_SAFE_NO_PAD
-        .decode(&response.device_x25519_pubkey)
+    let device_x25519_bytes: [u8; 32] = response
+        .device_x25519_pubkey
+        .decode()
         .context("Invalid X25519 pubkey encoding")?
         .try_into()
         .map_err(|_| anyhow::anyhow!("Invalid X25519 pubkey length"))?;
 
-    let device_signing_bytes = URL_SAFE_NO_PAD
-        .decode(&response.device_signing_pubkey)
+    let device_signing_bytes = response
+        .device_signing_pubkey
+        .decode()
         .context("Invalid Ed25519 pubkey encoding")?;
 
-    let signature_bytes = URL_SAFE_NO_PAD
-        .decode(&response.signature)
+    let signature_bytes = response
+        .signature
+        .decode()
         .context("Invalid signature encoding")?;
 
     // Verify Ed25519 signature binding
@@ -193,7 +195,7 @@ pub(crate) fn handle_pairing_response(
     let decrypted = DecryptedPairingResponse {
         auths_dir: auths_dir.to_path_buf(),
         device_pubkey: device_signing_bytes,
-        device_did: response.device_did.clone(),
+        device_did: response.device_did.to_string(),
         device_name: response.device_name.clone(),
         capabilities: capabilities.to_vec(),
         identity_key_alias,
@@ -257,9 +259,9 @@ pub(crate) fn save_device_info(auths_dir: &Path, response: &SubmitResponseReques
         &response.device_signing_pubkey[..8.min(response.device_signing_pubkey.len())]
     ));
     let device_info = serde_json::json!({
-        "device_did": response.device_did,
-        "signing_pubkey": response.device_signing_pubkey,
-        "x25519_pubkey": response.device_x25519_pubkey,
+        "device_did": response.device_did.as_str(),
+        "signing_pubkey": response.device_signing_pubkey.as_str(),
+        "x25519_pubkey": response.device_x25519_pubkey.as_str(),
         "name": response.device_name,
         "paired_at": chrono::Utc::now().to_rfc3339(),
     });

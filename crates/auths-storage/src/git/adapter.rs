@@ -45,6 +45,7 @@ use std::sync::Mutex;
 use fs2::FileExt;
 use log::warn;
 
+use auths_core::storage::keychain::IdentityDID;
 use auths_verifier::core::{Attestation, VerifiedAttestation};
 use auths_verifier::types::DeviceDID;
 use git2::{Oid, Repository, Signature, Tree};
@@ -1208,16 +1209,16 @@ impl RegistryBackend for GitRegistryBackend {
                     match serde_json::from_slice::<Attestation>(&bytes) {
                         Ok(att) => {
                             // Validate subject matches filename DID (hard invariant)
-                            if att.subject.to_string() != did_str {
+                            if att.subject.as_str() != did_str {
                                 Err(MemberInvalidReason::SubjectMismatch {
-                                    filename_did: did_str.clone(),
-                                    attestation_subject: att.subject.to_string(),
+                                    filename_did: did.clone(),
+                                    attestation_subject: att.subject.clone(),
                                 })
                             // Validate issuer matches expected org issuer (hard invariant)
                             } else if att.issuer.as_str() != expected_issuer {
                                 Err(MemberInvalidReason::IssuerMismatch {
-                                    expected_issuer: expected_issuer.clone(),
-                                    actual_issuer: att.issuer.to_string(),
+                                    expected_issuer: IdentityDID::new(expected_issuer.clone()),
+                                    actual_issuer: att.issuer.clone(),
                                 })
                             } else {
                                 Ok(att)
@@ -1230,7 +1231,7 @@ impl RegistryBackend for GitRegistryBackend {
             };
 
             let entry = OrgMemberEntry {
-                org: org.to_string(),
+                org: IdentityDID::new(format!("did:keri:{}", org)),
                 did,
                 filename: filename.to_string(),
                 attestation,
@@ -1334,8 +1335,8 @@ impl RegistryBackend for GitRegistryBackend {
                 status: MemberStatus::Active,
                 role: None,
                 capabilities: vec![],
-                issuer: m.issuer_did,
-                rid: m.rid,
+                issuer: auths_core::storage::keychain::IdentityDID::new(m.issuer_did),
+                rid: auths_verifier::core::ResourceId::new(m.rid),
                 revoked_at: m.revoked_at,
                 expires_at: m.expires_at,
                 timestamp: None,

@@ -473,7 +473,7 @@ pub fn setup_agent(
         })?;
 
         return Ok(AgentSetupResult {
-            agent_did: IdentityDID::new(bundle.agent_did),
+            agent_did: bundle.agent_did,
             parent_did: IdentityDID::new(config.parent_identity_did.unwrap_or_default()),
             capabilities: config.capabilities,
         });

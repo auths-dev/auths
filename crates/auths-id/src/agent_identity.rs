@@ -82,7 +82,7 @@ pub struct AgentProvisioningConfig {
 #[derive(Debug, Clone)]
 pub struct AgentIdentityBundle {
     /// The agent's `did:keri:E...` identity.
-    pub agent_did: String,
+    pub agent_did: IdentityDID,
     /// The key alias used for signing.
     pub key_alias: KeyAlias,
     /// The agent's attestation (with `signer_type: Agent`).
@@ -156,7 +156,7 @@ pub fn provision_agent_identity(
     }
 
     Ok(AgentIdentityBundle {
-        agent_did: agent_did.to_string(),
+        agent_did,
         key_alias,
         attestation,
         repo_path: if ephemeral { None } else { Some(repo_path) },

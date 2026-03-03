@@ -34,10 +34,12 @@
 //! The "latest-view" pattern means the current file represents only the latest state.
 //! Historical data is preserved separately for audit purposes.
 
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
-use auths_verifier::core::Attestation;
+use auths_core::storage::keychain::IdentityDID;
+use auths_verifier::core::{Attestation, Capability, ResourceId};
 use auths_verifier::types::DeviceDID;
 use thiserror::Error;
 
@@ -45,10 +47,7 @@ use crate::keri::Prefix;
 use crate::keri::event::Event;
 use crate::keri::state::KeyState;
 
-use super::org_member::{
-    MemberFilter, MemberStatus, MemberView, OrgMemberEntry, attestation_capability_strings,
-    attestation_capability_vec,
-};
+use super::org_member::{MemberFilter, MemberStatus, MemberView, OrgMemberEntry};
 use super::schemas::{RegistryMetadata, TipInfo};
 
 /// Specific reasons a tenant ID is rejected.
@@ -516,24 +515,22 @@ pub trait RegistryBackend: Send + Sync {
                 // Role filter: include if member.role is in set
                 if let Some(ref roles) = filter.roles_any {
                     match &att.role {
-                        Some(role) if roles.contains(&role.to_string()) => {}
+                        Some(role) if roles.contains(role) => {}
                         _ => return ControlFlow::Continue(()),
                     }
                 }
 
-                // Get capability strings for filtering
-                let member_caps = attestation_capability_strings(att);
-
                 // Capabilities any: intersection non-empty
+                let member_caps: HashSet<&Capability> = att.capabilities.iter().collect();
                 if let Some(ref caps_any) = filter.capabilities_any {
-                    if member_caps.is_disjoint(caps_any) {
+                    if !member_caps.iter().any(|c| caps_any.contains(*c)) {
                         return ControlFlow::Continue(());
                     }
                 }
 
                 // Capabilities all: filter_caps ⊆ member_caps
                 if let Some(ref caps_all) = filter.capabilities_all {
-                    if !caps_all.is_subset(&member_caps) {
+                    if !caps_all.iter().all(|c| member_caps.contains(c)) {
                         return ControlFlow::Continue(());
                     }
                 }
@@ -541,10 +538,10 @@ pub trait RegistryBackend: Send + Sync {
                 members.push(MemberView {
                     did: entry.did.clone(),
                     status,
-                    role: att.role.as_ref().map(|r| r.to_string()),
-                    capabilities: attestation_capability_vec(att),
-                    issuer: att.issuer.to_string(),
-                    rid: att.rid.to_string(),
+                    role: att.role.clone(),
+                    capabilities: att.capabilities.clone(),
+                    issuer: att.issuer.clone(),
+                    rid: att.rid.clone(),
                     revoked_at,
                     expires_at: att.expires_at,
                     timestamp: att.timestamp,
@@ -557,8 +554,8 @@ pub trait RegistryBackend: Send + Sync {
                     status,
                     role: None,
                     capabilities: vec![],
-                    issuer: String::new(),
-                    rid: String::new(),
+                    issuer: IdentityDID::new_unchecked(String::new()),
+                    rid: ResourceId::new(String::new()),
                     revoked_at: None,
                     expires_at: None,
                     timestamp: None,

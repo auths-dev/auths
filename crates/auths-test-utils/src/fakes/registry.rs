@@ -7,6 +7,7 @@ use auths_id::keri::state::KeyState;
 use auths_id::storage::registry::backend::{RegistryBackend, RegistryError};
 use auths_id::storage::registry::org_member::{MemberInvalidReason, OrgMemberEntry};
 use auths_id::storage::registry::schemas::{RegistryMetadata, TipInfo};
+use auths_core::storage::keychain::IdentityDID;
 use auths_verifier::core::Attestation;
 use auths_verifier::keri::Prefix;
 use auths_verifier::types::DeviceDID;
@@ -259,7 +260,7 @@ impl RegistryBackend for FakeRegistryBackend {
                 continue;
             }
             let entry = OrgMemberEntry {
-                org: org.to_string(),
+                org: IdentityDID::new(format!("did:keri:{}", org)),
                 did: DeviceDID::new(member_did_str.clone()),
                 filename: format!("{}.json", member_did_str.replace(':', "_")),
                 attestation: validate_org_member(org, member_did_str, att),
@@ -297,14 +298,14 @@ fn validate_org_member(
     let expected_issuer = format!("did:keri:{}", org);
     if att.issuer.as_str() != expected_issuer {
         return Err(MemberInvalidReason::IssuerMismatch {
-            expected_issuer,
-            actual_issuer: att.issuer.to_string(),
+            expected_issuer: IdentityDID::new(expected_issuer),
+            actual_issuer: att.issuer.clone(),
         });
     }
     if att.subject.as_str() != member_did_str {
         return Err(MemberInvalidReason::SubjectMismatch {
-            filename_did: member_did_str.to_string(),
-            attestation_subject: att.subject.to_string(),
+            filename_did: DeviceDID::new(member_did_str),
+            attestation_subject: att.subject.clone(),
         });
     }
     Ok(att.clone())
