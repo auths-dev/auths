@@ -2,8 +2,8 @@ use std::ops::ControlFlow;
 
 use auths_id::keri::{
     Event, GitKel, RotationError, anchor_attestation, create_keri_identity,
-    create_keri_identity_with_backend, get_key_state, rotate_keys,
-    rotate_keys_with_backend, validate_kel,
+    create_keri_identity_with_backend, get_key_state, rotate_keys, rotate_keys_with_backend,
+    validate_kel,
 };
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_test_utils::fakes::registry::FakeRegistryBackend;
@@ -41,8 +41,7 @@ fn double_rotation_with_consumed_next_key_fails() {
     assert_eq!(rot1.sequence, 1);
 
     // Second rotation with the SAME consumed key must fail
-    let result =
-        rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None);
+    let result = rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None);
     assert!(
         matches!(result, Err(RotationError::CommitmentMismatch)),
         "Replaying a consumed next-key must fail with CommitmentMismatch, got: {:?}",
@@ -50,9 +49,8 @@ fn double_rotation_with_consumed_next_key_fails() {
     );
 
     // But rotating with the NEW next key from rot1 succeeds
-    let rot2 =
-        rotate_keys_with_backend(&backend, &init.prefix, &rot1.new_next_keypair_pkcs8, None)
-            .unwrap();
+    let rot2 = rotate_keys_with_backend(&backend, &init.prefix, &rot1.new_next_keypair_pkcs8, None)
+        .unwrap();
     assert_eq!(rot2.sequence, 2);
 }
 
@@ -83,9 +81,8 @@ fn double_rotation_does_not_corrupt_kel() {
     assert!(!state.is_abandoned);
 
     // Legitimate next rotation still works
-    let rot2 =
-        rotate_keys_with_backend(&backend, &init.prefix, &rot1.new_next_keypair_pkcs8, None)
-            .unwrap();
+    let rot2 = rotate_keys_with_backend(&backend, &init.prefix, &rot1.new_next_keypair_pkcs8, None)
+        .unwrap();
     assert_eq!(rot2.sequence, 2);
 }
 
@@ -140,7 +137,7 @@ fn anchoring_works_with_rotated_key_after_ixn() {
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
     anchor_attestation(&repo, &init.prefix, &att1, &current_kp).unwrap();
 
-    // Rotate
+    // Rotate key
     let rot1 = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
     let rotated_kp = Ed25519KeyPair::from_pkcs8(&rot1.new_current_keypair_pkcs8).unwrap();
 

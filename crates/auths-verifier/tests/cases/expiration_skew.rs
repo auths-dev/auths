@@ -92,7 +92,10 @@ async fn attestation_exactly_at_expiration_boundary_is_rejected() {
     // reference_time == expires_at: the check is `reference_time > exp`, so equal should pass
     let verifier = Verifier::native();
     let result = verifier.verify_at_time(&att, &issuer_pk, now).await;
-    assert!(result.is_ok(), "Attestation at exact expiration should still be valid (not strictly past)");
+    assert!(
+        result.is_ok(),
+        "Attestation at exact expiration should still be valid (not strictly past)"
+    );
 }
 
 #[tokio::test]
@@ -114,9 +117,15 @@ async fn attestation_one_second_past_expiration_is_rejected() {
     let result = verifier
         .verify_at_time(&att, &issuer_pk, now + Duration::seconds(1))
         .await;
-    assert!(result.is_err(), "Attestation 1 second past expiration must be rejected");
+    assert!(
+        result.is_err(),
+        "Attestation 1 second past expiration must be rejected"
+    );
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("expired"), "Error should mention expiration, got: {err}");
+    assert!(
+        err.contains("expired"),
+        "Error should mention expiration, got: {err}"
+    );
 }
 
 #[tokio::test]
@@ -135,7 +144,10 @@ async fn attestation_well_before_expiration_is_valid() {
 
     let verifier = Verifier::native();
     let result = verifier.verify_at_time(&att, &issuer_pk, now).await;
-    assert!(result.is_ok(), "Attestation well before expiration should be valid");
+    assert!(
+        result.is_ok(),
+        "Attestation well before expiration should be valid"
+    );
 }
 
 // =========================================================================
@@ -160,7 +172,10 @@ async fn timestamp_within_skew_window_is_valid() {
 
     let verifier = Verifier::native();
     let result = verifier.verify_with_keys(&att, &issuer_pk).await;
-    assert!(result.is_ok(), "Timestamp 2 minutes in the future (within 5min skew) should be valid");
+    assert!(
+        result.is_ok(),
+        "Timestamp 2 minutes in the future (within 5min skew) should be valid"
+    );
 }
 
 #[tokio::test]
@@ -181,9 +196,15 @@ async fn timestamp_beyond_skew_window_is_rejected() {
 
     let verifier = Verifier::native();
     let result = verifier.verify_with_keys(&att, &issuer_pk).await;
-    assert!(result.is_err(), "Timestamp 10 minutes in the future (beyond 5min skew) must be rejected");
+    assert!(
+        result.is_err(),
+        "Timestamp 10 minutes in the future (beyond 5min skew) must be rejected"
+    );
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("future"), "Error should mention future timestamp, got: {err}");
+    assert!(
+        err.contains("future"),
+        "Error should mention future timestamp, got: {err}"
+    );
 }
 
 #[tokio::test]
@@ -205,7 +226,10 @@ async fn timestamp_exactly_at_skew_boundary_is_valid() {
 
     let verifier = Verifier::native();
     let result = verifier.verify_with_keys(&att, &issuer_pk).await;
-    assert!(result.is_ok(), "Timestamp exactly at 5-minute skew boundary should be valid (not strictly beyond)");
+    assert!(
+        result.is_ok(),
+        "Timestamp exactly at 5-minute skew boundary should be valid (not strictly beyond)"
+    );
 }
 
 #[tokio::test]
@@ -225,7 +249,10 @@ async fn past_timestamp_is_always_valid() {
 
     let verifier = Verifier::native();
     let result = verifier.verify_with_keys(&att, &issuer_pk).await;
-    assert!(result.is_ok(), "Past timestamps should always be valid (Git attestations are verified later)");
+    assert!(
+        result.is_ok(),
+        "Past timestamps should always be valid (Git attestations are verified later)"
+    );
 }
 
 #[tokio::test]
@@ -244,7 +271,10 @@ async fn no_timestamp_skips_skew_check() {
 
     let verifier = Verifier::native();
     let result = verifier.verify_with_keys(&att, &issuer_pk).await;
-    assert!(result.is_ok(), "Missing timestamp should skip skew check entirely");
+    assert!(
+        result.is_ok(),
+        "Missing timestamp should skip skew check entirely"
+    );
 }
 
 #[tokio::test]
@@ -263,5 +293,8 @@ async fn no_expiration_skips_expiry_check() {
 
     let verifier = Verifier::native();
     let result = verifier.verify_at_time(&att, &issuer_pk, now).await;
-    assert!(result.is_ok(), "Missing expires_at should skip expiry check entirely");
+    assert!(
+        result.is_ok(),
+        "Missing expires_at should skip expiry check entirely"
+    );
 }
