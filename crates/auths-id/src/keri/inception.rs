@@ -334,7 +334,7 @@ mod tests {
             assert_eq!(icp.d.as_str(), result.prefix.as_str());
 
             // Sequence is 0
-            assert_eq!(icp.s, "0");
+            assert_eq!(icp.s, KeriSequence::new(0));
 
             // Single key
             assert_eq!(icp.k.len(), 1);

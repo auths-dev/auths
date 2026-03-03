@@ -137,7 +137,8 @@ pub fn resolve_did_keri_at_sequence_via_port(
 mod tests {
     use super::*;
     use crate::keri::{
-        Event, IcpEvent, KERI_VERSION, Said, finalize_icp_event, serialize_for_signing,
+        Event, IcpEvent, KERI_VERSION, KeriSequence, Said, finalize_icp_event,
+        serialize_for_signing,
     };
     use auths_core::crypto::said::compute_next_commitment;
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};

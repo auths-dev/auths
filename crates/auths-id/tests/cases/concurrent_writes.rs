@@ -4,6 +4,7 @@ use std::thread;
 use auths_core::crypto::said::{compute_next_commitment, compute_said};
 use auths_id::keri::event::{Event, IcpEvent, IxnEvent};
 use auths_id::keri::seal::Seal;
+use auths_id::keri::KeriSequence;
 use auths_id::keri::types::{Prefix, Said};
 use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
 use auths_id::storage::registry::backend::RegistryBackend;
@@ -28,7 +29,7 @@ fn make_signed_icp() -> (Event, Prefix, Ed25519KeyPair) {
         v: "KERI10JSON".to_string(),
         d: Said::default(),
         i: Prefix::default(),
-        s: "0".to_string(),
+        s: KeriSequence::new(0),
         kt: "1".to_string(),
         k: vec![key_encoded],
         nt: "1".to_string(),
@@ -53,7 +54,7 @@ fn make_signed_ixn(prefix: &Prefix, seq: u64, prev_said: &str, keypair: &Ed25519
         v: "KERI10JSON".to_string(),
         d: Said::default(),
         i: prefix.clone(),
-        s: seq.to_string(),
+        s: KeriSequence::new(seq),
         p: Said::new_unchecked(prev_said.to_string()),
         a: vec![Seal::device_attestation("EConcurrent")],
         x: String::new(),

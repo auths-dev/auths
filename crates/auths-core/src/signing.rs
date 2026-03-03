@@ -58,13 +58,34 @@ pub enum DidResolverError {
     Repository(String),
 }
 
-/// DID method type with metadata.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DidMethod {
-    /// Static did:key (no rotation possible)
-    Key,
-    /// KERI-based identity with rotation capability
+/// Result of DID resolution, parameterised by method.
+///
+/// Usage:
+/// ```ignore
+/// use auths_core::signing::ResolvedDid;
+/// use auths_verifier::core::Ed25519PublicKey;
+///
+/// let resolved = ResolvedDid::Key {
+///     did: "did:key:z6Mk...".to_string(),
+///     public_key: Ed25519PublicKey::from_bytes([1u8; 32]),
+/// };
+/// assert!(resolved.is_key());
+/// ```
+#[derive(Debug, Clone)]
+pub enum ResolvedDid {
+    /// Static did:key (no rotation possible).
+    Key {
+        /// The resolved DID string.
+        did: String,
+        /// The Ed25519 public key.
+        public_key: Ed25519PublicKey,
+    },
+    /// KERI-based identity with rotation capability.
     Keri {
+        /// The resolved DID string.
+        did: String,
+        /// The Ed25519 public key.
+        public_key: Ed25519PublicKey,
         /// Current KEL sequence number.
         sequence: u64,
         /// Whether key rotation is available.
@@ -72,33 +93,32 @@ pub enum DidMethod {
     },
 }
 
-/// Result of DID resolution.
-///
-/// Args:
-/// * `did`: The resolved DID string.
-/// * `public_key`: The Ed25519 public key.
-/// * `method`: The DID method and associated metadata.
-///
-/// Usage:
-/// ```ignore
-/// use auths_core::signing::{ResolvedDid, DidMethod};
-/// use auths_verifier::core::Ed25519PublicKey;
-///
-/// let resolved = ResolvedDid {
-///     did: "did:key:z6Mk...".to_string(),
-///     public_key: Ed25519PublicKey::from_bytes([1u8; 32]),
-///     method: DidMethod::Key,
-/// };
-/// assert_eq!(resolved.method, DidMethod::Key);
-/// ```
-#[derive(Debug, Clone)]
-pub struct ResolvedDid {
-    /// The resolved DID string.
-    pub did: String,
-    /// The Ed25519 public key.
-    pub public_key: Ed25519PublicKey,
-    /// The DID method.
-    pub method: DidMethod,
+impl ResolvedDid {
+    /// Returns the DID string.
+    pub fn did(&self) -> &str {
+        match self {
+            ResolvedDid::Key { did, .. } | ResolvedDid::Keri { did, .. } => did,
+        }
+    }
+
+    /// Returns the Ed25519 public key.
+    pub fn public_key(&self) -> &Ed25519PublicKey {
+        match self {
+            ResolvedDid::Key { public_key, .. } | ResolvedDid::Keri { public_key, .. } => {
+                public_key
+            }
+        }
+    }
+
+    /// Returns `true` if this is a `did:key` resolution.
+    pub fn is_key(&self) -> bool {
+        matches!(self, ResolvedDid::Key { .. })
+    }
+
+    /// Returns `true` if this is a `did:keri` resolution.
+    pub fn is_keri(&self) -> bool {
+        matches!(self, ResolvedDid::Keri { .. })
+    }
 }
 
 /// Resolves a Decentralized Identifier (DID) to its cryptographic material.
@@ -117,7 +137,7 @@ pub struct ResolvedDid {
 /// fn verify_attestation(resolver: &dyn DidResolver, issuer_did: &str) -> bool {
 ///     match resolver.resolve(issuer_did) {
 ///         Ok(resolved) => {
-///             let public_key = resolved.public_key;
+///             let public_key = resolved.public_key();
 ///             // use public_key for signature verification
 ///             true
 ///         }

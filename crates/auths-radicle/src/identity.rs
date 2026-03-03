@@ -4,7 +4,7 @@
 //! the delegate's Ed25519 public key from the `did:key` format. Also resolves
 //! `did:keri:` identifiers by replaying the KERI Key Event Log.
 
-use auths_id::identity::{DidMethod, DidResolver, DidResolverError, ResolvedDid};
+use auths_id::identity::{DidResolver, DidResolverError, ResolvedDid};
 use auths_verifier::core::Ed25519PublicKey;
 use auths_id::keri::KeyState;
 use auths_id::keri::event::Event;
@@ -639,9 +639,8 @@ impl DidResolver for RadicleIdentityResolver {
             })?;
 
         match did_val {
-            Did::Key(pk) => Ok(ResolvedDid {
+            Did::Key(pk) => Ok(ResolvedDid::Key {
                 did: did.to_string(),
-                method: DidMethod::Key,
                 public_key: Ed25519PublicKey::try_from_slice(pk.as_ref()).map_err(|e| {
                     DidResolverError::InvalidDidKey(format!("invalid key bytes: {e}"))
                 })?,
@@ -659,13 +658,11 @@ impl DidResolver for RadicleIdentityResolver {
                     DidResolverError::Resolution(format!("invalid CESR key: {e}"))
                 })?;
 
-                Ok(ResolvedDid {
+                Ok(ResolvedDid::Keri {
                     did: did.to_string(),
-                    method: DidMethod::Keri {
-                        sequence: key_state.sequence,
-                        can_rotate: key_state.can_rotate(),
-                    },
                     public_key: Ed25519PublicKey::from_bytes(keri_pk.into_bytes()),
+                    sequence: key_state.sequence,
+                    can_rotate: key_state.can_rotate(),
                 })
             }
         }

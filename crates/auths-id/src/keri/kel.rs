@@ -703,7 +703,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked(format!("ERot{}", seq)),
             i: Prefix::new_unchecked(prefix.to_string()),
-            s: seq.to_string(),
+            s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
             kt: "1".to_string(),
             k: vec![format!("DKey{}", seq + 1)],

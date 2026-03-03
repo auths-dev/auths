@@ -308,15 +308,15 @@ pub fn handle_org(
             let rid = managed_identity.storage_id;
 
             // Resolve the org's own public key for self-attestation
-            let org_pk_bytes = resolver
+            let org_resolved = resolver
                 .resolve(controller_did.as_str())
                 .with_context(|| {
                     format!(
                         "Failed to resolve public key for org identity: {}",
                         controller_did
                     )
-                })?
-                .public_key;
+                })?;
+            let org_pk_bytes = *org_resolved.public_key();
 
             let now = Utc::now();
             let admin_capabilities = vec![
@@ -437,10 +437,10 @@ pub fn handle_org(
             let subject_did = DeviceDID::new(subject.clone());
 
             // --- Resolve device public key using the custom resolver IF did:key ---
-            let device_pk_bytes = resolver
+            let device_resolved = resolver
                 .resolve(&subject)
-                .with_context(|| format!("Failed to resolve public key for subject: {}", subject))?
-                .public_key;
+                .with_context(|| format!("Failed to resolve public key for subject: {}", subject))?;
+            let device_pk_bytes = *device_resolved.public_key();
 
             let now = Utc::now();
             let meta = AttestationMetadata {
@@ -708,10 +708,10 @@ pub fn handle_org(
 
             // Resolve member's public key
             let member_did = DeviceDID::new(member.clone());
-            let member_pk_bytes = resolver
+            let member_resolved = resolver
                 .resolve(&member)
-                .with_context(|| format!("Failed to resolve public key for member: {}", member))?
-                .public_key;
+                .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
+            let member_pk_bytes = *member_resolved.public_key();
 
 
             // Determine capabilities: use override if provided, otherwise use role defaults

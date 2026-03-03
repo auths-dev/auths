@@ -44,7 +44,7 @@ pub fn verify_with_resolver(
     let resolved = resolver.resolve(&att.issuer).map_err(|e| {
         AttestationError::DidResolutionError(format!("Resolver error for {}: {}", att.issuer, e))
     })?;
-    let issuer_pk_bytes = resolved.public_key;
+    let issuer_pk_bytes = *resolved.public_key();
 
     // 3. Reconstruct canonical data (MUST match create_with_signatures, includes org fields)
     let data_to_canonicalize = CanonicalAttestationData {
