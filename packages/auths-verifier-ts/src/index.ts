@@ -30,12 +30,14 @@ export * from './types';
 let wasmModule: WasmModule | null = null;
 
 interface WasmModule {
-  verifyAttestationJson(attestationJson: string, issuerPkHex: string): void;
-  verifyAttestationWithResult(attestationJson: string, issuerPkHex: string): string;
-  verifyChainJson(attestationsJsonArray: string, rootPkHex: string): string;
+  verifyAttestationJson(attestationJson: string, issuerPkHex: string): Promise<void>;
+  verifyAttestationWithResult(attestationJson: string, issuerPkHex: string): Promise<string>;
+  verifyChainJson(attestationsJsonArray: string, rootPkHex: string): Promise<string>;
+  verifyKelJson(kelJson: string): Promise<string>;
+  verifyDeviceLink(kelJson: string, attestationJson: string, deviceDid: string): Promise<string>;
 }
 
-import type { VerificationResult, VerificationReport } from './types';
+import type { VerificationResult, VerificationReport, KeriKeyState, DeviceLinkResult } from './types';
 
 /**
  * Initialize the WASM module. Must be called before any verification functions.
@@ -54,10 +56,7 @@ export async function init(): Promise<void> {
   }
 
   try {
-    // Dynamic import of the WASM module
-    // @ts-expect-error - wasm module is generated at build time
     const wasm = await import('../wasm/auths_verifier.js');
-    await wasm.default(); // Initialize WASM
     wasmModule = wasm;
   } catch (error) {
     throw new Error(`Failed to initialize WASM module: ${error}`);
@@ -101,14 +100,14 @@ function ensureInitialized(): WasmModule {
  * }
  * ```
  */
-export function verifyAttestation(
+export async function verifyAttestation(
   attestationJson: string,
   issuerPublicKeyHex: string
-): VerificationResult {
+): Promise<VerificationResult> {
   const wasm = ensureInitialized();
 
   try {
-    const resultJson = wasm.verifyAttestationWithResult(attestationJson, issuerPublicKeyHex);
+    const resultJson = await wasm.verifyAttestationWithResult(attestationJson, issuerPublicKeyHex);
     return JSON.parse(resultJson) as VerificationResult;
   } catch (error) {
     return {
@@ -135,14 +134,14 @@ export function verifyAttestation(
  * }
  * ```
  */
-export function verifyAttestationOrThrow(
+export async function verifyAttestationOrThrow(
   attestationJson: string,
   issuerPublicKeyHex: string
-): void {
+): Promise<void> {
   const wasm = ensureInitialized();
 
   try {
-    wasm.verifyAttestationJson(attestationJson, issuerPublicKeyHex);
+    await wasm.verifyAttestationJson(attestationJson, issuerPublicKeyHex);
   } catch (error) {
     throw new Error(
       `Attestation verification failed: ${error instanceof Error ? error.message : String(error)}`
@@ -176,22 +175,20 @@ export function verifyAttestationOrThrow(
  * });
  * ```
  */
-export function verifyChain(
+export async function verifyChain(
   attestations: (string | object)[],
   rootPublicKeyHex: string
-): VerificationReport {
+): Promise<VerificationReport> {
   const wasm = ensureInitialized();
 
-  // Convert attestations to JSON array string
   const attestationsJson = JSON.stringify(
     attestations.map(att => (typeof att === 'string' ? JSON.parse(att) : att))
   );
 
   try {
-    const reportJson = wasm.verifyChainJson(attestationsJson, rootPublicKeyHex);
+    const reportJson = await wasm.verifyChainJson(attestationsJson, rootPublicKeyHex);
     return JSON.parse(reportJson) as VerificationReport;
   } catch (error) {
-    // Return a report indicating the error
     return {
       status: {
         type: 'BrokenChain',
@@ -211,4 +208,73 @@ export function verifyChain(
  */
 export function isVerificationValid(report: VerificationReport): boolean {
   return report.status.type === 'Valid';
+}
+
+/**
+ * Verify a KERI Key Event Log and return the resulting key state.
+ *
+ * @param kelJson - JSON array of KEL events (inception, rotation, interaction)
+ * @returns KeriKeyState with the current public key and sequence number
+ * @throws Error if KEL parsing or verification fails
+ *
+ * @example
+ * ```typescript
+ * const keyState = await verifyKel(kelEventsJson);
+ * console.log('Current key:', keyState.current_key_encoded);
+ * console.log('Sequence:', keyState.sequence);
+ * ```
+ */
+export async function verifyKel(kelJson: string): Promise<KeriKeyState> {
+  const wasm = ensureInitialized();
+
+  try {
+    const resultJson = await wasm.verifyKelJson(kelJson);
+    return JSON.parse(resultJson) as KeriKeyState;
+  } catch (error) {
+    throw new Error(
+      `KEL verification failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+/**
+ * Verify that a device is cryptographically linked to a KERI identity.
+ *
+ * Composes KEL verification, attestation signature verification, device DID matching,
+ * and seal anchoring. Returns a result object — never throws for verification failures.
+ *
+ * @param kelJson - JSON array of KEL events for the identity
+ * @param attestationJson - JSON attestation linking the identity to the device
+ * @param deviceDid - Expected device DID string (e.g. "did:key:z6Mk...")
+ * @returns DeviceLinkResult with valid flag, optional key state, and seal info
+ *
+ * @example
+ * ```typescript
+ * const result = await verifyDeviceLink(kelJson, attestationJson, 'did:key:z6Mk...');
+ * if (result.valid) {
+ *   console.log('Device verified! Identity key:', result.key_state?.current_key_encoded);
+ *   if (result.seal_sequence !== undefined) {
+ *     console.log('Attestation anchored at KEL sequence:', result.seal_sequence);
+ *   }
+ * } else {
+ *   console.error('Verification failed:', result.error);
+ * }
+ * ```
+ */
+export async function verifyDeviceLink(
+  kelJson: string,
+  attestationJson: string,
+  deviceDid: string
+): Promise<DeviceLinkResult> {
+  const wasm = ensureInitialized();
+
+  try {
+    const resultJson = await wasm.verifyDeviceLink(kelJson, attestationJson, deviceDid);
+    return JSON.parse(resultJson) as DeviceLinkResult;
+  } catch (error) {
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

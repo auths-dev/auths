@@ -335,7 +335,25 @@ fn apply_event_to_state(state: &mut KeyState, event: &Event) -> Result<(), Incre
     // Apply the event
     match event {
         Event::Rot(rot) => {
-            state.apply_rotation(rot.k.clone(), rot.n.clone(), actual_sequence, rot.d.clone());
+            let threshold = rot.kt.parse::<u64>().map_err(|_| {
+                IncrementalError::MalformedSequence {
+                    raw: rot.kt.clone(),
+                }
+            })?;
+            let next_threshold = rot.nt.parse::<u64>().map_err(|_| {
+                IncrementalError::MalformedSequence {
+                    raw: rot.nt.clone(),
+                }
+            })?;
+
+            state.apply_rotation(
+                rot.k.clone(),
+                rot.n.clone(),
+                threshold,
+                next_threshold,
+                actual_sequence,
+                rot.d.clone(),
+            );
         }
         Event::Ixn(ixn) => {
             state.apply_interaction(actual_sequence, ixn.d.clone());
@@ -365,6 +383,8 @@ mod tests {
             Prefix::new_unchecked("ETest".to_string()),
             vec!["DKey".to_string()],
             vec!["ENext".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESaid".to_string()),
         );
 

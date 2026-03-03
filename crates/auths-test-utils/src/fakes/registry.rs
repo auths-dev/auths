@@ -60,12 +60,14 @@ fn derive_key_state(prefix: &Prefix, events: &[Event]) -> Option<KeyState> {
                     prefix.clone(),
                     e.k.clone(),
                     e.n.clone(),
+                    1,
+                    1,
                     said,
                 ));
             }
             Event::Rot(e) => {
                 if let Some(ref mut s) = state {
-                    s.apply_rotation(e.k.clone(), e.n.clone(), seq, said);
+                    s.apply_rotation(e.k.clone(), e.n.clone(), 1, 1, seq, said);
                 }
             }
             Event::Ixn(_) => {

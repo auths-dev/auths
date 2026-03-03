@@ -44,10 +44,10 @@ use auths_storage::git::{
 /// Storage layout presets for different ecosystems.
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
 pub enum LayoutPreset {
-    /// Default Auths layout (refs/auths/*)
+    /// RIP-X layout (refs/rad/id, refs/keys)
     #[default]
     Default,
-    /// Radicle-compatible layout (refs/rad/*)
+    /// Alias for default — explicitly Radicle-compatible
     Radicle,
     /// Gitoxide-compatible layout (refs/auths/id, refs/auths/devices)
     Gitoxide,
@@ -57,9 +57,18 @@ impl LayoutPreset {
     /// Convert the preset to a StorageLayoutConfig.
     pub fn to_config(self) -> StorageLayoutConfig {
         match self {
-            LayoutPreset::Default => StorageLayoutConfig::default(),
-            LayoutPreset::Radicle => StorageLayoutConfig::radicle(),
-            LayoutPreset::Gitoxide => StorageLayoutConfig::gitoxide(),
+            LayoutPreset::Default | LayoutPreset::Radicle => StorageLayoutConfig {
+                identity_ref: "refs/rad/id".to_string(),
+                device_attestation_prefix: "refs/keys".to_string(),
+                attestation_blob_name: layout::ATTESTATION_JSON.to_string(),
+                identity_blob_name: layout::IDENTITY_JSON.to_string(),
+            },
+            LayoutPreset::Gitoxide => StorageLayoutConfig {
+                identity_ref: "refs/auths/id".to_string(),
+                device_attestation_prefix: "refs/auths/devices".to_string(),
+                attestation_blob_name: layout::ATTESTATION_JSON.to_string(),
+                identity_blob_name: layout::IDENTITY_JSON.to_string(),
+            },
         }
     }
 }

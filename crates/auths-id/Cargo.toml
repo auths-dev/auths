@@ -22,7 +22,7 @@ async-trait = "0.1"
 auths-core.workspace = true
 auths-crypto.workspace = true
 auths-policy.workspace = true
-auths-verifier.workspace = true
+auths-verifier = { workspace = true, features = ["native"] }
 base64.workspace = true
 bs58 = "0.5.1"
 chrono = { version = "0.4.40", features = ["serde"] }

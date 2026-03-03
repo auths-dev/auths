@@ -108,6 +108,8 @@ macro_rules! registry_backend_contract_tests {
                     prefix.clone(),
                     vec!["DTestKey".to_string()],
                     vec!["ETestNext".to_string()],
+                    1,
+                    1,
                     event.said().clone(),
                 );
                 store.write_key_state(&prefix, &ks).unwrap();

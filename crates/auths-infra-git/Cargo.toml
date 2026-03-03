@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 auths-core = { workspace = true }
 auths-sdk = { workspace = true }
-auths-verifier = { workspace = true }
+auths-verifier = { workspace = true, features = ["native"] }
 git2 = "0.20.4"
 thiserror.workspace = true
 chrono = "0.4"

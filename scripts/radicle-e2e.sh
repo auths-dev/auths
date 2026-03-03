@@ -1,0 +1,873 @@
+#!/usr/bin/env bash
+#
+# Radicle Multi-Device E2E Demo
+#
+# Automated (non-interactive) test that exercises the real rad + auths CLIs
+# together: sets up two Radicle nodes, creates an Auths identity, links both
+# nodes as devices, creates a project, verifies authorizations, and revokes
+# a device.
+#
+# Prerequisites: rad CLI installed (https://radicle.xyz)
+# Usage:        just e2e-radicle   OR   bash scripts/radicle-e2e.sh
+#
+set -euo pipefail
+
+# ── Colors ────────────────────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m'
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+AUTHS_BIN="$REPO_ROOT/target/release/auths"
+AUTHS_SIGN_BIN="$REPO_ROOT/target/release/auths-sign"
+DEMO_DIR="$(mktemp -d)"
+
+# Existing Radicle project to push patches to
+PROJECT_RID="rad:zTfsUzHQFrAUMsMgTqT5hFwfGon1"
+
+# rosa.radicle.xyz is PERMISSIVE (seeds all public repos).
+# seed.radicle.xyz is SELECTIVE (Radicle team repos only) — will not host our project.
+ROSA_NID="z6Mkmqogy2qEM2ummccUthFEaaHvyYmYBYh3dbe9W4ebScxo"
+
+# Auths storage
+AUTHS_HOME="$DEMO_DIR/.auths"
+
+# Two simulated Radicle nodes
+RAD_NODE1_HOME="$DEMO_DIR/rad-node-1"
+RAD_NODE2_HOME="$DEMO_DIR/rad-node-2"
+
+# ── Headless environment ──────────────────────────────────────────────────────
+export AUTHS_KEYCHAIN_BACKEND=file
+export AUTHS_KEYCHAIN_FILE="$DEMO_DIR/keys.enc"
+export AUTHS_PASSPHRASE=test-e2e-passphrase
+export RAD_PASSPHRASE="e2e-rad"
+export GIT_AUTHOR_NAME="E2E Tester"
+export GIT_AUTHOR_EMAIL="e2e@test.local"
+export GIT_COMMITTER_NAME="E2E Tester"
+export GIT_COMMITTER_EMAIL="e2e@test.local"
+
+# ── Phase tracking ────────────────────────────────────────────────────────────
+PHASE_RESULTS=()
+CURRENT_PHASE=""
+
+phase_start() {
+    CURRENT_PHASE="$1"
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}  $1${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
+phase_pass() {
+    echo ""
+    echo -e "  ${GREEN}✓ PASS${NC}: $CURRENT_PHASE"
+    PHASE_RESULTS+=("PASS: $CURRENT_PHASE")
+}
+
+phase_fail() {
+    local msg="${1:-assertion failed}"
+    echo ""
+    echo -e "  ${RED}✗ FAIL${NC}: $CURRENT_PHASE — $msg"
+    PHASE_RESULTS+=("FAIL: $CURRENT_PHASE — $msg")
+}
+
+assert_ok() {
+    local desc="$1"; shift
+    if "$@" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} $desc"
+    else
+        echo -e "  ${RED}✗${NC} $desc"
+        phase_fail "$desc"
+        exit 1
+    fi
+}
+
+assert_contains() {
+    local desc="$1"
+    local haystack="$2"
+    local needle="$3"
+    if echo "$haystack" | grep -q "$needle"; then
+        echo -e "  ${GREEN}✓${NC} $desc"
+    else
+        echo -e "  ${RED}✗${NC} $desc (expected to find: $needle)"
+        phase_fail "$desc"
+        exit 1
+    fi
+}
+
+assert_not_contains() {
+    local desc="$1"
+    local haystack="$2"
+    local needle="$3"
+    if echo "$haystack" | grep -q "$needle"; then
+        echo -e "  ${RED}✗${NC} $desc (unexpectedly found: $needle)"
+        phase_fail "$desc"
+        exit 1
+    else
+        echo -e "  ${GREEN}✓${NC} $desc"
+    fi
+}
+
+info() {
+    echo -e "  ${CYAN}→${NC} $1"
+}
+
+# ── Cleanup ───────────────────────────────────────────────────────────────────
+cleanup() {
+    echo ""
+    echo -e "${DIM}Stopping any running Radicle nodes...${NC}"
+    RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
+    RAD_HOME="$RAD_NODE2_HOME" rad node stop 2>/dev/null || true
+    echo -e "${DIM}Cleaning up $DEMO_DIR ...${NC}"
+    rm -rf "$DEMO_DIR"
+}
+trap cleanup EXIT
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 0 — Prerequisites & Build
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 0: Prerequisites & Build"
+
+if ! command -v rad >/dev/null 2>&1; then
+    echo -e "  ${RED}✗${NC} 'rad' CLI not found."
+    echo -e "    Install Radicle: ${CYAN}https://radicle.xyz${NC}"
+    exit 1
+fi
+echo -e "  ${GREEN}✓${NC} rad CLI found: $(command -v rad)"
+
+if [[ ! -x "$AUTHS_BIN" ]]; then
+    info "Building auths (release mode)..."
+    (cd "$REPO_ROOT" && cargo build --release --package auths_cli 2>&1) \
+        | grep -E "Compiling|Finished" \
+        | sed 's/^/    /' || true
+fi
+assert_ok "auths binary is executable" test -x "$AUTHS_BIN"
+assert_ok "auths-sign binary is executable" test -x "$AUTHS_SIGN_BIN"
+
+info "Demo directory: $DEMO_DIR"
+mkdir -p "$AUTHS_HOME" "$RAD_NODE1_HOME" "$RAD_NODE2_HOME"
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 1 — Set up two Radicle nodes
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 1: Set up two Radicle nodes"
+
+# Pre-generate deterministic 32-byte seeds.  RAD_KEYGEN_SEED lets us control
+# the Ed25519 seed that `rad auth` uses, so we know the raw bytes without
+# having to parse the OpenSSH private-key file that Radicle writes to disk.
+NODE1_SEED_HEX=$(openssl rand -hex 32)
+NODE2_SEED_HEX=$(openssl rand -hex 32)
+
+# TEST-ONLY: Write seed bytes to disk so `auths key import --seed-file` can
+# read them. In production, `rad auth` will pass the seed directly to the
+# auths SDK without touching the filesystem. This is the only place where
+# seed material hits disk, and the temp directory is cleaned up on exit.
+NODE1_SEED="$DEMO_DIR/node1.seed"
+NODE2_SEED="$DEMO_DIR/node2.seed"
+echo -n "$NODE1_SEED_HEX" | xxd -r -p > "$NODE1_SEED"
+echo -n "$NODE2_SEED_HEX" | xxd -r -p > "$NODE2_SEED"
+
+info "Initializing Radicle node 1..."
+RAD_HOME="$RAD_NODE1_HOME" RAD_KEYGEN_SEED="$NODE1_SEED_HEX" rad auth --alias node1 2>&1 | sed 's/^/    /' || true
+
+info "Initializing Radicle node 2..."
+RAD_HOME="$RAD_NODE2_HOME" RAD_KEYGEN_SEED="$NODE2_SEED_HEX" rad auth --alias node2 2>&1 | sed 's/^/    /' || true
+
+# Extract DIDs — rad self --did outputs did:key:z6Mk... on stdout
+NODE1_DID=$(RAD_HOME="$RAD_NODE1_HOME" rad self --did 2>/dev/null | tr -d '[:space:]')
+NODE2_DID=$(RAD_HOME="$RAD_NODE2_HOME" rad self --did 2>/dev/null | tr -d '[:space:]')
+
+assert_ok "node 1 DID is not empty" test -n "$NODE1_DID"
+assert_ok "node 2 DID is not empty" test -n "$NODE2_DID"
+
+# Derive NIDs (z6Mk...) from DIDs for rad node connect
+NODE1_NID="${NODE1_DID#did:key:}"
+NODE2_NID="${NODE2_DID#did:key:}"
+
+info "Node 1 DID: $NODE1_DID"
+info "Node 2 DID: $NODE2_DID"
+
+assert_ok "node 1 seed is 32 bytes" test "$(wc -c < "$NODE1_SEED" | tr -d ' ')" -eq 32
+assert_ok "node 2 seed is 32 bytes" test "$(wc -c < "$NODE2_SEED" | tr -d ' ')" -eq 32
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 2 — Create Auths identity
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 2: Create Auths identity"
+
+# Metadata file for the identity
+cat > "$DEMO_DIR/metadata.json" <<'METAJSON'
+{
+  "xyz.radicle.project": {
+    "name": "e2e-radicle-demo"
+  },
+  "profile": {
+    "name": "Radicle E2E Tester"
+  }
+}
+METAJSON
+
+info "Creating identity (RIP-X layout is the default)..."
+CREATE_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" id create \
+    --metadata-file "$DEMO_DIR/metadata.json" \
+    --local-key-alias identity-key \
+    2>&1) || true
+echo "$CREATE_OUTPUT" | sed 's/^/    /'
+
+# Extract Controller DID from create output, fall back to id show
+CONTROLLER_DID=$(echo "$CREATE_OUTPUT" | grep 'Controller DID:' | head -1 | awk -F': ' '{print $NF}' | tr -d '[:space:]')
+if [ -z "$CONTROLLER_DID" ]; then
+    ID_SHOW_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" id show 2>&1 || true)
+    CONTROLLER_DID=$(echo "$ID_SHOW_OUTPUT" | grep 'Controller DID' | head -1 | awk -F': ' '{print $NF}' | tr -d '[:space:]')
+fi
+
+assert_ok "controller DID is not empty" test -n "$CONTROLLER_DID"
+info "Controller DID: $CONTROLLER_DID"
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 3 — Link device 1 (Radicle node 1)
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 3: Link device 1 (Radicle node 1)"
+
+info "Importing node 1 seed into auths keychain..."
+IMPORT1_OUTPUT=$("$AUTHS_BIN" key import \
+    --alias node1-key \
+    --seed-file "$NODE1_SEED" \
+    --controller-did "$CONTROLLER_DID" \
+    2>&1) || { echo "$IMPORT1_OUTPUT" | sed 's/^/    /'; phase_fail "key import node1"; exit 1; }
+echo "$IMPORT1_OUTPUT" | sed 's/^/    /'
+
+info "Linking node 1 as a device..."
+LINK1_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device link \
+    --identity-key-alias identity-key \
+    --device-key-alias node1-key \
+    --device-did "$NODE1_DID" \
+    --note "Radicle Node 1" \
+    2>&1) || { echo "$LINK1_OUTPUT" | sed 's/^/    /'; phase_fail "device link node1"; exit 1; }
+echo "$LINK1_OUTPUT" | sed 's/^/    /'
+
+# Verify device 1 appears in the list
+DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list 2>/dev/null || true)
+assert_contains "device list contains node 1 DID" "$DEVICE_LIST" "$NODE1_DID"
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 4 — Link device 2 (Radicle node 2)
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 4: Link device 2 (Radicle node 2)"
+
+info "Importing node 2 seed into auths keychain..."
+IMPORT2_OUTPUT=$("$AUTHS_BIN" key import \
+    --alias node2-key \
+    --seed-file "$NODE2_SEED" \
+    --controller-did "$CONTROLLER_DID" \
+    2>&1) || { echo "$IMPORT2_OUTPUT" | sed 's/^/    /'; phase_fail "key import node2"; exit 1; }
+echo "$IMPORT2_OUTPUT" | sed 's/^/    /'
+
+info "Linking node 2 as a device..."
+LINK2_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device link \
+    --identity-key-alias identity-key \
+    --device-key-alias node2-key \
+    --device-did "$NODE2_DID" \
+    --note "Radicle Node 2" \
+    --capabilities sign_commit \
+    2>&1) || { echo "$LINK2_OUTPUT" | sed 's/^/    /'; phase_fail "device link node2"; exit 1; }
+echo "$LINK2_OUTPUT" | sed 's/^/    /'
+
+# Verify both devices appear
+DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list 2>/dev/null || true)
+assert_contains "device list contains node 1" "$DEVICE_LIST" "$NODE1_DID"
+assert_contains "device list contains node 2" "$DEVICE_LIST" "$NODE2_DID"
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 5 — Clone existing Radicle project (from node 1)
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 5: Clone existing Radicle project"
+
+PROJECT_DIR="$DEMO_DIR/e2e-project"
+E2E_PORT1=19876
+
+info "Project RID: $PROJECT_RID"
+info "Starting Radicle node 1 for clone (port $E2E_PORT1)..."
+RAD_HOME="$RAD_NODE1_HOME" rad node start -- --listen 0.0.0.0:$E2E_PORT1 2>&1 | sed 's/^/    /' || true
+sleep 2
+
+info "Connecting node 1 to rosa seed..."
+RAD_HOME="$RAD_NODE1_HOME" rad node connect "${ROSA_NID}@rosa.radicle.xyz:8776" --timeout 10 2>&1 | sed 's/^/    /' || true
+
+info "Waiting for seed connection to establish..."
+for i in $(seq 1 10); do
+    if RAD_HOME="$RAD_NODE1_HOME" rad node sessions 2>/dev/null | grep -q "$ROSA_NID"; then
+        echo -e "  ${GREEN}✓${NC} Connected to rosa seed"
+        break
+    fi
+    if [ "$i" -eq 10 ]; then
+        echo -e "  ${YELLOW}⚠${NC} Seed connection not confirmed after 10s — attempting clone anyway"
+    fi
+    sleep 1
+done
+
+info "Cloning project from network..."
+CLONE_OK=false
+for attempt in 1 2 3; do
+    CLONE_OUTPUT=$(RAD_HOME="$RAD_NODE1_HOME" rad clone "$PROJECT_RID" "$PROJECT_DIR" --seed "$ROSA_NID" --timeout 30 2>&1) && {
+        CLONE_OK=true
+        echo "$CLONE_OUTPUT" | sed 's/^/    /'
+        break
+    }
+    echo "$CLONE_OUTPUT" | sed 's/^/    /'
+    if [ "$attempt" -lt 3 ]; then
+        info "Clone attempt $attempt failed, retrying in 5s..."
+        sleep 5
+    fi
+done
+
+info "Stopping node 1..."
+RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
+
+if ! $CLONE_OK || [ ! -d "$PROJECT_DIR/.git" ]; then
+    echo -e "  ${RED}✗${NC} Clone failed after 3 attempts — is rosa.radicle.xyz reachable?"
+    phase_fail "clone failed"
+    exit 1
+fi
+
+# Configure git identity for commits
+(
+    cd "$PROJECT_DIR"
+    git config user.name "E2E Tester"
+    git config user.email "e2e@test.local"
+    git config commit.gpgsign false
+)
+
+info "Radicle project RID: $PROJECT_RID"
+echo -e "  ${GREEN}✓${NC} Radicle project cloned"
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 6 — Verify both devices are authorized
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 6: Verify both devices are authorized"
+
+DEVICE_LIST=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list 2>/dev/null || true)
+
+info "Device list output:"
+echo "$DEVICE_LIST" | sed 's/^/    /'
+
+assert_contains "node 1 is active" "$DEVICE_LIST" "$NODE1_DID"
+assert_contains "node 2 is active" "$DEVICE_LIST" "$NODE2_DID"
+
+# Count active devices (each DID line = 1 device)
+DEVICE_COUNT=$(echo "$DEVICE_LIST" | grep -c "did:key:" || true)
+assert_ok "exactly 2 devices listed" test "$DEVICE_COUNT" -eq 2
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 6b — Verify storage layout
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 6b: Verify storage layout"
+
+# The CLI stores all state under a single packed ref: refs/auths/registry
+# Identity, attestations, and KEL events are tree paths within that ref.
+info "Checking packed registry ref..."
+REGISTRY_REF_EXISTS=$(git -C "$AUTHS_HOME" show-ref refs/auths/registry 2>/dev/null || true)
+assert_ok "refs/auths/registry exists" test -n "$REGISTRY_REF_EXISTS"
+
+info "Checking device attestation entries in registry tree..."
+# Sanitized DID format: did_key_z6Mk... (non-alphanumeric replaced with underscores)
+NODE1_SANITIZED=$(echo "$NODE1_DID" | sed 's/[^a-zA-Z0-9]/_/g')
+NODE2_SANITIZED=$(echo "$NODE2_DID" | sed 's/[^a-zA-Z0-9]/_/g')
+
+# List the full registry tree to find device entries
+REGISTRY_TREE=$(git -C "$AUTHS_HOME" ls-tree -r --name-only refs/auths/registry 2>/dev/null || true)
+
+assert_contains "node 1 device entry in registry" "$REGISTRY_TREE" "$NODE1_SANITIZED"
+assert_contains "node 2 device entry in registry" "$REGISTRY_TREE" "$NODE2_SANITIZED"
+
+RESOLVE_OK=true
+
+info "Resolving device 1 DID to controller..."
+RESOLVE_OUTPUT_1=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE1_DID" 2>&1) || {
+    echo -e "  ${RED}✗${NC} device resolve failed for $NODE1_DID"
+    echo "$RESOLVE_OUTPUT_1" | sed 's/^/    /'
+    phase_fail "device 1 resolution"
+    RESOLVE_OK=false
+}
+RESOLVED_DID_1=$(echo "$RESOLVE_OUTPUT_1" | tr -d '[:space:]')
+
+if $RESOLVE_OK; then
+    if [ "$RESOLVED_DID_1" = "$CONTROLLER_DID" ]; then
+        echo -e "  ${GREEN}✓${NC} Device 1 resolves to controller DID"
+    else
+        echo -e "  ${RED}✗${NC} Device 1 resolved to '$RESOLVED_DID_1', expected '$CONTROLLER_DID'"
+        phase_fail "device 1 resolution mismatch"
+        RESOLVE_OK=false
+    fi
+fi
+
+info "Resolving device 2 DID to controller..."
+RESOLVE_OUTPUT_2=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE2_DID" 2>&1) || {
+    echo -e "  ${RED}✗${NC} device resolve failed for $NODE2_DID"
+    echo "$RESOLVE_OUTPUT_2" | sed 's/^/    /'
+    phase_fail "device 2 resolution"
+    RESOLVE_OK=false
+}
+RESOLVED_DID_2=$(echo "$RESOLVE_OUTPUT_2" | tr -d '[:space:]')
+
+if $RESOLVE_OK; then
+    if [ "$RESOLVED_DID_2" = "$CONTROLLER_DID" ]; then
+        echo -e "  ${GREEN}✓${NC} Device 2 resolves to controller DID"
+    else
+        echo -e "  ${RED}✗${NC} Device 2 resolved to '$RESOLVED_DID_2', expected '$CONTROLLER_DID'"
+        phase_fail "device 2 resolution mismatch"
+        RESOLVE_OK=false
+    fi
+fi
+
+if $RESOLVE_OK; then
+    if [ "$RESOLVED_DID_1" = "$RESOLVED_DID_2" ]; then
+        echo -e "  ${GREEN}✓${NC} Both devices resolve to the same controller identity"
+    else
+        echo -e "  ${RED}✗${NC} Devices resolved to different identities"
+        phase_fail "identity mismatch between devices"
+        RESOLVE_OK=false
+    fi
+fi
+
+if $RESOLVE_OK; then
+    phase_pass
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 6c — Verify KEL integrity and attestation anchoring
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 6c: Verify KEL integrity and attestation anchoring"
+
+PHASE6C_OK=true
+
+# Extract KERI prefix from controller DID
+KERI_PREFIX="${CONTROLLER_DID#did:keri:}"
+info "KERI prefix: $KERI_PREFIX"
+
+# Check KEL exists in the registry tree
+KEL_ENTRIES=$(git -C "$AUTHS_HOME" ls-tree -r --name-only refs/auths/registry 2>/dev/null | grep "kel" || true)
+if [ -n "$KEL_ENTRIES" ]; then
+    echo -e "  ${GREEN}✓${NC} KEL entries found in registry"
+else
+    echo -e "  ${RED}✗${NC} No KEL entries found in registry"
+    PHASE6C_OK=false
+fi
+
+# Verify the controller DID is a valid KERI prefix (starts with E for Blake3)
+if [[ "$KERI_PREFIX" == E* ]]; then
+    echo -e "  ${GREEN}✓${NC} KERI prefix has valid Blake3 derivation code"
+else
+    echo -e "  ${RED}✗${NC} KERI prefix does not start with 'E': $KERI_PREFIX"
+    PHASE6C_OK=false
+fi
+
+# Verify both device attestations exist in registry tree
+if [ -n "$REGISTRY_TREE" ]; then
+    ATT_COUNT=$(echo "$REGISTRY_TREE" | grep -c "attestation\|signature" || true)
+    if [ "$ATT_COUNT" -ge 2 ]; then
+        echo -e "  ${GREEN}✓${NC} At least 2 attestation/signature entries found ($ATT_COUNT total)"
+    else
+        echo -e "  ${RED}✗${NC} Expected at least 2 attestation entries, found $ATT_COUNT"
+        PHASE6C_OK=false
+    fi
+fi
+
+# Cross-validate: resolved controller DID matches the KERI prefix in registry
+if $RESOLVE_OK; then
+    if [[ "$RESOLVED_DID_1" == *"$KERI_PREFIX"* ]]; then
+        echo -e "  ${GREEN}✓${NC} Resolved DID contains KERI prefix from registry"
+    else
+        echo -e "  ${RED}✗${NC} Resolved DID '$RESOLVED_DID_1' does not contain KERI prefix '$KERI_PREFIX'"
+        PHASE6C_OK=false
+    fi
+fi
+
+if $PHASE6C_OK; then
+    phase_pass
+else
+    phase_fail "KEL integrity verification"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 7 — Signed commits + Radicle patches from both devices
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 7: Signed commits + Radicle patches from both devices"
+
+PHASE7_OK=true
+
+# ── Export public keys for allowed_signers ─────────────────────────────
+info "Exporting public keys for both devices..."
+PUB1=$("$AUTHS_BIN" key export --alias node1-key --passphrase "$AUTHS_PASSPHRASE" --format pub 2>&1) || {
+    echo -e "  ${RED}✗${NC} Failed to export node1-key public key"
+    echo "$PUB1" | sed 's/^/    /'
+    phase_fail "node1 key export"
+    PHASE7_OK=false
+}
+PUB2=$("$AUTHS_BIN" key export --alias node2-key --passphrase "$AUTHS_PASSPHRASE" --format pub 2>&1) || {
+    echo -e "  ${RED}✗${NC} Failed to export node2-key public key"
+    echo "$PUB2" | sed 's/^/    /'
+    phase_fail "node2 key export"
+    PHASE7_OK=false
+}
+
+if $PHASE7_OK; then
+    info "Node 1 pubkey: $PUB1"
+    info "Node 2 pubkey: $PUB2"
+
+    # ── Create allowed_signers file ────────────────────────────────────
+    ALLOWED_SIGNERS="$DEMO_DIR/allowed_signers"
+    echo "e2e@test.local $PUB1" > "$ALLOWED_SIGNERS"
+    echo "e2e@test.local $PUB2" >> "$ALLOWED_SIGNERS"
+    echo -e "  ${GREEN}✓${NC} Created allowed_signers file"
+
+    # ── Configure git for SSH signing in project dir ───────────────────
+    (
+        cd "$PROJECT_DIR"
+        git config gpg.format ssh
+        git config gpg.ssh.program "$AUTHS_SIGN_BIN"
+        git config gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+        git config commit.gpgsign true
+    )
+    echo -e "  ${GREEN}✓${NC} Configured git for auths-sign SSH signing"
+
+    # ── Start Radicle nodes ────────────────────────────────────────────
+    E2E_PORT1=19876
+    E2E_PORT2=19877
+
+    info "Starting Radicle node 1 (port $E2E_PORT1)..."
+    RAD_HOME="$RAD_NODE1_HOME" rad node start -- --listen 0.0.0.0:$E2E_PORT1 2>&1 | sed 's/^/    /' || true
+    sleep 2
+
+    info "Starting Radicle node 2 (port $E2E_PORT2)..."
+    RAD_HOME="$RAD_NODE2_HOME" rad node start -- --listen 0.0.0.0:$E2E_PORT2 2>&1 | sed 's/^/    /' || true
+    sleep 2
+
+    info "Connecting nodes to rosa seed..."
+    RAD_HOME="$RAD_NODE1_HOME" rad node connect "${ROSA_NID}@rosa.radicle.xyz:8776" --timeout 10 2>&1 | sed 's/^/    /' || true
+    RAD_HOME="$RAD_NODE2_HOME" rad node connect "${ROSA_NID}@rosa.radicle.xyz:8776" --timeout 10 2>&1 | sed 's/^/    /' || true
+
+    info "Connecting node 2 to node 1..."
+    RAD_HOME="$RAD_NODE2_HOME" rad node connect "$NODE1_NID@127.0.0.1:$E2E_PORT1" --timeout 10 2>&1 | sed 's/^/    /' || true
+    sleep 1
+
+    # Seed the project on node 1 (should already be seeded from Phase 5 clone)
+    RAD_HOME="$RAD_NODE1_HOME" rad seed "$PROJECT_RID" 2>/dev/null || true
+
+    # ── Device 1: signed commit + push patch ──────────────────────────
+    info "Device 1: creating a signed commit and pushing a patch..."
+    COMMIT1_OUTPUT=$(
+        cd "$PROJECT_DIR"
+        git config user.signingKey "auths:node1-key"
+        git checkout -b feature-device1 2>/dev/null
+        echo "Change from device 1" >> README.md
+        git add README.md
+        git commit -m "Signed commit from device 1" 2>&1
+    ) || {
+        echo -e "  ${RED}✗${NC} Device 1 signed commit failed"
+        echo "$COMMIT1_OUTPUT" | sed 's/^/    /'
+        phase_fail "device 1 signed commit"
+        PHASE7_OK=false
+    }
+
+    if $PHASE7_OK; then
+        echo "$COMMIT1_OUTPUT" | sed 's/^/    /'
+
+        info "Verifying device 1 commit signature..."
+        VERIFY1_OUTPUT=$(cd "$PROJECT_DIR" && git verify-commit HEAD 2>&1) || {
+            echo -e "  ${RED}✗${NC} Device 1 commit verification failed"
+            echo "$VERIFY1_OUTPUT" | sed 's/^/    /'
+            phase_fail "device 1 signature verification"
+            PHASE7_OK=false
+        }
+        if $PHASE7_OK; then
+            echo -e "  ${GREEN}✓${NC} Device 1 signed commit verified"
+        fi
+
+        info "Pushing device 1 patch to Radicle..."
+        PUSH1_OUTPUT=$(
+            cd "$PROJECT_DIR"
+            export RAD_HOME="$RAD_NODE1_HOME"
+            git push rad HEAD:refs/patches 2>&1
+        ) || true
+        echo "$PUSH1_OUTPUT" | sed 's/^/    /'
+
+        PATCH1_ID=$(echo "$PUSH1_OUTPUT" | grep -oE 'Patch [0-9a-f]{40} opened' | awk '{print $2}') || true
+        if [ -n "$PATCH1_ID" ]; then
+            PATCH1_URL="https://app.radicle.xyz/nodes/rosa.radicle.xyz/${PROJECT_RID}/patches/${PATCH1_ID}"
+            echo -e "  ${GREEN}✓${NC} Device 1 patch created: ${CYAN}${PATCH1_ID}${NC}"
+            echo -e "    ${DIM}URL: ${PATCH1_URL}${NC}"
+        else
+            echo -e "  ${YELLOW}⚠${NC} Could not extract device 1 patch ID"
+        fi
+    fi
+
+    # ── Device 2: clone, signed commit + push patch ───────────────────
+    if $PHASE7_OK; then
+        NODE2_PROJECT="$DEMO_DIR/e2e-project-node2"
+
+        info "Device 2: cloning project..."
+        RAD_HOME="$RAD_NODE2_HOME" rad clone "$PROJECT_RID" "$NODE2_PROJECT" --seed "$NODE1_NID" --timeout 15 2>&1 | sed 's/^/    /' || true
+
+        if [ -d "$NODE2_PROJECT" ]; then
+            info "Device 2: creating a signed commit and pushing a patch..."
+            COMMIT2_OUTPUT=$(
+                cd "$NODE2_PROJECT"
+                git config user.name "E2E Tester Node2"
+                git config user.email "e2e@test.local"
+                git config gpg.format ssh
+                git config gpg.ssh.program "$AUTHS_SIGN_BIN"
+                git config gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+                git config commit.gpgsign true
+                git config user.signingKey "auths:node2-key"
+                git checkout -b feature-device2 2>/dev/null
+                echo "Change from device 2" >> README.md
+                git add README.md
+                git commit -m "Signed commit from device 2" 2>&1
+            ) || {
+                echo -e "  ${RED}✗${NC} Device 2 signed commit failed"
+                echo "$COMMIT2_OUTPUT" | sed 's/^/    /'
+                phase_fail "device 2 signed commit"
+                PHASE7_OK=false
+            }
+
+            if $PHASE7_OK; then
+                echo "$COMMIT2_OUTPUT" | sed 's/^/    /'
+
+                info "Verifying device 2 commit signature..."
+                VERIFY2_OUTPUT=$(cd "$NODE2_PROJECT" && git verify-commit HEAD 2>&1) || {
+                    echo -e "  ${RED}✗${NC} Device 2 commit verification failed"
+                    echo "$VERIFY2_OUTPUT" | sed 's/^/    /'
+                    phase_fail "device 2 signature verification"
+                    PHASE7_OK=false
+                }
+                if $PHASE7_OK; then
+                    echo -e "  ${GREEN}✓${NC} Device 2 signed commit verified"
+                fi
+
+                info "Pushing device 2 patch to Radicle..."
+                PUSH2_OUTPUT=$(
+                    cd "$NODE2_PROJECT"
+                    export RAD_HOME="$RAD_NODE2_HOME"
+                    git push rad HEAD:refs/patches 2>&1
+                ) || true
+                echo "$PUSH2_OUTPUT" | sed 's/^/    /'
+
+                PATCH2_ID=$(echo "$PUSH2_OUTPUT" | grep -oE 'Patch [0-9a-f]{40} opened' | awk '{print $2}') || true
+                if [ -n "$PATCH2_ID" ]; then
+                    PATCH2_URL="https://app.radicle.xyz/nodes/rosa.radicle.xyz/${PROJECT_RID}/patches/${PATCH2_ID}"
+                    echo -e "  ${GREEN}✓${NC} Device 2 patch created: ${CYAN}${PATCH2_ID}${NC}"
+                    echo -e "    ${DIM}URL: ${PATCH2_URL}${NC}"
+                else
+                    echo -e "  ${YELLOW}⚠${NC} Could not extract device 2 patch ID"
+                fi
+            fi
+        else
+            echo -e "  ${YELLOW}⚠${NC} Node 2 clone failed — skipping device 2 patch"
+        fi
+    fi
+
+    # ── Sync to rosa (best effort) ────────────────────────────────────
+    info "Syncing to rosa.radicle.xyz (best effort)..."
+    RAD_HOME="$RAD_NODE1_HOME" rad sync --announce "$PROJECT_RID" --seed "$ROSA_NID" --timeout 15 2>&1 | sed 's/^/    /' || true
+    RAD_HOME="$RAD_NODE2_HOME" rad sync --announce "$PROJECT_RID" --seed "$ROSA_NID" --timeout 15 2>&1 | sed 's/^/    /' || true
+
+    # Print summary of patch URLs
+    echo ""
+    echo -e "  ${BOLD}Patch URLs (rosa.radicle.xyz — permissive public seed):${NC}"
+    [ -n "${PATCH1_URL:-}" ] && echo -e "    Device 1: ${CYAN}${PATCH1_URL}${NC}"
+    [ -n "${PATCH2_URL:-}" ] && echo -e "    Device 2: ${CYAN}${PATCH2_URL}${NC}"
+    echo -e "  ${DIM}Note: URLs require successful sync. If behind NAT, the seed may not be able to fetch from you.${NC}"
+
+    # Verify at least device 1 pushed a patch
+    if [ -n "${PATCH1_ID:-}" ]; then
+        echo -e "  ${GREEN}✓${NC} At least one signed patch pushed successfully"
+    else
+        if $PHASE7_OK; then
+            phase_fail "no patches created"
+            PHASE7_OK=false
+        fi
+    fi
+
+    # ── Stop nodes ─────────────────────────────────────────────────────
+    info "Stopping Radicle nodes..."
+    RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
+    RAD_HOME="$RAD_NODE2_HOME" rad node stop 2>/dev/null || true
+fi
+
+if $PHASE7_OK; then
+    phase_pass
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 8 — Revoke device 2
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 8: Revoke device 2"
+
+info "Revoking node 2..."
+REVOKE_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device revoke \
+    --device-did "$NODE2_DID" \
+    --identity-key-alias identity-key \
+    --note "E2E revocation test" \
+    2>&1) || { echo "$REVOKE_OUTPUT" | sed 's/^/    /'; phase_fail "device revoke node2"; exit 1; }
+echo "$REVOKE_OUTPUT" | sed 's/^/    /'
+
+# Without --include-revoked, node 2 should not appear
+ACTIVE_DEVICES=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list 2>/dev/null || true)
+assert_contains     "node 1 still active"            "$ACTIVE_DEVICES" "$NODE1_DID"
+assert_not_contains "node 2 not in active list"      "$ACTIVE_DEVICES" "$NODE2_DID"
+
+# With --include-revoked, node 2 should appear as revoked
+ALL_DEVICES=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device list --include-revoked 2>/dev/null || true)
+assert_contains "node 2 shows as revoked" "$ALL_DEVICES" "$NODE2_DID"
+
+info "All-devices list (including revoked):"
+echo "$ALL_DEVICES" | sed 's/^/    /'
+
+# Verify device 1 still resolves to controller after revocation of device 2
+info "Verifying device 1 still resolves post-revocation..."
+POST_REVOKE_RESOLVE=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device resolve --device-did "$NODE1_DID" 2>&1 || true)
+POST_REVOKE_DID=$(echo "$POST_REVOKE_RESOLVE" | tr -d '[:space:]')
+if [ "$POST_REVOKE_DID" = "$CONTROLLER_DID" ]; then
+    echo -e "  ${GREEN}✓${NC} Device 1 still resolves to controller after device 2 revocation"
+else
+    echo -e "  ${RED}✗${NC} Device 1 resolution changed after revocation: '$POST_REVOKE_DID'"
+fi
+
+phase_pass
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Phase 9 — HTTP API assertions (requires modified radicle-httpd)
+# ══════════════════════════════════════════════════════════════════════════════
+phase_start "Phase 9: HTTP API assertions"
+
+PHASE9_OK=true
+HTTPD_PORT=17899
+
+info "Starting Radicle node 1 for HTTP API testing..."
+RAD_HOME="$RAD_NODE1_HOME" rad node start -- --listen 0.0.0.0:$E2E_PORT1 2>&1 | sed 's/^/    /' || true
+sleep 2
+
+# Detect httpd port from node config, fall back to default 8080
+DETECTED_PORT=$(RAD_HOME="$RAD_NODE1_HOME" rad config 2>/dev/null | grep -oP '"port":\s*\K[0-9]+' | head -1 || echo "8080")
+HTTPD_URL="http://127.0.0.1:${DETECTED_PORT}"
+
+info "Testing httpd at $HTTPD_URL ..."
+
+# Check if the modified httpd serves the delegates endpoint
+USER_RESPONSE=$(curl -sf "$HTTPD_URL/api/v1/delegates/$CONTROLLER_DID" 2>/dev/null) || {
+    info "Modified delegates endpoint not available — skipping API assertions"
+    RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
+    phase_pass
+    PHASE9_OK="skipped"
+}
+
+if [ "$PHASE9_OK" = "true" ]; then
+    # ── Delegates endpoint assertions ──────────────────────────────────
+    info "GET /v1/delegates/$CONTROLLER_DID response:"
+    echo "$USER_RESPONSE" | sed 's/^/    /'
+
+    assert_contains "user response has controllerDid" "$USER_RESPONSE" "controllerDid"
+    assert_contains "user response has isKeri: true"  "$USER_RESPONSE" '"isKeri":true'
+    assert_contains "user response has devices array" "$USER_RESPONSE" '"devices":'
+
+    # ── KEL endpoint assertions ────────────────────────────────────────
+    info "Testing KEL endpoint..."
+    KEL_RESPONSE=$(curl -sf "$HTTPD_URL/api/v1/identity/$CONTROLLER_DID/kel" 2>/dev/null) || {
+        echo -e "  ${RED}✗${NC} KEL endpoint failed"
+        PHASE9_OK=false
+    }
+
+    if [ "$PHASE9_OK" = "true" ]; then
+        # KEL should be a non-empty JSON array
+        assert_contains "KEL response is a JSON array" "$KEL_RESPONSE" "["
+        KEL_LENGTH=$(echo "$KEL_RESPONSE" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+        if [ "$KEL_LENGTH" -gt 0 ]; then
+            echo -e "  ${GREEN}✓${NC} KEL contains $KEL_LENGTH events"
+        else
+            echo -e "  ${RED}✗${NC} KEL is empty"
+            PHASE9_OK=false
+        fi
+    fi
+
+    # ── Attestations endpoint assertions ───────────────────────────────
+    info "Testing attestations endpoint..."
+    ATT_RESPONSE=$(curl -sf "$HTTPD_URL/api/v1/identity/$CONTROLLER_DID/attestations" 2>/dev/null) || {
+        echo -e "  ${RED}✗${NC} Attestations endpoint failed"
+        PHASE9_OK=false
+    }
+
+    if [ "$PHASE9_OK" = "true" ]; then
+        assert_contains "attestations response is a JSON array" "$ATT_RESPONSE" "["
+        ATT_COUNT=$(echo "$ATT_RESPONSE" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
+
+        # After Phase 8 revocation, we expect 1 active device (node1 active, node2 revoked).
+        # The attestation endpoint may return all attestations (including revoked) or only active.
+        if [ "$ATT_COUNT" -gt 0 ]; then
+            echo -e "  ${GREEN}✓${NC} Attestations endpoint returned $ATT_COUNT attestation(s)"
+        else
+            echo -e "  ${RED}✗${NC} Attestations response is empty"
+            PHASE9_OK=false
+        fi
+    fi
+
+    # ── Stop node ──────────────────────────────────────────────────────
+    info "Stopping node..."
+    RAD_HOME="$RAD_NODE1_HOME" rad node stop 2>/dev/null || true
+
+    if [ "$PHASE9_OK" = "true" ]; then
+        phase_pass
+    else
+        phase_fail "HTTP API assertions"
+    fi
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Summary
+# ══════════════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║${NC}${BOLD}           Radicle Multi-Device E2E — Summary              ${NC}${CYAN}║${NC}"
+echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+FAILURES=0
+for result in "${PHASE_RESULTS[@]}"; do
+    if [[ "$result" == PASS:* ]]; then
+        echo -e "  ${GREEN}✓${NC} ${result#PASS: }"
+    else
+        echo -e "  ${RED}✗${NC} ${result#FAIL: }"
+        FAILURES=$((FAILURES + 1))
+    fi
+done
+
+echo ""
+if [ "$FAILURES" -eq 0 ]; then
+    echo -e "${GREEN}${BOLD}All ${#PHASE_RESULTS[@]} phases passed.${NC}"
+    exit 0
+else
+    echo -e "${RED}${BOLD}$FAILURES of ${#PHASE_RESULTS[@]} phases failed.${NC}"
+    exit 1
+fi

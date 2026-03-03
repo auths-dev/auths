@@ -148,7 +148,16 @@ fn derive_keys(
         )))
     })?;
 
-    Ok((controller_did.into_inner(), config.key_alias.clone()))
+    let did_str = controller_did.into_inner();
+    ctx.identity_storage
+        .create_identity(&did_str, None)
+        .map_err(|e| {
+            SetupError::StorageError(SdkStorageError::OperationFailed(format!(
+                "failed to persist identity: {e}"
+            )))
+        })?;
+
+    Ok((did_str, config.key_alias.clone()))
 }
 
 fn derive_device_did(

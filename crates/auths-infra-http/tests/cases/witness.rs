@@ -55,7 +55,7 @@ fn make_test_event(prefix: &str, seq: u64) -> (Vec<u8>, Said) {
     (serde_json::to_vec(&event).unwrap(), said)
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn http_witness_submit_and_retrieve_receipt() {
     let (addr, _state) = start_test_server().await;
     let client = HttpAsyncWitnessClient::new(format!("http://{}", addr), 1);
@@ -74,7 +74,7 @@ async fn http_witness_submit_and_retrieve_receipt() {
     assert_eq!(retrieved.unwrap().a, said);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn http_witness_detects_duplicity() {
     let (addr, _state) = start_test_server().await;
     let client = HttpAsyncWitnessClient::new(format!("http://{}", addr), 1);
@@ -93,7 +93,7 @@ async fn http_witness_detects_duplicity() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn receipt_collector_reaches_quorum() {
     let (addr1, _s1) = start_test_server().await;
     let (addr2, _s2) = start_test_server().await;
@@ -123,14 +123,14 @@ async fn receipt_collector_reaches_quorum() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn http_witness_health_check() {
     let (addr, _state) = start_test_server().await;
     let client = HttpAsyncWitnessClient::new(format!("http://{}", addr), 1);
     assert!(client.is_available().await.unwrap());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn http_witness_unavailable_server() {
     let client = HttpAsyncWitnessClient::new("http://127.0.0.1:1", 1)
         .with_timeout(Duration::from_millis(500));
@@ -147,7 +147,7 @@ async fn http_witness_unavailable_server() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn http_witness_observe_head() {
     let (addr, _state) = start_test_server().await;
     let client = HttpAsyncWitnessClient::new(format!("http://{}", addr), 1);
@@ -167,7 +167,7 @@ async fn http_witness_observe_head() {
     assert!(head.is_some());
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn http_witness_get_nonexistent_receipt() {
     let (addr, _state) = start_test_server().await;
     let client = HttpAsyncWitnessClient::new(format!("http://{}", addr), 1);

@@ -99,7 +99,7 @@ The `StorageLayoutConfig` struct allows alternative ref layouts for interoperabi
 | Preset | Identity Ref | Attestation Prefix | Use Case |
 |--------|-------------|-------------------|----------|
 | Default | `refs/auths/identity` | `refs/auths/devices/nodes` | Standard Auths |
-| Radicle | `refs/rad/id` | `refs/rad/multidevice/nodes` | Radicle integration |
+| Radicle | `refs/rad/id` | `refs/keys` | Radicle integration |
 | Gitoxide | `refs/auths/id` | `refs/auths/devices` | Gitoxide tooling |
 
 ## Consistency Model

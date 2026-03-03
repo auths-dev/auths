@@ -5,7 +5,7 @@ use crate::error::AgentError;
 use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// An in-memory key storage implementation for fallback or testing.
 #[derive(Default)]
@@ -152,6 +152,83 @@ impl KeyStorage for MemoryKeychainHandle {
 
     fn backend_name(&self) -> &'static str {
         "Memory"
+    }
+}
+
+/// A per-instance in-memory keychain that does NOT share the global singleton.
+///
+/// Args:
+/// * (none — carries its own `Arc<Mutex<MemoryStorage>>`)
+///
+/// Usage:
+/// ```rust,ignore
+/// let kc = IsolatedKeychainHandle::new();
+/// kc.store_key(&alias, &did, &data)?;
+/// ```
+#[derive(Debug, Clone)]
+pub struct IsolatedKeychainHandle {
+    store: Arc<Mutex<MemoryStorage>>,
+}
+
+impl IsolatedKeychainHandle {
+    /// Creates a fresh, empty isolated keychain.
+    pub fn new() -> Self {
+        Self {
+            store: Arc::new(Mutex::new(MemoryStorage::default())),
+        }
+    }
+}
+
+impl Default for IsolatedKeychainHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl KeyStorage for IsolatedKeychainHandle {
+    fn store_key(
+        &self,
+        alias: &KeyAlias,
+        identity_did: &IdentityDID,
+        encrypted_key_data: &[u8],
+    ) -> Result<(), AgentError> {
+        self.store
+            .lock()
+            .unwrap()
+            .store_key(alias, identity_did, encrypted_key_data)
+    }
+
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+        self.store.lock().unwrap().load_key(alias)
+    }
+
+    fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
+        self.store.lock().unwrap().delete_key(alias)
+    }
+
+    fn list_aliases(&self) -> Result<Vec<KeyAlias>, AgentError> {
+        self.store.lock().unwrap().list_aliases()
+    }
+
+    fn list_aliases_for_identity(
+        &self,
+        identity_did: &IdentityDID,
+    ) -> Result<Vec<KeyAlias>, AgentError> {
+        self.store
+            .lock()
+            .unwrap()
+            .list_aliases_for_identity(identity_did)
+    }
+
+    fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
+        self.store
+            .lock()
+            .unwrap()
+            .get_identity_for_alias(alias)
+    }
+
+    fn backend_name(&self) -> &'static str {
+        "IsolatedMemory"
     }
 }
 

@@ -282,18 +282,18 @@ impl AttestationSource for GitAttestationStorage {
                             // Extract the potential sanitized DID part from the path
                             // Example: refs/auths/devices/nodes/<sanitized_did>/signatures
                             let prefix_to_strip = format!("{}/", pattern_base);
-                            if let Some(suffix) = full_ref_name.strip_prefix(&prefix_to_strip)
-                                && let Some(sanitized_did) = suffix.strip_suffix("/signatures")
-                            {
-                                log::trace!(
-                                    "Found potential sanitized DID: {} from ref {}",
-                                    sanitized_did,
-                                    full_ref_name
-                                );
-                                // As noted before, this discovery only finds the ref name component.
-                                // The actual DID must be retrieved by loading the attestation.
-                                // We insert the *sanitized* name wrapped in DeviceDID.
-                                discovered_dids.insert(DeviceDID::new(sanitized_did));
+                            if let Some(suffix) = full_ref_name.strip_prefix(&prefix_to_strip) {
+                                if let Some(sanitized_did) = suffix.strip_suffix("/signatures") {
+                                    log::trace!(
+                                        "Found potential sanitized DID: {} from ref {}",
+                                        sanitized_did,
+                                        full_ref_name
+                                    );
+                                    // As noted before, this discovery only finds the ref name component.
+                                    // The actual DID must be retrieved by loading the attestation.
+                                    // We insert the *sanitized* name wrapped in DeviceDID.
+                                    discovered_dids.insert(DeviceDID::new(sanitized_did));
+                                }
                             }
                         }
                     }

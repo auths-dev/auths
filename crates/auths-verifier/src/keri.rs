@@ -454,12 +454,13 @@ pub struct Seal {
 }
 
 /// Result of KEL verification.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct KeriKeyState {
     /// The KERI prefix
     pub prefix: Prefix,
 
     /// The current public key (raw bytes)
+    #[serde(skip)]
     pub current_key: Vec<u8>,
 
     /// The current public key (encoded, e.g. "D..." base64url)
@@ -553,12 +554,12 @@ pub async fn verify_kel(
 
                     let new_key_bytes = decode_key(&rot.k[0])?;
 
-                    if let Some(commitment) = &state.next_commitment
-                        && !verify_commitment(&new_key_bytes, commitment)
-                    {
-                        return Err(KeriVerifyError::CommitmentMismatch {
-                            sequence: actual_seq,
-                        });
+                    if let Some(commitment) = &state.next_commitment {
+                        if !verify_commitment(&new_key_bytes, commitment) {
+                            return Err(KeriVerifyError::CommitmentMismatch {
+                                sequence: actual_seq,
+                            });
+                        }
                     }
 
                     state.current_key = new_key_bytes;
@@ -674,9 +675,9 @@ async fn verify_event_signature(
     Ok(())
 }
 
-/// Compute SAID using Blake3.
+/// Compute a KERI Self-Addressing Identifier (SAID) using Blake3.
 // SYNC: must match auths-core/src/crypto/said.rs — tested by said_cross_validation
-fn compute_said(data: &[u8]) -> Said {
+pub fn compute_said(data: &[u8]) -> Said {
     let hash = blake3::hash(data);
     Said::new_unchecked(format!("E{}", URL_SAFE_NO_PAD.encode(hash.as_bytes())))
 }

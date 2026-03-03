@@ -1,4 +1,4 @@
-//! Radicle-Auths bridge trait.
+//! Radicle-Auths bridge trait and types.
 //!
 //! Defines the boundary between Radicle and Auths. This adapter layer:
 //! - Accepts Radicle types as input (commits, keys, repositories)
@@ -14,74 +14,151 @@
 //!
 //! Auths **authorizes**, never signs. Radicle handles all cryptography.
 
-use chrono::{DateTime, Utc};
+use radicle_core::{Did, RepoId};
+use radicle_crypto::PublicKey;
 use thiserror::Error;
 
-/// Result of verifying a commit against Auths policy.
+/// Timestamp type for verification requests.
+///
+/// With `std`: `chrono::DateTime<chrono::Utc>` (full datetime).
+/// Without `std` (WASM): `i64` (Unix epoch seconds).
+#[cfg(feature = "std")]
+pub type Timestamp = chrono::DateTime<chrono::Utc>;
+
+/// Timestamp type for verification requests (WASM-compatible).
+#[cfg(not(feature = "std"))]
+pub type Timestamp = i64;
+
+/// Result of verifying a signer against Auths policy.
 ///
 /// Maps to Radicle's verification expectations:
-/// - `Verified` → Allow the commit
-/// - `Rejected` → Block the commit
-/// - `Warn` → Allow but flag for review (optional)
+/// - `Verified` -> Allow the update
+/// - `Rejected` -> Block the update
+/// - `Warn` -> Allow but flag for review (observe mode)
+/// - `Quarantine` -> Insufficient local state to decide (fetch more data)
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum VerifyResult {
-    /// Commit is authorized by policy.
-    Verified {
-        /// Human-readable reason for verification.
+    /// Signer is authorized by policy.
+    Verified { reason: String },
+
+    /// Signer is rejected by policy.
+    Rejected { reason: String },
+
+    /// Signer is allowed but flagged (observe mode or indeterminate).
+    Warn { reason: String },
+
+    /// Insufficient local state to make a decision.
+    ///
+    /// The identity repo needs fetching before a decision can be made.
+    /// In observe mode, this scenario is downgraded to `Warn`.
+    Quarantine {
         reason: String,
-    },
-    /// Commit is rejected by policy.
-    Rejected {
-        /// Human-readable reason for rejection.
-        reason: String,
-    },
-    /// Commit is allowed but flagged (policy returned Indeterminate).
-    Warn {
-        /// Human-readable warning message.
-        reason: String,
+        /// The RID of the identity repo to fetch, if known.
+        identity_repo_rid: Option<RepoId>,
     },
 }
 
 impl VerifyResult {
-    /// Returns true if the result allows the commit.
+    /// Returns true if the result allows the update.
+    ///
+    /// `Quarantine` is NOT allowed — it is treated like `Rejected` for callers.
     pub fn is_allowed(&self) -> bool {
-        matches!(
-            self,
-            VerifyResult::Verified { .. } | VerifyResult::Warn { .. }
-        )
+        matches!(self, Self::Verified { .. } | Self::Warn { .. })
     }
 
-    /// Returns true if the result rejects the commit.
+    /// Returns true if the result rejects the update.
     pub fn is_rejected(&self) -> bool {
-        matches!(self, VerifyResult::Rejected { .. })
+        matches!(self, Self::Rejected { .. })
     }
 
     /// Returns the reason string.
     pub fn reason(&self) -> &str {
         match self {
-            VerifyResult::Verified { reason } => reason,
-            VerifyResult::Rejected { reason } => reason,
-            VerifyResult::Warn { reason } => reason,
+            Self::Verified { reason }
+            | Self::Rejected { reason }
+            | Self::Warn { reason }
+            | Self::Quarantine { reason, .. } => reason,
         }
     }
 }
 
+/// Enforcement mode for the bridge.
+///
+/// Controls how the bridge handles rejection and missing state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum EnforcementMode {
+    /// Detection-and-flagging only. Rejections are downgraded to warnings.
+    /// The bridge never blocks updates.
+    Observe,
+
+    /// Hard authorization boundary. Rejections block updates.
+    /// Missing identity state produces `Quarantine`.
+    #[default]
+    Enforce,
+}
+
+/// All parameters needed to verify a signer.
+///
+/// Bundles the verification request to avoid 8-parameter functions.
+/// This struct is the contract between Heartwood's `CompositeAuthorityChecker`
+/// and the auths bridge.
+///
+/// Usage:
+/// ```ignore
+/// let request = VerifyRequest {
+///     signer_key: &key,
+///     repo_id: &rid,
+///     now: Utc::now(),
+///     mode: EnforcementMode::Enforce,
+///     known_remote_tip: None,
+///     min_kel_seq: None,
+///     required_capability: None,
+/// };
+/// let result = bridge.verify_signer(&request)?;
+/// ```
+pub struct VerifyRequest<'a> {
+    /// The Ed25519 public key that signed the update.
+    pub signer_key: &'a PublicKey,
+    /// The Radicle repository ID (for scoped identity lookup).
+    pub repo_id: &'a RepoId,
+    /// Current time for checking attestation expiry.
+    pub now: Timestamp,
+    /// Enforcement mode (observe vs enforce).
+    pub mode: EnforcementMode,
+    /// Gossip-announced tip OID of the identity repo, if known.
+    /// Used for staleness detection.
+    pub known_remote_tip: Option<[u8; 20]>,
+    /// Minimum KEL sequence from the project binding.
+    /// A binding integrity check — NOT a freshness heuristic.
+    pub min_kel_seq: Option<u64>,
+    /// Required capability (e.g. "sign_commit", "sign_release").
+    pub required_capability: Option<&'a str>,
+}
+
 /// Error type for bridge operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum BridgeError {
-    /// Failed to load identity.
+    /// Identity repo missing or unreadable. Actionable: "fetch identity repo X".
     #[error("failed to load identity: {0}")]
     IdentityLoad(String),
 
-    /// Failed to load attestation.
+    /// Failed to load attestation for device.
     #[error("failed to load attestation: {0}")]
     AttestationLoad(String),
 
-    /// Policy evaluation failed.
+    /// Identity is corrupt — KEL validation failed, broken chain, etc.
+    /// Not actionable by fetching. Needs investigation.
+    #[error("identity is corrupt: {0}")]
+    IdentityCorrupt(String),
+
+    /// Policy evaluation failed (internal error, not a policy denial).
     #[error("policy evaluation failed: {0}")]
     PolicyEvaluation(String),
 
-    /// Invalid device key.
+    /// Invalid device key format.
     #[error("invalid device key: {0}")]
     InvalidDeviceKey(String),
 
@@ -93,82 +170,94 @@ pub enum BridgeError {
 /// Bridge between Radicle and Auths.
 ///
 /// This trait defines the adapter boundary. Implementations:
-/// 1. Accept Radicle types (commits, keys, repositories)
+/// 1. Accept Radicle types (PublicKey, RepoId)
 /// 2. Load Auths data (identities, attestations)
 /// 3. Evaluate against Auths policy engine
 /// 4. Return verification results
 ///
-/// # Example (with heartwood feature)
-///
+/// Usage:
 /// ```ignore
-/// use auths_radicle::bridge::RadicleAuthsBridge;
+/// use auths_radicle::bridge::{RadicleAuthsBridge, VerifyRequest, EnforcementMode};
 ///
-/// let bridge = DefaultBridge::new(auths_storage, policy);
-/// let result = bridge.verify_commit(&commit, now)?;
-/// match result {
-///     VerifyResult::Verified { reason } => println!("Allowed: {}", reason),
-///     VerifyResult::Rejected { reason } => println!("Blocked: {}", reason),
-///     VerifyResult::Warn { reason } => println!("Warning: {}", reason),
-/// }
+/// let request = VerifyRequest {
+///     signer_key: &key,
+///     repo_id: &rid,
+///     now: Utc::now(),
+///     mode: EnforcementMode::Enforce,
+///     known_remote_tip: None,
+///     min_kel_seq: None,
+///     required_capability: None,
+/// };
+/// let result = bridge.verify_signer(&request)?;
 /// ```
 pub trait RadicleAuthsBridge: Send + Sync {
     /// Map a Radicle public key to an Auths DeviceDID.
-    ///
-    /// Converts Radicle's Ed25519 public key format to Auths' `did:key:z...` format.
-    fn device_did(&self, key_bytes: &[u8; 32]) -> String;
+    fn device_did(&self, key: &PublicKey) -> Did;
 
-    /// Verify a commit against Auths policy.
+    /// Verify a signer against Auths policy.
     ///
     /// This method assumes Radicle has already verified the cryptographic signature.
     /// We only check authorization (is this key allowed to sign for this identity?).
     ///
-    /// # Arguments
+    /// Args:
+    /// * `request`: All parameters bundled into a `VerifyRequest`.
     ///
-    /// * `signer_key` - The Ed25519 public key that signed the commit (32 bytes)
-    /// * `repo_id` - The Radicle repository ID (for loading identity/attestations)
-    /// * `now` - Current time for checking attestation expiry
+    /// Usage:
+    /// ```ignore
+    /// let result = bridge.verify_signer(&request)?;
+    /// ```
+    fn verify_signer(&self, request: &VerifyRequest) -> Result<VerifyResult, BridgeError>;
+
+    /// Find the KERI identity DID controlling a device key in a project.
     ///
-    /// # Returns
+    /// Scans the project's DID namespaces to find which identity (if any)
+    /// has attested this device.
     ///
-    /// * `VerifyResult::Verified` - Policy allows this key to sign
-    /// * `VerifyResult::Rejected` - Policy denies this key
-    /// * `VerifyResult::Warn` - Policy is indeterminate (allow with warning)
-    fn verify_signer(
+    /// Args:
+    /// * `device_did`: The device's DID.
+    /// * `repo_id`: The project repository ID for scoped lookup.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let identity = bridge.find_identity_for_device(&device_did, &rid)?;
+    /// ```
+    fn find_identity_for_device(
         &self,
-        signer_key: &[u8; 32],
-        repo_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<VerifyResult, BridgeError>;
+        device_did: &Did,
+        repo_id: &RepoId,
+    ) -> Result<Option<Did>, BridgeError>;
+
+    /// List all device DIDs that are attested by a given identity in this project.
+    fn list_devices(&self, identity_did: &Did) -> Result<Vec<Did>, BridgeError>;
 }
 
-// Note: Heartwood-specific bridge trait is not included here due to sqlite
-// library conflicts. When integrating with Radicle's native types, consumers
-// should implement RadicleAuthsBridge and convert Radicle types to bytes:
-//
-// ```ignore
-// impl RadicleAuthsBridge for MyBridge {
-//     fn device_did(&self, key_bytes: &[u8; 32]) -> String {
-//         // Convert to did:key format
-//     }
-//
-//     fn verify_signer(&self, signer_key: &[u8; 32], repo_id: &str, now: DateTime<Utc>)
-//         -> Result<VerifyResult, BridgeError>
-//     {
-//         // Load identity and attestation, evaluate policy
-//     }
-// }
-//
-// // Usage with Radicle types:
-// let key_bytes: [u8; 32] = radicle_public_key.as_ref().try_into()?;
-// let result = bridge.verify_signer(&key_bytes, &repo_id.to_string(), now)?;
-// ```
+/// Input for mixed-delegate threshold verification.
+///
+/// Radicle supports hybrid delegate sets with both `Did::Key` (legacy nodes)
+/// and `Did::Keri` (teams with KERI identities). The bridge only verifies
+/// `Did::Keri` signers — `Did::Key` verification results are pre-computed
+/// by Heartwood and passed through.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum SignerInput {
+    /// `Did::Key` signer already verified by Heartwood's Ed25519 delegate check.
+    /// The `did` field carries the `did:key:z6Mk...` for identity deduplication.
+    PreVerified {
+        /// The legacy device DID (used as the identity DID for grouping).
+        did: Did,
+        /// The pre-computed verification result.
+        result: VerifyResult,
+    },
+    /// `Did::Keri` signer needing bridge verification.
+    NeedsBridgeVerification(PublicKey),
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_verify_result_is_allowed() {
+    fn verify_result_is_allowed() {
         assert!(
             VerifyResult::Verified {
                 reason: "ok".into()
@@ -187,10 +276,17 @@ mod tests {
             }
             .is_allowed()
         );
+        assert!(
+            !VerifyResult::Quarantine {
+                reason: "fetch".into(),
+                identity_repo_rid: None,
+            }
+            .is_allowed()
+        );
     }
 
     #[test]
-    fn test_verify_result_is_rejected() {
+    fn verify_result_is_rejected() {
         assert!(
             !VerifyResult::Verified {
                 reason: "ok".into()
@@ -209,10 +305,17 @@ mod tests {
             }
             .is_rejected()
         );
+        assert!(
+            !VerifyResult::Quarantine {
+                reason: "q".into(),
+                identity_repo_rid: None,
+            }
+            .is_rejected()
+        );
     }
 
     #[test]
-    fn test_verify_result_reason() {
+    fn verify_result_reason() {
         assert_eq!(
             VerifyResult::Verified {
                 reason: "test".into()
@@ -220,5 +323,18 @@ mod tests {
             .reason(),
             "test"
         );
+        assert_eq!(
+            VerifyResult::Quarantine {
+                reason: "fetch me".into(),
+                identity_repo_rid: Some("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5".parse().unwrap()),
+            }
+            .reason(),
+            "fetch me"
+        );
+    }
+
+    #[test]
+    fn enforcement_mode_default_is_enforce() {
+        assert_eq!(EnforcementMode::default(), EnforcementMode::Enforce);
     }
 }

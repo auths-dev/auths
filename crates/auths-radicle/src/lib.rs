@@ -19,18 +19,41 @@
 //! - `auths-id` has zero Radicle dependencies
 //! - Only this crate imports Radicle/heartwood types
 //!
-//! # Features
+//! # Feature Flags
 //!
-//! - `heartwood` - Enable direct integration with Radicle's heartwood crates.
-//!   When disabled, the bridge uses generic byte-based APIs.
+//! - `std` (default): Enables Git storage, `chrono`, identity resolution, full bridge.
+//! - `wasm`: Enables `wasm-bindgen` for WASM targets. Core types (`VerifyResult`,
+//!   `RadAttestation`, `RadCanonicalPayload`, bridge enums) are always available.
 
+pub mod attestation;
 pub mod bridge;
+pub mod refs;
+
+#[cfg(feature = "std")]
 pub mod identity;
+#[cfg(feature = "std")]
+pub mod storage;
+#[cfg(feature = "std")]
 pub mod verify;
 
-pub use bridge::{BridgeError, RadicleAuthsBridge, VerifyResult};
-pub use identity::{RadicleIdentity, RadicleIdentityDocument, RadicleIdentityResolver};
+// WASM-safe re-exports (always available)
+pub use attestation::{
+    AttestationConversionError, RadAttestation, RadAttestationError, RadCanonicalPayload,
+};
+pub use bridge::{
+    BridgeError, EnforcementMode, RadicleAuthsBridge, SignerInput, Timestamp, VerifyRequest,
+    VerifyResult,
+};
+
+// std-only re-exports
+#[cfg(feature = "std")]
+pub use identity::{
+    IdentityError, RadicleIdentity, RadicleIdentityDocument, RadicleIdentityResolver,
+};
+#[cfg(feature = "std")]
+pub use radicle_core::identity::{Did, DidError};
+#[cfg(feature = "std")]
 pub use verify::{
-    AuthsStorage, DefaultBridge, decision_to_verify_result, meets_threshold,
+    AuthsStorage, DefaultBridge, IdentityDid, decision_to_verify_result, meets_threshold,
     verify_multiple_signers,
 };

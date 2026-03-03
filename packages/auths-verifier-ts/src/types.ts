@@ -61,3 +61,38 @@ export interface Attestation {
   note?: string | null;
   payload?: unknown;
 }
+
+/**
+ * KERI key state after replaying a Key Event Log.
+ * Returned by verifyKel() on successful KEL verification.
+ */
+export interface KeriKeyState {
+  /** The KERI prefix (self-addressing identifier) */
+  prefix: string;
+  /** Current public key in KERI encoding (e.g. "D..." base64url) */
+  current_key_encoded: string;
+  /** Next-key commitment hash, null if identity is abandoned */
+  next_commitment: string | null;
+  /** Current sequence number in the KEL */
+  sequence: number;
+  /** Whether the identity has been abandoned (no next-key commitment) */
+  is_abandoned: boolean;
+  /** SAID of the last processed event */
+  last_event_said: string;
+}
+
+/**
+ * Result of verifying a device's link to a KERI identity.
+ * Verification failures are expressed as valid=false with an error message,
+ * never as thrown exceptions.
+ */
+export interface DeviceLinkResult {
+  /** Whether the device link verified successfully */
+  valid: boolean;
+  /** Human-readable error if verification failed */
+  error?: string;
+  /** KERI key state after KEL replay (present on success) */
+  key_state?: KeriKeyState;
+  /** Sequence number of the IXN event anchoring the attestation seal (if found) */
+  seal_sequence?: number;
+}

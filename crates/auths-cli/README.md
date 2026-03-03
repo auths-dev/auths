@@ -51,7 +51,7 @@ A Git repository that stores the history and state of your Auths identity.
 A specific commit (referenced by identity-ref, e.g., refs/auths/identity or rad/id) contains a blob (identity-blob, e.g., identity.json or radicle-identity.json) storing the Controller DID and arbitrary Metadata.
 
 ### Device Attestation
-Commits stored under specific Git references (prefixed by attestation-prefix, e.g., `refs/auths/devices/nodes/...` or `refs/rad/multidevice/nodes/...`) linking device keys/DIDs to the main identity.
+Commits stored under specific Git references (prefixed by attestation-prefix, e.g., `refs/auths/devices/nodes/...` or `refs/keys/...`) linking device keys/DIDs to the main identity.
 
 These contain attestation-blob files (e.g., `attestation.json`).
 
@@ -210,7 +210,7 @@ This workflow achieves a Radicle-compatible layout by specifying layout flags fo
           --repo "$RAD_REPO_PATH" \
           --identity-ref "refs/rad/id" \
           --identity-blob "radicle-identity.json" \
-          --attestation-prefix "refs/rad/multidevice/nodes" \
+          --attestation-prefix "refs/keys" \
           --attestation-blob "link-attestation.json" \
           --metadata-file ~/radicle_meta.json \
           --local-key-alias radicle_id_key
@@ -228,7 +228,7 @@ This workflow achieves a Radicle-compatible layout by specifying layout flags fo
       --repo "$RAD_REPO_PATH" \
       --identity-ref "refs/rad/id" \
       --identity-blob "radicle-identity.json" \
-      --attestation-prefix "refs/rad/multidevice/nodes" \
+      --attestation-prefix "refs/keys" \
       --attestation-blob "link-attestation.json"
     # Note Controller DID, check metadata
     ```
@@ -237,7 +237,7 @@ This workflow achieves a Radicle-compatible layout by specifying layout flags fo
 
     ```bash
     # Get Controller DID using flags
-    CONTROLLER_DID=$(auths id show --repo "$RAD_REPO_PATH" --identity-ref "refs/rad/id" --identity-blob "radicle-identity.json" --attestation-prefix "refs/rad/multidevice/nodes" --attestation-blob "link-attestation.json" | grep 'Controller DID:' | awk -F': ' '{print $2}')
+    CONTROLLER_DID=$(auths id show --repo "$RAD_REPO_PATH" --identity-ref "refs/rad/id" --identity-blob "radicle-identity.json" --attestation-prefix "refs/keys" --attestation-blob "link-attestation.json" | grep 'Controller DID:' | awk -F': ' '{print $2}')
     auths key import --alias rad_device_key --seed-file ~/rad_device.seed --controller-did "$CONTROLLER_DID"
     # Enter passphrase
     ```
@@ -253,7 +253,7 @@ This workflow achieves a Radicle-compatible layout by specifying layout flags fo
           --repo "$RAD_REPO_PATH" \
           --identity-ref "refs/rad/id" \
           --identity-blob "radicle-identity.json" \
-          --attestation-prefix "refs/rad/multidevice/nodes" \
+          --attestation-prefix "refs/keys" \
           --attestation-blob "link-attestation.json" \
           --identity-key-alias radicle_id_key \
           --device-key-alias rad_device_key \
@@ -269,7 +269,7 @@ This workflow achieves a Radicle-compatible layout by specifying layout flags fo
       --repo "$RAD_REPO_PATH" \
       --identity-ref "refs/rad/id" \
       --identity-blob "radicle-identity.json" \
-      --attestation-prefix "refs/rad/multidevice/nodes" \
+      --attestation-prefix "refs/keys" \
       --attestation-blob "link-attestation.json"
     # Check for linked device
     ```

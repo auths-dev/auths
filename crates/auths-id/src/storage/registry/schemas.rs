@@ -182,6 +182,8 @@ mod tests {
             Prefix::new_unchecked("EPrefix".to_string()),
             vec!["DKey".to_string()],
             vec!["ENext".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESaid".to_string()),
         );
         let tip_said = Said::new_unchecked("ETipSaid".to_string());
@@ -198,6 +200,8 @@ mod tests {
             Prefix::new_unchecked("EPrefix".to_string()),
             vec!["DKey".to_string()],
             vec!["ENext".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESaid".to_string()),
         );
         let cached =

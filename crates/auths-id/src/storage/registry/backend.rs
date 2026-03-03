@@ -525,17 +525,17 @@ pub trait RegistryBackend: Send + Sync {
                 let member_caps = attestation_capability_strings(att);
 
                 // Capabilities any: intersection non-empty
-                if let Some(ref caps_any) = filter.capabilities_any
-                    && member_caps.is_disjoint(caps_any)
-                {
-                    return ControlFlow::Continue(());
+                if let Some(ref caps_any) = filter.capabilities_any {
+                    if member_caps.is_disjoint(caps_any) {
+                        return ControlFlow::Continue(());
+                    }
                 }
 
                 // Capabilities all: filter_caps ⊆ member_caps
-                if let Some(ref caps_all) = filter.capabilities_all
-                    && !caps_all.is_subset(&member_caps)
-                {
-                    return ControlFlow::Continue(());
+                if let Some(ref caps_all) = filter.capabilities_all {
+                    if !caps_all.is_subset(&member_caps) {
+                        return ControlFlow::Continue(());
+                    }
                 }
 
                 members.push(MemberView {

@@ -22,18 +22,18 @@ Radicle identifies peers with `did:key:z6Mk...` identifiers (Ed25519 multicodec 
 
 ## Storage layout
 
-Radicle uses a different Git ref structure than the default Auths layout. Auths supports this through layout presets:
+The default Auths layout uses the RIP-X (Radicle) convention:
 
-| Default Auths layout | Radicle layout |
+| Ref | Path |
 |---|---|
-| `refs/auths/identity` | `refs/rad/id` |
-| `identity.json` | `radicle-identity.json` |
-| `refs/auths/devices/nodes` | `refs/rad/multidevice/nodes` |
-| `attestation.json` | `link-attestation.json` |
+| Identity | `refs/rad/id` |
+| Identity blob | `radicle-identity.json` |
+| Attestation prefix | `refs/keys` |
+| Attestation blob | `link-attestation.json` |
 
 ## Setup
 
-### 1. Create an identity with the Radicle preset
+### 1. Create an identity
 
 First, create a metadata file for your Radicle identity:
 
@@ -46,43 +46,26 @@ cat > ~/radicle_meta.json << 'EOF'
 EOF
 ```
 
-Then initialize your identity using the `--preset radicle` flag, which automatically applies the Radicle storage layout:
+Then initialize your identity:
 
 ```bash
-RAD_REPO_PATH="$HOME/my_radicle_identity_repo"
-
 auths id create \
   --metadata-file ~/radicle_meta.json \
-  --local-key-alias radicle_id_key \
-  --preset radicle
+  --local-key-alias radicle_id_key
 ```
-
-The `--preset radicle` flag sets the identity ref to `refs/rad/id`, the identity blob to `radicle-identity.json`, the attestation prefix to `refs/rad/multidevice/nodes`, and the attestation blob to `link-attestation.json`.
 
 ### 2. View identity details
 
-You can also pass layout flags explicitly instead of using the preset. All subsequent commands need the layout flags to read from the correct refs:
-
 ```bash
-auths id show \
-  --repo "$RAD_REPO_PATH" \
-  --identity-ref "refs/rad/id" \
-  --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
-  --attestation-blob "link-attestation.json"
+auths id show --repo "$RAD_REPO_PATH"
 ```
 
 ### 3. Link a device
 
-Import a device key and link it to your Radicle identity:
+Import a device key and link it to your identity:
 
 ```bash
-CONTROLLER_DID=$(auths id show \
-  --repo "$RAD_REPO_PATH" \
-  --identity-ref "refs/rad/id" \
-  --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
-  --attestation-blob "link-attestation.json" \
+CONTROLLER_DID=$(auths id show --repo "$RAD_REPO_PATH" \
   | grep 'Controller DID:' | awk -F': ' '{print $2}')
 
 auths key import \
@@ -96,10 +79,6 @@ Then link the device:
 ```bash
 auths device link \
   --repo "$RAD_REPO_PATH" \
-  --identity-ref "refs/rad/id" \
-  --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
-  --attestation-blob "link-attestation.json" \
   --identity-key-alias radicle_id_key \
   --device-key-alias rad_device_key \
   --device-did "$DEVICE_DID" \
@@ -109,32 +88,7 @@ auths device link \
 ### 4. Verify linked devices
 
 ```bash
-auths device list \
-  --repo "$RAD_REPO_PATH" \
-  --identity-ref "refs/rad/id" \
-  --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
-  --attestation-blob "link-attestation.json"
-```
-
-## Shell alias
-
-To avoid repeating layout flags on every command, create a shell alias:
-
-```bash
-alias auths-rad='auths \
-  --repo "$RAD_REPO_PATH" \
-  --identity-ref "refs/rad/id" \
-  --identity-blob "radicle-identity.json" \
-  --attestation-prefix "refs/rad/multidevice/nodes" \
-  --attestation-blob "link-attestation.json"'
-```
-
-Then use it as:
-
-```bash
-auths-rad id show
-auths-rad device list
+auths device list --repo "$RAD_REPO_PATH"
 ```
 
 ## Threshold identities

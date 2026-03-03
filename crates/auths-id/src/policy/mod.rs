@@ -433,6 +433,8 @@ mod tests {
             next_commitment: vec![],
             last_event_said: Said::new_unchecked("ETestSaid".to_string()),
             is_abandoned: false,
+            threshold: 1,
+            next_threshold: 1,
         }
     }
 

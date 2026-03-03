@@ -143,8 +143,23 @@ pub fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
     )?;
 
     // Initialize state from inception
-    let mut state =
-        KeyState::from_inception(icp.i.clone(), icp.k.clone(), icp.n.clone(), icp.d.clone());
+    let threshold = icp
+        .kt
+        .parse::<u64>()
+        .map_err(|_| ValidationError::MalformedSequence { raw: icp.kt.clone() })?;
+    let next_threshold = icp
+        .nt
+        .parse::<u64>()
+        .map_err(|_| ValidationError::MalformedSequence { raw: icp.nt.clone() })?;
+
+    let mut state = KeyState::from_inception(
+        icp.i.clone(),
+        icp.k.clone(),
+        icp.n.clone(),
+        threshold,
+        next_threshold,
+        icp.d.clone(),
+    );
 
     // Process remaining events
     for (idx, event) in events.iter().enumerate().skip(1) {
@@ -196,7 +211,22 @@ pub fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
                     }
                 }
 
-                state.apply_rotation(rot.k.clone(), rot.n.clone(), actual_seq, rot.d.clone());
+                let threshold = rot.kt.parse::<u64>().map_err(|_| ValidationError::MalformedSequence {
+                    raw: rot.kt.clone(),
+                })?;
+                let next_threshold =
+                    rot.nt.parse::<u64>().map_err(|_| ValidationError::MalformedSequence {
+                        raw: rot.nt.clone(),
+                    })?;
+
+                state.apply_rotation(
+                    rot.k.clone(),
+                    rot.n.clone(),
+                    threshold,
+                    next_threshold,
+                    actual_seq,
+                    rot.d.clone(),
+                );
             }
             Event::Ixn(ixn) => {
                 // IXN is signed by the current key
@@ -786,8 +816,16 @@ mod tests {
         let (icp, keypair) = make_signed_icp();
         let ixn = make_signed_ixn(&icp.i, &icp.d, 1, &keypair);
 
-        let state =
-            KeyState::from_inception(icp.i.clone(), icp.k.clone(), icp.n.clone(), icp.d.clone());
+        let threshold = icp.kt.parse().unwrap();
+        let next_threshold = icp.nt.parse().unwrap();
+        let state = KeyState::from_inception(
+            icp.i.clone(),
+            icp.k.clone(),
+            icp.n.clone(),
+            threshold,
+            next_threshold,
+            icp.d.clone(),
+        );
         let result = verify_event_crypto(&Event::Ixn(ixn), Some(&state));
         assert!(result.is_ok());
     }
@@ -800,8 +838,16 @@ mod tests {
         // Forge the signature
         ixn.x = URL_SAFE_NO_PAD.encode([0u8; 64]);
 
-        let state =
-            KeyState::from_inception(icp.i.clone(), icp.k.clone(), icp.n.clone(), icp.d.clone());
+        let threshold = icp.kt.parse().unwrap();
+        let next_threshold = icp.nt.parse().unwrap();
+        let state = KeyState::from_inception(
+            icp.i.clone(),
+            icp.k.clone(),
+            icp.n.clone(),
+            threshold,
+            next_threshold,
+            icp.d.clone(),
+        );
         let result = verify_event_crypto(&Event::Ixn(ixn), Some(&state));
         assert!(matches!(
             result,
@@ -819,8 +865,16 @@ mod tests {
         let wrong_keypair = Ed25519KeyPair::from_pkcs8(wrong_pkcs8.as_ref()).unwrap();
         let ixn = make_signed_ixn(&icp.i, &icp.d, 1, &wrong_keypair);
 
-        let state =
-            KeyState::from_inception(icp.i.clone(), icp.k.clone(), icp.n.clone(), icp.d.clone());
+        let threshold = icp.kt.parse().unwrap();
+        let next_threshold = icp.nt.parse().unwrap();
+        let state = KeyState::from_inception(
+            icp.i.clone(),
+            icp.k.clone(),
+            icp.n.clone(),
+            threshold,
+            next_threshold,
+            icp.d.clone(),
+        );
         let result = verify_event_crypto(&Event::Ixn(ixn), Some(&state));
         assert!(matches!(
             result,
@@ -835,8 +889,16 @@ mod tests {
         let (icp, _keypair) = make_signed_icp();
 
         // Create state with empty next_commitment (abandoned)
-        let mut state =
-            KeyState::from_inception(icp.i.clone(), icp.k.clone(), icp.n.clone(), icp.d.clone());
+        let threshold = icp.kt.parse().unwrap();
+        let next_threshold = icp.nt.parse().unwrap();
+        let mut state = KeyState::from_inception(
+            icp.i.clone(),
+            icp.k.clone(),
+            icp.n.clone(),
+            threshold,
+            next_threshold,
+            icp.d.clone(),
+        );
         state.next_commitment = vec![];
         state.is_abandoned = true;
 
@@ -917,10 +979,14 @@ mod tests {
         let sig = keypair.sign(&canonical);
         icp.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
+        let threshold = icp.kt.parse().unwrap();
+        let next_threshold = icp.nt.parse().unwrap();
         let state = KeyState::from_inception(
             icp.i.clone(),
             icp.k.clone(),
             vec![next_commitment],
+            threshold,
+            next_threshold,
             icp.d.clone(),
         );
 
@@ -997,10 +1063,14 @@ mod tests {
         let sig = keypair.sign(&canonical);
         icp.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
+        let threshold = icp.kt.parse().unwrap();
+        let next_threshold = icp.nt.parse().unwrap();
         let state = KeyState::from_inception(
             icp.i.clone(),
             icp.k.clone(),
             vec![next_commitment],
+            threshold,
+            next_threshold,
             icp.d.clone(),
         );
 

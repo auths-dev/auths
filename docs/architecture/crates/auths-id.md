@@ -101,7 +101,7 @@ The `StorageLayoutConfig` struct allows consumers to define custom Git reference
 | Preset | Identity Ref | Attestation Prefix | Identity Blob | Attestation Blob |
 |--------|-------------|-------------------|---------------|-----------------|
 | `default()` | `refs/auths/identity` | `refs/auths/devices/nodes` | `identity.json` | `attestation.json` |
-| `radicle()` | `refs/rad/id` | `refs/rad/multidevice/nodes` | `radicle-identity.json` | `link-attestation.json` |
+| `radicle()` | `refs/rad/id` | `refs/keys` | `radicle-identity.json` | `link-attestation.json` |
 | `gitoxide()` | `refs/auths/id` | `refs/auths/devices` | `identity.json` | `attestation.json` |
 
 Full device attestation ref path: `{device_attestation_prefix}/{sanitized_did}/signatures`

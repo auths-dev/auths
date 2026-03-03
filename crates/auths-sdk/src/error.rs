@@ -1,8 +1,7 @@
 use thiserror::Error;
 
-/// Opaque wrapper for storage errors originating from `auths-id` traits that
-/// currently return `anyhow::Result`. Preserves the full error display string
-/// until `auths-id` storage traits are migrated to typed errors.
+/// Wrapper for storage errors originating from `auths-id` traits.
+/// Preserves the full error display string from the underlying storage layer.
 ///
 /// Usage:
 /// ```ignore

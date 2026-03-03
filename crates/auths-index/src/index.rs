@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::schema;
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, params};
+use sqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -70,7 +70,7 @@ impl AttestationIndex {
 
     /// Creates an in-memory index (for testing).
     pub fn in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()?;
+        let conn = Connection::open(":memory:")?;
         schema::init_schema(&conn)?;
         Ok(Self { conn })
     }
@@ -85,10 +85,10 @@ impl AttestationIndex {
         let expires_at_str = att.expires_at.map(|dt| dt.to_rfc3339());
         let updated_at_str = att.updated_at.to_rfc3339();
 
-        self.conn.execute(
+        let mut stmt = self.conn.prepare(
             r#"
             INSERT INTO attestations (rid, issuer_did, device_did, git_ref, commit_oid, revoked_at, expires_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(rid) DO UPDATE SET
                 issuer_did = excluded.issuer_did,
                 device_did = excluded.device_did,
@@ -98,17 +98,18 @@ impl AttestationIndex {
                 expires_at = excluded.expires_at,
                 updated_at = excluded.updated_at
             "#,
-            params![
-                att.rid,
-                att.issuer_did,
-                att.device_did,
-                att.git_ref,
-                att.commit_oid,
-                revoked_at_str,
-                expires_at_str,
-                updated_at_str,
-            ],
         )?;
+
+        stmt.bind((1, att.rid.as_str()))?;
+        stmt.bind((2, att.issuer_did.as_str()))?;
+        stmt.bind((3, att.device_did.as_str()))?;
+        stmt.bind((4, att.git_ref.as_str()))?;
+        stmt.bind((5, att.commit_oid.as_str()))?;
+        stmt.bind((6, revoked_at_str.as_deref()))?;
+        stmt.bind((7, expires_at_str.as_deref()))?;
+        stmt.bind((8, updated_at_str.as_str()))?;
+
+        stmt.next()?;
         Ok(())
     }
 
@@ -116,13 +117,13 @@ impl AttestationIndex {
     pub fn query_by_device(&self, device_did: &str) -> Result<Vec<IndexedAttestation>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT rid, issuer_did, device_did, git_ref, commit_oid, revoked_at, expires_at, updated_at FROM attestations WHERE device_did = ?1")?;
+            .prepare("SELECT rid, issuer_did, device_did, git_ref, commit_oid, revoked_at, expires_at, updated_at FROM attestations WHERE device_did = ?")?;
 
-        let rows = stmt.query_map([device_did], |row| self.row_to_attestation(row))?;
+        stmt.bind((1, device_did))?;
 
         let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
+        while let Ok(sqlite::State::Row) = stmt.next() {
+            results.push(self.row_to_attestation(&stmt)?);
         }
         Ok(results)
     }
@@ -131,13 +132,13 @@ impl AttestationIndex {
     pub fn query_by_issuer(&self, issuer_did: &str) -> Result<Vec<IndexedAttestation>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT rid, issuer_did, device_did, git_ref, commit_oid, revoked_at, expires_at, updated_at FROM attestations WHERE issuer_did = ?1")?;
+            .prepare("SELECT rid, issuer_did, device_did, git_ref, commit_oid, revoked_at, expires_at, updated_at FROM attestations WHERE issuer_did = ?")?;
 
-        let rows = stmt.query_map([issuer_did], |row| self.row_to_attestation(row))?;
+        stmt.bind((1, issuer_did))?;
 
         let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
+        while let Ok(sqlite::State::Row) = stmt.next() {
+            results.push(self.row_to_attestation(&stmt)?);
         }
         Ok(results)
     }
@@ -149,14 +150,14 @@ impl AttestationIndex {
     ) -> Result<Vec<IndexedAttestation>> {
         let deadline_str = deadline.to_rfc3339();
         let mut stmt = self.conn.prepare(
-            "SELECT rid, issuer_did, device_did, git_ref, commit_oid, revoked_at, expires_at, updated_at FROM attestations WHERE expires_at IS NOT NULL AND expires_at < ?1 AND revoked_at IS NULL",
+            "SELECT rid, issuer_did, device_did, git_ref, commit_oid, revoked_at, expires_at, updated_at FROM attestations WHERE expires_at IS NOT NULL AND expires_at < ? AND revoked_at IS NULL",
         )?;
 
-        let rows = stmt.query_map([deadline_str], |row| self.row_to_attestation(row))?;
+        stmt.bind((1, deadline_str.as_str()))?;
 
         let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
+        while let Ok(sqlite::State::Row) = stmt.next() {
+            results.push(self.row_to_attestation(&stmt)?);
         }
         Ok(results)
     }
@@ -167,62 +168,57 @@ impl AttestationIndex {
             "SELECT rid, issuer_did, device_did, git_ref, commit_oid, revoked_at, expires_at, updated_at FROM attestations WHERE revoked_at IS NULL",
         )?;
 
-        let rows = stmt.query_map([], |row| self.row_to_attestation(row))?;
-
         let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
+        while let Ok(sqlite::State::Row) = stmt.next() {
+            results.push(self.row_to_attestation(&stmt)?);
         }
         Ok(results)
     }
 
     /// Clears all attestations from the index.
     pub fn clear(&self) -> Result<()> {
-        self.conn.execute("DELETE FROM attestations", [])?;
+        self.conn.execute("DELETE FROM attestations")?;
         Ok(())
     }
 
     /// Returns the count of attestations in the index.
     pub fn count(&self) -> Result<usize> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM attestations", [], |row| row.get(0))?;
-        Ok(count as usize)
+        let mut stmt = self.conn.prepare("SELECT COUNT(*) FROM attestations")?;
+        if let Ok(sqlite::State::Row) = stmt.next() {
+            let count: i64 = stmt.read(0)?;
+            return Ok(count as usize);
+        }
+        Ok(0)
     }
 
     /// Returns statistics about the index.
     pub fn stats(&self) -> Result<IndexStats> {
         let total = self.count()?;
 
-        let active: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM attestations WHERE revoked_at IS NULL",
-            [],
-            |row| row.get(0),
-        )?;
+        let mut stmt_active = self.conn.prepare("SELECT COUNT(*) FROM attestations WHERE revoked_at IS NULL")?;
+        let active = if let Ok(sqlite::State::Row) = stmt_active.next() {
+            stmt_active.read::<i64, _>(0)?
+        } else { 0 };
 
-        let revoked: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM attestations WHERE revoked_at IS NOT NULL",
-            [],
-            |row| row.get(0),
-        )?;
+        let mut stmt_revoked = self.conn.prepare("SELECT COUNT(*) FROM attestations WHERE revoked_at IS NOT NULL")?;
+        let revoked = if let Ok(sqlite::State::Row) = stmt_revoked.next() {
+            stmt_revoked.read::<i64, _>(0)?
+        } else { 0 };
 
-        let with_expiry: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM attestations WHERE expires_at IS NOT NULL",
-            [],
-            |row| row.get(0),
-        )?;
+        let mut stmt_expiry = self.conn.prepare("SELECT COUNT(*) FROM attestations WHERE expires_at IS NOT NULL")?;
+        let with_expiry = if let Ok(sqlite::State::Row) = stmt_expiry.next() {
+            stmt_expiry.read::<i64, _>(0)?
+        } else { 0 };
 
-        let unique_devices: i64 = self.conn.query_row(
-            "SELECT COUNT(DISTINCT device_did) FROM attestations",
-            [],
-            |row| row.get(0),
-        )?;
+        let mut stmt_devices = self.conn.prepare("SELECT COUNT(DISTINCT device_did) FROM attestations")?;
+        let unique_devices = if let Ok(sqlite::State::Row) = stmt_devices.next() {
+            stmt_devices.read::<i64, _>(0)?
+        } else { 0 };
 
-        let unique_issuers: i64 = self.conn.query_row(
-            "SELECT COUNT(DISTINCT issuer_did) FROM attestations",
-            [],
-            |row| row.get(0),
-        )?;
+        let mut stmt_issuers = self.conn.prepare("SELECT COUNT(DISTINCT issuer_did) FROM attestations")?;
+        let unique_issuers = if let Ok(sqlite::State::Row) = stmt_issuers.next() {
+            stmt_issuers.read::<i64, _>(0)?
+        } else { 0 };
 
         Ok(IndexStats {
             total_attestations: total,
@@ -235,15 +231,15 @@ impl AttestationIndex {
     }
 
     /// Helper to convert a database row to an IndexedAttestation.
-    fn row_to_attestation(&self, row: &rusqlite::Row) -> rusqlite::Result<IndexedAttestation> {
-        let rid: String = row.get(0)?;
-        let issuer_did: String = row.get(1)?;
-        let device_did: String = row.get(2)?;
-        let git_ref: String = row.get(3)?;
-        let commit_oid: String = row.get(4)?;
-        let revoked_at_str: Option<String> = row.get(5)?;
-        let expires_at_str: Option<String> = row.get(6)?;
-        let updated_at_str: String = row.get(7)?;
+    fn row_to_attestation(&self, stmt: &sqlite::Statement) -> Result<IndexedAttestation> {
+        let rid: String = stmt.read(0)?;
+        let issuer_did: String = stmt.read(1)?;
+        let device_did: String = stmt.read(2)?;
+        let git_ref: String = stmt.read(3)?;
+        let commit_oid: String = stmt.read(4)?;
+        let revoked_at_str: Option<String> = stmt.read(5)?;
+        let expires_at_str: Option<String> = stmt.read(6)?;
+        let updated_at_str: String = stmt.read(7)?;
 
         let revoked_at = revoked_at_str
             .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
@@ -276,24 +272,25 @@ impl AttestationIndex {
     /// Inserts or updates an identity in the index.
     pub fn upsert_identity(&self, identity: &IndexedIdentity) -> Result<()> {
         let keys_json = serde_json::to_string(&identity.current_keys)?;
-        self.conn.execute(
+        let mut stmt = self.conn.prepare(
             r#"
             INSERT INTO identities (prefix, current_keys, sequence, tip_said, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(prefix) DO UPDATE SET
                 current_keys = excluded.current_keys,
                 sequence     = excluded.sequence,
                 tip_said     = excluded.tip_said,
                 updated_at   = excluded.updated_at
             "#,
-            params![
-                identity.prefix,
-                keys_json,
-                identity.sequence as i64,
-                identity.tip_said,
-                identity.updated_at.to_rfc3339(),
-            ],
         )?;
+
+        stmt.bind((1, identity.prefix.as_str()))?;
+        stmt.bind((2, keys_json.as_str()))?;
+        stmt.bind((3, identity.sequence as i64))?;
+        stmt.bind((4, identity.tip_said.as_str()))?;
+        stmt.bind((5, identity.updated_at.to_rfc3339().as_str()))?;
+
+        stmt.next()?;
         Ok(())
     }
 
@@ -301,35 +298,31 @@ impl AttestationIndex {
     pub fn query_identity(&self, prefix: &str) -> Result<Option<IndexedIdentity>> {
         let mut stmt = self.conn.prepare(
             "SELECT prefix, current_keys, sequence, tip_said, updated_at
-             FROM identities WHERE prefix = ?1",
+             FROM identities WHERE prefix = ?",
         )?;
 
-        let mut rows = stmt.query_map([prefix], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-            ))
-        })?;
+        stmt.bind((1, prefix))?;
 
-        match rows.next() {
-            None => Ok(None),
-            Some(row) => {
-                let (prefix, keys_json, sequence, tip_said, updated_at_str) = row?;
-                let current_keys: Vec<String> = serde_json::from_str(&keys_json)?;
-                let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
-                Ok(Some(IndexedIdentity {
-                    prefix,
-                    current_keys,
-                    sequence: sequence as u64,
-                    tip_said,
-                    updated_at,
-                }))
-            }
+        if let Ok(sqlite::State::Row) = stmt.next() {
+            let prefix: String = stmt.read(0)?;
+            let keys_json: String = stmt.read(1)?;
+            let sequence: i64 = stmt.read(2)?;
+            let tip_said: String = stmt.read(3)?;
+            let updated_at_str: String = stmt.read(4)?;
+
+            let current_keys: Vec<String> = serde_json::from_str(&keys_json)?;
+            let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            Ok(Some(IndexedIdentity {
+                prefix,
+                current_keys,
+                sequence: sequence as u64,
+                tip_said,
+                updated_at,
+            }))
+        } else {
+            Ok(None)
         }
     }
 
@@ -339,11 +332,11 @@ impl AttestationIndex {
 
     /// Inserts or updates an org member in the index.
     pub fn upsert_org_member(&self, member: &IndexedOrgMember) -> Result<()> {
-        self.conn.execute(
+        let mut stmt = self.conn.prepare(
             r#"
             INSERT INTO org_members
                 (org_prefix, member_did, issuer_did, rid, revoked_at, expires_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(org_prefix, member_did) DO UPDATE SET
                 issuer_did = excluded.issuer_did,
                 rid        = excluded.rid,
@@ -351,16 +344,17 @@ impl AttestationIndex {
                 expires_at = excluded.expires_at,
                 updated_at = excluded.updated_at
             "#,
-            params![
-                member.org_prefix,
-                member.member_did,
-                member.issuer_did,
-                member.rid,
-                member.revoked_at.map(|dt| dt.to_rfc3339()),
-                member.expires_at.map(|dt| dt.to_rfc3339()),
-                member.updated_at.to_rfc3339(),
-            ],
         )?;
+
+        stmt.bind((1, member.org_prefix.as_str()))?;
+        stmt.bind((2, member.member_did.as_str()))?;
+        stmt.bind((3, member.issuer_did.as_str()))?;
+        stmt.bind((4, member.rid.as_str()))?;
+        stmt.bind((5, member.revoked_at.map(|dt| dt.to_rfc3339()).as_deref()))?;
+        stmt.bind((6, member.expires_at.map(|dt| dt.to_rfc3339()).as_deref()))?;
+        stmt.bind((7, member.updated_at.to_rfc3339().as_str()))?;
+
+        stmt.next()?;
         Ok(())
     }
 
@@ -368,21 +362,11 @@ impl AttestationIndex {
     pub fn list_org_members_indexed(&self, org_prefix: &str) -> Result<Vec<IndexedOrgMember>> {
         let mut stmt = self.conn.prepare(
             "SELECT org_prefix, member_did, issuer_did, rid, revoked_at, expires_at, updated_at
-             FROM org_members WHERE org_prefix = ?1
+             FROM org_members WHERE org_prefix = ?
              ORDER BY member_did ASC",
         )?;
 
-        let rows = stmt.query_map([org_prefix], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, String>(6)?,
-            ))
-        })?;
+        stmt.bind((1, org_prefix))?;
 
         let parse_dt = |s: Option<String>| {
             s.and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
@@ -390,9 +374,15 @@ impl AttestationIndex {
         };
 
         let mut members = Vec::new();
-        for row in rows {
-            let (org_prefix, member_did, issuer_did, rid, revoked_str, expires_str, updated_str) =
-                row?;
+        while let Ok(sqlite::State::Row) = stmt.next() {
+            let org_prefix: String = stmt.read(0)?;
+            let member_did: String = stmt.read(1)?;
+            let issuer_did: String = stmt.read(2)?;
+            let rid: String = stmt.read(3)?;
+            let revoked_str: Option<String> = stmt.read(4)?;
+            let expires_str: Option<String> = stmt.read(5)?;
+            let updated_str: String = stmt.read(6)?;
+
             members.push(IndexedOrgMember {
                 org_prefix,
                 member_did,
@@ -411,12 +401,13 @@ impl AttestationIndex {
 
     /// Returns the count of org members for a given org in the index.
     pub fn count_org_members(&self, org_prefix: &str) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM org_members WHERE org_prefix = ?1",
-            [org_prefix],
-            |row| row.get(0),
-        )?;
-        Ok(count as usize)
+        let mut stmt = self.conn.prepare("SELECT COUNT(*) FROM org_members WHERE org_prefix = ?")?;
+        stmt.bind((1, org_prefix))?;
+        if let Ok(sqlite::State::Row) = stmt.next() {
+            let count: i64 = stmt.read(0)?;
+            return Ok(count as usize);
+        }
+        Ok(0)
     }
 }
 

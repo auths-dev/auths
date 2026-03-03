@@ -33,18 +33,22 @@
 //!
 //! ```no_run
 //! use auths_core::pairing::{PairingToken, PairingResponse, format_pairing_qr};
+//! use chrono::{DateTime, Utc};
 //!
-//! // On initiating device
-//! let mut session = PairingToken::generate(
-//!     "did:keri:controller123".to_string(),
-//!     "http://localhost:3000".to_string(),
-//!     vec!["sign_commit".to_string()],
-//! ).unwrap();
-//! let display = format_pairing_qr(&session.token).unwrap();
-//! print!("{}", display);
+//! // `now` is injected by the caller (e.g., clock.now() at presentation boundary)
+//! fn initiate_pairing(now: DateTime<Utc>) {
+//!     let mut session = PairingToken::generate(
+//!         now,
+//!         "did:keri:controller123".to_string(),
+//!         "http://localhost:3000".to_string(),
+//!         vec!["sign_commit".to_string()],
+//!     ).unwrap();
+//!     let display = format_pairing_qr(&session.token).unwrap();
+//!     print!("{}", display);
 //!
-//! // Get the URI for QR code
-//! let uri = session.token.to_uri();
+//!     // Get the URI for QR code
+//!     let uri = session.token.to_uri();
+//! }
 //! ```
 
 mod error;

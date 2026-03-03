@@ -38,7 +38,7 @@ auths-index.workspace = true
 auths-crypto.workspace = true
 auths-sdk.workspace = true
 auths-telemetry.workspace = true
-auths-verifier.workspace = true
+auths-verifier = { workspace = true, features = ["native"] }
 auths-infra-git.workspace = true
 auths-infra-http.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

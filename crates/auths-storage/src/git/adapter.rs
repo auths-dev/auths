@@ -459,12 +459,18 @@ impl GitRegistryBackend {
         event: &Event,
     ) -> Result<KeyState, RegistryError> {
         match event {
-            Event::Icp(icp) => Ok(KeyState::from_inception(
-                icp.i.clone(),
-                icp.k.clone(),
-                icp.n.clone(),
-                icp.d.clone(),
-            )),
+            Event::Icp(icp) => {
+                let threshold = icp.kt.parse::<u64>().unwrap_or(1);
+                let next_threshold = icp.nt.parse::<u64>().unwrap_or(1);
+                Ok(KeyState::from_inception(
+                    icp.i.clone(),
+                    icp.k.clone(),
+                    icp.n.clone(),
+                    threshold,
+                    next_threshold,
+                    icp.d.clone(),
+                ))
+            }
             Event::Rot(rot) => {
                 let mut state = current_state.cloned().ok_or_else(|| {
                     RegistryError::Internal("Rotation without prior state".into())
@@ -472,7 +478,9 @@ impl GitRegistryBackend {
                 let seq = event.sequence().map_err(|e| {
                     RegistryError::Internal(format!("Malformed sequence number: {}", e))
                 })?;
-                state.apply_rotation(rot.k.clone(), rot.n.clone(), seq, rot.d.clone());
+                let threshold = rot.kt.parse::<u64>().unwrap_or(1);
+                let next_threshold = rot.nt.parse::<u64>().unwrap_or(1);
+                state.apply_rotation(rot.k.clone(), rot.n.clone(), threshold, next_threshold, seq, rot.d.clone());
                 Ok(state)
             }
             Event::Ixn(ixn) => {
@@ -3727,6 +3735,8 @@ mod tests {
             sequence: original_state.sequence,
             last_event_said: original_state.last_event_said.clone(),
             is_abandoned: false,
+            threshold: 1,
+            next_threshold: 1,
         };
 
         backend.write_key_state(&prefix, &modified_state).unwrap();
@@ -3750,6 +3760,8 @@ mod tests {
             prefix.clone(),
             vec!["DKey1".to_string()],
             vec!["ENext1".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESAID12345".to_string()),
         );
 
