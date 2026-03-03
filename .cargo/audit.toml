@@ -1,0 +1,15 @@
+# cargo-audit configuration
+# See: https://docs.rs/cargo-audit/latest/cargo_audit/config/
+
+[advisories]
+ignore = [
+    # RSA timing side-channel in rsa v0.9.10 (via ssh-key -> ssh-agent-lib).
+    # No upstream fix available. Auths uses Ed25519 exclusively for its own
+    # keys; RSA code path is only reachable through SSH key import/export.
+    "RUSTSEC-2023-0071",
+
+    # rustls-pemfile issue (via axum-server -> auths-core witness server).
+    # Only affects the optional witness-server feature, not core signing or
+    # verification paths.
+    "RUSTSEC-2025-0134",
+]
