@@ -714,7 +714,7 @@ fn build_sdk_context(registry_path: &Path) -> Result<AuthsContext> {
         .identity_storage(identity_storage)
         .attestation_sink(attestation_sink)
         .attestation_source(attestation_source)
-        .build())
+        .build()?)
 }
 
 fn check_keychain_access(out: &Output) -> Result<Box<dyn KeyStorage + Send + Sync>> {

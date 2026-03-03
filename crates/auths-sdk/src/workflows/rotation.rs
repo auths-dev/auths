@@ -494,6 +494,7 @@ mod tests {
                     as Arc<dyn PassphraseProvider + Send + Sync>,
             )
             .build()
+            .unwrap()
     }
 
     fn provision_identity(ctx: &AuthsContext) -> KeyAlias {
@@ -788,7 +789,8 @@ mod tests {
                     call_count: AtomicU32::new(0),
                 })
                     as Arc<dyn PassphraseProvider + Send + Sync>)
-                .build();
+                .build()
+                .unwrap();
 
         let test_alias = KeyAlias::new_unchecked("test-alias");
         let old_alias = KeyAlias::new_unchecked("old-alias");

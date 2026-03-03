@@ -52,7 +52,7 @@ fn build_device_context(
     if let Some(pp) = passphrase_provider {
         builder = builder.passphrase_provider(pp);
     }
-    Ok(builder.build())
+    Ok(builder.build()?)
 }
 
 #[derive(Args, Debug, Clone)]

@@ -37,7 +37,7 @@
 //! ```
 
 use auths_core::witness::{EventHash, WitnessProvider};
-use auths_policy::{CanonicalCapability, evaluate_strict};
+use auths_policy::{CanonicalCapability, DidParseError, evaluate_strict};
 use auths_verifier::core::Attestation;
 use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
@@ -67,13 +67,11 @@ pub use auths_policy::{
 ///
 /// An `EvalContext` populated with the attestation's fields.
 ///
-/// # Panics
-///
-/// Panics if the attestation's issuer or subject DID is malformed.
-/// This should not happen in practice as attestations are validated on creation.
-pub fn context_from_attestation(att: &Attestation, now: DateTime<Utc>) -> EvalContext {
-    let mut ctx = EvalContext::try_from_strings(now, &att.issuer, &att.subject.to_string())
-        .expect("attestation DIDs should be valid");
+pub fn context_from_attestation(
+    att: &Attestation,
+    now: DateTime<Utc>,
+) -> Result<EvalContext, DidParseError> {
+    let mut ctx = EvalContext::try_from_strings(now, &att.issuer, &att.subject.to_string())?;
 
     ctx = ctx.revoked(att.is_revoked());
 
@@ -110,7 +108,7 @@ pub fn context_from_attestation(att: &Attestation, now: DateTime<Utc>) -> EvalCo
         ctx = ctx.signer_type(policy_st);
     }
 
-    ctx
+    Ok(ctx)
 }
 
 /// Evaluate a compiled policy against an attestation.
@@ -156,9 +154,9 @@ pub fn evaluate_compiled(
     att: &Attestation,
     policy: &CompiledPolicy,
     now: DateTime<Utc>,
-) -> Decision {
-    let ctx = context_from_attestation(att, now);
-    evaluate_strict(policy, &ctx)
+) -> Result<Decision, DidParseError> {
+    let ctx = context_from_attestation(att, now)?;
+    Ok(evaluate_strict(policy, &ctx))
 }
 
 /// Evaluate policy with optional witness consistency checks.
@@ -195,22 +193,17 @@ pub fn evaluate_with_witness(
     now: DateTime<Utc>,
     local_head: EventHash,
     witnesses: &[&dyn WitnessProvider],
-) -> Decision {
-    // If no witnesses provided, delegate to normal policy evaluation
+) -> Result<Decision, DidParseError> {
     if witnesses.is_empty() {
         return evaluate_compiled(att, policy, now);
     }
 
-    // Get the required quorum from the first witness
-    // (assumes all witnesses use the same quorum, which is typical)
     let required_quorum = witnesses.first().map(|w| w.quorum()).unwrap_or(1);
 
-    // If quorum is 0 (e.g., NoOpWitness), skip witness checks
     if required_quorum == 0 {
         return evaluate_compiled(att, policy, now);
     }
 
-    // Count witnesses that agree with local head
     let mut matching = 0;
     let mut total_opinions = 0;
 
@@ -223,23 +216,20 @@ pub fn evaluate_with_witness(
         }
     }
 
-    // If no witnesses have opinions, proceed with normal policy
     if total_opinions == 0 {
         return evaluate_compiled(att, policy, now);
     }
 
-    // Check if quorum is met
     if matching < required_quorum {
-        return Decision::deny(
+        return Ok(Decision::deny(
             ReasonCode::WitnessQuorumNotMet,
             format!(
                 "Witness quorum not met: {}/{} matching, {} required",
                 matching, total_opinions, required_quorum
             ),
-        );
+        ));
     }
 
-    // Quorum met, proceed with normal policy evaluation
     evaluate_compiled(att, policy, now)
 }
 
@@ -369,34 +359,32 @@ pub fn evaluate_with_receipts(
     receipts: &EventReceipts,
     threshold: usize,
     key_resolver: Option<&dyn WitnessKeyResolver>,
-) -> Decision {
-    // 1. First, verify receipts
+) -> Result<Decision, DidParseError> {
     match verify_receipts(receipts, threshold, key_resolver) {
         ReceiptVerificationResult::Valid => {}
         ReceiptVerificationResult::InsufficientReceipts { required, got } => {
-            return Decision::deny(
+            return Ok(Decision::deny(
                 ReasonCode::WitnessQuorumNotMet,
                 format!(
                     "Insufficient receipts: {} required, {} present",
                     required, got
                 ),
-            );
+            ));
         }
         ReceiptVerificationResult::Duplicity { event_a, event_b } => {
-            return Decision::deny(
+            return Ok(Decision::deny(
                 ReasonCode::WitnessQuorumNotMet,
                 format!("Duplicity detected: {} vs {}", event_a, event_b),
-            );
+            ));
         }
         ReceiptVerificationResult::InvalidSignature { witness_did } => {
-            return Decision::deny(
+            return Ok(Decision::deny(
                 ReasonCode::WitnessQuorumNotMet,
                 format!("Invalid receipt signature from witness: {}", witness_did),
-            );
+            ));
         }
     }
 
-    // 2. Then, do witness head consistency check
     evaluate_with_witness(identity, att, policy, now, local_head, witnesses)
 }
 
@@ -472,7 +460,7 @@ mod tests {
     fn context_from_attestation_basic() {
         let att = make_attestation("did:keri:ETest", None, None);
         let now = Utc::now();
-        let ctx = context_from_attestation(&att, now);
+        let ctx = context_from_attestation(&att, now).unwrap();
 
         assert_eq!(ctx.issuer.as_str(), "did:keri:ETest");
         assert_eq!(ctx.subject.as_str(), "did:key:subject");
@@ -484,7 +472,7 @@ mod tests {
         let mut att = make_attestation("did:keri:ETest", None, None);
         att.capabilities = vec![Capability::sign_commit()];
         let now = Utc::now();
-        let ctx = context_from_attestation(&att, now);
+        let ctx = context_from_attestation(&att, now).unwrap();
 
         assert_eq!(ctx.capabilities.len(), 1);
         assert_eq!(ctx.capabilities[0].as_str(), "sign_commit");
@@ -495,7 +483,7 @@ mod tests {
         let mut att = make_attestation("did:keri:ETest", None, None);
         att.role = Some(auths_verifier::core::Role::Member);
         let now = Utc::now();
-        let ctx = context_from_attestation(&att, now);
+        let ctx = context_from_attestation(&att, now).unwrap();
 
         assert_eq!(ctx.role.as_deref(), Some("member"));
     }
@@ -506,7 +494,7 @@ mod tests {
         let policy = default_policy();
         let now = Utc::now();
 
-        let decision = evaluate_compiled(&att, &policy, now);
+        let decision = evaluate_compiled(&att, &policy, now).unwrap();
         assert_eq!(decision.outcome, Outcome::Allow);
     }
 
@@ -516,7 +504,7 @@ mod tests {
         let policy = default_policy();
         let now = Utc::now();
 
-        let decision = evaluate_compiled(&att, &policy, now);
+        let decision = evaluate_compiled(&att, &policy, now).unwrap();
         assert_eq!(decision.outcome, Outcome::Deny);
         assert_eq!(decision.reason, ReasonCode::Revoked);
     }
@@ -528,7 +516,7 @@ mod tests {
         let policy = default_policy();
         let now = Utc::now();
 
-        let decision = evaluate_compiled(&att, &policy, now);
+        let decision = evaluate_compiled(&att, &policy, now).unwrap();
         assert_eq!(decision.outcome, Outcome::Deny);
         assert_eq!(decision.reason, ReasonCode::Expired);
     }
@@ -540,7 +528,7 @@ mod tests {
         let policy = default_policy();
         let now = Utc::now();
 
-        let decision = evaluate_compiled(&att, &policy, now);
+        let decision = evaluate_compiled(&att, &policy, now).unwrap();
         assert_eq!(decision.outcome, Outcome::Allow);
     }
 
@@ -553,7 +541,7 @@ mod tests {
             .build();
         let now = Utc::now();
 
-        let decision = evaluate_compiled(&att, &policy, now);
+        let decision = evaluate_compiled(&att, &policy, now).unwrap();
         assert_eq!(decision.outcome, Outcome::Deny);
         assert_eq!(decision.reason, ReasonCode::IssuerMismatch);
     }
@@ -567,7 +555,7 @@ mod tests {
             .build();
         let now = Utc::now();
 
-        let decision = evaluate_compiled(&att, &policy, now);
+        let decision = evaluate_compiled(&att, &policy, now).unwrap();
         assert_eq!(decision.outcome, Outcome::Deny);
         assert_eq!(decision.reason, ReasonCode::CapabilityMissing);
     }
@@ -582,7 +570,7 @@ mod tests {
             .build();
         let now = Utc::now();
 
-        let decision = evaluate_compiled(&att, &policy, now);
+        let decision = evaluate_compiled(&att, &policy, now).unwrap();
         assert_eq!(decision.outcome, Outcome::Allow);
     }
 
@@ -592,8 +580,8 @@ mod tests {
         let policy = default_policy();
         let now = Utc::now();
 
-        let decision1 = evaluate_compiled(&att, &policy, now);
-        let decision2 = evaluate_compiled(&att, &policy, now);
+        let decision1 = evaluate_compiled(&att, &policy, now).unwrap();
+        let decision2 = evaluate_compiled(&att, &policy, now).unwrap();
 
         assert_eq!(decision1, decision2);
     }
@@ -610,7 +598,8 @@ mod tests {
         let now = Utc::now();
         let local_head = EventHash::from_hex("0000000000000000000000000000000000000001").unwrap();
 
-        let decision = evaluate_with_witness(&identity, &att, &policy, now, local_head, &[]);
+        let decision =
+            evaluate_with_witness(&identity, &att, &policy, now, local_head, &[]).unwrap();
 
         assert_eq!(decision.outcome, Outcome::Allow);
     }
@@ -626,7 +615,8 @@ mod tests {
         let noop = NoOpWitness;
         let witnesses: &[&dyn WitnessProvider] = &[&noop];
 
-        let decision = evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses);
+        let decision =
+            evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses).unwrap();
 
         assert_eq!(decision.outcome, Outcome::Allow);
     }
@@ -647,7 +637,8 @@ mod tests {
         };
         let witnesses: &[&dyn WitnessProvider] = &[&witness];
 
-        let decision = evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses);
+        let decision =
+            evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses).unwrap();
 
         assert_eq!(decision.outcome, Outcome::Deny);
         assert_eq!(decision.reason, ReasonCode::WitnessQuorumNotMet);
@@ -667,7 +658,8 @@ mod tests {
         };
         let witnesses: &[&dyn WitnessProvider] = &[&witness];
 
-        let decision = evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses);
+        let decision =
+            evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses).unwrap();
 
         assert_eq!(decision.outcome, Outcome::Allow);
     }
@@ -686,7 +678,8 @@ mod tests {
         };
         let witnesses: &[&dyn WitnessProvider] = &[&witness];
 
-        let decision = evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses);
+        let decision =
+            evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses).unwrap();
 
         assert_eq!(decision.outcome, Outcome::Deny);
         assert_eq!(decision.reason, ReasonCode::Revoked);
@@ -716,7 +709,8 @@ mod tests {
         };
         let witnesses: &[&dyn WitnessProvider] = &[&w1, &w2, &w3];
 
-        let decision = evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses);
+        let decision =
+            evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses).unwrap();
 
         assert_eq!(decision.outcome, Outcome::Allow);
     }
@@ -735,7 +729,8 @@ mod tests {
         };
         let witnesses: &[&dyn WitnessProvider] = &[&witness];
 
-        let decision = evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses);
+        let decision =
+            evaluate_with_witness(&identity, &att, &policy, now, local_head, witnesses).unwrap();
 
         assert_eq!(decision.outcome, Outcome::Allow);
     }
@@ -836,7 +831,8 @@ mod tests {
             &receipts,
             2,
             None,
-        );
+        )
+        .unwrap();
 
         assert_eq!(decision.outcome, Outcome::Allow);
     }
@@ -861,7 +857,8 @@ mod tests {
             &receipts,
             2, // Threshold 2, but only 1 receipt
             None,
-        );
+        )
+        .unwrap();
 
         assert_eq!(decision.outcome, Outcome::Deny);
         assert_eq!(decision.reason, ReasonCode::WitnessQuorumNotMet);
