@@ -1,4 +1,5 @@
 use auths_core::storage::keychain::{KeyAlias, KeyStorage};
+use auths_verifier::Capability;
 use std::path::PathBuf;
 
 /// Policy for handling an existing identity during developer setup.
@@ -371,8 +372,8 @@ impl std::fmt::Debug for CiSetupConfig {
 pub struct AgentSetupConfig {
     /// Human-readable name for the agent.
     pub alias: KeyAlias,
-    /// Capability strings granted to the agent.
-    pub capabilities: Vec<String>,
+    /// Capabilities granted to the agent.
+    pub capabilities: Vec<Capability>,
     /// DID of the parent identity that delegates authority.
     pub parent_identity_did: Option<String>,
     /// Path to the auths registry directory.
@@ -410,7 +411,7 @@ impl AgentSetupConfig {
 #[derive(Debug)]
 pub struct AgentSetupConfigBuilder {
     alias: KeyAlias,
-    capabilities: Vec<String>,
+    capabilities: Vec<Capability>,
     parent_identity_did: Option<String>,
     registry_path: PathBuf,
     expires_in_secs: Option<u64>,
@@ -434,18 +435,18 @@ impl AgentSetupConfigBuilder {
         self
     }
 
-    /// Sets the capabilities granted to the agent (e.g. "sign-commit").
+    /// Sets the capabilities granted to the agent.
     ///
     /// Args:
-    /// * `capabilities`: List of capability strings.
+    /// * `capabilities`: List of capabilities.
     ///
     /// Usage:
     /// ```ignore
     /// let config = AgentSetupConfig::builder("bot", path)
-    ///     .with_capabilities(vec!["sign-commit".into(), "sign-tag".into()])
+    ///     .with_capabilities(vec![Capability::sign_commit()])
     ///     .build();
     /// ```
-    pub fn with_capabilities(mut self, capabilities: Vec<String>) -> Self {
+    pub fn with_capabilities(mut self, capabilities: Vec<Capability>) -> Self {
         self.capabilities = capabilities;
         self
     }
@@ -582,8 +583,8 @@ pub struct DeviceLinkConfig {
     pub device_key_alias: Option<KeyAlias>,
     /// Optional pre-existing device DID (not yet supported).
     pub device_did: Option<String>,
-    /// Capability strings to grant to the linked device.
-    pub capabilities: Vec<String>,
+    /// Capabilities to grant to the linked device.
+    pub capabilities: Vec<Capability>,
     /// Optional expiration period in days.
     pub expires_in_days: Option<u32>,
     /// Optional human-readable note for the attestation.

@@ -63,7 +63,7 @@ fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> St
         ),
     );
     let link_result = link_device(link_config, &link_ctx, &SystemClock).unwrap();
-    link_result.device_did
+    link_result.device_did.to_string()
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn extend_device_authorization_updates_expiry() {
 
     let result = extend_device_authorization(config, &ctx, &SystemClock).unwrap();
 
-    assert_eq!(result.device_did, device_did);
+    assert_eq!(result.device_did.to_string(), device_did);
     let now = chrono::Utc::now();
     let diff = result.new_expires_at - now;
     assert!(

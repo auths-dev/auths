@@ -236,7 +236,7 @@ pub fn rotate_identity(
         .map_err(|e| RotationError::RotationFailed(e.to_string()))?;
 
     Ok(RotationResult {
-        controller_did: identity.controller_did.to_string(),
+        controller_did: identity.controller_did,
         new_key_fingerprint: hex::encode(&new_pubkey[..8]),
         previous_key_fingerprint,
     })
@@ -649,7 +649,7 @@ mod tests {
 
         let (rot, new_next_pkcs8) = generate_rotation_keys(&identity, &state, &decrypted).unwrap();
 
-        assert_eq!(rot.s, (state.sequence + 1).to_string());
+        assert_eq!(rot.s, KeriSequence::new(state.sequence + 1));
         assert_eq!(rot.i, prefix);
         assert!(!rot.d.is_empty());
         assert!(!rot.x.is_empty());
@@ -754,7 +754,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("E_dummy".to_string()),
             i: prefix.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::default(),
             kt: "1".to_string(),
             k: vec![],

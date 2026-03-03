@@ -1,4 +1,7 @@
-use auths_core::storage::keychain::KeyAlias;
+use auths_core::storage::keychain::{IdentityDID, KeyAlias};
+use auths_verifier::core::ResourceId;
+use auths_verifier::types::DeviceDID;
+use auths_verifier::Capability;
 
 /// Outcome of a successful developer identity setup.
 ///
@@ -10,9 +13,9 @@ use auths_core::storage::keychain::KeyAlias;
 #[derive(Debug, Clone)]
 pub struct SetupResult {
     /// The controller DID of the created identity.
-    pub identity_did: String,
+    pub identity_did: IdentityDID,
     /// The device DID bound to this identity.
-    pub device_did: String,
+    pub device_did: DeviceDID,
     /// The keychain alias used for the signing key.
     pub key_alias: KeyAlias,
     /// Result of platform verification, if performed.
@@ -35,9 +38,9 @@ pub struct SetupResult {
 #[derive(Debug, Clone)]
 pub struct CiSetupResult {
     /// The controller DID of the CI identity.
-    pub identity_did: String,
+    pub identity_did: IdentityDID,
     /// The device DID bound to this CI identity.
-    pub device_did: String,
+    pub device_did: DeviceDID,
     /// Shell `export` lines for configuring CI environment variables.
     pub env_block: Vec<String>,
 }
@@ -52,11 +55,11 @@ pub struct CiSetupResult {
 #[derive(Debug, Clone)]
 pub struct AgentSetupResult {
     /// The DID of the newly created agent identity.
-    pub agent_did: String,
+    pub agent_did: IdentityDID,
     /// The DID of the parent identity that delegated authority.
-    pub parent_did: String,
+    pub parent_did: IdentityDID,
     /// The capabilities granted to the agent.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
 }
 
 /// Outcome of a successful device link operation.
@@ -69,9 +72,9 @@ pub struct AgentSetupResult {
 #[derive(Debug, Clone)]
 pub struct DeviceLinkResult {
     /// The DID of the linked device.
-    pub device_did: String,
+    pub device_did: DeviceDID,
     /// The resource identifier of the created attestation.
-    pub attestation_id: String,
+    pub attestation_id: ResourceId,
 }
 
 /// Outcome of a successful identity rotation.
@@ -86,7 +89,7 @@ pub struct DeviceLinkResult {
 #[derive(Debug, Clone)]
 pub struct RotationResult {
     /// The controller DID of the rotated identity.
-    pub controller_did: String,
+    pub controller_did: IdentityDID,
     /// Hex-encoded fingerprint of the new signing key.
     pub new_key_fingerprint: String,
     /// Hex-encoded fingerprint of the previous signing key.
@@ -103,7 +106,7 @@ pub struct RotationResult {
 #[derive(Debug, Clone)]
 pub struct DeviceExtensionResult {
     /// The DID of the device whose authorization was extended.
-    pub device_did: String,
+    pub device_did: DeviceDID,
     /// The new expiration timestamp for the device authorization.
     pub new_expires_at: chrono::DateTime<chrono::Utc>,
 }

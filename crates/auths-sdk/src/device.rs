@@ -11,7 +11,7 @@ use auths_id::attestation::revoke::create_signed_revocation;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::identity::IdentityStorage;
-use auths_verifier::core::{Capability, Ed25519PublicKey};
+use auths_verifier::core::{Capability, Ed25519PublicKey, ResourceId};
 use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
@@ -50,11 +50,7 @@ fn build_attestation_params(
                 .map(|d| now + chrono::Duration::days(d as i64)),
             note: config.note.clone(),
         },
-        capabilities: config
-            .capabilities
-            .iter()
-            .filter_map(|c| Capability::parse(c).ok())
-            .collect(),
+        capabilities: config.capabilities.clone(),
         identity_alias: config.identity_key_alias.clone(),
         device_alias: config.device_key_alias.clone(),
     }
@@ -101,8 +97,8 @@ pub fn link_device(
     )?;
 
     Ok(DeviceLinkResult {
-        device_did: device_did.to_string(),
-        attestation_id: attestation_rid,
+        device_did,
+        attestation_id: ResourceId::new(attestation_rid),
     })
 }
 
@@ -238,7 +234,7 @@ pub fn extend_device_authorization(
     ctx.attestation_sink.sync_index(&extended);
 
     Ok(DeviceExtensionResult {
-        device_did: config.device_did,
+        device_did: DeviceDID::new(config.device_did),
         new_expires_at,
     })
 }

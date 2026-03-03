@@ -237,7 +237,11 @@ pub fn handle_device(
             let payload = read_payload_file(payload_path_opt.as_deref())?;
             validate_payload_schema(schema_path_opt.as_deref(), &payload)?;
 
-            let caps: Vec<String> = capabilities.unwrap_or_default();
+            let caps: Vec<auths_verifier::Capability> = capabilities
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|s| auths_verifier::Capability::parse(&s).ok())
+                .collect();
 
             let link_config = auths_sdk::types::DeviceLinkConfig {
                 identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
