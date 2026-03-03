@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`auths-sdk`: `GitConfigProvider` port trait** — `set(key, value)` abstraction removes `std::process::Command::new("git")` and `which::which` from `auths-sdk`. `SystemGitConfigProvider` in `auths-cli` implements the trait via the system `git` binary. `DeveloperSetupConfig` gains an optional `sign_binary_path` field; the CLI resolves the path via `which::which("auths-sign")` and passes it at the presentation boundary.
 - **`auths-sdk`: `SdkStorageError` typed enum** — replaces `anyhow::Error` in `SetupError::StorageError` and `DeviceError::StorageError`. `RegistrationError::NetworkError` now wraps `auths_core::ports::network::NetworkError` (typed). `RegistrationError::LocalDataError` carries a `String`. `map_storage_err()` and `map_device_storage_err()` helper functions removed; callers use inline `.map_err(|e| ...StorageError(SdkStorageError::OperationFailed(e.to_string())))`. `anyhow` removed from `auths-sdk/Cargo.toml`.
 
+---
+
+> Note: notes on release `0.0.1-rc.11` and prior come from an earlier repository that (a) lived on the my personal account and (b) included crates that have since been stripped out. I've decided to leave them intact for documenting the development.
+
 ## [0.0.1-rc.11] - 2026-02-18
 
 ### Changed
