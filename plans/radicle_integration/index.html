@@ -1,0 +1,2162 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Decentralized identity for developers. One identity, multiple devices, Git-native storage.">
+      
+      
+      
+        <link rel="canonical" href="https://docs.auths.dev/plans/radicle_integration/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Auths-Radicle Integration Plan - Auths</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#auths-radicle-integration-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Auths" class="md-header__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Auths
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Auths-Radicle Integration Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/install/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/identity/multi-device/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../sdk/rust/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  SDK & Libraries
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/development-setup/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Auths" class="md-nav__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    Auths
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../getting-started/install/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../guides/identity/multi-device/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../sdk/rust/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK & Libraries
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../architecture/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../contributing/development-setup/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-problem-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Problem Statement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-source-of-truth-and-storage-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Source of Truth and Storage Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Source of Truth and Storage Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#chosen-model-dedicated-identity-repository-with-project-level-namespace-binding-per-rip-x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chosen Model: Dedicated identity repository with project-level namespace binding (per RIP-X)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-this-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why this model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-roles-and-responsibilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Roles and Responsibilities
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Roles and Responsibilities">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#auths-crates-auths-core-auths-id-auths-verifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths crates (auths-core, auths-id, auths-verifier)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#heartwood-crates-radicle-radicle-fetch-radicle-node-radicle-cob" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        heartwood crates (radicle, radicle-fetch, radicle-node, radicle-cob)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#auths-radicle-the-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths-radicle (the bridge)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-stale-state-policy-compare-and-choose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Stale-State Policy: Compare and Choose
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Stale-State Policy: Compare and Choose">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#policy-a-eventual-consistency-fail-open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Policy A: Eventual Consistency (fail-open)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#policy-b-freshness-requirement-fail-closed-on-staleness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Policy B: Freshness Requirement (fail-closed on staleness)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#policy-c-proof-carrying-authorization-fail-closed-on-missing-proof" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Policy C: Proof-Carrying Authorization (fail-closed on missing proof)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#staleness-detection-replaces-min_kel_seq-as-freshness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Staleness detection (replaces min_kel_seq-as-freshness)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#later-hardening-path-backward-compatible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Later hardening path (backward-compatible)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-concrete-propagation-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Concrete Propagation Flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Concrete Propagation Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#5a-normal-operation-device-authorization-and-update-acceptance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5A. Normal Operation: Device Authorization and Update Acceptance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5b-revocation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5B. Revocation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5c-the-stale-node-scenario" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5C. The Stale-Node Scenario
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5d-revocation-race-window-formal-bound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5D. Revocation Race Window: Formal Bound
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-minimal-hook-point-in-radicle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Minimal Hook Point in Radicle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-execution-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Execution Roadmap
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Execution Roadmap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#relationship-to-existing-heartwood-epics-fn-1-through-fn-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relationship to Existing Heartwood Epics (fn-1 through fn-5)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-1-rip-x-ref-layout-and-attestation-format-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 1: RIP-X Ref Layout and Attestation Format Alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-2-identity-state-loading-from-radicle-replicated-repos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 2: Identity State Loading from Radicle-Replicated Repos
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-3-authorization-checks-in-the-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 3: Authorization Checks in the Bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-4-stale-state-handling-and-enforcement-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 4: Stale-State Handling and Enforcement Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-5-minimal-radicle-integration-seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 5: Minimal Radicle Integration Seam
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-6-end-to-end-demo-and-test-scenarios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 6: End-to-End Demo and Test Scenarios
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pr-slicing-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR Slicing Plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-demo-script" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Demo Script
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="auths-radicle-integration-plan">Auths-Radicle Integration Plan<a class="headerlink" href="#auths-radicle-integration-plan" title="Permanent link">&para;</a></h1>
+<h2 id="1-problem-statement">1. Problem Statement<a class="headerlink" href="#1-problem-statement" title="Permanent link">&para;</a></h2>
+<p>Verification logic alone -- even if perfectly implemented and deployed as WASM to every node -- cannot solve revocation propagation in a P2P network. A verifier can only check facts it knows about: if a node has never received a revocation attestation, its verifier will correctly validate a signature from the revoked device because, from that node's perspective, the device is still authorized. The problem is not verification correctness but <em>state availability</em>. Revocation is an <em>event</em> that must physically propagate through the gossip network, and until it arrives, every honest node with stale state will make a locally-correct but globally-wrong authorization decision. Therefore, the integration must define explicit rules for what a node should do when its identity state may be incomplete, rather than relying on "verification works, so we're safe."</p>
+<hr />
+<h2 id="2-source-of-truth-and-storage-model">2. Source of Truth and Storage Model<a class="headerlink" href="#2-source-of-truth-and-storage-model" title="Permanent link">&para;</a></h2>
+<h3 id="chosen-model-dedicated-identity-repository-with-project-level-namespace-binding-per-rip-x">Chosen Model: Dedicated identity repository with project-level namespace binding (per RIP-X)<a class="headerlink" href="#chosen-model-dedicated-identity-repository-with-project-level-namespace-binding-per-rip-x" title="Permanent link">&para;</a></h3>
+<p>RIP-X specifies that a KERI identity lives in its own Radicle repository, and projects reference it via a DID namespace under <code>refs/namespaces/did-keri-&lt;prefix&gt;/</code>. This plan follows that design exactly.</p>
+<p><strong>Where identity events live:</strong> Each Auths identity (the KERI event log and device attestations) lives in a <strong>dedicated identity repository</strong> replicated via Radicle, one per identity. The repository layout follows RIP-X:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>&lt;rid&gt;                           # KERI identity repository
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>└─ refs
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>   ├─ keri
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>   │  └─ kel                    # KEL commit history (tip = latest event)
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>   └─ keys
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>      ├─ &lt;nid&gt;                  # 2-way attestation for device A
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>      │  └─ signatures
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>      │     ├─ did-key          # Device&#39;s signature blob
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>      │     └─ did-keri         # Identity&#39;s signature blob
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>      └─ &lt;nid&gt;                  # 2-way attestation for device B
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>         └─ signatures
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>            ├─ did-key
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>            └─ did-keri
+</span></code></pre></div>
+<p><strong>Where project-level binding lives:</strong> Per RIP-X, each project repository gains a new namespace entry for each KERI identity that participates:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;project-rid&gt;
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>└─ refs
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>   └─ namespaces
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>      ├─ did-keri-EXq5...      # Identity namespace (new, per RIP-X)
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>      │  └─ refs
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>      │     ├─ rad
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>      │     │  └─ id            # Blob pointing to the identity repo RID
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>      │     └─ heads/...        # Canonical refs for this identity
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>      ├─ &lt;nid-A&gt;               # Device A&#39;s fork (existing pattern)
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>      │  └─ refs
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>      └─ &lt;nid-B&gt;               # Device B&#39;s fork (existing pattern)
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>         └─ refs
+</span></code></pre></div>
+<p>The <code>refs/namespaces/did-keri-&lt;prefix&gt;/refs/rad/id</code> blob contains the RID of the identity repository. This is how a node discovers which identity repo to fetch.</p>
+<h3 id="why-this-model">Why this model<a class="headerlink" href="#why-this-model" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>RIP-X model (chosen)</th>
+<th>Alternative: embed in each project</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Revocation correctness</strong></td>
+<td>Single authoritative source; revocations propagate once via identity repo</td>
+<td>Revocation must be pushed to every project repo independently; easy to miss one</td>
+</tr>
+<tr>
+<td><strong>Minimal codebase change</strong></td>
+<td>Heartwood already has <code>IdentityNamespace</code> parsing for <code>did-keri-</code> prefixes; identity repos are just normal Radicle repos</td>
+<td>Requires modifying every project's identity doc schema and replication logic</td>
+</tr>
+<tr>
+<td><strong>Operational simplicity</strong></td>
+<td>Identity owner manages one repo; projects just reference it via namespace</td>
+<td>Every project must be updated on revocation</td>
+</tr>
+<tr>
+<td><strong>RIP-X compliance</strong></td>
+<td>Direct match</td>
+<td>Deviates from the RIP</td>
+</tr>
+</tbody>
+</table>
+<p>The key insight from fn-4 (Heartwood's fetch/protocol epic): when a node fetches a project and encounters a <code>refs/namespaces/did-keri-&lt;prefix&gt;/refs/rad/id</code> blob, it queues a best-effort fetch of the referenced identity repo. This creates automatic replication dependency -- nodes that seed a project will discover and seed the identity repo without manual intervention.</p>
+<hr />
+<h2 id="3-roles-and-responsibilities">3. Roles and Responsibilities<a class="headerlink" href="#3-roles-and-responsibilities" title="Permanent link">&para;</a></h2>
+<h3 id="auths-crates-auths-core-auths-id-auths-verifier">auths crates (auths-core, auths-id, auths-verifier)<a class="headerlink" href="#auths-crates-auths-core-auths-id-auths-verifier" title="Permanent link">&para;</a></h3>
+<p><strong>Owns:</strong>
+- Identity truth: creation, storage, and validation of KERI event logs (inception, rotation, interaction events)
+- Attestation lifecycle: creation, dual-signing (per RIP-X: <code>keri.sign(RID, did:key)</code> + <code>key.sign(RID, did:keri)</code>), revocation
+- Policy evaluation: capability checks, expiration checks, revocation checks against <em>locally available</em> state
+- DID resolution: converting <code>did:keri:</code> and <code>did:key:</code> to public key material
+- Key state computation: <code>validate_kel()</code> produces <code>KeyState</code> from an ordered event sequence</p>
+<p><strong>Does not own:</strong> P2P replication, network transport, peer discovery, or any concept of "freshness" relative to the network.</p>
+<h3 id="heartwood-crates-radicle-radicle-fetch-radicle-node-radicle-cob">heartwood crates (radicle, radicle-fetch, radicle-node, radicle-cob)<a class="headerlink" href="#heartwood-crates-radicle-radicle-fetch-radicle-node-radicle-cob" title="Permanent link">&para;</a></h3>
+<p><strong>Owns:</strong>
+- P2P replication: gossip protocol, <code>RefsAnnouncement</code>, fetch pipeline
+- Cryptographic signature verification: Ed25519 verification of <code>SignedRefs</code> and COB commits
+- Project identity documents: <code>Doc</code> with delegates (including <code>Did::Keri</code> once fn-1 lands), threshold, visibility, payloads
+- Repository storage: namespaced refs (including <code>did-keri-</code> identity namespaces per RIP-X), signed refs branches, Git object storage
+- Namespace classification: <code>NamespaceKind::Peer(NodeId)</code> vs <code>NamespaceKind::Identity(Did)</code> (fn-4)
+- Seeding policy: which repos to replicate, which peers to follow
+- Identity repo auto-fetch: when encountering a DID namespace, queue fetch of the referenced identity repo (fn-4, best-effort)</p>
+<p><strong>Does not own:</strong> KERI event validation, capability-based authorization, or revocation semantics beyond its existing delegate threshold model.</p>
+<h3 id="auths-radicle-the-bridge">auths-radicle (the bridge)<a class="headerlink" href="#auths-radicle-the-bridge" title="Permanent link">&para;</a></h3>
+<p><strong>Responsible for:</strong></p>
+<ol>
+<li>
+<p><strong>DID translation:</strong> Converting Radicle's <code>[u8; 32]</code> Ed25519 keys to Auths <code>did:key:z...</code> format and back. This is the type-system boundary.</p>
+</li>
+<li>
+<p><strong>Ref path constants:</strong> Exporting RIP-X ref paths (<code>refs/keri/kel</code>, <code>refs/keys/&lt;nid&gt;/signatures</code>) so both codebases use identical strings.</p>
+</li>
+<li>
+<p><strong>Identity state loading:</strong> Reading the KERI event log and device attestations from the identity repository (accessed as a local Git repo that Radicle has replicated). Computing current <code>KeyState</code> via <code>validate_kel()</code>.</p>
+</li>
+<li>
+<p><strong>Authorization evaluation:</strong> For a given signer key, answering: "Is this device currently authorized to perform this action on this project?" This involves:</p>
+</li>
+<li>Finding the device's attestation under <code>refs/keys/&lt;nid&gt;/signatures</code></li>
+<li>Verifying both signatures (RIP-X 2-way attestation)</li>
+<li>Checking revocation status</li>
+<li>Checking expiration</li>
+<li>Checking capability (e.g., <code>sign_commit</code>)</li>
+<li>
+<p>Evaluating against the current <code>KeyState</code></p>
+</li>
+<li>
+<p><strong>Staleness detection:</strong> Determining whether the locally-available identity state may be stale. The bridge compares what it has locally against what the gossip layer knows is available (see Section 4).</p>
+</li>
+<li>
+<p><strong>Result production:</strong> Returning a <code>VerifyResult</code> (Verified / Rejected / Quarantine) that Radicle's fetch pipeline can act on. The bridge never modifies repository state; it only reads and decides.</p>
+</li>
+</ol>
+<p><strong>Refuses to do:</strong>
+- Sign anything (zero new crypto)
+- Modify Radicle repository state directly
+- Make network requests (it reads locally-replicated Git data only)
+- Override Radicle's own signature verification (Radicle checks Ed25519; the bridge checks authorization)</p>
+<hr />
+<h2 id="4-stale-state-policy-compare-and-choose">4. Stale-State Policy: Compare and Choose<a class="headerlink" href="#4-stale-state-policy-compare-and-choose" title="Permanent link">&para;</a></h2>
+<h3 id="policy-a-eventual-consistency-fail-open">Policy A: Eventual Consistency (fail-open)<a class="headerlink" href="#policy-a-eventual-consistency-fail-open" title="Permanent link">&para;</a></h3>
+<p><strong>Description:</strong> Each node decides based solely on its local identity state. If a node hasn't received a revocation, it accepts the update. Disagreements resolve as revocations propagate.</p>
+<p><strong>User experience:</strong> Seamless in the happy path. Users never see delays or rejections due to missing state. However, a revoked device can continue pushing updates to nodes that haven't received the revocation until gossip catches up.</p>
+<p><strong>Failure modes:</strong>
+- A revoked device's updates are accepted by stale nodes and become part of their local view. When the revocation arrives, those updates are already integrated. Cleaning them up requires manual intervention.
+- In adversarial scenarios, a compromised device could race the revocation, pushing malicious updates to as many nodes as possible before the revocation propagates.
+- An attacker can target nodes that haven't seeded identity repos, or exploit nodes with temporarily unreadable identity state (disk corruption, missing refs), and get accepted "because fallback."</p>
+<p><strong>Node A vs Node B scenario:</strong> Node A (has revocation) rejects the update. Node B (stale) accepts it. When Node B eventually receives the revocation, it has already accepted the update. There is no automatic rollback. The accepted update persists unless a delegate explicitly reverts it.</p>
+<p><strong>Complexity:</strong> Lowest. No additional state tracking. No quarantine mechanism. But cleanup after revocation races is undefined, and the system cannot honestly claim to "prevent unauthorized pushes" -- it only detects them after the fact.</p>
+<h3 id="policy-b-freshness-requirement-fail-closed-on-staleness">Policy B: Freshness Requirement (fail-closed on staleness)<a class="headerlink" href="#policy-b-freshness-requirement-fail-closed-on-staleness" title="Permanent link">&para;</a></h3>
+<p><strong>Description:</strong> Nodes refuse to make authorization decisions unless their identity state is "fresh enough." Freshness is defined as: the node has synced the identity repository within a configurable window, OR there are no pending identity repo updates in the gossip layer.</p>
+<p><strong>User experience:</strong> Nodes that are offline or poorly connected may reject valid updates because they can't confirm freshness. This creates friction in truly offline or intermittently-connected environments -- exactly the environments Radicle is designed for.</p>
+<p><strong>Failure modes:</strong>
+- Offline nodes become unable to accept any updates, even from non-revoked devices.
+- Creates a soft availability dependency on the identity repository being reachable, undermining Radicle's offline-first design.
+- Clock-based freshness is unreliable in P2P networks with no shared clock.</p>
+<p><strong>Node A vs Node B scenario:</strong> Node A (has revocation) rejects. Node B checks freshness: if it hasn't synced recently, it quarantines. This is safe but blocks legitimate work when nodes are offline.</p>
+<p><strong>Complexity:</strong> Medium-high. Requires freshness tracking, configurable windows, and graceful degradation. Adds a soft liveness dependency.</p>
+<h3 id="policy-c-proof-carrying-authorization-fail-closed-on-missing-proof">Policy C: Proof-Carrying Authorization (fail-closed on missing proof)<a class="headerlink" href="#policy-c-proof-carrying-authorization-fail-closed-on-missing-proof" title="Permanent link">&para;</a></h3>
+<p><strong>Description:</strong> Every signed update carries enough evidence for any node to verify authorization <em>without</em> consulting external identity state. Specifically, each update includes: the device's current attestation, and a KEL snapshot up to the event that anchors that attestation. A node verifies the proof bundle independently.</p>
+<p><strong>User experience:</strong> Updates are self-contained. Nodes can verify authorization even while fully offline. No freshness anxiety and no quarantine friction.</p>
+<p><strong>Failure modes:</strong>
+- Proof size: carrying attestations + KEL snapshots with every update adds overhead.
+- Revocation latency: a revoked device can continue producing valid-looking proofs until the revocation is anchored in the KEL. The window is bounded by the time between compromise and revocation anchoring.
+- Complexity of proof construction: the signing client must assemble proof bundles.
+- <strong>Protocol impact:</strong> Proof bundles must be stored as auxiliary Git objects alongside the update, not embedded in <code>SignedRefs</code> or the wire format (see below for why).</p>
+<p><strong>Node A vs Node B scenario:</strong> Node B receives the update along with the proof bundle. If the proof was assembled before the revocation was anchored, it's valid and Node B accepts. Once the revocation is anchored, new proof bundles from that device fail. The vulnerability window equals the time between compromise and KEL update.</p>
+<p><strong>Complexity:</strong> Highest. But provides the strongest offline guarantee.</p>
+<h3 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h3>
+<p><strong>MVP: Policy A (Eventual Consistency) for observe mode + Policy B-lite (quarantine-on-known-staleness) for enforce mode</strong></p>
+<p>Projects that opt into Auths identity choose an enforcement level:</p>
+<h4 id="observe-mode-default-for-mvp">Observe mode (default for MVP)<a class="headerlink" href="#observe-mode-default-for-mvp" title="Permanent link">&para;</a></h4>
+<p>The bridge checks identity state if available and produces <code>Verified</code> / <code>Rejected</code> / <code>Warn</code> results, but the node always applies the update regardless. Results are logged and surfaced in <code>Validations</code>. This is a detection-and-flagging system, not an authorization boundary.</p>
+<p>The system <strong>does not claim to prevent unauthorized pushes</strong> in observe mode. It detects and flags them with eventual convergence.</p>
+<h4 id="enforce-mode-recommended-for-projects-that-need-revocation-guarantees">Enforce mode (recommended for projects that need revocation guarantees)<a class="headerlink" href="#enforce-mode-recommended-for-projects-that-need-revocation-guarantees" title="Permanent link">&para;</a></h4>
+<p>When a project opts into enforce mode, the bridge is a hard authorization boundary:</p>
+<ul>
+<li><code>Verified</code> -&gt; apply the update</li>
+<li><code>Rejected</code> -&gt; reject the update (add validation error, prune the remote)</li>
+<li><strong>Identity state unavailable</strong> (identity repo not seeded, not yet fetched, or unreadable) -&gt; <strong>quarantine</strong>: reject the update with a specific <code>Quarantine</code> validation error indicating which identity repo RID is needed. The node can retry after fetching the identity repo.</li>
+</ul>
+<p>This is fail-closed for projects that opt in. The bridge does not "fall back to signature-only" for enforce-mode projects -- that would undermine the entire security model. If a project declares an Auths binding in enforce mode and the identity repo is missing, updates from KERI-attested devices are rejected until the identity state is available.</p>
+<p><strong>Backward compatibility:</strong> Projects without any Auths binding are completely unaffected (no bridge call). Projects in observe mode are never blocked. Only enforce mode adds rejection, and it's opt-in per project.</p>
+<h4 id="enforce-mode-dos-resistance">Enforce mode DoS resistance<a class="headerlink" href="#enforce-mode-dos-resistance" title="Permanent link">&para;</a></h4>
+<p>Enforce mode introduces a new DoS surface: if "identity repo missing/unreadable/behind =&gt; quarantine," an attacker can try to keep nodes perpetually quarantined by:</p>
+<ul>
+<li><strong>Preventing identity repo fetch</strong> (network partition, peer selection attacks): The mitigation is that quarantine is <em>per-update</em>, not per-project. The node continues to accept updates from <code>Did::Key</code> delegates (which don't require the bridge) and from devices whose identity state <em>is</em> locally available and current. Only the specific updates that can't be authorized are quarantined. The node is never fully blocked from a project.</li>
+<li><strong>Constantly advancing the identity repo</strong> to keep nodes "behind": This requires the attacker to be a delegate of the identity repo (only delegates can push signed refs). If a delegate is malicious, the identity is already compromised -- this is not a new attack surface. A non-delegate cannot advance the identity repo's signed refs.</li>
+<li><strong>Corrupting local identity repo storage</strong>: If the identity repo on disk becomes unreadable, the bridge returns <code>Quarantine</code> for enforce mode. This is correct behavior -- "I can't read the identity state" should not mean "accept everything." The node operator resolves this by re-fetching the identity repo (<code>rad sync --fetch</code>). This is recoverable, not permanent.</li>
+</ul>
+<p><strong>Quarantine timeout</strong>: If a node has been quarantining updates for a specific identity for more than a configurable period (default: 24 hours) without being able to resolve the quarantine (e.g., identity repo is persistently unreachable), the node logs a critical warning. It does <em>not</em> auto-downgrade to observe mode -- that would defeat the purpose. The operator must explicitly intervene: either fix the fetch problem, downgrade to observe mode, or remove the KERI delegate from the project. This is an operational decision, not an automatic one.</p>
+<h3 id="staleness-detection-replaces-min_kel_seq-as-freshness">Staleness detection (replaces min_kel_seq-as-freshness)<a class="headerlink" href="#staleness-detection-replaces-min_kel_seq-as-freshness" title="Permanent link">&para;</a></h3>
+<p>The previous draft used <code>min_kel_seq</code> from the project binding as a freshness heuristic. This does not actually detect the "Node B accepts revoked device" case -- a node can be at sequence 3 (above the binding minimum of 2) while the revocation is at sequence 4.</p>
+<p><code>min_kel_seq</code> serves a different purpose: <strong>binding integrity</strong>. It prevents a node from accepting identity state that predates the binding itself (e.g., an attacker feeding a truncated KEL). It is not a freshness tool.</p>
+<p>For actual staleness detection, the bridge uses a <strong>gossip-informed heuristic</strong>:</p>
+<blockquote>
+<p><strong>Warn when the node knows there is a newer identity repo tip available (via <code>RefsAnnouncement</code>) but hasn't fetched it yet.</strong></p>
+</blockquote>
+<p>This is concretely actionable:
+- Radicle's gossip layer already announces <code>RefsAt(remote, oid)</code> for every repo. The node can compare its local identity repo tip against the announced tip.
+- If they differ, the bridge returns <code>Warn</code> (observe mode) or <code>Quarantine</code> (enforce mode) with metadata: "identity repo <code>rad:z3gq...</code> has a newer tip <code>abc123</code> available -- fetch it."
+- No shared clocks needed. No configurable windows. Just: "I know I'm behind."
+- If no announcement has been received (fully disconnected), the node has no reason to suspect staleness and proceeds based on local state.</p>
+<h4 id="which-peers-can-trigger-staleness-signals">Which peers can trigger staleness signals<a class="headerlink" href="#which-peers-can-trigger-staleness-signals" title="Permanent link">&para;</a></h4>
+<p>Not all <code>RefsAnnouncement</code> sources are equally trustworthy. An attacker could spam false "newer tip" announcements to force quarantine on enforce-mode nodes (a DoS vector). The policy:</p>
+<ol>
+<li><strong>Only announcements from peers that are delegates of the identity repo (or tracked/followed peers for that repo) are considered credible.</strong> Radicle already tracks which peers are delegates via the identity repo's own <code>Doc.delegates</code>. An announcement from a random peer is ignored for staleness purposes.</li>
+<li><strong>A single credible announcement is sufficient to trigger a staleness signal.</strong> We do not require multiple independent announcements. Rationale: the identity repo has a small, known delegate set (typically 1-3). Requiring a quorum would add complexity without meaningful security gain -- if an identity delegate is compromised, the identity itself has bigger problems than false staleness signals.</li>
+<li><strong>An attacker who is not a delegate of the identity repo cannot trigger quarantine.</strong> They can announce whatever they want, but the bridge filters by delegate status before acting on the signal.</li>
+</ol>
+<p>This means the staleness signal is only as trustworthy as the identity repo's delegate set -- which is the same trust root as the identity itself.</p>
+<h3 id="later-hardening-path-backward-compatible">Later hardening path (backward-compatible)<a class="headerlink" href="#later-hardening-path-backward-compatible" title="Permanent link">&para;</a></h3>
+<p><strong>Phase 2: Proof-carrying authorization (Policy C) as additive auxiliary Git objects.</strong></p>
+<p>Proof bundles are stored as <strong>additional Git blobs in the identity repo</strong> (not in <code>SignedRefs</code> or the wire format). A ref like <code>refs/keys/&lt;nid&gt;/proof-bundle</code> contains the attestation + KEL snapshot. Nodes that understand proof bundles verify them; nodes that don't (older versions) ignore the extra refs and fall back to direct identity repo lookup.</p>
+<p>This avoids modifying <code>SignedRefs</code> canonicalization or the gossip wire format. <code>SignedRefs</code> uses a text-canonical format (<code>&lt;oid&gt; &lt;ref&gt;\n</code> lines) that is safe to extend with new refs but should not have its structure changed. The gossip <code>RefsAnnouncement</code> is binary-encoded and carries only <code>(rid, [(remote, oid)])</code> -- adding fields would require a protocol version bump. Proof bundles as auxiliary Git objects require neither.</p>
+<hr />
+<h2 id="5-concrete-propagation-flow">5. Concrete Propagation Flow<a class="headerlink" href="#5-concrete-propagation-flow" title="Permanent link">&para;</a></h2>
+<h3 id="5a-normal-operation-device-authorization-and-update-acceptance">5A. Normal Operation: Device Authorization and Update Acceptance<a class="headerlink" href="#5a-normal-operation-device-authorization-and-update-acceptance" title="Permanent link">&para;</a></h3>
+<p><strong>Step 1: Identity creation.</strong>
+Alice creates a KERI identity. Per RIP-X, this generates:
+- A KERI inception event with her initial Ed25519 key pair
+- A <code>did:keri:&lt;prefix&gt;</code> identity DID derived from the SAID (Blake3 hash) of the inception event
+- The KEL is stored as a commit chain under <code>refs/keri/kel</code></p>
+<p><strong>Step 2: Identity repository publication.</strong>
+Alice publishes her identity as a Radicle repository using <code>rad identity init-keri</code> (fn-5 CLI). This creates a Radicle <code>RepoId</code> (RID) for her identity and seeds it to the network.</p>
+<p><strong>Step 3: Device authorization.</strong>
+Alice has a second device (laptop). Per RIP-X, she creates a 2-way attestation:
+- <code>keri.sign(RID, did:key)</code> -- identity key signs the binding
+- <code>key.sign(RID, did:keri)</code> -- device key signs the binding
+- Both signatures are stored as blobs under <code>refs/keys/&lt;laptop-nid&gt;/signatures/</code> in the identity repo
+- She pushes the updated identity repo: <code>git push rad</code></p>
+<p><strong>Step 4: Project setup with identity namespace.</strong>
+Alice creates a Radicle project. Per RIP-X, a new namespace is created:
+- <code>refs/namespaces/did-keri-&lt;prefix&gt;/refs/rad/id</code> -&gt; blob containing the identity repo RID
+- <code>refs/namespaces/did-keri-&lt;prefix&gt;/refs/heads/...</code> -&gt; canonical refs for the identity
+- The project's <code>Doc</code> delegates include <code>Did::Keri(prefix)</code> alongside any <code>Did::Key</code> delegates</p>
+<p><strong>Step 5: Signed update from authorized device.</strong>
+Alice's laptop pushes a commit to the project. Radicle creates <code>SignedRefs</code> signed by the laptop's Ed25519 key. The update appears under <code>refs/namespaces/&lt;laptop-nid&gt;/...</code>.</p>
+<p><strong>Step 6: Node receives update.</strong>
+Bob's node receives Alice's <code>RefsAnnouncement</code>. During the fetch pipeline:</p>
+<ol>
+<li>Radicle verifies the Ed25519 signature on <code>SignedRefs</code> (existing logic, unchanged)</li>
+<li>Radicle classifies the remote's namespace. The laptop's <code>&lt;nid&gt;</code> is a <code>Peer</code> namespace.</li>
+<li>The fetch pipeline encounters <code>refs/namespaces/did-keri-&lt;prefix&gt;/refs/rad/id</code> and queues a fetch of Alice's identity repo (fn-4 design, best-effort)</li>
+<li>Per fn-3, <code>SignedRefs::verify_with_identity()</code> is called. It tries the fast path (exact delegate key match) first. Since the laptop isn't a direct delegate, it falls back to the auths-radicle bridge:
+   a. Bridge reads Alice's identity repo from Bob's local storage
+   b. Bridge loads the KEL and computes <code>KeyState</code> via <code>validate_kel()</code>
+   c. Bridge converts the laptop's <code>[u8; 32]</code> key to <code>did:key:z6Mk...</code>
+   d. Bridge loads the 2-way attestation from <code>refs/keys/&lt;laptop-nid&gt;/signatures</code>
+   e. Bridge verifies both signatures, checks: not revoked, not expired, has <code>sign_commit</code> capability
+   f. Bridge returns <code>VerifyResult::Verified</code></li>
+<li>Radicle proceeds with ref validation and applies the update</li>
+</ol>
+<h3 id="5b-revocation">5B. Revocation<a class="headerlink" href="#5b-revocation" title="Permanent link">&para;</a></h3>
+<p><strong>Step 1: Revocation creation.</strong>
+Alice discovers her laptop was compromised. From her primary device, she runs <code>rad identity device revoke &lt;laptop-nid&gt;</code> (fn-5). This:
+- Sets <code>revoked_at</code> on the attestation and re-signs with the KERI identity key
+- Anchors the revocation in the KEL via an interaction event (IXN)
+- KEL sequence advances (e.g., from 2 to 3)</p>
+<p><strong>Step 2: Publication.</strong>
+Alice pushes the updated identity repository to Radicle. The identity repo's <code>SignedRefs</code> update, and a <code>RefsAnnouncement</code> propagates through the gossip network.</p>
+<p><strong>Step 3: Network propagation.</strong>
+Nodes that seed Alice's identity repository receive the <code>RefsAnnouncement</code>, fetch the updated KEL and revocation. Their local state now reflects the revocation.</p>
+<p><strong>Step 4: Post-revocation verification (node has revocation).</strong>
+When any node with the updated identity state receives an update signed by the revoked laptop key:
+1. Radicle verifies the Ed25519 signature (passes -- the signature is cryptographically valid)
+2. The bridge is consulted:
+   a. Bridge loads the attestation for the laptop's DID
+   b. Bridge finds <code>revoked_at</code> is set
+   c. Bridge returns <code>VerifyResult::Rejected { reason: "Device &lt;laptop-nid&gt; was revoked at 2026-03-01T12:00:00Z" }</code>
+3. Radicle rejects the ref update (enforce mode) or records a validation warning (observe mode)</p>
+<h3 id="5c-the-stale-node-scenario">5C. The Stale-Node Scenario<a class="headerlink" href="#5c-the-stale-node-scenario" title="Permanent link">&para;</a></h3>
+<p><strong>Setup:</strong>
+- Alice revoked her laptop at KEL sequence 3
+- Node A (Carol) has synced Alice's identity repo and has KEL up to sequence 3 (includes revocation)
+- Node B (Dave) has not synced Alice's identity repo recently; his local copy is at KEL sequence 2 (no revocation)
+- The compromised laptop pushes an update to the project, and Dave's node receives it</p>
+<p><strong>What happens at Dave's node (stale state):</strong></p>
+<ol>
+<li>
+<p><strong>Signature verification passes.</strong> The Ed25519 signature is valid.</p>
+</li>
+<li>
+<p><strong>Bridge is consulted.</strong>
+   a. Bridge locates Alice's identity repo in Dave's local storage
+   b. Bridge loads the KEL: sequence 2 (no revocation event present)
+   c. Bridge loads attestation for the laptop: not revoked (in Dave's view), not expired, has capabilities</p>
+</li>
+<li>
+<p><strong>Gossip-informed staleness check:</strong></p>
+</li>
+<li>If Dave's node has received a <code>RefsAnnouncement</code> for Alice's identity repo with a newer tip OID than what Dave has locally, the bridge detects staleness.</li>
+<li>
+<p>If no such announcement has been received (Dave is fully disconnected), Dave has no reason to suspect staleness.</p>
+</li>
+<li>
+<p><strong>Outcome depends on mode:</strong></p>
+</li>
+</ol>
+<p><strong>Observe mode:</strong> Bridge returns <code>VerifyResult::Verified</code> (or <code>Warn</code> if staleness detected). Dave accepts the update. When Dave eventually syncs Alice's identity repo, he gets the revocation. From that point forward, the laptop is rejected. The previously-accepted update remains -- Dave's node cannot automatically roll it back.</p>
+<p><strong>Enforce mode with staleness detected:</strong> Bridge returns <code>VerifyResult::Quarantine { reason: "Identity repo has newer tip available; fetch before deciding" }</code>. Dave's node rejects the update. When Dave syncs the identity repo and gets the revocation, the laptop would be rejected anyway. If the laptop had <em>not</em> been revoked, re-fetching the identity repo would resolve the quarantine and Dave could accept on retry.</p>
+<p><strong>Enforce mode without staleness detected (fully disconnected):</strong> Bridge returns <code>VerifyResult::Verified</code> based on local state. This is the irreducible risk of any eventually-consistent system -- Dave has no reason to suspect his state is wrong and no way to check. The window closes when connectivity resumes.</p>
+<p><strong>Blast radius of stale acceptance:</strong></p>
+<p>The damage from accepting an update from a revoked device depends on what the revoked device can do:</p>
+<ul>
+<li><strong>If the revoked device is a project delegate (via <code>Did::Keri</code>):</strong> It can update canonical refs, subject to threshold. A compromised delegate is a serious incident regardless of Auths -- the project must have a threshold &gt; 1 to survive this. Auths adds revocation capability; it doesn't change the blast radius of a compromised delegate.</li>
+<li><strong>If the revoked device is a non-delegate contributor:</strong> Its updates live in its own <code>refs/namespaces/&lt;nid&gt;/...</code> namespace. Radicle's delegate threshold mechanism means non-delegate refs don't affect the canonical project state <em>by default</em>. However, this containment has limits:</li>
+<li><strong>No auto-merge from non-delegate namespaces.</strong> Radicle does not auto-merge patches or auto-build from non-delegate forks without explicit delegate action (merging a patch requires a delegate to check it out, review, and push to their own namespace). So a revoked non-delegate device cannot inject code into canonical state without a human delegate approving the merge.</li>
+<li><strong>UI visibility matters.</strong> Non-delegate namespaces are visible in <code>rad patch</code>, <code>rad ls</code>, and other CLI output. A stale-accepted update from a revoked device will appear as a valid-looking patch or fork until the revocation propagates and the node flags it. Users could be misled into reviewing or merging it. <strong>Mitigation:</strong> When a previously-accepted update is retroactively flagged (identity repo syncs and reveals revocation), the node should surface a prominent warning: "Patch/fork from <code>&lt;nid&gt;</code> was accepted before device revocation was known. Treat contents as untrusted." This warning should appear in <code>rad patch show</code>, <code>rad inbox</code>, and any UX surface that displays the contributor's data.</li>
+<li>
+<p><strong>Object-level contamination.</strong> Even though refs are namespaced, Git objects are shared. A malicious commit from a revoked device could reference the same tree as legitimate commits, or be a parent of future legitimate commits if a delegate inadvertently merges before the revocation arrives. This is a Git-level property, not something the bridge can prevent -- it reinforces that the operator should treat any stale-accepted data as potentially harmful.</p>
+</li>
+<li>
+<p><strong>In both cases:</strong> Any accepted update from a revoked device must be treated as potentially harmful. The project owner must explicitly revert or repair after the revocation propagates. There is no automatic rollback. The bridge logs every <code>Verified</code> decision with enough context (device DID, identity DID, KEL sequence at decision time) to support a post-hoc audit: "which updates were accepted from device X before its revocation was known?"</p>
+</li>
+</ul>
+<h3 id="5d-revocation-race-window-formal-bound">5D. Revocation Race Window: Formal Bound<a class="headerlink" href="#5d-revocation-race-window-formal-bound" title="Permanent link">&para;</a></h3>
+<p>The system prevents unauthorized pushes only under specific conditions. Here is the precise bound:</p>
+<p><strong>Guarantee:</strong> A push signed by a revoked device is rejected by every node that satisfies <em>at least one</em> of:</p>
+<ol>
+<li>
+<p><strong>The node has fetched the identity repo at or past the KEL sequence containing the revocation seal.</strong> This is the primary path. The revocation is an IXN event in the KEL; once the node has it, the device is rejected.</p>
+</li>
+<li>
+<p><strong>The node has received a credible gossip signal (from an identity repo delegate) that a newer identity repo tip exists, AND the project is in enforce mode.</strong> The push is quarantined until the node fetches the update. If the update contains the revocation, the push is rejected. If the update does <em>not</em> contain the revocation (the newer tip was for an unrelated event), the quarantine resolves and the push is accepted.</p>
+</li>
+</ol>
+<p><strong>No guarantee:</strong> A fully-disconnected node with no gossip signal operates on cached authority. It has no mechanism to learn about the revocation and will accept the push as locally valid. This is the irreducible risk of any system that operates offline.</p>
+<p><strong>Bound on the vulnerability window:</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>T_vulnerable = T_propagation + T_fetch
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>Where:
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  T_propagation = time for RefsAnnouncement to reach the node via gossip
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>                  (typically seconds on a connected network; unbounded if disconnected)
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  T_fetch       = time for the node to fetch the updated identity repo after
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>                  receiving the announcement (typically seconds; bounded by
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>                  Git transfer speed)
+</span></code></pre></div>
+<p>For connected nodes on a well-seeded network, <code>T_vulnerable</code> is on the order of seconds to low minutes. For nodes with intermittent connectivity, it equals their disconnection interval. For permanently-offline nodes, it is infinite -- they run on cached authority indefinitely.</p>
+<p><strong>This is not a weakness unique to this design.</strong> It is the same bound as every revocation system that operates without a synchronous online check (TLS CRL/OCSP, PGP key revocation, SSH certificate revocation). The contribution of this design is making the bound <em>explicit</em> and providing the enforce-mode quarantine to narrow it for nodes that do have gossip connectivity.</p>
+<hr />
+<h2 id="6-minimal-hook-point-in-radicle">6. Minimal Hook Point in Radicle<a class="headerlink" href="#6-minimal-hook-point-in-radicle" title="Permanent link">&para;</a></h2>
+<p><strong>Where:</strong> Per fn-3's design, the hook is in <code>SignedRefs::verify_with_identity()</code> -- a new method that extends the existing <code>SignedRefs::verify()</code>. The existing method handles the fast path (exact delegate key match); the new method adds a fallback path for KERI-attested devices.</p>
+<p>Concretely, in the fetch pipeline (fn-4, <code>FetchState::run()</code>): after <code>SignedRefs&lt;Unverified&gt;</code> is loaded for a remote, and after the Ed25519 signature is verified, the pipeline checks whether the signer's <code>NodeId</code> is:
+1. A direct delegate (<code>Did::Key</code> in <code>Doc.delegates</code>) -&gt; accept via existing path
+2. An attested device of a <code>Did::Keri</code> delegate -&gt; consult the auths-radicle bridge
+3. Neither -&gt; reject (non-delegate, non-attested)</p>
+<p><strong>What the bridge call does:</strong>
+1. Read the identity repo RID from <code>refs/namespaces/did-keri-&lt;prefix&gt;/refs/rad/id</code>
+2. Load the identity repo from local Radicle storage
+3. Run authorization checks (KEL validation, attestation verification, revocation/expiry/capability checks)
+4. Return <code>VerifyResult</code> mapped to Radicle's existing <code>Validations</code> / prune flow:
+   - <code>Verified</code> -&gt; accept as a valid contributor under this KERI identity
+   - <code>Rejected</code> -&gt; prune the remote, add validation error (enforce mode), or add warning (observe mode)
+   - <code>Quarantine</code> -&gt; prune the remote, add validation error indicating which identity repo to fetch (enforce mode only)</p>
+<p><strong>What "reject" means precisely:</strong></p>
+<p>In Radicle, "accepting an update" involves multiple layers. The bridge operates at the <strong>ref update</strong> layer, not the transport layer. Specifically:</p>
+<ol>
+<li>
+<p><strong>Git objects are always fetched and stored.</strong> The Git packfile transfer happens before the bridge is consulted. Objects (commits, trees, blobs) are written to the local Git object store regardless of the bridge verdict. This is unavoidable -- the fetch protocol transfers objects before refs are validated. Blocking at the object level would require aborting the Git protocol mid-stream, which is fragile and leaks metadata anyway.</p>
+</li>
+<li>
+<p><strong>Ref updates are gated by the bridge.</strong> After objects are stored, the fetch pipeline decides which refs to update. This is where the bridge's verdict takes effect:</p>
+</li>
+<li><code>Verified</code>: The remote's refs (under <code>refs/namespaces/&lt;nid&gt;/...</code>) are updated to point to the fetched objects.</li>
+<li>
+<p><code>Rejected</code> / <code>Quarantine</code>: The remote's ref updates are <strong>pruned</strong> -- the local refs are not advanced. The fetched objects become unreachable (no ref points to them) and will be garbage-collected by Git's normal GC.</p>
+</li>
+<li>
+<p><strong>Canonical refs are never updated for rejected remotes.</strong> The canonical refs (under <code>refs/namespaces/did-keri-&lt;prefix&gt;/refs/heads/...</code>) aggregate only from verified device namespaces. A rejected device's objects never appear in the canonical view.</p>
+</li>
+<li>
+<p><strong>COBs (issues, patches) authored by rejected devices are not applied.</strong> COB operations check the same authorization path. A rejected device's COB entries are pruned alongside its refs.</p>
+</li>
+</ol>
+<p>This means: rejected updates leave transient Git objects on disk (until GC), but no refs, no canonical state, and no COB state are affected. The UI never sees them.</p>
+<p><strong>If the bridge is unavailable</strong> (identity repo not in local storage, bridge returns error):
+- <strong>Observe mode:</strong> Accept the update, log a warning. The bridge is informational only.
+- <strong>Enforce mode:</strong> Reject the update. The project opted into hard authorization. "Unable to verify" is not "verified." This is fail-closed for projects that require it.
+- <strong>No Auths binding (no DID namespace in project):</strong> The bridge is never called. Behavior is identical to current Heartwood. This is the default for all existing projects.</p>
+<p><strong>Feature flag:</strong> The bridge integration is behind the fn-1 work (extending <code>Did</code> to an enum). Once <code>Did::Keri</code> exists in Heartwood's type system, the multi-device verification path is structurally available. There is no separate feature flag needed in <code>radicle-fetch</code> because the bridge call is gated on the presence of a <code>Did::Keri</code> delegate in the project's <code>Doc</code> -- no KERI delegate means no bridge call.</p>
+<hr />
+<h2 id="7-execution-roadmap">7. Execution Roadmap<a class="headerlink" href="#7-execution-roadmap" title="Permanent link">&para;</a></h2>
+<h3 id="relationship-to-existing-heartwood-epics-fn-1-through-fn-5">Relationship to Existing Heartwood Epics (fn-1 through fn-5)<a class="headerlink" href="#relationship-to-existing-heartwood-epics-fn-1-through-fn-5" title="Permanent link">&para;</a></h3>
+<p>This plan's epics are designed to complement, not duplicate, the Heartwood <code>.flow/</code> epics. The mapping:</p>
+<table>
+<thead>
+<tr>
+<th>Heartwood epic</th>
+<th>This plan's coverage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fn-1 (Core types: <code>Did</code> enum, <code>IdentityNamespace</code>)</td>
+<td>Not duplicated. This plan assumes fn-1 is completed in Heartwood.</td>
+</tr>
+<tr>
+<td>fn-2 (KERI storage: <code>KeriIdentityStore</code>, <code>GitKeriIdentityStore</code>)</td>
+<td>Partially overlaps with our Epic 2 (identity state loading). Our Epic 2 focuses on the auths-radicle bridge side; fn-2 focuses on the Heartwood storage adapter side.</td>
+</tr>
+<tr>
+<td>fn-3 (SignedRefs verification: <code>DeviceAuthorityChecker</code>)</td>
+<td>Directly consumed by our Epic 3 (authorization checks). fn-3.2 explicitly wires <code>auths-radicle::DefaultBridge</code> as the backend.</td>
+</tr>
+<tr>
+<td>fn-4 (Fetch/protocol: identity repo auto-fetch, namespace classification)</td>
+<td>Directly consumed by our Epic 5 (Radicle integration seam).</td>
+</tr>
+<tr>
+<td>fn-5 (CLI: <code>rad identity init-keri</code>, <code>device add/revoke/list</code>)</td>
+<td>Not duplicated. This plan assumes fn-5 is completed in Heartwood.</td>
+</tr>
+</tbody>
+</table>
+<p>The epics below focus on work in the <strong>auths</strong> repository (auths-radicle, auths-id, auths-verifier) and cross-repo integration testing.</p>
+<hr />
+<h3 id="epic-1-rip-x-ref-layout-and-attestation-format-alignment">Epic 1: RIP-X Ref Layout and Attestation Format Alignment<a class="headerlink" href="#epic-1-rip-x-ref-layout-and-attestation-format-alignment" title="Permanent link">&para;</a></h3>
+<p><strong>Objective:</strong> Align auths-radicle's ref paths and attestation format with RIP-X's specification.</p>
+<p><strong>Why it matters:</strong> RIP-X defines specific ref paths (<code>refs/keri/kel</code>, <code>refs/keys/&lt;nid&gt;/signatures</code>) and a specific 2-way attestation format (<code>keri.sign(RID, did:key)</code> + <code>key.sign(RID, did:keri)</code>). The existing auths-id code uses different paths (<code>refs/did/keri/&lt;prefix&gt;/kel</code>, <code>refs/auths/devices/nodes/&lt;did&gt;</code>). The bridge must map between these or the existing auths-id code must support the RIP-X layout.</p>
+<p><strong>Success metrics:</strong>
+- Ref path constants for RIP-X layout exist in auths-radicle
+- Attestation serialization/deserialization handles the RIP-X 2-blob format (separate <code>did-key</code> and <code>did-keri</code> signature blobs)
+- Round-trip: create attestation in RIP-X format, store under RIP-X refs, read it back</p>
+<p><strong>Exit criteria:</strong>
+- Constants match RIP-X spec exactly
+- Bridge can read attestations stored in RIP-X format
+- 100% of format tests pass</p>
+<h4 id="tasks">Tasks<a class="headerlink" href="#tasks" title="Permanent link">&para;</a></h4>
+<p><strong>Task 1.1: Define RIP-X ref path constants in auths-radicle</strong>
+- <em>Why:</em> Both codebases must agree on ref paths. auths-radicle is the source of truth for the mapping.
+- <em>Acceptance criteria:</em> Constants for <code>KERI_KEL_REF</code> (<code>refs/keri/kel</code>), <code>KEYS_PREFIX</code> (<code>refs/keys</code>), <code>SIGNATURES_REF</code> (<code>signatures</code>), <code>DID_KEY_BLOB</code> (<code>did-key</code>), <code>DID_KERI_BLOB</code> (<code>did-keri</code>). Documented with their RIP-X section references.
+- <em>Test plan:</em>
+  - Unit: constants match RIP-X spec strings exactly
+  - Unit: path construction helpers produce valid Git refnames
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/refs.rs</code> (new file, per fn-5.2)</p>
+<p><strong>Task 1.2: Attestation-to-bytes / from-bytes for RIP-X format</strong>
+- <em>Why:</em> RIP-X stores attestation signatures as two separate Git blobs, not as a single JSON attestation. auths-verifier needs to support this.
+- <em>Acceptance criteria:</em> <code>Attestation::to_bytes()</code> / <code>from_bytes()</code> round-trip for the RIP-X 2-blob format. The canonical payload for signing is <code>(RID, other_did)</code> as specified in RIP-X.
+- <em>Test plan:</em>
+  - Unit: serialize attestation to two blobs, deserialize back, signatures verify
+  - Unit: reject truncated/corrupt blobs
+  - Unit: reject mismatched RID (tamper detection)
+- <em>Affected areas:</em> <code>crates/auths-verifier/src/</code> (per fn-5.3), <code>crates/auths-radicle/src/bridge.rs</code></p>
+<p><strong>Task 1.3: <code>GitKel::with_ref()</code> constructor for custom ref paths</strong>
+- <em>Why:</em> auths-id's KEL reader currently uses <code>refs/did/keri/&lt;prefix&gt;/kel</code>. For RIP-X, it needs to read from <code>refs/keri/kel</code>.
+- <em>Acceptance criteria:</em> <code>GitKel</code> accepts an optional custom ref path, defaulting to the existing path but allowing <code>refs/keri/kel</code> for RIP-X repositories.
+- <em>Test plan:</em>
+  - Unit: default path works as before (no regression)
+  - Unit: custom path reads KEL from <code>refs/keri/kel</code>
+  - Unit: invalid ref path returns error
+- <em>Affected areas:</em> <code>crates/auths-id/src/keri/</code> (per fn-6.1, fn-6.2, fn-6.3)</p>
+<hr />
+<h3 id="epic-2-identity-state-loading-from-radicle-replicated-repos">Epic 2: Identity State Loading from Radicle-Replicated Repos<a class="headerlink" href="#epic-2-identity-state-loading-from-radicle-replicated-repos" title="Permanent link">&para;</a></h3>
+<p><strong>Objective:</strong> Enable the bridge to read KERI identity state from locally-replicated Radicle repositories.</p>
+<p><strong>Why it matters:</strong> The bridge makes authorization decisions based on identity state. It must be able to open a Radicle-replicated identity repo (by RID), load the KEL, compute <code>KeyState</code>, and load device attestations -- all from local Git storage.</p>
+<p><strong>Success metrics:</strong>
+- <code>AuthsStorage</code> impl can load <code>KeyState</code> and attestations from a Radicle-replicated repo
+- Handles missing repos, corrupt KELs, and missing attestations with domain-specific errors
+- Reports KEL sequence for staleness comparison</p>
+<p><strong>Exit criteria:</strong>
+- Bridge loads <code>KeyState</code> from a test identity repo in RIP-X layout
+- All error scenarios return appropriate <code>BridgeError</code> variants
+- Integration test: create identity repo, replicate it (simulate by copying), load via bridge</p>
+<h4 id="tasks_1">Tasks<a class="headerlink" href="#tasks_1" title="Permanent link">&para;</a></h4>
+<p><strong>Task 2.1: <code>AuthsStorage</code> implementation for Radicle-backed repos</strong>
+- <em>Why:</em> The existing <code>AuthsStorage</code> trait in auths-radicle needs a concrete impl that reads from Radicle's Git storage
+- <em>Acceptance criteria:</em> Given a local filesystem path to a Radicle-stored identity repo, loads: (a) KEL events from <code>refs/keri/kel</code> commit chain, (b) device attestations from <code>refs/keys/&lt;nid&gt;/signatures</code>, (c) computes <code>KeyState</code> via <code>validate_kel()</code>. Returns <code>BridgeError</code> variants for all failure modes.
+- <em>Test plan:</em>
+  - Unit: load valid KEL, verify <code>KeyState</code> fields match expected
+  - Unit: load 2-way attestation for known device NID
+  - Unit: missing identity repo -&gt; <code>BridgeError::IdentityLoad</code>
+  - Unit: corrupt/truncated KEL -&gt; <code>BridgeError::PolicyEvaluation</code> (wrapping <code>ValidationError</code>)
+  - Unit: missing attestation for unknown NID -&gt; <code>BridgeError::AttestationLoad</code>
+  - Integration: create full identity repo with inception + attestation, load via bridge, verify
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/verify.rs</code></p>
+<p><strong>Task 2.2: <code>find_identity_for_device()</code> implementation</strong>
+- <em>Why:</em> The bridge needs to discover which KERI identity (if any) a given NodeId is attested under. Per fn-5.1, this method is added to the <code>RadicleAuthsBridge</code> trait.
+- <em>Acceptance criteria:</em> Given a device's NodeId and a project repository, scan <code>refs/namespaces/did-keri-*/refs/rad/id</code> to find identity repos, then check each identity repo's <code>refs/keys/&lt;nid&gt;</code> for a matching attestation. Returns the KERI DID or <code>None</code>.
+- <em>Test plan:</em>
+  - Unit: device attested under one identity -&gt; returns that identity's DID
+  - Unit: device not attested under any identity -&gt; returns <code>None</code>
+  - Unit: device attested under multiple identities (edge case) -&gt; returns first match with warning
+  - Unit: identity repo not locally available -&gt; returns <code>None</code> (not error)
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/bridge.rs</code> (per fn-5.1)</p>
+<hr />
+<h3 id="epic-3-authorization-checks-in-the-bridge">Epic 3: Authorization Checks in the Bridge<a class="headerlink" href="#epic-3-authorization-checks-in-the-bridge" title="Permanent link">&para;</a></h3>
+<p><strong>Objective:</strong> Implement the full authorization evaluation pipeline.</p>
+<p><strong>Why it matters:</strong> This is the core value: answering "is this device authorized?" using Auths identity state, per fn-3's <code>DeviceAuthorization</code> design.</p>
+<p><strong>Success metrics:</strong>
+- Bridge correctly authorizes valid devices
+- Bridge correctly rejects revoked, expired, and unauthorized devices
+- Bridge correctly checks capabilities
+- Works with fn-3.2's <code>CompositeAuthorityChecker</code> integration</p>
+<p><strong>Exit criteria:</strong>
+- All authorization scenarios produce correct <code>VerifyResult</code>
+- 100% of authorization tests pass including edge cases and tamper scenarios</p>
+<h4 id="tasks_2">Tasks<a class="headerlink" href="#tasks_2" title="Permanent link">&para;</a></h4>
+<p><strong>Task 3.1: Full verification pipeline (wired to Radicle-backed storage)</strong>
+- <em>Why:</em> <code>DefaultBridge::verify_signer()</code> must work against the <code>AuthsStorage</code> impl from Epic 2
+- <em>Acceptance criteria:</em> <code>verify_signer()</code> executes: DID translation -&gt; identity repo lookup -&gt; KEL validation -&gt; attestation load -&gt; RIP-X 2-way signature verification -&gt; policy evaluation -&gt; result.
+- <em>Test plan:</em>
+  - Unit: valid device with <code>sign_commit</code> capability -&gt; <code>Verified</code>
+  - Unit: revoked device -&gt; <code>Rejected</code>
+  - Unit: expired attestation -&gt; <code>Rejected</code>
+  - Unit: device with wrong capability -&gt; <code>Rejected</code>
+  - Unit: unknown device (no attestation) -&gt; <code>Rejected</code>
+  - Unit: valid device after key rotation (KEL sequence &gt; 0) -&gt; <code>Verified</code>
+  - Tamper: modified attestation blob (signature mismatch) -&gt; <code>Rejected</code>
+  - Tamper: swapped <code>did-key</code> and <code>did-keri</code> blobs -&gt; <code>Rejected</code>
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/verify.rs</code>, <code>crates/auths-radicle/src/bridge.rs</code></p>
+<p><strong>Task 3.2: Capability-scoped authorization</strong>
+- <em>Why:</em> Different operations require different capabilities
+- <em>Acceptance criteria:</em> Bridge accepts a required capability and checks it against the attestation. <code>sign_commit</code> for ref updates; <code>sign_release</code> for release tags.
+- <em>Test plan:</em>
+  - Unit: device with <code>sign_commit</code> pushing refs -&gt; <code>Verified</code>
+  - Unit: device with only <code>sign_release</code> pushing refs -&gt; <code>Rejected</code>
+  - Unit: device with <code>[sign_commit, sign_release]</code> pushing release tag -&gt; <code>Verified</code>
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/bridge.rs</code>, <code>crates/auths-radicle/src/verify.rs</code></p>
+<p><strong>Task 3.3: Threshold verification for multi-delegate projects</strong>
+- <em>Why:</em> Radicle projects can require M-of-N delegates
+- <em>Acceptance criteria:</em> <code>verify_multiple_signers()</code> and <code>meets_threshold()</code> work with the full pipeline
+- <em>Test plan:</em>
+  - Unit: 3 signers, threshold 2, all valid -&gt; passes
+  - Unit: 3 signers, threshold 2, one revoked -&gt; passes (2 valid remain)
+  - Unit: 3 signers, threshold 2, two revoked -&gt; fails
+  - Unit: mixed <code>Did::Key</code> + <code>Did::Keri</code> delegates in threshold -&gt; both types checked correctly
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/verify.rs</code></p>
+<hr />
+<h3 id="epic-4-stale-state-handling-and-enforcement-modes">Epic 4: Stale-State Handling and Enforcement Modes<a class="headerlink" href="#epic-4-stale-state-handling-and-enforcement-modes" title="Permanent link">&para;</a></h3>
+<p><strong>Objective:</strong> Implement observe/enforce modes and gossip-informed staleness detection.</p>
+<p><strong>Why it matters:</strong> Without explicit staleness handling, the system silently makes wrong decisions when identity state is incomplete. Without enforcement modes, users cannot choose their security/availability tradeoff.</p>
+<p><strong>Success metrics:</strong>
+- Observe mode: never blocks updates, always logs warnings
+- Enforce mode: rejects updates when identity state is unavailable or known-stale
+- Gossip-informed staleness: warns when local identity repo tip differs from announced tip
+- <code>min_kel_seq</code> correctly enforces binding integrity (not freshness)</p>
+<p><strong>Exit criteria:</strong>
+- All mode/staleness combinations tested
+- Stale-state test matrix passes
+- Warning and quarantine messages include actionable information</p>
+<h4 id="tasks_3">Tasks<a class="headerlink" href="#tasks_3" title="Permanent link">&para;</a></h4>
+<p><strong>Task 4.1: Enforcement mode configuration</strong>
+- <em>Why:</em> Projects must choose their security/availability tradeoff
+- <em>Acceptance criteria:</em> Bridge accepts an enforcement mode (observe/enforce) per verification call. In observe mode, <code>Rejected</code> results are downgraded to <code>Warn</code>. In enforce mode, <code>Rejected</code> and <code>Quarantine</code> are hard rejections.
+- <em>Test plan:</em>
+  - Unit: observe mode + revoked device -&gt; <code>Warn</code> (not <code>Rejected</code>)
+  - Unit: enforce mode + revoked device -&gt; <code>Rejected</code>
+  - Unit: observe mode + missing identity repo -&gt; <code>Warn</code>
+  - Unit: enforce mode + missing identity repo -&gt; <code>Quarantine</code>
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/bridge.rs</code>, <code>crates/auths-radicle/src/verify.rs</code></p>
+<p><strong>Task 4.2: Gossip-informed staleness detection</strong>
+- <em>Why:</em> <code>min_kel_seq</code> doesn't detect the "Node B at seq 3, revocation at seq 4" case. We need a better signal.
+- <em>Acceptance criteria:</em> Bridge accepts an optional <code>known_remote_tip: Option&lt;Oid&gt;</code> (the latest identity repo tip OID seen via gossip). If provided and differs from the local identity repo tip, the bridge returns a staleness warning (<code>Warn</code> in observe, <code>Quarantine</code> in enforce).
+- <em>Test plan:</em>
+  - Unit: local tip == remote tip -&gt; no staleness warning
+  - Unit: local tip != remote tip -&gt; staleness detected
+  - Unit: no remote tip known (disconnected) -&gt; no staleness warning (can't know)
+  - Unit: remote tip provided, identity repo missing locally -&gt; staleness + missing state
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/verify.rs</code></p>
+<p><strong>Task 4.3: Binding integrity via <code>min_kel_seq</code></strong>
+- <em>Why:</em> Prevents accepting identity state that predates the project binding (e.g., attacker feeding truncated KEL)
+- <em>Acceptance criteria:</em> Bridge compares <code>local_kel_sequence</code> against <code>min_kel_seq</code> from the project binding. If local &lt; minimum, the result is <code>Rejected</code> (not just <code>Warn</code>) -- this is a tamper indicator, not a freshness signal.
+- <em>Test plan:</em>
+  - Unit: local seq 5, min seq 2 -&gt; passes
+  - Unit: local seq 2, min seq 2 -&gt; passes (at minimum)
+  - Unit: local seq 1, min seq 2 -&gt; <code>Rejected</code> (binding integrity violation)
+  - Unit: local seq 0 (only inception), min seq 3 -&gt; <code>Rejected</code>
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/verify.rs</code></p>
+<p><strong>Task 4.4: Stale-state integration tests</strong>
+- <em>Why:</em> Must prove the system behaves correctly in the Node A vs Node B scenario under both modes
+- <em>Acceptance criteria:</em> Integration tests simulating two nodes with different identity state, verifying correct behavior per mode
+- <em>Test plan:</em>
+  - Integration (observe): stale node accepts revoked device's update with <code>Warn</code>; after sync, rejects
+  - Integration (enforce, staleness detected): stale node quarantines; after sync, rejects
+  - Integration (enforce, no staleness signal): stale node accepts (irreducible risk); after sync, rejects
+  - Integration: node with identity repo below <code>min_kel_seq</code> -&gt; <code>Rejected</code> in both modes
+  - Tamper: forged KEL event mid-chain -&gt; <code>validate_kel()</code> fails -&gt; <code>Rejected</code> regardless of mode
+- <em>Affected areas:</em> <code>crates/auths-radicle/tests/</code></p>
+<hr />
+<h3 id="epic-5-minimal-radicle-integration-seam">Epic 5: Minimal Radicle Integration Seam<a class="headerlink" href="#epic-5-minimal-radicle-integration-seam" title="Permanent link">&para;</a></h3>
+<p><strong>Objective:</strong> Wire the bridge into Heartwood's fetch pipeline at the point defined by fn-3 and fn-4.</p>
+<p><strong>Why it matters:</strong> This is where the bridge actually gets called. The seam must align with Heartwood's existing epic plan.</p>
+<p><strong>Success metrics:</strong>
+- <code>DeviceAuthorization</code> (fn-3) calls <code>auths-radicle::DefaultBridge::verify_signer()</code>
+- Fetch pipeline (fn-4) passes enforcement mode and gossip tip to the bridge
+- Projects without KERI delegates are unaffected</p>
+<p><strong>Exit criteria:</strong>
+- Heartwood's existing test suite passes
+- Projects with KERI delegates trigger bridge verification
+- Observe/enforce mode is respected in the fetch pipeline</p>
+<h4 id="tasks_4">Tasks<a class="headerlink" href="#tasks_4" title="Permanent link">&para;</a></h4>
+<p><strong>Task 5.1: Wire <code>DefaultBridge</code> into <code>DeviceAuthorization</code> (fn-3.2 counterpart)</strong>
+- <em>Why:</em> fn-3.2 in Heartwood creates <code>CompositeAuthorityChecker</code> which calls into auths-radicle. This task ensures the bridge API matches what Heartwood expects.
+- <em>Acceptance criteria:</em> <code>DefaultBridge&lt;RadicleAuthsStorage&gt;::verify_signer()</code> signature is compatible with fn-3.2's expected API. Accepts <code>node_id: &amp;[u8; 32]</code>, <code>repo_id: &amp;str</code>, <code>now: DateTime&lt;Utc&gt;</code>, <code>enforcement_mode: Mode</code>, <code>known_remote_tip: Option&lt;Oid&gt;</code>.
+- <em>Test plan:</em>
+  - Unit: mock Heartwood caller invokes bridge with correct parameter types
+  - Integration: end-to-end from <code>DeviceAuthorization::is_authorized()</code> through bridge to result
+- <em>Affected areas:</em> <code>crates/auths-radicle/src/bridge.rs</code>, <code>crates/auths-radicle/src/verify.rs</code></p>
+<p><strong>Task 5.2: Pass gossip state to bridge in fetch pipeline (fn-4 counterpart)</strong>
+- <em>Why:</em> The bridge needs the <code>known_remote_tip</code> from gossip to detect staleness. This is available in the fetch pipeline from <code>RefsAnnouncement</code> data.
+- <em>Acceptance criteria:</em> When the fetch pipeline calls the bridge, it includes the latest announced tip OID for the identity repo (if known from prior <code>RefsAnnouncement</code>s).
+- <em>Test plan:</em>
+  - Integration: fetch with gossip-announced identity repo tip -&gt; bridge receives it
+  - Integration: fetch without prior gossip data -&gt; bridge receives <code>None</code>
+- <em>Affected areas:</em> Heartwood: <code>crates/radicle-fetch/src/state.rs</code>. Auths: <code>crates/auths-radicle/src/bridge.rs</code></p>
+<hr />
+<h3 id="epic-6-end-to-end-demo-and-test-scenarios">Epic 6: End-to-End Demo and Test Scenarios<a class="headerlink" href="#epic-6-end-to-end-demo-and-test-scenarios" title="Permanent link">&para;</a></h3>
+<p><strong>Objective:</strong> Prove the integration works in realistic scenarios including the stale-node case.</p>
+<p><strong>Why it matters:</strong> End-to-end tests are the only way to prove the system works across crate boundaries and under realistic conditions.</p>
+<p><strong>Success metrics:</strong>
+- All three demo scenarios (authorization, revocation, stale node) pass under both modes
+- Tests run in CI without external dependencies</p>
+<p><strong>Exit criteria:</strong>
+- End-to-end test suite passes on all CI platforms
+- Demo script is executable and produces documented output</p>
+<h4 id="tasks_5">Tasks<a class="headerlink" href="#tasks_5" title="Permanent link">&para;</a></h4>
+<p><strong>Task 6.1: Multi-device authorization end-to-end test</strong>
+- <em>Why:</em> Proves device authorization works through the full stack
+- <em>Acceptance criteria:</em> Test creates a KERI identity (inception event + KEL), creates a 2-way attestation in RIP-X format, creates a project with a DID namespace, signs an update from the authorized device, and verifies the bridge accepts it.
+- <em>Test plan:</em>
+  - E2E: full flow from identity creation to update acceptance
+  - E2E: unauthorized device (no attestation) is rejected
+  - E2E: device with wrong capabilities is rejected
+- <em>Affected areas:</em> <code>crates/auths-radicle/tests/</code></p>
+<p><strong>Task 6.2: Revocation end-to-end test</strong>
+- <em>Why:</em> Proves revocation stops a device from being authorized
+- <em>Acceptance criteria:</em> Test creates identity, authorizes device, verifies acceptance, revokes device, verifies rejection. Tests under both observe and enforce modes.
+- <em>Test plan:</em>
+  - E2E: device accepted before revocation, rejected after (enforce mode)
+  - E2E: device accepted before revocation, warned after (observe mode)
+  - E2E: revocation of one device does not affect other authorized devices
+  - E2E: re-authorization after revocation (new attestation) works
+- <em>Affected areas:</em> <code>crates/auths-radicle/tests/</code></p>
+<p><strong>Task 6.3: Stale-node end-to-end test</strong>
+- <em>Why:</em> Proves the system behaves safely under the core adversarial scenario
+- <em>Acceptance criteria:</em> Test simulates two nodes with different identity state and gossip knowledge. Verifies correct behavior per enforcement mode.
+- <em>Test plan:</em>
+  - E2E (observe): stale node accepts with <code>Warn</code>, converges to <code>Rejected</code> after sync
+  - E2E (enforce, staleness detected): stale node quarantines, resolves after sync
+  - E2E (enforce, no staleness signal): stale node accepts (irreducible risk, document this)
+  - E2E: node with identity repo below <code>min_kel_seq</code> -&gt; hard reject in both modes
+  - Tamper: forged KEL event -&gt; <code>Rejected</code> regardless of mode
+- <em>Affected areas:</em> <code>crates/auths-radicle/tests/</code></p>
+<p><strong>Task 6.4: CI integration</strong>
+- <em>Why:</em> All tests must run in CI to prevent regressions
+- <em>Acceptance criteria:</em> CI workflow runs the auths-radicle test suite. Tests work on Ubuntu, macOS, and Windows.
+- <em>Test plan:</em>
+  - CI: all tests pass on all three platforms
+  - CI: tests complete within reasonable time (&lt; 5 minutes)
+- <em>Affected areas:</em> <code>.github/workflows/</code>, <code>crates/auths-radicle/</code></p>
+<hr />
+<h3 id="pr-slicing-plan">PR Slicing Plan<a class="headerlink" href="#pr-slicing-plan" title="Permanent link">&para;</a></h3>
+<p>The work is sliced into 10 PRs, ordered by dependency. PRs target the <strong>auths</strong> repository unless noted.</p>
+<table>
+<thead>
+<tr>
+<th>PR</th>
+<th>Title</th>
+<th>Epic</th>
+<th>Description</th>
+<th>Depends on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>PR 1</strong></td>
+<td>RIP-X ref path constants and attestation format</td>
+<td>1</td>
+<td><code>refs.rs</code> with RIP-X constants. <code>Attestation::to_bytes()</code> / <code>from_bytes()</code> for 2-blob format.</td>
+<td>None</td>
+</tr>
+<tr>
+<td><strong>PR 2</strong></td>
+<td><code>GitKel::with_ref()</code> for custom KEL ref paths</td>
+<td>1</td>
+<td>Allow auths-id's KEL reader to use <code>refs/keri/kel</code> instead of default path.</td>
+<td>None</td>
+</tr>
+<tr>
+<td><strong>PR 3</strong></td>
+<td><code>AuthsStorage</code> impl for Radicle-replicated repos</td>
+<td>2</td>
+<td>Load KEL + attestations from identity repos in RIP-X layout.</td>
+<td>PR 1, PR 2</td>
+</tr>
+<tr>
+<td><strong>PR 4</strong></td>
+<td><code>find_identity_for_device()</code> and DID namespace scanning</td>
+<td>2</td>
+<td>Scan project namespaces to find which identity a device belongs to.</td>
+<td>PR 3</td>
+</tr>
+<tr>
+<td><strong>PR 5</strong></td>
+<td>Full authorization pipeline</td>
+<td>3</td>
+<td>Wire <code>verify_signer()</code> through the Radicle-backed storage. All auth scenarios tested.</td>
+<td>PR 3, PR 4</td>
+</tr>
+<tr>
+<td><strong>PR 6</strong></td>
+<td>Observe/enforce modes + gossip-informed staleness</td>
+<td>4</td>
+<td>Enforcement mode config, <code>known_remote_tip</code> staleness, <code>min_kel_seq</code> binding integrity.</td>
+<td>PR 5</td>
+</tr>
+<tr>
+<td><strong>PR 7</strong></td>
+<td>Stale-state integration tests</td>
+<td>4</td>
+<td>Node A vs Node B simulation under both modes. Tamper tests.</td>
+<td>PR 6</td>
+</tr>
+<tr>
+<td><strong>PR 8</strong></td>
+<td>Bridge API alignment with Heartwood fn-3.2</td>
+<td>5</td>
+<td>Ensure bridge signature matches <code>DeviceAuthorization</code> expectations. Gossip tip passthrough.</td>
+<td>PR 6</td>
+</tr>
+<tr>
+<td><strong>PR 9</strong></td>
+<td>End-to-end tests</td>
+<td>6</td>
+<td>Full E2E: authorization, revocation, stale-node under both modes.</td>
+<td>PR 7, PR 8</td>
+</tr>
+<tr>
+<td><strong>PR 10</strong></td>
+<td>CI integration and demo script</td>
+<td>6</td>
+<td>CI workflow, demo documentation, cross-platform verification.</td>
+<td>PR 9</td>
+</tr>
+</tbody>
+</table>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>PR 1 ──┐
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>PR 2 ──┼──► PR 3 ──► PR 4 ──► PR 5 ──► PR 6 ──► PR 7 ──► PR 9 ──► PR 10
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>       │                                  │                  ▲
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>       │                                  └──► PR 8 ────────┘
+</span></code></pre></div>
+<hr />
+<h2 id="8-demo-script">8. Demo Script<a class="headerlink" href="#8-demo-script" title="Permanent link">&para;</a></h2>
+<p><strong>Title:</strong> "Multi-device authorization, revocation, and stale-node safety in 5 minutes"</p>
+<p><strong>Prerequisites:</strong> Two terminal windows (simulating two nodes). Radicle CLI with KERI support installed (fn-5 commands available). Both nodes running (<code>rad node start</code>).</p>
+<hr />
+<p><strong>Act 1: Setup and Authorization (Node A = Alice, Node B = Bob)</strong></p>
+<blockquote>
+<p>"Alice creates her KERI identity and authorizes her laptop."</p>
+</blockquote>
+<p>On Node A:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rad identity init-keri
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a># Shows: Created KERI identity did:keri:EXq5...
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a># Shows: Identity repo rad:z3gq... seeded to network
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a># Shows: Current device automatically attested (KEL sequence 1)
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>rad identity device add --key &lt;laptop-nid&gt;
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a># Shows: 2-way attestation created for &lt;laptop-nid&gt;
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a># Shows: Attestation anchored at KEL sequence 2
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a># Shows: Run `rad identity device confirm` on the laptop to complete
+</span></code></pre></div></p>
+<p>On Laptop (complete 2-way attestation):
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>rad identity device confirm --identity did:keri:EXq5...
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a># Shows: Device attestation signed and stored
+</span></code></pre></div></p>
+<blockquote>
+<p>"She creates a project with her KERI identity as a delegate."</p>
+</blockquote>
+<p>On Node A:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>mkdir my-project &amp;&amp; cd my-project &amp;&amp; git init &amp;&amp; echo &quot;hello&quot; &gt; README.md &amp;&amp; git add . &amp;&amp; git commit -m &quot;init&quot;
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>rad init --name &quot;my-project&quot;
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>rad id update --allow did:keri:EXq5...
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a># Shows: Project delegate added: did:keri:EXq5...
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a># Shows: DID namespace refs/namespaces/did-keri-EXq5.../refs/rad/id -&gt; rad:z3gq...
+</span></code></pre></div></p>
+<blockquote>
+<p>"Bob seeds Alice's project. His node auto-discovers and fetches the identity repo."</p>
+</blockquote>
+<p>On Node B:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rad seed rad:&lt;project-rid&gt;
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>rad sync --fetch
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a># Shows: Fetched project rad:&lt;project-rid&gt;
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a># Shows: Discovered KERI identity did:keri:EXq5... -&gt; fetching identity repo rad:z3gq...
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a># Shows: Identity repo fetched, KEL at sequence 2
+</span></code></pre></div></p>
+<blockquote>
+<p>"Alice's laptop pushes a commit."</p>
+</blockquote>
+<p>On Laptop:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>cd my-project
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>echo &quot;feature code&quot; &gt; feature.rs
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>git add . &amp;&amp; git commit -m &quot;Add feature&quot;
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>git push rad main
+</span></code></pre></div></p>
+<blockquote>
+<p>"Bob's node accepts it -- the laptop is authorized via the KERI identity."</p>
+</blockquote>
+<p>On Node B:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>rad sync --fetch
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a># Shows: Fetched 1 update for my-project
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a># Shows: Signer &lt;laptop-nid&gt; VERIFIED (attested under did:keri:EXq5...)
+</span></code></pre></div></p>
+<p><strong>Act 2: Revocation</strong></p>
+<blockquote>
+<p>"Alice discovers her laptop was compromised. She revokes it."</p>
+</blockquote>
+<p>On Node A:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>rad identity device revoke &lt;laptop-nid&gt;
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a># Shows: Device &lt;laptop-nid&gt; revoked at 2026-03-01T14:00:00Z
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a># Shows: Revocation anchored at KEL sequence 3
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a># Shows: Updated identity repo pushed to network
+</span></code></pre></div></p>
+<blockquote>
+<p>"Bob syncs and gets the revocation."</p>
+</blockquote>
+<p>On Node B:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>rad sync --fetch
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a># Shows: Identity repo rad:z3gq... updated to KEL sequence 3
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a># Shows: Device &lt;laptop-nid&gt; marked as revoked
+</span></code></pre></div></p>
+<blockquote>
+<p>"The compromised laptop tries to push again."</p>
+</blockquote>
+<p>On Laptop (simulating compromised device):
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>echo &quot;malicious code&quot; &gt; backdoor.rs
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git add . &amp;&amp; git commit -m &quot;Innocent update&quot;
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>git push rad main
+</span></code></pre></div></p>
+<blockquote>
+<p>"Bob's node rejects it (enforce mode)."</p>
+</blockquote>
+<p>On Node B:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>rad sync --fetch
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a># Shows: Signer &lt;laptop-nid&gt; REJECTED (device revoked at 2026-03-01T14:00:00Z)
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a># Shows: 0 updates applied from &lt;laptop-nid&gt;
+</span></code></pre></div></p>
+<p><strong>Act 3: Stale Node Safety</strong></p>
+<blockquote>
+<p>"Charlie is a new node that seeds the project but hasn't yet fetched the latest identity repo."</p>
+</blockquote>
+<p>On Node C (or simulate by pausing identity repo sync on Node B):
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>rad seed rad:&lt;project-rid&gt;
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a># Charlie fetches the project but his identity repo is stale (sequence 2, pre-revocation)
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a># Meanwhile, gossip has announced a newer identity repo tip...
+</span></code></pre></div></p>
+<blockquote>
+<p>"The compromised laptop pushes to Charlie."</p>
+</blockquote>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>rad sync --fetch
+</span></code></pre></div>
+<p><strong>Enforce mode (recommended):</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a># Shows: Signer &lt;laptop-nid&gt; QUARANTINED
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a># Shows: Identity repo rad:z3gq... has newer tip available (announced via gossip)
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a># Shows: Fetch identity repo before accepting updates from KERI-attested devices
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a># Shows: 0 updates applied
+</span></code></pre></div></p>
+<blockquote>
+<p>"Charlie fetches the identity repo and the quarantine resolves."</p>
+</blockquote>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>rad sync --fetch  # Now fetches identity repo
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a># Shows: Identity repo rad:z3gq... updated to KEL sequence 3
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a># Shows: Device &lt;laptop-nid&gt; is revoked -- quarantined update would have been rejected anyway
+</span></code></pre></div>
+<p><strong>Observe mode (alternative):</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a># Shows: Signer &lt;laptop-nid&gt; VERIFIED (WARNING: identity state may be stale)
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a># Shows: Warning: identity repo rad:z3gq... has newer tip available
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a># Shows: 1 update applied with warning
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a># After syncing identity repo:
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a># Shows: Device &lt;laptop-nid&gt; revoked -- previously-accepted update flagged for review
+</span></code></pre></div></p>
+<blockquote>
+<p>"Key takeaways:"
+1. "In enforce mode, the stale node quarantined the update because it knew (via gossip) that its identity state was behind. No malicious data was accepted."
+2. "In observe mode, the update was accepted but flagged. The system detected and logged the risk. After convergence, all nodes agree."
+3. "The irreducible risk: a fully-disconnected node with no gossip signal cannot know it's stale. This is fundamental to any eventually-consistent system. The mitigation is to seed identity repos and maintain gossip connectivity."</p>
+</blockquote>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/auths-dev/auths" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.prune", "navigation.path", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tabs.link", "announce.dismiss"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
