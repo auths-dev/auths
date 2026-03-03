@@ -41,8 +41,8 @@ pub use attestation::{
     AttestationConversionError, RadAttestation, RadAttestationError, RadCanonicalPayload,
 };
 pub use bridge::{
-    BridgeError, EnforcementMode, RadicleAuthsBridge, SignerInput, Timestamp, VerifyRequest,
-    VerifyResult,
+    BridgeError, EnforcementMode, QuarantineReason, RadicleAuthsBridge, RejectReason, SignerInput,
+    Timestamp, VerifyReason, VerifyRequest, VerifyResult, WarnReason,
 };
 
 // std-only re-exports

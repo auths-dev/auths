@@ -14,6 +14,10 @@
 //!
 //! Auths **authorizes**, never signs. Radicle handles all cryptography.
 
+use std::fmt;
+
+use auths_verifier::IdentityDID;
+use auths_verifier::types::DeviceDID;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 use thiserror::Error;
@@ -29,6 +33,96 @@ pub type Timestamp = chrono::DateTime<chrono::Utc>;
 #[cfg(not(feature = "std"))]
 pub type Timestamp = i64;
 
+/// Reason a signer was verified (authorized).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum VerifyReason {
+    DeviceAttested,
+    LegacyDidKey,
+    PolicyAllowed { message: String },
+}
+
+impl fmt::Display for VerifyReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DeviceAttested => write!(f, "device attested"),
+            Self::LegacyDidKey => write!(f, "legacy did:key delegate"),
+            Self::PolicyAllowed { message } => write!(f, "{message}"),
+        }
+    }
+}
+
+/// Reason a signer was rejected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RejectReason {
+    NoAttestation { detail: String },
+    KelCorrupt { detail: String },
+    InsufficientKelSequence { have: u64, need: u64 },
+    MissingCapability { capability: String },
+    PolicyDenied { message: String },
+    BridgeError { detail: String },
+}
+
+impl fmt::Display for RejectReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoAttestation { detail } => write!(f, "attestation not found: {detail}"),
+            Self::KelCorrupt { detail } => write!(f, "identity corrupt: {detail}"),
+            Self::InsufficientKelSequence { have, need } => {
+                write!(f, "KEL sequence {have} below binding minimum {need}")
+            }
+            Self::MissingCapability { capability } => {
+                write!(f, "device lacks required capability '{capability}'")
+            }
+            Self::PolicyDenied { message } => write!(f, "{message}"),
+            Self::BridgeError { detail } => write!(f, "{detail}"),
+        }
+    }
+}
+
+/// Reason a signer was flagged with a warning.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum WarnReason {
+    ObserveModeRejection(RejectReason),
+    ObserveModeQuarantine(QuarantineReason),
+    PolicyIndeterminate { message: String },
+}
+
+impl fmt::Display for WarnReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ObserveModeRejection(r) => write!(f, "{r}"),
+            Self::ObserveModeQuarantine(r) => write!(f, "{r}"),
+            Self::PolicyIndeterminate { message } => write!(f, "{message}"),
+        }
+    }
+}
+
+/// Reason a signer was quarantined (insufficient local state).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum QuarantineReason {
+    StaleNode { detail: String },
+    MissingIdentityRepo { detail: String },
+    NoIdentityFound { detail: String },
+}
+
+impl fmt::Display for QuarantineReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::StaleNode { detail } => write!(f, "identity repo stale: {detail}"),
+            Self::MissingIdentityRepo { detail } => {
+                write!(f, "identity repo missing: {detail}")
+            }
+            Self::NoIdentityFound { detail } => {
+                write!(f, "no identity found: {detail}")
+            }
+        }
+    }
+}
+
 /// Result of verifying a signer against Auths policy.
 ///
 /// Maps to Radicle's verification expectations:
@@ -40,20 +134,20 @@ pub type Timestamp = i64;
 #[non_exhaustive]
 pub enum VerifyResult {
     /// Signer is authorized by policy.
-    Verified { reason: String },
+    Verified { reason: VerifyReason },
 
     /// Signer is rejected by policy.
-    Rejected { reason: String },
+    Rejected { reason: RejectReason },
 
     /// Signer is allowed but flagged (observe mode or indeterminate).
-    Warn { reason: String },
+    Warn { reason: WarnReason },
 
     /// Insufficient local state to make a decision.
     ///
     /// The identity repo needs fetching before a decision can be made.
     /// In observe mode, this scenario is downgraded to `Warn`.
     Quarantine {
-        reason: String,
+        reason: QuarantineReason,
         /// The RID of the identity repo to fetch, if known.
         identity_repo_rid: Option<RepoId>,
     },
@@ -72,13 +166,13 @@ impl VerifyResult {
         matches!(self, Self::Rejected { .. })
     }
 
-    /// Returns the reason string.
-    pub fn reason(&self) -> &str {
+    /// Returns a human-readable reason string (via Display on the typed reason enums).
+    pub fn reason(&self) -> String {
         match self {
-            Self::Verified { reason }
-            | Self::Rejected { reason }
-            | Self::Warn { reason }
-            | Self::Quarantine { reason, .. } => reason,
+            Self::Verified { reason } => reason.to_string(),
+            Self::Rejected { reason } => reason.to_string(),
+            Self::Warn { reason } => reason.to_string(),
+            Self::Quarantine { reason, .. } => reason.to_string(),
         }
     }
 }
@@ -142,29 +236,29 @@ pub struct VerifyRequest<'a> {
 #[non_exhaustive]
 pub enum BridgeError {
     /// Identity repo missing or unreadable. Actionable: "fetch identity repo X".
-    #[error("failed to load identity: {0}")]
-    IdentityLoad(String),
+    #[error("failed to load identity {did}: {reason}")]
+    IdentityLoad { did: IdentityDID, reason: String },
 
     /// Failed to load attestation for device.
-    #[error("failed to load attestation: {0}")]
-    AttestationLoad(String),
+    #[error("failed to load attestation for device {device_did}: {reason}")]
+    AttestationLoad { device_did: DeviceDID, reason: String },
 
     /// Identity is corrupt — KEL validation failed, broken chain, etc.
     /// Not actionable by fetching. Needs investigation.
-    #[error("identity is corrupt: {0}")]
-    IdentityCorrupt(String),
+    #[error("identity {did} has corrupt KEL: {reason}")]
+    IdentityCorrupt { did: IdentityDID, reason: String },
 
     /// Policy evaluation failed (internal error, not a policy denial).
-    #[error("policy evaluation failed: {0}")]
-    PolicyEvaluation(String),
+    #[error("policy evaluation failed for {did}: {reason}")]
+    PolicyEvaluation { did: IdentityDID, reason: String },
 
     /// Invalid device key format.
-    #[error("invalid device key: {0}")]
-    InvalidDeviceKey(String),
+    #[error("invalid device key: {reason}")]
+    InvalidDeviceKey { reason: String },
 
     /// Repository access error.
-    #[error("repository error: {0}")]
-    Repository(String),
+    #[error("repository access error: {reason}")]
+    Repository { reason: String },
 }
 
 /// Bridge between Radicle and Auths.
@@ -260,25 +354,25 @@ mod tests {
     fn verify_result_is_allowed() {
         assert!(
             VerifyResult::Verified {
-                reason: "ok".into()
+                reason: VerifyReason::DeviceAttested,
             }
             .is_allowed()
         );
         assert!(
             VerifyResult::Warn {
-                reason: "warn".into()
+                reason: WarnReason::PolicyIndeterminate { message: "warn".into() },
             }
             .is_allowed()
         );
         assert!(
             !VerifyResult::Rejected {
-                reason: "no".into()
+                reason: RejectReason::PolicyDenied { message: "no".into() },
             }
             .is_allowed()
         );
         assert!(
             !VerifyResult::Quarantine {
-                reason: "fetch".into(),
+                reason: QuarantineReason::MissingIdentityRepo { detail: "fetch".into() },
                 identity_repo_rid: None,
             }
             .is_allowed()
@@ -289,25 +383,25 @@ mod tests {
     fn verify_result_is_rejected() {
         assert!(
             !VerifyResult::Verified {
-                reason: "ok".into()
+                reason: VerifyReason::DeviceAttested,
             }
             .is_rejected()
         );
         assert!(
             !VerifyResult::Warn {
-                reason: "warn".into()
+                reason: WarnReason::PolicyIndeterminate { message: "warn".into() },
             }
             .is_rejected()
         );
         assert!(
             VerifyResult::Rejected {
-                reason: "no".into()
+                reason: RejectReason::PolicyDenied { message: "no".into() },
             }
             .is_rejected()
         );
         assert!(
             !VerifyResult::Quarantine {
-                reason: "q".into(),
+                reason: QuarantineReason::MissingIdentityRepo { detail: "q".into() },
                 identity_repo_rid: None,
             }
             .is_rejected()
@@ -318,18 +412,18 @@ mod tests {
     fn verify_result_reason() {
         assert_eq!(
             VerifyResult::Verified {
-                reason: "test".into()
+                reason: VerifyReason::DeviceAttested,
             }
             .reason(),
-            "test"
+            "device attested"
         );
-        assert_eq!(
+        assert!(
             VerifyResult::Quarantine {
-                reason: "fetch me".into(),
+                reason: QuarantineReason::MissingIdentityRepo { detail: "fetch needed".into() },
                 identity_repo_rid: Some("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5".parse().unwrap()),
             }
-            .reason(),
-            "fetch me"
+            .reason()
+            .contains("fetch needed")
         );
     }
 

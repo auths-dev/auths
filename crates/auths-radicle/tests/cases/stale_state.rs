@@ -118,7 +118,10 @@ fn corrupt_storage_hard_reject() {
             _device_did: &Did,
             _repo_id: &RepoId,
         ) -> Result<Option<Did>, BridgeError> {
-            Err(BridgeError::IdentityCorrupt("damaged files".into()))
+            Err(BridgeError::IdentityCorrupt {
+                did: auths_verifier::IdentityDID::new("unknown"),
+                reason: "damaged files".into(),
+            })
         }
         fn local_identity_tip(&self, _: &Did) -> Result<Option<[u8; 20]>, BridgeError> {
             Ok(None)

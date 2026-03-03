@@ -56,7 +56,10 @@ impl AuthsStorage for MockStorage {
         self.key_states
             .get(identity_did)
             .cloned()
-            .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
+            .ok_or_else(|| BridgeError::IdentityLoad {
+                did: IdentityDID::new(identity_did.to_string()),
+                reason: "Not found".into(),
+            })
     }
 
     fn load_attestation(
@@ -67,7 +70,10 @@ impl AuthsStorage for MockStorage {
         self.attestations
             .get(&(device_did.clone(), identity_did.clone()))
             .cloned()
-            .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
+            .ok_or_else(|| BridgeError::AttestationLoad {
+                device_did: DeviceDID::new(device_did.to_string()),
+                reason: "Not found".into(),
+            })
     }
 
     fn find_identity_for_device(

@@ -8,7 +8,9 @@ use std::sync::Mutex;
 use auths_id::keri::event::Event;
 use auths_id::keri::state::KeyState;
 use auths_id::keri::validate::replay_kel;
+use auths_verifier::IdentityDID;
 use auths_verifier::core::Attestation;
+use auths_verifier::types::DeviceDID;
 use git2::{ErrorCode, Repository};
 use radicle_core::{Did, RepoId};
 
@@ -48,10 +50,12 @@ impl GitRadicleStorage {
     /// ```
     pub fn open(path: impl AsRef<std::path::Path>, layout: Layout) -> Result<Self, BridgeError> {
         let repo = Repository::open_bare(path.as_ref()).map_err(|e| {
-            BridgeError::Repository(format!(
-                "failed to open bare repo at {}: {e}",
-                path.as_ref().display()
-            ))
+            BridgeError::Repository {
+                reason: format!(
+                    "failed to open bare repo at {}: {e}",
+                    path.as_ref().display()
+                ),
+            }
         })?;
         Ok(Self {
             repo: Mutex::new(repo),
@@ -63,44 +67,68 @@ impl GitRadicleStorage {
         self.repo.lock().expect("repository mutex poisoned")
     }
 
-    fn read_kel_events(&self, repo: &Repository) -> Result<Vec<Event>, BridgeError> {
+    fn read_kel_events(
+        &self,
+        repo: &Repository,
+        did: &IdentityDID,
+    ) -> Result<Vec<Event>, BridgeError> {
         let reference = match repo.find_reference(&self.layout.keri_kel_ref) {
             Ok(r) => r,
             Err(e) if e.code() == ErrorCode::NotFound => return Ok(vec![]),
-            Err(e) => return Err(BridgeError::Repository(format!("KEL ref error: {e}"))),
+            Err(e) => {
+                return Err(BridgeError::Repository {
+                    reason: format!("KEL ref error: {e}"),
+                });
+            }
         };
 
-        let mut commit = reference
-            .peel_to_commit()
-            .map_err(|e| BridgeError::IdentityCorrupt(format!("KEL ref not a commit: {e}")))?;
+        let mut commit = reference.peel_to_commit().map_err(|e| {
+            BridgeError::IdentityCorrupt {
+                did: did.clone(),
+                reason: format!("KEL ref not a commit: {e}"),
+            }
+        })?;
 
         let mut events = Vec::new();
         loop {
             if commit.parent_count() > 1 {
-                return Err(BridgeError::IdentityCorrupt(
-                    "merge commit in KEL chain".into(),
-                ));
+                return Err(BridgeError::IdentityCorrupt {
+                    did: did.clone(),
+                    reason: "merge commit in KEL chain".into(),
+                });
             }
 
-            let tree = commit
-                .tree()
-                .map_err(|e| BridgeError::IdentityCorrupt(format!("missing tree: {e}")))?;
-            let entry = tree.get_name(EVENT_BLOB_NAME).ok_or_else(|| {
-                BridgeError::IdentityCorrupt("missing event.json in KEL commit".into())
+            let tree = commit.tree().map_err(|e| BridgeError::IdentityCorrupt {
+                did: did.clone(),
+                reason: format!("missing tree: {e}"),
             })?;
-            let blob = repo
-                .find_blob(entry.id())
-                .map_err(|e| BridgeError::IdentityCorrupt(format!("blob read error: {e}")))?;
-            let event: Event = serde_json::from_slice(blob.content())
-                .map_err(|e| BridgeError::IdentityCorrupt(format!("invalid event JSON: {e}")))?;
+            let entry = tree.get_name(EVENT_BLOB_NAME).ok_or_else(|| {
+                BridgeError::IdentityCorrupt {
+                    did: did.clone(),
+                    reason: "missing event.json in KEL commit".into(),
+                }
+            })?;
+            let blob = repo.find_blob(entry.id()).map_err(|e| {
+                BridgeError::IdentityCorrupt {
+                    did: did.clone(),
+                    reason: format!("blob read error: {e}"),
+                }
+            })?;
+            let event: Event = serde_json::from_slice(blob.content()).map_err(|e| {
+                BridgeError::IdentityCorrupt {
+                    did: did.clone(),
+                    reason: format!("invalid event JSON: {e}"),
+                }
+            })?;
             events.push(event);
 
             if commit.parent_count() == 0 {
                 break;
             }
-            commit = commit
-                .parent(0)
-                .map_err(|e| BridgeError::IdentityCorrupt(format!("parent walk error: {e}")))?;
+            commit = commit.parent(0).map_err(|e| BridgeError::IdentityCorrupt {
+                did: did.clone(),
+                reason: format!("parent walk error: {e}"),
+            })?;
         }
 
         events.reverse();
@@ -112,25 +140,25 @@ impl GitRadicleStorage {
             Ok(r) => r,
             Err(e) if e.code() == ErrorCode::NotFound => return Ok(None),
             Err(e) => {
-                return Err(BridgeError::Repository(format!(
-                    "ref lookup error for {ref_path}: {e}"
-                )));
+                return Err(BridgeError::Repository {
+                    reason: format!("ref lookup error for {ref_path}: {e}"),
+                });
             }
         };
 
-        let commit = reference
-            .peel_to_commit()
-            .map_err(|e| BridgeError::Repository(format!("{ref_path} is not a commit: {e}")))?;
-        let tree = commit
-            .tree()
-            .map_err(|e| BridgeError::Repository(format!("missing tree at {ref_path}: {e}")))?;
+        let commit = reference.peel_to_commit().map_err(|e| BridgeError::Repository {
+            reason: format!("{ref_path} is not a commit: {e}"),
+        })?;
+        let tree = commit.tree().map_err(|e| BridgeError::Repository {
+            reason: format!("missing tree at {ref_path}: {e}"),
+        })?;
 
         let blob_name = ref_path.rsplit('/').next().unwrap_or(ref_path);
 
         match tree.get_name(blob_name) {
             Some(entry) => {
-                let blob = repo.find_blob(entry.id()).map_err(|e| {
-                    BridgeError::Repository(format!("blob read error at {ref_path}: {e}"))
+                let blob = repo.find_blob(entry.id()).map_err(|e| BridgeError::Repository {
+                    reason: format!("blob read error at {ref_path}: {e}"),
                 })?;
                 Ok(Some(blob.content().to_vec()))
             }
@@ -142,9 +170,9 @@ impl GitRadicleStorage {
 fn device_did_to_nid(did: &Did) -> Result<String, BridgeError> {
     match did {
         Did::Key(pk) => Ok(pk.to_human()),
-        Did::Keri(_) => Err(BridgeError::InvalidDeviceKey(format!(
-            "expected did:key, got {did}"
-        ))),
+        Did::Keri(_) => Err(BridgeError::InvalidDeviceKey {
+            reason: format!("expected did:key, got {did}"),
+        }),
     }
 }
 
@@ -153,14 +181,20 @@ impl AuthsStorage for GitRadicleStorage {
         &self.layout
     }
 
-    fn load_key_state(&self, _identity_did: &Did) -> Result<KeyState, BridgeError> {
+    fn load_key_state(&self, identity_did: &Did) -> Result<KeyState, BridgeError> {
+        let did = IdentityDID::new(identity_did.to_string());
         let repo = self.lock_repo();
-        let events = self.read_kel_events(&repo)?;
+        let events = self.read_kel_events(&repo, &did)?;
         if events.is_empty() {
-            return Err(BridgeError::IdentityLoad("no KEL events found".into()));
+            return Err(BridgeError::IdentityLoad {
+                did,
+                reason: "no KEL events found".into(),
+            });
         }
-        replay_kel(&events)
-            .map_err(|e| BridgeError::IdentityCorrupt(format!("KEL validation failed: {e}")))
+        replay_kel(&events).map_err(|e| BridgeError::IdentityCorrupt {
+            did,
+            reason: format!("KEL validation failed: {e}"),
+        })
     }
 
     fn load_attestation(
@@ -168,25 +202,32 @@ impl AuthsStorage for GitRadicleStorage {
         device_did: &Did,
         identity_did: &Did,
     ) -> Result<Attestation, BridgeError> {
+        let dev_did = DeviceDID::new(device_did.to_string());
         let nid = device_did_to_nid(device_did)?;
         let did_key_ref = self.layout.device_did_key_ref(&nid);
         let did_keri_ref = self.layout.device_did_keri_ref(&nid);
 
         let repo = self.lock_repo();
         let dk_blob = Self::read_blob_at_ref(&repo, &did_key_ref)?.ok_or_else(|| {
-            BridgeError::AttestationLoad(format!("did-key blob missing for {nid}"))
+            BridgeError::AttestationLoad {
+                device_did: dev_did.clone(),
+                reason: format!("did-key blob missing for {nid}"),
+            }
         })?;
         let dkeri_blob = Self::read_blob_at_ref(&repo, &did_keri_ref)?.ok_or_else(|| {
-            BridgeError::AttestationLoad(format!("did-keri blob missing for {nid}"))
+            BridgeError::AttestationLoad {
+                device_did: dev_did.clone(),
+                reason: format!("did-keri blob missing for {nid}"),
+            }
         })?;
         drop(repo);
 
         let device_pk = match device_did {
             Did::Key(pk) => *pk,
             Did::Keri(_) => {
-                return Err(BridgeError::InvalidDeviceKey(format!(
-                    "expected did:key, got {device_did}"
-                )));
+                return Err(BridgeError::InvalidDeviceKey {
+                    reason: format!("expected did:key, got {device_did}"),
+                });
             }
         };
 
@@ -202,10 +243,14 @@ impl AuthsStorage for GitRadicleStorage {
             device_did.clone(),
             device_pk,
         )
-        .map_err(|e| BridgeError::AttestationLoad(format!("malformed attestation blobs: {e}")))?;
+        .map_err(|e| BridgeError::AttestationLoad {
+            device_did: dev_did.clone(),
+            reason: format!("malformed attestation blobs: {e}"),
+        })?;
 
-        Attestation::try_from(rad_att).map_err(|e| {
-            BridgeError::AttestationLoad(format!("attestation conversion failed: {e}"))
+        Attestation::try_from(rad_att).map_err(|e| BridgeError::AttestationLoad {
+            device_did: dev_did,
+            reason: format!("attestation conversion failed: {e}"),
         })
     }
 
@@ -214,6 +259,7 @@ impl AuthsStorage for GitRadicleStorage {
         device_did: &Did,
         _repo_id: &RepoId,
     ) -> Result<Option<Did>, BridgeError> {
+        let did_context = IdentityDID::new(format!("lookup:{device_did}"));
         let nid = device_did_to_nid(device_did)?;
         let sig_ref = self.layout.device_signatures_ref(&nid);
 
@@ -221,18 +267,24 @@ impl AuthsStorage for GitRadicleStorage {
         match repo.find_reference(&format!("{sig_ref}/{}", self.layout.did_key_blob)) {
             Ok(_) => {}
             Err(e) if e.code() == ErrorCode::NotFound => return Ok(None),
-            Err(e) => return Err(BridgeError::Repository(format!("ref lookup error: {e}"))),
+            Err(e) => {
+                return Err(BridgeError::Repository {
+                    reason: format!("ref lookup error: {e}"),
+                });
+            }
         }
 
-        let events = self.read_kel_events(&repo)?;
+        let events = self.read_kel_events(&repo, &did_context)?;
         drop(repo);
 
         if events.is_empty() {
             return Ok(None);
         }
 
-        let key_state = replay_kel(&events)
-            .map_err(|e| BridgeError::IdentityCorrupt(format!("KEL replay failed: {e}")))?;
+        let key_state = replay_kel(&events).map_err(|e| BridgeError::IdentityCorrupt {
+            did: did_context,
+            reason: format!("KEL replay failed: {e}"),
+        })?;
 
         Ok(Some(Did::Keri(key_state.prefix.to_string())))
     }
@@ -246,14 +298,19 @@ impl AuthsStorage for GitRadicleStorage {
         let glob_pattern = format!("{prefix}/*/signatures/{blob_name}");
         let references = repo
             .references_glob(&glob_pattern)
-            .map_err(|e| BridgeError::Repository(format!("failed to list device refs: {e}")))?;
+            .map_err(|e| BridgeError::Repository {
+                reason: format!("failed to list device refs: {e}"),
+            })?;
 
         for reference in references {
-            let reference = reference
-                .map_err(|e| BridgeError::Repository(format!("reference error: {e}")))?;
+            let reference = reference.map_err(|e| BridgeError::Repository {
+                reason: format!("reference error: {e}"),
+            })?;
             let name = reference
                 .name()
-                .ok_or_else(|| BridgeError::Repository("invalid ref name".into()))?;
+                .ok_or_else(|| BridgeError::Repository {
+                    reason: "invalid ref name".into(),
+                })?;
 
             // Ref format: refs/keys/<nid>/signatures/did-keri
             let components: Vec<&str> = name.split('/').collect();
@@ -272,9 +329,11 @@ impl AuthsStorage for GitRadicleStorage {
         let repo = self.lock_repo();
         match repo.find_reference(&self.layout.keri_kel_ref) {
             Ok(reference) => {
-                let commit = reference
-                    .peel_to_commit()
-                    .map_err(|e| BridgeError::Repository(format!("KEL ref not a commit: {e}")))?;
+                let commit = reference.peel_to_commit().map_err(|e| {
+                    BridgeError::Repository {
+                        reason: format!("KEL ref not a commit: {e}"),
+                    }
+                })?;
                 let oid = commit.id();
                 let raw = oid.as_bytes();
                 let mut tip = [0u8; 20];
@@ -282,7 +341,9 @@ impl AuthsStorage for GitRadicleStorage {
                 Ok(Some(tip))
             }
             Err(e) if e.code() == ErrorCode::NotFound => Ok(None),
-            Err(e) => Err(BridgeError::Repository(format!("KEL ref error: {e}"))),
+            Err(e) => Err(BridgeError::Repository {
+                reason: format!("KEL ref error: {e}"),
+            }),
         }
     }
 }
@@ -291,6 +352,7 @@ impl AuthsStorage for GitRadicleStorage {
 mod tests {
     use super::*;
     use std::str::FromStr;
+    use auths_id::keri::KeriSequence;
     use auths_id::keri::event::{Event, IcpEvent};
     use auths_id::keri::types::{Prefix, Said};
     use git2::Signature;
@@ -307,7 +369,7 @@ mod tests {
             v: "KERI10JSON".into(),
             d: Said::new_unchecked(prefix.to_string()),
             i: Prefix::new_unchecked(prefix.to_string()),
-            s: "0".into(),
+            s: KeriSequence::new(0),
             kt: "1".into(),
             k: vec!["DTestKey123".into()],
             nt: "1".into(),

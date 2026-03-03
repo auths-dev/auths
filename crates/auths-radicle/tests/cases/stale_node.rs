@@ -115,7 +115,10 @@ fn corrupt_identity_hard_rejected() {
             &self.layout
         }
         fn load_key_state(&self, _: &Did) -> Result<KeyState, BridgeError> {
-            Err(BridgeError::IdentityCorrupt("broken chain".into()))
+            Err(BridgeError::IdentityCorrupt {
+                did: auths_verifier::IdentityDID::new("unknown"),
+                reason: "broken chain".into(),
+            })
         }
         fn load_attestation(&self, _: &Did, _: &Did) -> Result<Attestation, BridgeError> {
             unreachable!()

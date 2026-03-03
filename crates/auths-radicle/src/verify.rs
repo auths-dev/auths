@@ -23,7 +23,8 @@ use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 
 use crate::bridge::{
-    BridgeError, EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult,
+    BridgeError, EnforcementMode, QuarantineReason, RadicleAuthsBridge, RejectReason, SignerInput,
+    VerifyReason, VerifyRequest, VerifyResult, WarnReason,
 };
 use crate::refs::Layout;
 
@@ -158,19 +159,22 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         {
             Ok(Some(did)) => did,
             Ok(None) => {
+                let qr = QuarantineReason::NoIdentityFound {
+                    detail: format!("device {device_did}"),
+                };
                 return Ok(match request.mode {
                     EnforcementMode::Observe => VerifyResult::Warn {
-                        reason: format!("no identity found for device {device_did}"),
+                        reason: WarnReason::ObserveModeQuarantine(qr),
                     },
                     EnforcementMode::Enforce => VerifyResult::Quarantine {
-                        reason: format!("no identity found for device {device_did}"),
+                        reason: qr,
                         identity_repo_rid: None,
                     },
                 });
             }
-            Err(BridgeError::IdentityCorrupt(msg)) => {
+            Err(BridgeError::IdentityCorrupt { reason, .. }) => {
                 return Ok(VerifyResult::Rejected {
-                    reason: format!("identity corrupt: {msg}"),
+                    reason: RejectReason::KelCorrupt { detail: reason },
                 });
             }
             Err(e) => return Err(e),
@@ -179,21 +183,21 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         // Step 2: Load key state
         let key_state = match self.storage.load_key_state(&identity_did) {
             Ok(ks) => ks,
-            Err(BridgeError::IdentityLoad(msg)) => {
+            Err(BridgeError::IdentityLoad { reason, .. }) => {
+                let qr = QuarantineReason::MissingIdentityRepo { detail: reason };
                 return Ok(match request.mode {
                     EnforcementMode::Observe => VerifyResult::Warn {
-                        reason: format!("identity repo missing: {msg}"),
+                        reason: WarnReason::ObserveModeQuarantine(qr),
                     },
                     EnforcementMode::Enforce => VerifyResult::Quarantine {
-                        reason: format!("identity repo missing: {msg}"),
-                        identity_repo_rid: Some(*request.repo_id), // Use the repo_id as context for fetch
+                        reason: qr,
+                        identity_repo_rid: Some(*request.repo_id),
                     },
                 });
             }
-            Err(BridgeError::IdentityCorrupt(msg)) => {
-                // Corrupt identity is always rejected, never downgraded
+            Err(BridgeError::IdentityCorrupt { reason, .. }) => {
                 return Ok(VerifyResult::Rejected {
-                    reason: format!("identity corrupt: {msg}"),
+                    reason: RejectReason::KelCorrupt { detail: reason },
                 });
             }
             Err(e) => return Err(e),
@@ -204,10 +208,10 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         if let Some(min_seq) = request.min_kel_seq {
             if key_state.sequence < min_seq {
                 return Ok(VerifyResult::Rejected {
-                    reason: format!(
-                        "KEL sequence {} below binding minimum {min_seq} for {identity_did}",
-                        key_state.sequence
-                    ),
+                    reason: RejectReason::InsufficientKelSequence {
+                        have: key_state.sequence,
+                        need: min_seq,
+                    },
                 });
             }
         }
@@ -216,26 +220,31 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         if let Some(remote_tip) = request.known_remote_tip {
             match self.storage.local_identity_tip(&identity_did)? {
                 Some(local_tip) if local_tip != remote_tip => {
+                    let qr = QuarantineReason::StaleNode {
+                        detail: format!(
+                            "{identity_did} local tip differs from gossip"
+                        ),
+                    };
                     return Ok(match request.mode {
                         EnforcementMode::Observe => VerifyResult::Warn {
-                            reason: format!("identity repo {identity_did} has newer tip available"),
+                            reason: WarnReason::ObserveModeQuarantine(qr),
                         },
                         EnforcementMode::Enforce => VerifyResult::Quarantine {
-                            reason: format!(
-                                "identity repo {identity_did} is stale (local tip differs from gossip)"
-                            ),
+                            reason: qr,
                             identity_repo_rid: Some(*request.repo_id),
                         },
                     });
                 }
                 None => {
-                    // Identity repo missing but we have a remote tip — stale
+                    let qr = QuarantineReason::MissingIdentityRepo {
+                        detail: format!("{identity_did} not available locally"),
+                    };
                     return Ok(match request.mode {
                         EnforcementMode::Observe => VerifyResult::Warn {
-                            reason: format!("identity repo {identity_did} not available locally"),
+                            reason: WarnReason::ObserveModeQuarantine(qr),
                         },
                         EnforcementMode::Enforce => VerifyResult::Quarantine {
-                            reason: format!("identity repo {identity_did} not available locally"),
+                            reason: qr,
                             identity_repo_rid: Some(*request.repo_id),
                         },
                     });
@@ -247,11 +256,11 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         // Step 5: Load attestation
         let attestation = match self.storage.load_attestation(&device_did, &identity_did) {
             Ok(att) => att,
-            Err(BridgeError::AttestationLoad(msg)) => {
+            Err(BridgeError::AttestationLoad { reason, .. }) => {
                 return Ok(apply_mode(
                     request.mode,
                     VerifyResult::Rejected {
-                        reason: format!("attestation not found: {msg}"),
+                        reason: RejectReason::NoAttestation { detail: reason },
                     },
                 ));
             }
@@ -272,9 +281,9 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
                     return Ok(apply_mode(
                         request.mode,
                         VerifyResult::Rejected {
-                            reason: format!(
-                                "device lacks required capability '{required_cap}'"
-                            ),
+                            reason: RejectReason::MissingCapability {
+                                capability: required_cap.to_string(),
+                            },
                         },
                     ));
                 }
@@ -308,8 +317,12 @@ fn apply_mode(mode: EnforcementMode, result: VerifyResult) -> VerifyResult {
     match mode {
         EnforcementMode::Enforce => result,
         EnforcementMode::Observe => match result {
-            VerifyResult::Rejected { reason } => VerifyResult::Warn { reason },
-            VerifyResult::Quarantine { reason, .. } => VerifyResult::Warn { reason },
+            VerifyResult::Rejected { reason } => VerifyResult::Warn {
+                reason: WarnReason::ObserveModeRejection(reason),
+            },
+            VerifyResult::Quarantine { reason, .. } => VerifyResult::Warn {
+                reason: WarnReason::ObserveModeQuarantine(reason),
+            },
             other => other,
         },
     }
@@ -319,13 +332,19 @@ fn apply_mode(mode: EnforcementMode, result: VerifyResult) -> VerifyResult {
 pub fn decision_to_verify_result(decision: Decision) -> VerifyResult {
     match decision.outcome {
         Outcome::Allow => VerifyResult::Verified {
-            reason: decision.message,
+            reason: VerifyReason::PolicyAllowed {
+                message: decision.message,
+            },
         },
         Outcome::Deny => VerifyResult::Rejected {
-            reason: decision.message,
+            reason: RejectReason::PolicyDenied {
+                message: decision.message,
+            },
         },
         Outcome::Indeterminate => VerifyResult::Warn {
-            reason: decision.message,
+            reason: WarnReason::PolicyIndeterminate {
+                message: decision.message,
+            },
         },
     }
 }
@@ -388,7 +407,9 @@ pub fn verify_multiple_signers<B: RadicleAuthsBridge>(
                 let result = match bridge.verify_signer(&request) {
                     Ok(r) => r,
                     Err(_) => VerifyResult::Rejected {
-                        reason: format!("bridge error for device {device_did}"),
+                        reason: RejectReason::BridgeError {
+                            detail: format!("bridge error for device {device_did}"),
+                        },
                     },
                 };
 
@@ -433,6 +454,7 @@ mod tests {
     use std::str::FromStr;
     use auths_verifier::IdentityDID;
     use auths_verifier::keri::{Prefix, Said};
+    use auths_verifier::types::DeviceDID as VerifierDeviceDID;
     use chrono::{DateTime, Utc};
     use std::collections::HashMap;
 
@@ -492,7 +514,10 @@ mod tests {
             self.key_states
                 .get(identity_did)
                 .cloned()
-                .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
+                .ok_or_else(|| BridgeError::IdentityLoad {
+                    did: IdentityDID::new(identity_did.to_string()),
+                    reason: "Not found".into(),
+                })
         }
 
         fn load_attestation(
@@ -503,7 +528,10 @@ mod tests {
             self.attestations
                 .get(&(device_did.clone(), identity_did.clone()))
                 .cloned()
-                .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
+                .ok_or_else(|| BridgeError::AttestationLoad {
+                    device_did: VerifierDeviceDID::new(device_did.to_string()),
+                    reason: "Not found".into(),
+                })
         }
 
         fn find_identity_for_device(
@@ -627,13 +655,13 @@ mod tests {
             SignerInput::PreVerified {
                 did: alice_did,
                 result: VerifyResult::Verified {
-                    reason: "did:key delegate ok".into(),
+                    reason: VerifyReason::LegacyDidKey,
                 },
             },
             SignerInput::PreVerified {
                 did: bob_did,
                 result: VerifyResult::Verified {
-                    reason: "did:key delegate ok".into(),
+                    reason: VerifyReason::LegacyDidKey,
                 },
             },
             SignerInput::NeedsBridgeVerification(signer_key),

@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use chrono::Utc;
 
-use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult};
+use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyReason, VerifyRequest, VerifyResult};
 use auths_radicle::verify::{DefaultBridge, IdentityDid, meets_threshold, verify_multiple_signers};
 use radicle_core::{Did, RepoId};
 
@@ -136,7 +136,7 @@ fn mixed_keri_and_legacy_delegates() {
     let signers = vec![
         SignerInput::PreVerified {
             did: legacy_node_did.clone(),
-            result: VerifyResult::Verified { reason: "ok".into() },
+            result: VerifyResult::Verified { reason: VerifyReason::LegacyDidKey },
         },
         SignerInput::NeedsBridgeVerification(alice_laptop.key),
         SignerInput::NeedsBridgeVerification(bob_desktop.key),
