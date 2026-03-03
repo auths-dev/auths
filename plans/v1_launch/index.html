@@ -1186,6 +1186,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#launch-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Launch workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1549,6 +1560,61 @@ parallelized across 2-3 engineers. The WASM crypto stub (0.1) and FFI tests
 (0.4, 0.5) are the most time-sensitive since they gate the embedding story.
 The API surface cleanup (0.2, 0.3) is the most semver-sensitive since public
 API changes after 0.1.0 require a minor version bump.</p>
+<hr />
+<h2 id="launch-workflow">Launch workflow<a class="headerlink" href="#launch-workflow" title="Permanent link">&para;</a></h2>
+<p>Step 1: Login
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>cargo login
+</span></code></pre></div></p>
+<h1 id="paste-your-cratesio-api-token">Paste your crates.io API token<a class="headerlink" href="#paste-your-cratesio-api-token" title="Permanent link">&para;</a></h1>
+<p>Step 2: Dry run first</p>
+<p>Run this to catch packaging issues before publishing anything:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">for</span><span class="w"> </span>crate<span class="w"> </span><span class="k">in</span><span class="w"> </span>auths-crypto<span class="w"> </span>auths-policy<span class="w"> </span>auths-telemetry<span class="w"> </span>auths-index<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">            </span>auths-verifier<span class="w"> </span>auths-core<span class="w"> </span>auths-infra-http<span class="w"> </span>auths-id<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">            </span>auths-storage<span class="w"> </span>auths-sdk<span class="w"> </span>auths-infra-git<span class="w"> </span>auths-cli<span class="w"> </span>auths<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;=== </span><span class="nv">$crate</span><span class="s2"> ===&quot;</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>cargo<span class="w"> </span>publish<span class="w"> </span>--dry-run<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$crate</span><span class="s2">&quot;</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-3
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="nb">echo</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="k">done</span>
+</span></code></pre></div>
+<p>Step 3: Publish in dependency order</p>
+<p>Each cargo publish needs the previous crate to be indexed (takes ~30s-1min), so add a sleep between them:</p>
+<h1 id="tier-0-no-workspace-dependencies">Tier 0: No workspace dependencies<a class="headerlink" href="#tier-0-no-workspace-dependencies" title="Permanent link">&para;</a></h1>
+<p>cargo publish -p auths-crypto
+cargo publish -p auths-policy
+cargo publish -p auths-telemetry
+cargo publish -p auths-index
+sleep 60</p>
+<h1 id="tier-1-depends-on-tier-0">Tier 1: Depends on Tier 0<a class="headerlink" href="#tier-1-depends-on-tier-0" title="Permanent link">&para;</a></h1>
+<p>cargo publish -p auths-verifier    # depends on auths-crypto
+sleep 60</p>
+<h1 id="tier-2-depends-on-tier-0-1">Tier 2: Depends on Tier 0-1<a class="headerlink" href="#tier-2-depends-on-tier-0-1" title="Permanent link">&para;</a></h1>
+<p>cargo publish -p auths-core        # depends on auths-crypto, auths-verifier
+cargo publish -p auths-infra-http  # depends on auths-core, auths-verifier
+sleep 60</p>
+<h1 id="tier-3-depends-on-tier-0-2">Tier 3: Depends on Tier 0-2<a class="headerlink" href="#tier-3-depends-on-tier-0-2" title="Permanent link">&para;</a></h1>
+<p>cargo publish -p auths-id          # depends on core, crypto, policy, verifier, index
+cargo publish -p auths-sdk         # depends on core, id, policy, crypto, verifier
+cargo publish -p auths-storage     # depends on core, id, verifier, index
+sleep 60</p>
+<h1 id="tier-4-depends-on-tier-0-3">Tier 4: Depends on Tier 0-3<a class="headerlink" href="#tier-4-depends-on-tier-0-3" title="Permanent link">&para;</a></h1>
+<p>cargo publish -p auths-infra-git   # depends on core, sdk, verifier
+sleep 60</p>
+<h1 id="tier-5-depends-on-everything">Tier 5: Depends on everything<a class="headerlink" href="#tier-5-depends-on-everything" title="Permanent link">&para;</a></h1>
+<p>cargo publish -p auths-cli
+sleep 30</p>
+<h1 id="wrapper-crate-currently-empty-deps-publish-whenever">Wrapper crate (currently empty deps, publish whenever)<a class="headerlink" href="#wrapper-crate-currently-empty-deps-publish-whenever" title="Permanent link">&para;</a></h1>
+<p>cargo publish -p auths</p>
+<p>Important notes</p>
+<ul>
+<li>Version bump first — you'll want to update the workspace version in Cargo.toml from 0.0.1-rc.5 to 0.1.0 before
+publishing. Every version.workspace = true crate picks it up automatically, but the [workspace.dependencies] version
+strings also need updating.</li>
+<li>You can't overwrite — once a version is published to crates.io, it's permanent. If something goes wrong mid-publish, bump
+to 0.1.1 for the remaining crates.</li>
+<li>The sleeps are conservative — crates.io indexing usually takes 30-60 seconds. If a publish fails with "can't find
+dependency", just wait and retry.</li>
+<li>auths-test-utils and xtask are publish = false and will be skipped automatically.</li>
+</ul>
 
 
 
