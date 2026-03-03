@@ -102,9 +102,9 @@ impl Receipt {
     }
 
     /// Formats this receipt as a Git trailer value (base64url-encoded JSON).
-    pub fn to_trailer_value(&self) -> String {
-        let json = serde_json::to_string(self).expect("receipt is serializable");
-        URL_SAFE_NO_PAD.encode(json.as_bytes())
+    pub fn to_trailer_value(&self) -> Result<String, serde_json::Error> {
+        let json = serde_json::to_string(self)?;
+        Ok(URL_SAFE_NO_PAD.encode(json.as_bytes()))
     }
 
     /// Parses a receipt from a Git trailer value (base64url-encoded JSON).
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn trailer_value_roundtrip() {
         let receipt = sample_receipt();
-        let encoded = receipt.to_trailer_value();
+        let encoded = receipt.to_trailer_value().unwrap();
         let decoded = Receipt::from_trailer_value(&encoded).unwrap();
         assert_eq!(receipt, decoded);
     }
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn trailer_value_is_base64url() {
         let receipt = sample_receipt();
-        let encoded = receipt.to_trailer_value();
+        let encoded = receipt.to_trailer_value().unwrap();
         // base64url uses no padding and no '+' or '/'
         assert!(!encoded.contains('='));
         assert!(!encoded.contains('+'));

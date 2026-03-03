@@ -4,6 +4,7 @@
 //! (e.g. [`crate::types::DeveloperSetupConfig`]) remain Plain Old Data with no
 //! trait objects.
 
+use std::fmt;
 use std::sync::Arc;
 
 use auths_core::ports::clock::ClockProvider;
@@ -14,6 +15,18 @@ use auths_id::attestation::export::AttestationSink;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
+
+/// A required builder field was not set before calling `build()`.
+#[derive(Debug, Clone)]
+pub struct BuilderError(pub &'static str);
+
+impl fmt::Display for BuilderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "missing required builder field: {}", self.0)
+    }
+}
+
+impl std::error::Error for BuilderError {}
 
 /// Fire-and-forget sink for structured telemetry payloads emitted by SDK operations.
 ///
@@ -421,27 +434,27 @@ impl
     ///     .clock(Arc::new(SystemClock))
     ///     .build();
     /// ```
-    pub fn build(self) -> AuthsContext {
-        AuthsContext {
+    pub fn build(self) -> Result<AuthsContext, BuilderError> {
+        Ok(AuthsContext {
             registry: self.registry.0,
             key_storage: self.key_storage.0,
             clock: self.clock.0,
             event_sink: self.event_sink.unwrap_or_else(|| Arc::new(NoopSink)),
             identity_storage: self
                 .identity_storage
-                .expect("identity_storage is required — call .identity_storage(...)"),
+                .ok_or(BuilderError("identity_storage"))?,
             attestation_sink: self
                 .attestation_sink
-                .expect("attestation_sink is required — call .attestation_sink(...)"),
+                .ok_or(BuilderError("attestation_sink"))?,
             attestation_source: self
                 .attestation_source
-                .expect("attestation_source is required — call .attestation_source(...)"),
+                .ok_or(BuilderError("attestation_source"))?,
             passphrase_provider: self
                 .passphrase_provider
                 .unwrap_or_else(|| Arc::new(NoopPassphraseProvider)),
             uuid_provider: self
                 .uuid_provider
                 .unwrap_or_else(|| Arc::new(SystemUuidProvider)),
-        }
+        })
     }
 }

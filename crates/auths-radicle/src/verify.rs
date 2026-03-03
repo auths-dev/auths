@@ -266,7 +266,11 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         };
 
         // Step 6: Evaluate policy (revocation, expiry)
-        let decision = evaluate_compiled(&attestation, &self.policy, request.now);
+        let decision = evaluate_compiled(&attestation, &self.policy, request.now)
+            .map_err(|e| BridgeError::PolicyEvaluation {
+                did: identity_did.clone(),
+                reason: e.to_string(),
+            })?;
 
         // Step 7: Capability check
         if let Some(required_cap) = request.required_capability

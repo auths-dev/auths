@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn extract_witness_receipts_roundtrip() {
         let receipt = sample_receipt();
-        let trailer_value = receipt.to_trailer_value();
+        let trailer_value = receipt.to_trailer_value().unwrap();
         let msg = append_trailer(
             "feat: add agent signing",
             WITNESS_RECEIPT_KEY,
@@ -295,8 +295,8 @@ mod tests {
         r2.d = Said::new_unchecked("EReceipt456".into());
 
         let mut msg = "feat: signed commit".to_string();
-        msg = append_trailer(&msg, WITNESS_RECEIPT_KEY, &r1.to_trailer_value());
-        msg = append_trailer(&msg, WITNESS_RECEIPT_KEY, &r2.to_trailer_value());
+        msg = append_trailer(&msg, WITNESS_RECEIPT_KEY, &r1.to_trailer_value().unwrap());
+        msg = append_trailer(&msg, WITNESS_RECEIPT_KEY, &r2.to_trailer_value().unwrap());
 
         let receipts = extract_witness_receipts(&msg);
         assert_eq!(receipts.len(), 2);
@@ -307,7 +307,11 @@ mod tests {
         let receipt = sample_receipt();
         let mut msg = "feat: stuff".to_string();
         msg = append_trailer(&msg, "Signed-off-by", "Alice");
-        msg = append_trailer(&msg, WITNESS_RECEIPT_KEY, &receipt.to_trailer_value());
+        msg = append_trailer(
+            &msg,
+            WITNESS_RECEIPT_KEY,
+            &receipt.to_trailer_value().unwrap(),
+        );
         msg = append_trailer(&msg, "Co-authored-by", "Bob");
 
         let receipts = extract_witness_receipts(&msg);

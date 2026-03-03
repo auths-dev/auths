@@ -54,7 +54,7 @@ pub fn handle_sign(
         .attestation_sink(attestation_sink)
         .attestation_source(attestation_source)
         .passphrase_provider(passphrase_provider)
-        .build();
+        .build()?;
 
     let params = ArtifactSigningParams {
         artifact: Arc::new(FileArtifact::new(file)),

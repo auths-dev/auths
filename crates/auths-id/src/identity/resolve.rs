@@ -151,6 +151,11 @@ pub fn did_key_to_ed25519(did: &str) -> Result<Ed25519PublicKey, DidResolverErro
 }
 
 /// Convert a 32-byte Ed25519 public key to `did:key` format.
+///
+/// # Panics
+///
+/// Panics if `public_key` is not exactly 32 bytes. Callers are expected
+/// to pass validated Ed25519 key material.
 pub fn ed25519_to_did_key(public_key: &[u8]) -> String {
     let array: [u8; 32] = public_key
         .try_into()

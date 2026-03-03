@@ -296,7 +296,11 @@ fn resolve_required_key(
         passphrase_provider,
         passphrase_prompt,
     )
-    .map(|opt| opt.expect("resolve_optional_key with Some always returns Some"))
+    .map(|opt| {
+        opt.ok_or(ArtifactSigningError::KeyDecryptionFailed(
+            "expected key material but got None".into(),
+        ))
+    })?
 }
 
 /// Full artifact attestation signing pipeline.
