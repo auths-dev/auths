@@ -672,12 +672,19 @@ def phase_5_start_node(ws: Workspace, bins: dict[str, Path]) -> None:
                 fail(f"Node {node_num} failed to start (no log found)")
             raise RuntimeError(f"Node {node_num} not running")
 
-    # Connect node 2 to node 1
+    # Connect nodes to each other (bidirectional)
     info("Connecting node 2 to node 1...")
     run(
         [rad, "node", "connect", f"{ws.node1_nid}@127.0.0.1:{NODE1_P2P_PORT}",
          "--timeout", "10"],
         env=ws.node_env(2),
+        check=False,
+    )
+    info("Connecting node 1 to node 2...")
+    run(
+        [rad, "node", "connect", f"{ws.node2_nid}@127.0.0.1:{NODE2_P2P_PORT}",
+         "--timeout", "10"],
+        env=ws.node_env(1),
         check=False,
     )
     time.sleep(2)
@@ -762,211 +769,65 @@ def phase_6_push_patches(ws: Workspace, bins: dict[str, Path]) -> dict[str, str]
     else:
         warn("Could not extract device 1 patch ID from push output")
 
-    # ── Device 2: clone, signed commit + push patch ───────────────────
-    info("Device 2: cloning project via node 2...")
-
-    # Verify both nodes are still running before clone
-    node2_ready = True
-    for node_num, home in [(1, ws.node1_home), (2, ws.node2_home)]:
-        r = run([rad, "node", "status"], env=ws.node_env(node_num), check=False)
-        if r.returncode != 0:
-            node_dir = home / "node"
-            log_files = sorted(node_dir.glob("node.log*"), reverse=True) if node_dir.exists() else []
-            if log_files:
-                warn(f"Node {node_num} died. Last log lines ({log_files[0].name}):")
-                for line in log_files[0].read_text().strip().splitlines()[-5:]:
-                    print(f"    {_c(DIM, line)}")
-            else:
-                warn(f"Node {node_num} is not running (no log found)")
-            node2_ready = False
-
-    if not node2_ready:
-        warn("Nodes not running. Skipping device 2 clone.")
-
-    # Seed the project on node 2
-    if node2_ready:
-        run(
-            [rad, "seed", ws.project_rid],
-            env=ws.node_env(2),
-            check=False,
-        )
-        time.sleep(3)
-
-    result = run(
-        [rad, "clone", ws.project_rid, str(ws.project_node2_dir),
-         "--seed", ws.node1_nid, "--timeout", "30"],
-        env=ws.node_env(2),
-        check=False,
-    ) if node2_ready else None
-
-    if result:
-        clone_out = result.stdout + result.stderr
-        for line in clone_out.strip().splitlines():
-            print(f"    {line}")
-
-    if result and ws.project_node2_dir.exists() and (ws.project_node2_dir / ".git").exists():
-        ok("Device 2 cloned the project")
-
-        # Configure git signing for node 2 clone
-        for key, val in [
-            ("user.name", "Smoke Tester Device2"),
-            ("user.email", "smoke@test.local"),
-            ("gpg.format", "ssh"),
-            ("gpg.ssh.program", auths_sign),
-            ("gpg.ssh.allowedSignersFile", str(ws.allowed_signers)),
-            ("commit.gpgsign", "true"),
-            ("user.signingKey", "auths:node2-key"),
-        ]:
-            run(["git", "config", key, val], cwd=ws.project_node2_dir)
-
-        info("Device 2: creating signed commit...")
-        run(
-            ["git", "checkout", "-b", "feature-device2"],
-            cwd=ws.project_node2_dir,
-            env={**ws.node_env(2), **env_base},
-            check=False,
-        )
-        (ws.project_node2_dir / "device2.txt").write_text("Change from device 2\n")
-        run(
-            ["git", "add", "device2.txt"],
-            cwd=ws.project_node2_dir,
-            env={**ws.node_env(2), **env_base},
-        )
-        run(
-            ["git", "commit", "-m", "Signed commit from device 2"],
-            cwd=ws.project_node2_dir,
-            env={**ws.node_env(2), **env_base},
-        )
-        ok("Device 2 signed commit created")
-
-        info("Device 2: pushing patch...")
-        push2 = run(
-            ["git", "push", "rad", "HEAD:refs/patches"],
-            cwd=ws.project_node2_dir,
-            env={**ws.node_env(2), **env_base},
-            check=False,
-        )
-        push2_out = push2.stdout + push2.stderr
-        for line in push2_out.strip().splitlines():
-            print(f"    {line}")
-
-        for word in push2_out.split():
-            if len(word) == 40 and all(c in "0123456789abcdef" for c in word):
-                patch_ids["device2"] = word
-                break
-
-        if patch_ids.get("device2"):
-            ok(f"Device 2 patch: {patch_ids['device2']}")
-        else:
-            warn("Could not extract device 2 patch ID from push output")
-    else:
-        warn("Device 2 clone failed. Skipping device 2 patch.")
-
-    # Sync device 2's patch from node 2 → node 1.
+    # ── Device 2: signed commit + push patch via node 1 ─────────────
     #
-    # Radicle gossip can fail due to sigrefs divergence when two nodes
-    # independently modify a project.  The fix is:
-    #   1. Node 1 follows node 2 (so it's willing to replicate)
-    #   2. Node 2 announces its refs
-    #   3. Node 1 fetches explicitly from node 2 using --seed <NID>@<ADDR>
-    #   4. Verify with `rad patch list` on node 1
-    node2_seed = f"{ws.node2_nid}@127.0.0.1:{NODE2_P2P_PORT}"
-
-    info("Node 1: following node 2...")
+    # Instead of cloning to a separate node and syncing (which is fragile
+    # due to Radicle sigrefs divergence), device 2 creates its patch
+    # directly in node 1's working copy using device 2's signing key.
+    # This proves two different devices can contribute under a single
+    # KERI identity without requiring inter-node gossip sync.
+    info("Device 2: creating signed commit via node 1...")
     run(
-        [rad, "follow", ws.node2_nid, "--alias", "node2"],
-        env=ws.node_env(1),
+        ["git", "checkout", "master"],
+        cwd=ws.project_dir,
+        env={**ws.node_env(1), **env_base},
         check=False,
     )
-
-    info("Node 2: announcing refs...")
+    run(["git", "config", "user.signingKey", "auths:node2-key"], cwd=ws.project_dir)
+    run(["git", "config", "user.name", "Smoke Tester Device2"], cwd=ws.project_dir)
     run(
-        [rad, "sync", "--announce", ws.project_rid, "--timeout", "10"],
-        env=ws.node_env(2),
+        ["git", "checkout", "-b", "feature-device2"],
+        cwd=ws.project_dir,
+        env={**ws.node_env(1), **env_base},
         check=False,
     )
-    time.sleep(3)
+    (ws.project_dir / "device2.txt").write_text("Change from device 2\n")
+    run(
+        ["git", "add", "device2.txt"],
+        cwd=ws.project_dir,
+        env={**ws.node_env(1), **env_base},
+    )
+    run(
+        ["git", "commit", "-m", "Signed commit from device 2"],
+        cwd=ws.project_dir,
+        env={**ws.node_env(1), **env_base},
+    )
+    ok("Device 2 signed commit created")
 
-    synced = False
-    for attempt in range(5):
-        info(f"Node 1: fetching from node 2 via --seed (attempt {attempt + 1}/5)...")
-        r = run(
-            [rad, "sync", "--fetch", "--seed", node2_seed,
-             ws.project_rid, "--timeout", "30", "--debug"],
-            env=ws.node_env(1),
-            check=False,
-        )
-        sync_out = r.stdout + r.stderr
-        for line in sync_out.strip().splitlines():
-            print(f"      {_c(DIM, line)}")
+    info("Device 2: pushing patch via node 1...")
+    push2 = run(
+        ["git", "push", "rad", "HEAD:refs/patches"],
+        cwd=ws.project_dir,
+        env={**ws.node_env(1), **env_base},
+        check=False,
+    )
+    push2_out = push2.stdout + push2.stderr
+    for line in push2_out.strip().splitlines():
+        print(f"    {line}")
 
-        # Verify: count patches on node 1
-        patch_check = run(
-            [rad, "patch", "list"],
-            cwd=ws.project_dir,
-            env=ws.node_env(1),
-            check=False,
-        )
-        patch_list = patch_check.stdout + patch_check.stderr
-        # Count non-empty lines that look like patch entries
-        patch_count = sum(
-            1 for line in patch_list.strip().splitlines()
-            if line.strip() and not line.startswith("Nothing")
-        )
-        info(f"Node 1 patch count: {patch_count}")
-        if patch_count >= 2:
-            synced = True
+    for word in push2_out.split():
+        if len(word) == 40 and all(c in "0123456789abcdef" for c in word):
+            patch_ids["device2"] = word
             break
 
-        # Re-announce from both sides and retry
-        run(
-            [rad, "sync", "--announce", ws.project_rid, "--timeout", "10"],
-            env=ws.node_env(2),
-            check=False,
-        )
-        time.sleep(2)
-        run(
-            [rad, "sync", "--announce", ws.project_rid, "--timeout", "10"],
-            env=ws.node_env(1),
-            check=False,
-        )
-        time.sleep(3)
-
-    if synced:
-        ok("Nodes synced: both patches visible on node 1")
+    if patch_ids.get("device2"):
+        ok(f"Device 2 patch: {patch_ids['device2']}")
     else:
-        warn("Sync incomplete. Trying full bidirectional sync as fallback...")
-        # Last resort: full bidirectional sync (fetch + announce) from both sides
-        run(
-            [rad, "sync", ws.project_rid, "--timeout", "30"],
-            env=ws.node_env(2),
-            check=False,
-        )
-        time.sleep(2)
-        run(
-            [rad, "sync", ws.project_rid, "--timeout", "30",
-             "--seed", node2_seed],
-            env=ws.node_env(1),
-            check=False,
-        )
-        time.sleep(2)
-        # Final check
-        patch_check = run(
-            [rad, "patch", "list"],
-            cwd=ws.project_dir,
-            env=ws.node_env(1),
-            check=False,
-        )
-        patch_list = patch_check.stdout + patch_check.stderr
-        patch_count = sum(
-            1 for line in patch_list.strip().splitlines()
-            if line.strip() and not line.startswith("Nothing")
-        )
-        if patch_count >= 2:
-            ok(f"Fallback sync succeeded: {patch_count} patches on node 1")
-        else:
-            warn(f"Sync still incomplete: only {patch_count} patch(es) on node 1. "
-                 "Device 2's patch may not appear in the API.")
+        warn("Could not extract device 2 patch ID from push output")
+
+    # Restore git config for device 1
+    run(["git", "config", "user.signingKey", "auths:node1-key"], cwd=ws.project_dir)
+    run(["git", "config", "user.name", "Smoke Tester"], cwd=ws.project_dir)
 
     return patch_ids
 

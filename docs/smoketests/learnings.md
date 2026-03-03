@@ -117,15 +117,18 @@ their `rad/sigrefs` refs diverge. This can cause fetch failures between nodes:
 Fetch failed for rad:xxx from z6Mk...: delegate 'z6Mk...' has diverged 'rad/sigrefs'
 ```
 
-**Mitigation in E2E**: After device 2 pushes, run sync from BOTH nodes with retries:
-1. `rad sync --announce` from node 2 (tell network about new data)
-2. `rad sync --fetch` from node 1 (pull device 2's data)
-3. Retry with `rad sync --announce` from node 1 if needed
+**E2E workaround**: Rather than fighting gossip sync, device 2 pushes its patch
+directly through node 1's working copy using device 2's signing key. This avoids
+inter-node sync entirely while still proving that two different devices (different
+signing keys) can contribute to the same project under a single KERI identity.
 
-### Timing
+Gossip sync between two local nodes is unreliable because:
+- `rad clone` from node 2 → node 1 can silently fail
+- Even when clone succeeds, `rad sync --fetch` fails due to sigrefs divergence
+- Retry loops with `--seed NID@addr:port` don't reliably resolve the divergence
 
-Gossip sync is not instant. The E2E script must include `time.sleep()` delays between
-push and sync operations. Without delays, announces may not propagate before fetch attempts.
+The single-node approach is valid for this E2E because the test goal is identity
+resolution (KERI → devices → repos), not Radicle replication.
 
 ## Test Infrastructure
 
