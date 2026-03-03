@@ -88,6 +88,9 @@ pub struct RadicleIdentity {
     /// Attested device DIDs linked to this identity
     #[serde(default)]
     pub devices: Vec<Did>,
+    /// The controller identity for this device (set when resolving did:key with attestation)
+    #[serde(default)]
+    pub controller_did: Option<Did>,
     /// Full KERI key state (if resolved from did:keri)
     pub keri_state: Option<KeyState>,
     /// The original identity document (if resolved from a repository)
@@ -124,22 +127,31 @@ impl RadicleIdentityResolver {
     }
 
     /// Resolves a `did:key:` to a Radicle identity.
+    ///
+    /// Also scans for device attestations to discover the controller identity.
     pub fn resolve_key(&self, did: &Did) -> Result<RadicleIdentity, IdentityError> {
         let _pk = resolve_did_key(did)?;
+        let controller_did = self.find_controller_for_device(did);
         Ok(RadicleIdentity {
             did: did.clone(),
             keys: vec![did.clone()],
             sequence: 0,
             is_abandoned: false,
             devices: Vec::new(),
+            controller_did,
             keri_state: None,
             document: None,
         })
     }
 
     /// Resolves a `did:keri:` to a Radicle identity by replaying its KEL.
+    ///
+    /// Falls back to reading cached key state from the packed registry
+    /// when the KEL git ref is not available.
     pub fn resolve_keri(&self, did: &Did) -> Result<RadicleIdentity, IdentityError> {
-        let key_state = self.resolve_keri_state(did)?;
+        let key_state = self.resolve_keri_state(did)
+            .or_else(|_| self.resolve_keri_state_from_registry(did))?;
+
         let mut keys = Vec::with_capacity(key_state.current_keys.len());
 
         for key_str in &key_state.current_keys {
@@ -151,12 +163,14 @@ impl RadicleIdentityResolver {
         }
 
         let is_abandoned = key_state.is_abandoned;
+        let devices = self.find_attested_devices();
         Ok(RadicleIdentity {
             did: did.clone(),
             keys,
             sequence: key_state.sequence,
             is_abandoned,
-            devices: Vec::new(),
+            devices,
+            controller_did: Some(did.clone()),
             keri_state: Some(key_state),
             document: None,
         })
@@ -297,76 +311,102 @@ impl RadicleIdentityResolver {
         Ok(path)
     }
 
-    /// Resolves the raw KERI event log for a DID, handling repo discovery.
+    /// Finds the controller KERI identity for a device from the packed registry.
     ///
-    /// Args:
-    /// * `did`: The KERI DID whose KEL to retrieve.
-    ///
-    /// Usage:
-    /// ```ignore
-    /// let resolver = RadicleIdentityResolver::new(storage_path);
-    /// let events = resolver.resolve_kel(&did)?;
-    /// ```
-    pub fn resolve_kel(&self, did: &Did) -> Result<Vec<Event>, IdentityError> {
+    /// Reads `refs/auths/registry` and looks up the device's attestation
+    /// at `v1/devices/{shard}/{sanitized_did}/attestation.json`.
+    fn find_controller_for_device(&self, device_did: &Did) -> Option<Did> {
         let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
-        let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
-            path: id_path.display().to_string(),
-            detail: e.to_string(),
-        })?;
-        self.resolve_kel_events(&repo)
+        let repo = Repository::open(id_path).ok()?;
+        let att = self.read_device_attestation(&repo, device_did)?;
+        att.issuer.to_string().parse::<Did>().ok()
     }
 
-    pub fn resolve_keri_state(&self, did: &Did) -> Result<KeyState, IdentityError> {
+    /// Scans the packed registry for all devices with attestations.
+    fn find_attested_devices(&self) -> Vec<Did> {
         let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
-        let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
-            path: id_path.display().to_string(),
-            detail: e.to_string(),
-        })?;
-
-        let events = self.resolve_kel_events(&repo)?;
-        if events.is_empty() {
-            return Err(IdentityError::KelNotFound {
-                ref_path: self.layout.keri_kel_ref.clone(),
-            });
-        }
-
-        let key_state =
-            replay_kel(&events).map_err(|e| IdentityError::KelValidationFailed(e.to_string()))?;
-
-        // Validation: verify prefix matches DID
-        if let Some(prefix_str) = did.as_keri_prefix() {
-            if key_state.prefix.as_str() != prefix_str {
-                return Err(IdentityError::KelValidationFailed(format!(
-                    "KEL prefix mismatch: expected {prefix_str}, got {}",
-                    key_state.prefix.as_str()
-                )));
-            }
-        }
-
-        Ok(key_state)
-    }
-
-    /// Resolves the raw KERI event log from the repository.
-    pub fn resolve_kel_events(&self, repo: &Repository) -> Result<Vec<Event>, IdentityError> {
-        let path = repo.path();
-        let reference = match repo.find_reference(&self.layout.keri_kel_ref) {
+        let repo = match Repository::open(id_path) {
             Ok(r) => r,
-            Err(e) if e.code() == ErrorCode::NotFound => return Ok(vec![]),
-            Err(e) => {
-                return Err(IdentityError::Repository {
-                    path: path.display().to_string(),
-                    detail: format!("KEL ref error: {e}"),
-                });
-            }
+            Err(_) => return Vec::new(),
         };
 
-        let mut commit = reference
-            .peel_to_commit()
-            .map_err(|e| IdentityError::Repository {
-                path: path.display().to_string(),
-                detail: format!("KEL ref not a commit: {e}"),
-            })?;
+        let registry_tree = match self.registry_tree(&repo) {
+            Some(t) => t,
+            None => return Vec::new(),
+        };
 
+        let devices_entry = match registry_tree.get_path(std::path::Path::new("v1/devices")) {
+            Ok(e) => e,
+            Err(_) => return Vec::new(),
+        };
+        let devices_tree = match repo.find_tree(devices_entry.id()) {
+            Ok(t) => t,
+            Err(_) => return Vec::new(),
+        };
+
+        let mut result = Vec::new();
+        self.walk_device_shards(&repo, &devices_tree, &mut result);
+        result
+    }
+
+    /// Walks the sharded device tree to collect all device DIDs.
+    fn walk_device_shards(&self, repo: &Repository, devices_tree: &git2::Tree<'_>, out: &mut Vec<Did>) {
+        for s1 in devices_tree.iter() {
+            let s1_tree = match s1.to_object(repo).and_then(|o| o.peel_to_tree()) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            for s2 in s1_tree.iter() {
+                let s2_tree = match s2.to_object(repo).and_then(|o| o.peel_to_tree()) {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                for device_entry in s2_tree.iter() {
+                    if let Some(sanitized_did) = device_entry.name() {
+                        let did_str = sanitized_did.replace('_', ":");
+                        if let Ok(did) = did_str.parse::<Did>() {
+                            out.push(did);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Reads a device attestation from the packed registry.
+    fn read_device_attestation(
+        &self,
+        repo: &Repository,
+        device_did: &Did,
+    ) -> Option<auths_verifier::core::Attestation> {
+        let registry_tree = self.registry_tree(repo)?;
+        let sanitized = device_did.to_string().replace(':', "_");
+        let key_part = sanitized.strip_prefix("did_key_")?;
+        if key_part.len() < 4 {
+            return None;
+        }
+        let s1 = &key_part[..2];
+        let s2 = &key_part[2..4];
+        let att_path = format!("v1/devices/{s1}/{s2}/{sanitized}/attestation.json");
+
+        let entry = registry_tree.get_path(std::path::Path::new(&att_path)).ok()?;
+        let blob = repo.find_blob(entry.id()).ok()?;
+        serde_json::from_slice(blob.content()).ok()
+    }
+
+    /// Returns the root tree at `refs/auths/registry`.
+    fn registry_tree<'r>(&self, repo: &'r Repository) -> Option<git2::Tree<'r>> {
+        let reference = repo.find_reference(REGISTRY_REF).ok()?;
+        let commit = reference.peel_to_commit().ok()?;
+        commit.tree().ok()
+    }
+
+    /// Reads KEL events by walking the commit chain from the given commit.
+    fn read_events_from_chain(
+        &self,
+        repo: &Repository,
+        mut commit: git2::Commit<'_>,
+    ) -> Result<Vec<Event>, IdentityError> {
         let mut events = Vec::new();
         loop {
             if commit.parent_count() > 1 {
@@ -378,9 +418,12 @@ impl RadicleIdentityResolver {
             let tree = commit
                 .tree()
                 .map_err(|e| IdentityError::KelValidationFailed(format!("missing tree: {e}")))?;
-            let entry = tree.get_name(EVENT_BLOB_NAME).ok_or_else(|| {
-                IdentityError::KelValidationFailed("missing event.json in KEL commit".into())
-            })?;
+            let entry = tree
+                .get_name(EVENT_BLOB_NAME_CESR)
+                .or_else(|| tree.get_name(EVENT_BLOB_NAME_JSON))
+                .ok_or_else(|| {
+                    IdentityError::KelValidationFailed("missing event blob in KEL commit".into())
+                })?;
             let blob = repo
                 .find_blob(entry.id())
                 .map_err(|e| IdentityError::KelValidationFailed(format!("blob read error: {e}")))?;
@@ -399,9 +442,175 @@ impl RadicleIdentityResolver {
         events.reverse();
         Ok(events)
     }
+
+    /// Resolves the raw KERI event log for a DID, handling repo discovery.
+    ///
+    /// Args:
+    /// * `did`: The KERI DID whose KEL to retrieve.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let resolver = RadicleIdentityResolver::new(storage_path);
+    /// let events = resolver.resolve_kel(&did)?;
+    /// ```
+    pub fn resolve_kel(&self, did: &Did) -> Result<Vec<Event>, IdentityError> {
+        let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
+        let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
+            path: id_path.display().to_string(),
+            detail: e.to_string(),
+        })?;
+        let events = self.resolve_kel_events(&repo, did)?;
+
+        if let Some(prefix_str) = did.as_keri_prefix() {
+            if let Some(Event::Icp(icp)) = events.first() {
+                if icp.i.as_str() != prefix_str {
+                    return Err(IdentityError::KelValidationFailed(format!(
+                        "KEL prefix mismatch: expected {prefix_str}, got {}",
+                        icp.i.as_str()
+                    )));
+                }
+            }
+        }
+
+        Ok(events)
+    }
+
+    pub fn resolve_keri_state(&self, did: &Did) -> Result<KeyState, IdentityError> {
+        let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
+        let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
+            path: id_path.display().to_string(),
+            detail: e.to_string(),
+        })?;
+
+        let events = self.resolve_kel_events(&repo, did)?;
+        if events.is_empty() {
+            let ref_path = self.kel_ref_for_did(did);
+            return Err(IdentityError::KelNotFound { ref_path });
+        }
+
+        let key_state =
+            replay_kel(&events).map_err(|e| IdentityError::KelValidationFailed(e.to_string()))?;
+
+        if let Some(prefix_str) = did.as_keri_prefix() {
+            if key_state.prefix.as_str() != prefix_str {
+                return Err(IdentityError::KelValidationFailed(format!(
+                    "KEL prefix mismatch: expected {prefix_str}, got {}",
+                    key_state.prefix.as_str()
+                )));
+            }
+        }
+
+        Ok(key_state)
+    }
+
+    /// Reads cached key state from the packed registry.
+    ///
+    /// Looks up `v1/identities/{s1}/{s2}/{prefix}/state.json` in the
+    /// `refs/auths/registry` tree. This is the fallback when the KEL
+    /// git ref is not available.
+    fn resolve_keri_state_from_registry(&self, did: &Did) -> Result<KeyState, IdentityError> {
+        let prefix = did.as_keri_prefix().ok_or_else(|| {
+            IdentityError::InvalidDidKey("not a KERI DID".into())
+        })?;
+        if prefix.len() < 4 {
+            return Err(IdentityError::KelNotFound {
+                ref_path: format!("registry: prefix too short: {prefix}"),
+            });
+        }
+        let s1 = &prefix[..2];
+        let s2 = &prefix[2..4];
+        let state_path = format!("v1/identities/{s1}/{s2}/{prefix}/state.json");
+
+        let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
+        let repo = Repository::open(id_path).map_err(|e| IdentityError::Repository {
+            path: id_path.display().to_string(),
+            detail: e.to_string(),
+        })?;
+
+        let registry_tree = self.registry_tree(&repo).ok_or_else(|| {
+            IdentityError::KelNotFound {
+                ref_path: REGISTRY_REF.to_string(),
+            }
+        })?;
+
+        let entry = registry_tree
+            .get_path(std::path::Path::new(&state_path))
+            .map_err(|_| IdentityError::KelNotFound {
+                ref_path: state_path.clone(),
+            })?;
+
+        let blob = repo.find_blob(entry.id()).map_err(|e| {
+            IdentityError::KelValidationFailed(format!("blob read error: {e}"))
+        })?;
+
+        #[derive(Deserialize)]
+        struct CachedState {
+            state: KeyState,
+        }
+
+        let cached: CachedState = serde_json::from_slice(blob.content()).map_err(|e| {
+            IdentityError::KelValidationFailed(format!("invalid cached state JSON: {e}"))
+        })?;
+
+        Ok(cached.state)
+    }
+
+    /// Constructs the KEL ref path for a DID.
+    ///
+    /// Tries the per-prefix format (`refs/did/keri/{PREFIX}/kel`) first,
+    /// falling back to the flat layout (`refs/keri/kel`).
+    fn kel_ref_for_did(&self, did: &Did) -> String {
+        if let Some(prefix) = did.as_keri_prefix() {
+            format!("refs/did/keri/{prefix}/kel")
+        } else {
+            self.layout.keri_kel_ref.clone()
+        }
+    }
+
+    /// Resolves the raw KERI event log from the repository.
+    pub fn resolve_kel_events(&self, repo: &Repository, did: &Did) -> Result<Vec<Event>, IdentityError> {
+        let path = repo.path();
+
+        // Try per-prefix ref first (refs/did/keri/{PREFIX}/kel),
+        // then fall back to flat layout (refs/keri/kel).
+        let kel_ref = self.kel_ref_for_did(did);
+        let reference = match repo.find_reference(&kel_ref) {
+            Ok(r) => r,
+            Err(_) if kel_ref != self.layout.keri_kel_ref => {
+                match repo.find_reference(&self.layout.keri_kel_ref) {
+                    Ok(r) => r,
+                    Err(e) if e.code() == ErrorCode::NotFound => return Ok(vec![]),
+                    Err(e) => {
+                        return Err(IdentityError::Repository {
+                            path: path.display().to_string(),
+                            detail: format!("KEL ref error: {e}"),
+                        });
+                    }
+                }
+            }
+            Err(e) if e.code() == ErrorCode::NotFound => return Ok(vec![]),
+            Err(e) => {
+                return Err(IdentityError::Repository {
+                    path: path.display().to_string(),
+                    detail: format!("KEL ref error: {e}"),
+                });
+            }
+        };
+
+        let commit = reference
+            .peel_to_commit()
+            .map_err(|e| IdentityError::Repository {
+                path: path.display().to_string(),
+                detail: format!("KEL ref not a commit: {e}"),
+            })?;
+
+        self.read_events_from_chain(repo, commit)
+    }
 }
 
-const EVENT_BLOB_NAME: &str = "event.json";
+const EVENT_BLOB_NAME_CESR: &str = "event.cesr";
+const EVENT_BLOB_NAME_JSON: &str = "event.json";
+const REGISTRY_REF: &str = "refs/auths/registry";
 
 /// Resolves a `Did` to its `PublicKey`.
 pub fn resolve_did_key(did: &Did) -> Result<PublicKey, IdentityError> {

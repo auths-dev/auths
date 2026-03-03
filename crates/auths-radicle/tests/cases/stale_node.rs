@@ -130,6 +130,9 @@ fn corrupt_identity_hard_rejected() {
         fn local_identity_tip(&self, _: &Did) -> Result<Option<[u8; 20]>, BridgeError> {
             Ok(None)
         }
+        fn list_devices(&self, _: &Did) -> Result<Vec<Did>, BridgeError> {
+            Ok(Vec::new())
+        }
     }
 
     let bridge = DefaultBridge::with_storage(CorruptKelStorage {

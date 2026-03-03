@@ -183,10 +183,10 @@ pub fn is_device_listed(
         if att.is_revoked() {
             return false;
         }
-        if let Some(exp) = att.expires_at
-            && now > exp
-        {
-            return false;
+        if let Some(exp) = att.expires_at {
+            if now > exp {
+                return false;
+            }
         }
         true
     })
@@ -333,33 +333,34 @@ pub(crate) async fn verify_with_keys_at(
     let reference_time = at;
 
     // --- 1. Check revocation (time-aware) ---
-    if let Some(revoked_at) = att.revoked_at
-        && revoked_at <= reference_time
-    {
-        return Err(AttestationError::VerificationError(
-            "Attestation revoked".to_string(),
-        ));
+    if let Some(revoked_at) = att.revoked_at {
+        if revoked_at <= reference_time {
+            return Err(AttestationError::VerificationError(
+                "Attestation revoked".to_string(),
+            ));
+        }
     }
 
     // --- 2. Check expiration against reference time ---
-    if let Some(exp) = att.expires_at
-        && reference_time > exp
-    {
-        return Err(AttestationError::VerificationError(format!(
-            "Attestation expired on {}",
-            exp.to_rfc3339()
-        )));
+    if let Some(exp) = att.expires_at {
+        if reference_time > exp {
+            return Err(AttestationError::VerificationError(format!(
+                "Attestation expired on {}",
+                exp.to_rfc3339()
+            )));
+        }
     }
 
     // --- 3. Check timestamp skew against reference time ---
-    if check_skew
-        && let Some(ts) = att.timestamp
-        && ts > reference_time + Duration::seconds(MAX_SKEW_SECS)
-    {
-        return Err(AttestationError::VerificationError(format!(
-            "Attestation timestamp ({}) is in the future",
-            ts.to_rfc3339(),
-        )));
+    if check_skew {
+        if let Some(ts) = att.timestamp {
+            if ts > reference_time + Duration::seconds(MAX_SKEW_SECS) {
+                return Err(AttestationError::VerificationError(format!(
+                    "Attestation timestamp ({}) is in the future",
+                    ts.to_rfc3339(),
+                )));
+            }
+        }
     }
 
     // --- 4. Check provided issuer public key length ---
@@ -551,17 +552,17 @@ async fn verify_single_attestation(
         ));
     }
 
-    if let Some(exp) = att.expires_at
-        && now > exp
-    {
-        return Err((
-            VerificationStatus::Expired { at: exp },
-            ChainLink::invalid(
-                issuer,
-                subject,
-                format!("Attestation expired on {}", exp.to_rfc3339()),
-            ),
-        ));
+    if let Some(exp) = att.expires_at {
+        if now > exp {
+            return Err((
+                VerificationStatus::Expired { at: exp },
+                ChainLink::invalid(
+                    issuer,
+                    subject,
+                    format!("Attestation expired on {}", exp.to_rfc3339()),
+                ),
+            ));
+        }
     }
 
     match verify_with_keys_at(att, issuer_pk, now, true, provider).await {

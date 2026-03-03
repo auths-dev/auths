@@ -265,18 +265,19 @@ pub fn list_cached_entries(auths_home: &Path) -> Result<Vec<CacheEntry>, io::Err
     for entry in fs::read_dir(&cache_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "json")
-            && let Ok(contents) = fs::read_to_string(&path)
-            && let Ok(cache) = serde_json::from_str::<CachedKelState>(&contents)
-        {
-            entries.push(CacheEntry {
-                did: cache.did,
-                sequence: cache.sequence,
-                validated_against_tip_said: cache.validated_against_tip_said,
-                last_commit_oid: cache.last_commit_oid,
-                cached_at: cache.cached_at,
-                path: path.clone(),
-            });
+        if path.extension().is_some_and(|ext| ext == "json") {
+            if let Ok(contents) = fs::read_to_string(&path) {
+                if let Ok(cache) = serde_json::from_str::<CachedKelState>(&contents) {
+                    entries.push(CacheEntry {
+                        did: cache.did,
+                        sequence: cache.sequence,
+                        validated_against_tip_said: cache.validated_against_tip_said,
+                        last_commit_oid: cache.last_commit_oid,
+                        cached_at: cache.cached_at,
+                        path: path.clone(),
+                    });
+                }
+            }
         }
     }
 

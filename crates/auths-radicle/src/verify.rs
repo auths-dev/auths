@@ -201,15 +201,15 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
 
         // Step 3: Binding integrity — min_kel_seq check BEFORE policy evaluation.
         // A KEL below the binding minimum is a tamper indicator: hard reject in ALL modes.
-        if let Some(min_seq) = request.min_kel_seq
-            && key_state.sequence < min_seq
-        {
-            return Ok(VerifyResult::Rejected {
-                reason: format!(
-                    "KEL sequence {} below binding minimum {min_seq} for {identity_did}",
-                    key_state.sequence
-                ),
-            });
+        if let Some(min_seq) = request.min_kel_seq {
+            if key_state.sequence < min_seq {
+                return Ok(VerifyResult::Rejected {
+                    reason: format!(
+                        "KEL sequence {} below binding minimum {min_seq} for {identity_did}",
+                        key_state.sequence
+                    ),
+                });
+            }
         }
 
         // Step 4: Staleness detection — gossip-informed tip comparison.
@@ -262,20 +262,22 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         let decision = evaluate_compiled(&attestation, &self.policy, request.now);
 
         // Step 7: Capability check
-        if let Some(required_cap) = request.required_capability
-            && decision.outcome == Outcome::Allow
-        {
-            let has_cap = attestation
-                .capabilities
-                .iter()
-                .any(|c| c.to_string() == required_cap);
-            if !has_cap && !attestation.capabilities.is_empty() {
-                return Ok(apply_mode(
-                    request.mode,
-                    VerifyResult::Rejected {
-                        reason: format!("device lacks required capability '{required_cap}'"),
-                    },
-                ));
+        if let Some(required_cap) = request.required_capability {
+            if decision.outcome == Outcome::Allow {
+                let has_cap = attestation
+                    .capabilities
+                    .iter()
+                    .any(|c| c.to_string() == required_cap);
+                if !has_cap && !attestation.capabilities.is_empty() {
+                    return Ok(apply_mode(
+                        request.mode,
+                        VerifyResult::Rejected {
+                            reason: format!(
+                                "device lacks required capability '{required_cap}'"
+                            ),
+                        },
+                    ));
+                }
             }
         }
 
@@ -518,6 +520,10 @@ mod tests {
         fn local_identity_tip(&self, identity_did: &Did) -> Result<Option<[u8; 20]>, BridgeError> {
             Ok(self.identity_tips.get(identity_did).copied())
         }
+
+        fn list_devices(&self, _identity_did: &Did) -> Result<Vec<Did>, BridgeError> {
+            Ok(Vec::new())
+        }
     }
 
     fn make_key_state(prefix: &str, sequence: u64) -> KeyState {
@@ -528,6 +534,8 @@ mod tests {
             next_commitment: vec![],
             last_event_said: Said::new_unchecked("ETestSaid".to_string()),
             is_abandoned: false,
+            threshold: 1,
+            next_threshold: 1,
         }
     }
 

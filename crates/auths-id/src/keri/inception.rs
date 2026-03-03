@@ -145,18 +145,19 @@ pub fn create_keri_identity(
 
     // Collect witness receipts if configured
     #[cfg(feature = "witness-client")]
-    if let Some(config) = witness_config
-        && config.is_enabled()
-    {
-        let canonical_for_witness = super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
-        super::witness_integration::collect_and_store_receipts(
-            repo.path().parent().unwrap_or(repo.path()),
-            &prefix,
-            &finalized.d,
-            &canonical_for_witness,
-            config,
-        )
-        .map_err(|e| InceptionError::Serialization(e.to_string()))?;
+    if let Some(config) = witness_config {
+        if config.is_enabled() {
+            let canonical_for_witness =
+                super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
+            super::witness_integration::collect_and_store_receipts(
+                repo.path().parent().unwrap_or(repo.path()),
+                &prefix,
+                &finalized.d,
+                &canonical_for_witness,
+                config,
+            )
+            .map_err(|e| InceptionError::Serialization(e.to_string()))?;
+        }
     }
 
     Ok(InceptionResult {

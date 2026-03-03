@@ -18,8 +18,8 @@
   ],
   "scripts": {
     "build": "npm run build:wasm && npm run build:ts",
-    "build:wasm": "cd ../../crates/auths-verifier && wasm-pack build --target bundler --features wasm --out-dir ../../packages/auths-verifier-ts/wasm",
-    "build:ts": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json",
+    "build:wasm": "cd ../../crates/auths-verifier && wasm-pack build --target bundler --no-default-features --features wasm && cp -r pkg/ ../../packages/auths-verifier-ts/wasm",
+    "build:ts": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && cp -r wasm dist/wasm",
     "test": "jest",
     "clean": "rm -rf dist wasm",
     "prepublishOnly": "npm run build"

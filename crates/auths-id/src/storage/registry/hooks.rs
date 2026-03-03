@@ -126,15 +126,16 @@ fn find_git_dir(repo_path: &Path) -> Result<std::path::PathBuf, HookError> {
     }
 
     // Check if .git is a file (worktree or submodule)
-    if git_dir.is_file()
-        && let Ok(content) = fs::read_to_string(&git_dir)
-        && let Some(path) = content.strip_prefix("gitdir: ")
-    {
-        let linked_path = std::path::PathBuf::from(path.trim());
-        if linked_path.is_absolute() {
-            return Ok(linked_path);
-        } else {
-            return Ok(repo_path.join(linked_path));
+    if git_dir.is_file() {
+        if let Ok(content) = fs::read_to_string(&git_dir) {
+            if let Some(path) = content.strip_prefix("gitdir: ") {
+                let linked_path = std::path::PathBuf::from(path.trim());
+                if linked_path.is_absolute() {
+                    return Ok(linked_path);
+                } else {
+                    return Ok(repo_path.join(linked_path));
+                }
+            }
         }
     }
 

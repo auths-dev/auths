@@ -180,12 +180,12 @@ impl ReceiptStorage for GitReceiptStorage {
         // Iterate over references under the prefix
         for reference in repo.references()? {
             let reference = reference?;
-            if let Some(name) = reference.name()
-                && name.starts_with(&prefix_path)
-            {
-                // Extract the SAID from the ref name
-                if let Some(said) = name.strip_prefix(&format!("{}/", prefix_path)) {
-                    saids.push(said.to_string());
+            if let Some(name) = reference.name() {
+                if name.starts_with(&prefix_path) {
+                    // Extract the SAID from the ref name
+                    if let Some(said) = name.strip_prefix(&format!("{}/", prefix_path)) {
+                        saids.push(said.to_string());
+                    }
                 }
             }
         }

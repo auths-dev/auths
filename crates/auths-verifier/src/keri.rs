@@ -554,12 +554,12 @@ pub async fn verify_kel(
 
                     let new_key_bytes = decode_key(&rot.k[0])?;
 
-                    if let Some(commitment) = &state.next_commitment
-                        && !verify_commitment(&new_key_bytes, commitment)
-                    {
-                        return Err(KeriVerifyError::CommitmentMismatch {
-                            sequence: actual_seq,
-                        });
+                    if let Some(commitment) = &state.next_commitment {
+                        if !verify_commitment(&new_key_bytes, commitment) {
+                            return Err(KeriVerifyError::CommitmentMismatch {
+                                sequence: actual_seq,
+                            });
+                        }
                     }
 
                     state.current_key = new_key_bytes;

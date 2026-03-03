@@ -51,6 +51,8 @@ pub use identity::{
     IdentityError, RadicleIdentity, RadicleIdentityDocument, RadicleIdentityResolver,
 };
 #[cfg(feature = "std")]
+pub use radicle_core::identity::{Did, DidError};
+#[cfg(feature = "std")]
 pub use verify::{
     AuthsStorage, DefaultBridge, IdentityDid, decision_to_verify_result, meets_threshold,
     verify_multiple_signers,

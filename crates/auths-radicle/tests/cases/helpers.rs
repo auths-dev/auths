@@ -84,6 +84,10 @@ impl AuthsStorage for MockStorage {
     fn local_identity_tip(&self, identity_did: &Did) -> Result<Option<[u8; 20]>, BridgeError> {
         Ok(self.identity_tips.get(identity_did).copied())
     }
+
+    fn list_devices(&self, _identity_did: &Did) -> Result<Vec<Did>, BridgeError> {
+        Ok(Vec::new())
+    }
 }
 
 pub fn make_key_state(prefix: &str, seq: u64) -> KeyState {
@@ -94,6 +98,8 @@ pub fn make_key_state(prefix: &str, seq: u64) -> KeyState {
         next_commitment: vec![],
         last_event_said: Said::new_unchecked(format!("ESaid{seq}")),
         is_abandoned: false,
+        threshold: 1,
+        next_threshold: 1,
     }
 }
 
