@@ -475,9 +475,7 @@ impl GitRegistryBackend {
                 let mut state = current_state.cloned().ok_or_else(|| {
                     RegistryError::Internal("Rotation without prior state".into())
                 })?;
-                let seq = event.sequence().map_err(|e| {
-                    RegistryError::Internal(format!("Malformed sequence number: {}", e))
-                })?;
+                let seq = event.sequence().value();
                 let threshold = rot.kt.parse::<u64>().unwrap_or(1);
                 let next_threshold = rot.nt.parse::<u64>().unwrap_or(1);
                 state.apply_rotation(rot.k.clone(), rot.n.clone(), threshold, next_threshold, seq, rot.d.clone());
@@ -487,9 +485,7 @@ impl GitRegistryBackend {
                 let mut state = current_state.cloned().ok_or_else(|| {
                     RegistryError::Internal("Interaction without prior state".into())
                 })?;
-                let seq = event.sequence().map_err(|e| {
-                    RegistryError::Internal(format!("Malformed sequence number: {}", e))
-                })?;
+                let seq = event.sequence().value();
                 state.apply_interaction(seq, ixn.d.clone());
                 Ok(state)
             }
@@ -586,9 +582,7 @@ impl RegistryBackend for GitRegistryBackend {
         let navigator = TreeNavigator::new(&repo, base_tree.clone());
 
         let base_path = identity_path(prefix)?;
-        let seq = event
-            .sequence()
-            .map_err(|e| RegistryError::Internal(format!("Malformed sequence number: {}", e)))?;
+        let seq = event.sequence().value();
         let event_path = paths::event_file(&base_path, seq);
         let tip_path = paths::tip_file(&base_path);
         let state_path = paths::state_file(&base_path);
@@ -830,10 +824,7 @@ impl RegistryBackend for GitRegistryBackend {
             Err(e) => {
                 replay_error = Some(RegistryError::Internal(format!(
                     "KEL replay failed at seq {}: {}",
-                    event
-                        .sequence()
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|e| format!("(malformed: {})", e)),
+                    event.sequence().value(),
                     e
                 )));
                 ControlFlow::Break(())
@@ -1815,7 +1806,7 @@ mod tests {
     use super::*;
     use auths_core::crypto::said::compute_next_commitment;
     use auths_id::keri::KERI_VERSION;
-    use auths_id::keri::event::{IcpEvent, IxnEvent, RotEvent};
+    use auths_id::keri::event::{IcpEvent, IxnEvent, KeriSequence, RotEvent};
     use auths_id::keri::seal::Seal;
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{compute_event_said, finalize_icp_event, serialize_for_signing};
@@ -1852,7 +1843,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),
@@ -1894,7 +1885,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: prefix.clone(),
-            s: seq.to_string(),
+            s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
             kt: "1".to_string(),
             k: vec![new_key_encoded],
@@ -1926,7 +1917,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: prefix.clone(),
-            s: seq.to_string(),
+            s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
             a: vec![Seal::device_attestation("ETest")],
             x: String::new(),
@@ -1947,7 +1938,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key.to_string()],
             nt: "1".to_string(),
@@ -1979,7 +1970,7 @@ mod tests {
 
         let retrieved = backend.get_event(&prefix, 0).unwrap();
         assert_eq!(retrieved.prefix(), &prefix);
-        assert_eq!(retrieved.sequence().unwrap(), 0);
+        assert_eq!(retrieved.sequence().value(), 0);
     }
 
     #[test]
@@ -2028,7 +2019,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: prefix.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("EPrev".to_string()),
             kt: "1".to_string(),
             k: vec![key_enc],
@@ -2075,7 +2066,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: prefix.clone(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![Seal::device_attestation("ETest")],
             x: String::new(),
@@ -2113,7 +2104,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked(tampered_said.to_string()),
             i: Prefix::new_unchecked(tampered_said.to_string()),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec!["DKey1".to_string()],
             nt: "1".to_string(),
@@ -3815,7 +3806,7 @@ mod index_consistency_tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),
@@ -4024,7 +4015,7 @@ mod tenant_isolation_tests {
 
     use auths_core::crypto::said::compute_next_commitment;
     use auths_id::keri::KERI_VERSION;
-    use auths_id::keri::event::IcpEvent;
+    use auths_id::keri::event::{IcpEvent, KeriSequence};
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
 
@@ -4061,7 +4052,7 @@ mod tenant_isolation_tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),

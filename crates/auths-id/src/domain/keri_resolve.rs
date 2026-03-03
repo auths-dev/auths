@@ -65,7 +65,7 @@ pub fn resolve_from_events_at_sequence(
 ) -> Result<DidKeriResolution, ResolveError> {
     let events_subset: Vec<_> = events
         .iter()
-        .take_while(|e| e.sequence().is_ok_and(|s| s <= target_sequence))
+        .take_while(|e| e.sequence().value() <= target_sequence)
         .cloned()
         .collect();
 
@@ -161,7 +161,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![current_pub_encoded],
             nt: "1".to_string(),

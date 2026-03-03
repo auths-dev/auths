@@ -52,7 +52,7 @@ impl Default for FakeRegistryBackend {
 fn derive_key_state(prefix: &Prefix, events: &[Event]) -> Option<KeyState> {
     let mut state: Option<KeyState> = None;
     for event in events {
-        let seq = event.sequence().ok()?;
+        let seq = event.sequence().value();
         let said = event.said().clone();
         match event {
             Event::Icp(e) => {
@@ -82,16 +82,14 @@ fn derive_key_state(prefix: &Prefix, events: &[Event]) -> Option<KeyState> {
 
 impl RegistryBackend for FakeRegistryBackend {
     fn append_event(&self, prefix: &Prefix, event: &Event) -> Result<(), RegistryError> {
-        let seq = event.sequence().map_err(|e| RegistryError::InvalidEvent {
-            reason: e.to_string(),
-        })?;
+        let seq = event.sequence().value();
 
         let mut state = self.state.lock().unwrap();
         let key = prefix.as_str().to_string();
         let events = state.events.entry(key.clone()).or_default();
 
         // Append-only: refuse overwrites
-        if events.iter().any(|e| e.sequence().ok() == Some(seq)) {
+        if events.iter().any(|e| e.sequence().value() == seq) {
             return Err(RegistryError::EventExists { prefix: key, seq });
         }
 
@@ -124,7 +122,7 @@ impl RegistryBackend for FakeRegistryBackend {
             .ok_or_else(|| RegistryError::identity_not_found(prefix))?;
         events
             .iter()
-            .find(|e| e.sequence().ok() == Some(seq))
+            .find(|e| e.sequence().value() == seq)
             .cloned()
             .ok_or_else(|| RegistryError::event_not_found(prefix, seq))
     }
@@ -143,7 +141,7 @@ impl RegistryBackend for FakeRegistryBackend {
             .ok_or_else(|| RegistryError::identity_not_found(prefix))?;
         for event in events
             .iter()
-            .filter(|e| e.sequence().ok().unwrap_or(u64::MAX) >= from_seq)
+            .filter(|e| e.sequence().value() >= from_seq)
         {
             if visitor(event).is_break() {
                 break;
@@ -162,9 +160,7 @@ impl RegistryBackend for FakeRegistryBackend {
         let last = events
             .last()
             .ok_or_else(|| RegistryError::identity_not_found(prefix))?;
-        let seq = last.sequence().map_err(|e| RegistryError::InvalidEvent {
-            reason: e.to_string(),
-        })?;
+        let seq = last.sequence().value();
         Ok(TipInfo::new(seq, last.said().clone()))
     }
 

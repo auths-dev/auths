@@ -4,12 +4,13 @@
 //! and the degradation policy when witnesses are unreachable.
 
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 /// Configuration for witness receipts on an identity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WitnessConfig {
     /// Witness server URLs (e.g. `["http://w1:3333", "http://w2:3333"]`).
-    pub witness_urls: Vec<String>,
+    pub witness_urls: Vec<Url>,
     /// Minimum receipts required (k-of-n threshold).
     pub threshold: usize,
     /// Per-witness timeout in milliseconds.
@@ -61,7 +62,7 @@ mod tests {
     #[test]
     fn enabled_with_urls_and_threshold() {
         let config = WitnessConfig {
-            witness_urls: vec!["http://w1:3333".into()],
+            witness_urls: vec!["http://w1:3333".parse().unwrap()],
             threshold: 1,
             timeout_ms: 5000,
             policy: WitnessPolicy::Enforce,
@@ -72,7 +73,7 @@ mod tests {
     #[test]
     fn skip_policy_disables() {
         let config = WitnessConfig {
-            witness_urls: vec!["http://w1:3333".into()],
+            witness_urls: vec!["http://w1:3333".parse().unwrap()],
             threshold: 1,
             timeout_ms: 5000,
             policy: WitnessPolicy::Skip,
@@ -83,7 +84,7 @@ mod tests {
     #[test]
     fn zero_threshold_disables() {
         let config = WitnessConfig {
-            witness_urls: vec!["http://w1:3333".into()],
+            witness_urls: vec!["http://w1:3333".parse().unwrap()],
             threshold: 0,
             timeout_ms: 5000,
             policy: WitnessPolicy::Enforce,

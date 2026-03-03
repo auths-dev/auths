@@ -57,7 +57,7 @@ pub fn collect_and_store_receipts(
         .witness_urls
         .iter()
         .map(|url| {
-            let client = HttpAsyncWitnessClient::new(url.clone(), config.threshold)
+            let client = HttpAsyncWitnessClient::new(url.to_string(), config.threshold)
                 .with_timeout(std::time::Duration::from_millis(config.timeout_ms));
             Arc::new(client) as Arc<dyn AsyncWitnessProvider>
         })

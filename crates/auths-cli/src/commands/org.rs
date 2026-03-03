@@ -182,16 +182,16 @@ pub fn handle_org(
 
     let mut config = StorageLayoutConfig::default();
     if let Some(r) = identity_ref_override {
-        config.identity_ref = r;
+        config.identity_ref = r.into();
     }
     if let Some(b) = identity_blob_name_override {
-        config.identity_blob_name = b;
+        config.identity_blob_name = b.into();
     }
     if let Some(p) = attestation_prefix_override {
-        config.device_attestation_prefix = p;
+        config.device_attestation_prefix = p.into();
     }
     if let Some(b) = attestation_blob_name_override {
-        config.attestation_blob_name = b;
+        config.attestation_blob_name = b.into();
     }
 
     let _attestation_storage = RegistryAttestationStorage::new(repo_path.clone());

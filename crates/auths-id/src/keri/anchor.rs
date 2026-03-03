@@ -14,6 +14,8 @@ use super::{
     Event, GitKel, IxnEvent, KERI_VERSION, KelError, Seal, ValidationError, parse_did_keri,
     validate_kel,
 };
+use super::event::KeriSequence;
+use super::seal::SealType;
 
 /// Error type for anchoring operations.
 #[derive(Debug, thiserror::Error)]
@@ -58,7 +60,7 @@ pub struct AnchorVerification {
 /// * `repo` - Git repository containing the KEL
 /// * `prefix` - The KERI identifier prefix
 /// * `data` - The data to anchor (will be serialized to JSON and hashed)
-/// * `seal_type` - The type of seal (e.g., "device-attestation")
+/// * `seal_type` - The type of seal
 /// * `current_keypair` - The current signing keypair for this identity
 ///
 /// # Returns
@@ -67,7 +69,7 @@ pub fn anchor_data<T: serde::Serialize>(
     repo: &Repository,
     prefix: &Prefix,
     data: &T,
-    seal_type: &str,
+    seal_type: SealType,
     current_keypair: &Ed25519KeyPair,
 ) -> Result<Said, AnchorError> {
     let kel = GitKel::new(repo, prefix.as_str());
@@ -92,7 +94,7 @@ pub fn anchor_data<T: serde::Serialize>(
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: prefix.clone(),
-        s: new_sequence.to_string(),
+        s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
         a: vec![seal],
         x: String::new(), // Signature added below
@@ -127,7 +129,7 @@ pub fn anchor_attestation<T: serde::Serialize>(
         repo,
         prefix,
         attestation,
-        "device-attestation",
+        SealType::DeviceAttestation,
         current_keypair,
     )
 }
@@ -208,13 +210,10 @@ pub fn verify_anchor_by_digest(
         Some(ixn) => {
             let events = kel.get_events()?;
 
-            // Get events up to the anchor sequence
-            let anchor_seq: u64 = ixn.s.parse().map_err(|_| {
-                AnchorError::Validation(ValidationError::MalformedSequence { raw: ixn.s.clone() })
-            })?;
+            let anchor_seq = ixn.s.value();
             let events_subset: Vec<_> = events
                 .into_iter()
-                .take_while(|e| e.sequence().is_ok_and(|s| s <= anchor_seq))
+                .take_while(|e| e.sequence().value() <= anchor_seq)
                 .collect();
 
             let state = validate_kel(&events_subset)?;
@@ -306,29 +305,29 @@ mod tests {
         if let Event::Ixn(ixn) = &events[1] {
             assert_eq!(ixn.d, anchor_said);
             assert_eq!(ixn.a.len(), 1);
-            assert_eq!(ixn.a[0].seal_type, "device-attestation");
+            assert_eq!(ixn.a[0].seal_type, SealType::DeviceAttestation);
         } else {
             panic!("Expected IXN event");
         }
     }
 
     #[test]
-    fn anchor_with_custom_seal_type() {
+    fn anchor_with_delegation_seal_type() {
         let (_dir, repo) = setup_repo();
 
         let init = create_keri_identity(&repo, None).unwrap();
         let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
 
-        let data = serde_json::json!({"custom": "data"});
+        let data = serde_json::json!({"delegation": "data"});
         let anchor_said =
-            anchor_data(&repo, &init.prefix, &data, "custom-type", &current_keypair).unwrap();
+            anchor_data(&repo, &init.prefix, &data, SealType::Delegation, &current_keypair).unwrap();
 
         let kel = GitKel::new(&repo, init.prefix.as_str());
         let events = kel.get_events().unwrap();
 
         if let Event::Ixn(ixn) = &events[1] {
             assert_eq!(ixn.d, anchor_said);
-            assert_eq!(ixn.a[0].seal_type, "custom-type");
+            assert_eq!(ixn.a[0].seal_type, SealType::Delegation);
         } else {
             panic!("Expected IXN event");
         }

@@ -17,6 +17,7 @@ use auths_core::crypto::said::compute_next_commitment;
 
 use super::types::{Prefix, Said};
 use super::{Event, GitKel, IcpEvent, KERI_VERSION, KelError, ValidationError, finalize_icp_event};
+use super::event::KeriSequence;
 use crate::witness_config::WitnessConfig;
 
 /// Error type for inception operations.
@@ -110,7 +111,7 @@ pub fn create_keri_identity(
 
     // Determine witness fields from config
     let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.clone()),
+        Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.iter().map(|u| u.to_string()).collect()),
         _ => ("0".to_string(), vec![]),
     };
 
@@ -119,7 +120,7 @@ pub fn create_keri_identity(
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: Prefix::default(),
-        s: "0".to_string(),
+        s: KeriSequence::new(0),
         kt: "1".to_string(),
         k: vec![current_pub_encoded],
         nt: "1".to_string(),
@@ -206,7 +207,7 @@ pub fn create_keri_identity_with_backend(
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: Prefix::default(),
-        s: "0".to_string(),
+        s: KeriSequence::new(0),
         kt: "1".to_string(),
         k: vec![current_pub_encoded],
         nt: "1".to_string(),

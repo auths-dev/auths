@@ -39,10 +39,12 @@
 use auths_core::witness::{EventHash, WitnessProvider};
 use auths_policy::{CanonicalCapability, evaluate_strict};
 use auths_verifier::core::Attestation;
+use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
 use crate::keri::KeyState;
 use crate::keri::event::EventReceipts;
+use crate::keri::types::Said;
 use crate::storage::receipts::{check_receipt_consistency, verify_receipt_signature};
 
 // Re-export policy types for convenience
@@ -249,9 +251,9 @@ pub enum ReceiptVerificationResult {
     /// Not enough receipts to meet threshold
     InsufficientReceipts { required: usize, got: usize },
     /// Duplicity detected (conflicting SAIDs)
-    Duplicity { event_a: String, event_b: String },
+    Duplicity { event_a: Said, event_b: Said },
     /// Invalid receipt signature
-    InvalidSignature { witness_did: String },
+    InvalidSignature { witness_did: DeviceDID },
 }
 
 /// Witness public key resolver.
@@ -300,10 +302,9 @@ pub fn verify_receipts(
 
     // 2. Check for duplicity (all receipts should have same SAID)
     if let Err(e) = check_receipt_consistency(&receipts.receipts) {
-        // Parse the error message to extract SAIDs (simplified)
         return ReceiptVerificationResult::Duplicity {
-            event_a: receipts.event_said.to_string(),
-            event_b: format!("conflicting: {}", e),
+            event_a: receipts.event_said.clone(),
+            event_b: Said::new_unchecked(format!("conflicting: {}", e)),
         };
     }
 
@@ -315,12 +316,12 @@ pub fn verify_receipts(
                     Ok(true) => continue,
                     Ok(false) => {
                         return ReceiptVerificationResult::InvalidSignature {
-                            witness_did: receipt.i.clone(),
+                            witness_did: DeviceDID::new(&receipt.i),
                         };
                     }
                     Err(_) => {
                         return ReceiptVerificationResult::InvalidSignature {
-                            witness_did: receipt.i.clone(),
+                            witness_did: DeviceDID::new(&receipt.i),
                         };
                     }
                 }

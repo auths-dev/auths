@@ -200,16 +200,16 @@ pub fn handle_device(
 
     let mut config = StorageLayoutConfig::default();
     if let Some(identity_ref) = identity_ref_override {
-        config.identity_ref = identity_ref;
+        config.identity_ref = identity_ref.into();
     }
     if let Some(blob_name) = identity_blob_name_override {
-        config.identity_blob_name = blob_name;
+        config.identity_blob_name = blob_name.into();
     }
     if let Some(prefix) = attestation_prefix_override {
-        config.device_attestation_prefix = prefix;
+        config.device_attestation_prefix = prefix.into();
     }
     if let Some(blob_name) = attestation_blob_name_override {
-        config.attestation_blob_name = blob_name;
+        config.attestation_blob_name = blob_name.into();
     }
 
     match cmd.command {

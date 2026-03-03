@@ -25,7 +25,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ring::signature::UnparsedPublicKey;
 
 use super::types::{Prefix, Said};
-use super::{Event, IcpEvent, KeyState, SequenceParseError};
+use super::{Event, IcpEvent, KeyState};
 
 /// Errors specific to KEL validation.
 ///
@@ -86,11 +86,6 @@ pub enum ValidationError {
     MalformedSequence { raw: String },
 }
 
-impl From<SequenceParseError> for ValidationError {
-    fn from(e: SequenceParseError) -> Self {
-        ValidationError::MalformedSequence { raw: e.raw }
-    }
-}
 
 /// Validate a KEL and return the resulting KeyState.
 ///
@@ -169,7 +164,7 @@ pub fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
         verify_event_said(event)?;
 
         // Verify sequence
-        let actual_seq = event.sequence()?;
+        let actual_seq = event.sequence().value();
         if actual_seq != expected_seq {
             return Err(ValidationError::InvalidSequence {
                 expected: expected_seq,
@@ -295,7 +290,7 @@ pub fn verify_event_crypto(
             Ok(())
         }
         Event::Rot(rot) => {
-            let sequence = event.sequence()?;
+            let sequence = event.sequence().value();
             let state = current_state.ok_or(ValidationError::SignatureFailed { sequence })?;
 
             // Reject rotation on abandoned identity (empty next commitment)
@@ -322,7 +317,7 @@ pub fn verify_event_crypto(
             Ok(())
         }
         Event::Ixn(_) => {
-            let sequence = event.sequence()?;
+            let sequence = event.sequence().value();
             let state = current_state.ok_or(ValidationError::SignatureFailed { sequence })?;
 
             // Interaction: signed by current key from cached state
@@ -422,7 +417,7 @@ pub fn serialize_for_signing(event: &Event) -> Result<Vec<u8>, ValidationError> 
 
 /// Verify an event's signature using the specified key.
 fn verify_event_signature(event: &Event, signing_key: &str) -> Result<(), ValidationError> {
-    let sequence = event.sequence()?;
+    let sequence = event.sequence().value();
 
     // Decode the signature
     let sig_str = event.signature();
@@ -469,7 +464,7 @@ pub fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, ValidationError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keri::{IxnEvent, KERI_VERSION, Prefix, RotEvent, Said, Seal};
+    use crate::keri::{IxnEvent, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, Seal};
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use ring::rand::SystemRandom;
@@ -480,7 +475,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key.to_string()],
             nt: "1".to_string(),
@@ -503,7 +498,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),
@@ -536,7 +531,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: prefix.clone(),
-            s: seq.to_string(),
+            s: KeriSequence::new(seq),
             p: prev_said.clone(),
             a: vec![Seal::device_attestation("EAttest")],
             x: String::new(),
@@ -587,7 +582,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("ETest".to_string()),
             i: Prefix::new_unchecked("ETest".to_string()),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![],
             x: String::new(),
@@ -606,7 +601,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "5".to_string(), // Wrong! Should be 1
+            s: KeriSequence::new(5), // Wrong! Should be 1
             p: icp.d.clone(),
             a: vec![],
             x: String::new(),
@@ -641,7 +636,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("EWrongPrevious".to_string()),
             a: vec![],
             x: String::new(),
@@ -750,7 +745,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),
@@ -916,7 +911,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: icp.d.clone(),
             kt: "1".to_string(),
             k: vec![new_key_encoded],
@@ -964,7 +959,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded.clone()],
             nt: "1".to_string(),
@@ -1003,7 +998,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: icp.d.clone(),
             kt: "1".to_string(),
             k: vec![wrong_key_encoded],
@@ -1048,7 +1043,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),
@@ -1087,7 +1082,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: icp.d.clone(),
             kt: "1".to_string(),
             k: vec![next_key_encoded],

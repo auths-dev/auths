@@ -1,5 +1,5 @@
 use auths_core::crypto::said::compute_next_commitment;
-use auths_id::keri::event::{Event, IcpEvent};
+use auths_id::keri::event::{Event, IcpEvent, KeriSequence};
 use auths_id::keri::types::{Prefix, Said};
 use auths_id::keri::{KERI_VERSION, finalize_icp_event, serialize_for_signing};
 use auths_verifier::IdentityDID;
@@ -45,7 +45,7 @@ pub fn test_inception_event(key_seed: &str) -> Event {
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: Prefix::default(),
-        s: "0".to_string(),
+        s: KeriSequence::new(0),
         kt: "1".to_string(),
         k: vec![key_encoded],
         nt: "1".to_string(),

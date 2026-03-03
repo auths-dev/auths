@@ -510,7 +510,7 @@ fn test_rotation_appends_to_kel() {
 
     for (i, event) in events.iter().enumerate() {
         assert_eq!(
-            event.sequence().unwrap(),
+            event.sequence().value(),
             i as u64,
             "Event {} should have sequence {}",
             i,

@@ -174,7 +174,7 @@ fn build_witness_config(witness: Option<&WitnessOverride>) -> Option<WitnessConf
         _ => WitnessPolicy::Enforce,
     };
     Some(WitnessConfig {
-        witness_urls: w.urls.clone(),
+        witness_urls: w.urls.iter().filter_map(|u| u.parse().ok()).collect(),
         threshold: w.threshold,
         timeout_ms: w.timeout_ms,
         policy,

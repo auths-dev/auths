@@ -25,17 +25,11 @@
 use chrono::{DateTime, Utc};
 
 use super::cache;
-use super::event::{Event, SequenceParseError};
+use super::event::Event;
 use super::kel::{GitKel, KelError};
 use super::state::KeyState;
 use super::types::Said;
 use crate::domain::EventHash;
-
-impl From<SequenceParseError> for IncrementalError {
-    fn from(e: SequenceParseError) -> Self {
-        IncrementalError::MalformedSequence { raw: e.raw }
-    }
-}
 
 /// Maximum number of events to validate incrementally.
 /// If k exceeds this, fall back to full replay to avoid pathological walks.
@@ -306,7 +300,7 @@ fn build_delta_with_linearity_check(
 /// then updates the state accordingly.
 fn apply_event_to_state(state: &mut KeyState, event: &Event) -> Result<(), IncrementalError> {
     let expected_sequence = state.sequence + 1;
-    let actual_sequence = event.sequence()?;
+    let actual_sequence = event.sequence().value();
 
     // Verify sequence increments by 1
     if actual_sequence != expected_sequence {
