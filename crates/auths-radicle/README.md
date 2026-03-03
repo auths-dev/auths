@@ -1,5 +1,30 @@
 # auths-radicle
 
+## Note to users
+
+This crate is currently experimental.
+
+1. You will need to pull the latest Radicle `heartwood` project here:
+```bash
+git clone https://iris.radicle.xyz/z3gqcJUoA1n9HaHKufZs5FCSGazv5.git heartwood
+```
+
+2. Remove the exclusion of `auths-radicle` in the workspace [`Cargo.toml`](../../Cargo.toml):
+```bash
+# Remove or comment this out so that Cargo picks it up
+exclude = [
+  "crates/auths-radicle",
+]
+```
+
+3. Make sure `auths-radicle`'s [`Cargo.toml`](Cargo.toml) points to that local version of Heartwood:
+```bash
+radicle-core = { path = "../PATH/TO/heartwood/crates/radicle-core", features = ["serde"] }
+radicle-crypto = { path = "../PATH/TO/heartwood/crates/radicle-crypto" }
+```
+
+---
+
 Radicle protocol integration for Auths.
 
 This crate provides the adapter layer between [Radicle](https://radicle.xyz) and Auths,

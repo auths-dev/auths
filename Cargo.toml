@@ -7,7 +7,6 @@ members = [
   "crates/auths-id",
   "crates/auths-index",
   "crates/auths-policy",
-  "crates/auths-radicle",
   "crates/auths-verifier",
   "crates/auths-telemetry",
   "crates/auths-test-utils",
@@ -17,6 +16,9 @@ members = [
   "crates/auths-infra-http",
   "crates/auths-storage",
   "crates/xtask",
+]
+exclude = [
+  "crates/auths-radicle",
 ]
 
 [workspace.package]
