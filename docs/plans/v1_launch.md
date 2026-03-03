@@ -49,27 +49,6 @@ type mismatch errors when consumers use both crates.
 **Effort:** 2 hours (+ fixing downstream imports)
 **Owner:** Core maintainer
 
-### 0.4 — Add FFI smoke tests
-
-**File:** `crates/auths-verifier/src/ffi.rs` (450+ lines, zero tests)
-
-The FFI boundary is the interface for mobile apps (Swift, Kotlin, C). It has:
-- Null pointer handling
-- Buffer size validation
-- Error code mapping
-- Panic catch_unwind wrappers
-
-None of this is tested. A single regression here crashes the host process.
-
-**Minimum viable test set:**
-- `ffi_verify_attestation_json` with valid input returns `VERIFY_SUCCESS`
-- `ffi_verify_attestation_json` with null pointer returns error code (not crash)
-- `ffi_verify_chain_json` with valid KEL returns success
-- `ffi_verify_chain_json` with empty input returns error code
-
-**Effort:** 1-2 days
-**Owner:** Verifier maintainer
-
 ---
 
 ## Tier 1: Should Fix Before Launch
