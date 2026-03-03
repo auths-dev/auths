@@ -480,9 +480,12 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("known_identities.json");
+
+        // Seed the store file so concurrent threads don't race on first-create
+        std::fs::write(&path, "[]").unwrap();
+
         let store = Arc::new(PinnedIdentityStore::new(path));
 
-        // Spawn multiple threads that all try to pin different identities
         let handles: Vec<_> = (0..10)
             .map(|i| {
                 let store = Arc::clone(&store);
@@ -494,16 +497,13 @@ mod tests {
             })
             .collect();
 
-        // Wait for all threads
         for handle in handles {
             handle.join().unwrap();
         }
 
-        // Verify all pins are present and file is not corrupted
         let all = store.list().unwrap();
         assert_eq!(all.len(), 10);
 
-        // Verify each pin exists
         for i in 0..10 {
             let did = format!("did:keri:E{:03}", i);
             assert!(

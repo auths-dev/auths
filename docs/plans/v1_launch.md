@@ -425,3 +425,77 @@ parallelized across 2-3 engineers. The WASM crypto stub (0.1) and FFI tests
 (0.4, 0.5) are the most time-sensitive since they gate the embedding story.
 The API surface cleanup (0.2, 0.3) is the most semver-sensitive since public
 API changes after 0.1.0 require a minor version bump.
+
+
+---
+
+## Launch workflow
+
+Step 1: Login
+```
+cargo login
+```
+
+# Paste your crates.io API token
+
+Step 2: Dry run first
+
+Run this to catch packaging issues before publishing anything:
+
+```bash
+for crate in auths-crypto auths-policy auths-telemetry auths-index \
+            auths-verifier auths-core auths-infra-http auths-id \
+            auths-storage auths-sdk auths-infra-git auths-cli auths; do
+echo "=== $crate ==="
+cargo publish --dry-run -p "$crate" 2>&1 | tail -3
+echo
+done
+```
+
+Step 3: Publish in dependency order
+
+Each cargo publish needs the previous crate to be indexed (takes ~30s-1min), so add a sleep between them:
+
+# Tier 0: No workspace dependencies
+cargo publish -p auths-crypto
+cargo publish -p auths-policy
+cargo publish -p auths-telemetry
+cargo publish -p auths-index
+sleep 60
+
+# Tier 1: Depends on Tier 0
+cargo publish -p auths-verifier    # depends on auths-crypto
+sleep 60
+
+# Tier 2: Depends on Tier 0-1
+cargo publish -p auths-core        # depends on auths-crypto, auths-verifier
+cargo publish -p auths-infra-http  # depends on auths-core, auths-verifier
+sleep 60
+
+# Tier 3: Depends on Tier 0-2
+cargo publish -p auths-id          # depends on core, crypto, policy, verifier, index
+cargo publish -p auths-sdk         # depends on core, id, policy, crypto, verifier
+cargo publish -p auths-storage     # depends on core, id, verifier, index
+sleep 60
+
+# Tier 4: Depends on Tier 0-3
+cargo publish -p auths-infra-git   # depends on core, sdk, verifier
+sleep 60
+
+# Tier 5: Depends on everything
+cargo publish -p auths-cli
+sleep 30
+
+# Wrapper crate (currently empty deps, publish whenever)
+cargo publish -p auths
+
+Important notes
+
+- Version bump first — you'll want to update the workspace version in Cargo.toml from 0.0.1-rc.5 to 0.1.0 before
+publishing. Every version.workspace = true crate picks it up automatically, but the [workspace.dependencies] version
+strings also need updating.
+- You can't overwrite — once a version is published to crates.io, it's permanent. If something goes wrong mid-publish, bump
+to 0.1.1 for the remaining crates.
+- The sleeps are conservative — crates.io indexing usually takes 30-60 seconds. If a publish fails with "can't find
+dependency", just wait and retry.
+- auths-test-utils and xtask are publish = false and will be skipped automatically.
