@@ -35,43 +35,6 @@ work across 2-3 sprints.
 These must be resolved before tagging v0.1.0. A release with any of these
 creates real risk of broken consumers or security issues.
 
-### 0.1 — Implement `WebCryptoProvider::verify_ed25519()`
-
-**File:** `crates/auths-crypto/src/webcrypto_provider.rs:38`
-
-The WASM crypto provider's `verify_ed25519()` is a TODO stub. Any WASM consumer
-calling verification will get incorrect results. This is the single highest
-priority item because it blocks the entire WASM story — browser SDKs, mobile
-WebView integrations, and the npm package.
-
-**Fix:** Implement using `web-sys` SubtleCrypto API
-
-**Effort:** 1-2 days
-**Owner:** Crypto lead
-
-### 0.2 — Seal the public API surface of auths-core
-
-**File:** `crates/auths-core/src/lib.rs:80-85`
-
-`pub use api::*` and `pub use storage::*` export every platform-specific
-keychain implementation (MacOSKeychain, WindowsCredentialStorage,
-AndroidKeystoreStorage, IOSKeychain, etc.) as top-level public API. This means:
-
-- Consumers can depend on internal types that will change
-- Semver violations become inevitable on any internal refactor
-- docs.rs will show noise that confuses SDK consumers
-
-**Fix:**
-- Replace wildcard re-exports with explicit `pub use` of the types consumers
-  actually need
-- Make platform keychain structs `pub(crate)` — they should only be accessed
-  through `get_platform_keychain()`
-- Audit `KeriSequence` export from auths-id (implementation detail of serde
-  serialization, not a consumer type)
-
-**Effort:** 1 day
-**Owner:** Core maintainer
-
 ### 0.3 — Remove cross-crate re-export of `IdentityDID` from auths-core
 
 **File:** `crates/auths-core/src/storage/keychain.rs:36`
@@ -105,19 +68,6 @@ None of this is tested. A single regression here crashes the host process.
 - `ffi_verify_chain_json` with empty input returns error code
 
 **Effort:** 1-2 days
-**Owner:** Verifier maintainer
-
-### 0.5 — Add WASM binding tests
-
-**File:** `crates/auths-verifier/src/wasm.rs` (500+ lines, zero tests)
-
-Same story as FFI. The WASM bindings are the interface for browser and Node.js
-consumers. At minimum, add `wasm-pack test` coverage for:
-- `wasm_verify_attestation_json` happy path
-- `wasm_verify_attestation_json` with malformed JSON
-- `wasm_verify_artifact_signature` happy path
-
-**Effort:** 1-2 days (requires wasm-pack test infrastructure)
 **Owner:** Verifier maintainer
 
 ---

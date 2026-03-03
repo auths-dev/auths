@@ -164,7 +164,7 @@ pub async fn verify_witness_receipts(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use auths_crypto::RingCryptoProvider;

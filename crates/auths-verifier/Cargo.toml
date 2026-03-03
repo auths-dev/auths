@@ -38,13 +38,16 @@ getrandom_02 = { package = "getrandom", version = "0.2", optional = true }
 tokio = { workspace = true, optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 
-[dev-dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 auths-crypto.workspace = true
 auths-test-utils.workspace = true
 proptest = "1.4"
 pkcs8 = { version = "0.10", features = ["alloc"] }
 ring.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
 
 [features]
 default = ["native"]

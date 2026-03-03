@@ -77,9 +77,6 @@ pub use agent::{
     AgentStatus, add_identity, agent_sign, check_agent_status, list_identities,
     remove_all_identities,
 };
-pub use api::*;
-pub use config::*;
 pub use crypto::{EncryptionAlgorithm, SignerKey};
 pub use error::{AgentError, AuthsErrorInfo};
 pub use signing::PrefilledPassphraseProvider;
-pub use storage::*;
