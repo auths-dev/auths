@@ -22,20 +22,20 @@ impl JsonSchemaValidatingEncoder {
     /// Returns `Err` if schema validation fails for an existing payload, or if
     /// final JSON serialization fails.
     pub fn encode(&self, att: &Attestation) -> Result<Vec<u8>, StorageError> {
-        if let Some(payload_value) = &att.payload {
-            if !jsonschema::is_valid(&self.schema_value, payload_value) {
-                let error_details = match jsonschema::validate(&self.schema_value, payload_value) {
-                    Ok(_) => "Unknown validation error".to_string(),
-                    Err(validation_error) => {
-                        format!(
-                            "Path '/payload{}': {:?}",
-                            validation_error.instance_path(),
-                            validation_error.kind()
-                        )
-                    }
-                };
-                return Err(StorageError::SchemaValidation(error_details));
-            }
+        if let Some(payload_value) = &att.payload
+            && !jsonschema::is_valid(&self.schema_value, payload_value)
+        {
+            let error_details = match jsonschema::validate(&self.schema_value, payload_value) {
+                Ok(_) => "Unknown validation error".to_string(),
+                Err(validation_error) => {
+                    format!(
+                        "Path '/payload{}': {:?}",
+                        validation_error.instance_path(),
+                        validation_error.kind()
+                    )
+                }
+            };
+            return Err(StorageError::SchemaValidation(error_details));
         }
 
         Ok(to_vec_pretty(att)?)

@@ -23,7 +23,7 @@ const RECEIPTS_BLOB_NAME: &str = "receipts.json";
 pub trait ReceiptStorage: Send + Sync {
     /// Store receipts for an event.
     fn store_receipts(&self, prefix: &Prefix, receipts: &EventReceipts)
-        -> Result<(), StorageError>;
+    -> Result<(), StorageError>;
 
     /// Get receipts for an event by SAID.
     fn get_receipts(
@@ -139,9 +139,9 @@ impl ReceiptStorage for GitReceiptStorage {
         let commit = reference.peel_to_commit()?;
         let tree = commit.tree()?;
 
-        let entry = tree.get_name(RECEIPTS_BLOB_NAME).ok_or_else(|| {
-            StorageError::NotFound("Receipts blob not found in tree".into())
-        })?;
+        let entry = tree
+            .get_name(RECEIPTS_BLOB_NAME)
+            .ok_or_else(|| StorageError::NotFound("Receipts blob not found in tree".into()))?;
 
         let blob = repo.find_blob(entry.id())?;
         let receipts: EventReceipts = serde_json::from_slice(blob.content())?;
@@ -171,10 +171,9 @@ impl ReceiptStorage for GitReceiptStorage {
             let reference = reference?;
             if let Some(name) = reference.name()
                 && name.starts_with(&prefix_path)
+                && let Some(said) = name.strip_prefix(&format!("{}/", prefix_path))
             {
-                if let Some(said) = name.strip_prefix(&format!("{}/", prefix_path)) {
-                    saids.push(said.to_string());
-                }
+                saids.push(said.to_string());
             }
         }
 
@@ -232,8 +231,7 @@ pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageErro
         if &receipt.a != expected_said {
             return Err(StorageError::InvalidData(format!(
                 "Duplicity detected: receipts claim different SAIDs ({} vs {})",
-                expected_said,
-                receipt.a
+                expected_said, receipt.a
             )));
         }
     }
