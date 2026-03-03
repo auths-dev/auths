@@ -149,7 +149,6 @@ impl<'a> TreeNavigator<'a> {
 
         Ok(())
     }
-
 }
 
 /// Efficiently mutates a Git tree by only rebuilding modified paths.
@@ -229,7 +228,6 @@ impl TreeMutator {
                         ChildEntry {
                             oid: entry.id(),
                             kind: entry.kind().unwrap_or(git2::ObjectType::Blob),
-
                         },
                     );
                 }
@@ -261,7 +259,6 @@ impl TreeMutator {
                         ChildEntry {
                             oid: blob_oid,
                             kind: git2::ObjectType::Blob,
-    
                         },
                     );
                 } else {
@@ -276,7 +273,6 @@ impl TreeMutator {
                     ChildEntry {
                         oid: blob_oid,
                         kind: git2::ObjectType::Blob,
-
                     },
                 );
             } else if prefix.is_empty() {
@@ -335,7 +331,6 @@ impl TreeMutator {
                     ChildEntry {
                         oid: child_oid,
                         kind: git2::ObjectType::Tree,
-
                     },
                 );
             } else {

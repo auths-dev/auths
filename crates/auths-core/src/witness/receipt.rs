@@ -378,5 +378,4 @@ mod tests {
         let result = Receipt::from_trailer_value(&encoded);
         assert!(result.is_err());
     }
-
 }

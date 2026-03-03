@@ -7,10 +7,10 @@ use serde::Serialize;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
+use auths_infra_http::HttpRegistryClient;
 use auths_sdk::error::RegistrationError;
 pub use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::result::RegistrationOutcome;
-use auths_infra_http::HttpRegistryClient;
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };

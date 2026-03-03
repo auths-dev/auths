@@ -1,11 +1,10 @@
 use auths_core::crypto::said::{compute_next_commitment, compute_said};
 use auths_id::keri::{
-    Event, IcpEvent, IxnEvent, KeriSequence, Prefix, RotEvent, Said, Seal,
+    Event, IcpEvent, IxnEvent, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, Seal,
     ValidationError, finalize_icp_event, serialize_for_signing, validate_kel, verify_event_said,
-    KERI_VERSION,
 };
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use proptest::prelude::*;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -114,7 +113,7 @@ fn build_valid_kel(ixn_count: usize) -> Vec<Event> {
             &prev_said,
             (i + 1) as u64,
             &kp,
-            vec![Seal::device_attestation(&format!("EAttest{i}"))],
+            vec![Seal::device_attestation(format!("EAttest{i}"))],
         );
         prev_said = ixn.d.clone();
         events.push(Event::Ixn(ixn));

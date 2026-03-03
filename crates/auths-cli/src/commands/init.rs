@@ -17,13 +17,13 @@ use auths_id::attestation::export::AttestationSink;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
+use auths_infra_http::HttpRegistryClient;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::git_config::GitConfigProvider;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::types::{
     CiEnvironment, CiSetupConfig, DeveloperSetupConfig, GitSigningScope, IdentityConflictPolicy,
 };
-use auths_infra_http::HttpRegistryClient;
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };

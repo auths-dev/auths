@@ -91,7 +91,6 @@ impl LinuxSecretServiceStorage {
 
         Ok(collection)
     }
-
 }
 
 impl KeyStorage for LinuxSecretServiceStorage {

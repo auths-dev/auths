@@ -87,13 +87,11 @@ impl RegistryClient for HttpRegistryClient {
                 .await
                 .map_err(|e| map_reqwest_error(e, &endpoint))?;
             let status = response.status().as_u16();
-            let body = response
-                .bytes()
-                .await
-                .map(|b| b.to_vec())
-                .map_err(|e| NetworkError::InvalidResponse {
+            let body = response.bytes().await.map(|b| b.to_vec()).map_err(|e| {
+                NetworkError::InvalidResponse {
                     detail: e.to_string(),
-                })?;
+                }
+            })?;
             Ok(RegistryResponse { status, body })
         }
     }
