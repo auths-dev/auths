@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuditEvent",
+  "description": "Represents a standardized security event for SIEM ingestion.\n\nArgs:\n* `timestamp` - Unix epoch seconds when the event was recorded.\n* `actor_did` - The KERI decentralized identifier initiating the action.\n* `action` - The specific capability or operation attempted.\n* `status` - The resolution of the event (e.g., \"Success\", \"Denied\").\n* `trace_id` - Optional W3C traceparent-compatible trace identifier.\n\nUsage:\n```rust\nuse auths_telemetry::build_audit_event;\nlet event = build_audit_event(\"did:keri:abc...\", \"assume_role\", \"Denied\", 0);\n```",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "actor_did": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "timestamp",
+    "actor_did",
+    "action",
+    "status"
+  ]
+}

@@ -68,6 +68,7 @@ async fn tamper_revoked_at_to_null_is_rejected() {
     let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
 
     let fixed_ts = FIXED_TS();
+    let far_future = Utc::now() + Duration::days(365);
     let mut att = create_signed_attestation(
         &issuer_kp,
         &device_kp,
@@ -75,7 +76,7 @@ async fn tamper_revoked_at_to_null_is_rejected() {
         &device_did,
         Some(fixed_ts),
         fixed_ts,
-        fixed_ts + Duration::days(365),
+        far_future,
     );
 
     att.revoked_at = None;

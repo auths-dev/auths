@@ -5,10 +5,28 @@ use auths_id::storage::layout::{attestation_ref_for_device, identity_ref};
 use auths_verifier::types::DeviceDID;
 use tempfile::tempdir;
 
-/// Default is now the RIP-X (Radicle) layout.
+/// Default uses the agnostic layout (`refs/auths/`).
 #[test]
-fn test_default_is_radicle() {
+fn test_default_layout() {
     let config = StorageLayoutConfig::default();
+
+    assert_eq!(identity_ref(&config), "refs/auths/identity");
+
+    let device_did = DeviceDID::new("did:key:z6MkTest123");
+    let attestation_ref = attestation_ref_for_device(&config, &device_did);
+    assert!(
+        attestation_ref.starts_with("refs/auths/keys/"),
+        "Default attestation ref should start with refs/auths/keys/"
+    );
+
+    assert_eq!(config.attestation_blob_name, "attestation.json");
+    assert_eq!(config.identity_blob_name, "identity.json");
+}
+
+/// `radicle()` produces Radicle-compatible ref paths.
+#[test]
+fn test_radicle_preset() {
+    let config = StorageLayoutConfig::radicle();
 
     assert_eq!(identity_ref(&config), "refs/rad/id");
 
@@ -16,24 +34,11 @@ fn test_default_is_radicle() {
     let attestation_ref = attestation_ref_for_device(&config, &device_did);
     assert!(
         attestation_ref.starts_with("refs/keys/"),
-        "Default attestation ref should start with refs/keys/"
-    );
-    assert!(
-        attestation_ref.ends_with("/signatures"),
-        "Attestation ref should end with /signatures"
+        "Radicle preset attestation ref should start with refs/keys/"
     );
 
     assert_eq!(config.attestation_blob_name, "link-attestation.json");
     assert_eq!(config.identity_blob_name, "radicle-identity.json");
-}
-
-/// `radicle()` is an alias for `default()`.
-#[test]
-fn test_radicle_equals_default() {
-    assert_eq!(
-        StorageLayoutConfig::radicle(),
-        StorageLayoutConfig::default()
-    );
 }
 
 /// Gitoxide preset produces gitoxide-compatible ref paths.
@@ -49,10 +54,6 @@ fn test_gitoxide_preset_ref_paths() {
         attestation_ref.starts_with("refs/auths/devices/"),
         "Gitoxide preset attestation ref should start with refs/auths/devices/"
     );
-    assert!(
-        attestation_ref.ends_with("/signatures"),
-        "Attestation ref should end with /signatures"
-    );
 
     assert_eq!(config.attestation_blob_name, "attestation.json");
     assert_eq!(config.identity_blob_name, "identity.json");
@@ -61,7 +62,7 @@ fn test_gitoxide_preset_ref_paths() {
 /// Presets can be overridden with explicit values.
 #[test]
 fn test_preset_override() {
-    let mut config = StorageLayoutConfig::default();
+    let mut config = StorageLayoutConfig::radicle();
     assert_eq!(config.identity_ref, "refs/rad/id");
 
     config.identity_ref = "refs/custom/identity".to_string();
@@ -91,7 +92,7 @@ fn test_preset_storage_layer_integration() {
 
     let identity_ref_result = identity_storage.get_identity_ref();
     assert!(identity_ref_result.is_ok());
-    assert_eq!(identity_ref_result.unwrap(), "refs/rad/id");
+    assert_eq!(identity_ref_result.unwrap(), "refs/auths/identity");
 
     let discovered = attestation_storage.discover_device_dids();
     assert!(discovered.is_ok());

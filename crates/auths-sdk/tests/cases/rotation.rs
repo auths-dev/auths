@@ -189,6 +189,8 @@ fn compute_rotation_event_is_deterministic() {
         sequence: 0,
         last_event_said: Said::new_unchecked("E_prior_said_placeholder".to_string()),
         is_abandoned: false,
+        threshold: 1,
+        next_threshold: 1,
     };
 
     let kp1 = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
@@ -231,6 +233,8 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
         sequence: 0,
         last_event_said: Said::new_unchecked("E_placeholder_said".to_string()),
         is_abandoned: false,
+        threshold: 1,
+        next_threshold: 1,
     };
 
     let (rot, _bytes) = compute_rotation_event(&state, &next_kp, &new_next_kp, None).unwrap();

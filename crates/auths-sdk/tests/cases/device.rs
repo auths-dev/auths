@@ -38,6 +38,7 @@ fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> St
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("device-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
+        .with_conflict_policy(auths_sdk::types::IdentityConflictPolicy::ForceNew)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
     let _device_result =

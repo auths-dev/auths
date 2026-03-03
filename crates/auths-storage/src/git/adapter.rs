@@ -3735,6 +3735,8 @@ mod tests {
             sequence: original_state.sequence,
             last_event_said: original_state.last_event_said.clone(),
             is_abandoned: false,
+            threshold: 1,
+            next_threshold: 1,
         };
 
         backend.write_key_state(&prefix, &modified_state).unwrap();
@@ -3758,6 +3760,8 @@ mod tests {
             prefix.clone(),
             vec!["DKey1".to_string()],
             vec!["ENext1".to_string()],
+            1,
+            1,
             Said::new_unchecked("ESAID12345".to_string()),
         );
 

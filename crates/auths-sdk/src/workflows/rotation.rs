@@ -616,6 +616,8 @@ mod tests {
             sequence: 999,
             last_event_said: Said::default(),
             is_abandoned: false,
+            threshold: 1,
+            next_threshold: 1,
         };
 
         let result = retrieve_precommitted_key(
@@ -741,6 +743,8 @@ mod tests {
             sequence: 0,
             last_event_said: Said::new_unchecked("EPrior".to_string()),
             is_abandoned: false,
+            threshold: 1,
+            next_threshold: 1,
         };
 
         let rng = SystemRandom::new();

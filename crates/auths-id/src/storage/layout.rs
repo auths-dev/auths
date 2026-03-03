@@ -108,6 +108,26 @@ impl Default for StorageLayoutConfig {
 }
 
 impl StorageLayoutConfig {
+    /// Radicle-compatible layout preset (uses `refs/rad/` namespace).
+    pub fn radicle() -> Self {
+        Self {
+            identity_ref: "refs/rad/id".to_string(),
+            device_attestation_prefix: "refs/keys".to_string(),
+            attestation_blob_name: "link-attestation.json".to_string(),
+            identity_blob_name: "radicle-identity.json".to_string(),
+        }
+    }
+
+    /// Gitoxide-compatible layout preset (uses `refs/auths/` namespace).
+    pub fn gitoxide() -> Self {
+        Self {
+            identity_ref: "refs/auths/id".to_string(),
+            device_attestation_prefix: "refs/auths/devices".to_string(),
+            attestation_blob_name: ATTESTATION_JSON.to_string(),
+            identity_blob_name: IDENTITY_JSON.to_string(),
+        }
+    }
+
     // --- Organization Reference Helpers ---
 
     /// Constructs the full Git reference path for storing an organization member's attestation.

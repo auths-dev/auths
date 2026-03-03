@@ -238,7 +238,7 @@ fn add_member_fails_with_invalid_capability() {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
             role: "member".to_string(),
-            capabilities: vec!["not_a_real_capability".to_string()],
+            capabilities: vec!["invalid cap!@#".to_string()],
             public_key_hex: admin_pubkey_hex(),
         },
     );
@@ -350,7 +350,7 @@ fn update_capabilities_fails_with_invalid_capability() {
         UpdateCapabilitiesCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            capabilities: vec!["invalid_cap".to_string()],
+            capabilities: vec!["invalid cap!@#".to_string()],
             public_key_hex: admin_pubkey_hex(),
         },
     );
