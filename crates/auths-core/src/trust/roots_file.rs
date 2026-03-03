@@ -6,6 +6,8 @@
 use serde::Deserialize;
 use std::path::Path;
 
+use crate::error::TrustError;
+
 /// A roots.json file containing trusted identity roots.
 ///
 /// This file is checked into repositories at `.auths/roots.json` to define
@@ -63,35 +65,31 @@ impl RootsFile {
     /// - The JSON is malformed
     /// - The version is not 1
     /// - Any public_key_hex is invalid (not valid hex, wrong length)
-    pub fn load(path: &Path) -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read roots.json at {:?}: {}", path, e))?;
+    pub fn load(path: &Path) -> Result<Self, TrustError> {
+        let content = std::fs::read_to_string(path)?;
 
-        let file: Self = serde_json::from_str(&content)
-            .map_err(|e| anyhow::anyhow!("Failed to parse roots.json at {:?}: {}", path, e))?;
+        let file: Self = serde_json::from_str(&content)?;
 
         if file.version != 1 {
-            anyhow::bail!(
+            return Err(TrustError::InvalidData(format!(
                 "Unsupported roots.json version: {}. Expected version 1.",
                 file.version
-            );
+            )));
         }
 
-        // Validate all hex at load time
         for root in &file.roots {
             let bytes = hex::decode(&root.public_key_hex).map_err(|e| {
-                anyhow::anyhow!(
+                TrustError::InvalidData(format!(
                     "Invalid public_key_hex for {} in roots.json: {}",
-                    root.did,
-                    e
-                )
+                    root.did, e
+                ))
             })?;
             if bytes.len() != 32 {
-                anyhow::bail!(
+                return Err(TrustError::InvalidData(format!(
                     "Invalid key length for {} in roots.json: expected 32 bytes, got {}",
                     root.did,
                     bytes.len()
-                );
+                )));
             }
         }
 
@@ -111,9 +109,9 @@ impl RootsFile {
 
 impl RootEntry {
     /// Decode the public key to raw bytes.
-    pub fn public_key_bytes(&self) -> anyhow::Result<Vec<u8>> {
+    pub fn public_key_bytes(&self) -> Result<Vec<u8>, TrustError> {
         hex::decode(&self.public_key_hex)
-            .map_err(|e| anyhow::anyhow!("Invalid public_key_hex: {}", e))
+            .map_err(|e| TrustError::InvalidData(format!("Invalid public_key_hex: {}", e)))
     }
 }
 

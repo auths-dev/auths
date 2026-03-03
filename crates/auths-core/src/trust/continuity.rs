@@ -60,7 +60,7 @@ pub trait KelContinuityChecker {
         did: &str,
         pinned_tip_said: &str,
         presented_pk: &[u8],
-    ) -> anyhow::Result<Option<RotationProof>>;
+    ) -> Result<Option<RotationProof>, crate::error::TrustError>;
 }
 
 #[cfg(test)]
@@ -79,7 +79,7 @@ mod tests {
             _did: &str,
             _pinned_tip_said: &str,
             _presented_pk: &[u8],
-        ) -> anyhow::Result<Option<RotationProof>> {
+        ) -> Result<Option<RotationProof>, crate::error::TrustError> {
             if self.should_verify {
                 Ok(self.proof.clone())
             } else {

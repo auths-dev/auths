@@ -6,6 +6,7 @@
 use super::continuity::{KelContinuityChecker, RotationProof};
 use super::pinned::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
 use super::policy::TrustPolicy;
+use crate::error::TrustError;
 use chrono::{DateTime, Utc};
 
 /// What the trust engine decided.
@@ -70,7 +71,7 @@ pub fn check_trust(
     did: &str,
     presented_pk: &[u8],
     continuity_checker: Option<&dyn KelContinuityChecker>,
-) -> anyhow::Result<TrustDecision> {
+) -> Result<TrustDecision, TrustError> {
     let pin = store.lookup(did)?;
 
     let Some(pin) = pin else {
@@ -132,16 +133,17 @@ pub fn resolve_trust(
     policy: &TrustPolicy,
     store: &PinnedIdentityStore,
     interactive_prompt: Option<&dyn Fn(&str) -> bool>,
-) -> anyhow::Result<Vec<u8>> {
+) -> Result<Vec<u8>, TrustError> {
     match decision {
         TrustDecision::Trusted { pin } => pin.public_key_bytes(),
 
         TrustDecision::FirstUse { did, presented_pk } => match policy {
             TrustPolicy::Tofu => {
                 let prompt = interactive_prompt.ok_or_else(|| {
-                    anyhow::anyhow!(
+                    TrustError::PolicyRejected(
                         "TOFU requires interactive prompt but none available. \
                          Use --trust explicit with a roots file for non-interactive use."
+                            .into(),
                     )
                 })?;
                 let pk_hex = hex::encode(&presented_pk);
@@ -163,22 +165,19 @@ pub fn resolve_trust(
                     store.pin(pin)?;
                     Ok(presented_pk)
                 } else {
-                    anyhow::bail!("Identity rejected by user.")
+                    Err(TrustError::PolicyRejected("Identity rejected by user.".into()))
                 }
             }
             TrustPolicy::Explicit => {
                 let pk_hex = hex::encode(&presented_pk);
-                anyhow::bail!(
+                Err(TrustError::PolicyRejected(format!(
                     "Unknown identity '{}' and trust policy is 'explicit'.\n\
                      Options:\n  \
                      1. Add to .auths/roots.json in the repository\n  \
                      2. Pin manually: auths trust pin {} --key {}\n  \
                      3. Provide --issuer-pk {} to bypass trust resolution",
-                    did,
-                    did,
-                    pk_hex,
-                    pk_hex
-                )
+                    did, did, pk_hex, pk_hex
+                )))
             }
         },
 
@@ -199,7 +198,7 @@ pub fn resolve_trust(
         TrustDecision::Conflict { pin, presented_pk } => {
             let pinned_hex = &pin.public_key_hex;
             let presented_hex = hex::encode(&presented_pk);
-            anyhow::bail!(
+            Err(TrustError::PolicyRejected(format!(
                 "TRUST CONFLICT for {}\n  \
                  Pinned key:    {}...\n  \
                  Presented key: {}...\n  \
@@ -211,7 +210,7 @@ pub fn resolve_trust(
                 &pinned_hex[..16.min(pinned_hex.len())],
                 &presented_hex[..16.min(presented_hex.len())],
                 pin.did
-            )
+            )))
         }
     }
 }
