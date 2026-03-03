@@ -97,11 +97,11 @@ pub enum AgentProvisioningError {
     #[error("repository creation failed: {0}")]
     RepoCreation(#[from] git2::Error),
     #[error("identity creation failed: {0}")]
-    IdentityCreation(anyhow::Error),
+    IdentityCreation(#[from] crate::error::InitError),
     #[error("attestation creation failed: {0}")]
     AttestationCreation(#[from] AttestationError),
     #[error("keychain access failed: {0}")]
-    KeychainAccess(anyhow::Error),
+    KeychainAccess(String),
     #[error("config write failed: {0}")]
     ConfigWrite(#[from] std::io::Error),
 }
@@ -233,8 +233,7 @@ fn get_or_create_identity(
     }
 
     let (did, _) =
-        initialize_registry_identity(backend, key_alias, passphrase_provider, keychain, None)
-            .map_err(AgentProvisioningError::IdentityCreation)?;
+        initialize_registry_identity(backend, key_alias, passphrase_provider, keychain, None)?;
 
     Ok(did)
 }
@@ -299,21 +298,23 @@ fn extract_public_key(
 ) -> Result<[u8; 32], AgentProvisioningError> {
     let (_did, encrypted) = keychain
         .load_key(key_alias)
-        .map_err(|e| AgentProvisioningError::KeychainAccess(e.into()))?;
+        .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
 
     let passphrase = passphrase_provider
         .get_passphrase("agent key passphrase")
-        .map_err(|e| AgentProvisioningError::KeychainAccess(e.into()))?;
+        .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
 
     let pkcs8 = decrypt_keypair(&encrypted, &passphrase)
-        .map_err(|e| AgentProvisioningError::KeychainAccess(e.into()))?;
+        .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
 
     let kp = Ed25519KeyPair::from_pkcs8(&pkcs8)
-        .map_err(|e| AgentProvisioningError::KeychainAccess(anyhow::anyhow!("bad pkcs8: {}", e)))?;
+        .map_err(|e| AgentProvisioningError::KeychainAccess(format!("bad pkcs8: {}", e)))?;
 
-    let pk: [u8; 32] = kp.public_key().as_ref().try_into().map_err(|_| {
-        AgentProvisioningError::KeychainAccess(anyhow::anyhow!("unexpected key length"))
-    })?;
+    let pk: [u8; 32] = kp
+        .public_key()
+        .as_ref()
+        .try_into()
+        .map_err(|_| AgentProvisioningError::KeychainAccess("unexpected key length".into()))?;
 
     Ok(pk)
 }

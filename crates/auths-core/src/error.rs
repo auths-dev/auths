@@ -188,6 +188,32 @@ impl AuthsErrorInfo for AgentError {
     }
 }
 
+/// Errors from trust resolution and identity pinning.
+#[derive(Debug, Error)]
+pub enum TrustError {
+    /// An I/O error occurred.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    /// Invalid data encountered (corrupt pin, bad hex, wrong format).
+    #[error("{0}")]
+    InvalidData(String),
+    /// A required resource was not found.
+    #[error("not found: {0}")]
+    NotFound(String),
+    /// JSON serialization/deserialization failed.
+    #[error("serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+    /// Attempted to create something that already exists.
+    #[error("already exists: {0}")]
+    AlreadyExists(String),
+    /// Advisory file lock could not be acquired.
+    #[error("lock acquisition failed: {0}")]
+    Lock(String),
+    /// Trust policy rejected the identity.
+    #[error("policy rejected: {0}")]
+    PolicyRejected(String),
+}
+
 impl From<AgentError> for ssh_agent_lib::error::AgentError {
     fn from(err: AgentError) -> Self {
         match err {

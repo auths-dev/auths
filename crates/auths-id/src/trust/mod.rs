@@ -48,45 +48,43 @@ impl KelContinuityChecker for GitKelContinuityChecker<'_> {
         did: &str,
         pinned_tip_said: &str,
         presented_pk: &[u8],
-    ) -> anyhow::Result<Option<RotationProof>> {
+    ) -> Result<Option<RotationProof>, auths_core::error::TrustError> {
         let pinned_said = Said::new_unchecked(pinned_tip_said.to_string());
-        let prefix = did_to_prefix(did)
-            .ok_or_else(|| anyhow::anyhow!("Invalid did:keri format: {}", did))?;
+        let prefix = did_to_prefix(did).ok_or_else(|| {
+            auths_core::error::TrustError::InvalidData(format!("Invalid did:keri format: {}", did))
+        })?;
 
         let kel = GitKel::new(self.repo, prefix);
         if !kel.exists() {
             return Ok(None);
         }
 
-        let events = kel.get_events()?;
+        let events = kel
+            .get_events()
+            .map_err(|e| auths_core::error::TrustError::InvalidData(e.to_string()))?;
 
-        // 1. Locate the pinned tip event by SAID
         let pinned_idx = events.iter().position(|e| e.said() == pinned_tip_said);
         let Some(pinned_idx) = pinned_idx else {
-            return Ok(None); // Pinned tip not in this KEL
+            return Ok(None);
         };
 
-        // 2. Validate the FULL KEL from inception to get correct state
-        //    (we can't trust a partial replay — need full chain integrity)
-        let full_state = validate_kel(&events)?;
+        let full_state = validate_kel(&events)
+            .map_err(|e| auths_core::error::TrustError::InvalidData(e.to_string()))?;
 
-        // 3. Verify the sub-chain from pinned_idx forward is unbroken.
-        //    This ensures the pinned tip is an ancestor of the current tip,
-        //    not just present in a forked history.
         if !verify_chain_from_index(&events, pinned_idx, &pinned_said) {
-            return Ok(None); // Chain forks after pinned tip
+            return Ok(None);
         }
 
-        // 4. Confirm the replayed state's current key matches presented_pk
         let current_key_encoded = match full_state.current_key() {
             Some(k) => k,
             None => return Ok(None),
         };
-        let current_key_bytes = KeriPublicKey::parse(current_key_encoded)
-            .map_err(|e| anyhow::anyhow!("KERI key decode failed: {e}"))?;
+        let current_key_bytes = KeriPublicKey::parse(current_key_encoded).map_err(|e| {
+            auths_core::error::TrustError::InvalidData(format!("KERI key decode failed: {e}"))
+        })?;
 
         if current_key_bytes.as_bytes().as_slice() != presented_pk {
-            return Ok(None); // KEL is valid but leads to a different key
+            return Ok(None);
         }
 
         Ok(Some(RotationProof {

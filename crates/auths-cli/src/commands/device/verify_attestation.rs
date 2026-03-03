@@ -195,7 +195,7 @@ fn resolve_issuer_key(cmd: &VerifyCommand, att: &Attestation) -> Result<Vec<u8>>
         if !is_json_mode() {
             println!("Using pinned identity: {}", did);
         }
-        return pin.public_key_bytes();
+        return Ok(pin.public_key_bytes()?);
     }
 
     // 3. Check roots.json file
@@ -226,7 +226,7 @@ fn resolve_issuer_key(cmd: &VerifyCommand, att: &Attestation) -> Result<Vec<u8>>
                 trust_level: TrustLevel::OrgPolicy,
             };
             store.pin(pin)?;
-            return root.public_key_bytes();
+            return Ok(root.public_key_bytes()?);
         }
     }
 

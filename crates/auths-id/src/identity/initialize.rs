@@ -5,12 +5,13 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::path::Path;
+
+use crate::error::InitError;
 
 use crate::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
 use crate::keri::{
@@ -50,9 +51,9 @@ pub fn initialize_keri_identity(
     passphrase_provider: &dyn PassphraseProvider,
     config: &StorageLayoutConfig,
     keychain: &(dyn KeyStorage + Send + Sync),
-) -> Result<(IdentityDID, KeyAlias)> {
+) -> Result<(IdentityDID, KeyAlias), InitError> {
     let repo = Repository::open(repo_path)?;
-    let result = create_keri_identity(&repo, None).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let result = create_keri_identity(&repo, None).map_err(|e| InitError::Keri(e.to_string()))?;
     let controller_did = IdentityDID::new_unchecked(result.did());
 
     let passphrase = passphrase_provider
@@ -96,20 +97,20 @@ pub fn initialize_registry_identity(
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
     witness_config: Option<&WitnessConfig>,
-) -> Result<(IdentityDID, KeyAlias)> {
+) -> Result<(IdentityDID, KeyAlias), InitError> {
     backend
         .init_if_needed()
-        .map_err(|e| anyhow::anyhow!("Failed to initialize registry: {}", e))?;
+        .map_err(|e| InitError::Registry(e.to_string()))?;
 
     let rng = SystemRandom::new();
     let current_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| anyhow::anyhow!("Key generation failed: {}", e))?;
+        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
     let current_keypair = Ed25519KeyPair::from_pkcs8(current_pkcs8.as_ref())
-        .map_err(|e| anyhow::anyhow!("Key generation failed: {}", e))?;
+        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
     let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| anyhow::anyhow!("Key generation failed: {}", e))?;
+        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
-        .map_err(|e| anyhow::anyhow!("Key generation failed: {}", e))?;
+        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
 
     let current_pub_encoded = format!(
         "D{}",
@@ -140,18 +141,17 @@ pub fn initialize_registry_identity(
         x: String::new(),
     };
 
-    let mut finalized =
-        finalize_icp_event(icp).map_err(|e| anyhow::anyhow!("Failed to finalize ICP: {}", e))?;
+    let mut finalized = finalize_icp_event(icp).map_err(|e| InitError::Keri(e.to_string()))?;
     let prefix = finalized.i.clone();
 
     let canonical = serialize_for_signing(&Event::Icp(finalized.clone()))
-        .map_err(|e| anyhow::anyhow!("Failed to serialize for signing: {}", e))?;
+        .map_err(|e| InitError::Keri(e.to_string()))?;
     let sig = current_keypair.sign(&canonical);
     finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
     backend
         .append_event(&prefix, &Event::Icp(finalized))
-        .map_err(|e| anyhow::anyhow!("Failed to store inception event: {}", e))?;
+        .map_err(|e| InitError::Registry(e.to_string()))?;
 
     let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
 

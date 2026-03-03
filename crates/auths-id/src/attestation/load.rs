@@ -1,5 +1,5 @@
+use crate::error::StorageError;
 use crate::storage::layout;
-use anyhow::{Context, Result};
 use git2::{Oid, Repository};
 use serde_json::from_slice;
 
@@ -8,10 +8,10 @@ use auths_verifier::core::Attestation;
 pub fn load_attestations_by_prefix(
     repo: &Repository,
     ref_prefix: &str,
-) -> Result<Vec<Attestation>> {
+) -> Result<Vec<Attestation>, StorageError> {
     let mut result = Vec::new();
 
-    let refs = repo.references().context("Failed to get Git refs")?;
+    let refs = repo.references()?;
 
     for reference in refs.filter_map(Result::ok) {
         let name = match reference.name() {
@@ -50,20 +50,19 @@ pub fn load_attestations_by_prefix(
 /// Loads a single attestation from a commit SHA.
 ///
 /// The commit should contain a tree with a single file, e.g. `attestation.json`.
-pub fn load_attestation_from_commit(repo: &Repository, oid: Oid) -> Result<Attestation> {
-    let commit = repo.find_commit(oid).context("Commit not found")?;
-    let tree = commit.tree().context("Commit has no tree")?;
+pub fn load_attestation_from_commit(
+    repo: &Repository,
+    oid: Oid,
+) -> Result<Attestation, StorageError> {
+    let commit = repo.find_commit(oid)?;
+    let tree = commit.tree()?;
 
-    // Only read the 'metadata' file
     let entry = tree
         .get_name(layout::ATTESTATION_JSON)
-        .context("Attestation tree missing 'metadata' entry")?;
+        .ok_or_else(|| StorageError::NotFound("Attestation tree missing entry".into()))?;
 
-    let blob = repo.find_blob(entry.id()).context("Failed to load blob")?;
-    let content = blob.content();
-
-    let attestation: Attestation =
-        from_slice(content).context("Failed to deserialize attestation")?;
+    let blob = repo.find_blob(entry.id())?;
+    let attestation: Attestation = from_slice(blob.content())?;
 
     Ok(attestation)
 }

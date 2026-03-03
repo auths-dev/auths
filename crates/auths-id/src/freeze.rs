@@ -13,9 +13,10 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+
+use crate::error::FreezeError;
 
 /// Filename for the freeze state file.
 const FREEZE_FILE: &str = "freeze.json";
@@ -71,42 +72,39 @@ pub fn freeze_file_path(repo_path: &Path) -> PathBuf {
 /// Args:
 /// * `repo_path`: Path to the identity repository.
 /// * `now`: The reference time used to check if the freeze is still active.
-pub fn load_active_freeze(repo_path: &Path, now: DateTime<Utc>) -> Result<Option<FreezeState>> {
+pub fn load_active_freeze(
+    repo_path: &Path,
+    now: DateTime<Utc>,
+) -> Result<Option<FreezeState>, FreezeError> {
     let path = freeze_file_path(repo_path);
     if !path.exists() {
         return Ok(None);
     }
 
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read freeze file: {}", path.display()))?;
-
-    let state: FreezeState = serde_json::from_str(&contents)
-        .with_context(|| format!("Failed to parse freeze file: {}", path.display()))?;
+    let contents = std::fs::read_to_string(&path)?;
+    let state: FreezeState = serde_json::from_str(&contents)?;
 
     if state.is_active(now) {
         Ok(Some(state))
     } else {
-        // Freeze has expired — clean up the stale file
         let _ = std::fs::remove_file(&path);
         Ok(None)
     }
 }
 
 /// Write a freeze state to disk.
-pub fn store_freeze(repo_path: &Path, state: &FreezeState) -> Result<()> {
+pub fn store_freeze(repo_path: &Path, state: &FreezeState) -> Result<(), FreezeError> {
     let path = freeze_file_path(repo_path);
-    let json = serde_json::to_string_pretty(state).context("Failed to serialize freeze state")?;
-    std::fs::write(&path, json)
-        .with_context(|| format!("Failed to write freeze file: {}", path.display()))?;
+    let json = serde_json::to_string_pretty(state)?;
+    std::fs::write(&path, json)?;
     Ok(())
 }
 
 /// Remove the freeze file (unfreeze).
-pub fn remove_freeze(repo_path: &Path) -> Result<bool> {
+pub fn remove_freeze(repo_path: &Path) -> Result<bool, FreezeError> {
     let path = freeze_file_path(repo_path);
     if path.exists() {
-        std::fs::remove_file(&path)
-            .with_context(|| format!("Failed to remove freeze file: {}", path.display()))?;
+        std::fs::remove_file(&path)?;
         Ok(true)
     } else {
         Ok(false)
@@ -116,7 +114,7 @@ pub fn remove_freeze(repo_path: &Path) -> Result<bool> {
 /// Parse a human-readable duration string into a `chrono::Duration`.
 ///
 /// Supported formats: `30m`, `1h`, `24h`, `7d`, `1w`.
-pub fn parse_duration(s: &str) -> Result<chrono::Duration> {
+pub fn parse_duration(s: &str) -> Result<chrono::Duration, FreezeError> {
     let s = s.trim().to_lowercase();
 
     let (num_str, unit) = if let Some(n) = s.strip_suffix('w') {
@@ -128,21 +126,21 @@ pub fn parse_duration(s: &str) -> Result<chrono::Duration> {
     } else if let Some(n) = s.strip_suffix('m') {
         (n, 'm')
     } else {
-        anyhow::bail!(
+        return Err(FreezeError::InvalidDuration(format!(
             "Invalid duration '{}'. Use formats like: 30m, 1h, 24h, 7d, 1w",
             s
-        );
+        )));
     };
 
-    let num: u64 = num_str.parse().with_context(|| {
-        format!(
+    let num: u64 = num_str.parse().map_err(|_| {
+        FreezeError::InvalidDuration(format!(
             "Invalid number in duration '{}'. Use formats like: 30m, 1h, 24h, 7d, 1w",
             s
-        )
+        ))
     })?;
 
     if num == 0 {
-        anyhow::bail!("Duration must be greater than zero");
+        return Err(FreezeError::ZeroDuration);
     }
 
     let duration = match unit {

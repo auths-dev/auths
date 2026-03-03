@@ -4,9 +4,9 @@
 //! and adds a SQLite index layer for fast queries. The index is used for lookups,
 //! while the actual attestation data is still loaded from Git.
 
+use crate::error::StorageError;
 use crate::storage::attestation::{AttestationSource, GitAttestationStorage};
 use crate::storage::layout::StorageLayoutConfig;
-use anyhow::{Context, Error, Result};
 use auths_index::{AttestationIndex, IndexedAttestation, rebuild_attestations_from_git};
 use auths_verifier::core::Attestation;
 use auths_verifier::types::DeviceDID;
@@ -30,15 +30,17 @@ impl IndexedAttestationStorage {
     /// Opens an indexed attestation storage.
     ///
     /// If the index doesn't exist, it will be created and populated from Git refs.
-    pub fn open(repo_path: impl AsRef<Path>, config: StorageLayoutConfig) -> Result<Self> {
+    pub fn open(
+        repo_path: impl AsRef<Path>,
+        config: StorageLayoutConfig,
+    ) -> Result<Self, StorageError> {
         let repo_path = repo_path.as_ref().to_path_buf();
         let index_path = repo_path.join(".auths-index.db");
 
         let git_storage = GitAttestationStorage::new(repo_path.clone(), config.clone());
         let index = AttestationIndex::open_or_create(&index_path)
-            .context("Failed to open or create attestation index")?;
+            .map_err(|e| StorageError::Index(e.to_string()))?;
 
-        // If the index is empty, rebuild it from Git
         if index.count().unwrap_or(0) == 0 {
             log::info!("Index is empty, rebuilding from Git refs...");
             rebuild_attestations_from_git(
@@ -47,7 +49,7 @@ impl IndexedAttestationStorage {
                 &config.device_attestation_prefix,
                 &config.attestation_blob_name,
             )
-            .context("Failed to rebuild index from Git")?;
+            .map_err(|e| StorageError::Index(e.to_string()))?;
         }
 
         Ok(Self {
@@ -64,19 +66,24 @@ impl IndexedAttestationStorage {
     }
 
     /// Rebuilds the index from Git refs.
-    pub fn rebuild_index(&self) -> Result<()> {
+    pub fn rebuild_index(&self) -> Result<(), StorageError> {
         rebuild_attestations_from_git(
             &self.index,
             &self.repo_path,
             &self.config.device_attestation_prefix,
             &self.config.attestation_blob_name,
         )
-        .context("Failed to rebuild index")?;
+        .map_err(|e| StorageError::Index(e.to_string()))?;
         Ok(())
     }
 
     /// Updates the index with a new or modified attestation.
-    pub fn update_index(&self, att: &Attestation, git_ref: &str, commit_oid: &str) -> Result<()> {
+    pub fn update_index(
+        &self,
+        att: &Attestation,
+        git_ref: &str,
+        commit_oid: &str,
+    ) -> Result<(), StorageError> {
         let indexed = IndexedAttestation {
             rid: att.rid.to_string(),
             issuer_did: att.issuer.to_string(),
@@ -90,17 +97,19 @@ impl IndexedAttestationStorage {
 
         self.index
             .upsert_attestation(&indexed)
-            .map_err(|e| anyhow::anyhow!("Failed to update index: {}", e))
+            .map_err(|e| StorageError::Index(e.to_string()))
     }
 
     /// Loads attestations for a device using the index for lookup,
     /// then fetching full data from Git.
-    pub fn load_attestations_indexed(&self, device_did: &DeviceDID) -> Result<Vec<Attestation>> {
-        // First, check the index
+    pub fn load_attestations_indexed(
+        &self,
+        device_did: &DeviceDID,
+    ) -> Result<Vec<Attestation>, StorageError> {
         let indexed = self
             .index
             .query_by_device(&device_did.to_string())
-            .map_err(|e| anyhow::anyhow!("Index query failed: {}", e))?;
+            .map_err(|e| StorageError::Index(e.to_string()))?;
 
         if indexed.is_empty() {
             // Nothing in index, fall back to Git
@@ -120,22 +129,19 @@ impl AttestationSource for IndexedAttestationStorage {
     fn load_attestations_for_device(
         &self,
         device_did: &DeviceDID,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         self.load_attestations_indexed(device_did)
     }
 
-    fn load_all_attestations(&self) -> Result<Vec<Attestation>, Error> {
-        // For loading all attestations, we still use Git as the source of truth
-        // The index is primarily for targeted queries
+    fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError> {
         self.git_storage.load_all_attestations()
     }
 
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, Error> {
-        // Use the index for faster discovery if available
+    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
         let active = self
             .index
             .query_active()
-            .map_err(|e| anyhow::anyhow!("Index query failed: {}", e))?;
+            .map_err(|e| StorageError::Index(e.to_string()))?;
 
         if active.is_empty() {
             // Fall back to Git-based discovery

@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::error::TrustError;
+
 /// A pinned identity root — what we trusted and when.
 ///
 /// This record stores the state of a trusted identity at the time of pinning,
@@ -47,16 +49,17 @@ impl PinnedIdentity {
     /// Decode the pinned public key to raw bytes.
     ///
     /// Validates hex at construction; this should never fail on a well-formed pin.
-    pub fn public_key_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        hex::decode(&self.public_key_hex)
-            .map_err(|e| anyhow::anyhow!("Corrupt pin for {}: invalid hex: {}", self.did, e))
+    pub fn public_key_bytes(&self) -> Result<Vec<u8>, TrustError> {
+        hex::decode(&self.public_key_hex).map_err(|e| {
+            TrustError::InvalidData(format!("Corrupt pin for {}: invalid hex: {}", self.did, e))
+        })
     }
 
     /// Check if the pinned key matches the given raw bytes.
     ///
     /// Comparison is always on decoded bytes, never on string representation.
     /// This handles case differences and other encoding variations.
-    pub fn key_matches(&self, presented_pk: &[u8]) -> anyhow::Result<bool> {
+    pub fn key_matches(&self, presented_pk: &[u8]) -> Result<bool, TrustError> {
         Ok(self.public_key_bytes()? == presented_pk)
     }
 }
@@ -112,7 +115,7 @@ impl PinnedIdentityStore {
     }
 
     /// Look up a pinned identity by DID.
-    pub fn lookup(&self, did: &str) -> anyhow::Result<Option<PinnedIdentity>> {
+    pub fn lookup(&self, did: &str) -> Result<Option<PinnedIdentity>, TrustError> {
         let _lock = self.lock()?;
         Ok(self.read_all()?.into_iter().find(|e| e.did == did))
     }
@@ -121,36 +124,35 @@ impl PinnedIdentityStore {
     ///
     /// The public key hex is validated at pin-time.
     /// Errors if the DID is already pinned (use `update` for rotation).
-    pub fn pin(&self, identity: PinnedIdentity) -> anyhow::Result<()> {
-        // Validate hex at pin-time, not at verification-time
+    pub fn pin(&self, identity: PinnedIdentity) -> Result<(), TrustError> {
         let _ = hex::decode(&identity.public_key_hex)
-            .map_err(|e| anyhow::anyhow!("Invalid public_key_hex: {}", e))?;
+            .map_err(|e| TrustError::InvalidData(format!("Invalid public_key_hex: {}", e)))?;
 
         let _lock = self.lock()?;
         let mut entries = self.read_all()?;
         if entries.iter().any(|e| e.did == identity.did) {
-            anyhow::bail!(
+            return Err(TrustError::AlreadyExists(format!(
                 "Identity {} already pinned. Use `auths trust remove` first, or rotation \
                  will be handled automatically via continuity checking.",
                 identity.did
-            );
+            )));
         }
         entries.push(identity);
         self.write_all(&entries)
     }
 
     /// Update an existing pin (after verified rotation).
-    pub fn update(&self, identity: PinnedIdentity) -> anyhow::Result<()> {
+    pub fn update(&self, identity: PinnedIdentity) -> Result<(), TrustError> {
         let _lock = self.lock()?;
         let mut entries = self.read_all()?;
         let pos = entries
             .iter()
             .position(|e| e.did == identity.did)
             .ok_or_else(|| {
-                anyhow::anyhow!(
+                TrustError::NotFound(format!(
                     "Cannot update: identity {} not found in pin store.",
                     identity.did
-                )
+                ))
             })?;
         entries[pos] = identity;
         self.write_all(&entries)
@@ -159,7 +161,7 @@ impl PinnedIdentityStore {
     /// Remove a pinned identity by DID.
     ///
     /// Returns `true` if an entry was removed, `false` if not found.
-    pub fn remove(&self, did: &str) -> anyhow::Result<bool> {
+    pub fn remove(&self, did: &str) -> Result<bool, TrustError> {
         let _lock = self.lock()?;
         let mut entries = self.read_all()?;
         let before = entries.len();
@@ -173,29 +175,28 @@ impl PinnedIdentityStore {
     }
 
     /// List all pinned identities.
-    pub fn list(&self) -> anyhow::Result<Vec<PinnedIdentity>> {
+    pub fn list(&self) -> Result<Vec<PinnedIdentity>, TrustError> {
         let _lock = self.lock()?;
         self.read_all()
     }
 
     // --- Internal ---
 
-    fn read_all(&self) -> anyhow::Result<Vec<PinnedIdentity>> {
+    fn read_all(&self) -> Result<Vec<PinnedIdentity>, TrustError> {
         if !self.path.exists() {
             return Ok(vec![]);
         }
         let content = fs::read_to_string(&self.path)?;
         let entries: Vec<PinnedIdentity> = serde_json::from_str(&content).map_err(|e| {
-            anyhow::anyhow!(
+            TrustError::InvalidData(format!(
                 "Corrupt pin store at {:?}: {}. Consider deleting and re-pinning.",
-                self.path,
-                e
-            )
+                self.path, e
+            ))
         })?;
         Ok(entries)
     }
 
-    fn write_all(&self, entries: &[PinnedIdentity]) -> anyhow::Result<()> {
+    fn write_all(&self, entries: &[PinnedIdentity]) -> Result<(), TrustError> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -211,7 +212,7 @@ impl PinnedIdentityStore {
         Ok(())
     }
 
-    fn lock(&self) -> anyhow::Result<LockGuard> {
+    fn lock(&self) -> Result<LockGuard, TrustError> {
         let lock_path = self.path.with_extension("lock");
         if let Some(parent) = lock_path.parent() {
             fs::create_dir_all(parent)?;
@@ -227,29 +228,29 @@ struct LockGuard {
 }
 
 impl LockGuard {
-    fn acquire(path: PathBuf) -> anyhow::Result<Self> {
+    fn acquire(path: PathBuf) -> Result<Self, TrustError> {
         let file = fs::OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
             .open(&path)?;
 
-        // Platform-specific advisory lock
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
             let fd = file.as_raw_fd();
-            // SAFETY: flock is safe to call with a valid fd
             let ret = unsafe { libc::flock(fd, libc::LOCK_EX) };
             if ret != 0 {
-                anyhow::bail!("Failed to acquire lock on {:?}", path);
+                return Err(TrustError::Lock(format!(
+                    "Failed to acquire lock on {:?}",
+                    path
+                )));
             }
         }
 
         #[cfg(not(unix))]
         {
             // On non-Unix, best-effort: existence of lock file is the lock.
-            // Acceptable for v1; Windows file locking can be added later.
         }
 
         Ok(Self { path, _file: file })

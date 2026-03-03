@@ -17,7 +17,6 @@ indexed-storage = ["auths-index"]
 witness-client = ["dep:auths-infra-http"]
 
 [dependencies]
-anyhow = "1"
 async-trait = "0.1"
 auths-core.workspace = true
 auths-crypto.workspace = true
@@ -56,7 +55,6 @@ auths-core = { workspace = true, features = ["test-utils"] }
 criterion = { version = "0.8.2", features = ["html_reports"] }
 rand = "0.10.0"
 base58 = "0.2"
-anyhow = "1.0"
 proptest = "1.4"
 serial_test = "3"
 auths-test-utils.workspace = true

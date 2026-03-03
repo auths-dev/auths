@@ -7,13 +7,13 @@
 //! - [`rotate_keri_identity`]: GitKel-based storage (legacy, per-identity refs)
 //! - [`rotate_registry_identity`]: Packed registry storage (single `refs/auths/registry` ref)
 
-use anyhow::{Context, Result, anyhow};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::path::Path;
 
+use crate::error::InitError;
 use crate::identity::helpers::{
     encode_seed_as_pkcs8, extract_seed_bytes, load_keypair_from_der_or_seed,
 };
@@ -64,64 +64,47 @@ pub fn rotate_keri_identity(
     _config: &StorageLayoutConfig,
     keychain: &(dyn KeyStorage + Send + Sync),
     witness_config: Option<&WitnessConfig>,
-) -> Result<RotationKeyInfo> {
+) -> Result<RotationKeyInfo, InitError> {
     let repo = Repository::open(repo_path)?;
 
-    // 1. Load and decrypt current key to get the DID
-    let (did, _encrypted_current) = keychain
-        .load_key(current_alias)
-        .with_context(|| format!("Failed to load current key with alias '{}'", current_alias))?;
+    let (did, _encrypted_current) = keychain.load_key(current_alias)?;
 
-    // Extract prefix from DID
-    let prefix = did
-        .as_str()
-        .strip_prefix("did:keri:")
-        .ok_or_else(|| anyhow!("Invalid DID format, expected 'did:keri:': {}", did))?;
+    let prefix = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
+        InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
+    })?;
 
-    // 2. Get current KEL state to determine the next key alias
     let kel = GitKel::new(&repo, prefix);
-    let events = kel.get_events()?;
-    let state = validate_kel(&events)?;
+    let events = kel
+        .get_events()
+        .map_err(|e| InitError::Keri(e.to_string()))?;
+    let state = validate_kel(&events).map_err(|e| InitError::Keri(e.to_string()))?;
 
-    // 3. Load the pre-committed next key
     let derived_next_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
 
-    let (did_check, encrypted_next) =
-        keychain.load_key(&derived_next_alias).with_context(|| {
-            format!(
-                "Failed to load pre-committed next key under alias '{}'",
-                derived_next_alias
-            )
-        })?;
+    let (did_check, encrypted_next) = keychain.load_key(&derived_next_alias)?;
 
     if did != did_check {
-        return Err(anyhow!(
+        return Err(InitError::InvalidData(format!(
             "DID mismatch for pre-committed key '{}': expected {}, found {}",
-            derived_next_alias,
-            did,
-            did_check
-        ));
+            derived_next_alias, did, did_check
+        )));
     }
 
-    // Decrypt the next key
     let next_pass = passphrase_provider.get_passphrase(&format!(
         "Enter passphrase for pre-committed key '{}':",
         derived_next_alias
     ))?;
-    let decrypted_next_pkcs8 = decrypt_keypair(&encrypted_next, &next_pass)
-        .with_context(|| format!("Failed to decrypt key '{}'", derived_next_alias))?;
+    let decrypted_next_pkcs8 = decrypt_keypair(&encrypted_next, &next_pass)?;
 
-    // 4. Perform the rotation using our KERI implementation
     let rotation_result = rotate_keys(
         &repo,
         &Prefix::new_unchecked(prefix.to_string()),
         &decrypted_next_pkcs8,
         witness_config,
     )
-    .map_err(|e| anyhow!("Rotation failed: {}", e))?;
+    .map_err(|e| InitError::Keri(e.to_string()))?;
 
-    // 5. Get passphrase for new keys
     let new_pass = passphrase_provider.get_passphrase(&format!(
         "Create passphrase for new key alias '{}':",
         next_alias
@@ -129,41 +112,22 @@ pub fn rotate_keri_identity(
     let confirm_pass =
         passphrase_provider.get_passphrase(&format!("Confirm passphrase for '{}':", next_alias))?;
     if new_pass != confirm_pass {
-        return Err(anyhow!(
+        return Err(InitError::InvalidData(format!(
             "Passphrases do not match for alias '{}'",
             next_alias
-        ));
+        )));
     }
 
-    // 6. Store the new current key (the former next key)
-    let encrypted_new_current = encrypt_keypair(&decrypted_next_pkcs8, &new_pass)
-        .with_context(|| format!("Failed to encrypt key for alias '{}'", next_alias))?;
-    keychain
-        .store_key(next_alias, &did, &encrypted_new_current)
-        .with_context(|| {
-            format!(
-                "Failed to store new current key under alias '{}'",
-                next_alias
-            )
-        })?;
+    let encrypted_new_current = encrypt_keypair(&decrypted_next_pkcs8, &new_pass)?;
+    keychain.store_key(next_alias, &did, &encrypted_new_current)?;
 
-    // 7. Store the new next key for future rotation
     let new_next_seed = extract_seed_bytes(&rotation_result.new_next_keypair_pkcs8)?;
-    let encrypted_future = encrypt_keypair(&encode_seed_as_pkcs8(new_next_seed)?, &new_pass)
-        .with_context(|| format!("Failed to encrypt future key for alias '{}'", next_alias))?;
+    let encrypted_future = encrypt_keypair(&encode_seed_as_pkcs8(new_next_seed)?, &new_pass)?;
 
     let future_key_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", next_alias, rotation_result.sequence));
-    keychain
-        .store_key(&future_key_alias, &did, &encrypted_future)
-        .with_context(|| {
-            format!(
-                "Failed to store future next key under alias '{}'",
-                future_key_alias
-            )
-        })?;
+    keychain.store_key(&future_key_alias, &did, &encrypted_future)?;
 
-    // 8. Cleanup old pre-committed key
     let _ = keychain.delete_key(&derived_next_alias);
     log::debug!("Cleaned up pre-committed key: {}", derived_next_alias);
 
@@ -201,74 +165,59 @@ pub fn rotate_registry_identity(
     _config: &StorageLayoutConfig,
     keychain: &(dyn KeyStorage + Send + Sync),
     witness_config: Option<&WitnessConfig>,
-) -> Result<RotationKeyInfo> {
+) -> Result<RotationKeyInfo, InitError> {
     let rng = SystemRandom::new();
 
-    // 1. Load current key to get the DID
-    let (did, _encrypted_current) = keychain
-        .load_key(current_alias)
-        .with_context(|| format!("Failed to load current key with alias '{}'", current_alias))?;
+    let (did, _encrypted_current) = keychain.load_key(current_alias)?;
 
-    let prefix_str = did
-        .as_str()
-        .strip_prefix("did:keri:")
-        .ok_or_else(|| anyhow!("Invalid DID format, expected 'did:keri:': {}", did))?;
+    let prefix_str = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
+        InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
+    })?;
     let prefix = Prefix::new_unchecked(prefix_str.to_string());
 
-    // 2. Get current KEL state from packed registry
     let state = backend
         .get_key_state(&prefix)
-        .map_err(|e| anyhow!("Failed to load key state for '{}': {}", prefix, e))?;
+        .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    // 3. Load and decrypt the pre-committed next key
     let derived_next_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
 
-    let (did_check, encrypted_next) =
-        keychain.load_key(&derived_next_alias).with_context(|| {
-            format!(
-                "Failed to load pre-committed next key under alias '{}'",
-                derived_next_alias
-            )
-        })?;
+    let (did_check, encrypted_next) = keychain.load_key(&derived_next_alias)?;
 
     if did != did_check {
-        return Err(anyhow!(
+        return Err(InitError::InvalidData(format!(
             "DID mismatch for pre-committed key '{}': expected {}, found {}",
-            derived_next_alias,
-            did,
-            did_check
-        ));
+            derived_next_alias, did, did_check
+        )));
     }
 
     let next_pass = passphrase_provider.get_passphrase(&format!(
         "Enter passphrase for pre-committed key '{}':",
         derived_next_alias
     ))?;
-    let decrypted_next_pkcs8 = decrypt_keypair(&encrypted_next, &next_pass)
-        .with_context(|| format!("Failed to decrypt key '{}'", derived_next_alias))?;
+    let decrypted_next_pkcs8 = decrypt_keypair(&encrypted_next, &next_pass)?;
 
-    // 4. Perform the rotation against the packed registry
     if !state.can_rotate() {
-        return Err(anyhow!("Identity is abandoned (cannot rotate)"));
+        return Err(InitError::InvalidData(
+            "Identity is abandoned (cannot rotate)".into(),
+        ));
     }
 
-    let next_keypair = load_keypair_from_der_or_seed(&decrypted_next_pkcs8)
-        .map_err(|e| anyhow!("Invalid next key: {}", e))?;
+    let next_keypair = load_keypair_from_der_or_seed(&decrypted_next_pkcs8)?;
 
     if !verify_commitment(
         next_keypair.public_key().as_ref(),
         &state.next_commitment[0],
     ) {
-        return Err(anyhow!(
-            "Commitment mismatch: next key does not match previous commitment"
+        return Err(InitError::InvalidData(
+            "Commitment mismatch: next key does not match previous commitment".into(),
         ));
     }
 
     let new_next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| anyhow!("Key generation failed: {}", e))?;
+        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
     let new_next_keypair = Ed25519KeyPair::from_pkcs8(new_next_pkcs8.as_ref())
-        .map_err(|e| anyhow!("Key generation failed: {}", e))?;
+        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
 
     let new_current_pub_encoded = format!(
         "D{}",
@@ -302,17 +251,17 @@ pub fn rotate_registry_identity(
     };
 
     let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
-        .map_err(|e| anyhow!("Serialization failed: {}", e))?;
+        .map_err(|e| InitError::Keri(format!("Serialization failed: {}", e)))?;
     rot.d = compute_said(&rot_json);
 
     let canonical = serialize_for_signing(&Event::Rot(rot.clone()))
-        .map_err(|e| anyhow!("Failed to serialize for signing: {}", e))?;
+        .map_err(|e| InitError::Keri(e.to_string()))?;
     let sig = next_keypair.sign(&canonical);
     rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
     backend
         .append_event(&prefix, &Event::Rot(rot))
-        .map_err(|e| anyhow!("Failed to append rotation event: {}", e))?;
+        .map_err(|e| InitError::Registry(e.to_string()))?;
 
     store_rotated_keys(
         keychain,
@@ -342,7 +291,7 @@ fn store_rotated_keys(
     new_sequence: u64,
     current_pkcs8: &[u8],
     new_next_pkcs8: &[u8],
-) -> Result<()> {
+) -> Result<(), InitError> {
     let new_pass = passphrase_provider.get_passphrase(&format!(
         "Create passphrase for new key alias '{}':",
         next_alias
@@ -350,37 +299,21 @@ fn store_rotated_keys(
     let confirm_pass =
         passphrase_provider.get_passphrase(&format!("Confirm passphrase for '{}':", next_alias))?;
     if new_pass != confirm_pass {
-        return Err(anyhow!(
+        return Err(InitError::InvalidData(format!(
             "Passphrases do not match for alias '{}'",
             next_alias
-        ));
+        )));
     }
 
-    let encrypted_new_current = encrypt_keypair(current_pkcs8, &new_pass)
-        .with_context(|| format!("Failed to encrypt key for alias '{}'", next_alias))?;
-    keychain
-        .store_key(next_alias, did, &encrypted_new_current)
-        .with_context(|| {
-            format!(
-                "Failed to store new current key under alias '{}'",
-                next_alias
-            )
-        })?;
+    let encrypted_new_current = encrypt_keypair(current_pkcs8, &new_pass)?;
+    keychain.store_key(next_alias, did, &encrypted_new_current)?;
 
     let new_next_seed = extract_seed_bytes(new_next_pkcs8)?;
-    let encrypted_future = encrypt_keypair(&encode_seed_as_pkcs8(new_next_seed)?, &new_pass)
-        .with_context(|| format!("Failed to encrypt future key for alias '{}'", next_alias))?;
+    let encrypted_future = encrypt_keypair(&encode_seed_as_pkcs8(new_next_seed)?, &new_pass)?;
 
     let future_key_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", next_alias, new_sequence));
-    keychain
-        .store_key(&future_key_alias, did, &encrypted_future)
-        .with_context(|| {
-            format!(
-                "Failed to store future next key under alias '{}'",
-                future_key_alias
-            )
-        })?;
+    keychain.store_key(&future_key_alias, did, &encrypted_future)?;
 
     let _ = keychain.delete_key(old_next_alias);
 

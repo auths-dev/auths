@@ -1,8 +1,8 @@
+use crate::error::StorageError;
 use crate::storage::layout::{
     StorageLayoutConfig, attestation_blob_name, attestation_ref_for_device,
     default_attestation_prefixes,
 };
-use anyhow::{Context, Error, Result, anyhow};
 use auths_verifier::core::Attestation;
 use auths_verifier::types::DeviceDID;
 use git2::{ErrorCode, Repository, Tree};
@@ -33,11 +33,11 @@ pub trait AttestationSource {
     fn load_attestations_for_device(
         &self,
         device_did: &DeviceDID,
-    ) -> Result<Vec<Attestation>, Error>;
+    ) -> Result<Vec<Attestation>, StorageError>;
 
     /// Loads all known attestations from the storage backend by discovering devices
     /// based on the configured layout.
-    fn load_all_attestations(&self) -> Result<Vec<Attestation>, Error>;
+    fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError>;
 
     /// Loads attestations for a bounded page of devices.
     ///
@@ -58,7 +58,7 @@ pub trait AttestationSource {
         &self,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         let devices = self.discover_device_dids()?;
         let mut all_attestations = Vec::new();
 
@@ -79,7 +79,7 @@ pub trait AttestationSource {
     }
 
     /// Discovers device DIDs that have attestations stored based on the configured layout.
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, Error>;
+    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError>;
 }
 
 /// An implementation of `AttestationSource` that uses a Git repository
@@ -105,47 +105,42 @@ impl GitAttestationStorage {
         Self::new(repo_path, StorageLayoutConfig::default())
     }
 
-    /// Helper to open the associated git repository.
-    fn open_repo(&self) -> Result<Repository> {
-        Repository::open(&self.repo_path)
-            .with_context(|| format!("Failed to open repository at {:?}", self.repo_path))
+    fn open_repo(&self) -> Result<Repository, StorageError> {
+        Ok(Repository::open(&self.repo_path)?)
     }
 
-    /// Helper function to parse an Attestation from a Git commit's tree,
-    /// using the blob name defined in the configuration.
-    fn read_attestation_from_tree(&self, repo: &Repository, tree: &Tree) -> Result<Attestation> {
-        // Get the expected blob name from the configuration
+    fn read_attestation_from_tree(
+        &self,
+        repo: &Repository,
+        tree: &Tree,
+    ) -> Result<Attestation, StorageError> {
         let blob_filename = attestation_blob_name(&self.config);
-        let entry = tree
-            .get_name(blob_filename)
-            .ok_or_else(|| anyhow!("Attestation tree missing blob named '{}'", blob_filename))?;
+        let entry = tree.get_name(blob_filename).ok_or_else(|| {
+            StorageError::NotFound(format!(
+                "Attestation tree missing blob named '{}'",
+                blob_filename
+            ))
+        })?;
 
         let blob = repo.find_blob(entry.id())?;
-        let att: Attestation = serde_json::from_slice(blob.content()).with_context(|| {
-            format!("Failed to deserialize attestation from blob {}", blob.id())
-        })?;
+        let att: Attestation = serde_json::from_slice(blob.content())?;
 
         Ok(att)
     }
 
-    /// Helper to walk the Git history of a specific ref and load attestations
-    /// from each commit's tree using `read_attestation_from_tree`.
-    fn load_history(&self, repo: &Repository, ref_name: &str) -> Result<Vec<Attestation>> {
+    fn load_history(
+        &self,
+        repo: &Repository,
+        ref_name: &str,
+    ) -> Result<Vec<Attestation>, StorageError> {
         let mut attestations = Vec::new();
-        // Find the starting reference
         let reference = match repo.find_reference(ref_name) {
             Ok(r) => r,
-            // If ref not found, it simply has no history (empty vec)
             Err(e) if e.code() == ErrorCode::NotFound => return Ok(attestations),
-            Err(e) => {
-                return Err(e).with_context(|| format!("Failed to find reference '{}'", ref_name));
-            }
+            Err(e) => return Err(e.into()),
         };
 
-        // Peel ref to the commit it points to
-        let mut commit = reference
-            .peel_to_commit()
-            .with_context(|| format!("Failed to peel reference '{}' to commit", ref_name))?;
+        let mut commit = reference.peel_to_commit()?;
 
         // Walk backwards from the tip commit through the first parent line
         loop {
@@ -193,7 +188,7 @@ impl AttestationSource for GitAttestationStorage {
     fn load_attestations_for_device(
         &self,
         device_did: &DeviceDID,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         let repo = self.open_repo()?;
         // Generate the correct ref path using the stored config and the layout helper
         let sig_ref = attestation_ref_for_device(&self.config, device_did);
@@ -205,7 +200,7 @@ impl AttestationSource for GitAttestationStorage {
         self.load_history(&repo, &sig_ref)
     }
 
-    fn load_all_attestations(&self) -> Result<Vec<Attestation>, Error> {
+    fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError> {
         self.load_all_attestations_paginated(usize::MAX, 0)
     }
 
@@ -213,7 +208,7 @@ impl AttestationSource for GitAttestationStorage {
         &self,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         log::debug!(
             "Loading attestations (limit={}, offset={})...",
             limit,
@@ -251,7 +246,7 @@ impl AttestationSource for GitAttestationStorage {
 
     /// Discovers device DIDs by globbing known attestation ref patterns based on the
     /// stored configuration.
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, Error> {
+    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
         let repo = self.open_repo()?;
         let mut discovered_dids = HashSet::new(); // Use HashSet to avoid duplicates
         // Get the base pattern(s) to search from the configuration

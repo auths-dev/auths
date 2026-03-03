@@ -1,9 +1,10 @@
-use anyhow::{Result, anyhow};
 use auths_verifier::types::DeviceDID;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
 use std::path::PathBuf;
+
+use crate::error::StorageError;
 
 use crate::keri::{Prefix, Said};
 
@@ -259,11 +260,12 @@ pub fn sanitize_did_for_ref(did: &str) -> String {
 }
 
 /// Determines the actual repository path from an optional `--repo` argument.
-pub fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf> {
+pub fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf, StorageError> {
     match repo_arg {
         Some(pathbuf) if !pathbuf.as_os_str().is_empty() => Ok(pathbuf),
         _ => {
-            let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not find HOME directory"))?;
+            let home = dirs::home_dir()
+                .ok_or_else(|| StorageError::NotFound("Could not find HOME directory".into()))?;
             Ok(home.join(TOOL_PATH))
         }
     }

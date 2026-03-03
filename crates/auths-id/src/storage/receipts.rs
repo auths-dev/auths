@@ -3,7 +3,7 @@
 //! This module provides storage for witness receipts attached to KEL events.
 //! Receipts are stored in Git refs under `refs/did/keri/<prefix>/receipts/<said>`.
 
-use anyhow::{Context, Result, anyhow};
+use crate::error::StorageError;
 use auths_core::witness::Receipt;
 use git2::{ErrorCode, Repository, Signature};
 use log::debug;
@@ -22,16 +22,26 @@ const RECEIPTS_BLOB_NAME: &str = "receipts.json";
 /// Implementations can be backed by Git (local) or other storage systems.
 pub trait ReceiptStorage: Send + Sync {
     /// Store receipts for an event.
-    fn store_receipts(&self, prefix: &Prefix, receipts: &EventReceipts) -> Result<()>;
+    fn store_receipts(&self, prefix: &Prefix, receipts: &EventReceipts)
+    -> Result<(), StorageError>;
 
     /// Get receipts for an event by SAID.
-    fn get_receipts(&self, prefix: &Prefix, event_said: &Said) -> Result<Option<EventReceipts>>;
+    fn get_receipts(
+        &self,
+        prefix: &Prefix,
+        event_said: &Said,
+    ) -> Result<Option<EventReceipts>, StorageError>;
 
     /// Check if event has sufficient receipts (meets threshold).
-    fn has_quorum(&self, prefix: &Prefix, event_said: &Said, threshold: usize) -> Result<bool>;
+    fn has_quorum(
+        &self,
+        prefix: &Prefix,
+        event_said: &Said,
+        threshold: usize,
+    ) -> Result<bool, StorageError>;
 
     /// List all event SAIDs that have receipts for a prefix.
-    fn list_receipts(&self, prefix: &Prefix) -> Result<Vec<String>>;
+    fn list_receipts(&self, prefix: &Prefix) -> Result<Vec<String>, StorageError>;
 }
 
 /// Git-backed receipt storage.
@@ -50,19 +60,17 @@ impl GitReceiptStorage {
         }
     }
 
-    /// Open the Git repository.
-    fn open_repo(&self) -> Result<Repository> {
-        Repository::open(&self.repo_path).with_context(|| {
-            format!(
-                "GitReceiptStorage failed to open repository at {:?}",
-                self.repo_path
-            )
-        })
+    fn open_repo(&self) -> Result<Repository, StorageError> {
+        Ok(Repository::open(&self.repo_path)?)
     }
 }
 
 impl ReceiptStorage for GitReceiptStorage {
-    fn store_receipts(&self, prefix: &Prefix, receipts: &EventReceipts) -> Result<()> {
+    fn store_receipts(
+        &self,
+        prefix: &Prefix,
+        receipts: &EventReceipts,
+    ) -> Result<(), StorageError> {
         debug!(
             "Storing {} receipts for event {} (prefix {})",
             receipts.count(),
@@ -74,55 +82,42 @@ impl ReceiptStorage for GitReceiptStorage {
         let event_said = receipts.event_said.clone();
         let ref_path = layout::keri_receipts_ref(prefix, &event_said);
 
-        // Serialize receipts to JSON
-        let json =
-            serde_json::to_vec_pretty(receipts).context("Failed to serialize receipts to JSON")?;
+        let json = serde_json::to_vec_pretty(receipts)?;
+        let blob_oid = repo.blob(&json)?;
 
-        // Create blob
-        let blob_oid = repo
-            .blob(&json)
-            .context("Failed to create Git blob for receipts")?;
-
-        // Create tree containing the blob
         let mut tree_builder = repo.treebuilder(None)?;
-        tree_builder
-            .insert(RECEIPTS_BLOB_NAME, blob_oid, 0o100644)
-            .context("Failed to insert receipts blob into tree")?;
-        let tree_oid = tree_builder.write().context("Failed to write tree")?;
+        tree_builder.insert(RECEIPTS_BLOB_NAME, blob_oid, 0o100644)?;
+        let tree_oid = tree_builder.write()?;
         let tree = repo.find_tree(tree_oid)?;
 
-        // Create signature
         let sig = repo
             .signature()
-            .or_else(|_| Signature::now("auths-witness", "auths-witness@localhost"))
-            .context("Failed to create Git signature")?;
+            .or_else(|_| Signature::now("auths-witness", "auths-witness@localhost"))?;
 
-        // Check for existing commit (for proper chaining)
         let parent_commit = match repo.find_reference(&ref_path) {
             Ok(reference) => reference.peel_to_commit().ok(),
             Err(_) => None,
         };
         let parents: Vec<&git2::Commit> = parent_commit.iter().collect();
 
-        // Create commit
         let commit_message = format!(
             "Store {} receipts for event {}",
             receipts.count(),
             &receipts.event_said
         );
-        let commit_oid = repo
-            .commit(None, &sig, &sig, &commit_message, &tree, &parents)
-            .context("Failed to create commit for receipts")?;
+        let commit_oid = repo.commit(None, &sig, &sig, &commit_message, &tree, &parents)?;
 
-        // Update reference
-        repo.reference(&ref_path, commit_oid, true, "store receipts")
-            .with_context(|| format!("Failed to update reference {}", ref_path))?;
+        repo.reference(&ref_path, commit_oid, true, "store receipts")?;
 
         debug!("Stored receipts at {} (commit {})", ref_path, commit_oid);
         Ok(())
     }
 
-    fn get_receipts(&self, prefix: &Prefix, event_said: &Said) -> Result<Option<EventReceipts>> {
+    fn get_receipts(
+        &self,
+        prefix: &Prefix,
+        event_said: &Said,
+    ) -> Result<Option<EventReceipts>, StorageError> {
         debug!(
             "Getting receipts for event {} (prefix {})",
             event_said.as_str(),
@@ -132,61 +127,53 @@ impl ReceiptStorage for GitReceiptStorage {
         let repo = self.open_repo()?;
         let ref_path = layout::keri_receipts_ref(prefix, event_said);
 
-        // Find the reference
         let reference = match repo.find_reference(&ref_path) {
             Ok(r) => r,
             Err(e) if e.code() == ErrorCode::NotFound => {
                 debug!("No receipts found at {}", ref_path);
                 return Ok(None);
             }
-            Err(e) => return Err(e).context("Failed to find receipts reference"),
+            Err(e) => return Err(e.into()),
         };
 
-        // Get the commit and tree
-        let commit = reference
-            .peel_to_commit()
-            .context("Failed to peel reference to commit")?;
-        let tree = commit.tree().context("Failed to get commit tree")?;
+        let commit = reference.peel_to_commit()?;
+        let tree = commit.tree()?;
 
-        // Find the receipts blob
         let entry = tree
             .get_name(RECEIPTS_BLOB_NAME)
-            .ok_or_else(|| anyhow!("Receipts blob not found in tree"))?;
+            .ok_or_else(|| StorageError::NotFound("Receipts blob not found in tree".into()))?;
 
-        let blob = repo
-            .find_blob(entry.id())
-            .context("Failed to find receipts blob")?;
-
-        // Deserialize
-        let receipts: EventReceipts =
-            serde_json::from_slice(blob.content()).context("Failed to deserialize receipts")?;
+        let blob = repo.find_blob(entry.id())?;
+        let receipts: EventReceipts = serde_json::from_slice(blob.content())?;
 
         Ok(Some(receipts))
     }
 
-    fn has_quorum(&self, prefix: &Prefix, event_said: &Said, threshold: usize) -> Result<bool> {
+    fn has_quorum(
+        &self,
+        prefix: &Prefix,
+        event_said: &Said,
+        threshold: usize,
+    ) -> Result<bool, StorageError> {
         match self.get_receipts(prefix, event_said)? {
             Some(receipts) => Ok(receipts.meets_threshold(threshold)),
             None => Ok(false),
         }
     }
 
-    fn list_receipts(&self, prefix: &Prefix) -> Result<Vec<String>> {
+    fn list_receipts(&self, prefix: &Prefix) -> Result<Vec<String>, StorageError> {
         let repo = self.open_repo()?;
         let prefix_path = layout::keri_receipts_prefix(prefix);
 
         let mut saids = Vec::new();
 
-        // Iterate over references under the prefix
         for reference in repo.references()? {
             let reference = reference?;
             if let Some(name) = reference.name()
                 && name.starts_with(&prefix_path)
+                && let Some(said) = name.strip_prefix(&format!("{}/", prefix_path))
             {
-                // Extract the SAID from the ref name
-                if let Some(said) = name.strip_prefix(&format!("{}/", prefix_path)) {
-                    saids.push(said.to_string());
-                }
+                saids.push(said.to_string());
             }
         }
 
@@ -206,20 +193,19 @@ impl ReceiptStorage for GitReceiptStorage {
 /// * `Ok(true)` if signature is valid
 /// * `Ok(false)` if signature is invalid
 /// * `Err` if verification fails due to malformed data
-pub fn verify_receipt_signature(receipt: &Receipt, witness_public_key: &[u8]) -> Result<bool> {
+pub fn verify_receipt_signature(
+    receipt: &Receipt,
+    witness_public_key: &[u8],
+) -> Result<bool, StorageError> {
     if witness_public_key.len() != 32 {
-        return Err(anyhow!(
+        return Err(StorageError::InvalidData(format!(
             "Invalid witness public key length: expected 32, got {}",
             witness_public_key.len()
-        ));
+        )));
     }
 
-    // Reconstruct the payload that was signed
-    // The witness signs: prefix:seq:event_said
-    // Note: We don't have the prefix in the receipt, so we use the witness DID as context
     let payload = format!("{}:{}:{}", receipt.i, receipt.s, receipt.a);
 
-    // Verify the signature
     let public_key = UnparsedPublicKey::new(&ED25519, witness_public_key);
     match public_key.verify(payload.as_bytes(), &receipt.sig) {
         Ok(()) => Ok(true),
@@ -234,21 +220,19 @@ pub fn verify_receipt_signature(receipt: &Receipt, witness_public_key: &[u8]) ->
 /// # Returns
 /// * `Ok(())` if all receipts are consistent
 /// * `Err` with duplicity evidence if conflicting SAIDs found
-pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<()> {
+pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageError> {
     if receipts.is_empty() {
         return Ok(());
     }
 
-    // All receipts should be for the same event SAID
     let expected_said = &receipts[0].a;
 
     for receipt in receipts.iter().skip(1) {
         if &receipt.a != expected_said {
-            return Err(anyhow!(
+            return Err(StorageError::InvalidData(format!(
                 "Duplicity detected: receipts claim different SAIDs ({} vs {})",
-                expected_said,
-                receipt.a
-            ));
+                expected_said, receipt.a
+            )));
         }
     }
 

@@ -3,7 +3,6 @@
 use crate::config::EnvironmentConfig;
 use crate::error::AgentError;
 use crate::paths::auths_home_with_config;
-use anyhow::Result;
 use log::{info, warn};
 use std::sync::Arc;
 

@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use anyhow::Error;
+use auths_id::error::StorageError;
 use auths_verifier::core::{Attestation, VerifiedAttestation};
 use auths_verifier::types::DeviceDID;
 
@@ -27,7 +27,7 @@ impl Default for FakeAttestationSink {
 }
 
 impl AttestationSink for FakeAttestationSink {
-    fn export(&self, attestation: &VerifiedAttestation) -> Result<(), Error> {
+    fn export(&self, attestation: &VerifiedAttestation) -> Result<(), StorageError> {
         self.stored
             .lock()
             .unwrap()
@@ -59,7 +59,7 @@ impl AttestationSource for FakeAttestationSource {
     fn load_attestations_for_device(
         &self,
         device_did: &DeviceDID,
-    ) -> Result<Vec<Attestation>, Error> {
+    ) -> Result<Vec<Attestation>, StorageError> {
         let guard = self.attestations.lock().unwrap();
         Ok(guard
             .iter()
@@ -68,11 +68,11 @@ impl AttestationSource for FakeAttestationSource {
             .collect())
     }
 
-    fn load_all_attestations(&self) -> Result<Vec<Attestation>, Error> {
+    fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError> {
         Ok(self.attestations.lock().unwrap().clone())
     }
 
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, Error> {
+    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
         let guard = self.attestations.lock().unwrap();
         let dids: std::collections::HashSet<DeviceDID> =
             guard.iter().map(|a| a.subject.clone()).collect();

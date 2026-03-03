@@ -1,10 +1,10 @@
 //! Provides storage implementation for KERI Key Event Logs (KELs) within a Git repository.
 //! e.g., `refs/did/keri/<prefix>/kel`
 
+use crate::error::StorageError;
 use crate::identity::events::KeyRotationEvent;
 use crate::keri::Prefix;
 use crate::storage::layout;
-use anyhow::{Context, Result, anyhow};
 use git2::{Commit, ErrorCode, Oid, Repository, Signature};
 use log::{debug, warn};
 use sha2::{Digest, Sha256};
@@ -28,15 +28,8 @@ impl KeriGitStorage {
         }
     }
 
-    /// Helper function to open the associated Git repository.
-    /// Provides context-rich error messages.
-    fn open_repo(&self) -> Result<Repository> {
-        Repository::open(&self.repo_path).with_context(|| {
-            format!(
-                "KeriGitStorage failed to open repository at {:?}",
-                self.repo_path
-            )
-        })
+    fn open_repo(&self) -> Result<Repository, StorageError> {
+        Ok(Repository::open(&self.repo_path)?)
     }
 
     /// Stores a single KERI event as a new commit on the specific KEL Git reference
@@ -54,7 +47,7 @@ impl KeriGitStorage {
         did_prefix: &Prefix,
         event_bytes: &[u8],
         commit_message: &str,
-    ) -> Result<Oid> {
+    ) -> Result<Oid, StorageError> {
         debug!(
             "Storing KERI event for prefix '{}' in repo {:?}. Message: '{}'",
             did_prefix.as_str(),
@@ -93,15 +86,7 @@ impl KeriGitStorage {
                         );
                         None
                     }
-                    Err(e) => {
-                        // Other error peeling the reference
-                        return Err(e).with_context(|| {
-                            format!(
-                                "Failed to peel existing KEL reference '{}' to commit",
-                                kel_ref_name
-                            )
-                        });
-                    }
+                    Err(e) => return Err(e.into()),
                 }
             }
             Err(e) if e.code() == ErrorCode::NotFound => {
@@ -112,64 +97,35 @@ impl KeriGitStorage {
                 );
                 None
             }
-            Err(e) => {
-                // Other error finding the reference
-                return Err(e)
-                    .with_context(|| format!("Failed to find KEL reference '{}'", kel_ref_name));
-            }
+            Err(e) => return Err(e.into()),
         };
-        let parents: Vec<&Commit> = parent_commit_opt.iter().collect(); // Collect optional parent into slice
+        let parents: Vec<&Commit> = parent_commit_opt.iter().collect();
 
         // 3. Create the Git blob containing the event data
-        let blob_oid = repo
-            .blob(event_bytes)
-            .context("Failed to create Git blob for KERI event")?;
+        let blob_oid = repo.blob(event_bytes)?;
         debug!("Created event blob: {}", blob_oid);
 
         // 4. Create the Git tree containing the blob
         let mut tree_builder = repo.treebuilder(None)?;
-        // Use the standard blob name
-        tree_builder
-            .insert(KERI_EVENT_BLOB_NAME, blob_oid, 0o100644)
-            .context("Failed to insert event blob into tree builder")?;
-        let tree_oid = tree_builder
-            .write()
-            .context("Failed to write Git tree for KERI event")?;
-        let tree = repo
-            .find_tree(tree_oid)
-            .context("Failed to find newly created KERI event tree")?;
+        tree_builder.insert(KERI_EVENT_BLOB_NAME, blob_oid, 0o100644)?;
+        let tree_oid = tree_builder.write()?;
+        let tree = repo.find_tree(tree_oid)?;
         debug!("Created tree {} containing event blob", tree_oid);
 
         // 5. Create the Git signature (use repo default or fallback)
         let sig = repo
             .signature()
-            .or_else(|_| Signature::now("auths-keri", "auths-keri@localhost"))
-            .context("Failed to create Git signature for KERI commit")?;
+            .or_else(|_| Signature::now("auths-keri", "auths-keri@localhost"))?;
         debug!("Using Git signature: {}", sig);
 
         // 6. Create the Git commit object
-        let commit_oid = repo
-            .commit(
-                None,           // Do not update HEAD or any ref here
-                &sig,           // Author
-                &sig,           // Committer
-                commit_message, // Commit message
-                &tree,          // The tree containing the event blob
-                &parents,       // Parent commit(s) slice
-            )
-            .context("Failed to create Git commit object for KERI event")?;
+        let commit_oid = repo.commit(None, &sig, &sig, commit_message, &tree, &parents)?;
         debug!("Created commit object: {}", commit_oid);
 
         // 7. Explicitly update the specific KEL Git reference to point to the new commit
         //    Use force=true to overwrite if the reference already exists (it should if parent was found).
         let ref_log_message = format!("commit (keri event): {}", commit_message);
-        repo.reference(&kel_ref_name, commit_oid, true, &ref_log_message)
-            .with_context(|| {
-                format!(
-                    "Failed to update KEL reference '{}' to new commit {}",
-                    kel_ref_name, commit_oid
-                )
-            })?;
+        repo.reference(&kel_ref_name, commit_oid, true, &ref_log_message)?;
         debug!(
             "Updated KEL reference '{}' to point to {}",
             kel_ref_name, commit_oid
@@ -187,7 +143,7 @@ impl KeriGitStorage {
     /// # Returns
     /// A `Vec` containing the raw bytes (`Vec<u8>`) of each KERI event found in the KEL history,
     /// ordered chronologically (oldest first). Returns an empty `Vec` if the KEL ref is not found.
-    pub fn read_kel_history(&self, did_prefix: &Prefix) -> Result<Vec<Vec<u8>>> {
+    pub fn read_kel_history(&self, did_prefix: &Prefix) -> Result<Vec<Vec<u8>>, StorageError> {
         debug!(
             "Reading KEL history for prefix '{}' from repo {:?}",
             did_prefix.as_str(),
@@ -203,9 +159,7 @@ impl KeriGitStorage {
         let start_commit = match repo.find_reference(&kel_ref_name) {
             Ok(reference) => {
                 // Ref exists, peel to commit
-                reference.peel_to_commit().with_context(|| {
-                    format!("Failed to peel KEL reference '{}' to commit", kel_ref_name)
-                })?
+                reference.peel_to_commit()?
             }
             Err(e) if e.code() == ErrorCode::NotFound => {
                 // Ref doesn't exist, no history for this prefix
@@ -215,11 +169,7 @@ impl KeriGitStorage {
                 );
                 return Ok(Vec::new()); // Return empty vector, not an error
             }
-            Err(e) => {
-                // Other error finding the reference
-                return Err(e)
-                    .with_context(|| format!("Failed to find KEL reference '{}'", kel_ref_name));
-            }
+            Err(e) => return Err(e.into()),
         };
         debug!("Starting history walk from commit {}", start_commit.id());
 
@@ -332,7 +282,7 @@ impl KeriGitStorage {
         &self,
         did_prefix: &Prefix,
         event: &KeyRotationEvent,
-    ) -> Result<Oid> {
+    ) -> Result<Oid, StorageError> {
         debug!(
             "Appending rotation event (seq {}) for prefix '{}' in repo {:?}",
             event.sequence,
@@ -366,36 +316,30 @@ impl KeriGitStorage {
                 );
                 None
             }
-            Err(e) => {
-                return Err(e)
-                    .with_context(|| format!("Failed to find KEL reference '{}'", kel_ref_name));
-            }
+            Err(e) => return Err(e.into()),
         };
 
         // 2. Validate chain integrity
         if event.sequence == 0 {
-            // Inception event - previous_hash should be empty
             if !event.previous_hash.is_empty() && current_tip_hash.is_some() {
-                return Err(anyhow!(
+                return Err(StorageError::InvalidData(format!(
                     "Sequence 0 event (inception) should have empty previous_hash, got: {}",
                     event.previous_hash
-                ));
+                )));
             }
         } else {
-            // Rotation event - validate previous_hash matches current tip
             match &current_tip_hash {
                 Some(expected) if &event.previous_hash != expected => {
-                    return Err(anyhow!(
+                    return Err(StorageError::InvalidData(format!(
                         "Chain integrity violation: event.previous_hash ({}) != current KEL tip hash ({})",
-                        event.previous_hash,
-                        expected
-                    ));
+                        event.previous_hash, expected
+                    )));
                 }
                 None => {
-                    return Err(anyhow!(
+                    return Err(StorageError::InvalidData(format!(
                         "Cannot append rotation event (seq {}) without existing KEL history",
                         event.sequence
-                    ));
+                    )));
                 }
                 _ => {
                     debug!("Chain integrity validated for sequence {}", event.sequence);
@@ -404,8 +348,7 @@ impl KeriGitStorage {
         }
 
         // 3. Serialize the event as JSON
-        let event_json = serde_json::to_vec_pretty(event)
-            .context("Failed to serialize KeyRotationEvent to JSON")?;
+        let event_json = serde_json::to_vec_pretty(event)?;
 
         // 4. Store the event using the existing store_event method
         let commit_message = format!("Key rotation: sequence {}", event.sequence);
@@ -447,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn test_store_and_read_single_event() -> Result<()> {
+    fn test_store_and_read_single_event() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, _repo) = init_temp_repo();
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("EABC123".to_string());
@@ -469,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn test_store_and_read_multiple_events() -> Result<()> {
+    fn test_store_and_read_multiple_events() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, _repo) = init_temp_repo();
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("EDEF456".to_string());
@@ -498,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_kel_history_not_found() -> Result<()> {
+    fn test_read_kel_history_not_found() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, _repo) = init_temp_repo();
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("ENotExist".to_string());
@@ -513,7 +456,7 @@ mod tests {
     }
 
     #[test]
-    fn test_store_event_updates_ref() -> Result<()> {
+    fn test_store_event_updates_ref() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, repo) = init_temp_repo(); // Get repo object
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("EGHI789".to_string());
@@ -543,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_kel_history_skips_commit_without_blob() -> Result<()> {
+    fn test_read_kel_history_skips_commit_without_blob() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, repo) = init_temp_repo();
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("ESkipBlob".to_string());
@@ -585,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn test_append_rotation_event_first() -> Result<()> {
+    fn test_append_rotation_event_first() -> Result<(), Box<dyn std::error::Error>> {
         use crate::identity::events::KeyRotationEvent;
         use chrono::Utc;
 
@@ -614,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn test_append_rotation_event_chain_validation() -> Result<()> {
+    fn test_append_rotation_event_chain_validation() -> Result<(), Box<dyn std::error::Error>> {
         use crate::identity::events::KeyRotationEvent;
         use chrono::Utc;
 
@@ -659,7 +602,8 @@ mod tests {
     }
 
     #[test]
-    fn test_append_rotation_event_chain_integrity_failure() -> Result<()> {
+    fn test_append_rotation_event_chain_integrity_failure() -> Result<(), Box<dyn std::error::Error>>
+    {
         use crate::identity::events::KeyRotationEvent;
         use chrono::Utc;
 
