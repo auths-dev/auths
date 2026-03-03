@@ -123,7 +123,7 @@ pub fn resolve_did_keri_at_sequence(
     // Only process events up to target sequence
     let events_subset: Vec<_> = events
         .into_iter()
-        .take_while(|e| e.sequence().is_ok_and(|s| s <= target_sequence))
+        .take_while(|e| e.sequence().value() <= target_sequence)
         .collect();
 
     if events_subset.is_empty() {

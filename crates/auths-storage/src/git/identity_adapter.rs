@@ -108,8 +108,8 @@ impl RegistryIdentityStorage {
     ) -> Result<(String, auths_id::keri::InceptionResult), Error> {
         use auths_core::crypto::said::compute_next_commitment;
         use auths_id::keri::{
-            Event, IcpEvent, InceptionResult, KERI_VERSION, Prefix, Said, finalize_icp_event,
-            serialize_for_signing,
+            Event, IcpEvent, InceptionResult, KERI_VERSION, KeriSequence, Prefix, Said,
+            finalize_icp_event, serialize_for_signing,
         };
         use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
         use ring::rand::SystemRandom;
@@ -143,7 +143,10 @@ impl RegistryIdentityStorage {
 
         // Determine witness fields from config
         let (bt, b) = match witness_config {
-            Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.clone()),
+            Some(cfg) if cfg.is_enabled() => (
+                cfg.threshold.to_string(),
+                cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+            ),
             _ => ("0".to_string(), vec![]),
         };
 
@@ -152,7 +155,7 @@ impl RegistryIdentityStorage {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![current_pub_encoded],
             nt: "1".to_string(),

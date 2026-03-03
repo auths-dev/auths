@@ -15,6 +15,7 @@ use crate::storage::registry::backend::{RegistryBackend, RegistryError};
 
 use auths_core::crypto::said::compute_next_commitment;
 
+use super::event::KeriSequence;
 use super::types::{Prefix, Said};
 use super::{Event, GitKel, IcpEvent, KERI_VERSION, KelError, ValidationError, finalize_icp_event};
 use crate::witness_config::WitnessConfig;
@@ -110,7 +111,10 @@ pub fn create_keri_identity(
 
     // Determine witness fields from config
     let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.clone()),
+        Some(cfg) if cfg.is_enabled() => (
+            cfg.threshold.to_string(),
+            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+        ),
         _ => ("0".to_string(), vec![]),
     };
 
@@ -119,7 +123,7 @@ pub fn create_keri_identity(
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: Prefix::default(),
-        s: "0".to_string(),
+        s: KeriSequence::new(0),
         kt: "1".to_string(),
         k: vec![current_pub_encoded],
         nt: "1".to_string(),
@@ -145,19 +149,18 @@ pub fn create_keri_identity(
 
     // Collect witness receipts if configured
     #[cfg(feature = "witness-client")]
-    if let Some(config) = witness_config {
-        if config.is_enabled() {
-            let canonical_for_witness =
-                super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
-            super::witness_integration::collect_and_store_receipts(
-                repo.path().parent().unwrap_or(repo.path()),
-                &prefix,
-                &finalized.d,
-                &canonical_for_witness,
-                config,
-            )
-            .map_err(|e| InceptionError::Serialization(e.to_string()))?;
-        }
+    if let Some(config) = witness_config
+        && config.is_enabled()
+    {
+        let canonical_for_witness = super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
+        super::witness_integration::collect_and_store_receipts(
+            repo.path().parent().unwrap_or(repo.path()),
+            &prefix,
+            &finalized.d,
+            &canonical_for_witness,
+            config,
+        )
+        .map_err(|e| InceptionError::Serialization(e.to_string()))?;
     }
 
     Ok(InceptionResult {
@@ -206,7 +209,7 @@ pub fn create_keri_identity_with_backend(
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: Prefix::default(),
-        s: "0".to_string(),
+        s: KeriSequence::new(0),
         kt: "1".to_string(),
         k: vec![current_pub_encoded],
         nt: "1".to_string(),
@@ -333,7 +336,7 @@ mod tests {
             assert_eq!(icp.d.as_str(), result.prefix.as_str());
 
             // Sequence is 0
-            assert_eq!(icp.s, "0");
+            assert_eq!(icp.s, KeriSequence::new(0));
 
             // Single key
             assert_eq!(icp.k.len(), 1);

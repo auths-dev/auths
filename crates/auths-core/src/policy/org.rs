@@ -56,24 +56,24 @@ use super::device::Action;
 ///
 /// ```rust
 /// use auths_core::policy::{Decision, device::Action, org::authorize_org_action};
-/// use auths_verifier::core::{Attestation, Capability};
+/// use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature, Role};
 /// use auths_verifier::types::DeviceDID;
 /// use chrono::Utc;
 ///
 /// let membership = Attestation {
 ///     version: 1,
 ///     rid: "member".into(),
-///     issuer: "did:keri:EOrg123".into(),  // issued BY the org
-///     subject: DeviceDID::new("did:key:z6MkAlice"),  // for this member
-///     device_public_key: vec![0; 32],
-///     identity_signature: vec![0; 64],
-///     device_signature: vec![0; 64],
+///     issuer: "did:keri:EOrg123".into(),
+///     subject: DeviceDID::new("did:key:z6MkAlice"),
+///     device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+///     identity_signature: Ed25519Signature::empty(),
+///     device_signature: Ed25519Signature::empty(),
 ///     revoked_at: None,
 ///     expires_at: None,
 ///     timestamp: None,
 ///     note: None,
 ///     payload: None,
-///     role: Some("admin".into()),
+///     role: Some(Role::Admin),
 ///     capabilities: vec![Capability::manage_members()],
 ///     delegated_by: None,
 ///     signer_type: None,
@@ -81,7 +81,7 @@ use super::device::Action;
 ///
 /// let decision = authorize_org_action(
 ///     &membership,
-///     "did:keri:EOrg123",  // expected org issuer
+///     "did:keri:EOrg123",
 ///     &Action::ManageMembers,
 ///     Utc::now(),
 /// );
@@ -100,13 +100,13 @@ pub fn authorize_org_action(
     }
 
     // Rule 2: Not expired (expires_at <= now means expired)
-    if let Some(expires_at) = member_attestation.expires_at {
-        if expires_at <= now {
-            return Decision::deny(format!(
-                "membership expired at {}",
-                expires_at.format("%Y-%m-%dT%H:%M:%SZ")
-            ));
-        }
+    if let Some(expires_at) = member_attestation.expires_at
+        && expires_at <= now
+    {
+        return Decision::deny(format!(
+            "membership expired at {}",
+            expires_at.format("%Y-%m-%dT%H:%M:%SZ")
+        ));
     }
 
     // Rule 3: Issuer is the org
@@ -170,6 +170,7 @@ fn capability_name(cap: &Capability) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
     use auths_verifier::types::DeviceDID;
     use chrono::Duration;
 
@@ -178,22 +179,22 @@ mod tests {
         expires_at: Option<DateTime<Utc>>,
         issuer: &str,
         capabilities: Vec<Capability>,
-        role: Option<&str>,
+        role: Option<Role>,
     ) -> Attestation {
         Attestation {
             version: 1,
-            rid: "membership".into(),
+            rid: ResourceId::new("membership"),
             issuer: issuer.into(),
             subject: DeviceDID::new("did:key:z6MkMember"),
-            device_public_key: vec![0; 32],
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at,
             timestamp: None,
             note: None,
             payload: None,
-            role: role.map(String::from),
+            role,
             capabilities,
             delegated_by: None,
             signer_type: None,
@@ -209,7 +210,7 @@ mod tests {
             None,
             ORG_ISSUER,
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -225,7 +226,7 @@ mod tests {
         // the caller should return Indeterminate or Deny before calling this.
         // This function requires a valid attestation to be passed in.
         // We test that an empty capabilities list is denied.
-        let att = make_membership(None, None, ORG_ISSUER, vec![], Some("guest"));
+        let att = make_membership(None, None, ORG_ISSUER, vec![], Some(Role::Readonly));
         let now = Utc::now();
 
         let decision = authorize_org_action(&att, ORG_ISSUER, &Action::SignCommit, now);
@@ -241,7 +242,7 @@ mod tests {
             None,
             ORG_ISSUER,
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -259,7 +260,7 @@ mod tests {
             Some(past), // expired
             ORG_ISSUER,
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -277,7 +278,7 @@ mod tests {
             Some(now), // exactly at boundary = expired
             ORG_ISSUER,
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
 
         let decision = authorize_org_action(&att, ORG_ISSUER, &Action::ManageMembers, now);
@@ -293,7 +294,7 @@ mod tests {
             None,
             "did:keri:EDifferentOrg", // wrong org
             vec![Capability::manage_members()],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -312,7 +313,7 @@ mod tests {
             None,
             ORG_ISSUER,
             vec![Capability::sign_commit()], // has SignCommit, not ManageMembers
-            Some("member"),
+            Some(Role::Member),
         );
         let now = Utc::now();
 
@@ -346,7 +347,7 @@ mod tests {
                 Capability::sign_release(),
                 Capability::manage_members(),
             ],
-            Some("admin"),
+            Some(Role::Admin),
         );
         let now = Utc::now();
 
@@ -374,7 +375,7 @@ mod tests {
             None,
             ORG_ISSUER,
             vec![Capability::sign_commit()],
-            Some("contributor"),
+            Some(Role::Member),
         );
         let now = Utc::now();
 

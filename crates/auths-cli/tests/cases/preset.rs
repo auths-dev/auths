@@ -65,7 +65,7 @@ fn test_preset_override() {
     let mut config = StorageLayoutConfig::radicle();
     assert_eq!(config.identity_ref, "refs/rad/id");
 
-    config.identity_ref = "refs/custom/identity".to_string();
+    config.identity_ref = "refs/custom/identity".to_string().into();
     assert_eq!(
         identity_ref(&config),
         "refs/custom/identity",

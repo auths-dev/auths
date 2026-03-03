@@ -5,16 +5,44 @@
 
 use auths_core::witness::Receipt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use super::seal::Seal;
 use super::types::{Prefix, Said};
 
-/// Error when parsing a sequence number from a KERI event's `s` field.
-#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-#[error("Malformed sequence number: {raw:?}")]
-pub struct SequenceParseError {
-    /// The raw string that failed to parse as u64.
-    pub raw: String,
+/// A KERI sequence number, stored internally as u64 and serialized as a hex string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct KeriSequence(u64);
+
+impl KeriSequence {
+    pub fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub fn value(self) -> u64 {
+        self.0
+    }
+}
+
+impl fmt::Display for KeriSequence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:x}", self.0)
+    }
+}
+
+impl Serialize for KeriSequence {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{:x}", self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for KeriSequence {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let value = u64::from_str_radix(&s, 16)
+            .map_err(|_| serde::de::Error::custom(format!("invalid hex sequence: {s:?}")))?;
+        Ok(KeriSequence(value))
+    }
 }
 
 /// Receipts attached to a KEL event.
@@ -64,8 +92,8 @@ pub struct IcpEvent {
     pub d: Said,
     /// Identifier prefix (same as `d` for inception)
     pub i: Prefix,
-    /// Sequence number: "0" for inception
-    pub s: String,
+    /// Sequence number
+    pub s: KeriSequence,
     /// Key threshold: "1" for single-sig
     pub kt: String,
     /// Current public key(s), Base64url encoded with derivation code
@@ -102,7 +130,7 @@ pub struct RotEvent {
     /// Identifier prefix
     pub i: Prefix,
     /// Sequence number (increments with each event)
-    pub s: String,
+    pub s: KeriSequence,
     /// Previous event SAID (creates the hash chain)
     pub p: Said,
     /// Key threshold
@@ -141,7 +169,7 @@ pub struct IxnEvent {
     /// Identifier prefix
     pub i: Prefix,
     /// Sequence number
-    pub s: String,
+    pub s: KeriSequence,
     /// Previous event SAID
     pub p: Said,
     /// Anchored seals (the main purpose of IXN events)
@@ -188,14 +216,12 @@ impl Event {
     }
 
     /// Get the sequence number of this event.
-    pub fn sequence(&self) -> Result<u64, SequenceParseError> {
-        let s = match self {
-            Event::Icp(e) => &e.s,
-            Event::Rot(e) => &e.s,
-            Event::Ixn(e) => &e.s,
-        };
-        s.parse::<u64>()
-            .map_err(|_| SequenceParseError { raw: s.clone() })
+    pub fn sequence(&self) -> KeriSequence {
+        match self {
+            Event::Icp(e) => e.s,
+            Event::Rot(e) => e.s,
+            Event::Ixn(e) => e.s,
+        }
     }
 
     /// Get the identifier prefix.
@@ -265,12 +291,42 @@ mod tests {
     use crate::keri::KERI_VERSION;
 
     #[test]
+    fn keri_sequence_serializes_as_hex() {
+        let seq = KeriSequence::new(0);
+        assert_eq!(serde_json::to_string(&seq).unwrap(), "\"0\"");
+
+        let seq = KeriSequence::new(10);
+        assert_eq!(serde_json::to_string(&seq).unwrap(), "\"a\"");
+
+        let seq = KeriSequence::new(255);
+        assert_eq!(serde_json::to_string(&seq).unwrap(), "\"ff\"");
+    }
+
+    #[test]
+    fn keri_sequence_deserializes_from_hex() {
+        let seq: KeriSequence = serde_json::from_str("\"0\"").unwrap();
+        assert_eq!(seq.value(), 0);
+
+        let seq: KeriSequence = serde_json::from_str("\"a\"").unwrap();
+        assert_eq!(seq.value(), 10);
+
+        let seq: KeriSequence = serde_json::from_str("\"ff\"").unwrap();
+        assert_eq!(seq.value(), 255);
+    }
+
+    #[test]
+    fn keri_sequence_rejects_invalid_hex() {
+        let result = serde_json::from_str::<KeriSequence>("\"not_hex\"");
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn icp_event_serializes_correctly() {
         let icp = IcpEvent {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::new_unchecked("ETest123".to_string()),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec!["DKey123".to_string()],
             nt: "1".to_string(),
@@ -283,6 +339,7 @@ mod tests {
         let json = serde_json::to_string(&icp).unwrap();
         assert!(json.contains("\"v\":\"KERI10JSON\""));
         assert!(json.contains("\"k\":[\"DKey123\"]"));
+        assert!(json.contains("\"s\":\"0\""));
         // Empty d, a, and x should be skipped
         assert!(!json.contains("\"d\":\"\""));
         assert!(!json.contains("\"a\":[]"));
@@ -295,7 +352,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("ERotSaid".to_string()),
             i: Prefix::new_unchecked("EPrefix".to_string()),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("EPrevSaid".to_string()),
             kt: "1".to_string(),
             k: vec!["DNewKey".to_string()],
@@ -318,7 +375,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("EIxnSaid".to_string()),
             i: Prefix::new_unchecked("EPrefix".to_string()),
-            s: "2".to_string(),
+            s: KeriSequence::new(2),
             p: Said::new_unchecked("EPrevSaid".to_string()),
             a: vec![seal],
             x: String::new(),
@@ -334,7 +391,7 @@ mod tests {
         let event: Event = serde_json::from_str(json).unwrap();
         assert!(event.is_inception());
         assert_eq!(event.prefix(), "E123");
-        assert_eq!(event.sequence().unwrap(), 0);
+        assert_eq!(event.sequence().value(), 0);
         assert!(event.previous().is_none());
     }
 
@@ -343,7 +400,7 @@ mod tests {
         let json = r#"{"v":"KERI10JSON","t":"rot","d":"ENew","i":"E123","s":"1","p":"EPrev","kt":"1","k":["DKey"],"nt":"1","n":["ENext"],"bt":"0","b":[]}"#;
         let event: Event = serde_json::from_str(json).unwrap();
         assert!(event.is_rotation());
-        assert_eq!(event.sequence().unwrap(), 1);
+        assert_eq!(event.sequence().value(), 1);
         assert_eq!(event.previous().map(|s| s.as_str()), Some("EPrev"));
     }
 
@@ -353,7 +410,7 @@ mod tests {
             r#"{"v":"KERI10JSON","t":"ixn","d":"EIxn","i":"E123","s":"2","p":"EPrev","a":[]}"#;
         let event: Event = serde_json::from_str(json).unwrap();
         assert!(event.is_interaction());
-        assert_eq!(event.sequence().unwrap(), 2);
+        assert_eq!(event.sequence().value(), 2);
         assert!(event.keys().is_none());
     }
 
@@ -363,7 +420,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::new_unchecked("ETest".to_string()),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec!["DKey1".to_string(), "DKey2".to_string()],
             nt: "1".to_string(),
@@ -388,7 +445,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::new_unchecked("ETest".to_string()),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![seal.clone()],
             x: String::new(),
@@ -404,7 +461,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("ESaid".to_string()),
             i: Prefix::new_unchecked("ESaid".to_string()),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec!["DKey".to_string()],
             nt: "1".to_string(),
@@ -418,28 +475,5 @@ mod tests {
         let json = serde_json::to_string(&icp).unwrap();
         let parsed: IcpEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(icp, parsed);
-    }
-
-    #[test]
-    fn rejects_malformed_sequence_number() {
-        let event = Event::Icp(IcpEvent {
-            v: KERI_VERSION.to_string(),
-            d: Said::default(),
-            i: Prefix::new_unchecked("ETest".to_string()),
-            s: "not_a_number".to_string(),
-            kt: "1".to_string(),
-            k: vec!["DKey".to_string()],
-            nt: "1".to_string(),
-            n: vec!["ENext".to_string()],
-            bt: "0".to_string(),
-            b: vec![],
-            a: vec![],
-            x: String::new(),
-        });
-
-        let result = event.sequence();
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(err.raw, "not_a_number");
     }
 }

@@ -221,10 +221,7 @@ impl KeyStorage for IsolatedKeychainHandle {
     }
 
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
-        self.store
-            .lock()
-            .unwrap()
-            .get_identity_for_alias(alias)
+        self.store.lock().unwrap().get_identity_for_alias(alias)
     }
 
     fn backend_name(&self) -> &'static str {

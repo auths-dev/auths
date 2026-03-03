@@ -208,7 +208,7 @@ impl AttestationSink for RegistryAttestationStorage {
             );
 
             let indexed = IndexedAttestation {
-                rid: attestation.rid.clone(),
+                rid: attestation.rid.to_string(),
                 issuer_did: attestation.issuer.to_string(),
                 device_did: attestation.subject.to_string(),
                 git_ref,
@@ -232,6 +232,7 @@ impl AttestationSink for RegistryAttestationStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::types::IdentityDID;
     use git2::Repository;
     use tempfile::TempDir;
@@ -253,12 +254,12 @@ mod tests {
         let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
         Attestation {
             version: 1,
-            rid: format!("test-rid-{}", seq),
+            rid: ResourceId::new(format!("test-rid-{}", seq)),
             issuer: IdentityDID::new("did:keri:ETestIssuer"),
             subject: DeviceDID::new(subject),
-            device_public_key: vec![1, 2, 3, 4],
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at: None,
             timestamp: Some(chrono::Utc::now() + chrono::Duration::seconds(seq as i64)),

@@ -102,12 +102,15 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
 
         WitnessSubcommand::Add { url } => {
             let repo_path = resolve_repo_path(repo_opt)?;
+            let parsed_url: url::Url = url
+                .parse()
+                .map_err(|e| anyhow!("Invalid witness URL '{}': {}", url, e))?;
             let mut config = load_witness_config(&repo_path)?;
-            if config.witness_urls.contains(&url) {
+            if config.witness_urls.contains(&parsed_url) {
                 println!("Witness already configured: {}", url);
                 return Ok(());
             }
-            config.witness_urls.push(url.clone());
+            config.witness_urls.push(parsed_url);
             if config.threshold == 0 {
                 config.threshold = 1;
             }
@@ -123,9 +126,12 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
 
         WitnessSubcommand::Remove { url } => {
             let repo_path = resolve_repo_path(repo_opt)?;
+            let parsed_url: url::Url = url
+                .parse()
+                .map_err(|e| anyhow!("Invalid witness URL '{}': {}", url, e))?;
             let mut config = load_witness_config(&repo_path)?;
             let before = config.witness_urls.len();
-            config.witness_urls.retain(|u| u != &url);
+            config.witness_urls.retain(|u| u != &parsed_url);
             if config.witness_urls.len() == before {
                 println!("Witness not found: {}", url);
                 return Ok(());

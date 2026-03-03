@@ -74,6 +74,7 @@ fn generate_device_keypair(
 }
 
 /// Creates a signed attestation using the real `create_signed_attestation` API.
+#[allow(clippy::too_many_arguments)]
 fn create_test_attestation(
     rid: &str,
     identity_did: &str,
@@ -510,7 +511,7 @@ fn test_rotation_appends_to_kel() {
 
     for (i, event) in events.iter().enumerate() {
         assert_eq!(
-            event.sequence().unwrap(),
+            event.sequence().value(),
             i as u64,
             "Event {} should have sequence {}",
             i,

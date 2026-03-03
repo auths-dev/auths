@@ -1,6 +1,8 @@
 use anyhow::{Result, anyhow};
 use auths_verifier::types::DeviceDID;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::ops::Deref;
 use std::path::PathBuf;
 
 use crate::keri::{Prefix, Said};
@@ -13,6 +15,105 @@ pub const TOOL_PATH: &str = ".auths";
 pub const ATTESTATION_JSON: &str = "attestation.json";
 /// Default filename for storing identity data within Git commits.
 pub const IDENTITY_JSON: &str = "identity.json";
+
+// --- Typed Git ref and blob name newtypes ---
+
+/// A Git reference path (e.g. `refs/auths/identity`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct GitRef(String);
+
+impl GitRef {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Join a path segment to this ref, separated by `/`.
+    pub fn join(&self, segment: &str) -> GitRef {
+        GitRef(format!("{}/{}", self.0.trim_end_matches('/'), segment))
+    }
+}
+
+impl fmt::Display for GitRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Deref for GitRef {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl PartialEq<str> for GitRef {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for GitRef {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+impl From<String> for GitRef {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+/// A blob filename within a Git tree (e.g. `attestation.json`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BlobName(String);
+
+impl BlobName {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for BlobName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Deref for BlobName {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl PartialEq<str> for BlobName {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for BlobName {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+impl From<String> for BlobName {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
 
 // --- KERI Specific Constants & Layout  ---
 
@@ -82,27 +183,27 @@ pub fn did_keri_to_prefix(did: &str) -> Option<Prefix> {
 pub struct StorageLayoutConfig {
     /// The Git reference pointing to the commit containing the primary identity document.
     /// Default: `"refs/auths/identity"`
-    pub identity_ref: String,
+    pub identity_ref: GitRef,
 
     /// The base Git reference prefix for storing device attestations.
     /// Default: `"refs/auths/keys"`
-    pub device_attestation_prefix: String,
+    pub device_attestation_prefix: GitRef,
 
     /// Standard filename for the blob containing attestation data.
     /// Default: `"attestation.json"`
-    pub attestation_blob_name: String,
+    pub attestation_blob_name: BlobName,
 
     /// Standard filename for the blob containing identity data.
     /// Default: `"identity.json"`
-    pub identity_blob_name: String,
+    pub identity_blob_name: BlobName,
 }
 impl Default for StorageLayoutConfig {
     fn default() -> Self {
         Self {
-            identity_ref: "refs/auths/identity".to_string(),
-            device_attestation_prefix: "refs/auths/keys".to_string(),
-            attestation_blob_name: ATTESTATION_JSON.to_string(),
-            identity_blob_name: IDENTITY_JSON.to_string(),
+            identity_ref: GitRef::new("refs/auths/identity"),
+            device_attestation_prefix: GitRef::new("refs/auths/keys"),
+            attestation_blob_name: BlobName::new(ATTESTATION_JSON),
+            identity_blob_name: BlobName::new(IDENTITY_JSON),
         }
     }
 }
@@ -111,20 +212,20 @@ impl StorageLayoutConfig {
     /// Radicle-compatible layout preset (uses `refs/rad/` namespace).
     pub fn radicle() -> Self {
         Self {
-            identity_ref: "refs/rad/id".to_string(),
-            device_attestation_prefix: "refs/keys".to_string(),
-            attestation_blob_name: "link-attestation.json".to_string(),
-            identity_blob_name: "radicle-identity.json".to_string(),
+            identity_ref: GitRef::new("refs/rad/id"),
+            device_attestation_prefix: GitRef::new("refs/keys"),
+            attestation_blob_name: BlobName::new("link-attestation.json"),
+            identity_blob_name: BlobName::new("radicle-identity.json"),
         }
     }
 
     /// Gitoxide-compatible layout preset (uses `refs/auths/` namespace).
     pub fn gitoxide() -> Self {
         Self {
-            identity_ref: "refs/auths/id".to_string(),
-            device_attestation_prefix: "refs/auths/devices".to_string(),
-            attestation_blob_name: ATTESTATION_JSON.to_string(),
-            identity_blob_name: IDENTITY_JSON.to_string(),
+            identity_ref: GitRef::new("refs/auths/id"),
+            device_attestation_prefix: GitRef::new("refs/auths/devices"),
+            attestation_blob_name: BlobName::new(ATTESTATION_JSON),
+            identity_blob_name: BlobName::new(IDENTITY_JSON),
         }
     }
 
@@ -197,35 +298,65 @@ pub fn attestation_blob_name(config: &StorageLayoutConfig) -> &str {
 pub fn attestation_ref_for_device(config: &StorageLayoutConfig, device_did: &DeviceDID) -> String {
     format!(
         "{}/{}/signatures",
-        config.device_attestation_prefix.trim_end_matches('/'),
+        config
+            .device_attestation_prefix
+            .as_str()
+            .trim_end_matches('/'),
         device_did.ref_name()
     )
 }
 
 /// Returns the list of Git reference prefixes to scan when discovering device attestations.
 pub fn default_attestation_prefixes(config: &StorageLayoutConfig) -> Vec<String> {
-    vec![config.device_attestation_prefix.clone()]
+    vec![config.device_attestation_prefix.as_str().to_string()]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_verifier::types::DeviceDID;
 
     #[test]
     fn test_config_defaults_are_agnostic() {
         let config = StorageLayoutConfig::default();
-        assert_eq!(config.identity_ref, "refs/auths/identity");
-        assert_eq!(config.device_attestation_prefix, "refs/auths/keys");
-        assert_eq!(config.attestation_blob_name, "attestation.json");
-        assert_eq!(config.identity_blob_name, "identity.json");
+        assert_eq!(config.identity_ref.as_str(), "refs/auths/identity");
+        assert_eq!(config.device_attestation_prefix.as_str(), "refs/auths/keys");
+        assert_eq!(config.attestation_blob_name.as_str(), "attestation.json");
+        assert_eq!(config.identity_blob_name.as_str(), "identity.json");
     }
 
     #[test]
     fn test_attestation_ref_for_device() {
-
         let prefix = Prefix::new_unchecked("EABC123".to_string());
         let expected = "refs/did/keri/EABC123/kel";
         assert_eq!(keri_kel_ref(&prefix), expected);
+    }
+
+    #[test]
+    fn git_ref_join() {
+        let base = GitRef::new("refs/auths/keys");
+        let joined = base.join("device1");
+        assert_eq!(joined.as_str(), "refs/auths/keys/device1");
+    }
+
+    #[test]
+    fn git_ref_deref() {
+        let r = GitRef::new("refs/auths/id");
+        let s: &str = &r;
+        assert_eq!(s, "refs/auths/id");
+    }
+
+    #[test]
+    fn blob_name_deref() {
+        let b = BlobName::new("attestation.json");
+        let s: &str = &b;
+        assert_eq!(s, "attestation.json");
+    }
+
+    #[test]
+    fn layout_roundtrips() {
+        let config = StorageLayoutConfig::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: StorageLayoutConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, parsed);
     }
 }

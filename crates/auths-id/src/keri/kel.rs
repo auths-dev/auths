@@ -334,9 +334,7 @@ impl<'a> GitKel<'a> {
         for event in events.iter().skip(1) {
             match event {
                 Event::Rot(rot) => {
-                    let seq = rot.s.parse::<u64>().map_err(|_| {
-                        KelError::InvalidData(format!("Malformed sequence number: {:?}", rot.s))
-                    })?;
+                    let seq = rot.s.value();
                     let threshold = rot.kt.parse::<u64>().map_err(|_| {
                         KelError::InvalidData(format!("Malformed sequence number: {:?}", rot.kt))
                     })?;
@@ -354,9 +352,7 @@ impl<'a> GitKel<'a> {
                     );
                 }
                 Event::Ixn(ixn) => {
-                    let seq = ixn.s.parse::<u64>().map_err(|_| {
-                        KelError::InvalidData(format!("Malformed sequence number: {:?}", ixn.s))
-                    })?;
+                    let seq = ixn.s.value();
                     state.apply_interaction(seq, ixn.d.clone());
                 }
                 Event::Icp(_) => {
@@ -473,7 +469,7 @@ impl<'a> GitKel<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keri::{IxnEvent, KERI_VERSION, Prefix, RotEvent, Said, Seal};
+    use crate::keri::{IxnEvent, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, Seal};
     use tempfile::TempDir;
 
     fn setup_repo() -> (TempDir, Repository) {
@@ -501,7 +497,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked(prefix.to_string()),
             i: Prefix::new_unchecked(prefix.to_string()),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec!["DKey1".to_string()],
             nt: "1".to_string(),
@@ -553,7 +549,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("ERotSaid".to_string()),
             i: Prefix::new_unchecked("ERotate".to_string()),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("ERotate".to_string()),
             kt: "1".to_string(),
             k: vec!["DKey2".to_string()],
@@ -585,7 +581,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("EIxnSaid".to_string()),
             i: Prefix::new_unchecked("EInteract".to_string()),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("EInteract".to_string()),
             a: vec![Seal::device_attestation("EAttest")],
             x: String::new(),
@@ -626,7 +622,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("ERotSaid".to_string()),
             i: Prefix::new_unchecked("ERotState".to_string()),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("ERotState".to_string()),
             kt: "1".to_string(),
             k: vec!["DKey2".to_string()],
@@ -660,7 +656,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("ERotSaid".to_string()),
             i: Prefix::new_unchecked("ELatest".to_string()),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("ELatest".to_string()),
             kt: "1".to_string(),
             k: vec!["DKey2".to_string()],
@@ -707,7 +703,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked(format!("ERot{}", seq)),
             i: Prefix::new_unchecked(prefix.to_string()),
-            s: seq.to_string(),
+            s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
             kt: "1".to_string(),
             k: vec![format!("DKey{}", seq + 1)],

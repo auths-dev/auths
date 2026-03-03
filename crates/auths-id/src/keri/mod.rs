@@ -121,7 +121,7 @@ pub use anchor::{
     AnchorError, AnchorVerification, anchor_attestation, anchor_data, find_anchor_event,
     verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
 };
-pub use event::{Event, EventReceipts, IcpEvent, IxnEvent, RotEvent, SequenceParseError};
+pub use event::{Event, EventReceipts, IcpEvent, IxnEvent, KeriSequence, RotEvent};
 #[cfg(feature = "git-storage")]
 pub use inception::{
     InceptionError, InceptionResult, create_keri_identity, create_keri_identity_with_backend,
@@ -138,7 +138,7 @@ pub use rotation::{
     RotationError, RotationResult, abandon_identity, get_key_state, get_key_state_with_backend,
     rotate_keys, rotate_keys_with_backend,
 };
-pub use seal::Seal;
+pub use seal::{Seal, SealType};
 pub use state::KeyState;
 pub use types::{KeriTypeError, Prefix, Said, prefix_from_did};
 pub use validate::{

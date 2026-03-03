@@ -25,7 +25,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ring::signature::UnparsedPublicKey;
 
 use super::types::{Prefix, Said};
-use super::{Event, IcpEvent, KeyState, SequenceParseError};
+use super::{Event, IcpEvent, IxnEvent, KeyState, RotEvent};
 
 /// Errors specific to KEL validation.
 ///
@@ -86,12 +86,6 @@ pub enum ValidationError {
     MalformedSequence { raw: String },
 }
 
-impl From<SequenceParseError> for ValidationError {
-    fn from(e: SequenceParseError) -> Self {
-        ValidationError::MalformedSequence { raw: e.raw }
-    }
-}
-
 /// Validate a KEL and return the resulting KeyState.
 ///
 /// This is a **pure function** and serves as the core entrypoint for
@@ -126,126 +120,124 @@ pub fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
         return Err(ValidationError::EmptyKel);
     }
 
-    // First event must be inception
     let Event::Icp(icp) = &events[0] else {
         return Err(ValidationError::NotInception);
     };
 
-    // Verify inception SAID
     verify_event_said(&events[0])?;
+    let mut state = validate_inception(icp)?;
 
-    // Verify inception signature (self-signed with declared key k[0])
+    for (idx, event) in events.iter().enumerate().skip(1) {
+        let expected_seq = idx as u64;
+        verify_event_said(event)?;
+        verify_sequence(event, expected_seq)?;
+        verify_chain_linkage(event, &state)?;
+
+        match event {
+            Event::Rot(rot) => validate_rotation(rot, event, expected_seq, &mut state)?,
+            Event::Ixn(ixn) => validate_interaction(ixn, event, expected_seq, &mut state)?,
+            Event::Icp(_) => return Err(ValidationError::MultipleInceptions),
+        }
+    }
+
+    Ok(state)
+}
+
+fn parse_threshold(raw: &str) -> Result<u64, ValidationError> {
+    raw.parse::<u64>()
+        .map_err(|_| ValidationError::MalformedSequence {
+            raw: raw.to_string(),
+        })
+}
+
+fn validate_inception(icp: &IcpEvent) -> Result<KeyState, ValidationError> {
     verify_event_signature(
-        &events[0],
+        &Event::Icp(icp.clone()),
         icp.k
             .first()
             .ok_or(ValidationError::SignatureFailed { sequence: 0 })?,
     )?;
 
-    // Initialize state from inception
-    let threshold = icp
-        .kt
-        .parse::<u64>()
-        .map_err(|_| ValidationError::MalformedSequence { raw: icp.kt.clone() })?;
-    let next_threshold = icp
-        .nt
-        .parse::<u64>()
-        .map_err(|_| ValidationError::MalformedSequence { raw: icp.nt.clone() })?;
+    let threshold = parse_threshold(&icp.kt)?;
+    let next_threshold = parse_threshold(&icp.nt)?;
 
-    let mut state = KeyState::from_inception(
+    Ok(KeyState::from_inception(
         icp.i.clone(),
         icp.k.clone(),
         icp.n.clone(),
         threshold,
         next_threshold,
         icp.d.clone(),
-    );
+    ))
+}
 
-    // Process remaining events
-    for (idx, event) in events.iter().enumerate().skip(1) {
-        let expected_seq = idx as u64;
+fn verify_sequence(event: &Event, expected: u64) -> Result<(), ValidationError> {
+    let actual = event.sequence().value();
+    if actual != expected {
+        return Err(ValidationError::InvalidSequence { expected, actual });
+    }
+    Ok(())
+}
 
-        // Verify SAID
-        verify_event_said(event)?;
+fn verify_chain_linkage(event: &Event, state: &KeyState) -> Result<(), ValidationError> {
+    let prev_said = event.previous().ok_or(ValidationError::NotInception)?;
+    if *prev_said != state.last_event_said {
+        return Err(ValidationError::BrokenChain {
+            sequence: event.sequence().value(),
+            referenced: prev_said.clone(),
+            actual: state.last_event_said.clone(),
+        });
+    }
+    Ok(())
+}
 
-        // Verify sequence
-        let actual_seq = event.sequence()?;
-        if actual_seq != expected_seq {
-            return Err(ValidationError::InvalidSequence {
-                expected: expected_seq,
-                actual: actual_seq,
-            });
-        }
+fn validate_rotation(
+    rot: &RotEvent,
+    event: &Event,
+    sequence: u64,
+    state: &mut KeyState,
+) -> Result<(), ValidationError> {
+    if !rot.k.is_empty() {
+        verify_event_signature(event, &rot.k[0])?;
+    }
 
-        // Verify chain linkage
-        let prev_said = event.previous().ok_or(ValidationError::NotInception)?;
-        if *prev_said != state.last_event_said {
-            return Err(ValidationError::BrokenChain {
-                sequence: actual_seq,
-                referenced: prev_said.clone(),
-                actual: state.last_event_said.clone(),
-            });
-        }
+    if !state.next_commitment.is_empty() && !rot.k.is_empty() {
+        let key_bytes = KeriPublicKey::parse(&rot.k[0])
+            .map(|k| k.as_bytes().to_vec())
+            .map_err(|_| ValidationError::CommitmentMismatch { sequence })?;
 
-        // Apply event to state (signature verification depends on event type)
-        match event {
-            Event::Rot(rot) => {
-                // Rotation is signed by the NEW key (the key that satisfied the commitment)
-                // We verify signature BEFORE applying the rotation to state
-                if !rot.k.is_empty() {
-                    verify_event_signature(event, &rot.k[0])?;
-                }
-                // Verify pre-rotation commitment
-                if !state.next_commitment.is_empty() && !rot.k.is_empty() {
-                    let key_str = &rot.k[0];
-                    let key_bytes = KeriPublicKey::parse(key_str)
-                        .map(|k| k.as_bytes().to_vec())
-                        .map_err(|_| ValidationError::CommitmentMismatch {
-                            sequence: actual_seq,
-                        })?;
-
-                    if !verify_commitment(&key_bytes, &state.next_commitment[0]) {
-                        return Err(ValidationError::CommitmentMismatch {
-                            sequence: actual_seq,
-                        });
-                    }
-                }
-
-                let threshold = rot.kt.parse::<u64>().map_err(|_| ValidationError::MalformedSequence {
-                    raw: rot.kt.clone(),
-                })?;
-                let next_threshold =
-                    rot.nt.parse::<u64>().map_err(|_| ValidationError::MalformedSequence {
-                        raw: rot.nt.clone(),
-                    })?;
-
-                state.apply_rotation(
-                    rot.k.clone(),
-                    rot.n.clone(),
-                    threshold,
-                    next_threshold,
-                    actual_seq,
-                    rot.d.clone(),
-                );
-            }
-            Event::Ixn(ixn) => {
-                // IXN is signed by the current key
-                let current_key = state
-                    .current_key()
-                    .ok_or(ValidationError::SignatureFailed {
-                        sequence: actual_seq,
-                    })?;
-                verify_event_signature(event, current_key)?;
-                state.apply_interaction(actual_seq, ixn.d.clone());
-            }
-            Event::Icp(_) => {
-                // Inception can only be first
-                return Err(ValidationError::MultipleInceptions);
-            }
+        if !verify_commitment(&key_bytes, &state.next_commitment[0]) {
+            return Err(ValidationError::CommitmentMismatch { sequence });
         }
     }
 
-    Ok(state)
+    let threshold = parse_threshold(&rot.kt)?;
+    let next_threshold = parse_threshold(&rot.nt)?;
+
+    state.apply_rotation(
+        rot.k.clone(),
+        rot.n.clone(),
+        threshold,
+        next_threshold,
+        sequence,
+        rot.d.clone(),
+    );
+
+    Ok(())
+}
+
+fn validate_interaction(
+    ixn: &IxnEvent,
+    event: &Event,
+    sequence: u64,
+    state: &mut KeyState,
+) -> Result<(), ValidationError> {
+    let current_key = state
+        .current_key()
+        .ok_or(ValidationError::SignatureFailed { sequence })?;
+    verify_event_signature(event, current_key)?;
+    state.apply_interaction(sequence, ixn.d.clone());
+    Ok(())
 }
 
 /// Replay a KEL to get the current KeyState.
@@ -295,7 +287,7 @@ pub fn verify_event_crypto(
             Ok(())
         }
         Event::Rot(rot) => {
-            let sequence = event.sequence()?;
+            let sequence = event.sequence().value();
             let state = current_state.ok_or(ValidationError::SignatureFailed { sequence })?;
 
             // Reject rotation on abandoned identity (empty next commitment)
@@ -322,7 +314,7 @@ pub fn verify_event_crypto(
             Ok(())
         }
         Event::Ixn(_) => {
-            let sequence = event.sequence()?;
+            let sequence = event.sequence().value();
             let state = current_state.ok_or(ValidationError::SignatureFailed { sequence })?;
 
             // Interaction: signed by current key from cached state
@@ -422,7 +414,7 @@ pub fn serialize_for_signing(event: &Event) -> Result<Vec<u8>, ValidationError> 
 
 /// Verify an event's signature using the specified key.
 fn verify_event_signature(event: &Event, signing_key: &str) -> Result<(), ValidationError> {
-    let sequence = event.sequence()?;
+    let sequence = event.sequence().value();
 
     // Decode the signature
     let sig_str = event.signature();
@@ -469,7 +461,7 @@ pub fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, ValidationError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keri::{IxnEvent, KERI_VERSION, Prefix, RotEvent, Said, Seal};
+    use crate::keri::{IxnEvent, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, Seal};
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use ring::rand::SystemRandom;
@@ -480,7 +472,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key.to_string()],
             nt: "1".to_string(),
@@ -503,7 +495,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),
@@ -536,7 +528,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: prefix.clone(),
-            s: seq.to_string(),
+            s: KeriSequence::new(seq),
             p: prev_said.clone(),
             a: vec![Seal::device_attestation("EAttest")],
             x: String::new(),
@@ -587,7 +579,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("ETest".to_string()),
             i: Prefix::new_unchecked("ETest".to_string()),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![],
             x: String::new(),
@@ -606,7 +598,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "5".to_string(), // Wrong! Should be 1
+            s: KeriSequence::new(5), // Wrong! Should be 1
             p: icp.d.clone(),
             a: vec![],
             x: String::new(),
@@ -641,7 +633,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::new_unchecked("EWrongPrevious".to_string()),
             a: vec![],
             x: String::new(),
@@ -750,7 +742,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),
@@ -916,7 +908,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: icp.d.clone(),
             kt: "1".to_string(),
             k: vec![new_key_encoded],
@@ -964,7 +956,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded.clone()],
             nt: "1".to_string(),
@@ -1003,7 +995,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: icp.d.clone(),
             kt: "1".to_string(),
             k: vec![wrong_key_encoded],
@@ -1048,7 +1040,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: Prefix::default(),
-            s: "0".to_string(),
+            s: KeriSequence::new(0),
             kt: "1".to_string(),
             k: vec![key_encoded],
             nt: "1".to_string(),
@@ -1087,7 +1079,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::default(),
             i: icp.i.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: icp.d.clone(),
             kt: "1".to_string(),
             k: vec![next_key_encoded],
@@ -1107,5 +1099,181 @@ mod tests {
 
         let result = verify_event_crypto(&Event::Rot(rot), Some(&state));
         assert!(result.is_ok());
+    }
+
+    // =========================================================================
+    // Extracted helper function tests
+    // =========================================================================
+
+    #[test]
+    fn parse_threshold_valid() {
+        assert_eq!(parse_threshold("1").unwrap(), 1);
+        assert_eq!(parse_threshold("42").unwrap(), 42);
+        assert_eq!(parse_threshold("0").unwrap(), 0);
+    }
+
+    #[test]
+    fn parse_threshold_invalid() {
+        assert!(matches!(
+            parse_threshold("abc"),
+            Err(ValidationError::MalformedSequence { .. })
+        ));
+        assert!(matches!(
+            parse_threshold(""),
+            Err(ValidationError::MalformedSequence { .. })
+        ));
+        assert!(matches!(
+            parse_threshold("-1"),
+            Err(ValidationError::MalformedSequence { .. })
+        ));
+    }
+
+    #[test]
+    fn validate_inception_success() {
+        let (icp, _keypair) = make_signed_icp();
+        let state = validate_inception(&icp).unwrap();
+        assert_eq!(state.prefix, icp.i);
+        assert_eq!(state.sequence, 0);
+        assert_eq!(state.last_event_said, icp.d);
+    }
+
+    #[test]
+    fn validate_inception_bad_signature() {
+        let (mut icp, _keypair) = make_signed_icp();
+        icp.x = URL_SAFE_NO_PAD.encode([0u8; 64]);
+        let result = validate_inception(&icp);
+        assert!(matches!(
+            result,
+            Err(ValidationError::SignatureFailed { sequence: 0 })
+        ));
+    }
+
+    #[test]
+    fn verify_sequence_correct() {
+        let (icp, keypair) = make_signed_icp();
+        let ixn = make_signed_ixn(&icp.i, &icp.d, 1, &keypair);
+        assert!(verify_sequence(&Event::Ixn(ixn), 1).is_ok());
+    }
+
+    #[test]
+    fn verify_sequence_mismatch() {
+        let (icp, keypair) = make_signed_icp();
+        let ixn = make_signed_ixn(&icp.i, &icp.d, 5, &keypair);
+        let result = verify_sequence(&Event::Ixn(ixn), 1);
+        assert!(matches!(
+            result,
+            Err(ValidationError::InvalidSequence {
+                expected: 1,
+                actual: 5
+            })
+        ));
+    }
+
+    #[test]
+    fn verify_chain_linkage_correct() {
+        let (icp, keypair) = make_signed_icp();
+        let ixn = make_signed_ixn(&icp.i, &icp.d, 1, &keypair);
+        let state = validate_inception(&icp).unwrap();
+        assert!(verify_chain_linkage(&Event::Ixn(ixn), &state).is_ok());
+    }
+
+    #[test]
+    fn verify_chain_linkage_broken() {
+        let (icp, keypair) = make_signed_icp();
+        let wrong_said = Said::new_unchecked("EWrongPrevious".to_string());
+        let ixn = make_signed_ixn(&icp.i, &wrong_said, 1, &keypair);
+        let state = validate_inception(&icp).unwrap();
+        let result = verify_chain_linkage(&Event::Ixn(ixn), &state);
+        assert!(matches!(result, Err(ValidationError::BrokenChain { .. })));
+    }
+
+    #[test]
+    fn validate_rotation_bad_commitment() {
+        use auths_core::crypto::said::compute_next_commitment;
+
+        let rng = SystemRandom::new();
+
+        let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+        let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+
+        let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
+        let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+
+        let icp = IcpEvent {
+            v: KERI_VERSION.to_string(),
+            d: Said::default(),
+            i: Prefix::default(),
+            s: KeriSequence::new(0),
+            kt: "1".to_string(),
+            k: vec![key_encoded],
+            nt: "1".to_string(),
+            n: vec![next_commitment],
+            bt: "0".to_string(),
+            b: vec![],
+            a: vec![],
+            x: String::new(),
+        };
+        let mut icp = finalize_icp_event(icp).unwrap();
+        let canonical = serialize_for_signing(&Event::Icp(icp.clone())).unwrap();
+        let sig = keypair.sign(&canonical);
+        icp.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+
+        let mut state = validate_inception(&icp).unwrap();
+
+        // Rotate with a WRONG key that doesn't match the commitment
+        let wrong_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let wrong_keypair = Ed25519KeyPair::from_pkcs8(wrong_pkcs8.as_ref()).unwrap();
+        let wrong_key_encoded = format!(
+            "D{}",
+            URL_SAFE_NO_PAD.encode(wrong_keypair.public_key().as_ref())
+        );
+        let wrong_commitment = compute_next_commitment(wrong_keypair.public_key().as_ref());
+
+        let mut rot = RotEvent {
+            v: KERI_VERSION.to_string(),
+            d: Said::default(),
+            i: icp.i.clone(),
+            s: KeriSequence::new(1),
+            p: icp.d.clone(),
+            kt: "1".to_string(),
+            k: vec![wrong_key_encoded],
+            nt: "1".to_string(),
+            n: vec![wrong_commitment],
+            bt: "0".to_string(),
+            b: vec![],
+            a: vec![],
+            x: String::new(),
+        };
+
+        let json = serde_json::to_vec(&Event::Rot(rot.clone())).unwrap();
+        rot.d = compute_said(&json);
+        let canonical = serialize_for_signing(&Event::Rot(rot.clone())).unwrap();
+        let sig = wrong_keypair.sign(&canonical);
+        rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+
+        let result = validate_rotation(&rot, &Event::Rot(rot.clone()), 1, &mut state);
+        assert!(matches!(
+            result,
+            Err(ValidationError::CommitmentMismatch { sequence: 1 })
+        ));
+    }
+
+    #[test]
+    fn validate_interaction_wrong_key() {
+        let (icp, _keypair) = make_signed_icp();
+        let mut state = validate_inception(&icp).unwrap();
+
+        let rng = SystemRandom::new();
+        let wrong_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let wrong_keypair = Ed25519KeyPair::from_pkcs8(wrong_pkcs8.as_ref()).unwrap();
+        let ixn = make_signed_ixn(&icp.i, &icp.d, 1, &wrong_keypair);
+
+        let result = validate_interaction(&ixn, &Event::Ixn(ixn.clone()), 1, &mut state);
+        assert!(matches!(
+            result,
+            Err(ValidationError::SignatureFailed { sequence: 1 })
+        ));
     }
 }

@@ -211,7 +211,11 @@ impl Layout {
     ///
     /// Usage: `refs/namespaces/did-keri-<prefix>/refs/rad/id`
     pub fn identity_rad_id_ref(&self, keri_prefix: &str) -> String {
-        format!("{}/{}", self.identity_namespace_prefix(keri_prefix), self.rad_id_ref)
+        format!(
+            "{}/{}",
+            self.identity_namespace_prefix(keri_prefix),
+            self.rad_id_ref
+        )
     }
 }
 
@@ -261,7 +265,8 @@ mod tests {
     fn identity_namespace_with_full_did() {
         let layout = Layout::radicle();
         assert_eq!(
-            layout.identity_namespace_prefix("did:keri:EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"),
+            layout
+                .identity_namespace_prefix("did:keri:EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"),
             "refs/namespaces/did-keri-EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148"
         );
     }

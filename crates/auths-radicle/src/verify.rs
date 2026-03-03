@@ -23,7 +23,8 @@ use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 
 use crate::bridge::{
-    BridgeError, EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult,
+    BridgeError, EnforcementMode, QuarantineReason, RadicleAuthsBridge, RejectReason, SignerInput,
+    VerifyReason, VerifyRequest, VerifyResult, WarnReason,
 };
 use crate::refs::Layout;
 
@@ -158,19 +159,22 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         {
             Ok(Some(did)) => did,
             Ok(None) => {
+                let qr = QuarantineReason::NoIdentityFound {
+                    detail: format!("device {device_did}"),
+                };
                 return Ok(match request.mode {
                     EnforcementMode::Observe => VerifyResult::Warn {
-                        reason: format!("no identity found for device {device_did}"),
+                        reason: WarnReason::ObserveModeQuarantine(qr),
                     },
                     EnforcementMode::Enforce => VerifyResult::Quarantine {
-                        reason: format!("no identity found for device {device_did}"),
+                        reason: qr,
                         identity_repo_rid: None,
                     },
                 });
             }
-            Err(BridgeError::IdentityCorrupt(msg)) => {
+            Err(BridgeError::IdentityCorrupt { reason, .. }) => {
                 return Ok(VerifyResult::Rejected {
-                    reason: format!("identity corrupt: {msg}"),
+                    reason: RejectReason::KelCorrupt { detail: reason },
                 });
             }
             Err(e) => return Err(e),
@@ -179,21 +183,21 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         // Step 2: Load key state
         let key_state = match self.storage.load_key_state(&identity_did) {
             Ok(ks) => ks,
-            Err(BridgeError::IdentityLoad(msg)) => {
+            Err(BridgeError::IdentityLoad { reason, .. }) => {
+                let qr = QuarantineReason::MissingIdentityRepo { detail: reason };
                 return Ok(match request.mode {
                     EnforcementMode::Observe => VerifyResult::Warn {
-                        reason: format!("identity repo missing: {msg}"),
+                        reason: WarnReason::ObserveModeQuarantine(qr),
                     },
                     EnforcementMode::Enforce => VerifyResult::Quarantine {
-                        reason: format!("identity repo missing: {msg}"),
-                        identity_repo_rid: Some(*request.repo_id), // Use the repo_id as context for fetch
+                        reason: qr,
+                        identity_repo_rid: Some(*request.repo_id),
                     },
                 });
             }
-            Err(BridgeError::IdentityCorrupt(msg)) => {
-                // Corrupt identity is always rejected, never downgraded
+            Err(BridgeError::IdentityCorrupt { reason, .. }) => {
                 return Ok(VerifyResult::Rejected {
-                    reason: format!("identity corrupt: {msg}"),
+                    reason: RejectReason::KelCorrupt { detail: reason },
                 });
             }
             Err(e) => return Err(e),
@@ -201,41 +205,44 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
 
         // Step 3: Binding integrity — min_kel_seq check BEFORE policy evaluation.
         // A KEL below the binding minimum is a tamper indicator: hard reject in ALL modes.
-        if let Some(min_seq) = request.min_kel_seq {
-            if key_state.sequence < min_seq {
-                return Ok(VerifyResult::Rejected {
-                    reason: format!(
-                        "KEL sequence {} below binding minimum {min_seq} for {identity_did}",
-                        key_state.sequence
-                    ),
-                });
-            }
+        if let Some(min_seq) = request.min_kel_seq
+            && key_state.sequence < min_seq
+        {
+            return Ok(VerifyResult::Rejected {
+                reason: RejectReason::InsufficientKelSequence {
+                    have: key_state.sequence,
+                    need: min_seq,
+                },
+            });
         }
 
         // Step 4: Staleness detection — gossip-informed tip comparison.
         if let Some(remote_tip) = request.known_remote_tip {
             match self.storage.local_identity_tip(&identity_did)? {
                 Some(local_tip) if local_tip != remote_tip => {
+                    let qr = QuarantineReason::StaleNode {
+                        detail: format!("{identity_did} local tip differs from gossip"),
+                    };
                     return Ok(match request.mode {
                         EnforcementMode::Observe => VerifyResult::Warn {
-                            reason: format!("identity repo {identity_did} has newer tip available"),
+                            reason: WarnReason::ObserveModeQuarantine(qr),
                         },
                         EnforcementMode::Enforce => VerifyResult::Quarantine {
-                            reason: format!(
-                                "identity repo {identity_did} is stale (local tip differs from gossip)"
-                            ),
+                            reason: qr,
                             identity_repo_rid: Some(*request.repo_id),
                         },
                     });
                 }
                 None => {
-                    // Identity repo missing but we have a remote tip — stale
+                    let qr = QuarantineReason::MissingIdentityRepo {
+                        detail: format!("{identity_did} not available locally"),
+                    };
                     return Ok(match request.mode {
                         EnforcementMode::Observe => VerifyResult::Warn {
-                            reason: format!("identity repo {identity_did} not available locally"),
+                            reason: WarnReason::ObserveModeQuarantine(qr),
                         },
                         EnforcementMode::Enforce => VerifyResult::Quarantine {
-                            reason: format!("identity repo {identity_did} not available locally"),
+                            reason: qr,
                             identity_repo_rid: Some(*request.repo_id),
                         },
                     });
@@ -247,11 +254,11 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         // Step 5: Load attestation
         let attestation = match self.storage.load_attestation(&device_did, &identity_did) {
             Ok(att) => att,
-            Err(BridgeError::AttestationLoad(msg)) => {
+            Err(BridgeError::AttestationLoad { reason, .. }) => {
                 return Ok(apply_mode(
                     request.mode,
                     VerifyResult::Rejected {
-                        reason: format!("attestation not found: {msg}"),
+                        reason: RejectReason::NoAttestation { detail: reason },
                     },
                 ));
             }
@@ -262,22 +269,22 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         let decision = evaluate_compiled(&attestation, &self.policy, request.now);
 
         // Step 7: Capability check
-        if let Some(required_cap) = request.required_capability {
-            if decision.outcome == Outcome::Allow {
-                let has_cap = attestation
-                    .capabilities
-                    .iter()
-                    .any(|c| c.to_string() == required_cap);
-                if !has_cap && !attestation.capabilities.is_empty() {
-                    return Ok(apply_mode(
-                        request.mode,
-                        VerifyResult::Rejected {
-                            reason: format!(
-                                "device lacks required capability '{required_cap}'"
-                            ),
+        if let Some(required_cap) = request.required_capability
+            && decision.outcome == Outcome::Allow
+        {
+            let has_cap = attestation
+                .capabilities
+                .iter()
+                .any(|c| c.to_string() == required_cap);
+            if !has_cap && !attestation.capabilities.is_empty() {
+                return Ok(apply_mode(
+                    request.mode,
+                    VerifyResult::Rejected {
+                        reason: RejectReason::MissingCapability {
+                            capability: required_cap.to_string(),
                         },
-                    ));
-                }
+                    },
+                ));
             }
         }
 
@@ -308,8 +315,12 @@ fn apply_mode(mode: EnforcementMode, result: VerifyResult) -> VerifyResult {
     match mode {
         EnforcementMode::Enforce => result,
         EnforcementMode::Observe => match result {
-            VerifyResult::Rejected { reason } => VerifyResult::Warn { reason },
-            VerifyResult::Quarantine { reason, .. } => VerifyResult::Warn { reason },
+            VerifyResult::Rejected { reason } => VerifyResult::Warn {
+                reason: WarnReason::ObserveModeRejection(reason),
+            },
+            VerifyResult::Quarantine { reason, .. } => VerifyResult::Warn {
+                reason: WarnReason::ObserveModeQuarantine(reason),
+            },
             other => other,
         },
     }
@@ -319,13 +330,19 @@ fn apply_mode(mode: EnforcementMode, result: VerifyResult) -> VerifyResult {
 pub fn decision_to_verify_result(decision: Decision) -> VerifyResult {
     match decision.outcome {
         Outcome::Allow => VerifyResult::Verified {
-            reason: decision.message,
+            reason: VerifyReason::PolicyAllowed {
+                message: decision.message,
+            },
         },
         Outcome::Deny => VerifyResult::Rejected {
-            reason: decision.message,
+            reason: RejectReason::PolicyDenied {
+                message: decision.message,
+            },
         },
         Outcome::Indeterminate => VerifyResult::Warn {
-            reason: decision.message,
+            reason: WarnReason::PolicyIndeterminate {
+                message: decision.message,
+            },
         },
     }
 }
@@ -388,7 +405,9 @@ pub fn verify_multiple_signers<B: RadicleAuthsBridge>(
                 let result = match bridge.verify_signer(&request) {
                     Ok(r) => r,
                     Err(_) => VerifyResult::Rejected {
-                        reason: format!("bridge error for device {device_did}"),
+                        reason: RejectReason::BridgeError {
+                            detail: format!("bridge error for device {device_did}"),
+                        },
                     },
                 };
 
@@ -430,11 +449,12 @@ pub fn meets_threshold(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
     use auths_verifier::IdentityDID;
     use auths_verifier::keri::{Prefix, Said};
+    use auths_verifier::types::DeviceDID as VerifierDeviceDID;
     use chrono::{DateTime, Utc};
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     struct MockStorage {
         key_states: HashMap<Did, KeyState>,
@@ -465,17 +485,13 @@ mod tests {
             identity_did: Did,
             attestation: Attestation,
         ) {
-            self.attestations.insert(
-                (device_did, identity_did),
-                attestation,
-            );
+            self.attestations
+                .insert((device_did, identity_did), attestation);
         }
 
         fn link_device_to_identity(&mut self, device_did: Did, identity_did: Did, repo_id: RepoId) {
-            self.device_to_identity.insert(
-                (device_did, repo_id),
-                identity_did,
-            );
+            self.device_to_identity
+                .insert((device_did, repo_id), identity_did);
         }
 
         fn set_identity_tip(&mut self, identity_did: Did, tip: [u8; 20]) {
@@ -492,7 +508,10 @@ mod tests {
             self.key_states
                 .get(identity_did)
                 .cloned()
-                .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
+                .ok_or_else(|| BridgeError::IdentityLoad {
+                    did: IdentityDID::new(identity_did.to_string()),
+                    reason: "Not found".into(),
+                })
         }
 
         fn load_attestation(
@@ -503,7 +522,10 @@ mod tests {
             self.attestations
                 .get(&(device_did.clone(), identity_did.clone()))
                 .cloned()
-                .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
+                .ok_or_else(|| BridgeError::AttestationLoad {
+                    device_did: VerifierDeviceDID::new(device_did.to_string()),
+                    reason: "Not found".into(),
+                })
         }
 
         fn find_identity_for_device(
@@ -545,16 +567,17 @@ mod tests {
         revoked_at: Option<DateTime<Utc>>,
         capabilities: Vec<String>,
     ) -> Attestation {
+        use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
         use auths_verifier::types::DeviceDID;
 
         Attestation {
             version: 1,
-            rid: "test".to_string(),
+            rid: ResourceId::new("test"),
             issuer: IdentityDID::new(issuer.to_string()),
             subject: DeviceDID::new(device_did.to_string()),
-            device_public_key: vec![0; 32],
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at: None,
             timestamp: None,
@@ -619,20 +642,24 @@ mod tests {
         let (storage, signer_key, _, repo_id) = setup_valid_signer();
         let bridge = DefaultBridge::with_storage(storage);
 
-        let alice_did: Did = "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi".parse().unwrap();
-        let bob_did: Did = "did:key:z6Mkt67GdsW7715MEfRuP4pSZxT3tgCHHnQqBjgJs2ovUoND".parse().unwrap();
+        let alice_did: Did = "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi"
+            .parse()
+            .unwrap();
+        let bob_did: Did = "did:key:z6Mkt67GdsW7715MEfRuP4pSZxT3tgCHHnQqBjgJs2ovUoND"
+            .parse()
+            .unwrap();
 
         let signers = vec![
             SignerInput::PreVerified {
                 did: alice_did,
                 result: VerifyResult::Verified {
-                    reason: "did:key delegate ok".into(),
+                    reason: VerifyReason::LegacyDidKey,
                 },
             },
             SignerInput::PreVerified {
                 did: bob_did,
                 result: VerifyResult::Verified {
-                    reason: "did:key delegate ok".into(),
+                    reason: VerifyReason::LegacyDidKey,
                 },
             },
             SignerInput::NeedsBridgeVerification(signer_key),

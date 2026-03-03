@@ -4,7 +4,7 @@ use auths_verifier::core::{Attestation, CanonicalAttestationData};
 use auths_verifier::error::AttestationError;
 use chrono::{DateTime, Duration, Utc};
 use log::debug;
-use ring::signature::{ED25519, ED25519_PUBLIC_KEY_LEN, UnparsedPublicKey};
+use ring::signature::{ED25519, UnparsedPublicKey};
 
 /// Maximum allowed time skew for attestation timestamps.
 const MAX_SKEW_SECS: i64 = 5 * 60;
@@ -21,30 +21,30 @@ pub fn verify_with_resolver(
             "Attestation revoked".to_string(),
         ));
     }
-    if let Some(exp) = att.expires_at {
-        if now > exp {
-            return Err(AttestationError::VerificationError(format!(
-                "Attestation expired on {}",
-                exp.to_rfc3339()
-            )));
-        }
+    if let Some(exp) = att.expires_at
+        && now > exp
+    {
+        return Err(AttestationError::VerificationError(format!(
+            "Attestation expired on {}",
+            exp.to_rfc3339()
+        )));
     }
     // Only reject timestamps in the future (clock drift protection)
     // Past timestamps are valid - attestations stored in Git are verified days/months later
-    if let Some(ts) = att.timestamp {
-        if ts > now + Duration::seconds(MAX_SKEW_SECS) {
-            return Err(AttestationError::VerificationError(format!(
-                "Attestation timestamp {} is in the future",
-                ts.to_rfc3339()
-            )));
-        }
+    if let Some(ts) = att.timestamp
+        && ts > now + Duration::seconds(MAX_SKEW_SECS)
+    {
+        return Err(AttestationError::VerificationError(format!(
+            "Attestation timestamp {} is in the future",
+            ts.to_rfc3339()
+        )));
     }
 
     // 2. Resolve issuer's public key
     let resolved = resolver.resolve(&att.issuer).map_err(|e| {
         AttestationError::DidResolutionError(format!("Resolver error for {}: {}", att.issuer, e))
     })?;
-    let issuer_pk_bytes = resolved.public_key;
+    let issuer_pk_bytes = *resolved.public_key();
 
     // 3. Reconstruct canonical data (MUST match create_with_signatures, includes org fields)
     let data_to_canonicalize = CanonicalAttestationData {
@@ -52,13 +52,13 @@ pub fn verify_with_resolver(
         rid: &att.rid,
         issuer: &att.issuer,
         subject: &att.subject,
-        device_public_key: &att.device_public_key,
+        device_public_key: att.device_public_key.as_bytes(),
         payload: &att.payload,
         timestamp: &att.timestamp,
         expires_at: &att.expires_at,
         revoked_at: &att.revoked_at,
         note: &att.note,
-        role: att.role.as_deref(),
+        role: att.role.as_ref().map(|r| r.as_str()),
         capabilities: if att.capabilities.is_empty() {
             None
         } else {
@@ -82,7 +82,7 @@ pub fn verify_with_resolver(
     // 4. Verify issuer signature
     let issuer_public_key_ring = UnparsedPublicKey::new(&ED25519, &issuer_pk_bytes);
     issuer_public_key_ring
-        .verify(data_to_verify, &att.identity_signature)
+        .verify(data_to_verify, att.identity_signature.as_bytes())
         .map_err(|e| {
             AttestationError::VerificationError(format!(
                 "Issuer signature verification failed: {}",
@@ -95,15 +95,9 @@ pub fn verify_with_resolver(
     );
 
     // 5. Verify subject (device) signature using stored public key
-    if att.device_public_key.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::VerificationError(format!(
-            "Stored device public key has invalid length: {}",
-            att.device_public_key.len()
-        )));
-    }
-    let device_public_key_ring = UnparsedPublicKey::new(&ED25519, &att.device_public_key);
+    let device_public_key_ring = UnparsedPublicKey::new(&ED25519, att.device_public_key.as_bytes());
     device_public_key_ring
-        .verify(data_to_verify, &att.device_signature)
+        .verify(data_to_verify, att.device_signature.as_bytes())
         .map_err(|e| {
             AttestationError::VerificationError(format!(
                 "Device signature verification failed: {}",

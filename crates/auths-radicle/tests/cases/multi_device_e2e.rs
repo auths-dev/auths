@@ -1,7 +1,9 @@
-use std::str::FromStr;
 use chrono::Utc;
+use std::str::FromStr;
 
-use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyRequest, VerifyResult};
+use auths_radicle::bridge::{
+    EnforcementMode, RadicleAuthsBridge, SignerInput, VerifyReason, VerifyRequest, VerifyResult,
+};
 use auths_radicle::verify::{DefaultBridge, IdentityDid, meets_threshold, verify_multiple_signers};
 use radicle_core::{Did, RepoId};
 
@@ -20,8 +22,22 @@ fn multi_device_authorized_group() {
     storage.add_identity(controller_did.clone(), make_key_state("EAlice", 1));
 
     // Register both devices under Alice's identity
-    register_device(&mut storage, &alice_laptop, &controller_did, &repo_id, false, vec![]);
-    register_device(&mut storage, &alice_phone, &controller_did, &repo_id, false, vec![]);
+    register_device(
+        &mut storage,
+        &alice_laptop,
+        &controller_did,
+        &repo_id,
+        false,
+        vec![],
+    );
+    register_device(
+        &mut storage,
+        &alice_phone,
+        &controller_did,
+        &repo_id,
+        false,
+        vec![],
+    );
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -85,9 +101,30 @@ fn mixed_human_and_node_group() {
     storage.add_identity(alice_did.clone(), make_key_state("EAlice", 1));
     storage.add_identity(bob_did.clone(), make_key_state("EBob", 1));
 
-    register_device(&mut storage, &alice_phone, &alice_did, &repo_id, false, vec![]);
-    register_device(&mut storage, &alice_laptop, &alice_did, &repo_id, false, vec![]);
-    register_device(&mut storage, &bob_desktop, &bob_did, &repo_id, false, vec![]);
+    register_device(
+        &mut storage,
+        &alice_phone,
+        &alice_did,
+        &repo_id,
+        false,
+        vec![],
+    );
+    register_device(
+        &mut storage,
+        &alice_laptop,
+        &alice_did,
+        &repo_id,
+        false,
+        vec![],
+    );
+    register_device(
+        &mut storage,
+        &bob_desktop,
+        &bob_did,
+        &repo_id,
+        false,
+        vec![],
+    );
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -124,19 +161,37 @@ fn mixed_keri_and_legacy_delegates() {
     let bob_desktop = DeviceFixture::new(2);
 
     storage.add_identity(controller_did.clone(), make_key_state("EHuman", 1));
-    register_device(&mut storage, &alice_laptop, &controller_did, &repo_id, false, vec![]);
-    register_device(&mut storage, &bob_desktop, &controller_did, &repo_id, false, vec![]);
+    register_device(
+        &mut storage,
+        &alice_laptop,
+        &controller_did,
+        &repo_id,
+        false,
+        vec![],
+    );
+    register_device(
+        &mut storage,
+        &bob_desktop,
+        &controller_did,
+        &repo_id,
+        false,
+        vec![],
+    );
 
     let bridge = DefaultBridge::with_storage(storage);
 
     // Pre-verified legacy node (not using KERI)
-    let legacy_node_did: Did = "did:key:z6Mkt67GdsW7715MEfRuP4pSZxT3tgCHHnQqBjgJs2ovUoND".parse().unwrap();
+    let legacy_node_did: Did = "did:key:z6Mkt67GdsW7715MEfRuP4pSZxT3tgCHHnQqBjgJs2ovUoND"
+        .parse()
+        .unwrap();
 
     // Alice and Bob both signed (same identity), PLUS a legacy node signed.
     let signers = vec![
         SignerInput::PreVerified {
             did: legacy_node_did.clone(),
-            result: VerifyResult::Verified { reason: "ok".into() },
+            result: VerifyResult::Verified {
+                reason: VerifyReason::LegacyDidKey,
+            },
         },
         SignerInput::NeedsBridgeVerification(alice_laptop.key),
         SignerInput::NeedsBridgeVerification(bob_desktop.key),
@@ -172,8 +227,22 @@ fn find_identity_for_device() {
     let device_b = DeviceFixture::new(2);
     let unregistered = DeviceFixture::new(3);
 
-    register_device(&mut storage, &device_a, &controller_did, &repo_id, false, vec![]);
-    register_device(&mut storage, &device_b, &controller_did, &repo_id, false, vec![]);
+    register_device(
+        &mut storage,
+        &device_a,
+        &controller_did,
+        &repo_id,
+        false,
+        vec![],
+    );
+    register_device(
+        &mut storage,
+        &device_b,
+        &controller_did,
+        &repo_id,
+        false,
+        vec![],
+    );
 
     let bridge = DefaultBridge::with_storage(storage);
 

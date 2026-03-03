@@ -1,8 +1,8 @@
 use crate::error::Result;
 use crate::schema;
 use chrono::{DateTime, Utc};
-use sqlite::Connection;
 use serde::{Deserialize, Serialize};
+use sqlite::Connection;
 use std::path::Path;
 
 /// Indexed metadata for an attestation stored in the SQLite index.
@@ -195,30 +195,50 @@ impl AttestationIndex {
     pub fn stats(&self) -> Result<IndexStats> {
         let total = self.count()?;
 
-        let mut stmt_active = self.conn.prepare("SELECT COUNT(*) FROM attestations WHERE revoked_at IS NULL")?;
+        let mut stmt_active = self
+            .conn
+            .prepare("SELECT COUNT(*) FROM attestations WHERE revoked_at IS NULL")?;
         let active = if let Ok(sqlite::State::Row) = stmt_active.next() {
             stmt_active.read::<i64, _>(0)?
-        } else { 0 };
+        } else {
+            0
+        };
 
-        let mut stmt_revoked = self.conn.prepare("SELECT COUNT(*) FROM attestations WHERE revoked_at IS NOT NULL")?;
+        let mut stmt_revoked = self
+            .conn
+            .prepare("SELECT COUNT(*) FROM attestations WHERE revoked_at IS NOT NULL")?;
         let revoked = if let Ok(sqlite::State::Row) = stmt_revoked.next() {
             stmt_revoked.read::<i64, _>(0)?
-        } else { 0 };
+        } else {
+            0
+        };
 
-        let mut stmt_expiry = self.conn.prepare("SELECT COUNT(*) FROM attestations WHERE expires_at IS NOT NULL")?;
+        let mut stmt_expiry = self
+            .conn
+            .prepare("SELECT COUNT(*) FROM attestations WHERE expires_at IS NOT NULL")?;
         let with_expiry = if let Ok(sqlite::State::Row) = stmt_expiry.next() {
             stmt_expiry.read::<i64, _>(0)?
-        } else { 0 };
+        } else {
+            0
+        };
 
-        let mut stmt_devices = self.conn.prepare("SELECT COUNT(DISTINCT device_did) FROM attestations")?;
+        let mut stmt_devices = self
+            .conn
+            .prepare("SELECT COUNT(DISTINCT device_did) FROM attestations")?;
         let unique_devices = if let Ok(sqlite::State::Row) = stmt_devices.next() {
             stmt_devices.read::<i64, _>(0)?
-        } else { 0 };
+        } else {
+            0
+        };
 
-        let mut stmt_issuers = self.conn.prepare("SELECT COUNT(DISTINCT issuer_did) FROM attestations")?;
+        let mut stmt_issuers = self
+            .conn
+            .prepare("SELECT COUNT(DISTINCT issuer_did) FROM attestations")?;
         let unique_issuers = if let Ok(sqlite::State::Row) = stmt_issuers.next() {
             stmt_issuers.read::<i64, _>(0)?
-        } else { 0 };
+        } else {
+            0
+        };
 
         Ok(IndexStats {
             total_attestations: total,
@@ -401,7 +421,9 @@ impl AttestationIndex {
 
     /// Returns the count of org members for a given org in the index.
     pub fn count_org_members(&self, org_prefix: &str) -> Result<usize> {
-        let mut stmt = self.conn.prepare("SELECT COUNT(*) FROM org_members WHERE org_prefix = ?")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT COUNT(*) FROM org_members WHERE org_prefix = ?")?;
         stmt.bind((1, org_prefix))?;
         if let Ok(sqlite::State::Row) = stmt.next() {
             let count: i64 = stmt.read(0)?;

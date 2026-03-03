@@ -78,7 +78,7 @@ impl IndexedAttestationStorage {
     /// Updates the index with a new or modified attestation.
     pub fn update_index(&self, att: &Attestation, git_ref: &str, commit_oid: &str) -> Result<()> {
         let indexed = IndexedAttestation {
-            rid: att.rid.clone(),
+            rid: att.rid.to_string(),
             issuer_did: att.issuer.to_string(),
             device_did: att.subject.to_string(),
             git_ref: git_ref.to_string(),

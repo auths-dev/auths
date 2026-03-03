@@ -1,9 +1,9 @@
 use auths_core::crypto::said::compute_next_commitment;
-use auths_id::keri::event::{Event, IcpEvent};
+use auths_id::keri::event::{Event, IcpEvent, KeriSequence};
 use auths_id::keri::types::{Prefix, Said};
 use auths_id::keri::{KERI_VERSION, finalize_icp_event, serialize_for_signing};
 use auths_verifier::IdentityDID;
-use auths_verifier::core::Attestation;
+use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::types::DeviceDID;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -45,7 +45,7 @@ pub fn test_inception_event(key_seed: &str) -> Event {
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: Prefix::default(),
-        s: "0".to_string(),
+        s: KeriSequence::new(0),
         kt: "1".to_string(),
         k: vec![key_encoded],
         nt: "1".to_string(),
@@ -80,12 +80,12 @@ pub fn test_inception_event(key_seed: &str) -> Event {
 pub fn test_attestation(device_did: &DeviceDID, issuer: &str) -> Attestation {
     Attestation {
         version: 1,
-        rid: "test-rid".to_string(),
+        rid: ResourceId::new("test-rid"),
         issuer: IdentityDID::new(issuer),
         subject: device_did.clone(),
-        device_public_key: vec![0u8; 32],
-        identity_signature: vec![],
-        device_signature: vec![0u8; 64],
+        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at: None,
         expires_at: None,
         timestamp: None,

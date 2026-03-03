@@ -1,6 +1,7 @@
 //! DID resolution for did:key and did:keri.
 
 use auths_crypto::KeriPublicKey;
+use auths_verifier::core::Ed25519PublicKey;
 use git2::Repository;
 use std::path::Path;
 
@@ -10,7 +11,7 @@ use crate::keri::types::Prefix;
 use crate::keri::{DidKeriResolution, resolve_did_keri};
 use crate::storage::registry::RegistryBackend;
 
-pub use auths_core::signing::{DidMethod, DidResolver, DidResolverError, ResolvedDid};
+pub use auths_core::signing::{DidResolver, DidResolverError, ResolvedDid};
 
 /// Default resolver handling did:key and did:keri.
 pub struct DefaultDidResolver {
@@ -32,10 +33,9 @@ impl DefaultDidResolver {
 
     fn resolve_did_key(&self, did: &str) -> Result<ResolvedDid, DidResolverError> {
         let public_key = did_key_to_ed25519(did)?;
-        Ok(ResolvedDid {
+        Ok(ResolvedDid::Key {
             did: did.to_string(),
             public_key,
-            method: DidMethod::Key,
         })
     }
 
@@ -50,13 +50,13 @@ impl DefaultDidResolver {
         let resolution: DidKeriResolution = resolve_did_keri(&repo, did)
             .map_err(|e| DidResolverError::Resolution(e.to_string()))?;
 
-        Ok(ResolvedDid {
+        let public_key = Ed25519PublicKey::try_from_slice(&resolution.public_key)
+            .map_err(|e| DidResolverError::DidKeyDecodingFailed(e.to_string()))?;
+        Ok(ResolvedDid::Keri {
             did: did.to_string(),
-            public_key: resolution.public_key,
-            method: DidMethod::Keri {
-                sequence: resolution.sequence,
-                can_rotate: resolution.can_rotate,
-            },
+            public_key,
+            sequence: resolution.sequence,
+            can_rotate: resolution.can_rotate,
         })
     }
 }
@@ -122,22 +122,19 @@ impl DidResolver for RegistryDidResolver {
                 DidResolverError::Repository("No current key in key state".into())
             })?;
             let public_key = KeriPublicKey::parse(key_encoded)
-                .map(|k| k.as_bytes().to_vec())
+                .map(|k| Ed25519PublicKey::from_bytes(*k.as_bytes()))
                 .map_err(|e| DidResolverError::DidKeyDecodingFailed(e.to_string()))?;
-            Ok(ResolvedDid {
+            Ok(ResolvedDid::Keri {
                 did: did.to_string(),
                 public_key,
-                method: DidMethod::Keri {
-                    sequence: key_state.sequence,
-                    can_rotate: key_state.can_rotate(),
-                },
+                sequence: key_state.sequence,
+                can_rotate: key_state.can_rotate(),
             })
         } else if did.starts_with("did:key:") {
             let public_key = did_key_to_ed25519(did)?;
-            Ok(ResolvedDid {
+            Ok(ResolvedDid::Key {
                 did: did.to_string(),
                 public_key,
-                method: DidMethod::Key,
             })
         } else {
             let method = did.split(':').nth(1).unwrap_or("unknown");
@@ -146,10 +143,10 @@ impl DidResolver for RegistryDidResolver {
     }
 }
 
-/// Parse a did:key to extract the Ed25519 public key bytes.
-pub fn did_key_to_ed25519(did: &str) -> Result<Vec<u8>, DidResolverError> {
+/// Parse a did:key to extract the Ed25519 public key.
+pub fn did_key_to_ed25519(did: &str) -> Result<Ed25519PublicKey, DidResolverError> {
     auths_crypto::did_key_to_ed25519(did)
-        .map(|k| k.to_vec())
+        .map(Ed25519PublicKey::from_bytes)
         .map_err(|e| DidResolverError::InvalidDidKey(e.to_string()))
 }
 
@@ -183,7 +180,7 @@ mod tests {
         let key_bytes = [42u8; 32];
         let did = ed25519_to_did_key(&key_bytes);
         let decoded = did_key_to_ed25519(&did).unwrap();
-        assert_eq!(decoded, key_bytes);
+        assert_eq!(*decoded.as_bytes(), key_bytes);
     }
 
     #[test]
@@ -194,8 +191,8 @@ mod tests {
         let did = ed25519_to_did_key(&key);
 
         let resolved = resolver.resolve(&did).unwrap();
-        assert_eq!(resolved.public_key, key.to_vec());
-        assert_eq!(resolved.method, DidMethod::Key);
+        assert_eq!(*resolved.public_key().as_bytes(), key);
+        assert!(resolved.is_key());
     }
 
     #[test]
@@ -208,12 +205,16 @@ mod tests {
         let resolver = DefaultDidResolver::with_repo(dir.path());
         let resolved = resolver.resolve(&did).unwrap();
 
-        assert_eq!(resolved.public_key, init.current_public_key);
+        assert_eq!(
+            resolved.public_key().as_bytes().as_slice(),
+            init.current_public_key.as_slice()
+        );
         assert!(matches!(
-            resolved.method,
-            DidMethod::Keri {
+            resolved,
+            ResolvedDid::Keri {
                 sequence: 0,
-                can_rotate: true
+                can_rotate: true,
+                ..
             }
         ));
     }

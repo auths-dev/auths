@@ -5,8 +5,28 @@
 //! KEL and external artifacts like attestations.
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use super::types::Said;
+
+/// Type of data anchored by a seal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SealType {
+    DeviceAttestation,
+    Revocation,
+    Delegation,
+}
+
+impl fmt::Display for SealType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SealType::DeviceAttestation => write!(f, "device-attestation"),
+            SealType::Revocation => write!(f, "revocation"),
+            SealType::Delegation => write!(f, "delegation"),
+        }
+    }
+}
 
 /// A seal anchors external data in a KERI event.
 ///
@@ -19,15 +39,15 @@ pub struct Seal {
 
     /// Type of anchored data
     #[serde(rename = "type")]
-    pub seal_type: String,
+    pub seal_type: SealType,
 }
 
 impl Seal {
     /// Create a new seal with the given digest and type.
-    pub fn new(digest: impl Into<String>, seal_type: impl Into<String>) -> Self {
+    pub fn new(digest: impl Into<String>, seal_type: SealType) -> Self {
         Self {
             d: Said::new_unchecked(digest.into()),
-            seal_type: seal_type.into(),
+            seal_type,
         }
     }
 
@@ -36,17 +56,17 @@ impl Seal {
     /// # Arguments
     /// * `attestation_digest` - The SAID of the attestation JSON
     pub fn device_attestation(attestation_digest: impl Into<String>) -> Self {
-        Self::new(attestation_digest, "device-attestation")
+        Self::new(attestation_digest, SealType::DeviceAttestation)
     }
 
     /// Create a seal for a revocation.
     pub fn revocation(revocation_digest: impl Into<String>) -> Self {
-        Self::new(revocation_digest, "revocation")
+        Self::new(revocation_digest, SealType::Revocation)
     }
 
     /// Create a seal for capability delegation.
     pub fn delegation(delegation_digest: impl Into<String>) -> Self {
-        Self::new(delegation_digest, "delegation")
+        Self::new(delegation_digest, SealType::Delegation)
     }
 }
 
@@ -57,15 +77,15 @@ mod tests {
     #[test]
     fn seal_creates_device_attestation() {
         let seal = Seal::device_attestation("EDigest123");
-        assert_eq!(seal.seal_type, "device-attestation");
+        assert_eq!(seal.seal_type, SealType::DeviceAttestation);
         assert_eq!(seal.d, "EDigest123");
     }
 
     #[test]
     fn seal_serializes_with_type_field() {
-        let seal = Seal::new("ETest", "custom-type");
+        let seal = Seal::new("ETest", SealType::Revocation);
         let json = serde_json::to_string(&seal).unwrap();
-        assert!(json.contains(r#""type":"custom-type""#));
+        assert!(json.contains(r#""type":"revocation""#));
         assert!(json.contains(r#""d":"ETest""#));
     }
 
@@ -74,7 +94,7 @@ mod tests {
         let json = r#"{"d":"EDigest","type":"device-attestation"}"#;
         let seal: Seal = serde_json::from_str(json).unwrap();
         assert_eq!(seal.d, "EDigest");
-        assert_eq!(seal.seal_type, "device-attestation");
+        assert_eq!(seal.seal_type, SealType::DeviceAttestation);
     }
 
     #[test]

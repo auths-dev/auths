@@ -18,8 +18,8 @@ use crate::identity::helpers::{
     encode_seed_as_pkcs8, extract_seed_bytes, load_keypair_from_der_or_seed,
 };
 use crate::keri::{
-    Event, GitKel, KERI_VERSION, Prefix, RotEvent, Said, rotate_keys, serialize_for_signing,
-    validate_kel,
+    Event, GitKel, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, rotate_keys,
+    serialize_for_signing, validate_kel,
 };
 use std::sync::Arc;
 
@@ -277,7 +277,10 @@ pub fn rotate_registry_identity(
     let new_next_commitment = compute_next_commitment(new_next_keypair.public_key().as_ref());
 
     let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.clone()),
+        Some(cfg) if cfg.is_enabled() => (
+            cfg.threshold.to_string(),
+            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+        ),
         _ => ("0".to_string(), vec![]),
     };
 
@@ -286,7 +289,7 @@ pub fn rotate_registry_identity(
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: prefix.clone(),
-        s: new_sequence.to_string(),
+        s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
         kt: "1".to_string(),
         k: vec![new_current_pub_encoded],

@@ -39,10 +39,12 @@
 use auths_core::witness::{EventHash, WitnessProvider};
 use auths_policy::{CanonicalCapability, evaluate_strict};
 use auths_verifier::core::Attestation;
+use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
 use crate::keri::KeyState;
 use crate::keri::event::EventReceipts;
+use crate::keri::types::Said;
 use crate::storage::receipts::{check_receipt_consistency, verify_receipt_signature};
 
 // Re-export policy types for convenience
@@ -88,7 +90,7 @@ pub fn context_from_attestation(att: &Attestation, now: DateTime<Utc>) -> EvalCo
     }
 
     if let Some(ref role) = att.role {
-        ctx = ctx.role(role.clone());
+        ctx = ctx.role(role.to_string());
     }
 
     if let Some(ref delegated_by) = att.delegated_by {
@@ -249,9 +251,9 @@ pub enum ReceiptVerificationResult {
     /// Not enough receipts to meet threshold
     InsufficientReceipts { required: usize, got: usize },
     /// Duplicity detected (conflicting SAIDs)
-    Duplicity { event_a: String, event_b: String },
+    Duplicity { event_a: Said, event_b: Said },
     /// Invalid receipt signature
-    InvalidSignature { witness_did: String },
+    InvalidSignature { witness_did: DeviceDID },
 }
 
 /// Witness public key resolver.
@@ -300,10 +302,9 @@ pub fn verify_receipts(
 
     // 2. Check for duplicity (all receipts should have same SAID)
     if let Err(e) = check_receipt_consistency(&receipts.receipts) {
-        // Parse the error message to extract SAIDs (simplified)
         return ReceiptVerificationResult::Duplicity {
-            event_a: receipts.event_said.to_string(),
-            event_b: format!("conflicting: {}", e),
+            event_a: receipts.event_said.clone(),
+            event_b: Said::new_unchecked(format!("conflicting: {}", e)),
         };
     }
 
@@ -315,12 +316,12 @@ pub fn verify_receipts(
                     Ok(true) => continue,
                     Ok(false) => {
                         return ReceiptVerificationResult::InvalidSignature {
-                            witness_did: receipt.i.clone(),
+                            witness_did: DeviceDID::new(&receipt.i),
                         };
                     }
                     Err(_) => {
                         return ReceiptVerificationResult::InvalidSignature {
-                            witness_did: receipt.i.clone(),
+                            witness_did: DeviceDID::new(&receipt.i),
                         };
                     }
                 }
@@ -404,7 +405,7 @@ mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;
     use auths_core::witness::NoOpWitness;
-    use auths_verifier::core::Capability;
+    use auths_verifier::core::{Capability, Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::keri::{Prefix, Said};
     use auths_verifier::types::DeviceDID;
     use chrono::Duration;
@@ -445,12 +446,12 @@ mod tests {
     ) -> Attestation {
         Attestation {
             version: 1,
-            rid: "test".to_string(),
+            rid: ResourceId::new("test"),
             issuer: IdentityDID::new(issuer),
             subject: DeviceDID::new("did:key:subject"),
-            device_public_key: vec![0; 32],
-            identity_signature: vec![0; 64],
-            device_signature: vec![0; 64],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at,
             timestamp: None,
@@ -492,11 +493,11 @@ mod tests {
     #[test]
     fn context_from_attestation_with_role() {
         let mut att = make_attestation("did:keri:ETest", None, None);
-        att.role = Some("maintainer".to_string());
+        att.role = Some(auths_verifier::core::Role::Member);
         let now = Utc::now();
         let ctx = context_from_attestation(&att, now);
 
-        assert_eq!(ctx.role.as_deref(), Some("maintainer"));
+        assert_eq!(ctx.role.as_deref(), Some("member"));
     }
 
     #[test]

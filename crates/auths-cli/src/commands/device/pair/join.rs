@@ -73,7 +73,7 @@ pub(crate) async fn handle_join(code: &str, registry: &str) -> Result<()> {
         .token
         .ok_or_else(|| anyhow::anyhow!("Session has no token data"))?;
 
-    let initiator_pubkey = token_data.ephemeral_pubkey.clone();
+    let initiator_pubkey = token_data.ephemeral_pubkey.to_string();
     let controller_did = token_data.controller_did.clone();
 
     println!();

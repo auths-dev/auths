@@ -18,7 +18,7 @@ use auths_id::identity::helpers::{
     ManagedIdentity, encode_seed_as_pkcs8, extract_seed_bytes, load_keypair_from_der_or_seed,
 };
 use auths_id::keri::{
-    Event, KERI_VERSION, KeyState, Prefix, RotEvent, Said, serialize_for_signing,
+    Event, KERI_VERSION, KeriSequence, KeyState, Prefix, RotEvent, Said, serialize_for_signing,
 };
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::witness_config::WitnessConfig;
@@ -62,7 +62,10 @@ pub fn compute_rotation_event(
     let new_next_commitment = compute_next_commitment(new_next_keypair.public_key().as_ref());
 
     let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (cfg.threshold.to_string(), cfg.witness_urls.clone()),
+        Some(cfg) if cfg.is_enabled() => (
+            cfg.threshold.to_string(),
+            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+        ),
         _ => ("0".to_string(), vec![]),
     };
 
@@ -71,7 +74,7 @@ pub fn compute_rotation_event(
         v: KERI_VERSION.to_string(),
         d: Said::default(),
         i: prefix.clone(),
-        s: new_sequence.to_string(),
+        s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
         kt: "1".to_string(),
         k: vec![new_current_pub_encoded],
@@ -236,7 +239,7 @@ pub fn rotate_identity(
         .map_err(|e| RotationError::RotationFailed(e.to_string()))?;
 
     Ok(RotationResult {
-        controller_did: identity.controller_did.to_string(),
+        controller_did: identity.controller_did,
         new_key_fingerprint: hex::encode(&new_pubkey[..8]),
         previous_key_fingerprint,
     })
@@ -649,7 +652,7 @@ mod tests {
 
         let (rot, new_next_pkcs8) = generate_rotation_keys(&identity, &state, &decrypted).unwrap();
 
-        assert_eq!(rot.s, (state.sequence + 1).to_string());
+        assert_eq!(rot.s, KeriSequence::new(state.sequence + 1));
         assert_eq!(rot.i, prefix);
         assert!(!rot.d.is_empty());
         assert!(!rot.x.is_empty());
@@ -754,7 +757,7 @@ mod tests {
             v: KERI_VERSION.to_string(),
             d: Said::new_unchecked("E_dummy".to_string()),
             i: prefix.clone(),
-            s: "1".to_string(),
+            s: KeriSequence::new(1),
             p: Said::default(),
             kt: "1".to_string(),
             k: vec![],

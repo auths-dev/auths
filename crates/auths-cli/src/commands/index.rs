@@ -49,10 +49,10 @@ pub fn handle_index(
 
     let mut config = StorageLayoutConfig::default();
     if let Some(prefix) = attestation_prefix_override {
-        config.device_attestation_prefix = prefix;
+        config.device_attestation_prefix = prefix.into();
     }
     if let Some(blob_name) = attestation_blob_name_override {
-        config.attestation_blob_name = blob_name;
+        config.attestation_blob_name = blob_name.into();
     }
 
     match cmd.command {

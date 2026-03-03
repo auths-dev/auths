@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::sync::Mutex;
 
+use auths_core::storage::keychain::IdentityDID;
 use auths_id::keri::event::Event;
 use auths_id::keri::state::KeyState;
 use auths_id::storage::registry::backend::{RegistryBackend, RegistryError};
@@ -52,7 +53,7 @@ impl Default for FakeRegistryBackend {
 fn derive_key_state(prefix: &Prefix, events: &[Event]) -> Option<KeyState> {
     let mut state: Option<KeyState> = None;
     for event in events {
-        let seq = event.sequence().ok()?;
+        let seq = event.sequence().value();
         let said = event.said().clone();
         match event {
             Event::Icp(e) => {
@@ -82,16 +83,14 @@ fn derive_key_state(prefix: &Prefix, events: &[Event]) -> Option<KeyState> {
 
 impl RegistryBackend for FakeRegistryBackend {
     fn append_event(&self, prefix: &Prefix, event: &Event) -> Result<(), RegistryError> {
-        let seq = event.sequence().map_err(|e| RegistryError::InvalidEvent {
-            reason: e.to_string(),
-        })?;
+        let seq = event.sequence().value();
 
         let mut state = self.state.lock().unwrap();
         let key = prefix.as_str().to_string();
         let events = state.events.entry(key.clone()).or_default();
 
         // Append-only: refuse overwrites
-        if events.iter().any(|e| e.sequence().ok() == Some(seq)) {
+        if events.iter().any(|e| e.sequence().value() == seq) {
             return Err(RegistryError::EventExists { prefix: key, seq });
         }
 
@@ -124,7 +123,7 @@ impl RegistryBackend for FakeRegistryBackend {
             .ok_or_else(|| RegistryError::identity_not_found(prefix))?;
         events
             .iter()
-            .find(|e| e.sequence().ok() == Some(seq))
+            .find(|e| e.sequence().value() == seq)
             .cloned()
             .ok_or_else(|| RegistryError::event_not_found(prefix, seq))
     }
@@ -141,10 +140,7 @@ impl RegistryBackend for FakeRegistryBackend {
             .events
             .get(key)
             .ok_or_else(|| RegistryError::identity_not_found(prefix))?;
-        for event in events
-            .iter()
-            .filter(|e| e.sequence().ok().unwrap_or(u64::MAX) >= from_seq)
-        {
+        for event in events.iter().filter(|e| e.sequence().value() >= from_seq) {
             if visitor(event).is_break() {
                 break;
             }
@@ -162,9 +158,7 @@ impl RegistryBackend for FakeRegistryBackend {
         let last = events
             .last()
             .ok_or_else(|| RegistryError::identity_not_found(prefix))?;
-        let seq = last.sequence().map_err(|e| RegistryError::InvalidEvent {
-            reason: e.to_string(),
-        })?;
+        let seq = last.sequence().value();
         Ok(TipInfo::new(seq, last.said().clone()))
     }
 
@@ -263,7 +257,7 @@ impl RegistryBackend for FakeRegistryBackend {
                 continue;
             }
             let entry = OrgMemberEntry {
-                org: org.to_string(),
+                org: IdentityDID::new(format!("did:keri:{}", org)),
                 did: DeviceDID::new(member_did_str.clone()),
                 filename: format!("{}.json", member_did_str.replace(':', "_")),
                 attestation: validate_org_member(org, member_did_str, att),
@@ -301,14 +295,14 @@ fn validate_org_member(
     let expected_issuer = format!("did:keri:{}", org);
     if att.issuer.as_str() != expected_issuer {
         return Err(MemberInvalidReason::IssuerMismatch {
-            expected_issuer,
-            actual_issuer: att.issuer.to_string(),
+            expected_issuer: IdentityDID::new(expected_issuer),
+            actual_issuer: att.issuer.clone(),
         });
     }
     if att.subject.as_str() != member_did_str {
         return Err(MemberInvalidReason::SubjectMismatch {
-            filename_did: member_did_str.to_string(),
-            attestation_subject: att.subject.to_string(),
+            filename_did: DeviceDID::new(member_did_str),
+            attestation_subject: att.subject.clone(),
         });
     }
     Ok(att.clone())

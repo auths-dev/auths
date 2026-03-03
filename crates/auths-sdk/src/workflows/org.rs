@@ -6,76 +6,28 @@ use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::id::UuidProvider;
 use auths_id::ports::registry::RegistryBackend;
 use auths_verifier::Capability;
-use auths_verifier::core::Attestation;
+use auths_verifier::core::ResourceId;
+pub use auths_verifier::core::Role;
+use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 
 use crate::error::OrgError;
 
-/// Role classification for organization members.
-///
-/// Governs the default capability set assigned at member authorization time.
-/// Presentation-layer code (e.g. CLI) must define its own `clap::ValueEnum`
-/// wrapper and convert to this type at the CLI boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Role {
-    /// Full admin access with all capabilities.
-    Admin,
-    /// Standard member with signing capabilities.
-    Member,
-    /// Read-only access; no signing capabilities.
-    Readonly,
-}
-
-impl Role {
-    /// Return the default capability set for this role.
-    ///
-    /// Args:
-    /// * `self`: The role to query.
-    ///
-    /// Usage:
-    /// ```ignore
-    /// let caps = Role::Admin.default_capabilities();
-    /// assert!(caps.contains(&Capability::manage_members()));
-    /// ```
-    pub fn default_capabilities(&self) -> Vec<Capability> {
-        match self {
-            Role::Admin => vec![
-                Capability::sign_commit(),
-                Capability::sign_release(),
-                Capability::manage_members(),
-                Capability::rotate_keys(),
-            ],
-            Role::Member => vec![Capability::sign_commit(), Capability::sign_release()],
-            Role::Readonly => vec![],
-        }
-    }
-}
-
-impl std::fmt::Display for Role {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Role::Admin => write!(f, "admin"),
-            Role::Member => write!(f, "member"),
-            Role::Readonly => write!(f, "readonly"),
-        }
-    }
-}
-
 /// Ordering key for org member display: admin < member < readonly < unknown.
 ///
 /// Args:
-/// * `role`: Optional role string as stored in an attestation.
+/// * `role`: Optional role as stored in an attestation.
 ///
 /// Usage:
 /// ```ignore
 /// members.sort_by(|a, b| member_role_order(&a.role).cmp(&member_role_order(&b.role)));
 /// ```
-pub fn member_role_order(role: &Option<String>) -> u8 {
-    match role.as_deref() {
-        Some("admin") => 0,
-        Some("member") => 1,
-        Some("readonly") => 2,
-        _ => 3,
+pub fn member_role_order(role: &Option<Role>) -> u8 {
+    match role {
+        Some(Role::Admin) => 0,
+        Some(Role::Member) => 1,
+        Some(Role::Readonly) => 2,
+        None => 3,
     }
 }
 
@@ -107,7 +59,7 @@ pub(crate) fn find_admin(
     backend
         .visit_org_member_attestations(org_prefix, &mut |entry| {
             if let Ok(att) = &entry.attestation
-                && att.device_public_key == signer_bytes
+                && att.device_public_key.as_bytes().as_slice() == signer_bytes.as_slice()
                 && !att.is_revoked()
                 && att.capabilities.contains(&Capability::manage_members())
             {
@@ -179,8 +131,8 @@ pub struct AddMemberCommand {
     pub org_prefix: String,
     /// Full DID of the member being added (e.g. `did:key:z6Mk...`).
     pub member_did: String,
-    /// Role string to assign (`admin`, `member`, `readonly`).
-    pub role: String,
+    /// Role to assign.
+    pub role: Role,
     /// Capability strings to grant (e.g. `["sign_commit"]`).
     pub capabilities: Vec<String>,
     /// Hex-encoded device public key of the signing admin.
@@ -238,12 +190,12 @@ pub fn add_organization_member(
 
     let member = Attestation {
         version: 1,
-        rid: id_provider.new_id().to_string(),
+        rid: ResourceId::new(id_provider.new_id().to_string()),
         issuer: admin_att.issuer.clone(),
         subject: DeviceDID::new(&cmd.member_did),
-        device_public_key: vec![],
-        identity_signature: vec![],
-        device_signature: vec![],
+        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at: None,
         expires_at: None,
         timestamp: Some(clock.now()),

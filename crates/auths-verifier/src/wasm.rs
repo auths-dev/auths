@@ -344,7 +344,10 @@ pub async fn wasm_verify_kel_json(kel_json: &str) -> Result<String, JsValue> {
         .await
         .map_err(|e| JsValue::from_str(&format!("KEL verification failed: {}", e)))?;
 
-    console_log!("WASM: KEL verification successful, sequence: {}", key_state.sequence);
+    console_log!(
+        "WASM: KEL verification successful, sequence: {}",
+        key_state.sequence
+    );
 
     serde_json::to_string(&key_state)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize key state: {}", e)))
@@ -404,7 +407,10 @@ pub async fn wasm_verify_device_link(
     )
     .await;
 
-    console_log!("WASM: Device link verification result: valid={}", result.valid);
+    console_log!(
+        "WASM: Device link verification result: valid={}",
+        result.valid
+    );
 
     serde_json::to_string(&result)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))

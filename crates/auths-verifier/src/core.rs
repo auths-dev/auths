@@ -9,6 +9,8 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
+use std::ops::Deref;
+use std::str::FromStr;
 
 /// Maximum allowed size for a single attestation JSON input (64 KiB).
 pub const MAX_ATTESTATION_JSON_SIZE: usize = 64 * 1024;
@@ -21,6 +23,309 @@ const SIGN_COMMIT: &str = "sign_commit";
 const SIGN_RELEASE: &str = "sign_release";
 const MANAGE_MEMBERS: &str = "manage_members";
 const ROTATE_KEYS: &str = "rotate_keys";
+
+// =============================================================================
+// ResourceId newtype
+// =============================================================================
+
+/// A validated resource identifier linking an attestation to its storage ref.
+///
+/// Wraps a `String` with `#[serde(transparent)]` so JSON output is identical to bare `String`.
+/// Prevents accidental substitution of a DID, Git ref, or other string where a
+/// resource ID is expected.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ResourceId(String);
+
+impl ResourceId {
+    /// Creates a new ResourceId.
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for ResourceId {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ResourceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for ResourceId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for ResourceId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl PartialEq<str> for ResourceId {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for ResourceId {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialEq<String> for ResourceId {
+    fn eq(&self, other: &String) -> bool {
+        self.0 == *other
+    }
+}
+
+// =============================================================================
+// Role enum
+// =============================================================================
+
+/// Role classification for organization members.
+///
+/// Governs the default capability set assigned at member authorization time.
+/// Serializes as lowercase strings: `"admin"`, `"member"`, `"readonly"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    /// Full admin access with all capabilities.
+    Admin,
+    /// Standard member with signing capabilities.
+    Member,
+    /// Read-only access; no signing capabilities.
+    Readonly,
+}
+
+impl Role {
+    /// Returns the canonical string representation.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Role::Admin => "admin",
+            Role::Member => "member",
+            Role::Readonly => "readonly",
+        }
+    }
+
+    /// Return the default capability set for this role.
+    pub fn default_capabilities(&self) -> Vec<Capability> {
+        match self {
+            Role::Admin => vec![
+                Capability::sign_commit(),
+                Capability::sign_release(),
+                Capability::manage_members(),
+                Capability::rotate_keys(),
+            ],
+            Role::Member => vec![Capability::sign_commit(), Capability::sign_release()],
+            Role::Readonly => vec![],
+        }
+    }
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for Role {
+    type Err = RoleParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "admin" => Ok(Role::Admin),
+            "member" => Ok(Role::Member),
+            "readonly" => Ok(Role::Readonly),
+            other => Err(RoleParseError(other.to_string())),
+        }
+    }
+}
+
+/// Error returned when parsing an invalid role string.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown role: '{0}' (expected admin, member, or readonly)")]
+pub struct RoleParseError(String);
+
+// =============================================================================
+// Ed25519PublicKey newtype
+// =============================================================================
+
+/// A 32-byte Ed25519 public key.
+///
+/// Serializes as a hex string for JSON compatibility. Enforces exactly 32 bytes
+/// at construction time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ed25519PublicKey([u8; 32]);
+
+impl Ed25519PublicKey {
+    /// Creates a new Ed25519PublicKey from a 32-byte array.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
+    /// Creates a new Ed25519PublicKey from a byte slice.
+    ///
+    /// Args:
+    /// * `slice`: Byte slice that must be exactly 32 bytes.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let pk = Ed25519PublicKey::try_from_slice(&bytes)?;
+    /// ```
+    pub fn try_from_slice(slice: &[u8]) -> Result<Self, Ed25519KeyError> {
+        let arr: [u8; 32] = slice
+            .try_into()
+            .map_err(|_| Ed25519KeyError::InvalidLength(slice.len()))?;
+        Ok(Self(arr))
+    }
+
+    /// Returns the inner 32-byte array.
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// Returns `true` if all 32 bytes are zero (used for unsigned org-member attestations).
+    pub fn is_zero(&self) -> bool {
+        self.0 == [0u8; 32]
+    }
+}
+
+impl Serialize for Ed25519PublicKey {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&hex::encode(self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for Ed25519PublicKey {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        let bytes =
+            hex::decode(&s).map_err(|e| serde::de::Error::custom(format!("invalid hex: {e}")))?;
+        let arr: [u8; 32] = bytes.try_into().map_err(|v: Vec<u8>| {
+            serde::de::Error::custom(format!("expected 32 bytes, got {}", v.len()))
+        })?;
+        Ok(Self(arr))
+    }
+}
+
+impl fmt::Display for Ed25519PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&hex::encode(self.0))
+    }
+}
+
+impl AsRef<[u8]> for Ed25519PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+/// Error type for Ed25519 public key construction.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum Ed25519KeyError {
+    /// The byte slice is not exactly 32 bytes.
+    #[error("expected 32 bytes, got {0}")]
+    InvalidLength(usize),
+    /// The hex string is not valid.
+    #[error("invalid hex: {0}")]
+    InvalidHex(String),
+}
+
+// =============================================================================
+// Ed25519Signature newtype
+// =============================================================================
+
+/// A validated Ed25519 signature (64 bytes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ed25519Signature([u8; 64]);
+
+impl Ed25519Signature {
+    /// Creates a signature from a 64-byte array.
+    pub fn from_bytes(bytes: [u8; 64]) -> Self {
+        Self(bytes)
+    }
+
+    /// Attempts to create a signature from a byte slice, returning an error if the length is not 64.
+    pub fn try_from_slice(slice: &[u8]) -> Result<Self, SignatureLengthError> {
+        let arr: [u8; 64] = slice
+            .try_into()
+            .map_err(|_| SignatureLengthError(slice.len()))?;
+        Ok(Self(arr))
+    }
+
+    /// Creates an all-zero signature, used as a placeholder.
+    pub fn empty() -> Self {
+        Self([0u8; 64])
+    }
+
+    /// Returns `true` if the signature is all zeros (placeholder).
+    pub fn is_empty(&self) -> bool {
+        self.0 == [0u8; 64]
+    }
+
+    /// Returns a reference to the underlying 64-byte array.
+    pub fn as_bytes(&self) -> &[u8; 64] {
+        &self.0
+    }
+}
+
+impl Default for Ed25519Signature {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl std::fmt::Display for Ed25519Signature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl AsRef<[u8]> for Ed25519Signature {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl serde::Serialize for Ed25519Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&hex::encode(self.0))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Ed25519Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Ok(Self::empty());
+        }
+        let bytes = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        Self::try_from_slice(&bytes).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Error when constructing an Ed25519Signature from a byte slice of wrong length.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("expected 64 bytes, got {0}")]
+pub struct SignatureLengthError(pub usize);
+
+// =============================================================================
+// Capability types
+// =============================================================================
 
 /// Error type for capability parsing and validation.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -333,20 +638,18 @@ pub struct Attestation {
     /// Schema version.
     pub version: u32,
     /// Record identifier linking this attestation to its storage ref.
-    pub rid: String,
+    pub rid: ResourceId,
     /// DID of the issuing identity.
     pub issuer: IdentityDID,
     /// DID of the device being attested.
     pub subject: DeviceDID,
-    /// Raw Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
-    #[serde(with = "hex::serde")]
-    pub device_public_key: Vec<u8>,
+    /// Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
+    pub device_public_key: Ed25519PublicKey,
     /// Issuer's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).
-    #[serde(with = "hex::serde", default, skip_serializing_if = "Vec::is_empty")]
-    pub identity_signature: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Ed25519Signature::is_empty")]
+    pub identity_signature: Ed25519Signature,
     /// Device's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).
-    #[serde(with = "hex::serde")]
-    pub device_signature: Vec<u8>,
+    pub device_signature: Ed25519Signature,
     /// Timestamp when the attestation was revoked, if applicable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revoked_at: Option<DateTime<Utc>>,
@@ -362,9 +665,9 @@ pub struct Attestation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
 
-    /// Role for org membership attestations (e.g., "admin", "member", "readonly").
+    /// Role for org membership attestations.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
+    pub role: Option<Role>,
 
     /// Capabilities this attestation grants.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -524,9 +827,9 @@ impl Attestation {
             self.rid,
             self.issuer,
             self.subject, // DeviceDID implements Display
-            hex::encode(&self.device_public_key),
-            hex::encode(&self.identity_signature),
-            hex::encode(&self.device_signature),
+            hex::encode(self.device_public_key.as_bytes()),
+            hex::encode(self.identity_signature.as_bytes()),
+            hex::encode(self.device_signature.as_bytes()),
             self.revoked_at,
             self.expires_at,
             self.note
@@ -925,8 +1228,8 @@ mod tests {
             "issuer": "did:key:issuer",
             "subject": "did:key:subject",
             "device_public_key": "0102030405060708091011121314151617181920212223242526272829303132",
-            "identity_signature": "aabbccdd",
-            "device_signature": "eeff0011",
+            "identity_signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "device_signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
             "revoked_at": null,
             "timestamp": null
         }"#;
@@ -945,18 +1248,18 @@ mod tests {
 
         let att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
-            device_public_key: vec![1, 2, 3, 4],
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("admin".to_string()),
+            role: Some(Role::Admin),
             capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
             delegated_by: Some(IdentityDID::new("did:key:delegator")),
             signer_type: None,
@@ -977,12 +1280,12 @@ mod tests {
 
         let att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
-            device_public_key: vec![1, 2, 3, 4],
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,
@@ -1009,18 +1312,18 @@ mod tests {
 
         let original = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
-            device_public_key: vec![1, 2, 3, 4],
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,
             note: None,
             payload: None,
-            role: Some("member".to_string()),
+            role: Some(Role::Member),
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
             delegated_by: Some(IdentityDID::new("did:key:admin")),
             signer_type: None,
@@ -1193,12 +1496,12 @@ mod tests {
 
         let attestation = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new("did:key:issuer"),
             subject: DeviceDID::new("did:key:subject".to_string()),
-            device_public_key: vec![1, 2, 3, 4],
-            identity_signature: vec![5, 6, 7, 8],
-            device_signature: vec![9, 10, 11, 12],
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
             timestamp: None,

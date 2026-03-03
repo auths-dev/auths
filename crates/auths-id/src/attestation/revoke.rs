@@ -1,7 +1,7 @@
 use crate::attestation::create::{CanonicalRevocationData, canonicalize_revocation_data};
 use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
-use auths_verifier::core::Attestation;
+use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::DeviceDID;
 
@@ -67,7 +67,7 @@ pub fn create_signed_revocation(
         "Signing revocation with identity alias '{}'",
         identity_alias
     );
-    let identity_signature = signer
+    let identity_sig_bytes = signer
         .sign_with_alias(identity_alias, passphrase_provider, &canonical_bytes)
         .map_err(|e| {
             AttestationError::SigningError(format!(
@@ -75,6 +75,8 @@ pub fn create_signed_revocation(
                 identity_alias, e
             ))
         })?;
+    let identity_signature = Ed25519Signature::try_from_slice(&identity_sig_bytes)
+        .map_err(|e| AttestationError::SigningError(e.to_string()))?;
     debug!("Revocation signature obtained successfully");
 
     // 4. Return the final revocation attestation object
@@ -82,15 +84,16 @@ pub fn create_signed_revocation(
         version: REVOCATION_VERSION,
         subject: device_did.clone(),
         issuer: identity_did.clone(),
-        rid: rid.to_string(),
+        rid: ResourceId::new(rid),
         payload: payload_arg.clone(),
         timestamp: Some(timestamp_arg),
         expires_at: None,
         revoked_at: Some(timestamp_arg),
         note: note.clone(),
-        device_public_key: device_public_key.to_vec(),
+        device_public_key: Ed25519PublicKey::try_from_slice(device_public_key)
+            .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
         identity_signature,
-        device_signature: vec![], // Device does not sign revocation
+        device_signature: Ed25519Signature::empty(),
         role: None,
         capabilities: vec![],
         delegated_by: None,

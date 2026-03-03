@@ -346,6 +346,11 @@ fn gather_agent_config(
     out.print_success(&format!("Capabilities: {}", cap_names.join(", ")));
     out.newline();
 
+    let parsed_caps: Vec<auths_verifier::Capability> = cap_names
+        .into_iter()
+        .filter_map(|s| auths_verifier::Capability::parse(&s).ok())
+        .collect();
+
     let keychain = check_keychain_access(out)?;
     let registry_path = get_auths_repo_path()?;
 
@@ -353,7 +358,7 @@ fn gather_agent_config(
         KeyAlias::new_unchecked("agent"),
         &registry_path,
     )
-    .with_capabilities(cap_names)
+    .with_capabilities(parsed_caps)
     .with_expiry(365 * 24 * 3600)
     .dry_run(cmd.dry_run)
     .build();
@@ -566,10 +571,8 @@ fn display_agent_result(out: &Output, result: &auths_sdk::result::AgentSetupResu
         "  Identity: {}",
         out.info(&short_did(&result.agent_did))
     ));
-    out.println(&format!(
-        "  Capabilities: {}",
-        result.capabilities.join(", ")
-    ));
+    let cap_display: Vec<String> = result.capabilities.iter().map(|c| c.to_string()).collect();
+    out.println(&format!("  Capabilities: {}", cap_display.join(", ")));
     out.newline();
     out.print_success("Agent is ready to sign commits!");
     out.println("  Start the agent: auths agent start");
@@ -588,7 +591,7 @@ fn display_agent_dry_run(out: &Output, config: &auths_sdk::types::AgentSetupConf
     out.print_info("TOML config that would be generated:");
     let provisioning_config = auths_id::agent_identity::AgentProvisioningConfig {
         agent_name: config.alias.to_string(),
-        capabilities: config.capabilities.clone(),
+        capabilities: config.capabilities.iter().map(|c| c.to_string()).collect(),
         expires_in_secs: config.expires_in_secs,
         delegated_by: None,
         storage_mode: auths_id::agent_identity::AgentStorageMode::Persistent { repo_path: None },

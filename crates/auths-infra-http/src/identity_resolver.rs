@@ -1,5 +1,5 @@
 use auths_core::ports::network::{IdentityResolver, ResolutionError, ResolvedIdentity};
-use auths_core::signing::DidMethod;
+use auths_verifier::core::Ed25519PublicKey;
 use serde::Deserialize;
 use std::future::Future;
 
@@ -65,25 +65,29 @@ impl IdentityResolver for HttpIdentityResolver {
                 .await
                 .map_err(ResolutionError::Network)?;
 
-            let method = match parsed.method.as_str() {
-                "key" => DidMethod::Key,
-                "keri" => DidMethod::Keri {
+            let public_key = Ed25519PublicKey::try_from_slice(&parsed.public_key).map_err(|e| {
+                ResolutionError::InvalidDid {
+                    did: parsed.did.clone(),
+                    reason: format!("invalid public key: {e}"),
+                }
+            })?;
+
+            match parsed.method.as_str() {
+                "key" => Ok(ResolvedIdentity::Key {
+                    did: parsed.did,
+                    public_key,
+                }),
+                "keri" => Ok(ResolvedIdentity::Keri {
+                    did: parsed.did,
+                    public_key,
                     sequence: parsed.sequence,
                     can_rotate: parsed.can_rotate,
-                },
-                other => {
-                    return Err(ResolutionError::InvalidDid {
-                        did: did_owned,
-                        reason: format!("unsupported method: {other}"),
-                    });
-                }
-            };
-
-            Ok(ResolvedIdentity {
-                did: parsed.did,
-                public_key: parsed.public_key,
-                method,
-            })
+                }),
+                other => Err(ResolutionError::InvalidDid {
+                    did: did_owned,
+                    reason: format!("unsupported method: {other}"),
+                }),
+            }
         }
     }
 }

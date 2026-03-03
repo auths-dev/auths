@@ -6,7 +6,6 @@ use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::identity::resolve::DidResolver;
 use chrono::{DateTime, Utc};
 use clap::{ArgAction, Parser, Subcommand};
-use ring::signature::ED25519_PUBLIC_KEY_LEN;
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
@@ -30,7 +29,7 @@ use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::types::DeviceDID;
-use auths_verifier::{Capability, Prefix};
+use auths_verifier::{Capability, Ed25519PublicKey, Prefix};
 
 use clap::ValueEnum;
 
@@ -183,16 +182,16 @@ pub fn handle_org(
 
     let mut config = StorageLayoutConfig::default();
     if let Some(r) = identity_ref_override {
-        config.identity_ref = r;
+        config.identity_ref = r.into();
     }
     if let Some(b) = identity_blob_name_override {
-        config.identity_blob_name = b;
+        config.identity_blob_name = b.into();
     }
     if let Some(p) = attestation_prefix_override {
-        config.device_attestation_prefix = p;
+        config.device_attestation_prefix = p.into();
     }
     if let Some(b) = attestation_blob_name_override {
-        config.attestation_blob_name = b;
+        config.attestation_blob_name = b.into();
     }
 
     let _attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
@@ -309,15 +308,13 @@ pub fn handle_org(
             let rid = managed_identity.storage_id;
 
             // Resolve the org's own public key for self-attestation
-            let org_pk_bytes = resolver
-                .resolve(controller_did.as_str())
-                .with_context(|| {
-                    format!(
-                        "Failed to resolve public key for org identity: {}",
-                        controller_did
-                    )
-                })?
-                .public_key;
+            let org_resolved = resolver.resolve(controller_did.as_str()).with_context(|| {
+                format!(
+                    "Failed to resolve public key for org identity: {}",
+                    controller_did
+                )
+            })?;
+            let org_pk_bytes = *org_resolved.public_key();
 
             let now = Utc::now();
             let admin_capabilities = vec![
@@ -341,7 +338,7 @@ pub fn handle_org(
                 &rid,
                 &controller_did,
                 &org_did,
-                &org_pk_bytes,
+                org_pk_bytes.as_bytes(),
                 Some(serde_json::json!({
                     "org_role": "admin",
                     "org_name": name
@@ -352,7 +349,7 @@ pub fn handle_org(
                 Some(&alias),
                 None, // Self-attestation, no device signature
                 admin_capabilities,
-                Some("admin".to_string()),
+                Some(Role::Admin),
                 None, // Root admin has no delegator
             )
             .context("Failed to create admin attestation")?;
@@ -438,17 +435,10 @@ pub fn handle_org(
             let subject_did = DeviceDID::new(subject.clone());
 
             // --- Resolve device public key using the custom resolver IF did:key ---
-            let device_pk_bytes = resolver
-                .resolve(&subject)
-                .with_context(|| format!("Failed to resolve public key for subject: {}", subject))?
-                .public_key;
-
-            if device_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-                return Err(anyhow!(
-                    "Device public key length must be 32, got {}",
-                    device_pk_bytes.len()
-                ));
-            }
+            let device_resolved = resolver.resolve(&subject).with_context(|| {
+                format!("Failed to resolve public key for subject: {}", subject)
+            })?;
+            let device_pk_bytes = *device_resolved.public_key();
 
             let now = Utc::now();
             let meta = AttestationMetadata {
@@ -468,7 +458,7 @@ pub fn handle_org(
                 &rid,
                 &controller_did,
                 &subject_did,
-                &device_pk_bytes,
+                device_pk_bytes.as_bytes(),
                 Some(payload),
                 &meta,
                 &signer,
@@ -540,9 +530,9 @@ pub fn handle_org(
                 .context("Failed to load attestations for subject")?;
             let device_public_key = existing
                 .iter()
-                .find(|a| !a.device_public_key.is_empty())
-                .map(|a| a.device_public_key.clone())
-                .unwrap_or_else(|| vec![0u8; 32]);
+                .find(|a| !a.device_public_key.is_zero())
+                .map(|a| a.device_public_key)
+                .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
 
             println!("🔏 Creating signed revocation...");
             let signer = StorageSigner::new(get_platform_keychain()?);
@@ -550,7 +540,7 @@ pub fn handle_org(
                 &rid,
                 &controller_did,
                 &subject_did,
-                &device_public_key,
+                device_public_key.as_bytes(),
                 note,
                 None,
                 now,
@@ -716,17 +706,10 @@ pub fn handle_org(
 
             // Resolve member's public key
             let member_did = DeviceDID::new(member.clone());
-            let member_pk_bytes = resolver
+            let member_resolved = resolver
                 .resolve(&member)
-                .with_context(|| format!("Failed to resolve public key for member: {}", member))?
-                .public_key;
-
-            if member_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-                return Err(anyhow!(
-                    "Member public key length must be 32, got {}",
-                    member_pk_bytes.len()
-                ));
-            }
+                .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
+            let member_pk_bytes = *member_resolved.public_key();
 
             // Determine capabilities: use override if provided, otherwise use role defaults
             let member_capabilities = if let Some(cap_strs) = capabilities {
@@ -766,7 +749,7 @@ pub fn handle_org(
                 &rid,
                 &invoker_did,
                 &member_did,
-                &member_pk_bytes,
+                member_pk_bytes.as_bytes(),
                 Some(serde_json::json!({
                     "org_role": role.to_string(),
                     "org_did": org
@@ -777,7 +760,7 @@ pub fn handle_org(
                 Some(&signer_alias),
                 None, // No device signature for org membership attestations
                 member_capabilities.clone(),
-                Some(role.to_string()),
+                Some(role),
                 Some(invoker_did.clone()),
             )
             .context("Failed to create member attestation")?;
@@ -908,9 +891,9 @@ pub fn handle_org(
                 .context("Failed to load attestations for member")?;
             let member_public_key = existing
                 .iter()
-                .find(|a| !a.device_public_key.is_empty())
-                .map(|a| a.device_public_key.clone())
-                .unwrap_or_else(|| vec![0u8; 32]);
+                .find(|a| !a.device_public_key.is_zero())
+                .map(|a| a.device_public_key)
+                .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
 
             // Create revocation
             let now = Utc::now();
@@ -921,7 +904,7 @@ pub fn handle_org(
                 &rid,
                 &invoker_did,
                 &member_did,
-                &member_public_key,
+                member_public_key.as_bytes(),
                 note.clone(),
                 None, // No expiration for revocations
                 now,
@@ -965,7 +948,7 @@ pub fn handle_org(
             #[allow(clippy::type_complexity)]
             let mut members: Vec<(
                 String,
-                Option<String>,
+                Option<Role>,
                 Option<String>,
                 bool,
                 Vec<Capability>,
@@ -984,7 +967,7 @@ pub fn handle_org(
 
                 members.push((
                     att.subject.to_string(),
-                    att.role.clone(),
+                    att.role,
                     att.delegated_by.as_ref().map(|d| d.to_string()),
                     att.is_revoked(),
                     att.capabilities.clone(),
@@ -1007,7 +990,7 @@ pub fn handle_org(
             println!("─────────────────────────────────────────");
 
             for (member_did, role, delegated_by, revoked, capabilities) in &members {
-                let role_str = role.as_deref().unwrap_or("unknown");
+                let role_str = role.as_ref().map(|r| r.as_str()).unwrap_or("unknown");
                 let status = if *revoked { " (revoked)" } else { "" };
 
                 // Determine tree prefix based on delegator

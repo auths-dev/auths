@@ -29,13 +29,13 @@ pub fn aggregate_canonical_refs(
         let refs = repo.references_glob(&format!("{}/refs/**", prefix))?;
 
         for r in refs.flatten() {
-            if let Some(name) = r.name() {
-                if let Some(target) = r.target() {
-                    // Use first seen version of each ref
-                    canonical
-                        .entry(name.to_string())
-                        .or_insert_with(|| target.to_string());
-                }
+            if let Some(name) = r.name()
+                && let Some(target) = r.target()
+            {
+                // Use first seen version of each ref
+                canonical
+                    .entry(name.to_string())
+                    .or_insert_with(|| target.to_string());
             }
         }
     }

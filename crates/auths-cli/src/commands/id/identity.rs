@@ -34,7 +34,7 @@ use auths_id::{
     storage::{
         attestation::AttestationSource,
         identity::IdentityStorage,
-        layout::{self, StorageLayoutConfig},
+        layout::{self, BlobName, GitRef, StorageLayoutConfig},
     },
 };
 use auths_storage::git::{
@@ -58,16 +58,16 @@ impl LayoutPreset {
     pub fn to_config(self) -> StorageLayoutConfig {
         match self {
             LayoutPreset::Default | LayoutPreset::Radicle => StorageLayoutConfig {
-                identity_ref: "refs/rad/id".to_string(),
-                device_attestation_prefix: "refs/keys".to_string(),
-                attestation_blob_name: layout::ATTESTATION_JSON.to_string(),
-                identity_blob_name: layout::IDENTITY_JSON.to_string(),
+                identity_ref: GitRef::new("refs/rad/id"),
+                device_attestation_prefix: GitRef::new("refs/keys"),
+                attestation_blob_name: BlobName::new(layout::ATTESTATION_JSON),
+                identity_blob_name: BlobName::new(layout::IDENTITY_JSON),
             },
             LayoutPreset::Gitoxide => StorageLayoutConfig {
-                identity_ref: "refs/auths/id".to_string(),
-                device_attestation_prefix: "refs/auths/devices".to_string(),
-                attestation_blob_name: layout::ATTESTATION_JSON.to_string(),
-                identity_blob_name: layout::IDENTITY_JSON.to_string(),
+                identity_ref: GitRef::new("refs/auths/id"),
+                device_attestation_prefix: GitRef::new("refs/auths/devices"),
+                attestation_blob_name: BlobName::new(layout::ATTESTATION_JSON),
+                identity_blob_name: BlobName::new(layout::IDENTITY_JSON),
             },
         }
     }
@@ -219,16 +219,16 @@ pub fn handle_id(
     // Used by non-Init subcommands
     let mut config = StorageLayoutConfig::default();
     if let Some(ref identity_ref) = identity_ref_override {
-        config.identity_ref = identity_ref.clone();
+        config.identity_ref = identity_ref.clone().into();
     }
     if let Some(ref blob_name) = identity_blob_name_override {
-        config.identity_blob_name = blob_name.clone();
+        config.identity_blob_name = blob_name.clone().into();
     }
     if let Some(ref prefix) = attestation_prefix_override {
-        config.device_attestation_prefix = prefix.clone();
+        config.device_attestation_prefix = prefix.clone().into();
     }
     if let Some(ref blob_name) = attestation_blob_name_override {
-        config.attestation_blob_name = blob_name.clone();
+        config.attestation_blob_name = blob_name.clone().into();
     }
 
     match cmd.subcommand {
@@ -240,16 +240,16 @@ pub fn handle_id(
             // Apply preset first, then override with explicit flags
             let mut config = preset.to_config();
             if let Some(ref identity_ref) = identity_ref_override {
-                config.identity_ref = identity_ref.clone();
+                config.identity_ref = identity_ref.clone().into();
             }
             if let Some(ref blob_name) = identity_blob_name_override {
-                config.identity_blob_name = blob_name.clone();
+                config.identity_blob_name = blob_name.clone().into();
             }
             if let Some(ref prefix) = attestation_prefix_override {
-                config.device_attestation_prefix = prefix.clone();
+                config.device_attestation_prefix = prefix.clone().into();
             }
             if let Some(ref blob_name) = attestation_blob_name_override {
-                config.attestation_blob_name = blob_name.clone();
+                config.attestation_blob_name = blob_name.clone().into();
             }
             let metadata_file_path = metadata_file;
 

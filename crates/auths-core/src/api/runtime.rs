@@ -16,8 +16,11 @@ use crate::error::AgentError;
 use crate::signing::PassphraseProvider;
 use crate::storage::keychain::{KeyAlias, KeyStorage};
 use log::{debug, error, info, warn};
+#[cfg(target_os = "macos")]
 use pkcs8::PrivateKeyInfo;
+#[cfg(target_os = "macos")]
 use pkcs8::der::Decode;
+#[cfg(target_os = "macos")]
 use pkcs8::der::asn1::OctetString;
 use serde::Serialize;
 #[cfg(unix)]
@@ -721,13 +724,13 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
     info!("Attempting to start agent listener at {:?}", socket_path);
 
     // --- Ensure parent directory exists ---
-    if let Some(parent) = socket_path.parent() {
-        if !parent.exists() {
-            debug!("Creating parent directory for socket: {:?}", parent);
-            if let Err(e) = std::fs::create_dir_all(parent) {
-                error!("Failed to create parent directory {:?}: {}", parent, e);
-                return Err(AgentError::IO(e));
-            }
+    if let Some(parent) = socket_path.parent()
+        && !parent.exists()
+    {
+        debug!("Creating parent directory for socket: {:?}", parent);
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            error!("Failed to create parent directory {:?}: {}", parent, e);
+            return Err(AgentError::IO(e));
         }
     }
 

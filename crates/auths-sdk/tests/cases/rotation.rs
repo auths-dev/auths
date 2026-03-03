@@ -245,7 +245,7 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
         v: auths_id::keri::KERI_VERSION.to_string(),
         d: Said::new_unchecked("E_dummy".to_string()),
         i: prefix.clone(),
-        s: "0".to_string(),
+        s: auths_id::keri::KeriSequence::new(0),
         p: Said::default(),
         kt: "1".to_string(),
         k: vec![],

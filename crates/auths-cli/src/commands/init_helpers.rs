@@ -116,7 +116,7 @@ pub(crate) fn generate_allowed_signers(key_alias: &str, out: &Output) -> Result<
             continue;
         }
         let principal = get_principal(&att);
-        let ssh_key = match public_key_to_ssh(&att.device_public_key) {
+        let ssh_key = match public_key_to_ssh(att.device_public_key.as_bytes()) {
             Ok(key) => key,
             Err(_) => continue,
         };

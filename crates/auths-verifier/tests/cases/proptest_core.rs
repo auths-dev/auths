@@ -1,4 +1,6 @@
-use auths_verifier::core::{Attestation, Capability, ThresholdPolicy};
+use auths_verifier::core::{
+    Attestation, Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role, ThresholdPolicy,
+};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::{DateTime, TimeZone, Utc};
 use proptest::prelude::*;
@@ -30,13 +32,15 @@ fn arb_device_did() -> impl Strategy<Value = DeviceDID> {
 }
 
 /// Generate arbitrary 32-byte public key
-fn arb_public_key() -> impl Strategy<Value = Vec<u8>> {
+fn arb_public_key() -> impl Strategy<Value = Ed25519PublicKey> {
     proptest::collection::vec(any::<u8>(), 32)
+        .prop_map(|v| Ed25519PublicKey::try_from_slice(&v).unwrap())
 }
 
 /// Generate arbitrary signature (64 bytes for Ed25519)
-fn arb_signature() -> impl Strategy<Value = Vec<u8>> {
+fn arb_signature() -> impl Strategy<Value = Ed25519Signature> {
     proptest::collection::vec(any::<u8>(), 64)
+        .prop_map(|v| Ed25519Signature::try_from_slice(&v).unwrap())
 }
 
 /// Generate arbitrary optional DateTime in valid range
@@ -79,11 +83,21 @@ fn arb_capability() -> impl Strategy<Value = Capability> {
     ]
 }
 
-/// Generate arbitrary RID string
-fn arb_rid() -> impl Strategy<Value = String> {
+/// Generate arbitrary RID
+fn arb_rid() -> impl Strategy<Value = ResourceId> {
     proptest::string::string_regex("[a-zA-Z0-9-]{8,32}")
         .unwrap()
-        .prop_map(|s| format!("rid-{}", s))
+        .prop_map(|s| ResourceId::new(format!("rid-{}", s)))
+}
+
+/// Generate arbitrary optional Role
+fn arb_optional_role() -> impl Strategy<Value = Option<Role>> {
+    prop_oneof![
+        Just(None),
+        Just(Some(Role::Admin)),
+        Just(Some(Role::Member)),
+        Just(Some(Role::Readonly)),
+    ]
 }
 
 /// Generate arbitrary Attestation
@@ -103,7 +117,7 @@ fn arb_attestation() -> impl Strategy<Value = Attestation> {
         arb_optional_datetime(),                           // expires_at
         arb_optional_datetime(),                           // timestamp
         arb_optional_note(),                               // note
-        arb_optional_note(),                               // role (simplified)
+        arb_optional_role(),                               // role
         proptest::collection::vec(arb_capability(), 0..4), // capabilities
         proptest::option::of(arb_identity_did()),          // delegated_by
     );

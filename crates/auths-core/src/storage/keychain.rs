@@ -30,6 +30,18 @@ use std::ops::Deref;
 use zeroize::Zeroizing;
 
 /// Service name used for all platform keychains.
+/// Used inside cfg-gated blocks (macOS, iOS, Linux, Windows, Android).
+#[cfg_attr(
+    not(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "android",
+        all(target_os = "linux", feature = "keychain-linux-secretservice"),
+        all(target_os = "windows", feature = "keychain-windows"),
+        test,
+    )),
+    allow(dead_code)
+)]
 const SERVICE_NAME: &str = "dev.auths.agent";
 
 // Re-exported from auths-verifier (the leaf dependency shared by all crates).

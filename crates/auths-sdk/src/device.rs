@@ -11,7 +11,7 @@ use auths_id::attestation::revoke::create_signed_revocation;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::identity::IdentityStorage;
-use auths_verifier::core::Capability;
+use auths_verifier::core::{Capability, Ed25519PublicKey, ResourceId};
 use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
@@ -50,11 +50,7 @@ fn build_attestation_params(
                 .map(|d| now + chrono::Duration::days(d as i64)),
             note: config.note.clone(),
         },
-        capabilities: config
-            .capabilities
-            .iter()
-            .filter_map(|c| Capability::parse(c).ok())
-            .collect(),
+        capabilities: config.capabilities.clone(),
         identity_alias: config.identity_key_alias.clone(),
         device_alias: config.device_key_alias.clone(),
     }
@@ -101,8 +97,8 @@ pub fn link_device(
     )?;
 
     Ok(DeviceLinkResult {
-        device_did: device_did.to_string(),
-        attestation_id: attestation_rid,
+        device_did,
+        attestation_id: ResourceId::new(attestation_rid),
     })
 }
 
@@ -131,17 +127,13 @@ pub fn revoke_device(
     let device_pk = find_device_public_key(ctx.attestation_source.as_ref(), device_did)?;
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
 
-    let target_did = DeviceDID::from_ed25519(device_pk.as_slice().try_into().map_err(|_| {
-        DeviceError::CryptoError(auths_core::AgentError::InvalidInput(
-            "device public key is not 32 bytes".into(),
-        ))
-    })?);
+    let target_did = DeviceDID::from_ed25519(device_pk.as_bytes());
 
     let revocation = create_signed_revocation(
         &identity.storage_id,
         &identity.controller_did,
         &target_did,
-        &device_pk,
+        device_pk.as_bytes(),
         note,
         None,
         now,
@@ -222,7 +214,7 @@ pub fn extend_device_authorization(
         &identity.storage_id,
         &identity.controller_did,
         &device_did_obj,
-        &latest.device_public_key,
+        latest.device_public_key.as_bytes(),
         latest.payload.clone(),
         &meta,
         &signer,
@@ -242,7 +234,7 @@ pub fn extend_device_authorization(
     ctx.attestation_sink.sync_index(&extended);
 
     Ok(DeviceExtensionResult {
-        device_did: config.device_did,
+        device_did: DeviceDID::new(config.device_did),
         new_expires_at,
     })
 }
@@ -325,7 +317,7 @@ fn sign_and_persist_attestation(
     )
     .map_err(|e| DeviceError::AttestationError(format!("attestation creation failed: {e}")))?;
 
-    let attestation_rid = attestation.rid.clone();
+    let attestation_rid = attestation.rid.to_string();
 
     attestation_sink
         .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
@@ -341,7 +333,7 @@ fn sign_and_persist_attestation(
 fn find_device_public_key(
     attestation_source: &dyn AttestationSource,
     device_did: &str,
-) -> Result<Vec<u8>, DeviceError> {
+) -> Result<Ed25519PublicKey, DeviceError> {
     let attestations = attestation_source.load_all_attestations().map_err(|e| {
         DeviceError::StorageError(SdkStorageError::OperationFailed(format!(
             "failed to load attestations: {e}"
@@ -350,7 +342,7 @@ fn find_device_public_key(
 
     for att in &attestations {
         if att.subject.as_str() == device_did {
-            return Ok(att.device_public_key.clone());
+            return Ok(att.device_public_key);
         }
     }
 

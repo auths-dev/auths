@@ -197,7 +197,7 @@ fn kel_validation_rejects_sequence_tampering() {
 
     // Tamper with sequence number
     if let Event::Rot(ref mut rot) = events[1] {
-        rot.s = "999".to_string();
+        rot.s = auths_id::keri::KeriSequence::new(999);
     }
 
     // Validation should fail due to sequence mismatch

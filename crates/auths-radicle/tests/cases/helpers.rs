@@ -5,7 +5,7 @@ use auths_radicle::bridge::BridgeError;
 use auths_radicle::refs::Layout;
 use auths_radicle::verify::AuthsStorage;
 use auths_verifier::IdentityDID;
-use auths_verifier::core::{Attestation, Capability};
+use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature};
 use auths_verifier::keri::{Prefix, Said};
 use auths_verifier::types::DeviceDID;
 use radicle_core::{Did, RepoId};
@@ -34,12 +34,19 @@ impl MockStorage {
         self.key_states.insert(identity_did, key_state);
     }
 
-    pub fn add_attestation(&mut self, device_did: Did, identity_did: Did, attestation: Attestation) {
-        self.attestations.insert((device_did, identity_did), attestation);
+    pub fn add_attestation(
+        &mut self,
+        device_did: Did,
+        identity_did: Did,
+        attestation: Attestation,
+    ) {
+        self.attestations
+            .insert((device_did, identity_did), attestation);
     }
 
     pub fn link_device_to_identity(&mut self, device_did: Did, identity_did: Did, repo_id: RepoId) {
-        self.device_to_identity.insert((device_did, repo_id), identity_did);
+        self.device_to_identity
+            .insert((device_did, repo_id), identity_did);
     }
 
     pub fn set_identity_tip(&mut self, identity_did: Did, tip: [u8; 20]) {
@@ -56,7 +63,10 @@ impl AuthsStorage for MockStorage {
         self.key_states
             .get(identity_did)
             .cloned()
-            .ok_or_else(|| BridgeError::IdentityLoad(format!("Not found: {identity_did}")))
+            .ok_or_else(|| BridgeError::IdentityLoad {
+                did: IdentityDID::new(identity_did.to_string()),
+                reason: "Not found".into(),
+            })
     }
 
     fn load_attestation(
@@ -67,7 +77,10 @@ impl AuthsStorage for MockStorage {
         self.attestations
             .get(&(device_did.clone(), identity_did.clone()))
             .cloned()
-            .ok_or_else(|| BridgeError::AttestationLoad(format!("Not found: {device_did}")))
+            .ok_or_else(|| BridgeError::AttestationLoad {
+                device_did: DeviceDID::new(device_did.to_string()),
+                reason: "Not found".into(),
+            })
     }
 
     fn find_identity_for_device(
@@ -113,12 +126,12 @@ pub fn make_test_attestation(
     use chrono::Utc;
     Attestation {
         version: 1,
-        rid: rid.to_string(),
+        rid: auths_verifier::core::ResourceId::new(rid.to_string()),
         issuer: IdentityDID::new(issuer.to_string()),
         subject: DeviceDID::new(device_did.to_string()),
-        device_public_key: vec![0; 32],
-        identity_signature: vec![0; 64],
-        device_signature: vec![0; 64],
+        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         revoked_at: if revoked { Some(Utc::now()) } else { None },
         expires_at: None,
         timestamp: None,
@@ -157,8 +170,7 @@ pub fn register_device(
         (device.did.clone(), identity_did.clone()),
         make_test_attestation(identity_did, &device.did, repo_id, revoked, capabilities),
     );
-    storage.device_to_identity.insert(
-        (device.did.clone(), *repo_id),
-        identity_did.clone(),
-    );
+    storage
+        .device_to_identity
+        .insert((device.did.clone(), *repo_id), identity_did.clone());
 }

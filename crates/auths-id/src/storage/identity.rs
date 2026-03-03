@@ -19,7 +19,7 @@ struct StoredIdentityData {
     /// Version number for the stored data format.
     version: u32,
     /// The Decentralized Identifier (DID) string that controls this identity.
-    controller_did: String,
+    controller_did: IdentityDID,
     /// Optional, arbitrary JSON metadata associated with the identity.
     /// Consumers are responsible for defining and interpreting the structure
     /// within this field (e.g., storing profile information, etc.).
@@ -128,7 +128,7 @@ impl IdentityStorage for GitIdentityStorage {
         // Prepare data and Git objects (blob, tree)
         let stored_data = StoredIdentityData {
             version: 1,
-            controller_did: controller_did.to_string(),
+            controller_did: IdentityDID::new(controller_did),
             metadata,
         };
         let json_bytes = serde_json::to_vec_pretty(&stored_data)
@@ -290,7 +290,7 @@ impl IdentityStorage for GitIdentityStorage {
 
         // Construct and return the ManagedIdentity, including the opaque metadata
         Ok(ManagedIdentity {
-            controller_did: IdentityDID::new_unchecked(stored_data.controller_did),
+            controller_did: stored_data.controller_did,
             storage_id,
             metadata: stored_data.metadata,
             // storage_revision: Some(commit.id().to_string()), // Optionally include revision

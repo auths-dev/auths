@@ -183,10 +183,10 @@ pub fn is_device_listed(
         if att.is_revoked() {
             return false;
         }
-        if let Some(exp) = att.expires_at {
-            if now > exp {
-                return false;
-            }
+        if let Some(exp) = att.expires_at
+            && now > exp
+        {
+            return false;
         }
         true
     })
@@ -217,10 +217,7 @@ pub struct DeviceLinkVerification {
 }
 
 impl DeviceLinkVerification {
-    fn success(
-        key_state: crate::keri::KeriKeyState,
-        seal_sequence: Option<u64>,
-    ) -> Self {
+    fn success(key_state: crate::keri::KeriKeyState, seal_sequence: Option<u64>) -> Self {
         Self {
             valid: true,
             error: None,
@@ -300,13 +297,13 @@ pub fn compute_attestation_seal_digest(
         rid: &attestation.rid,
         issuer: &attestation.issuer,
         subject: &attestation.subject,
-        device_public_key: &attestation.device_public_key,
+        device_public_key: attestation.device_public_key.as_bytes(),
         payload: &attestation.payload,
         timestamp: &attestation.timestamp,
         expires_at: &attestation.expires_at,
         revoked_at: &attestation.revoked_at,
         note: &attestation.note,
-        role: attestation.role.as_deref(),
+        role: attestation.role.as_ref().map(|r| r.as_str()),
         capabilities: if attestation.capabilities.is_empty() {
             None
         } else {
@@ -333,34 +330,33 @@ pub(crate) async fn verify_with_keys_at(
     let reference_time = at;
 
     // --- 1. Check revocation (time-aware) ---
-    if let Some(revoked_at) = att.revoked_at {
-        if revoked_at <= reference_time {
-            return Err(AttestationError::VerificationError(
-                "Attestation revoked".to_string(),
-            ));
-        }
+    if let Some(revoked_at) = att.revoked_at
+        && revoked_at <= reference_time
+    {
+        return Err(AttestationError::VerificationError(
+            "Attestation revoked".to_string(),
+        ));
     }
 
     // --- 2. Check expiration against reference time ---
-    if let Some(exp) = att.expires_at {
-        if reference_time > exp {
-            return Err(AttestationError::VerificationError(format!(
-                "Attestation expired on {}",
-                exp.to_rfc3339()
-            )));
-        }
+    if let Some(exp) = att.expires_at
+        && reference_time > exp
+    {
+        return Err(AttestationError::VerificationError(format!(
+            "Attestation expired on {}",
+            exp.to_rfc3339()
+        )));
     }
 
     // --- 3. Check timestamp skew against reference time ---
-    if check_skew {
-        if let Some(ts) = att.timestamp {
-            if ts > reference_time + Duration::seconds(MAX_SKEW_SECS) {
-                return Err(AttestationError::VerificationError(format!(
-                    "Attestation timestamp ({}) is in the future",
-                    ts.to_rfc3339(),
-                )));
-            }
-        }
+    if check_skew
+        && let Some(ts) = att.timestamp
+        && ts > reference_time + Duration::seconds(MAX_SKEW_SECS)
+    {
+        return Err(AttestationError::VerificationError(format!(
+            "Attestation timestamp ({}) is in the future",
+            ts.to_rfc3339(),
+        )));
     }
 
     // --- 4. Check provided issuer public key length ---
@@ -377,13 +373,13 @@ pub(crate) async fn verify_with_keys_at(
         rid: &att.rid,
         issuer: &att.issuer,
         subject: &att.subject,
-        device_public_key: &att.device_public_key,
+        device_public_key: att.device_public_key.as_bytes(),
         payload: &att.payload,
         timestamp: &att.timestamp,
         expires_at: &att.expires_at,
         revoked_at: &att.revoked_at,
         note: &att.note,
-        role: att.role.as_deref(),
+        role: att.role.as_ref().map(|r| r.as_str()),
         capabilities: if att.capabilities.is_empty() {
             None
         } else {
@@ -402,7 +398,11 @@ pub(crate) async fn verify_with_keys_at(
     // --- 6. Verify issuer signature ---
     if !att.identity_signature.is_empty() {
         provider
-            .verify_ed25519(issuer_pk_bytes, data_to_verify, &att.identity_signature)
+            .verify_ed25519(
+                issuer_pk_bytes,
+                data_to_verify,
+                att.identity_signature.as_bytes(),
+            )
             .await
             .map_err(|_| {
                 AttestationError::VerificationError(
@@ -417,17 +417,11 @@ pub(crate) async fn verify_with_keys_at(
     }
 
     // --- 7. Verify device signature ---
-    if att.device_public_key.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::VerificationError(format!(
-            "Stored device public key has invalid length: {}",
-            att.device_public_key.len()
-        )));
-    }
     provider
         .verify_ed25519(
-            &att.device_public_key,
+            att.device_public_key.as_bytes(),
             data_to_verify,
-            &att.device_signature,
+            att.device_signature.as_bytes(),
         )
         .await
         .map_err(|_| {
@@ -488,7 +482,7 @@ pub(crate) async fn verify_chain_inner(
             ));
         }
 
-        let issuer_pk = &prev_att.device_public_key;
+        let issuer_pk = prev_att.device_public_key.as_bytes().as_slice();
 
         match verify_single_attestation(att, issuer_pk, idx, provider, now).await {
             Ok(link) => chain_links.push(link),
@@ -552,17 +546,17 @@ async fn verify_single_attestation(
         ));
     }
 
-    if let Some(exp) = att.expires_at {
-        if now > exp {
-            return Err((
-                VerificationStatus::Expired { at: exp },
-                ChainLink::invalid(
-                    issuer,
-                    subject,
-                    format!("Attestation expired on {}", exp.to_rfc3339()),
-                ),
-            ));
-        }
+    if let Some(exp) = att.expires_at
+        && now > exp
+    {
+        return Err((
+            VerificationStatus::Expired { at: exp },
+            ChainLink::invalid(
+                issuer,
+                subject,
+                format!("Attestation expired on {}", exp.to_rfc3339()),
+            ),
+        ));
     }
 
     match verify_with_keys_at(att, issuer_pk, now, true, provider).await {
@@ -578,7 +572,7 @@ async fn verify_single_attestation(
 mod tests {
     use super::*;
     use crate::clock::ClockProvider;
-    use crate::core::Capability;
+    use crate::core::{Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
     use crate::keri::Said;
     use crate::types::{DeviceDID, IdentityDID};
     use crate::verifier::Verifier;
@@ -619,12 +613,12 @@ mod tests {
 
         let mut att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
-            device_public_key: device_pk.to_vec(),
-            identity_signature: vec![],
-            device_signature: vec![],
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at,
             expires_at,
             timestamp: Some(fixed_now()),
@@ -641,13 +635,13 @@ mod tests {
             rid: &att.rid,
             issuer: &att.issuer,
             subject: &att.subject,
-            device_public_key: &att.device_public_key,
+            device_public_key: att.device_public_key.as_bytes(),
             payload: &att.payload,
             timestamp: &att.timestamp,
             expires_at: &att.expires_at,
             revoked_at: &att.revoked_at,
             note: &att.note,
-            role: att.role.as_deref(),
+            role: att.role.as_ref().map(|r| r.as_str()),
             capabilities: if att.capabilities.is_empty() {
                 None
             } else {
@@ -658,8 +652,10 @@ mod tests {
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = issuer_kp.sign(&canonical_bytes).as_ref().to_vec();
-        att.device_signature = device_kp.sign(&canonical_bytes).as_ref().to_vec();
+        att.identity_signature =
+            Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature =
+            Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }
@@ -771,7 +767,9 @@ mod tests {
             None,
             Some(fixed_now() + Duration::days(365)),
         );
-        att.identity_signature[0] ^= 0xFF;
+        let mut tampered = *att.identity_signature.as_bytes();
+        tampered[0] ^= 0xFF;
+        att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
             .verify_chain(&[att], &root_pk)
@@ -965,7 +963,9 @@ mod tests {
             None,
             Some(fixed_now() + Duration::days(365)),
         );
-        att.identity_signature[0] ^= 0xFF;
+        let mut tampered = *att.identity_signature.as_bytes();
+        tampered[0] ^= 0xFF;
+        att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let verification_time = fixed_now() - Duration::days(10);
         let result = test_verifier()
@@ -1213,25 +1213,25 @@ mod tests {
         device_kp: &Ed25519KeyPair,
         issuer_did: &str,
         subject_did: &str,
-        role: Option<&str>,
+        role: Option<Role>,
         capabilities: Vec<Capability>,
     ) -> Attestation {
         let device_pk: [u8; 32] = device_kp.public_key().as_ref().try_into().unwrap();
 
         let mut att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
-            device_public_key: device_pk.to_vec(),
-            identity_signature: vec![],
-            device_signature: vec![],
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: Some(fixed_now() + Duration::days(365)),
             timestamp: Some(fixed_now()),
             note: None,
             payload: None,
-            role: role.map(|s| s.to_string()),
+            role,
             capabilities: capabilities.clone(),
             delegated_by: None,
             signer_type: None,
@@ -1247,21 +1247,23 @@ mod tests {
             rid: &att.rid,
             issuer: &att.issuer,
             subject: &att.subject,
-            device_public_key: &att.device_public_key,
+            device_public_key: att.device_public_key.as_bytes(),
             payload: &att.payload,
             timestamp: &att.timestamp,
             expires_at: &att.expires_at,
             revoked_at: &att.revoked_at,
             note: &att.note,
-            role: att.role.as_deref(),
+            role: att.role.as_ref().map(|r| r.as_str()),
             capabilities: caps_ref,
             delegated_by: att.delegated_by.as_ref(),
             signer_type: att.signer_type.as_ref(),
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = issuer_kp.sign(&canonical_bytes).as_ref().to_vec();
-        att.device_signature = device_kp.sign(&canonical_bytes).as_ref().to_vec();
+        att.identity_signature =
+            Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature =
+            Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }
@@ -1349,7 +1351,9 @@ mod tests {
             &device_did,
             vec![Capability::sign_commit()],
         );
-        att.identity_signature[0] ^= 0xFF;
+        let mut tampered = *att.identity_signature.as_bytes();
+        tampered[0] ^= 0xFF;
+        att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
             .verify_with_capability(&att, &Capability::sign_commit(), &root_pk)
@@ -1452,14 +1456,14 @@ mod tests {
             &device_kp,
             &root_did,
             &device_did,
-            Some("member"),
+            Some(Role::Member),
             vec![Capability::sign_commit()],
         );
 
         let result = test_verifier().verify_with_keys(&att, &root_pk).await;
         assert!(result.is_ok(), "Attestation should verify before tampering");
 
-        att.role = Some("admin".to_string());
+        att.role = Some(Role::Admin);
         let result = test_verifier().verify_with_keys(&att, &root_pk).await;
         assert!(result.is_err(), "Attestation should reject tampered role");
         let err_msg = result.unwrap_err().to_string();
@@ -1482,7 +1486,7 @@ mod tests {
             &device_kp,
             &root_did,
             &device_did,
-            Some("member"),
+            Some(Role::Member),
             vec![Capability::sign_commit()],
         );
         assert!(
@@ -1512,7 +1516,7 @@ mod tests {
             &device_kp,
             &root_did,
             &device_did,
-            Some("member"),
+            Some(Role::Member),
             vec![Capability::sign_commit()],
         );
         assert!(
@@ -1542,7 +1546,7 @@ mod tests {
             &device_kp,
             &root_did,
             &device_did,
-            Some("admin"),
+            Some(Role::Admin),
             vec![Capability::sign_commit(), Capability::manage_members()],
         );
 
@@ -1565,12 +1569,12 @@ mod tests {
 
         let mut att = Attestation {
             version: 1,
-            rid: "test-rid".to_string(),
+            rid: ResourceId::new("test-rid"),
             issuer: IdentityDID::new(issuer_did),
             subject: DeviceDID::new(subject_did),
-            device_public_key: device_pk.to_vec(),
-            identity_signature: vec![],
-            device_signature: vec![],
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: Some(fixed_now() + Duration::days(365)),
             timestamp,
@@ -1587,13 +1591,13 @@ mod tests {
             rid: &att.rid,
             issuer: &att.issuer,
             subject: &att.subject,
-            device_public_key: &att.device_public_key,
+            device_public_key: att.device_public_key.as_bytes(),
             payload: &att.payload,
             timestamp: &att.timestamp,
             expires_at: &att.expires_at,
             revoked_at: &att.revoked_at,
             note: &att.note,
-            role: att.role.as_deref(),
+            role: att.role.as_ref().map(|r| r.as_str()),
             capabilities: if att.capabilities.is_empty() {
                 None
             } else {
@@ -1604,8 +1608,10 @@ mod tests {
         };
         let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 
-        att.identity_signature = issuer_kp.sign(&canonical_bytes).as_ref().to_vec();
-        att.device_signature = device_kp.sign(&canonical_bytes).as_ref().to_vec();
+        att.identity_signature =
+            Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
+        att.device_signature =
+            Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
 
         att
     }
@@ -1752,7 +1758,9 @@ mod tests {
             None,
             Some(fixed_now() + Duration::days(365)),
         );
-        att.identity_signature[0] ^= 0xFF;
+        let mut tampered = *att.identity_signature.as_bytes();
+        tampered[0] ^= 0xFF;
+        att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
             .verify_device_authorization(&root_did, &device_did, &[att], &root_pk)

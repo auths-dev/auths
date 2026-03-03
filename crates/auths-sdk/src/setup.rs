@@ -2,7 +2,7 @@ use std::convert::TryInto;
 use std::path::Path;
 
 use auths_core::signing::{PassphraseProvider, SecureSigner, StorageSigner};
-use auths_core::storage::keychain::{KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::storage::git_refs::AttestationMetadata;
@@ -64,8 +64,8 @@ pub fn setup_developer(
     let registered = submit_registration(&config);
 
     Ok(SetupResult {
-        identity_did: controller_did,
-        device_did: device_did.to_string(),
+        identity_did: IdentityDID::new(controller_did),
+        device_did,
         key_alias,
         platform_claim,
         git_signing_configured: git_configured,
@@ -330,8 +330,8 @@ pub fn setup_ci(config: CiSetupConfig, ctx: &AuthsContext) -> Result<CiSetupResu
         generate_ci_env_block(&key_alias, &config.registry_path, &config.ci_environment);
 
     Ok(CiSetupResult {
-        identity_did: controller_did,
-        device_did: device_did.to_string(),
+        identity_did: IdentityDID::new(controller_did),
+        device_did,
         env_block,
     })
 }
@@ -442,14 +442,12 @@ pub fn setup_agent(
 ) -> Result<AgentSetupResult, SetupError> {
     use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode};
 
+    let cap_strings: Vec<String> = config.capabilities.iter().map(|c| c.to_string()).collect();
     let provisioning_config = AgentProvisioningConfig {
         agent_name: config.alias.to_string(),
-        capabilities: config.capabilities.clone(),
+        capabilities: cap_strings,
         expires_in_secs: config.expires_in_secs,
-        delegated_by: config
-            .parent_identity_did
-            .clone()
-            .map(auths_core::storage::keychain::IdentityDID::new),
+        delegated_by: config.parent_identity_did.clone().map(IdentityDID::new),
         storage_mode: AgentStorageMode::Persistent {
             repo_path: Some(config.registry_path.clone()),
         },
@@ -473,7 +471,7 @@ pub fn setup_agent(
 
         return Ok(AgentSetupResult {
             agent_did: bundle.agent_did,
-            parent_did: config.parent_identity_did.unwrap_or_default(),
+            parent_did: IdentityDID::new(config.parent_identity_did.unwrap_or_default()),
             capabilities: config.capabilities,
         });
     }
@@ -486,8 +484,8 @@ fn build_agent_proposal(
     config: &AgentSetupConfig,
 ) -> Result<AgentSetupResult, SetupError> {
     Ok(AgentSetupResult {
-        agent_did: format!("did:keri:E<pending:{}>", config.alias),
-        parent_did: config.parent_identity_did.clone().unwrap_or_default(),
+        agent_did: IdentityDID::new(format!("did:keri:E<pending:{}>", config.alias)),
+        parent_did: IdentityDID::new(config.parent_identity_did.clone().unwrap_or_default()),
         capabilities: config.capabilities.clone(),
     })
 }

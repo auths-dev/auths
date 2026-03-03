@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`auths-crypto`: `key_material` module** — canonical key parsing functions (`parse_ed25519_seed`, `parse_ed25519_key_material`, `build_ed25519_pkcs8_v2`) consolidated from scattered implementations across auths-core and auths-cli.
 - **`auths-test-utils`: `MockCryptoProvider`** — deterministic mock for testing crypto operations without ring dependency.
 
+- **Type Safety Audit** — comprehensive replacement of stringly-typed fields with semantic newtypes across the entire workspace:
+  - `auths-verifier`: Added `ResourceId` and `Role` newtypes; `Ed25519PublicKey` newtype replacing `Vec<u8>` (32-byte fixed array, `Copy`); `Ed25519Signature` newtype replacing `Vec<u8>` (64-byte fixed array)
+  - `auths-id`: Added `SealType` enum, `KeriSequence` newtype (wraps `u64`), `GitRef`/`BlobName` newtypes for storage layout; typed witness and receipt fields
+  - `auths-verifier`: `BridgeError` and `VerifyResult` now use structured reason enums instead of opaque strings
+  - `auths-core`: `ResolvedDid` converted from struct+`DidMethod` enum to a two-variant enum (`Key`/`Keri`) with accessor methods; `DidMethod` deleted. Same pattern applied to `ResolvedIdentity` in network ports
+  - `auths-sdk`: `SetupParams`, `DeviceRegistration`, `SigningConfig` fields use `IdentityDID`, `DeviceDID`, `Vec<Capability>` instead of `String`/`Vec<String>`
+  - `auths-id`: `StoredIdentityData.controller_did`, `AgentIdentityBundle.agent_did` → `IdentityDID`; `MemberView` fields → `Role`, `Vec<Capability>`, `IdentityDID`, `ResourceId`; `MemberFilter` → `HashSet<Role>`/`HashSet<Capability>`; `MemberInvalidReason` fields → `DeviceDID`/`IdentityDID`; `OrgMemberEntry.org` → `IdentityDID`
+  - `auths-core`: Added `Base64UrlEncoded` newtype for pairing types with `encode()`/`decode()`/`Deref<Target=str>`/`#[serde(transparent)]`/`JsonSchema`; `CreateSessionRequest.ephemeral_pubkey` → `Base64UrlEncoded`; `SubmitResponseRequest` fields → `Base64UrlEncoded`/`DeviceDID`
+  - All newtypes use `#[serde(transparent)]` — wire format unchanged, zero migration needed
+
 ### Changed
 
 - **`auths-verifier`: Refactored to use `CryptoProvider`** — all Ed25519 verification now routes through the `CryptoProvider` trait instead of calling `ring` directly. `ring` is feature-gated behind `native` (default). WASM builds use `--no-default-features --features wasm` to avoid pulling tokio/ring.
@@ -50,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`auths-core`: `EventSink` telemetry port** — new `EventSink` trait decouples structured event emission from stdout. `StdoutSink` (async MPSC worker, non-blocking `emit()`, blocking `flush()`) and `MemorySink` (in-process test capture) are the two provided implementations. `init_telemetry()` / `init_telemetry_with_sink()` set the global sink once at startup. `DROPPED_AUDIT_EVENTS` counter surfaces backpressure in the SIEM pipeline.
 - **`auths-sdk`: `GitConfigProvider` port trait** — `set(key, value)` abstraction removes `std::process::Command::new("git")` and `which::which` from `auths-sdk`. `SystemGitConfigProvider` in `auths-cli` implements the trait via the system `git` binary. `DeveloperSetupConfig` gains an optional `sign_binary_path` field; the CLI resolves the path via `which::which("auths-sign")` and passes it at the presentation boundary.
 - **`auths-sdk`: `SdkStorageError` typed enum** — replaces `anyhow::Error` in `SetupError::StorageError` and `DeviceError::StorageError`. `RegistrationError::NetworkError` now wraps `auths_core::ports::network::NetworkError` (typed). `RegistrationError::LocalDataError` carries a `String`. `map_storage_err()` and `map_device_storage_err()` helper functions removed; callers use inline `.map_err(|e| ...StorageError(SdkStorageError::OperationFailed(e.to_string())))`. `anyhow` removed from `auths-sdk/Cargo.toml`.
+
+---
+
+> Note: notes on release `0.0.1-rc.11` and prior come from an earlier repository that (a) lived on the my personal account and (b) included crates that have since been stripped out. I've decided to leave them intact for documenting the development.
 
 ## [0.0.1-rc.11] - 2026-02-18
 

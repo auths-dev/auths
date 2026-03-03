@@ -2,9 +2,8 @@
 
 use std::future::Future;
 
+use auths_verifier::core::Ed25519PublicKey;
 use auths_verifier::keri::Prefix;
-
-use crate::signing::DidMethod;
 
 /// Domain error for outbound network operations.
 ///
@@ -120,16 +119,55 @@ pub enum ResolutionError {
 /// use auths_core::ports::network::ResolvedIdentity;
 ///
 /// let identity: ResolvedIdentity = resolver.resolve_identity("did:key:z...").await?;
-/// let pk = identity.public_key;
+/// let pk = identity.public_key();
 /// ```
 #[derive(Debug, Clone)]
-pub struct ResolvedIdentity {
-    /// The resolved DID string.
-    pub did: String,
-    /// The raw Ed25519 public key.
-    pub public_key: Vec<u8>,
-    /// The DID method.
-    pub method: DidMethod,
+pub enum ResolvedIdentity {
+    /// Static did:key (no rotation possible).
+    Key {
+        /// The resolved DID string.
+        did: String,
+        /// The Ed25519 public key.
+        public_key: Ed25519PublicKey,
+    },
+    /// KERI-based identity with rotation capability.
+    Keri {
+        /// The resolved DID string.
+        did: String,
+        /// The Ed25519 public key.
+        public_key: Ed25519PublicKey,
+        /// Current KEL sequence number.
+        sequence: u64,
+        /// Whether key rotation is available.
+        can_rotate: bool,
+    },
+}
+
+impl ResolvedIdentity {
+    /// Returns the DID string.
+    pub fn did(&self) -> &str {
+        match self {
+            ResolvedIdentity::Key { did, .. } | ResolvedIdentity::Keri { did, .. } => did,
+        }
+    }
+
+    /// Returns the Ed25519 public key.
+    pub fn public_key(&self) -> &Ed25519PublicKey {
+        match self {
+            ResolvedIdentity::Key { public_key, .. }
+            | ResolvedIdentity::Keri { public_key, .. } => public_key,
+        }
+    }
+
+    /// Returns `true` if this is a `did:key` resolution.
+    pub fn is_key(&self) -> bool {
+        matches!(self, ResolvedIdentity::Key { .. })
+    }
+
+    /// Returns `true` if this is a `did:keri` resolution.
+    pub fn is_keri(&self) -> bool {
+        matches!(self, ResolvedIdentity::Keri { .. })
+    }
 }
 
 /// Resolves a decentralized identifier to its current cryptographic material.

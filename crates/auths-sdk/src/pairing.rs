@@ -393,7 +393,9 @@ pub fn build_pairing_session_request(
     let create_request = CreateSessionRequest {
         session_id: session_id.clone(),
         controller_did: session.token.controller_did.clone(),
-        ephemeral_pubkey: session.token.ephemeral_pubkey.clone(),
+        ephemeral_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
+            session.token.ephemeral_pubkey.clone(),
+        ),
         short_code: session.token.short_code.clone(),
         capabilities: session.token.capabilities.clone(),
         expires_at: session.token.expires_at.timestamp(),
