@@ -398,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn test_store_and_read_single_event() -> Result<()> {
+    fn test_store_and_read_single_event() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, _repo) = init_temp_repo();
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("EABC123".to_string());
@@ -420,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn test_store_and_read_multiple_events() -> Result<()> {
+    fn test_store_and_read_multiple_events() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, _repo) = init_temp_repo();
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("EDEF456".to_string());
@@ -449,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_kel_history_not_found() -> Result<()> {
+    fn test_read_kel_history_not_found() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, _repo) = init_temp_repo();
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("ENotExist".to_string());
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn test_store_event_updates_ref() -> Result<()> {
+    fn test_store_event_updates_ref() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, repo) = init_temp_repo(); // Get repo object
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("EGHI789".to_string());
@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_kel_history_skips_commit_without_blob() -> Result<()> {
+    fn test_read_kel_history_skips_commit_without_blob() -> Result<(), Box<dyn std::error::Error>> {
         let (_td, path, repo) = init_temp_repo();
         let storage = KeriGitStorage::new(&path);
         let did_prefix = Prefix::new_unchecked("ESkipBlob".to_string());
@@ -536,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn test_append_rotation_event_first() -> Result<()> {
+    fn test_append_rotation_event_first() -> Result<(), Box<dyn std::error::Error>> {
         use crate::identity::events::KeyRotationEvent;
         use chrono::Utc;
 
@@ -565,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn test_append_rotation_event_chain_validation() -> Result<()> {
+    fn test_append_rotation_event_chain_validation() -> Result<(), Box<dyn std::error::Error>> {
         use crate::identity::events::KeyRotationEvent;
         use chrono::Utc;
 
@@ -610,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn test_append_rotation_event_chain_integrity_failure() -> Result<()> {
+    fn test_append_rotation_event_chain_integrity_failure() -> Result<(), Box<dyn std::error::Error>> {
         use crate::identity::events::KeyRotationEvent;
         use chrono::Utc;
 
