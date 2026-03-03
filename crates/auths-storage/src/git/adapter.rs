@@ -519,6 +519,7 @@ impl GitRegistryBackend {
     ///
     /// Walks the `v1/orgs/` tree. Calls `visitor` for each org prefix string.
     /// Return `ControlFlow::Break(())` to stop early.
+    #[allow(dead_code)] // called from rebuild_org_members_from_registry (indexed-storage feature)
     fn visit_orgs<F>(&self, mut visitor: F) -> Result<(), RegistryError>
     where
         F: FnMut(&str) -> ControlFlow<()>,

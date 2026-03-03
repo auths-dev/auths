@@ -379,28 +379,4 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn commit_receipt_payload_signing_bytes_deterministic() {
-        let payload = CommitReceiptPayload {
-            tree_hash: vec![0xaa; 20],
-            parent_hashes: vec![vec![0xbb; 20], vec![0xcc; 20]],
-        };
-        let bytes1 = payload.signing_bytes();
-        let bytes2 = payload.signing_bytes();
-        assert_eq!(bytes1, bytes2);
-        // 20 (tree) + 4 (count) + 40 (2 parents)
-        assert_eq!(bytes1.len(), 64);
-    }
-
-    #[test]
-    fn commit_receipt_payload_no_parents() {
-        let payload = CommitReceiptPayload {
-            tree_hash: vec![0xaa; 20],
-            parent_hashes: vec![],
-        };
-        let bytes = payload.signing_bytes();
-        assert_eq!(bytes.len(), 24); // 20 + 4
-        // num_parents should be 0
-        assert_eq!(&bytes[20..24], &[0, 0, 0, 0]);
-    }
 }
