@@ -24,9 +24,8 @@ fn chain_json() -> Vec<u8> {
 fn attestation_happy_path() {
     let json = FIXTURE_ATTESTATION_JSON.as_bytes();
     let pk = issuer_pk_bytes();
-    let rc = unsafe {
-        ffi_verify_attestation_json(json.as_ptr(), json.len(), pk.as_ptr(), pk.len())
-    };
+    let rc =
+        unsafe { ffi_verify_attestation_json(json.as_ptr(), json.len(), pk.as_ptr(), pk.len()) };
     assert_eq!(rc, VERIFY_SUCCESS);
 }
 
@@ -49,12 +48,7 @@ fn attestation_invalid_pk_len() {
     let json = FIXTURE_ATTESTATION_JSON.as_bytes();
     let short_pk = [0u8; 16];
     let rc = unsafe {
-        ffi_verify_attestation_json(
-            json.as_ptr(),
-            json.len(),
-            short_pk.as_ptr(),
-            short_pk.len(),
-        )
+        ffi_verify_attestation_json(json.as_ptr(), json.len(), short_pk.as_ptr(), short_pk.len())
     };
     assert_eq!(rc, ERR_VERIFY_INVALID_PK_LEN);
 }

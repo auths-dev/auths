@@ -57,22 +57,12 @@ impl CryptoProvider for WebCryptoProvider {
             let usages = js_sys::Array::of1(&wasm_bindgen::JsValue::from_str("verify"));
 
             let import_promise = subtle
-                .import_key_with_str(
-                    "raw",
-                    &key_data,
-                    "Ed25519",
-                    false,
-                    &usages,
-                )
-                .map_err(|e| {
-                    CryptoError::OperationFailed(format!("importKey failed: {e:?}"))
-                })?;
+                .import_key_with_str("raw", &key_data, "Ed25519", false, &usages)
+                .map_err(|e| CryptoError::OperationFailed(format!("importKey failed: {e:?}")))?;
 
             let crypto_key: web_sys::CryptoKey = JsFuture::from(import_promise)
                 .await
-                .map_err(|e| {
-                    CryptoError::OperationFailed(format!("importKey rejected: {e:?}"))
-                })?
+                .map_err(|e| CryptoError::OperationFailed(format!("importKey rejected: {e:?}")))?
                 .unchecked_into();
 
             let verify_promise = subtle
@@ -82,13 +72,11 @@ impl CryptoProvider for WebCryptoProvider {
                     signature,
                     message,
                 )
-                .map_err(|e| {
-                    CryptoError::OperationFailed(format!("verify call failed: {e:?}"))
-                })?;
+                .map_err(|e| CryptoError::OperationFailed(format!("verify call failed: {e:?}")))?;
 
-            let result = JsFuture::from(verify_promise).await.map_err(|e| {
-                CryptoError::OperationFailed(format!("verify rejected: {e:?}"))
-            })?;
+            let result = JsFuture::from(verify_promise)
+                .await
+                .map_err(|e| CryptoError::OperationFailed(format!("verify rejected: {e:?}")))?;
 
             if result.as_bool().unwrap_or(false) {
                 Ok(())
