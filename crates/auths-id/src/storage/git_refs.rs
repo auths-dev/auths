@@ -1,5 +1,5 @@
+use crate::error::StorageError;
 use crate::storage::layout;
-use anyhow::Result;
 use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 use git2::Repository;
@@ -21,7 +21,7 @@ pub struct AttestationMetadata {
 pub fn aggregate_canonical_refs(
     repo: &Repository,
     device_dids: &[DeviceDID],
-) -> Result<HashMap<String, String>> {
+) -> Result<HashMap<String, String>, StorageError> {
     let mut canonical = HashMap::new();
 
     for did in device_dids {
