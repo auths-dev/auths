@@ -12,6 +12,7 @@ categories = ["cryptography"]
 default = ["native"]
 native = ["dep:ring", "dep:tokio"]
 wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
+test-utils = ["dep:ring"]
 
 [dependencies]
 async-trait = "0.1"
@@ -34,6 +35,7 @@ ring = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+auths-test-utils.workspace = true
 ring.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
