@@ -1,3 +1,5 @@
+use cesride::{Diger, Indexer, Matter, Siger, Verfer, indexer, matter};
+
 use crate::error::KeriTranslationError;
 
 /// The cryptographic key algorithm for encoding.
@@ -100,35 +102,99 @@ impl Default for CesrV1Codec {
     }
 }
 
-// CesrCodec implementation for CesrV1Codec is in fn-14.2.
-// Stub impl to allow compilation:
 impl CesrCodec for CesrV1Codec {
     fn encode_pubkey(
         &self,
-        _key_bytes: &[u8],
-        _key_type: KeyType,
+        key_bytes: &[u8],
+        key_type: KeyType,
     ) -> Result<String, KeriTranslationError> {
-        todo!("implemented in fn-14.2")
+        let code = match key_type {
+            KeyType::Ed25519 => matter::Codex::Ed25519,
+        };
+        let verfer = Verfer::new(Some(code), Some(key_bytes), None, None, None).map_err(|e| {
+            KeriTranslationError::EncodingFailed {
+                primitive_kind: "public_key",
+                detail: e.to_string(),
+            }
+        })?;
+        verfer
+            .qb64()
+            .map_err(|e| KeriTranslationError::EncodingFailed {
+                primitive_kind: "public_key",
+                detail: e.to_string(),
+            })
     }
 
     fn encode_indexed_signature(
         &self,
-        _sig_bytes: &[u8],
-        _sig_type: SigType,
-        _key_index: u32,
+        sig_bytes: &[u8],
+        sig_type: SigType,
+        key_index: u32,
     ) -> Result<String, KeriTranslationError> {
-        todo!("implemented in fn-14.2")
+        let code = match sig_type {
+            SigType::Ed25519 => indexer::Codex::Ed25519,
+        };
+        let siger = Siger::new(
+            None,
+            Some(key_index),
+            None,
+            Some(code),
+            Some(sig_bytes),
+            None,
+            None,
+            None,
+        )
+        .map_err(|e| KeriTranslationError::EncodingFailed {
+            primitive_kind: "indexed_signature",
+            detail: e.to_string(),
+        })?;
+        siger
+            .qb64()
+            .map_err(|e| KeriTranslationError::EncodingFailed {
+                primitive_kind: "indexed_signature",
+                detail: e.to_string(),
+            })
     }
 
     fn encode_digest(
         &self,
-        _digest_bytes: &[u8],
-        _digest_type: DigestType,
+        digest_bytes: &[u8],
+        digest_type: DigestType,
     ) -> Result<String, KeriTranslationError> {
-        todo!("implemented in fn-14.2")
+        let code = match digest_type {
+            DigestType::Blake3_256 => matter::Codex::Blake3_256,
+        };
+        let diger =
+            Diger::new(None, Some(code), Some(digest_bytes), None, None, None).map_err(|e| {
+                KeriTranslationError::EncodingFailed {
+                    primitive_kind: "digest",
+                    detail: e.to_string(),
+                }
+            })?;
+        diger
+            .qb64()
+            .map_err(|e| KeriTranslationError::EncodingFailed {
+                primitive_kind: "digest",
+                detail: e.to_string(),
+            })
     }
 
-    fn decode_qualified(&self, _qualified: &str) -> Result<DecodedPrimitive, KeriTranslationError> {
-        todo!("implemented in fn-14.2")
+    fn decode_qualified(&self, qualified: &str) -> Result<DecodedPrimitive, KeriTranslationError> {
+        if let Ok(verfer) = Verfer::new(None, None, None, Some(qualified), None) {
+            return Ok(DecodedPrimitive {
+                raw: verfer.raw(),
+                code: verfer.code(),
+            });
+        }
+        if let Ok(diger) = Diger::new(None, None, None, None, Some(qualified), None) {
+            return Ok(DecodedPrimitive {
+                raw: diger.raw(),
+                code: diger.code(),
+            });
+        }
+        Err(KeriTranslationError::DecodingFailed(format!(
+            "unrecognized CESR primitive: {}...",
+            &qualified[..qualified.len().min(8)]
+        )))
     }
 }
