@@ -2,6 +2,17 @@
 
 Auths enables cryptographic verification without a central authority. This page explains how trust is established, maintained, and verified -- and where the security boundaries are.
 
+## Zero-trust by design
+
+Auths implements the core tenets of zero-trust architecture (NIST SP 800-207) as structural properties, not bolted-on policies:
+
+- **Never trust, always verify.** Every attestation is verified cryptographically — signatures, expiration, capability scope. No implicit trust is granted based on network location, credential source, or issuer reputation. Verification is a pure computation requiring no server contact.
+- **Least privilege.** Attestations grant specific capabilities (`sign:commit`, `deploy:staging`) with mandatory expiration. Delegation chains enforce capability narrowing: a child entity can never hold more authority than its parent granted.
+- **Assume breach.** KERI pre-rotation means key compromise is survivable. The next rotation key is pre-committed as a hash in the current event — an attacker who steals the active key cannot rotate to a key they control.
+- **Verify explicitly.** Dual signatures (identity + device) on every attestation, hash-chained Key Event Logs, and optional witness receipts provide independent, layered verification that does not depend on a single trust anchor.
+
+These properties hold whether the identity belongs to a human developer, an AI agent, or a CI/CD workload.
+
 ## Verification without a central authority
 
 Traditional identity systems rely on a central authority (a CA, an identity provider, a blockchain) to vouch for the binding between an identity and a key. Auths takes a different approach: **the identity is the event log itself**.
@@ -244,3 +255,14 @@ The verifier answers: *"Are these signatures mathematically valid?"* The caller 
 ```
 
 Trust flows from the top down: you trust a root identity (out-of-band), the KEL proves the key history is intact, attestations prove devices are authorized, and witnesses provide additional assurance against equivocation.
+
+## Audit trail
+
+Auths provides tamper-evident audit capabilities as a structural property of the identity system, not as a separate logging layer.
+
+- **Key Event Log (KEL):** Every key operation — inception, rotation, interaction — is a signed, content-addressed record in a hash chain. The KEL is an immutable, independently verifiable history of every change to an identity's cryptographic state.
+- **Attestation lifecycle in Git:** Attestation creation, extension, and revocation are recorded as Git commits under `refs/auths/`. The commit history is the lifecycle audit trail — who authorized what, when, and under what constraints.
+- **Seals:** Interaction events can include seals — cryptographic digests that bind external data (attestation creation, revocations, delegations) to a specific point in the identity's event timeline.
+- **Delegation chain provenance:** Every agent action that produces a signature is traceable through the attestation chain back to the authorizing human. The `delegated_by` field, combined with `signer_type`, creates an unbroken accountability chain from autonomous action to human authorization.
+
+Because identifiers are self-certifying and logs are hash-chained, audit entries are independently verifiable without access to any central system.

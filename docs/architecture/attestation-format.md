@@ -54,6 +54,38 @@ The `Attestation` struct is defined in `auths-verifier/src/core.rs`:
 
 Fields marked with `skip_serializing_if` are omitted from JSON when empty or null, ensuring backward compatibility.
 
+### Signer Types: Human, Agent, Workload
+
+The `signer_type` field distinguishes the entity class behind an attestation, enabling policy engines and verifiers to apply different authorization rules based on whether a human, an AI agent, or an automated workload performed an action.
+
+| Type | When to use | Example |
+|------|-------------|---------|
+| `Human` | A person operating interactively — developer signing commits, admin issuing attestations | Developer on a laptop |
+| `Agent` | An AI agent or autonomous software acting with delegated authority from a human or parent agent | Claude Code, a security scanning agent, an MCP-connected AI assistant |
+| `Workload` | An automated process with a fixed, predictable scope — CI runners, build systems, cron jobs | GitHub Actions runner, Jenkins pipeline |
+
+Policy engines can use `signer_type` to enforce rules such as: "only `Human` signers may approve production deployments" or "attestations from `Agent` signers require a `delegated_by` chain back to a `Human`."
+
+**Example: Agent attestation with delegation**
+
+```json
+{
+  "version": 1,
+  "rid": "f8a1b2c3-d4e5-6789-abcd-ef0123456789",
+  "issuer": "did:keri:EHumanOperator...",
+  "subject": "did:key:z6MkAgentDevice...",
+  "device_public_key": "aabb...",
+  "identity_signature": "1122...",
+  "device_signature": "9900...",
+  "capabilities": ["sign:commit", "deploy:staging"],
+  "expires_at": "2026-03-05T00:00:00Z",
+  "signer_type": "Agent",
+  "delegated_by": "did:keri:EHumanOperator..."
+}
+```
+
+This attestation says: "Human operator `EHumanOperator` authorized agent device `z6MkAgentDevice` to sign commits and deploy to staging, valid for 24 hours." The `signer_type: Agent` tells downstream systems this action originated from an autonomous agent, and the `delegated_by` field provides the accountability chain back to the human.
+
 ## Canonical Payload
 
 Signatures are computed over a **canonical JSON** representation of the attestation data, **excluding** `identity_signature` and `device_signature`. This is produced by the `CanonicalAttestationData` struct:

@@ -98,6 +98,7 @@ nav:
       - Sharing Your Identity: getting-started/sharing-your-identity.md
       - How It Works: getting-started/how-it-works.md
       - Identity Lifecycle: getting-started/identity-lifecycle.md
+      - Delegation: getting-started/delegation.md
       - Trust Model: getting-started/trust-model.md
 
   - Guides:
@@ -138,6 +139,7 @@ nav:
           - Identity Model: architecture/identity-model.md
           - Git as Storage: architecture/git-as-storage.md
           - Attestation Format: architecture/attestation-format.md
+          - OIDC Bridge: architecture/oidc-bridge.md
           - Cryptography: architecture/cryptography.md
       - Crate Deep Dives:
           - auths-core: architecture/crates/auths-core.md

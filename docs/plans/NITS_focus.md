@@ -29,13 +29,13 @@ The `signer_type` enum (`Human`, `Agent`, `Workload`) exists in code and is ment
 
 **Tasks:**
 
-- [ ] **README.md** -- Add a section "Agent & Workload Identity" after "What can you do with Auths?" showing:
+- [x] **README.md** -- Add a section "Agent & Workload Identity" after "What can you do with Auths?" showing:
   - How a CI runner or AI agent gets a `did:keri` identity
   - How an org issues a scoped attestation to an agent (`signer_type: Agent`, time-limited, capability-restricted)
   - How a human delegates authority to an agent with `delegated_by`
   - Keep it to ~20 lines with a code example
 
-- [ ] **docs/architecture/attestation-format.md** -- Expand the `signer_type` field documentation. Currently it's one cell in a table. Add a subsection "Signer Types: Human, Agent, Workload" explaining:
+- [x] **docs/architecture/attestation-format.md** -- Expand the `signer_type` field documentation. Currently it's one cell in a table. Add a subsection "Signer Types: Human, Agent, Workload" explaining:
   - When to use each type
   - How `signer_type` enables policy engines to distinguish human vs. automated actions
   - Brief example of an agent attestation JSON
@@ -48,7 +48,7 @@ Auths has `delegated_by`, attestation chains, and `verify_chain()` -- but there'
 
 **Tasks:**
 
-- [ ] **docs/getting-started/delegation.md** (new file) -- A short guide:
+- [x] **docs/getting-started/delegation.md** (new file) -- A short guide:
   - Human creates identity, links device
   - Human issues attestation to an AI agent with `delegated_by` pointing to the human's attestation
   - Agent acts, signs artifacts
@@ -64,8 +64,8 @@ Auths has `delegated_by`, attestation chains, and `verify_chain()` -- but there'
 
 **Tasks:**
 
-- [ ] **docs/architecture/oidc-bridge.md** (new file) -- Explain the design pattern:
-  - base this on the
+- [x] **docs/architecture/oidc-bridge.md** (new file) -- Explain the design pattern:
+  - base this on the /Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-oidc-bridge crate
   - Auths identity is the root; OIDC is a claim/proof that can be linked
   - GitHub OAuth flow already works this way (show it)
   - How an enterprise IdP (Okta, Azure AD) could issue attestations after OIDC verification
@@ -78,7 +78,7 @@ Auths has `delegated_by`, attestation chains, and `verify_chain()` -- but there'
 
 **Tasks:**
 
-- [ ] **docs/getting-started/trust-model.md** -- Add a section "Zero-Trust by Design" near the top, mapping:
+- [x] **docs/getting-started/trust-model.md** -- Add a section "Zero-Trust by Design" near the top, mapping:
   - "Never trust, always verify" = every attestation is verified cryptographically, no server trust
   - "Least privilege" = capability-scoped attestations with expiration
   - "Assume breach" = pre-rotation means key compromise is survivable
@@ -91,7 +91,7 @@ Auths has `delegated_by`, attestation chains, and `verify_chain()` -- but there'
 
 **Tasks:**
 
-- [ ] **docs/getting-started/sharing-your-identity.md** -- Expand the "Export an identity bundle for CI" section into a fuller "CI/CD & Automated Agent Identity" section:
+- [x] **docs/getting-started/sharing-your-identity.md** -- Expand the "Export an identity bundle for CI" section into a fuller "CI/CD & Automated Agent Identity" section:
   - How to create a dedicated agent identity (not just export a human's bundle)
   - How to issue a time-limited, capability-restricted attestation to a CI agent
   - How the CI agent signs artifacts and the org verifies them
@@ -103,9 +103,9 @@ Auths has `delegated_by`, attestation chains, and `verify_chain()` -- but there'
 
 **Tasks:**
 
-- [ ] **README.md** -- In the new "Agent & Workload Identity" section, add one sentence: "Auths attestations can serve as the cryptographic identity layer behind MCP's OAuth-based authorization, providing verifiable delegation chains from human principals to AI agents."
+- [x] **README.md** -- In the new "Agent & Workload Identity" section, add one sentence: "Auths attestations can serve as the cryptographic identity layer behind MCP's OAuth-based authorization, providing verifiable delegation chains from human principals to AI agents."
 
-- [ ] **docs/architecture/oidc-bridge.md** -- Include an "MCP Integration" subsection showing where Auths fits in the MCP auth flow (MCP uses OAuth; Auths provides the identity that the OAuth token represents)
+- [x] **docs/architecture/oidc-bridge.md** -- Include an "MCP Integration" subsection showing where Auths fits in the MCP auth flow (MCP uses OAuth; Auths provides the identity that the OAuth token represents)
 
 ### 7. No comparison to SPIFFE/SPIRE
 
@@ -113,7 +113,7 @@ Auths has `delegated_by`, attestation chains, and `verify_chain()` -- but there'
 
 **Tasks:**
 
-- [ ] **docs/architecture/oidc-bridge.md** (or rename to `enterprise-integration.md`) -- Add a "Comparison with SPIFFE/SPIRE" subsection:
+- [x] **docs/architecture/oidc-bridge.md** (or rename to `enterprise-integration.md`) -- Add a "Comparison with SPIFFE/SPIRE" subsection:
   - SPIFFE: centralized SPIRE server issues SVIDs, runtime attestation
   - Auths: self-certifying, no central issuer, Git-native, works offline
   - Complementary: SPIFFE for service mesh workload identity, Auths for developer/agent identity with delegation chains
@@ -127,7 +127,7 @@ The KEL IS a tamper-proof log. Attestation lifecycle is tracked in Git commits. 
 
 **Tasks:**
 
-- [ ] **docs/getting-started/trust-model.md** -- Add a section "Audit Trail" after the trust boundaries summary:
+- [x] **docs/getting-started/trust-model.md** -- Add a section "Audit Trail" after the trust boundaries summary:
   - KEL = tamper-evident history of every key operation
   - Attestation Git refs = lifecycle audit (creation, extension, revocation as commits)
   - Seals = cryptographic binding of external events to the identity timeline

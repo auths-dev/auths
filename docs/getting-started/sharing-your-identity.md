@@ -79,19 +79,79 @@ To include revoked or expired devices:
 auths device list --include-revoked
 ```
 
-## Export an identity bundle for CI
+## CI/CD & automated agent identity
 
-For CI/CD pipelines that need to verify commits without access to your identity repository, export a portable bundle:
+CI runners and automated agents should hold their own identities — not borrow a human's credentials. Auths supports this through dedicated agent identities with scoped, time-limited attestations.
+
+### Create a dedicated agent identity
+
+Rather than exporting a human's identity bundle to CI, create a separate identity for the runner:
+
+```bash
+# On the CI runner (or during provisioning)
+auths init --profile agent
+```
+
+This gives the runner its own `did:keri` identity and device key, independent of any human operator.
+
+### Issue a scoped attestation from a human
+
+A human operator issues an attestation granting the CI agent specific capabilities:
+
+```bash
+auths attestation issue \
+  --subject did:key:z6MkCIRunner... \
+  --signer-type Workload \
+  --capabilities "sign:commit,sign:release" \
+  --delegated-by did:keri:EHumanAdmin... \
+  --expires-in 7d
+```
+
+The attestation:
+
+- Uses `signer_type: Workload` to identify this as an automated process
+- Grants only `sign:commit` and `sign:release` — not `deploy:production` or `manage_members`
+- Expires in 7 days, requiring periodic re-authorization
+- Includes `delegated_by` linking back to the authorizing human
+
+### Agent signs artifacts
+
+The CI agent signs commits and releases using its own key:
+
+```bash
+git commit -S -m "Release v2.1.0"
+auths sign --file release-v2.1.0.tar.gz
+```
+
+Every signature is traceable through the attestation chain: `CI runner → human admin → organization`.
+
+### Verify agent signatures
+
+Any verifier can validate the agent's work by checking the full chain:
+
+```bash
+auths verify-commit HEAD
+```
+
+The verifier confirms: the commit was signed by a device with a valid attestation, the attestation was issued by an authorized human, and the capabilities include `sign:commit`.
+
+### Export an identity bundle
+
+For environments where the full identity repository is unavailable, export a portable bundle:
 
 ```bash
 auths id export-bundle --alias main --output identity-bundle.json --max-age-secs 86400
 ```
 
-The bundle contains your public key and attestation chain. Pass it to `auths verify` in CI:
+The bundle contains the public key and attestation chain. Use it in CI:
 
 ```bash
 auths verify HEAD --identity-bundle identity-bundle.json
 ```
+
+### Cloud credentials via OIDC
+
+For CI agents that need cloud access (AWS, GCP, Azure), the [OIDC bridge](../architecture/oidc-bridge.md) exchanges the attestation chain for a standard JWT — no static API keys or long-lived service account credentials required.
 
 ## Next: How It Works
 

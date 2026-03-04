@@ -106,6 +106,35 @@ auths git allowed-signers >> ~/.ssh/allowed_signers
 
 ---
 
+## Agent & Workload Identity
+
+Auths treats AI agents and CI/CD runners as first-class identity holders — not borrowers of human credentials.
+
+**Give an agent its own identity:**
+
+```bash
+# Create a dedicated agent identity
+auths init --profile agent
+
+# Issue a scoped, time-limited attestation from a human to the agent
+auths attestation issue \
+  --subject did:key:z6MkAgent... \
+  --signer-type Agent \
+  --capabilities "sign:commit,deploy:staging" \
+  --delegated-by did:keri:EHuman... \
+  --expires-in 24h
+```
+
+The agent now holds a cryptographic attestation chain traceable back to the human who authorized it. Every action the agent takes is signed under its own key, scoped to only the capabilities it was granted, and verifiable by anyone — offline, without contacting a central authority.
+
+**How delegation works:** A human creates a signed attestation granting specific capabilities to an agent. The agent can further delegate a subset of those capabilities to sub-agents. Verifiers walk the chain back to the human sponsor. Capabilities can only narrow at each hop, never widen. See the [Delegation Guide](docs/getting-started/delegation.md) for a full walkthrough.
+
+**Cloud integration via OIDC:** The [OIDC bridge](docs/architecture/oidc-bridge.md) verifies an agent's attestation chain and issues a standard JWT consumable by AWS STS, GCP Workload Identity, and Azure AD — no cloud provider changes required.
+
+**MCP compatibility:** Auths attestations serve as the cryptographic identity layer behind MCP's OAuth-based authorization, providing verifiable delegation chains from human principals to AI agents.
+
+---
+
 ## How it works
 
 Auths stores your identity and device attestations in a Git repository (`~/.auths` by default). Each device link is a cryptographically signed attestation stored as a Git ref.
