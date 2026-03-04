@@ -1,6 +1,6 @@
 # Dependency Architecture Refactor
 
-**Status**: Draft
+**Status**: Complete
 **Scope**: Workspace-wide restructuring of crate dependencies, test utilities, and publish pipeline
 **Breaking changes**: Yes (pre-launch, acceptable)
 
