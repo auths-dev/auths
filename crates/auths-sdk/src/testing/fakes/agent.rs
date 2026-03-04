@@ -17,20 +17,48 @@ pub enum AgentCall {
     },
 }
 
+#[derive(Clone)]
+enum FakeSignResult {
+    Ok(String),
+    Unavailable(String),
+    ConnectionFailed(String),
+    SigningFailed(String),
+    StartupFailed(String),
+}
+
+impl FakeSignResult {
+    fn from_error(err: &AgentSigningError) -> Self {
+        match err {
+            AgentSigningError::Unavailable(msg) => Self::Unavailable(msg.clone()),
+            AgentSigningError::ConnectionFailed(msg) => Self::ConnectionFailed(msg.clone()),
+            AgentSigningError::SigningFailed(msg) => Self::SigningFailed(msg.clone()),
+            AgentSigningError::StartupFailed(msg) => Self::StartupFailed(msg.clone()),
+        }
+    }
+
+    fn to_sign_result(&self) -> Result<String, AgentSigningError> {
+        match self {
+            Self::Ok(pem) => Ok(pem.clone()),
+            Self::Unavailable(msg) => Err(AgentSigningError::Unavailable(msg.clone())),
+            Self::ConnectionFailed(msg) => Err(AgentSigningError::ConnectionFailed(msg.clone())),
+            Self::SigningFailed(msg) => Err(AgentSigningError::SigningFailed(msg.clone())),
+            Self::StartupFailed(msg) => Err(AgentSigningError::StartupFailed(msg.clone())),
+        }
+    }
+}
+
 /// Configurable fake for [`AgentSigningPort`].
 ///
 /// Returns canned responses and records all calls for assertion.
 ///
 /// Usage:
 /// ```ignore
-/// let fake = FakeAgentProvider::unavailable(); // all methods return Unavailable
+/// let fake = FakeAgentProvider::unavailable();
 /// let fake = FakeAgentProvider::signing_with("SSHSIG PEM...");
 /// assert_eq!(fake.calls().len(), 1);
 /// ```
 pub struct FakeAgentProvider {
-    sign_result: Mutex<Option<Result<String, AgentSigningError>>>,
-    ensure_result: Mutex<Option<Result<(), AgentSigningError>>>,
-    add_identity_result: Mutex<Option<Result<(), AgentSigningError>>>,
+    sign_result: Mutex<FakeSignResult>,
     calls: Arc<Mutex<Vec<AgentCall>>>,
 }
 
@@ -38,9 +66,9 @@ impl FakeAgentProvider {
     /// Create a fake where all methods return [`AgentSigningError::Unavailable`].
     pub fn unavailable() -> Self {
         Self {
-            sign_result: Mutex::new(None),
-            ensure_result: Mutex::new(None),
-            add_identity_result: Mutex::new(None),
+            sign_result: Mutex::new(FakeSignResult::Unavailable(
+                "agent not supported on this platform".into(),
+            )),
             calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -48,9 +76,7 @@ impl FakeAgentProvider {
     /// Create a fake that returns the given PEM string from `try_sign`.
     pub fn signing_with(pem: impl Into<String>) -> Self {
         Self {
-            sign_result: Mutex::new(Some(Ok(pem.into()))),
-            ensure_result: Mutex::new(Some(Ok(()))),
-            add_identity_result: Mutex::new(Some(Ok(()))),
+            sign_result: Mutex::new(FakeSignResult::Ok(pem.into())),
             calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -58,9 +84,7 @@ impl FakeAgentProvider {
     /// Create a fake that returns a specific error from `try_sign`.
     pub fn sign_fails_with(err: AgentSigningError) -> Self {
         Self {
-            sign_result: Mutex::new(Some(Err(err))),
-            ensure_result: Mutex::new(Some(Ok(()))),
-            add_identity_result: Mutex::new(Some(Ok(()))),
+            sign_result: Mutex::new(FakeSignResult::from_error(&err)),
             calls: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -87,15 +111,10 @@ impl AgentSigningPort for FakeAgentProvider {
                 data: data.to_vec(),
             });
 
-        match &*self.sign_result.lock().unwrap_or_else(|e| e.into_inner()) {
-            Some(Ok(pem)) => Ok(pem.clone()),
-            Some(Err(_)) => Err(AgentSigningError::SigningFailed(
-                "fake signing error".into(),
-            )),
-            None => Err(AgentSigningError::Unavailable(
-                "agent not supported on this platform".into(),
-            )),
-        }
+        self.sign_result
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .to_sign_result()
     }
 
     fn ensure_running(&self) -> Result<(), AgentSigningError> {
@@ -104,14 +123,10 @@ impl AgentSigningPort for FakeAgentProvider {
             .unwrap_or_else(|e| e.into_inner())
             .push(AgentCall::EnsureRunning);
 
-        match &*self.ensure_result.lock().unwrap_or_else(|e| e.into_inner()) {
-            Some(Ok(())) => Ok(()),
-            Some(Err(_)) => Err(AgentSigningError::StartupFailed(
-                "fake startup error".into(),
-            )),
-            None => Err(AgentSigningError::Unavailable(
-                "agent not supported on this platform".into(),
-            )),
+        // Best-effort — return Ok unless the fake is configured as unavailable
+        match &*self.sign_result.lock().unwrap_or_else(|e| e.into_inner()) {
+            FakeSignResult::Unavailable(msg) => Err(AgentSigningError::Unavailable(msg.clone())),
+            _ => Ok(()),
         }
     }
 
@@ -124,18 +139,9 @@ impl AgentSigningPort for FakeAgentProvider {
                 pkcs8_der: pkcs8_der.to_vec(),
             });
 
-        match &*self
-            .add_identity_result
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-        {
-            Some(Ok(())) => Ok(()),
-            Some(Err(_)) => Err(AgentSigningError::SigningFailed(
-                "fake add_identity error".into(),
-            )),
-            None => Err(AgentSigningError::Unavailable(
-                "agent not supported on this platform".into(),
-            )),
+        match &*self.sign_result.lock().unwrap_or_else(|e| e.into_inner()) {
+            FakeSignResult::Unavailable(msg) => Err(AgentSigningError::Unavailable(msg.clone())),
+            _ => Ok(()),
         }
     }
 }

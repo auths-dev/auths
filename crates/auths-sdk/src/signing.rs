@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 /// Errors from the signing pipeline.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SigningError {
     /// The identity is in a freeze state and signing is not permitted.
     #[error("identity is frozen: {0}")]
@@ -36,6 +37,24 @@ pub enum SigningError {
     /// SSHSIG PEM encoding failed after signing.
     #[error("PEM encoding failed: {0}")]
     PemEncoding(String),
+    /// The agent is not available (platform unsupported, not installed, or not reachable).
+    #[error("agent unavailable: {0}")]
+    AgentUnavailable(String),
+    /// The agent accepted the signing request but it failed.
+    #[error("agent signing failed")]
+    AgentSigningFailed(#[source] crate::ports::agent::AgentSigningError),
+    /// All passphrase attempts were exhausted without a successful decryption.
+    #[error("passphrase exhausted after {attempts} attempt(s)")]
+    PassphraseExhausted {
+        /// Number of failed attempts before giving up.
+        attempts: usize,
+    },
+    /// The platform keychain could not be accessed.
+    #[error("keychain unavailable: {0}")]
+    KeychainUnavailable(String),
+    /// The encrypted key material could not be decrypted.
+    #[error("key decryption failed: {0}")]
+    KeyDecryptionFailed(String),
 }
 
 /// Configuration for a signing operation.

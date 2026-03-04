@@ -1,4 +1,5 @@
 use auths_sdk::signing::{self, SigningConfig, SigningError};
+use auths_sdk::workflows::signing::{CommitSigningParams, CommitSigningWorkflow};
 
 #[test]
 fn test_validate_freeze_state_unfrozen() {
@@ -53,4 +54,180 @@ fn test_signing_config_fields() {
         namespace: "git".to_string(),
     };
     assert_eq!(config.namespace, "git");
+}
+
+// ---------------------------------------------------------------------------
+// CommitSigningWorkflow tests
+// ---------------------------------------------------------------------------
+
+mod workflow {
+    use super::*;
+    use crate::cases::helpers::setup_signed_artifact_context;
+    use auths_core::PrefilledPassphraseProvider;
+    use auths_sdk::ports::agent::AgentSigningError;
+    use auths_sdk::testing::fakes::FakeAgentProvider;
+    use std::sync::Arc;
+
+    #[test]
+    fn agent_sign_succeeds_returns_pem() {
+        let (_tmp, alias, ctx) = setup_signed_artifact_context();
+        let fake_pem = "-----BEGIN SSH SIGNATURE-----\nfake\n-----END SSH SIGNATURE-----";
+        let fake = Arc::new(FakeAgentProvider::signing_with(fake_pem));
+
+        let ctx = rebuild_ctx_with_agent(&ctx, fake.clone());
+
+        let params = CommitSigningParams::new(alias.as_str(), "git", b"test data".to_vec())
+            .with_pubkey(vec![0u8; 32]);
+
+        let result = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), fake_pem);
+
+        let calls = fake.calls();
+        assert_eq!(calls.len(), 1);
+    }
+
+    #[test]
+    fn agent_unavailable_falls_through_to_direct_sign() {
+        let (_tmp, alias, ctx) = setup_signed_artifact_context();
+        let fake = Arc::new(FakeAgentProvider::unavailable());
+        let ctx = rebuild_ctx_with_agent(&ctx, fake);
+
+        let params = CommitSigningParams::new(alias.as_str(), "git", b"test data".to_vec())
+            .with_max_passphrase_attempts(1);
+
+        let result = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now());
+        assert!(result.is_ok());
+        let pem = result.unwrap();
+        assert!(pem.starts_with("-----BEGIN SSH SIGNATURE-----"));
+    }
+
+    #[test]
+    fn agent_connection_failed_falls_through_to_direct_sign() {
+        let (_tmp, alias, ctx) = setup_signed_artifact_context();
+        let fake = Arc::new(FakeAgentProvider::sign_fails_with(
+            AgentSigningError::ConnectionFailed("socket gone".into()),
+        ));
+        let ctx = rebuild_ctx_with_agent(&ctx, fake);
+
+        let params = CommitSigningParams::new(alias.as_str(), "git", b"test data".to_vec())
+            .with_max_passphrase_attempts(1);
+
+        let result = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn agent_signing_failed_is_fatal() {
+        let (_tmp, alias, ctx) = setup_signed_artifact_context();
+        let fake = Arc::new(FakeAgentProvider::sign_fails_with(
+            AgentSigningError::SigningFailed("bad signature".into()),
+        ));
+        let ctx = rebuild_ctx_with_agent(&ctx, fake);
+
+        let params = CommitSigningParams::new(alias.as_str(), "git", b"test data".to_vec());
+
+        let result = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SigningError::AgentSigningFailed(_)),
+            "expected AgentSigningFailed, got: {err}"
+        );
+    }
+
+    #[test]
+    fn passphrase_exhaustion_returns_error() {
+        let (_tmp, alias, ctx) = setup_signed_artifact_context();
+
+        // Rebuild ctx with wrong passphrase to trigger exhaustion
+        let wrong_provider = Arc::new(PrefilledPassphraseProvider::new("wrong-passphrase"))
+            as Arc<dyn auths_core::signing::PassphraseProvider + Send + Sync>;
+        let ctx = rebuild_ctx_with_agent_and_provider(
+            &ctx,
+            Arc::new(FakeAgentProvider::unavailable()),
+            wrong_provider,
+        );
+
+        let params = CommitSigningParams::new(alias.as_str(), "git", b"test data".to_vec())
+            .with_max_passphrase_attempts(1);
+
+        let result = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SigningError::PassphraseExhausted { attempts: 1 }),
+            "expected PassphraseExhausted(1), got: {err}"
+        );
+    }
+
+    #[test]
+    fn add_identity_failure_is_non_fatal() {
+        let (_tmp, alias, ctx) = setup_signed_artifact_context();
+        // Agent that fails ensure_running and add_identity but those are best-effort
+        let fake = Arc::new(FakeAgentProvider::unavailable());
+        let ctx = rebuild_ctx_with_agent(&ctx, fake.clone());
+
+        let params = CommitSigningParams::new(alias.as_str(), "git", b"test data".to_vec())
+            .with_max_passphrase_attempts(1);
+
+        let result = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now());
+        assert!(
+            result.is_ok(),
+            "add_identity failure should not block signing"
+        );
+    }
+
+    #[test]
+    fn workflow_returns_sshsig_pem_format() {
+        let (_tmp, alias, ctx) = setup_signed_artifact_context();
+        let fake = Arc::new(FakeAgentProvider::unavailable());
+        let ctx = rebuild_ctx_with_agent(&ctx, fake);
+
+        let params = CommitSigningParams::new(alias.as_str(), "git", b"verify format".to_vec())
+            .with_max_passphrase_attempts(1);
+
+        let pem = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now()).unwrap();
+        assert!(pem.starts_with("-----BEGIN SSH SIGNATURE-----"));
+        assert!(pem.contains("-----END SSH SIGNATURE-----"));
+    }
+
+    // --- helpers ---
+
+    fn rebuild_ctx_with_agent(
+        base: &auths_sdk::context::AuthsContext,
+        agent: Arc<dyn auths_sdk::ports::agent::AgentSigningPort + Send + Sync>,
+    ) -> auths_sdk::context::AuthsContext {
+        auths_sdk::context::AuthsContext {
+            registry: base.registry.clone(),
+            key_storage: base.key_storage.clone(),
+            clock: base.clock.clone(),
+            event_sink: base.event_sink.clone(),
+            identity_storage: base.identity_storage.clone(),
+            attestation_sink: base.attestation_sink.clone(),
+            attestation_source: base.attestation_source.clone(),
+            passphrase_provider: base.passphrase_provider.clone(),
+            uuid_provider: base.uuid_provider.clone(),
+            agent_signing: agent,
+        }
+    }
+
+    fn rebuild_ctx_with_agent_and_provider(
+        base: &auths_sdk::context::AuthsContext,
+        agent: Arc<dyn auths_sdk::ports::agent::AgentSigningPort + Send + Sync>,
+        passphrase: Arc<dyn auths_core::signing::PassphraseProvider + Send + Sync>,
+    ) -> auths_sdk::context::AuthsContext {
+        auths_sdk::context::AuthsContext {
+            registry: base.registry.clone(),
+            key_storage: base.key_storage.clone(),
+            clock: base.clock.clone(),
+            event_sink: base.event_sink.clone(),
+            identity_storage: base.identity_storage.clone(),
+            attestation_sink: base.attestation_sink.clone(),
+            attestation_source: base.attestation_source.clone(),
+            passphrase_provider: passphrase,
+            uuid_provider: base.uuid_provider.clone(),
+            agent_signing: agent,
+        }
+    }
 }
