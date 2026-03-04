@@ -217,8 +217,8 @@ fn default_biometric() -> bool {
 impl Default for PassphraseConfig {
     fn default() -> Self {
         Self {
-            cache: PassphraseCachePolicy::default(),
-            duration: None,
+            cache: PassphraseCachePolicy::Duration,
+            duration: Some("1h".to_string()),
             biometric: default_biometric(),
         }
     }
