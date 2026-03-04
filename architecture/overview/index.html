@@ -1575,124 +1575,133 @@
 <p>How Auths is built: crate dependency graph, data flow, and system-level design.</p>
 <h2 id="system-diagram">System Diagram<a class="headerlink" href="#system-diagram" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart TD
-    subgraph Presentation["Presentation Layer"]
+    subgraph Presentation["Presentation Layer (6)"]
         CLI["auths-cli&lt;br/&gt;&lt;small&gt;auths, auths-sign, auths-verify&lt;/small&gt;"]
     end
 
-    subgraph Domain["Domain Layer"]
+    subgraph Infrastructure["Infrastructure Layer (5)"]
+        INFRA_GIT["auths-infra-git&lt;br/&gt;&lt;small&gt;Git audit adapter&lt;/small&gt;"]
+        INFRA_HTTP["auths-infra-http&lt;br/&gt;&lt;small&gt;HTTP transport&lt;/small&gt;"]
+    end
+
+    subgraph Services["Services Layer (4)"]
         SDK["auths-sdk&lt;br/&gt;&lt;small&gt;workflows, clock injection&lt;/small&gt;"]
-        ID["auths-id&lt;br/&gt;&lt;small&gt;identity, attestation, KERI, Git storage&lt;/small&gt;"]
+        STORAGE["auths-storage&lt;br/&gt;&lt;small&gt;Git/SQL storage adapters&lt;/small&gt;"]
+    end
+
+    subgraph Domain["Domain Layer (3)"]
+        ID["auths-id&lt;br/&gt;&lt;small&gt;identity, attestation, KERI, traits&lt;/small&gt;"]
         POLICY["auths-policy&lt;br/&gt;&lt;small&gt;authorization evaluation&lt;/small&gt;"]
-        INDEX["auths-index&lt;br/&gt;&lt;small&gt;SQLite O(1) attestation lookups&lt;/small&gt;"]
     end
 
-    subgraph Core["Core Layer"]
-        CORE["auths-core&lt;br/&gt;&lt;small&gt;keychains, signing, SAID&lt;/small&gt;"]
-        CRYPTO["auths-crypto&lt;br/&gt;&lt;small&gt;CryptoProvider, DID encoding&lt;/small&gt;"]
+    subgraph Core["Core Layer (2)"]
+        CORE["auths-core&lt;br/&gt;&lt;small&gt;keychains, signing, ports&lt;/small&gt;"]
     end
 
-    subgraph Verification["Verification Layer (standalone)"]
+    subgraph Verification["Verification Layer (1)"]
         VERIFIER["auths-verifier&lt;br/&gt;&lt;small&gt;FFI, WASM, minimal deps&lt;/small&gt;"]
     end
 
-    subgraph Infrastructure["Infrastructure Layer"]
-        INFRA_GIT["auths-infra-git&lt;br/&gt;&lt;small&gt;Git transport&lt;/small&gt;"]
-        INFRA_HTTP["auths-infra-http&lt;br/&gt;&lt;small&gt;HTTP transport&lt;/small&gt;"]
-        STORAGE["auths-storage&lt;br/&gt;&lt;small&gt;storage adapters&lt;/small&gt;"]
+    subgraph Crypto["Crypto Layer (0)"]
+        CRYPTO["auths-crypto&lt;br/&gt;&lt;small&gt;CryptoProvider, DID encoding&lt;/small&gt;"]
     end
 
     CLI --&gt; SDK
+    CLI --&gt; INFRA_GIT
+    CLI --&gt; INFRA_HTTP
+    INFRA_GIT --&gt; SDK
     SDK --&gt; ID
     SDK --&gt; CORE
+    STORAGE --&gt; ID
     ID --&gt; CORE
     ID --&gt; POLICY
     ID --&gt; VERIFIER
+    CORE --&gt; VERIFIER
     CORE --&gt; CRYPTO
-    VERIFIER --&gt; CRYPTO
-    INDEX --&gt; ID
-    CLI --&gt; INFRA_GIT
-    CLI --&gt; INFRA_HTTP
-    ID --&gt; STORAGE</code></pre>
+    VERIFIER --&gt; CRYPTO</code></pre>
 <h2 id="crate-dependency-graph">Crate Dependency Graph<a class="headerlink" href="#crate-dependency-graph" title="Permanent link">&para;</a></h2>
-<p>The workspace contains 14 crates organized into clear layers. Dependencies flow strictly downward -- core and domain crates never reference presentation layer crates.</p>
+<p>The workspace contains 14 crates organized into 7 layers. Dependencies flow strictly downward -- core and domain crates never reference presentation layer crates.</p>
 <table>
 <thead>
 <tr>
 <th>Crate</th>
+<th>Layer</th>
 <th>Role</th>
 <th>Key Dependencies</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>auths-cli</code></td>
-<td>Three binaries: <code>auths</code>, <code>auths-sign</code>, <code>auths-verify</code></td>
-<td>auths-sdk, auths-id, clap</td>
-</tr>
-<tr>
-<td><code>auths-sdk</code></td>
-<td>Orchestration workflows, clock boundary</td>
-<td>auths-core, auths-id</td>
-</tr>
-<tr>
-<td><code>auths-id</code></td>
-<td>Identity, attestation, KERI protocol, Git storage</td>
-<td>auths-core, auths-verifier, git2</td>
-</tr>
-<tr>
-<td><code>auths-core</code></td>
-<td>Keychains, signing, SAID computation, encryption</td>
-<td>auths-crypto, ring, blake3</td>
-</tr>
-<tr>
 <td><code>auths-crypto</code></td>
+<td>0</td>
 <td><code>CryptoProvider</code> trait, DID encoding, KERI key parsing</td>
 <td>ring (optional), bs58, base64</td>
 </tr>
 <tr>
 <td><code>auths-verifier</code></td>
+<td>1</td>
 <td>Standalone verification for FFI/WASM embedding</td>
-<td>auths-crypto, json-canon, blake3</td>
+<td>auths-crypto</td>
+</tr>
+<tr>
+<td><code>auths-core</code></td>
+<td>2</td>
+<td>Keychains, signing, SAID computation, encryption, ports</td>
+<td>auths-crypto, auths-verifier</td>
+</tr>
+<tr>
+<td><code>auths-id</code></td>
+<td>3</td>
+<td>Identity, attestation, KERI protocol, trait definitions</td>
+<td>auths-core, auths-verifier</td>
 </tr>
 <tr>
 <td><code>auths-policy</code></td>
+<td>3</td>
 <td>Authorization policy evaluation</td>
 <td>auths-verifier</td>
 </tr>
 <tr>
+<td><code>auths-storage</code></td>
+<td>4</td>
+<td>Git/SQL storage adapters (<code>GitAttestationStorage</code>, <code>GitRegistryBackend</code>, etc.)</td>
+<td>auths-id, git2</td>
+</tr>
+<tr>
+<td><code>auths-sdk</code></td>
+<td>4</td>
+<td>Orchestration workflows, clock boundary</td>
+<td>auths-core, auths-id</td>
+</tr>
+<tr>
+<td><code>auths-infra-git</code></td>
+<td>5</td>
+<td>Git audit adapter</td>
+<td>auths-sdk, git2</td>
+</tr>
+<tr>
+<td><code>auths-infra-http</code></td>
+<td>5</td>
+<td>HTTP transport adapters</td>
+<td>auths-id, reqwest</td>
+</tr>
+<tr>
+<td><code>auths-cli</code></td>
+<td>6</td>
+<td>Three binaries: <code>auths</code>, <code>auths-sign</code>, <code>auths-verify</code></td>
+<td>auths-sdk, auths-id, clap</td>
+</tr>
+<tr>
 <td><code>auths-index</code></td>
+<td>-</td>
 <td>SQLite-backed O(1) attestation lookups</td>
 <td>auths-id</td>
 </tr>
 <tr>
-<td><code>auths-infra-git</code></td>
-<td>Git transport adapters</td>
-<td>git2</td>
-</tr>
-<tr>
-<td><code>auths-infra-http</code></td>
-<td>HTTP transport adapters</td>
-<td>reqwest</td>
-</tr>
-<tr>
-<td><code>auths-storage</code></td>
-<td>Storage backend abstractions</td>
-<td>-</td>
-</tr>
-<tr>
 <td><code>auths-telemetry</code></td>
+<td>-</td>
 <td>Observability and metrics</td>
 <td>-</td>
-</tr>
-<tr>
-<td><code>auths-radicle</code></td>
-<td>Radicle protocol integration</td>
-<td>auths-id</td>
-</tr>
-<tr>
-<td><code>auths-test-utils</code></td>
-<td>Shared test helpers</td>
-<td>auths-crypto</td>
 </tr>
 </tbody>
 </table>
@@ -1773,6 +1782,41 @@
 </thead>
 <tbody>
 <tr>
+<td><code>auths-crypto</code></td>
+<td><code>native</code></td>
+<td>ring-based Ed25519 (default)</td>
+</tr>
+<tr>
+<td><code>auths-crypto</code></td>
+<td><code>wasm</code></td>
+<td>WebCrypto-based Ed25519</td>
+</tr>
+<tr>
+<td><code>auths-crypto</code></td>
+<td><code>test-utils</code></td>
+<td>Shared test keypairs (<code>get_shared_keypair</code>, <code>create_test_keypair</code>)</td>
+</tr>
+<tr>
+<td><code>auths-verifier</code></td>
+<td><code>native</code></td>
+<td>ring-based verification (default)</td>
+</tr>
+<tr>
+<td><code>auths-verifier</code></td>
+<td><code>ffi</code></td>
+<td>C FFI exports via libc</td>
+</tr>
+<tr>
+<td><code>auths-verifier</code></td>
+<td><code>wasm</code></td>
+<td>WASM exports via wasm-bindgen</td>
+</tr>
+<tr>
+<td><code>auths-verifier</code></td>
+<td><code>test-utils</code></td>
+<td><code>MockClock</code> for time-controlled tests</td>
+</tr>
+<tr>
 <td><code>auths-core</code></td>
 <td><code>keychain-file-fallback</code></td>
 <td>File-based key storage fallback</td>
@@ -1790,12 +1834,12 @@
 <tr>
 <td><code>auths-core</code></td>
 <td><code>test-utils</code></td>
-<td>Test helper exports</td>
+<td>In-memory storage, fakes, test providers</td>
 </tr>
 <tr>
 <td><code>auths-id</code></td>
 <td><code>git-storage</code></td>
-<td>Git-backed storage (inception, KEL, rotation)</td>
+<td>Git-backed KERI, rotation, attestation operations (default)</td>
 </tr>
 <tr>
 <td><code>auths-id</code></td>
@@ -1808,29 +1852,24 @@
 <td>Witness receipt collection</td>
 </tr>
 <tr>
-<td><code>auths-crypto</code></td>
-<td><code>native</code></td>
-<td>ring-based Ed25519 (default)</td>
+<td><code>auths-id</code></td>
+<td><code>test-utils</code></td>
+<td>Fakes, mocks, fixtures, contract test macros</td>
 </tr>
 <tr>
-<td><code>auths-crypto</code></td>
-<td><code>wasm</code></td>
-<td>WebCrypto-based Ed25519</td>
+<td><code>auths-storage</code></td>
+<td><code>backend-git</code></td>
+<td>Git-backed storage (git2, fs2, tempfile)</td>
 </tr>
 <tr>
-<td><code>auths-verifier</code></td>
-<td><code>native</code></td>
-<td>ring-based verification (default)</td>
+<td><code>auths-storage</code></td>
+<td><code>backend-postgres</code></td>
+<td>PostgreSQL storage (sqlx)</td>
 </tr>
 <tr>
-<td><code>auths-verifier</code></td>
-<td><code>ffi</code></td>
-<td>C FFI exports via libc</td>
-</tr>
-<tr>
-<td><code>auths-verifier</code></td>
-<td><code>wasm</code></td>
-<td>WASM exports via wasm-bindgen</td>
+<td><code>auths-sdk</code></td>
+<td><code>test-utils</code></td>
+<td><code>FakeGitLogProvider</code> and contract macros</td>
 </tr>
 </tbody>
 </table>

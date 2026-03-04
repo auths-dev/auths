@@ -1,0 +1,1670 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Decentralized identity for developers. One identity, multiple devices, Git-native storage.">
+      
+      
+      
+        <link rel="canonical" href="https://docs.auths.dev/plans/dependency-architecture-refactor/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Dependency Architecture Refactor - Auths</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dependency-architecture-refactor" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Auths" class="md-header__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Auths
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Dependency Architecture Refactor
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/install/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/identity/multi-device/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../sdk/rust/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  SDK & Libraries
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/development-setup/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Auths" class="md-nav__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    Auths
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../getting-started/install/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../guides/identity/multi-device/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../sdk/rust/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK & Libraries
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../architecture/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../contributing/development-setup/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem Statement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Principles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#target-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-1-distribute-test-utilities-into-per-crate-test-utils-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: Distribute test utilities into per-crate test-utils features
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 1: Distribute test utilities into per-crate test-utils features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1a-auths-crypto-add-test-utils-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1a. auths-crypto — add test-utils feature
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1b-auths-id-add-test-utils-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1b. auths-id — add test-utils feature
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1c-auths-telemetry-add-test-utils-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1c. auths-telemetry — add test-utils feature
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1d-auths-core-expand-existing-test-utils-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1d. auths-core — expand existing test-utils feature
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1e-git-test-helpers-move-to-auths-infra-git" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1e. Git test helpers — move to auths-infra-git
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1f-delete-auths-test-utils" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1f. Delete auths-test-utils
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-2-clean-up-auths-id-remove-infrastructure-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: Clean up auths-id — remove infrastructure dependencies
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 2: Clean up auths-id — remove infrastructure dependencies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2a-audit-what-git-storage-feature-provides-in-auths-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2a. Audit what git-storage feature provides in auths-id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2b-move-git-storage-code-from-auths-id-to-auths-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2b. Move git-storage code from auths-id to auths-storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2c-remove-auths-storage-dev-dependency-from-auths-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2c. Remove auths-storage dev-dependency from auths-id
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2d-result-auths-id-becomes-a-pure-domain-crate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2d. Result — auths-id becomes a pure domain crate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-3-consolidate-auths-core-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: Consolidate auths-core role
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 3: Consolidate auths-core role">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3a-evaluate-whether-auths-core-should-depend-on-auths-verifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3a. Evaluate whether auths-core should depend on auths-verifier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3b-ensure-auths-core-stays-at-layer-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3b. Ensure auths-core stays at Layer 0
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-4-automate-publishing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4: Automate publishing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 4: Automate publishing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#4a-adopt-cargo-publish-workspace-rust-190" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4a. Adopt cargo publish --workspace (Rust 1.90+)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4b-consider-release-plz-for-ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4b. Consider release-plz for CI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4c-define-publish-order-explicitly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4c. Define publish order explicitly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-5-cleanup-and-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5: Cleanup and verification
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 5: Cleanup and verification">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#5a-remove-all-temporary-inlined-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5a. Remove all temporary inlined helpers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5b-re-add-dev-dependencies-that-were-removed-for-publishing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5b. Re-add dev-dependencies that were removed for publishing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5c-full-workspace-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5c. Full workspace verification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5d-wasm-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5d. WASM verification
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration Map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consumer-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consumer Migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#risks-and-mitigations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Risks and Mitigations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#success-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Success Criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="dependency-architecture-refactor">Dependency Architecture Refactor<a class="headerlink" href="#dependency-architecture-refactor" title="Permanent link">&para;</a></h1>
+<p><strong>Status</strong>: Complete
+<strong>Scope</strong>: Workspace-wide restructuring of crate dependencies, test utilities, and publish pipeline
+<strong>Breaking changes</strong>: Yes (pre-launch, acceptable)</p>
+<hr />
+<h2 id="problem-statement">Problem Statement<a class="headerlink" href="#problem-statement" title="Permanent link">&para;</a></h2>
+<p>Publishing any crate to crates.io requires manually removing dev-dependencies, inlining test helpers, and publishing with <code>--no-verify</code> or <code>--allow-dirty</code>. This is because:</p>
+<ol>
+<li>
+<p><strong><code>auths-test-utils</code> is a monolith</strong> that depends on 7 workspace crates (<code>auths-core</code>, <code>auths-crypto</code>, <code>auths-id</code>, <code>auths-storage</code>, <code>auths-sdk</code>, <code>auths-telemetry</code>, <code>auths-verifier</code>). Any crate that dev-depends on it cannot publish until it's on crates.io — but it can't be published until all its dependencies are.</p>
+</li>
+<li>
+<p><strong><code>auths-id</code> ↔ <code>auths-storage</code> circular dev-dependency</strong>: <code>auths-storage</code> depends on <code>auths-id</code> (for traits), <code>auths-id</code> dev-depends on <code>auths-storage</code> (for testing with real Git backend). Neither can publish first.</p>
+</li>
+<li>
+<p><strong><code>auths-id</code> has a <code>git-storage</code> feature</strong> that pulls in <code>git2</code>, <code>dirs</code>, <code>tempfile</code>, <code>tokio</code> — mixing domain logic with infrastructure concerns. Storage implementation code is split between <code>auths-id</code> and <code>auths-storage</code>.</p>
+</li>
+<li>
+<p><strong>No automated publish ordering</strong> — manual <code>sleep 60</code> between publishes, fragile and error-prone.</p>
+</li>
+</ol>
+<hr />
+<h2 id="principles">Principles<a class="headerlink" href="#principles" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Dependency flow is strictly downward.</strong> Foundation → Domain → Infrastructure → Orchestration → Presentation. No reverse dependencies, not even dev-deps pointing upward.</li>
+<li><strong>Each crate owns its own test helpers.</strong> Feature-gated <code>test-utils</code> modules replace the monolithic test-utils crate. This is the pattern used by reth (150+ crates), alloy, and tokio.</li>
+<li><strong>Traits live with their domain, implementations live in infrastructure.</strong> <code>auths-id</code> defines what storage looks like; <code>auths-storage</code> provides the implementations. Tests in <code>auths-id</code> use in-memory fakes, not real backends.</li>
+<li><strong>Contract tests live with the trait they verify.</strong> Exported as macros so implementations can pull them in.</li>
+</ol>
+<hr />
+<h2 id="target-architecture">Target Architecture<a class="headerlink" href="#target-architecture" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Layer 0 — Foundation (no workspace deps)
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>┌─────────────┐  ┌──────────────┐  ┌─────────────────┐  ┌─────────────┐
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│ auths-crypto│  │ auths-policy │  │ auths-telemetry │  │ auths-index │
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>└─────────────┘  └──────────────┘  └─────────────────┘  └─────────────┘
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>Layer 1 — Domain (depends only on Layer 0)
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>┌──────────────────┐  ┌──────────┐
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│ auths-verifier   │  │ auths-id │
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│ (crypto)         │  │ (crypto, policy, verifier)
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>└──────────────────┘  └──────────┘
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>Layer 2 — Infrastructure (depends on Layer 0 + 1)
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>┌────────────────┐  ┌────────────────┐  ┌──────────────────┐
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│ auths-storage  │  │ auths-infra-git│  │ auths-infra-http │
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│ (id, core,     │  │ (core, sdk,    │  │ (core, verifier) │
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│  verifier)     │  │  verifier)     │  │                  │
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>└────────────────┘  └────────────────┘  └──────────────────┘
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>Layer 3 — Orchestration (depends on all above)
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>┌───────────┐
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│ auths-sdk │
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│ (core, id, policy, crypto, verifier)
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>└───────────┘
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>Layer 4 — Presentation (depends on all above)
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>┌───────────┐
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│ auths-cli │
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>└───────────┘
+</span></code></pre></div>
+<p><strong>Key change</strong>: No arrows point upward. No dev-dependencies cross layer boundaries upward.</p>
+<hr />
+<h2 id="phase-1-distribute-test-utilities-into-per-crate-test-utils-features">Phase 1: Distribute test utilities into per-crate <code>test-utils</code> features<a class="headerlink" href="#phase-1-distribute-test-utilities-into-per-crate-test-utils-features" title="Permanent link">&para;</a></h2>
+<p>This is the highest-impact change. It eliminates the <code>auths-test-utils</code> monolith and all circular dev-dependency issues.</p>
+<h3 id="1a-auths-crypto-add-test-utils-feature">1a. <code>auths-crypto</code> — add <code>test-utils</code> feature<a class="headerlink" href="#1a-auths-crypto-add-test-utils-feature" title="Permanent link">&para;</a></h3>
+<p>Move from <code>auths-test-utils/src/crypto.rs</code>:
+- <code>create_test_keypair(seed: &amp;[u8; 32]) -&gt; (Ed25519KeyPair, [u8; 32])</code>
+- <code>get_shared_keypair() -&gt; &amp;'static [u8]</code>
+- <code>gen_keypair() -&gt; Ed25519KeyPair</code></p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># auths-crypto/Cargo.toml</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">[features]</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">test-utils</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;dep:ring&quot;</span><span class="p">]</span><span class="w">  </span><span class="c1"># ring is already an optional dep</span>
+</span></code></pre></div>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1">// auths-crypto/src/testing.rs</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="cp">#[cfg(feature = </span><span class="s">&quot;test-utils&quot;</span><span class="cp">)]</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">pub</span><span class="w"> </span><span class="k">mod</span><span class="w"> </span><span class="nn">testing</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="k">use</span><span class="w"> </span><span class="n">ring</span><span class="p">::</span><span class="n">signature</span><span class="p">::{</span><span class="n">Ed25519KeyPair</span><span class="p">,</span><span class="w"> </span><span class="n">KeyPair</span><span class="p">};</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">sync</span><span class="p">::</span><span class="n">OnceLock</span><span class="p">;</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">create_test_keypair</span><span class="p">(</span><span class="n">seed</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="p">[</span><span class="kt">u8</span><span class="p">;</span><span class="w"> </span><span class="mi">32</span><span class="p">])</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">Ed25519KeyPair</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="kt">u8</span><span class="p">;</span><span class="w"> </span><span class="mi">32</span><span class="p">])</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">keypair</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Ed25519KeyPair</span><span class="p">::</span><span class="n">from_seed_unchecked</span><span class="p">(</span><span class="n">seed</span><span class="p">).</span><span class="n">unwrap</span><span class="p">();</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">public_key</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="kt">u8</span><span class="p">;</span><span class="w"> </span><span class="mi">32</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">keypair</span><span class="p">.</span><span class="n">public_key</span><span class="p">().</span><span class="n">as_ref</span><span class="p">().</span><span class="n">try_into</span><span class="p">().</span><span class="n">unwrap</span><span class="p">();</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">        </span><span class="p">(</span><span class="n">keypair</span><span class="p">,</span><span class="w"> </span><span class="n">public_key</span><span class="p">)</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">get_shared_keypair</span><span class="p">()</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">&#39;</span><span class="nb">static</span><span class="w"> </span><span class="p">[</span><span class="kt">u8</span><span class="p">]</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* OnceLock pattern */</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">gen_keypair</span><span class="p">()</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Ed25519KeyPair</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* random seed */</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><strong>Consumers</strong>: Every crate that currently imports <code>auths_test_utils::crypto::*</code> switches to:
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">[dev-dependencies]</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">auths-crypto</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">workspace</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="n">features</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;test-utils&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div></p>
+<h3 id="1b-auths-id-add-test-utils-feature">1b. <code>auths-id</code> — add <code>test-utils</code> feature<a class="headerlink" href="#1b-auths-id-add-test-utils-feature" title="Permanent link">&para;</a></h3>
+<p>Move from <code>auths-test-utils/src/fakes/</code>, <code>contracts/</code>, <code>fixtures/</code>, <code>mocks/</code>, <code>storage_fakes.rs</code>:</p>
+<p><strong>Fakes</strong> (implement traits defined in <code>auths-id</code> itself — no cross-crate dependency needed):
+- <code>FakeRegistryBackend</code> (implements <code>RegistryBackend</code>)
+- <code>FakeAttestationSink</code> / <code>FakeAttestationSource</code> (implements <code>AttestationSink</code> / <code>AttestationSource</code>)
+- <code>FakeIdentityStorage</code> (implements <code>IdentityStorage</code>)
+- <code>InMemoryStorage</code> (implements <code>BlobReader</code>, <code>BlobWriter</code>, <code>RefReader</code>, <code>RefWriter</code>, <code>EventLogReader</code>, <code>EventLogWriter</code>)
+- <code>MockClock</code> (implements <code>ClockProvider</code>)
+- <code>MockCryptoProvider</code> (implements <code>CryptoProvider</code>)
+- <code>DeterministicUuidProvider</code> (implements <code>UuidProvider</code>)
+- <code>FakeGitDiagnosticProvider</code>, <code>FakeCryptoDiagnosticProvider</code>
+- <code>FakeGitLogProvider</code> (implements <code>GitLogProvider</code>)</p>
+<p><strong>Contract test macros</strong>:
+- <code>registry_backend_contract_tests!</code>
+- <code>git_log_provider_contract_tests!</code>
+- <code>session_store_contract_tests!</code>
+- <code>event_sink_contract_tests!</code></p>
+<p><strong>Fixtures</strong>:
+- <code>test_inception_event(key_seed: &amp;str) -&gt; Event</code>
+- <code>test_attestation(device_did, issuer) -&gt; Attestation</code></p>
+<p><strong>Mockall mocks</strong>:
+- <code>MockIdentityStorage</code>
+- <code>MockAttestationSource</code></p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># auths-id/Cargo.toml</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">[features]</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">test-utils</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="s2">&quot;auths-crypto/test-utils&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1"># chain the feature</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="s2">&quot;dep:mockall&quot;</span><span class="p">,</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="s2">&quot;dep:rand&quot;</span><span class="p">,</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="s2">&quot;dep:tempfile&quot;</span><span class="p">,</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">]</span>
+</span></code></pre></div>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// auths-id/src/testing/mod.rs</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="cp">#[cfg(feature = </span><span class="s">&quot;test-utils&quot;</span><span class="cp">)]</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">pub</span><span class="w"> </span><span class="k">mod</span><span class="w"> </span><span class="nn">testing</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">mod</span><span class="w"> </span><span class="nn">fakes</span><span class="p">;</span><span class="w">      </span><span class="c1">// FakeRegistryBackend, FakeAttestationSource, etc.</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">mod</span><span class="w"> </span><span class="nn">contracts</span><span class="p">;</span><span class="w">  </span><span class="c1">// contract test macros</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">mod</span><span class="w"> </span><span class="nn">fixtures</span><span class="p">;</span><span class="w">   </span><span class="c1">// test_inception_event, test_attestation</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">mod</span><span class="w"> </span><span class="nn">mocks</span><span class="p">;</span><span class="w">      </span><span class="c1">// MockIdentityStorage, MockAttestationSource</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><strong>Why this works</strong>: All the fakes implement traits defined in <code>auths-id</code> itself. The mock implementations use only types from <code>auths-id</code> and its dependencies (Layer 0). No upward dependency on <code>auths-storage</code> or <code>auths-sdk</code>.</p>
+<h3 id="1c-auths-telemetry-add-test-utils-feature">1c. <code>auths-telemetry</code> — add <code>test-utils</code> feature<a class="headerlink" href="#1c-auths-telemetry-add-test-utils-feature" title="Permanent link">&para;</a></h3>
+<p>Move from <code>auths-test-utils/src/fakes/telemetry.rs</code>:
+- <code>MemoryEventSink</code> (implements <code>EventSink</code>)</p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># auths-telemetry/Cargo.toml</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">[features]</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">test-utils</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span>
+</span></code></pre></div>
+<h3 id="1d-auths-core-expand-existing-test-utils-feature">1d. <code>auths-core</code> — expand existing <code>test-utils</code> feature<a class="headerlink" href="#1d-auths-core-expand-existing-test-utils-feature" title="Permanent link">&para;</a></h3>
+<p><code>auths-core</code> already declares <code>test-utils = []</code> as a feature. Populate it with any test helpers specific to core (if any exist beyond what's in <code>auths-crypto</code>).</p>
+<h3 id="1e-git-test-helpers-move-to-auths-infra-git">1e. Git test helpers — move to <code>auths-infra-git</code><a class="headerlink" href="#1e-git-test-helpers-move-to-auths-infra-git" title="Permanent link">&para;</a></h3>
+<p>Move from <code>auths-test-utils/src/git.rs</code>:
+- <code>init_test_repo() -&gt; (TempDir, git2::Repository)</code>
+- <code>get_cloned_test_repo() -&gt; TempDir</code>
+- <code>copy_directory(src, dst)</code></p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># auths-infra-git/Cargo.toml</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">[features]</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">test-utils</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;dep:tempfile&quot;</span><span class="p">]</span>
+</span></code></pre></div>
+<p>These are only needed by crates that test against real Git repositories.</p>
+<h3 id="1f-delete-auths-test-utils">1f. Delete <code>auths-test-utils</code><a class="headerlink" href="#1f-delete-auths-test-utils" title="Permanent link">&para;</a></h3>
+<p>After all helpers are distributed, remove <code>crates/auths-test-utils/</code> entirely:
+- Remove from workspace <code>members</code> in root <code>Cargo.toml</code>
+- Remove from <code>[workspace.dependencies]</code>
+- Remove all <code>auths-test-utils.workspace = true</code> lines from every crate</p>
+<hr />
+<h2 id="phase-2-clean-up-auths-id-remove-infrastructure-dependencies">Phase 2: Clean up <code>auths-id</code> — remove infrastructure dependencies<a class="headerlink" href="#phase-2-clean-up-auths-id-remove-infrastructure-dependencies" title="Permanent link">&para;</a></h2>
+<p>Currently <code>auths-id</code> has a <code>git-storage</code> feature that brings in <code>git2</code>, <code>dirs</code>, <code>tempfile</code>, <code>tokio</code>. This mixes domain logic with infrastructure.</p>
+<h3 id="2a-audit-what-git-storage-feature-provides-in-auths-id">2a. Audit what <code>git-storage</code> feature provides in <code>auths-id</code><a class="headerlink" href="#2a-audit-what-git-storage-feature-provides-in-auths-id" title="Permanent link">&para;</a></h3>
+<p>Identify all code gated behind <code>#[cfg(feature = "git-storage")]</code> in <code>auths-id/src/</code>. This likely includes:
+- Git-based <code>IdentityStorage</code> implementation
+- Local <code>~/.auths</code> directory management
+- Git ref reading/writing for identity data</p>
+<h3 id="2b-move-git-storage-code-from-auths-id-to-auths-storage">2b. Move git-storage code from <code>auths-id</code> to <code>auths-storage</code><a class="headerlink" href="#2b-move-git-storage-code-from-auths-id-to-auths-storage" title="Permanent link">&para;</a></h3>
+<p>All Git-based storage implementations should live in <code>auths-storage</code>:
+- Move the git-gated code to <code>auths-storage/src/git/</code>
+- <code>auths-storage</code> already depends on <code>auths-id</code> — it can implement the traits
+- Remove <code>git-storage</code> feature from <code>auths-id</code>
+- Remove <code>git2</code>, <code>dirs</code>, <code>tempfile</code> from <code>auths-id</code>'s dependencies</p>
+<h3 id="2c-remove-auths-storage-dev-dependency-from-auths-id">2c. Remove <code>auths-storage</code> dev-dependency from <code>auths-id</code><a class="headerlink" href="#2c-remove-auths-storage-dev-dependency-from-auths-id" title="Permanent link">&para;</a></h3>
+<p>After Phase 1, <code>auths-id</code> tests use in-memory fakes (from its own <code>test-utils</code> feature) instead of <code>GitRegistryBackend</code>. The real Git backend is tested in <code>auths-storage</code> using the contract test macros exported by <code>auths-id/test-utils</code>.</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1">// auths-storage/tests/cases/registry_contract.rs</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1">// Import the contract test macro from auths-id</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">auths_id</span><span class="p">::</span><span class="n">testing</span><span class="p">::</span><span class="n">contracts</span><span class="p">::</span><span class="n">registry_backend_contract_tests</span><span class="o">!</span><span class="p">(</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="n">git_backend</span><span class="p">,</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="cm">/* construct GitRegistryBackend */</span><span class="w"> </span><span class="p">},</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="p">);</span>
+</span></code></pre></div>
+<p>This is how reth does it: the trait crate exports contract tests, the implementation crate runs them.</p>
+<h3 id="2d-result-auths-id-becomes-a-pure-domain-crate">2d. Result — <code>auths-id</code> becomes a pure domain crate<a class="headerlink" href="#2d-result-auths-id-becomes-a-pure-domain-crate" title="Permanent link">&para;</a></h3>
+<p>After this phase, <code>auths-id</code>'s dependencies are:
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">[dependencies]</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">auths-core</span><span class="p">.</span><span class="n">workspace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">auths-crypto</span><span class="p">.</span><span class="n">workspace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">auths-policy</span><span class="p">.</span><span class="n">workspace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">auths-verifier</span><span class="p">.</span><span class="n">workspace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># ... plus pure Rust deps (chrono, serde, etc.)</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># NO git2, NO dirs, NO tempfile, NO tokio</span>
+</span></code></pre></div></p>
+<p>No dev-dependencies on infrastructure crates. Clean Layer 1 crate.</p>
+<hr />
+<h2 id="phase-3-consolidate-auths-core-role">Phase 3: Consolidate <code>auths-core</code> role<a class="headerlink" href="#phase-3-consolidate-auths-core-role" title="Permanent link">&para;</a></h2>
+<p><code>auths-core</code> currently depends on <code>auths-crypto</code> and <code>auths-verifier</code>. It provides:
+- Platform keychains (macOS, Linux, Windows)
+- Agent/passphrase management
+- Encryption primitives
+- Config management</p>
+<h3 id="3a-evaluate-whether-auths-core-should-depend-on-auths-verifier">3a. Evaluate whether <code>auths-core</code> should depend on <code>auths-verifier</code><a class="headerlink" href="#3a-evaluate-whether-auths-core-should-depend-on-auths-verifier" title="Permanent link">&para;</a></h3>
+<p><code>auths-verifier</code> is designed as a minimal, embeddable crate. If <code>auths-core</code> pulls it in as a dependency, that adds <code>auths-core</code> to <code>auths-verifier</code>'s reverse dependency tree, which complicates the layer model.</p>
+<p>If the dependency is only used in a few places, consider:
+- Making it optional: <code>auths-verifier = { workspace = true, optional = true }</code>
+- Or duplicating the minimal verification logic needed</p>
+<h3 id="3b-ensure-auths-core-stays-at-layer-0">3b. Ensure <code>auths-core</code> stays at Layer 0<a class="headerlink" href="#3b-ensure-auths-core-stays-at-layer-0" title="Permanent link">&para;</a></h3>
+<p><code>auths-core</code> should only depend on <code>auths-crypto</code> (Layer 0). If it needs types from <code>auths-id</code>, that's a sign those types should be in a lower layer.</p>
+<hr />
+<h2 id="phase-4-automate-publishing">Phase 4: Automate publishing<a class="headerlink" href="#phase-4-automate-publishing" title="Permanent link">&para;</a></h2>
+<h3 id="4a-adopt-cargo-publish-workspace-rust-190">4a. Adopt <code>cargo publish --workspace</code> (Rust 1.90+)<a class="headerlink" href="#4a-adopt-cargo-publish-workspace-rust-190" title="Permanent link">&para;</a></h3>
+<p>Since Rust 1.90 (September 2025), Cargo natively supports workspace publishing:
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>cargo<span class="w"> </span>publish<span class="w"> </span>--workspace
+</span></code></pre></div></p>
+<p>This topologically sorts crates and publishes in dependency order. After Phases 1-3 eliminate all circular dev-deps, this works out of the box.</p>
+<h3 id="4b-consider-release-plz-for-ci">4b. Consider <code>release-plz</code> for CI<a class="headerlink" href="#4b-consider-release-plz-for-ci" title="Permanent link">&para;</a></h3>
+<p>For automated releases via GitHub PRs:
+- Auto-generates changelogs from conventional commits
+- Integrates <code>cargo-semver-checks</code> for breaking change detection
+- Opens a Release PR, publishes on merge
+- Handles <code>sleep</code> between publishes automatically</p>
+<h3 id="4c-define-publish-order-explicitly">4c. Define publish order explicitly<a class="headerlink" href="#4c-define-publish-order-explicitly" title="Permanent link">&para;</a></h3>
+<p>After the refactor, the publish order is deterministic:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>Tier 0 (parallel): auths-crypto, auths-policy, auths-telemetry, auths-index
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>Tier 1 (parallel): auths-verifier, auths-core
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>Tier 2 (sequential): auths-id (after verifier, core)
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>Tier 3 (parallel): auths-storage, auths-infra-git, auths-infra-http
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>Tier 4: auths-sdk
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>Tier 5: auths-cli
+</span></code></pre></div></p>
+<p>No tier depends on a crate in the same or later tier. No circular dependencies.</p>
+<hr />
+<h2 id="phase-5-cleanup-and-verification">Phase 5: Cleanup and verification<a class="headerlink" href="#phase-5-cleanup-and-verification" title="Permanent link">&para;</a></h2>
+<h3 id="5a-remove-all-temporary-inlined-helpers">5a. Remove all temporary inlined helpers<a class="headerlink" href="#5a-remove-all-temporary-inlined-helpers" title="Permanent link">&para;</a></h3>
+<p>Remove the <code>create_test_keypair</code> functions that were inlined in:
+- <code>auths-crypto/tests/cases/provider.rs</code>
+- <code>auths-verifier/src/verify.rs</code>
+- <code>auths-verifier/src/witness.rs</code>
+- <code>auths-verifier/tests/cases/expiration_skew.rs</code>
+- <code>auths-verifier/tests/cases/revocation_adversarial.rs</code></p>
+<p>Replace with:
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">use</span><span class="w"> </span><span class="n">auths_crypto</span><span class="p">::</span><span class="n">testing</span><span class="p">::</span><span class="n">create_test_keypair</span><span class="p">;</span>
+</span></code></pre></div></p>
+<h3 id="5b-re-add-dev-dependencies-that-were-removed-for-publishing">5b. Re-add dev-dependencies that were removed for publishing<a class="headerlink" href="#5b-re-add-dev-dependencies-that-were-removed-for-publishing" title="Permanent link">&para;</a></h3>
+<p>Restore any dev-deps that were stripped purely for the initial publish (e.g., <code>auths-storage</code> in <code>auths-id</code> — though after Phase 2, this should no longer be needed).</p>
+<h3 id="5c-full-workspace-verification">5c. Full workspace verification<a class="headerlink" href="#5c-full-workspace-verification" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>cargo<span class="w"> </span>fmt<span class="w"> </span>--check<span class="w"> </span>--all
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>cargo<span class="w"> </span>clippy<span class="w"> </span>--all-targets<span class="w"> </span>--all-features<span class="w"> </span>--<span class="w"> </span>-D<span class="w"> </span>warnings
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>cargo<span class="w"> </span>nextest<span class="w"> </span>run<span class="w"> </span>--workspace
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>cargo<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--all<span class="w"> </span>--doc
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>cargo<span class="w"> </span>publish<span class="w"> </span>--workspace<span class="w"> </span>--dry-run
+</span></code></pre></div>
+<h3 id="5d-wasm-verification">5d. WASM verification<a class="headerlink" href="#5d-wasm-verification" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">cd</span><span class="w"> </span>crates/auths-verifier<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cargo<span class="w"> </span>check<span class="w"> </span>--target<span class="w"> </span>wasm32-unknown-unknown<span class="w"> </span>--no-default-features<span class="w"> </span>--features<span class="w"> </span>wasm
+</span></code></pre></div>
+<hr />
+<h2 id="migration-map">Migration Map<a class="headerlink" href="#migration-map" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Current location</th>
+<th>Target location</th>
+<th>What</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auths-test-utils/src/crypto.rs</code></td>
+<td><code>auths-crypto/src/testing.rs</code></td>
+<td><code>create_test_keypair</code>, <code>get_shared_keypair</code>, <code>gen_keypair</code></td>
+</tr>
+<tr>
+<td><code>auths-test-utils/src/git.rs</code></td>
+<td><code>auths-infra-git/src/testing.rs</code></td>
+<td><code>init_test_repo</code>, <code>get_cloned_test_repo</code></td>
+</tr>
+<tr>
+<td><code>auths-test-utils/src/fakes/*.rs</code></td>
+<td><code>auths-id/src/testing/fakes/*.rs</code></td>
+<td>All fake trait implementations</td>
+</tr>
+<tr>
+<td><code>auths-test-utils/src/contracts/*.rs</code></td>
+<td><code>auths-id/src/testing/contracts/*.rs</code></td>
+<td>All contract test macros</td>
+</tr>
+<tr>
+<td><code>auths-test-utils/src/fixtures/*.rs</code></td>
+<td><code>auths-id/src/testing/fixtures/*.rs</code></td>
+<td><code>test_inception_event</code>, <code>test_attestation</code></td>
+</tr>
+<tr>
+<td><code>auths-test-utils/src/mocks/*.rs</code></td>
+<td><code>auths-id/src/testing/mocks/*.rs</code></td>
+<td><code>MockIdentityStorage</code>, <code>MockAttestationSource</code></td>
+</tr>
+<tr>
+<td><code>auths-test-utils/src/storage_fakes.rs</code></td>
+<td><code>auths-id/src/testing/fakes/storage.rs</code></td>
+<td><code>InMemoryStorage</code></td>
+</tr>
+<tr>
+<td><code>auths-test-utils/src/fakes/telemetry.rs</code></td>
+<td><code>auths-telemetry/src/testing.rs</code></td>
+<td><code>MemoryEventSink</code></td>
+</tr>
+<tr>
+<td><code>auths-id</code> git-storage code</td>
+<td><code>auths-storage/src/git/</code></td>
+<td>Git-based identity storage</td>
+</tr>
+<tr>
+<td><code>crates/auths-test-utils/</code></td>
+<td><strong>deleted</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="consumer-migration">Consumer Migration<a class="headerlink" href="#consumer-migration" title="Permanent link">&para;</a></h2>
+<p>Every crate that currently has <code>auths-test-utils.workspace = true</code> in dev-dependencies gets replaced:</p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Before</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="k">[dev-dependencies]</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">auths-test-utils</span><span class="p">.</span><span class="n">workspace</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="c1"># After — only enable the features you actually use</span>
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="k">[dev-dependencies]</span>
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">auths-crypto</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">workspace</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="n">features</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;test-utils&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="n">auths-id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">workspace</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="n">features</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;test-utils&quot;</span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+<p>The <code>test-utils</code> features chain transitively — <code>auths-id/test-utils</code> enables <code>auths-crypto/test-utils</code> automatically.</p>
+<hr />
+<h2 id="risks-and-mitigations">Risks and Mitigations<a class="headerlink" href="#risks-and-mitigations" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Large diff touching many files</td>
+<td>Execute in phases; each phase is independently shippable</td>
+</tr>
+<tr>
+<td>Contract test macros may have complex dependencies</td>
+<td>Audit macro expansions before moving; may need to simplify</td>
+</tr>
+<tr>
+<td><code>auths-id</code> git-storage removal may break <code>auths-cli</code></td>
+<td><code>auths-cli</code> already depends on <code>auths-storage</code>; rewire imports</td>
+</tr>
+<tr>
+<td>Feature flag proliferation</td>
+<td>Only two feature flags per crate max (<code>test-utils</code> + one domain feature)</td>
+</tr>
+<tr>
+<td><code>mockall</code> and <code>rand</code> become regular deps (optional) of published crates</td>
+<td>Gated behind <code>test-utils</code> feature; not compiled by default consumers</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="success-criteria">Success Criteria<a class="headerlink" href="#success-criteria" title="Permanent link">&para;</a></h2>
+<ol>
+<li><code>cargo publish --workspace --dry-run</code> passes with zero manual intervention</li>
+<li><code>auths-test-utils</code> crate no longer exists</li>
+<li>No crate has dev-dependencies on crates in the same or higher layer</li>
+<li>All 1395+ tests pass</li>
+<li>WASM build passes</li>
+<li>Each crate's dependency list fits its architectural layer</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/auths-dev/auths" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.prune", "navigation.path", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tabs.link", "announce.dismiss"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

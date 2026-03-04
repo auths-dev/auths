@@ -1155,6 +1155,7 @@ API changes after 0.1.0 require a minor version bump.</p>
 cargo publish -p auths-policy
 cargo publish -p auths-telemetry
 cargo publish -p auths-index
+cargo publish -p auths-test-utils
 sleep 60</p>
 <h1 id="tier-1-depends-on-tier-0">Tier 1: Depends on Tier 0<a class="headerlink" href="#tier-1-depends-on-tier-0" title="Permanent link">&para;</a></h1>
 <p>cargo publish -p auths-verifier    # depends on auths-crypto
@@ -1162,6 +1163,7 @@ sleep 60</p>
 <h1 id="tier-2-depends-on-tier-0-1">Tier 2: Depends on Tier 0-1<a class="headerlink" href="#tier-2-depends-on-tier-0-1" title="Permanent link">&para;</a></h1>
 <p>cargo publish -p auths-core        # depends on auths-crypto, auths-verifier
 cargo publish -p auths-infra-http  # depends on auths-core, auths-verifier
+cargo publish -p auths-storage
 sleep 60</p>
 <h1 id="tier-3-depends-on-tier-0-2">Tier 3: Depends on Tier 0-2<a class="headerlink" href="#tier-3-depends-on-tier-0-2" title="Permanent link">&para;</a></h1>
 <p>cargo publish -p auths-id          # depends on core, crypto, policy, verifier, index
