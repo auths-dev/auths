@@ -108,7 +108,7 @@ jobs:
           restore-keys: ${{ runner.os }}-msrv-
       - run: cargo check --workspace
   wasm:
-    name: WASM check (auths-verifier)
+    name: WASM build (auths-verifier)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,6 +123,8 @@ jobs:
             target
           key: ${{ runner.os }}-wasm-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-wasm-
-      - name: Build WASM target
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build WASM with wasm-pack
         working-directory: crates/auths-verifier
-        run: cargo build --target wasm32-unknown-unknown --no-default-features --features wasm
+        run: wasm-pack build --target bundler --no-default-features --features wasm
