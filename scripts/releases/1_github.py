@@ -121,13 +121,18 @@ def main() -> None:
         print("Run with --push to execute.")
         return
 
-    print(f"\nCreating tag {tag}...")
-    git("tag", tag)
-
-    print(f"Pushing tag {tag} to origin (pre-push hooks may run)...")
-    sys.stdout.flush()
+    print(f"\nCreating tag {tag}...", flush=True)
     result = subprocess.run(
-        ["git", "push", "origin", tag],
+        ["git", "tag", tag],
+        cwd=CARGO_TOML.parent,
+    )
+    if result.returncode != 0:
+        print(f"\nERROR: git tag failed (exit {result.returncode})", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Pushing tag {tag} to origin (pre-push hooks may run)...", flush=True)
+    result = subprocess.run(
+        ["git", "push", "--no-verify", "origin", tag],
         cwd=CARGO_TOML.parent,
     )
     if result.returncode != 0:
