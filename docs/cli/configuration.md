@@ -105,8 +105,8 @@ auths config set passphrase.biometric false
 The passphrase is stored in macOS Keychain under the service name `dev.auths.passphrase`. You can inspect it in Keychain Access.app.
 
 **Requirements:**
-- Touch ID must be enrolled on the device.
-- If Touch ID is unavailable, macOS falls back to the device passcode.
+- Touch ID must be enrolled on the device
+- If Touch ID is unavailable, macOS falls back to the device passcode
 
 ### Linux
 
