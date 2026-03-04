@@ -74,7 +74,7 @@ def git(*args: str) -> str:
     return result.stdout.strip()
 
 
-def tag_exists(tag: str) -> bool:
+def local_tag_exists(tag: str) -> bool:
     result = subprocess.run(
         ["git", "tag", "-l", tag],
         capture_output=True,
@@ -82,6 +82,24 @@ def tag_exists(tag: str) -> bool:
         cwd=CARGO_TOML.parent,
     )
     return bool(result.stdout.strip())
+
+
+def remote_tag_exists(tag: str) -> bool:
+    result = subprocess.run(
+        ["git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"],
+        capture_output=True,
+        text=True,
+        cwd=CARGO_TOML.parent,
+    )
+    return bool(result.stdout.strip())
+
+
+def delete_local_tag(tag: str) -> None:
+    subprocess.run(
+        ["git", "tag", "-d", tag],
+        capture_output=True,
+        cwd=CARGO_TOML.parent,
+    )
 
 
 def main() -> None:
@@ -103,11 +121,17 @@ def main() -> None:
     else:
         print("crates.io version: (not found or not published yet)")
 
-    # Check git tag doesn't already exist
-    if tag_exists(tag):
-        print(f"\nERROR: Git tag {tag} already exists.", file=sys.stderr)
-        print("Bump the version in Cargo.toml or delete the existing tag.", file=sys.stderr)
+    # GitHub is the source of truth for tags.
+    # If the tag exists on the remote, abort — the release is already out.
+    # If it only exists locally (stale), clean it up automatically.
+    if remote_tag_exists(tag):
+        print(f"\nERROR: Git tag {tag} already exists on origin.", file=sys.stderr)
+        print("Bump the version in Cargo.toml or delete the remote tag/release first.", file=sys.stderr)
         sys.exit(1)
+
+    if local_tag_exists(tag):
+        print(f"Local tag {tag} exists but not on origin — deleting stale local tag.")
+        delete_local_tag(tag)
 
     # Check we're on a clean working tree
     status = git("status", "--porcelain")
