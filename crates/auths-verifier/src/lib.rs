@@ -108,6 +108,10 @@ pub use auths_crypto::CryptoProvider;
 // Re-export clock types for downstream consumers (auths-core re-exports from here)
 pub use clock::{ClockProvider, SystemClock};
 
+/// Test utilities for auths-verifier consumers (behind `test-utils` feature).
+#[cfg(any(test, feature = "test-utils"))]
+pub mod testing;
+
 #[cfg(test)]
 mod tests {
     use super::*;
