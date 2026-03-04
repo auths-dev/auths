@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1-rc.4] - 2026-03-04
+
 ### Changed
 
 - **`auths-core`: SSH agent abstracted behind `SshAgentPort` trait** — `Command::new("ssh-add")` subprocess calls extracted from `runtime.rs` into a new `ports::ssh_agent` module with `SshAgentPort` trait and `SshAgentError` typed error. `MacOsSshAgentAdapter` in `auths-cli` implements the trait. Enables testing and alternative SSH agent backends without subprocess shell-outs.
