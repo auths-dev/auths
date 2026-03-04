@@ -195,13 +195,31 @@ pub enum PassphraseCachePolicy {
 }
 
 /// Passphrase section of `~/.auths/config.toml`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PassphraseConfig {
     /// Caching policy.
     #[serde(default)]
     pub cache: PassphraseCachePolicy,
     /// Duration string (e.g. `"7d"`, `"24h"`, `"30m"`). Only used when `cache = "duration"`.
     pub duration: Option<String>,
+    /// Use Touch ID (biometric) to protect cached passphrases on macOS.
+    /// Defaults to `true` on macOS, ignored on other platforms.
+    #[serde(default = "default_biometric")]
+    pub biometric: bool,
+}
+
+fn default_biometric() -> bool {
+    cfg!(target_os = "macos")
+}
+
+impl Default for PassphraseConfig {
+    fn default() -> Self {
+        Self {
+            cache: PassphraseCachePolicy::default(),
+            duration: None,
+            biometric: default_biometric(),
+        }
+    }
 }
 
 /// Top-level `~/.auths/config.toml` structure.

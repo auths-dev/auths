@@ -109,11 +109,13 @@ fn get_passphrase(alias: &str) -> Result<Zeroizing<String>> {
     let config = load_config();
     let policy = &config.passphrase.cache;
 
+    let biometric = config.passphrase.biometric;
+
     if matches!(
         policy,
         PassphraseCachePolicy::Always | PassphraseCachePolicy::Duration
     ) {
-        let cache = get_passphrase_cache();
+        let cache = get_passphrase_cache(biometric);
         if let Ok(Some((cached, stored_at))) = cache.load(alias) {
             if *policy == PassphraseCachePolicy::Always {
                 return Ok(cached);
@@ -142,7 +144,7 @@ fn get_passphrase(alias: &str) -> Result<Zeroizing<String>> {
         policy,
         PassphraseCachePolicy::Always | PassphraseCachePolicy::Duration
     ) {
-        let cache = get_passphrase_cache();
+        let cache = get_passphrase_cache(biometric);
         let now = chrono::Utc::now().timestamp();
         let _ = cache.store(alias, &passphrase, now);
     }

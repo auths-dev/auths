@@ -65,26 +65,102 @@ mod macos {
     };
     use core_foundation::number::CFNumber;
     use core_foundation::string::CFString;
+    use security_framework_sys::access_control::{
+        SecAccessControlCreateWithFlags, kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+    };
     use security_framework_sys::base::{errSecItemNotFound, errSecSuccess};
     use security_framework_sys::item::{
-        kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit,
-        kSecReturnData, kSecValueData,
+        kSecAttrAccessControl, kSecAttrAccount, kSecAttrService, kSecClass,
+        kSecClassGenericPassword, kSecMatchLimit, kSecReturnData, kSecValueData,
     };
     use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemDelete};
     use std::os::raw::c_void;
     use std::ptr;
 
-    pub struct MacOsPassphraseCache;
+    // kSecAccessControlUserPresence: Touch ID or device passcode
+    const USER_PRESENCE: usize = 1 << 0;
+    // User cancelled Touch ID or authentication failed
+    const ERR_SEC_USER_CANCELED: i32 = -128;
+    const ERR_SEC_AUTH_FAILED: i32 = -25293;
 
-    impl PassphraseCache for MacOsPassphraseCache {
-        fn store(
+    pub struct MacOsPassphraseCache {
+        pub biometric: bool,
+    }
+
+    impl MacOsPassphraseCache {
+        fn store_with_biometric(
             &self,
             alias: &str,
             passphrase: &str,
             stored_at_unix: i64,
         ) -> Result<(), AgentError> {
-            let _ = self.delete(alias);
+            let service_cf = CFString::new(PASSPHRASE_SERVICE);
+            let alias_cf = CFString::new(alias);
+            let secret = encode_secret(passphrase, stored_at_unix);
+            let data_cf = CFData::from_buffer(secret.as_bytes());
 
+            unsafe {
+                let access_control = SecAccessControlCreateWithFlags(
+                    kCFAllocatorDefault,
+                    kSecAttrAccessibleWhenUnlockedThisDeviceOnly as CFTypeRef,
+                    USER_PRESENCE,
+                    ptr::null_mut(),
+                );
+                if access_control.is_null() {
+                    return Err(AgentError::SecurityError(
+                        "Failed to create biometric access control".to_string(),
+                    ));
+                }
+
+                let keys: [*const c_void; 5] = [
+                    kSecClass as *const c_void,
+                    kSecAttrService as *const c_void,
+                    kSecAttrAccount as *const c_void,
+                    kSecValueData as *const c_void,
+                    kSecAttrAccessControl as *const c_void,
+                ];
+                let values: [*const c_void; 5] = [
+                    kSecClassGenericPassword as *const c_void,
+                    service_cf.as_CFTypeRef(),
+                    alias_cf.as_CFTypeRef(),
+                    data_cf.as_CFTypeRef(),
+                    access_control as *const c_void,
+                ];
+                let query = CFDictionaryCreate(
+                    kCFAllocatorDefault,
+                    keys.as_ptr(),
+                    values.as_ptr(),
+                    keys.len() as isize,
+                    &kCFTypeDictionaryKeyCallBacks,
+                    &kCFTypeDictionaryValueCallBacks,
+                );
+                CFRelease(access_control as CFTypeRef);
+
+                if query.is_null() {
+                    return Err(AgentError::SecurityError(
+                        "Failed to create CFDictionary for passphrase store".to_string(),
+                    ));
+                }
+                let status = SecItemAdd(query, ptr::null_mut());
+                CFRelease(query as CFTypeRef);
+
+                if status == errSecSuccess {
+                    Ok(())
+                } else {
+                    Err(AgentError::SecurityError(format!(
+                        "SecItemAdd for passphrase cache failed (OSStatus: {})",
+                        status
+                    )))
+                }
+            }
+        }
+
+        fn store_without_biometric(
+            &self,
+            alias: &str,
+            passphrase: &str,
+            stored_at_unix: i64,
+        ) -> Result<(), AgentError> {
             let service_cf = CFString::new(PASSPHRASE_SERVICE);
             let alias_cf = CFString::new(alias);
             let secret = encode_secret(passphrase, stored_at_unix);
@@ -129,6 +205,23 @@ mod macos {
                 }
             }
         }
+    }
+
+    impl PassphraseCache for MacOsPassphraseCache {
+        fn store(
+            &self,
+            alias: &str,
+            passphrase: &str,
+            stored_at_unix: i64,
+        ) -> Result<(), AgentError> {
+            let _ = self.delete(alias);
+
+            if self.biometric {
+                self.store_with_biometric(alias, passphrase, stored_at_unix)
+            } else {
+                self.store_without_biometric(alias, passphrase, stored_at_unix)
+            }
+        }
 
         fn load(&self, alias: &str) -> Result<Option<(Zeroizing<String>, i64)>, AgentError> {
             let service_cf = CFString::new(PASSPHRASE_SERVICE);
@@ -170,6 +263,10 @@ mod macos {
             };
 
             if status == errSecItemNotFound {
+                return Ok(None);
+            }
+            // Touch ID cancelled or auth failed — treat as cache miss
+            if status == ERR_SEC_USER_CANCELED || status == ERR_SEC_AUTH_FAILED {
                 return Ok(None);
             }
             if status != errSecSuccess {
@@ -386,23 +483,24 @@ mod linux {
 
 /// Returns the platform-appropriate passphrase cache.
 ///
-/// - macOS: Uses Keychain Services
-/// - Linux (with `keychain-linux-secretservice`): Uses Secret Service D-Bus API
-/// - All others: Returns a no-op cache
+/// Args:
+/// * `biometric`: When `true` on macOS, protects cached passphrases with Touch ID.
+///   Ignored on other platforms.
 ///
 /// Usage:
 /// ```ignore
-/// let cache = get_passphrase_cache();
+/// let cache = get_passphrase_cache(true);
 /// cache.store("main", "my-secret", chrono::Utc::now().timestamp())?;
 /// ```
-pub fn get_passphrase_cache() -> Box<dyn PassphraseCache> {
+pub fn get_passphrase_cache(biometric: bool) -> Box<dyn PassphraseCache> {
     #[cfg(target_os = "macos")]
     {
-        Box::new(macos::MacOsPassphraseCache)
+        Box::new(macos::MacOsPassphraseCache { biometric })
     }
 
     #[cfg(all(target_os = "linux", feature = "keychain-linux-secretservice"))]
     {
+        let _ = biometric;
         Box::new(linux::LinuxPassphraseCache)
     }
 
@@ -411,6 +509,7 @@ pub fn get_passphrase_cache() -> Box<dyn PassphraseCache> {
         all(target_os = "linux", feature = "keychain-linux-secretservice")
     )))]
     {
+        let _ = biometric;
         Box::new(NoopPassphraseCache)
     }
 }

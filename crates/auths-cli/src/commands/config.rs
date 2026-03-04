@@ -59,8 +59,11 @@ fn execute_set(key: &str, value: &str) -> Result<()> {
             })?;
             config.passphrase.duration = Some(value.to_string());
         }
+        "passphrase.biometric" => {
+            config.passphrase.biometric = parse_bool(value)?;
+        }
         _ => bail!(
-            "Unknown config key '{}'. Valid keys: passphrase.cache, passphrase.duration",
+            "Unknown config key '{}'. Valid keys: passphrase.cache, passphrase.duration, passphrase.biometric",
             key
         ),
     }
@@ -84,8 +87,11 @@ fn execute_get(key: &str) -> Result<()> {
                 config.passphrase.duration.as_deref().unwrap_or("(not set)")
             );
         }
+        "passphrase.biometric" => {
+            println!("{}", config.passphrase.biometric);
+        }
         _ => bail!(
-            "Unknown config key '{}'. Valid keys: passphrase.cache, passphrase.duration",
+            "Unknown config key '{}'. Valid keys: passphrase.cache, passphrase.duration, passphrase.biometric",
             key
         ),
     }
@@ -120,6 +126,14 @@ fn policy_label(policy: &PassphraseCachePolicy) -> &'static str {
         PassphraseCachePolicy::Session => "session",
         PassphraseCachePolicy::Duration => "duration",
         PassphraseCachePolicy::Never => "never",
+    }
+}
+
+fn parse_bool(s: &str) -> Result<bool> {
+    match s.to_lowercase().as_str() {
+        "true" | "1" | "yes" => Ok(true),
+        "false" | "0" | "no" => Ok(false),
+        _ => bail!("Invalid boolean '{}'. Use true/false, yes/no, or 1/0", s),
     }
 }
 
