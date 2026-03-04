@@ -3,59 +3,51 @@
 ## Layer Diagram
 
 ```mermaid
-graph BT
-  subgraph Core["Core Layer"]
-    auths-crypto["auths-crypto\nlow-level Ed25519, KERI key parsing"]
-    auths-core["auths-core\ncrypto primitives, keychains, port traits"]
-  end
+flowchart TD
+    subgraph Presentation["Presentation Layer (6)"]
+        CLI["auths-cli<br/><small>auths, auths-sign, auths-verify</small>"]
+    end
 
-  subgraph Domain["Domain Layer"]
-    auths-id["auths-id\nidentity lifecycle, KEL state machine, attestation ports"]
-    auths-verifier["auths-verifier\nchain verification · WASM/FFI safe"]
-  end
+    subgraph Infrastructure["Infrastructure Layer (5)"]
+        INFRA_GIT["auths-infra-git<br/><small>Git audit adapter</small>"]
+        INFRA_HTTP["auths-infra-http<br/><small>HTTP transport</small>"]
+    end
 
-  subgraph Application["Application Layer"]
-    auths-sdk["auths-sdk\nworkflows, port orchestration, no I/O"]
-  end
+    subgraph Services["Services Layer (4)"]
+        SDK["auths-sdk<br/><small>workflows, clock injection</small>"]
+        STORAGE["auths-storage<br/><small>Git/SQL storage adapters</small>"]
+    end
 
-  subgraph Presentation["Presentation Layer"]
-    auths-cli["auths-cli"]
-    auths-registry-server["auths-registry-server"]
-    auths-auth-server["auths-auth-server"]
-    auths-chat-server["auths-chat-server"]
-    auths-oidc-bridge["auths-oidc-bridge"]
-  end
+    subgraph Domain["Domain Layer (3)"]
+        ID["auths-id<br/><small>identity, attestation, KERI, traits</small>"]
+        POLICY["auths-policy<br/><small>authorization evaluation</small>"]
+    end
 
-  subgraph Infra["Infrastructure Adapters"]
-    auths-infra-http["auths-infra-http"]
-    auths-infra-git["auths-infra-git"]
-    auths-cache["auths-cache"]
-    auths-index["auths-index"]
-    auths-telemetry["auths-telemetry"]
-    auths-test-utils["auths-test-utils\n(test-only)"]
-  end
+    subgraph Core["Core Layer (2)"]
+        CORE["auths-core<br/><small>keychains, signing, ports</small>"]
+    end
 
-  auths-core --> auths-crypto
-  auths-id --> auths-core
-  auths-verifier --> auths-core
-  auths-sdk --> auths-id
-  auths-sdk --> auths-verifier
-  auths-sdk --> auths-core
-  auths-cli --> auths-sdk
-  auths-registry-server --> auths-sdk
-  auths-registry-server --> auths-id
-  auths-registry-server --> auths-verifier
-  auths-registry-server --> auths-infra-http
-  auths-registry-server --> auths-infra-git
-  auths-auth-server --> auths-core
-  auths-auth-server --> auths-verifier
-  auths-auth-server --> auths-infra-http
-  auths-infra-http --> auths-core
-  auths-infra-git --> auths-core
-  auths-infra-git --> auths-id
-  auths-cache --> auths-core
-  auths-cache --> auths-id
-  auths-index --> auths-id
+    subgraph Verification["Verification Layer (1)"]
+        VERIFIER["auths-verifier<br/><small>FFI, WASM, minimal deps</small>"]
+    end
+
+    subgraph Crypto["Crypto Layer (0)"]
+        CRYPTO["auths-crypto<br/><small>CryptoProvider, DID encoding</small>"]
+    end
+
+    CLI --> SDK
+    CLI --> INFRA_GIT
+    CLI --> INFRA_HTTP
+    INFRA_GIT --> SDK
+    SDK --> ID
+    SDK --> CORE
+    STORAGE --> ID
+    ID --> CORE
+    ID --> POLICY
+    ID --> VERIFIER
+    CORE --> VERIFIER
+    CORE --> CRYPTO
+    VERIFIER --> CRYPTO
 ```
 
 ## Dependency Direction Rule
@@ -217,27 +209,39 @@ Ports are trait interfaces that decouple domain logic from infrastructure. Produ
 
 ```mermaid
 graph TD
+  auths-crypto
+  auths-verifier --> auths-crypto
   auths-core --> auths-crypto
+  auths-core --> auths-verifier
   auths-id --> auths-core
-  auths-verifier --> auths-core
+  auths-id --> auths-verifier
+  auths-id --> auths-policy
+  auths-id --> auths-index
+  auths-id --> auths-infra-http
+  auths-storage --> auths-id
+  auths-storage --> auths-core
+  auths-storage --> auths-index
   auths-sdk --> auths-id
-  auths-sdk --> auths-verifier
   auths-sdk --> auths-core
-  auths-cli --> auths-sdk
-  auths-registry-server --> auths-id
-  auths-registry-server --> auths-sdk
-  auths-registry-server --> auths-verifier
-  auths-registry-server --> auths-infra-http
-  auths-registry-server --> auths-infra-git
-  auths-auth-server --> auths-core
-  auths-auth-server --> auths-verifier
-  auths-auth-server --> auths-infra-http
-  auths-infra-http --> auths-core
+  auths-sdk --> auths-crypto
+  auths-sdk --> auths-verifier
+  auths-sdk --> auths-policy
+  auths-infra-git --> auths-sdk
   auths-infra-git --> auths-core
-  auths-infra-git --> auths-id
-  auths-cache --> auths-core
-  auths-cache --> auths-id
-  auths-index --> auths-id
+  auths-infra-git --> auths-verifier
+  auths-infra-http --> auths-core
+  auths-infra-http --> auths-verifier
+  auths-cli --> auths-sdk
+  auths-cli --> auths-id
+  auths-cli --> auths-core
+  auths-cli --> auths-crypto
+  auths-cli --> auths-verifier
+  auths-cli --> auths-storage
+  auths-cli --> auths-infra-git
+  auths-cli --> auths-infra-http
+  auths-cli --> auths-policy
+  auths-cli --> auths-index
+  auths-cli --> auths-telemetry
 ```
 
 ## Key Patterns
