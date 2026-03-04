@@ -3,8 +3,8 @@
 Publish all workspace crates to crates.io in dependency order.
 
 Usage:
-    python scripts/releases/crates.py              # dry-run (shows what would happen)
-    python scripts/releases/crates.py --publish     # publish all crates to crates.io
+    python scripts/releases/2_crates.py              # dry-run (shows what would happen)
+    python scripts/releases/2_crates.py --publish     # publish all crates to crates.io
 
 What it does:
     1. Reads the version from [workspace.package] in Cargo.toml

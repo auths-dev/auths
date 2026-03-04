@@ -3,8 +3,8 @@
 Tag and push a GitHub release from the workspace version in Cargo.toml.
 
 Usage:
-    python scripts/releases/github.py          # dry-run (shows what would happen)
-    python scripts/releases/github.py --push   # create tag and push to trigger release workflow
+    python scripts/releases/1_github.py          # dry-run (shows what would happen)
+    python scripts/releases/1_github.py --push   # create tag and push to trigger release workflow
 
 What it does:
     1. Reads the version from [workspace.package] in Cargo.toml
