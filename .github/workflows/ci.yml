@@ -91,6 +91,14 @@ jobs:
           key: ${{ runner.os }}-msrv-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-msrv-
       - run: cargo check --workspace
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   wasm:
     name: WASM check (auths-verifier)

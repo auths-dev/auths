@@ -250,6 +250,18 @@ pub trait WitnessClient: Send + Sync {
     ) -> impl Future<Output = Result<Vec<Vec<u8>>, NetworkError>> + Send;
 }
 
+/// Response from a registry POST operation.
+///
+/// Carries the HTTP status code and body so callers can dispatch on
+/// status-specific business logic (e.g., 201 Created vs. 409 Conflict).
+#[derive(Debug)]
+pub struct RegistryResponse {
+    /// HTTP status code.
+    pub status: u16,
+    /// Response body bytes.
+    pub body: Vec<u8>,
+}
+
 /// Fetches and pushes data to a remote registry service.
 ///
 /// Implementations handle the transport protocol (e.g., HTTP, gRPC).
@@ -297,4 +309,27 @@ pub trait RegistryClient: Send + Sync {
         path: &str,
         data: &[u8],
     ) -> impl Future<Output = Result<(), NetworkError>> + Send;
+
+    /// POSTs a JSON payload to a registry endpoint and returns the raw response.
+    ///
+    /// Args:
+    /// * `registry_url`: Base URL of the registry service.
+    /// * `path`: The logical path within the registry (e.g., `"v1/identities"`).
+    /// * `json_body`: Serialized JSON bytes to send as the request body.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let resp = client.post_json("https://registry.example.com", "v1/identities", &body).await?;
+    /// match resp.status {
+    ///     201 => { /* success */ }
+    ///     409 => { /* conflict */ }
+    ///     _ => { /* error */ }
+    /// }
+    /// ```
+    fn post_json(
+        &self,
+        registry_url: &str,
+        path: &str,
+        json_body: &[u8],
+    ) -> impl Future<Output = Result<RegistryResponse, NetworkError>> + Send;
 }

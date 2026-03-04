@@ -71,14 +71,6 @@ impl<'a> TreeNavigator<'a> {
         Some((entry.id(), entry.kind().unwrap_or(git2::ObjectType::Blob)))
     }
 
-    /// Navigate to a path and return the entry OID if it exists.
-    ///
-    /// Returns `None` if any component along the path doesn't exist.
-    #[allow(dead_code)]
-    pub fn get_entry(&self, path: &[&str]) -> Option<Oid> {
-        self.get_entry_info(path).map(|(oid, _)| oid)
-    }
-
     /// Read a blob at the given path and return its content.
     ///
     /// # Errors
@@ -157,40 +149,6 @@ impl<'a> TreeNavigator<'a> {
 
         Ok(())
     }
-
-    /// Visit entries in a directory at a path string.
-    #[allow(dead_code)]
-    pub fn visit_dir_path<F>(&self, path: &str, visitor: F) -> Result<(), RegistryError>
-    where
-        F: FnMut(&str) -> ControlFlow<()>,
-    {
-        let parts = path_parts(path);
-        self.visit_dir(&parts, visitor)
-    }
-
-    /// Get the tree at the given path.
-    #[allow(dead_code)]
-    pub fn get_tree(&self, path: &[&str]) -> Result<Tree<'a>, RegistryError> {
-        if path.is_empty() {
-            return Ok(self.root.clone());
-        }
-
-        let (oid, kind) = self
-            .get_entry_info(path)
-            .ok_or_else(|| RegistryError::NotFound {
-                entity_type: "directory".into(),
-                id: path.join("/"),
-            })?;
-
-        if kind != git2::ObjectType::Tree {
-            return Err(RegistryError::NotFound {
-                entity_type: "directory".into(),
-                id: path.join("/"),
-            });
-        }
-
-        self.repo.find_tree(oid).map_err(from_git2)
-    }
 }
 
 /// Efficiently mutates a Git tree by only rebuilding modified paths.
@@ -234,12 +192,6 @@ impl TreeMutator {
         self.pending_deletes.insert(path.to_string());
     }
 
-    /// Check if there are any pending mutations.
-    #[allow(dead_code)]
-    pub fn has_mutations(&self) -> bool {
-        !self.pending_writes.is_empty() || !self.pending_deletes.is_empty()
-    }
-
     /// Build a new tree from base + mutations.
     ///
     /// # Algorithm
@@ -276,7 +228,6 @@ impl TreeMutator {
                         ChildEntry {
                             oid: entry.id(),
                             kind: entry.kind().unwrap_or(git2::ObjectType::Blob),
-                            modified: false,
                         },
                     );
                 }
@@ -308,7 +259,6 @@ impl TreeMutator {
                         ChildEntry {
                             oid: blob_oid,
                             kind: git2::ObjectType::Blob,
-                            modified: true,
                         },
                     );
                 } else {
@@ -323,7 +273,6 @@ impl TreeMutator {
                     ChildEntry {
                         oid: blob_oid,
                         kind: git2::ObjectType::Blob,
-                        modified: true,
                     },
                 );
             } else if prefix.is_empty() {
@@ -382,7 +331,6 @@ impl TreeMutator {
                     ChildEntry {
                         oid: child_oid,
                         kind: git2::ObjectType::Tree,
-                        modified: true,
                     },
                 );
             } else {
@@ -417,8 +365,6 @@ impl Default for TreeMutator {
 struct ChildEntry {
     oid: Oid,
     kind: git2::ObjectType,
-    #[allow(dead_code)]
-    modified: bool,
 }
 
 #[cfg(test)]
@@ -430,13 +376,6 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         (dir, repo)
-    }
-
-    #[allow(dead_code)]
-    fn create_empty_tree(repo: &Repository) -> Tree<'_> {
-        let builder = repo.treebuilder(None).unwrap();
-        let oid = builder.write().unwrap();
-        repo.find_tree(oid).unwrap()
     }
 
     fn create_test_tree(repo: &Repository) -> Tree<'_> {
@@ -655,8 +594,6 @@ mod tests {
         let base = create_test_tree(&repo);
 
         let mutator = TreeMutator::new();
-        assert!(!mutator.has_mutations());
-
         let oid = mutator.build_tree(&repo, Some(&base)).unwrap();
 
         // The tree content should be identical

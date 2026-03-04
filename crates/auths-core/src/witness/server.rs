@@ -265,7 +265,7 @@ pub async fn run_server(state: WitnessServerState, addr: SocketAddr) -> Result<(
 /// For production deployments behind a reverse proxy, prefer [`run_server`] and terminate
 /// TLS at the proxy layer instead.
 #[cfg(feature = "tls")]
-#[allow(dead_code)]
+#[allow(dead_code)] // feature-gated public API — available when tls feature is enabled
 pub async fn run_server_tls(
     state: WitnessServerState,
     addr: SocketAddr,
@@ -627,27 +627,6 @@ mod tests {
         let mut for_said = event.clone();
         for_said["d"] = serde_json::Value::String(String::new());
         let said_payload = serde_json::to_vec(&for_said).unwrap();
-        event["d"] = serde_json::Value::String(
-            crate::crypto::said::compute_said(&said_payload).into_inner(),
-        );
-
-        event
-    }
-
-    /// Build a valid non-inception event (rotation) with proper SAID.
-    #[allow(dead_code)]
-    fn make_valid_rot_event(prefix: &str, seq: u64, prior_said: &str) -> serde_json::Value {
-        let mut event = serde_json::json!({
-            "v": "KERI10JSON000000_",
-            "t": "rot",
-            "d": "",
-            "i": prefix,
-            "s": seq,
-            "p": prior_said
-        });
-
-        // Compute SAID
-        let said_payload = serde_json::to_vec(&event).unwrap();
         event["d"] = serde_json::Value::String(
             crate::crypto::said::compute_said(&said_payload).into_inner(),
         );

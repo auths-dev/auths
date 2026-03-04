@@ -4,6 +4,8 @@ version.workspace = true
 edition = "2024"
 publish = true
 license.workspace = true
+keywords = ["telemetry", "security", "events", "observability"]
+categories = ["development-tools"]
 
 [lib]
 name = "auths_telemetry"
