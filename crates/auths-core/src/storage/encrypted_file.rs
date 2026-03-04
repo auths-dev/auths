@@ -91,12 +91,14 @@ impl EncryptedFileStorage {
     ///
     /// Takes `Zeroizing<String>` to enforce that callers treat the passphrase
     /// as sensitive material from the point of construction.
+    #[allow(clippy::unwrap_used)] // mutex poisoning is fatal by design
     pub fn set_password(&self, password: Zeroizing<String>) {
         let mut guard = self.password.lock().unwrap();
         *guard = Some(password);
     }
 
     /// Get the cached password set via `set_password`.
+    #[allow(clippy::unwrap_used)] // mutex poisoning is fatal by design
     fn get_password(&self) -> Result<Zeroizing<String>, AgentError> {
         self.password
             .lock()

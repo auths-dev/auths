@@ -13,11 +13,13 @@ static ENCRYPTION_ALGO: Lazy<RwLock<EncryptionAlgorithm>> =
     Lazy::new(|| RwLock::new(EncryptionAlgorithm::AesGcm256));
 
 /// Returns the currently selected encryption algorithm.
+#[allow(clippy::unwrap_used)] // RwLock poisoning is fatal by design
 pub fn current_algorithm() -> EncryptionAlgorithm {
     *ENCRYPTION_ALGO.read().unwrap()
 }
 
 /// Sets the encryption algorithm to use globally.
+#[allow(clippy::unwrap_used)] // RwLock poisoning is fatal by design
 pub fn set_encryption_algorithm(algo: EncryptionAlgorithm) {
     *ENCRYPTION_ALGO.write().unwrap() = algo;
 }

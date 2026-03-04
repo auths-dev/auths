@@ -42,6 +42,7 @@ impl Secp256k1KeyPair {
         }
 
         // Validate by trying to create a SigningKey
+        #[allow(clippy::unwrap_used)] // length validated by the 32-byte check above
         let bytes_array: [u8; 32] = secret_bytes.try_into().unwrap();
         let field_bytes = FieldBytes::from_slice(&bytes_array);
         SigningKey::from_bytes(field_bytes)
@@ -88,8 +89,8 @@ impl Secp256k1KeyPair {
     }
 
     /// Reconstructs the SigningKey from stored bytes.
+    #[allow(clippy::expect_used)] // bytes validated during from_bytes/generate construction
     fn signing_key(&self) -> SigningKey {
-        // This should never fail since we validated in from_bytes/generate
         let field_bytes = FieldBytes::from_slice(&*self.secret_key_bytes);
         SigningKey::from_bytes(field_bytes).expect("Stored key bytes should always be valid")
     }

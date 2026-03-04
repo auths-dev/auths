@@ -5,6 +5,8 @@
     clippy::dbg_macro
 )]
 #![deny(clippy::disallowed_methods)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(clippy::too_many_lines, clippy::cognitive_complexity)]
 #![warn(missing_docs)]
@@ -64,6 +66,7 @@ pub mod server;
 pub mod signing;
 pub mod storage;
 #[cfg(any(test, feature = "test-utils"))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 pub mod testing;
 pub mod trust;
 pub mod utils;

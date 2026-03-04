@@ -194,8 +194,12 @@ impl WitnessServerState {
     }
 
     /// Create a receipt for an event.
-    fn create_receipt(&self, _prefix: &Prefix, seq: u64, event_said: &Said) -> Receipt {
-        // Build receipt with empty SAID placeholder
+    fn create_receipt(
+        &self,
+        _prefix: &Prefix,
+        seq: u64,
+        event_said: &Said,
+    ) -> Result<Receipt, WitnessError> {
         let mut receipt = Receipt {
             v: KERI_VERSION.into(),
             t: RECEIPT_TYPE.into(),
@@ -206,26 +210,24 @@ impl WitnessServerState {
             sig: vec![],
         };
 
-        // Compute SAID from canonical signing payload (with empty d)
         let payload_for_said = receipt
             .signing_payload()
-            .expect("receipt serialization should not fail");
+            .map_err(|e| WitnessError::Serialization(e.to_string()))?;
         receipt.d = crate::crypto::said::compute_said(&payload_for_said);
 
-        // Recompute signing payload with correct SAID, then sign
         let signing_payload = receipt
             .signing_payload()
-            .expect("receipt serialization should not fail");
-        receipt.sig = self.sign_payload(&signing_payload);
+            .map_err(|e| WitnessError::Serialization(e.to_string()))?;
+        receipt.sig = self.sign_payload(&signing_payload)?;
 
-        receipt
+        Ok(receipt)
     }
 
     /// Sign a payload with the witness Ed25519 keypair.
-    fn sign_payload(&self, payload: &[u8]) -> Vec<u8> {
+    fn sign_payload(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessError> {
         use crate::crypto::provider_bridge;
         provider_bridge::sign_ed25519_sync(&self.inner.seed, payload)
-            .expect("signing should not fail with valid seed")
+            .map_err(|e| WitnessError::Serialization(format!("signing failed: {e}")))
     }
 
     /// Get the witness public key.
@@ -412,7 +414,9 @@ fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), Stri
 
     // Build the signing payload: canonical JSON with empty 'd' and 'x' fields
     let mut payload_event = event.clone();
-    let obj = payload_event.as_object_mut().unwrap();
+    let obj = payload_event
+        .as_object_mut()
+        .ok_or("event is not a JSON object")?;
     obj.insert("d".to_string(), serde_json::Value::String(String::new()));
     obj.insert("x".to_string(), serde_json::Value::String(String::new()));
     let payload = serde_json::to_vec(&payload_event)
@@ -423,6 +427,7 @@ fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), Stri
 }
 
 /// POST /witness/:prefix/event - Submit an event for witnessing.
+#[allow(clippy::too_many_lines)]
 async fn submit_event(
     State(state): State<WitnessServerState>,
     AxumPath(prefix_str): AxumPath<String>,
@@ -484,13 +489,31 @@ async fn submit_event(
     let event_s = event.get("s").and_then(|v| v.as_u64()).unwrap_or(0);
 
     let now = chrono::Utc::now();
-    let storage = state.inner.storage.lock().unwrap();
+    let storage = state.inner.storage.lock().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "internal lock error".to_string(),
+                duplicity: None,
+            }),
+        )
+    })?;
 
     // Check for duplicity
     match storage.check_duplicity(now, &prefix, event_s, &event_d) {
         Ok(None) => {
             // No duplicity - create and store receipt
-            let receipt = state.create_receipt(&prefix, event_s, &event_d);
+            let receipt = state
+                .create_receipt(&prefix, event_s, &event_d)
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: format!("failed to create receipt: {e}"),
+                            duplicity: None,
+                        }),
+                    )
+                })?;
 
             if let Err(e) = storage.store_receipt(now, &prefix, &receipt) {
                 return Err((
@@ -536,7 +559,15 @@ async fn get_head(
     AxumPath(prefix_str): AxumPath<String>,
 ) -> Result<Json<HeadResponse>, (StatusCode, Json<ErrorResponse>)> {
     let prefix = Prefix::new_unchecked(prefix_str);
-    let storage = state.inner.storage.lock().unwrap();
+    let storage = state.inner.storage.lock().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "internal lock error".to_string(),
+                duplicity: None,
+            }),
+        )
+    })?;
 
     match storage.get_latest_seq(&prefix) {
         Ok(latest_seq) => Ok(Json(HeadResponse { prefix, latest_seq })),
@@ -557,7 +588,11 @@ async fn get_receipt(
 ) -> Result<Json<Receipt>, StatusCode> {
     let prefix = Prefix::new_unchecked(prefix_str);
     let said = Said::new_unchecked(said_str);
-    let storage = state.inner.storage.lock().unwrap();
+    let storage = state
+        .inner
+        .storage
+        .lock()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     match storage.get_receipt(&prefix, &said) {
         Ok(Some(receipt)) => Ok(Json(receipt)),
@@ -568,7 +603,11 @@ async fn get_receipt(
 
 /// GET /health - Health check.
 async fn health(State(state): State<WitnessServerState>) -> Json<HealthResponse> {
-    let storage = state.inner.storage.lock().unwrap();
+    let storage = state
+        .inner
+        .storage
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let first_seen_count = storage.count_first_seen().unwrap_or(0);
     let receipt_count = storage.count_receipts().unwrap_or(0);
@@ -895,7 +934,9 @@ mod tests {
     fn receipt_said_is_proper_blake3() {
         let state = test_state();
         let prefix = Prefix::new_unchecked("EPrefix".into());
-        let receipt = state.create_receipt(&prefix, 0, &Said::new_unchecked("ESAID123".into()));
+        let receipt = state
+            .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID123".into()))
+            .unwrap();
         // SAID should be 44 chars: 'E' + 43 base64url chars
         assert_eq!(receipt.d.as_str().len(), 44);
         assert!(receipt.d.as_str().starts_with('E'));
@@ -905,12 +946,20 @@ mod tests {
     fn receipt_said_changes_with_inputs() {
         let state = test_state();
         let prefix = Prefix::new_unchecked("EPrefix".into());
-        let receipt_a = state.create_receipt(&prefix, 0, &Said::new_unchecked("ESAID_A".into()));
-        let receipt_b = state.create_receipt(&prefix, 0, &Said::new_unchecked("ESAID_B".into()));
+        let receipt_a = state
+            .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID_A".into()))
+            .unwrap();
+        let receipt_b = state
+            .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID_B".into()))
+            .unwrap();
         assert_ne!(receipt_a.d, receipt_b.d);
 
-        let receipt_c = state.create_receipt(&prefix, 0, &Said::new_unchecked("ESAID_A".into()));
-        let receipt_d = state.create_receipt(&prefix, 1, &Said::new_unchecked("ESAID_A".into()));
+        let receipt_c = state
+            .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID_A".into()))
+            .unwrap();
+        let receipt_d = state
+            .create_receipt(&prefix, 1, &Said::new_unchecked("ESAID_A".into()))
+            .unwrap();
         assert_ne!(receipt_c.d, receipt_d.d);
     }
 
@@ -918,7 +967,9 @@ mod tests {
     fn receipt_signature_verifies_against_signing_payload() {
         let state = test_state();
         let prefix = Prefix::new_unchecked("EPrefix".into());
-        let receipt = state.create_receipt(&prefix, 0, &Said::new_unchecked("ESAID123".into()));
+        let receipt = state
+            .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID123".into()))
+            .unwrap();
         let public_key = state.public_key();
         let payload = receipt.signing_payload().unwrap();
 

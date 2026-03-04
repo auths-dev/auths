@@ -253,11 +253,23 @@ fn decrypt_bytes_argon2(encrypted: &[u8], passphrase: &str) -> Result<Vec<u8>, A
     let salt = &encrypted[offset..offset + SALT_LEN];
     offset += SALT_LEN;
 
-    let m_cost = u32::from_le_bytes(encrypted[offset..offset + 4].try_into().unwrap());
+    let m_cost = u32::from_le_bytes(
+        encrypted[offset..offset + 4]
+            .try_into()
+            .map_err(|_| AgentError::CryptoError("invalid m_cost bytes".into()))?,
+    );
     offset += 4;
-    let t_cost = u32::from_le_bytes(encrypted[offset..offset + 4].try_into().unwrap());
+    let t_cost = u32::from_le_bytes(
+        encrypted[offset..offset + 4]
+            .try_into()
+            .map_err(|_| AgentError::CryptoError("invalid t_cost bytes".into()))?,
+    );
     offset += 4;
-    let p_cost = u32::from_le_bytes(encrypted[offset..offset + 4].try_into().unwrap());
+    let p_cost = u32::from_le_bytes(
+        encrypted[offset..offset + 4]
+            .try_into()
+            .map_err(|_| AgentError::CryptoError("invalid p_cost bytes".into()))?,
+    );
     offset += 4;
 
     let algo_tag = encrypted[offset];

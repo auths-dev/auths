@@ -600,6 +600,7 @@ fn register_keys_with_macos_agent_internal(
                     seed_bytes.len()
                 );
             }
+            #[allow(clippy::expect_used)] // length validated by the 32-byte check above
             let seed_array: [u8; 32] = seed_bytes.try_into().expect("Length checked");
             let ssh_ed_keypair = SshEdKeypair::from_seed(&seed_array);
             let keypair_data = KeypairData::Ed25519(ssh_ed_keypair);

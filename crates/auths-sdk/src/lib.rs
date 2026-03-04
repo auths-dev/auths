@@ -5,6 +5,8 @@
     clippy::dbg_macro
 )]
 #![deny(clippy::disallowed_methods)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(clippy::too_many_lines, clippy::cognitive_complexity)]
 #![warn(missing_docs)]

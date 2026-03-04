@@ -189,6 +189,7 @@ pub unsafe fn c_str_to_str_safe<'a>(ptr: *const c_char) -> Result<&'a str, c_int
 /// # Deprecated
 /// Use `c_str_to_str_safe` instead for panic-safe FFI code.
 #[deprecated(note = "Use c_str_to_str_safe for panic-safe FFI")]
+#[allow(clippy::expect_used)] // deprecated function — use c_str_to_str_safe instead
 pub unsafe fn c_str_to_str<'a>(ptr: *const c_char) -> &'a str {
     if ptr.is_null() {
         ""
