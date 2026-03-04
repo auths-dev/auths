@@ -4,6 +4,7 @@ use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::{Result, anyhow};
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
+use auths_id::storage::layout;
 use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
 use chrono::{DateTime, Duration, Utc};
 use clap::Parser;
@@ -358,21 +359,9 @@ fn get_auths_dir() -> Result<PathBuf> {
     auths_core::paths::auths_home().map_err(|e| anyhow!(e))
 }
 
-/// Resolve the repository path from optional argument or default.
+/// Resolve the repository path from optional argument or default (~/.auths).
 fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf> {
-    match repo_arg {
-        Some(pathbuf) if !pathbuf.as_os_str().is_empty() => Ok(pathbuf),
-        _ => {
-            // Try current directory first
-            let cwd = std::env::current_dir()?;
-            if crate::factories::storage::discover_git_repo(&cwd).is_ok() {
-                Ok(cwd)
-            } else {
-                // Fall back to ~/.auths
-                get_auths_dir()
-            }
-        }
-    }
+    layout::resolve_repo_path(repo_arg).map_err(|e| anyhow!(e))
 }
 
 /// Check if a process with the given PID is running.

@@ -98,6 +98,41 @@ jobs:
           $hash = (Get-FileHash ${{ matrix.asset_name }}${{ matrix.ext }} -Algorithm SHA256).Hash.ToLower()
           "$hash  ${{ matrix.asset_name }}${{ matrix.ext }}" | Out-File -Encoding ascii ${{ matrix.asset_name }}${{ matrix.ext }}.sha256
 
+      - name: Install auths for artifact signing (Unix)
+        if: matrix.ext == '.tar.gz'
+        run: |
+          cargo build --release --package auths-cli
+          sudo cp target/release/auths /usr/local/bin/auths
+
+      - name: Sign artifact (Unix)
+        if: matrix.ext == '.tar.gz'
+        env:
+          AUTHS_PASSPHRASE: ${{ secrets.AUTHS_CI_PASSPHRASE }}
+          AUTHS_CI_KEYCHAIN_B64: ${{ secrets.AUTHS_CI_KEYCHAIN }}
+          AUTHS_CI_IDENTITY_BUNDLE_B64: ${{ secrets.AUTHS_CI_IDENTITY_BUNDLE }}
+          AUTHS_KEYCHAIN_BACKEND: file
+          AUTHS_KEYCHAIN_FILE: /tmp/auths-ci-keychain
+        run: |
+          if [ -z "$AUTHS_PASSPHRASE" ] || [ -z "$AUTHS_CI_KEYCHAIN_B64" ] || [ -z "$AUTHS_CI_IDENTITY_BUNDLE_B64" ]; then
+            echo "Skipping artifact signing: AUTHS_CI_PASSPHRASE, AUTHS_CI_KEYCHAIN, and AUTHS_CI_IDENTITY_BUNDLE must all be set (run 'just ci-setup' to populate them)"
+            exit 0
+          fi
+
+          printf '%s' "$AUTHS_CI_KEYCHAIN_B64" | tr -d '[:space:]' | base64 -d > /tmp/auths-ci-keychain
+          mkdir -p /tmp/auths-identity
+          printf '%s' "$AUTHS_CI_IDENTITY_BUNDLE_B64" | tr -d '[:space:]' | base64 -d | tar -xz -C /tmp/auths-identity
+
+          if ! git -C /tmp/auths-identity rev-parse --git-dir > /dev/null 2>&1; then
+            echo "Skipping artifact signing: AUTHS_CI_IDENTITY_BUNDLE does not contain a valid git repository."
+            echo "Re-run 'just ci-setup' to regenerate the secret, then update AUTHS_CI_IDENTITY_BUNDLE in GitHub Secrets."
+            exit 0
+          fi
+
+          auths artifact sign ${{ matrix.asset_name }}${{ matrix.ext }} \
+            --device-key-alias ci-release-device \
+            --note "GitHub Actions release — ${{ github.ref_name }}" \
+            --repo /tmp/auths-identity
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -105,6 +140,7 @@ jobs:
           path: |
             ${{ matrix.asset_name }}${{ matrix.ext }}
             ${{ matrix.asset_name }}${{ matrix.ext }}.sha256
+            ${{ matrix.asset_name }}${{ matrix.ext }}.auths.json
 
   release:
     needs: build
