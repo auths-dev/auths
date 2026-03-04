@@ -23,7 +23,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.0.1-rc.6"
+version = "0.0.1-rc.7"
 license = "Apache-2.0"
 rust-version = "1.93"
 repository = "https://github.com/auths-dev/auths"
