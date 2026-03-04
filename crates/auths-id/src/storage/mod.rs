@@ -1,12 +1,8 @@
 pub mod attestation;
-#[cfg(feature = "git-storage")]
-pub mod attestation_git;
 pub mod driver;
 #[cfg(feature = "git-storage")]
 pub mod git_refs;
 pub mod identity;
-#[cfg(feature = "git-storage")]
-pub mod identity_git;
 #[cfg(feature = "git-storage")]
 pub mod receipts;
 

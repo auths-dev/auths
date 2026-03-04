@@ -1,28 +1,18 @@
-use crate::error::StorageError;
-use crate::identity::managed::ManagedIdentity;
-use crate::storage::identity::IdentityStorage;
-use crate::storage::layout::{StorageLayoutConfig, identity_blob_name, identity_ref};
 use auths_core::storage::keychain::IdentityDID;
+use auths_id::error::StorageError;
+use auths_id::identity::managed::ManagedIdentity;
+use auths_id::storage::identity::IdentityStorage;
+use auths_id::storage::layout::{StorageLayoutConfig, identity_blob_name, identity_ref};
 use git2::{ErrorCode, Repository, Signature};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str;
 
 /// Internal structure for serializing/deserializing identity data to/from JSON.
-///
-/// This structure defines the minimal data stored in the identity blob.
-/// The `metadata` field is intended to hold arbitrary JSON defined by the
-/// consumer/application, allowing flexibility for different identity standards
-/// (like application-specific profile data).
 #[derive(Serialize, Deserialize, Debug)]
 struct StoredIdentityData {
-    /// Version number for the stored data format.
     version: u32,
-    /// The Decentralized Identifier (DID) string that controls this identity.
     controller_did: IdentityDID,
-    /// Optional, arbitrary JSON metadata associated with the identity.
-    /// Consumers are responsible for defining and interpreting the structure
-    /// within this field (e.g., storing profile information, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<serde_json::Value>,
 }
@@ -38,8 +28,6 @@ pub struct GitIdentityStorage {
 impl GitIdentityStorage {
     /// Creates a new `GitIdentityStorage` instance for the given repository path
     /// using the specified layout configuration.
-    ///
-    /// This is the primary constructor allowing custom Git layouts.
     pub fn new(repo_path: impl Into<PathBuf>, config: StorageLayoutConfig) -> Self {
         GitIdentityStorage {
             repo_path: repo_path.into(),
@@ -49,8 +37,6 @@ impl GitIdentityStorage {
 
     /// Creates a new `GitIdentityStorage` instance using the *generic default*
     /// layout configuration defined in `StorageLayoutConfig::default()`.
-    ///
-    /// Use `::new()` to provide a custom layout (e.g., for custom interoperability).
     pub fn new_with_defaults(repo_path: impl Into<PathBuf>) -> Self {
         Self::new(repo_path, StorageLayoutConfig::default())
     }
@@ -59,8 +45,6 @@ impl GitIdentityStorage {
         Ok(Repository::open(&self.repo_path)?)
     }
 
-    /// Helper function to get the storage ID (typically the repository directory name).
-    /// This is used as a local identifier for the storage backend.
     fn get_storage_id(&self) -> String {
         self.repo_path
             .file_name()

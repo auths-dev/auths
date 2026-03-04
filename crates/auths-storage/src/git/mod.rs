@@ -3,6 +3,9 @@ mod attestation_adapter;
 mod config;
 mod identity_adapter;
 pub mod paths;
+pub mod standalone_attestation;
+pub mod standalone_export;
+pub mod standalone_identity;
 mod tree_ops;
 pub mod vfs;
 
@@ -11,4 +14,7 @@ pub use adapter::REGISTRY_REF;
 pub use attestation_adapter::RegistryAttestationStorage;
 pub use config::{RegistryConfig, TenantMetadata, TenantStatus};
 pub use identity_adapter::RegistryIdentityStorage;
+pub use standalone_attestation::GitAttestationStorage;
+pub use standalone_export::GitRefSink;
+pub use standalone_identity::GitIdentityStorage;
 pub use vfs::{FixedClock, OsVfs, Vfs};

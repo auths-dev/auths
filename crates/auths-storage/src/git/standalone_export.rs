@@ -1,7 +1,7 @@
-use crate::attestation::encoders::json_encoder;
-use crate::attestation::export::{AttestationEncoder, AttestationSink};
-use crate::error::StorageError;
-use crate::storage::layout::{
+use auths_id::attestation::encoders::json_encoder;
+use auths_id::attestation::export::{AttestationEncoder, AttestationSink};
+use auths_id::error::StorageError;
+use auths_id::storage::layout::{
     StorageLayoutConfig, attestation_blob_name, attestation_ref_for_device,
 };
 use auths_verifier::core::{Attestation, VerifiedAttestation};
@@ -21,7 +21,6 @@ pub struct GitRefSink {
 
 impl GitRefSink {
     /// Creates a new GitRefSink with specified path, encoder, and layout config.
-    /// This is the primary constructor.
     pub fn new(
         repo_path: impl Into<PathBuf>,
         encoder: AttestationEncoder,

@@ -3,8 +3,6 @@ pub mod core;
 pub mod create;
 pub mod encoders;
 pub mod export;
-#[cfg(feature = "git-storage")]
-pub mod export_git;
 pub mod group;
 pub mod json_schema_encoder;
 #[cfg(feature = "git-storage")]

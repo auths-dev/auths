@@ -1,6 +1,6 @@
-use crate::error::StorageError;
-use crate::storage::attestation::AttestationSource;
-use crate::storage::layout::{
+use auths_id::error::StorageError;
+use auths_id::storage::attestation::AttestationSource;
+use auths_id::storage::layout::{
     StorageLayoutConfig, attestation_blob_name, attestation_ref_for_device,
     default_attestation_prefixes,
 };
@@ -105,8 +105,6 @@ impl GitAttestationStorage {
 }
 
 impl AttestationSource for GitAttestationStorage {
-    /// Loads attestations by reading the history of the specific device's attestation ref,
-    /// determined by the stored configuration.
     fn load_attestations_for_device(
         &self,
         device_did: &DeviceDID,
@@ -165,8 +163,6 @@ impl AttestationSource for GitAttestationStorage {
         Ok(all_attestations)
     }
 
-    /// Discovers device DIDs by globbing known attestation ref patterns based on the
-    /// stored configuration.
     fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
         let repo = self.open_repo()?;
         let mut discovered_dids = HashSet::new();

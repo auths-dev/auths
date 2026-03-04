@@ -1,12 +1,11 @@
 //! Indexed attestation storage that uses SQLite for O(1) lookups.
 //!
-//! This module provides `IndexedAttestationStorage` which wraps `GitAttestationStorage`
+//! This module provides `IndexedAttestationStorage` which wraps any `AttestationSource`
 //! and adds a SQLite index layer for fast queries. The index is used for lookups,
-//! while the actual attestation data is still loaded from Git.
+//! while the actual attestation data is still loaded from the inner source.
 
 use crate::error::StorageError;
 use crate::storage::attestation::AttestationSource;
-use crate::storage::attestation_git::GitAttestationStorage;
 use crate::storage::layout::StorageLayoutConfig;
 use auths_index::{AttestationIndex, IndexedAttestation, rebuild_attestations_from_git};
 use auths_verifier::core::Attestation;
@@ -15,30 +14,31 @@ use chrono::Utc;
 use std::path::{Path, PathBuf};
 
 /// An attestation storage that uses a SQLite index for fast lookups
-/// with Git as the source of truth for attestation data.
+/// with a backing `AttestationSource` for loading full attestation data.
 pub struct IndexedAttestationStorage {
-    /// The underlying Git storage for loading full attestations
-    git_storage: GitAttestationStorage,
-    /// The SQLite index for fast queries
+    inner: Box<dyn AttestationSource>,
     index: AttestationIndex,
-    /// Path to the repository
     repo_path: PathBuf,
-    /// Storage layout configuration
     config: StorageLayoutConfig,
 }
 
 impl IndexedAttestationStorage {
     /// Opens an indexed attestation storage.
     ///
+    /// Args:
+    /// * `inner` - The backing attestation source for loading full attestations.
+    /// * `repo_path` - Path to the repository (used for index location and rebuilds).
+    /// * `config` - Storage layout configuration.
+    ///
     /// If the index doesn't exist, it will be created and populated from Git refs.
     pub fn open(
+        inner: Box<dyn AttestationSource>,
         repo_path: impl AsRef<Path>,
         config: StorageLayoutConfig,
     ) -> Result<Self, StorageError> {
         let repo_path = repo_path.as_ref().to_path_buf();
         let index_path = repo_path.join(".auths-index.db");
 
-        let git_storage = GitAttestationStorage::new(repo_path.clone(), config.clone());
         let index = AttestationIndex::open_or_create(&index_path)
             .map_err(|e| StorageError::Index(e.to_string()))?;
 
@@ -54,7 +54,7 @@ impl IndexedAttestationStorage {
         }
 
         Ok(Self {
-            git_storage,
+            inner,
             index,
             repo_path,
             config,
@@ -118,11 +118,11 @@ impl IndexedAttestationStorage {
                 "No index entries for device {}, falling back to Git",
                 device_did
             );
-            return self.git_storage.load_attestations_for_device(device_did);
+            return self.inner.load_attestations_for_device(device_did);
         }
 
         // Load full attestations from Git
-        self.git_storage.load_attestations_for_device(device_did)
+        self.inner.load_attestations_for_device(device_did)
     }
 }
 
@@ -135,7 +135,7 @@ impl AttestationSource for IndexedAttestationStorage {
     }
 
     fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError> {
-        self.git_storage.load_all_attestations()
+        self.inner.load_all_attestations()
     }
 
     fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
@@ -146,7 +146,7 @@ impl AttestationSource for IndexedAttestationStorage {
 
         if active.is_empty() {
             // Fall back to Git-based discovery
-            return self.git_storage.discover_device_dids();
+            return self.inner.discover_device_dids();
         }
 
         // Collect unique device DIDs from the index
