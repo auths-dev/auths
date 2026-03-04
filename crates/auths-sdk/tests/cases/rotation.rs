@@ -9,13 +9,13 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
 use auths_id::keri::{KeyState, Prefix, Said};
 use auths_id::ports::registry::RegistryBackend;
+use auths_id::testing::fakes::FakeRegistryBackend;
 use auths_sdk::error::RotationError;
 use auths_sdk::setup::setup_developer;
 use auths_sdk::types::{DeveloperSetupConfig, GitSigningScope, RotationConfig};
 use auths_sdk::workflows::rotation::{
     RotationKeyMaterial, apply_rotation, compute_rotation_event, rotate_identity,
 };
-use auths_test_utils::fakes::registry::FakeRegistryBackend;
 use ring::rand::SystemRandom;
 use ring::signature::Ed25519KeyPair;
 

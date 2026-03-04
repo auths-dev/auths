@@ -25,4 +25,4 @@ version = "3"
 optional = true
 
 [dev-dependencies]
-auths-test-utils.workspace = true
+auths-sdk = { workspace = true, features = ["test-utils"] }

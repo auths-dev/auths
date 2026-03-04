@@ -3,7 +3,7 @@ use auths_infra_git::{GitEventLog, GitRepo};
 use auths_verifier::keri::Prefix;
 
 fn setup() -> (tempfile::TempDir, GitRepo) {
-    let (dir, _repo) = auths_test_utils::git::init_test_repo();
+    let (dir, _repo) = auths_infra_git::testing::init_test_repo();
     let git_repo = GitRepo::open(dir.path()).unwrap();
     (dir, git_repo)
 }

@@ -76,7 +76,6 @@ secret-service = { version = "5.0", features = ["rt-tokio-crypto-rust"], optiona
 windows = { version = "0.58", features = ["Security_Credentials", "Foundation_Collections"], optional = true }
 
 [dev-dependencies]
-auths-test-utils.workspace = true
 ring.workspace = true
 anyhow = "1.0"
 assert_matches = "1.5.0"

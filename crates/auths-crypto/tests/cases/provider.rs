@@ -1,5 +1,5 @@
+use auths_crypto::testing::create_test_keypair;
 use auths_crypto::{CryptoProvider, RingCryptoProvider};
-use auths_test_utils::crypto::create_test_keypair;
 
 #[tokio::test]
 async fn ring_provider_verifies_valid_signature() {

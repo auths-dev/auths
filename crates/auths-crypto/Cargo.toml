@@ -35,7 +35,6 @@ ring = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-auths-test-utils.workspace = true
 ring.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 

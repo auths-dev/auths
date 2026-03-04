@@ -577,7 +577,7 @@ mod tests {
     use crate::types::{DeviceDID, IdentityDID};
     use crate::verifier::Verifier;
     use auths_crypto::RingCryptoProvider;
-    use auths_test_utils::crypto::create_test_keypair;
+    use auths_crypto::testing::create_test_keypair;
     use chrono::{DateTime, Duration, TimeZone, Utc};
     use ring::signature::{Ed25519KeyPair, KeyPair};
     use std::sync::Arc;

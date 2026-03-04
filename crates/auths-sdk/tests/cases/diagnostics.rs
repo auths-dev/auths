@@ -1,7 +1,5 @@
+use auths_sdk::testing::fakes::{FakeCryptoDiagnosticProvider, FakeGitDiagnosticProvider};
 use auths_sdk::workflows::diagnostics::DiagnosticsWorkflow;
-use auths_test_utils::fakes::diagnostics::{
-    FakeCryptoDiagnosticProvider, FakeGitDiagnosticProvider,
-};
 
 #[test]
 fn test_diagnostics_all_pass() {

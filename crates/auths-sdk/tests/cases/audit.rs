@@ -1,6 +1,6 @@
 use auths_sdk::ports::git::{CommitRecord, SignatureStatus};
+use auths_sdk::testing::fakes::FakeGitLogProvider;
 use auths_sdk::workflows::audit::AuditWorkflow;
-use auths_test_utils::fakes::git::FakeGitLogProvider;
 
 fn make_commit(hash: &str, status: SignatureStatus) -> CommitRecord {
     CommitRecord {

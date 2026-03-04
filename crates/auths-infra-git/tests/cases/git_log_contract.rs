@@ -1,6 +1,6 @@
 use auths_infra_git::audit::Git2LogProvider;
 use auths_sdk::ports::git::{CommitRecord, SignatureStatus};
-use auths_test_utils::fakes::git::FakeGitLogProvider;
+use auths_sdk::testing::fakes::FakeGitLogProvider;
 
 fn make_test_commit(hash: &str) -> CommitRecord {
     CommitRecord {
@@ -31,7 +31,7 @@ fn create_commit(repo: &git2::Repository, message: &str) {
         .unwrap();
 }
 
-auths_test_utils::git_log_provider_contract_tests!(
+auths_sdk::git_log_provider_contract_tests!(
     fake,
     {
         let commits = vec![
@@ -44,10 +44,10 @@ auths_test_utils::git_log_provider_contract_tests!(
     3,
 );
 
-auths_test_utils::git_log_provider_contract_tests!(
+auths_sdk::git_log_provider_contract_tests!(
     git2_provider,
     {
-        let (dir, repo) = auths_test_utils::git::init_test_repo();
+        let (dir, repo) = auths_infra_git::testing::init_test_repo();
         create_commit(&repo, "first");
         create_commit(&repo, "second");
         create_commit(&repo, "third");
