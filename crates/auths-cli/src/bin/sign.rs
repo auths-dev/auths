@@ -27,9 +27,11 @@ use auths_cli::commands::agent::{ensure_agent_running, get_default_socket_path};
 use auths_cli::core::pubkey_cache::{cache_pubkey, get_cached_pubkey};
 #[cfg(unix)]
 use auths_core::agent::{AgentStatus, add_identity, agent_sign, check_agent_status};
+use auths_core::config::{PassphraseCachePolicy, load_config};
 use auths_core::crypto::ssh::{
     construct_sshsig_pem, construct_sshsig_signed_data, extract_pubkey_from_key_bytes,
 };
+use auths_core::storage::passphrase_cache::{get_passphrase_cache, parse_duration_str};
 use auths_sdk::signing::{self, SigningConfig};
 use clap::Parser;
 use std::fs;
@@ -103,9 +105,53 @@ fn get_passphrase(alias: &str) -> Result<Zeroizing<String>> {
     if let Ok(p) = std::env::var("AUTHS_PASSPHRASE") {
         return Ok(Zeroizing::new(p));
     }
-    rpassword::prompt_password(format!("Passphrase for '{}': ", alias))
+
+    let config = load_config();
+    let policy = &config.passphrase.cache;
+
+    let biometric = config.passphrase.biometric;
+
+    if matches!(
+        policy,
+        PassphraseCachePolicy::Always | PassphraseCachePolicy::Duration
+    ) {
+        let cache = get_passphrase_cache(biometric);
+        if let Ok(Some((cached, stored_at))) = cache.load(alias) {
+            if *policy == PassphraseCachePolicy::Always {
+                return Ok(cached);
+            }
+            // Duration mode: check TTL
+            let ttl_secs = config
+                .passphrase
+                .duration
+                .as_deref()
+                .and_then(parse_duration_str)
+                .unwrap_or(86400); // default 24h
+            let now = chrono::Utc::now().timestamp();
+            if now - stored_at < ttl_secs {
+                return Ok(cached);
+            }
+            // Expired — delete and fall through to prompt
+            let _ = cache.delete(alias);
+        }
+    }
+
+    let passphrase = rpassword::prompt_password(format!("Passphrase for '{}': ", alias))
         .map(Zeroizing::new)
-        .context("Failed to read passphrase from terminal")
+        .context("Failed to read passphrase from terminal")?;
+
+    if matches!(
+        policy,
+        PassphraseCachePolicy::Always | PassphraseCachePolicy::Duration
+    ) {
+        let cache = get_passphrase_cache(biometric);
+        let now = chrono::Utc::now().timestamp();
+        if let Err(e) = cache.store(alias, &passphrase, now) {
+            eprintln!("Warning: Failed to cache passphrase: {}", e);
+        }
+    }
+
+    Ok(passphrase)
 }
 
 #[cfg(unix)]

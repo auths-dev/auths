@@ -1,7 +1,9 @@
 //! Configuration types.
 
 use crate::crypto::EncryptionAlgorithm;
+use crate::paths::auths_home;
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::RwLock;
@@ -169,4 +171,103 @@ impl EnvironmentConfigBuilder {
             ssh_agent_socket: self.ssh_agent_socket,
         }
     }
+}
+
+/// Passphrase caching policy.
+///
+/// Controls how `auths-sign` caches the passphrase between invocations:
+/// - `always`: Store in OS keychain permanently until explicitly cleared.
+/// - `session`: Rely on the in-memory agent (Tier 1/2) — prompt once per agent lifetime.
+/// - `duration`: Store in OS keychain with a TTL (see [`PassphraseConfig::duration`]).
+/// - `never`: Always prompt interactively.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PassphraseCachePolicy {
+    /// Store passphrase in OS keychain permanently.
+    Always,
+    /// Cache passphrase in the running agent's memory (default).
+    #[default]
+    Session,
+    /// Store passphrase in OS keychain with a configurable TTL.
+    Duration,
+    /// Never cache — always prompt.
+    Never,
+}
+
+/// Passphrase section of `~/.auths/config.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PassphraseConfig {
+    /// Caching policy.
+    #[serde(default)]
+    pub cache: PassphraseCachePolicy,
+    /// Duration string (e.g. `"7d"`, `"24h"`, `"30m"`). Only used when `cache = "duration"`.
+    pub duration: Option<String>,
+    /// Use Touch ID (biometric) to protect cached passphrases on macOS.
+    /// Defaults to `true` on macOS, ignored on other platforms.
+    #[serde(default = "default_biometric")]
+    pub biometric: bool,
+}
+
+fn default_biometric() -> bool {
+    cfg!(target_os = "macos")
+}
+
+impl Default for PassphraseConfig {
+    fn default() -> Self {
+        Self {
+            cache: PassphraseCachePolicy::default(),
+            duration: None,
+            biometric: default_biometric(),
+        }
+    }
+}
+
+/// Top-level `~/.auths/config.toml` structure.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AuthsConfig {
+    /// Passphrase caching settings.
+    #[serde(default)]
+    pub passphrase: PassphraseConfig,
+}
+
+/// Loads `~/.auths/config.toml`, returning defaults on any error.
+///
+/// Usage:
+/// ```ignore
+/// let config = auths_core::config::load_config();
+/// match config.passphrase.cache {
+///     PassphraseCachePolicy::Always => { /* ... */ }
+///     _ => {}
+/// }
+/// ```
+pub fn load_config() -> AuthsConfig {
+    let home = match auths_home() {
+        Ok(h) => h,
+        Err(_) => return AuthsConfig::default(),
+    };
+    let path = home.join("config.toml");
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => toml::from_str(&contents).unwrap_or_default(),
+        Err(_) => AuthsConfig::default(),
+    }
+}
+
+/// Writes `~/.auths/config.toml`.
+///
+/// Args:
+/// * `config`: The configuration to persist.
+///
+/// Usage:
+/// ```ignore
+/// let mut config = load_config();
+/// config.passphrase.cache = PassphraseCachePolicy::Always;
+/// save_config(&config)?;
+/// ```
+pub fn save_config(config: &AuthsConfig) -> Result<(), std::io::Error> {
+    let home = auths_home().map_err(|e| std::io::Error::other(e.to_string()))?;
+    std::fs::create_dir_all(&home)?;
+    let path = home.join("config.toml");
+    let contents =
+        toml::to_string_pretty(config).map_err(|e| std::io::Error::other(e.to_string()))?;
+    std::fs::write(&path, contents)
 }

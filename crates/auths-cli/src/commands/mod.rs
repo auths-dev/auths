@@ -7,6 +7,7 @@ pub mod audit;
 pub mod cache;
 pub mod commit;
 pub mod completions;
+pub mod config;
 pub mod debug;
 pub mod device;
 pub mod doctor;

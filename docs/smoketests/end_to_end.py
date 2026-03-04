@@ -19,7 +19,7 @@ Usage:
 python3 docs/smoketests/end_to_end.py
 # skip cargo/npm builds
 python3 docs/smoketests/end_to_end.py --skip-build
-# keep services running for manual testing      
+# keep services running for manual testing
 python3 docs/smoketests/end_to_end.py --keep-alive
 # skip frontend build/serve
 python3 docs/smoketests/end_to_end.py --no-frontend
@@ -257,6 +257,7 @@ class Workspace:
     def base_env(self) -> dict[str, str]:
         """Shared env vars for headless operation."""
         return {
+            "RUSTUP_TOOLCHAIN": "1.93",
             "AUTHS_KEYCHAIN_BACKEND": "file",
             "AUTHS_KEYCHAIN_FILE": str(self.keychain_file),
             "AUTHS_PASSPHRASE": "e2e-smoke-test",
@@ -384,6 +385,12 @@ def phase_0_prerequisites(args: argparse.Namespace) -> dict[str, Path]:
     info(f"rad version: {v}")
     v = run([str(auths), "--version"]).stdout.strip()
     info(f"auths version: {v}")
+
+    rustc_v = run(["rustc", "+1.93", "--version"], check=False)
+    if rustc_v.returncode != 0:
+        fail("Rust 1.93 toolchain not installed. Run: rustup install 1.93")
+        raise RuntimeError("Missing Rust 1.93")
+    info(f"rustc version: {rustc_v.stdout.strip()}")
 
     if not args.no_frontend:
         node = shutil.which("node")
@@ -1127,6 +1134,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    os.environ.setdefault("RUSTUP_TOOLCHAIN", "1.93")
 
     print()
     print(_c(CYAN, "  Radicle + Auths Full-Stack E2E Smoke Test"))

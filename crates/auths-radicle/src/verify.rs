@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 
 use auths_id::keri::KeyState;
 use auths_id::policy::{CompiledPolicy, Decision, Outcome, PolicyBuilder, evaluate_compiled};
+use auths_verifier::IdentityDID;
 use auths_verifier::core::Attestation;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
@@ -268,7 +269,7 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         // Step 6: Evaluate policy (revocation, expiry)
         let decision = evaluate_compiled(&attestation, &self.policy, request.now)
             .map_err(|e| BridgeError::PolicyEvaluation {
-                did: identity_did.clone(),
+                did: IdentityDID::new(identity_did.to_string()),
                 reason: e.to_string(),
             })?;
 

@@ -17,7 +17,7 @@ Currently, the integration is at the "Bridge" level (verification only). This pl
 ### 1. Initial Identity Creation
 **Command:** `rad auth`
 - **Current:** Creates an Ed25519 keypair and a `did:key:z6Mk...`.
-- **Integrated:** 
+- **Integrated:**
   1. Creates the Radicle keypair.
   2. Automatically initializes a KERI identity (Controller DID).
   3. Links the Radicle key as the first "device".
