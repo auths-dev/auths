@@ -73,6 +73,9 @@ jobs:
       - name: Run tests
         run: cargo nextest run --workspace
 
+      - name: Run tests (all features)
+        run: cargo nextest run --workspace --all-features
+
       - name: Run doc tests
         run: cargo test --all --doc
 

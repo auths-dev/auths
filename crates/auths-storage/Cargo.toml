@@ -4,6 +4,9 @@ version.workspace = true
 edition = "2024"
 publish = true
 license.workspace = true
+description = "Storage backends for Auths identity system — Git and SQL adapters"
+repository = "https://github.com/auths-dev/auths"
+readme = "README.md"
 keywords = ["storage", "git", "sqlite", "identity", "adapter"]
 categories = ["database"]
 
