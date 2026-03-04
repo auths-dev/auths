@@ -4,7 +4,8 @@
 //! that records all key lifecycle operations for a KERI identity.
 
 use auths_core::witness::Receipt;
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 
 use super::seal::Seal;
@@ -83,12 +84,12 @@ impl EventReceipts {
 /// to the first rotation key via the `n` (next) field.
 ///
 /// Note: The `t` (type) field is handled by the `Event` enum's serde tag.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct IcpEvent {
     /// Version string: "KERI10JSON"
     pub v: String,
     /// SAID (Self-Addressing Identifier) - Blake3 hash of event
-    #[serde(default, skip_serializing_if = "Said::is_empty")]
+    #[serde(default)]
     pub d: Said,
     /// Identifier prefix (same as `d` for inception)
     pub i: Prefix,
@@ -107,11 +108,42 @@ pub struct IcpEvent {
     /// Witness list (empty)
     pub b: Vec<String>,
     /// Anchored seals
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub a: Vec<Seal>,
     /// Event signature (Ed25519 over canonical event with empty d, i, and x fields)
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default)]
     pub x: String,
+}
+
+/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, a, x
+impl Serialize for IcpEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let field_count = 12
+            + (!self.d.is_empty() as usize)
+            + (!self.a.is_empty() as usize)
+            + (!self.x.is_empty() as usize);
+        let mut map = serializer.serialize_map(Some(field_count))?;
+        map.serialize_entry("v", &self.v)?;
+        map.serialize_entry("t", "icp")?;
+        if !self.d.is_empty() {
+            map.serialize_entry("d", &self.d)?;
+        }
+        map.serialize_entry("i", &self.i)?;
+        map.serialize_entry("s", &self.s)?;
+        map.serialize_entry("kt", &self.kt)?;
+        map.serialize_entry("k", &self.k)?;
+        map.serialize_entry("nt", &self.nt)?;
+        map.serialize_entry("n", &self.n)?;
+        map.serialize_entry("bt", &self.bt)?;
+        map.serialize_entry("b", &self.b)?;
+        if !self.a.is_empty() {
+            map.serialize_entry("a", &self.a)?;
+        }
+        if !self.x.is_empty() {
+            map.serialize_entry("x", &self.x)?;
+        }
+        map.end()
+    }
 }
 
 /// Rotation event - rotates to pre-committed key.
@@ -120,12 +152,12 @@ pub struct IcpEvent {
 /// This provides cryptographic pre-rotation security.
 ///
 /// Note: The `t` (type) field is handled by the `Event` enum's serde tag.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct RotEvent {
     /// Version string
     pub v: String,
     /// SAID of this event
-    #[serde(default, skip_serializing_if = "Said::is_empty")]
+    #[serde(default)]
     pub d: Said,
     /// Identifier prefix
     pub i: Prefix,
@@ -146,11 +178,43 @@ pub struct RotEvent {
     /// Witness list
     pub b: Vec<String>,
     /// Anchored seals
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub a: Vec<Seal>,
     /// Event signature (Ed25519 over canonical event with empty d and x fields)
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default)]
     pub x: String,
+}
+
+/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, b, a, x
+impl Serialize for RotEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let field_count = 13
+            + (!self.d.is_empty() as usize)
+            + (!self.a.is_empty() as usize)
+            + (!self.x.is_empty() as usize);
+        let mut map = serializer.serialize_map(Some(field_count))?;
+        map.serialize_entry("v", &self.v)?;
+        map.serialize_entry("t", "rot")?;
+        if !self.d.is_empty() {
+            map.serialize_entry("d", &self.d)?;
+        }
+        map.serialize_entry("i", &self.i)?;
+        map.serialize_entry("s", &self.s)?;
+        map.serialize_entry("p", &self.p)?;
+        map.serialize_entry("kt", &self.kt)?;
+        map.serialize_entry("k", &self.k)?;
+        map.serialize_entry("nt", &self.nt)?;
+        map.serialize_entry("n", &self.n)?;
+        map.serialize_entry("bt", &self.bt)?;
+        map.serialize_entry("b", &self.b)?;
+        if !self.a.is_empty() {
+            map.serialize_entry("a", &self.a)?;
+        }
+        if !self.x.is_empty() {
+            map.serialize_entry("x", &self.x)?;
+        }
+        map.end()
+    }
 }
 
 /// Interaction event - anchors data without key rotation.
@@ -159,12 +223,12 @@ pub struct RotEvent {
 /// in the KEL without changing keys.
 ///
 /// Note: The `t` (type) field is handled by the `Event` enum's serde tag.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct IxnEvent {
     /// Version string
     pub v: String,
     /// SAID of this event
-    #[serde(default, skip_serializing_if = "Said::is_empty")]
+    #[serde(default)]
     pub d: Said,
     /// Identifier prefix
     pub i: Prefix,
@@ -175,14 +239,35 @@ pub struct IxnEvent {
     /// Anchored seals (the main purpose of IXN events)
     pub a: Vec<Seal>,
     /// Event signature (Ed25519 over canonical event with empty d and x fields)
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default)]
     pub x: String,
+}
+
+/// Spec field order: v, t, d, i, s, p, a, x
+impl Serialize for IxnEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let field_count = 7 + (!self.d.is_empty() as usize) + (!self.x.is_empty() as usize);
+        let mut map = serializer.serialize_map(Some(field_count))?;
+        map.serialize_entry("v", &self.v)?;
+        map.serialize_entry("t", "ixn")?;
+        if !self.d.is_empty() {
+            map.serialize_entry("d", &self.d)?;
+        }
+        map.serialize_entry("i", &self.i)?;
+        map.serialize_entry("s", &self.s)?;
+        map.serialize_entry("p", &self.p)?;
+        map.serialize_entry("a", &self.a)?;
+        if !self.x.is_empty() {
+            map.serialize_entry("x", &self.x)?;
+        }
+        map.end()
+    }
 }
 
 /// Unified event enum for processing any KERI event type.
 ///
 /// Uses serde's tagged enum feature to deserialize based on the `t` field.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(tag = "t")]
 pub enum Event {
     /// Inception event
@@ -194,6 +279,16 @@ pub enum Event {
     /// Interaction event
     #[serde(rename = "ixn")]
     Ixn(IxnEvent),
+}
+
+impl Serialize for Event {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Event::Icp(e) => e.serialize(serializer),
+            Event::Rot(e) => e.serialize(serializer),
+            Event::Ixn(e) => e.serialize(serializer),
+        }
+    }
 }
 
 impl Event {

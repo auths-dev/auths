@@ -9,7 +9,8 @@ use std::fmt;
 
 use auths_crypto::CryptoProvider;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::{Deserialize, Serialize};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Serialize, Serializer};
 
 // ── KERI Identifier Newtypes ────────────────────────────────────────────────
 
@@ -303,7 +304,7 @@ pub enum KeriVerifyError {
 use auths_crypto::KeriPublicKey;
 
 /// KERI event types for verification.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(tag = "t")]
 pub enum KeriEvent {
     /// Inception event (`icp`) — creates the identity and establishes the first key.
@@ -315,6 +316,16 @@ pub enum KeriEvent {
     /// Interaction event (`ixn`) — anchors data without rotating keys.
     #[serde(rename = "ixn")]
     Interaction(IxnEvent),
+}
+
+impl Serialize for KeriEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            KeriEvent::Inception(e) => e.serialize(serializer),
+            KeriEvent::Rotation(e) => e.serialize(serializer),
+            KeriEvent::Interaction(e) => e.serialize(serializer),
+        }
+    }
 }
 
 impl KeriEvent {
@@ -349,12 +360,12 @@ impl KeriEvent {
 }
 
 /// Inception event.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct IcpEvent {
     /// KERI version string (e.g. `"KERI10JSON"`).
     pub v: String,
     /// Self-Addressing Identifier (SAID) of this event.
-    #[serde(default, skip_serializing_if = "Said::is_empty")]
+    #[serde(default)]
     pub d: Said,
     /// KERI prefix — same as `d` for inception.
     pub i: Prefix,
@@ -380,17 +391,43 @@ pub struct IcpEvent {
     #[serde(default)]
     pub a: Vec<Seal>,
     /// Ed25519 signature over the canonical event body.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default)]
     pub x: String,
 }
 
+/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, a, x
+impl Serialize for IcpEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let field_count = 12 + (!self.d.is_empty() as usize) + (!self.x.is_empty() as usize);
+        let mut map = serializer.serialize_map(Some(field_count))?;
+        map.serialize_entry("v", &self.v)?;
+        map.serialize_entry("t", "icp")?;
+        if !self.d.is_empty() {
+            map.serialize_entry("d", &self.d)?;
+        }
+        map.serialize_entry("i", &self.i)?;
+        map.serialize_entry("s", &self.s)?;
+        map.serialize_entry("kt", &self.kt)?;
+        map.serialize_entry("k", &self.k)?;
+        map.serialize_entry("nt", &self.nt)?;
+        map.serialize_entry("n", &self.n)?;
+        map.serialize_entry("bt", &self.bt)?;
+        map.serialize_entry("b", &self.b)?;
+        map.serialize_entry("a", &self.a)?;
+        if !self.x.is_empty() {
+            map.serialize_entry("x", &self.x)?;
+        }
+        map.end()
+    }
+}
+
 /// Rotation event.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct RotEvent {
     /// KERI version string.
     pub v: String,
     /// SAID of this event.
-    #[serde(default, skip_serializing_if = "Said::is_empty")]
+    #[serde(default)]
     pub d: Said,
     /// KERI prefix of the identity being rotated.
     pub i: Prefix,
@@ -418,17 +455,44 @@ pub struct RotEvent {
     #[serde(default)]
     pub a: Vec<Seal>,
     /// Ed25519 signature over the canonical event body.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default)]
     pub x: String,
 }
 
+/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, b, a, x
+impl Serialize for RotEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let field_count = 13 + (!self.d.is_empty() as usize) + (!self.x.is_empty() as usize);
+        let mut map = serializer.serialize_map(Some(field_count))?;
+        map.serialize_entry("v", &self.v)?;
+        map.serialize_entry("t", "rot")?;
+        if !self.d.is_empty() {
+            map.serialize_entry("d", &self.d)?;
+        }
+        map.serialize_entry("i", &self.i)?;
+        map.serialize_entry("s", &self.s)?;
+        map.serialize_entry("p", &self.p)?;
+        map.serialize_entry("kt", &self.kt)?;
+        map.serialize_entry("k", &self.k)?;
+        map.serialize_entry("nt", &self.nt)?;
+        map.serialize_entry("n", &self.n)?;
+        map.serialize_entry("bt", &self.bt)?;
+        map.serialize_entry("b", &self.b)?;
+        map.serialize_entry("a", &self.a)?;
+        if !self.x.is_empty() {
+            map.serialize_entry("x", &self.x)?;
+        }
+        map.end()
+    }
+}
+
 /// Interaction event.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct IxnEvent {
     /// KERI version string.
     pub v: String,
     /// SAID of this event.
-    #[serde(default, skip_serializing_if = "Said::is_empty")]
+    #[serde(default)]
     pub d: Said,
     /// KERI prefix of the identity.
     pub i: Prefix,
@@ -439,8 +503,29 @@ pub struct IxnEvent {
     /// Anchored seals (e.g. attestation digests).
     pub a: Vec<Seal>,
     /// Ed25519 signature over the canonical event body.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[serde(default)]
     pub x: String,
+}
+
+/// Spec field order: v, t, d, i, s, p, a, x
+impl Serialize for IxnEvent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let field_count = 7 + (!self.d.is_empty() as usize) + (!self.x.is_empty() as usize);
+        let mut map = serializer.serialize_map(Some(field_count))?;
+        map.serialize_entry("v", &self.v)?;
+        map.serialize_entry("t", "ixn")?;
+        if !self.d.is_empty() {
+            map.serialize_entry("d", &self.d)?;
+        }
+        map.serialize_entry("i", &self.i)?;
+        map.serialize_entry("s", &self.s)?;
+        map.serialize_entry("p", &self.p)?;
+        map.serialize_entry("a", &self.a)?;
+        if !self.x.is_empty() {
+            map.serialize_entry("x", &self.x)?;
+        }
+        map.end()
+    }
 }
 
 /// A seal anchors external data in a KERI event.

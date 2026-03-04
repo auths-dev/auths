@@ -37,9 +37,13 @@ fn schema_json_is_up_to_date() {
          Run `cargo xtask gen-schema` to generate it.",
     );
 
+    let committed_value: serde_json::Value =
+        serde_json::from_str(committed.trim()).expect("committed schema.json is not valid JSON");
+    let generated_value: serde_json::Value =
+        serde_json::from_str(generated.trim()).expect("generated schema is not valid JSON");
+
     assert_eq!(
-        committed.trim(),
-        generated.trim(),
+        committed_value, generated_value,
         "schema.json is out of date. Run `cargo xtask gen-schema` to regenerate it."
     );
 }
