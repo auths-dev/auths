@@ -9,7 +9,7 @@ Usage:
 What it does:
     1. Reads the version from [workspace.package] in Cargo.toml
     2. Checks crates.io to make sure the version has been bumped
-    3. Checks that the git tag doesn't already exist
+    3. Checks that the git tag doesn't already exist on GitHub
     4. Creates a git tag v{version} and pushes it to origin
 
 Requires:
