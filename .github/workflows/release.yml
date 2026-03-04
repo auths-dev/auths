@@ -1,3 +1,8 @@
+# Usage:
+# Set a tag, then push it to trigger the release workflow:
+# git tag v0.0.1-rc.5
+# git push origin v0.0.1-rc.5
+
 name: Release
 
 on:
