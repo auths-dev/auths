@@ -124,8 +124,15 @@ def main() -> None:
     print(f"\nCreating tag {tag}...")
     git("tag", tag)
 
-    print(f"Pushing tag {tag} to origin...")
-    git("push", "origin", tag)
+    print(f"Pushing tag {tag} to origin (pre-push hooks may run)...")
+    sys.stdout.flush()
+    result = subprocess.run(
+        ["git", "push", "origin", tag],
+        cwd=CARGO_TOML.parent,
+    )
+    if result.returncode != 0:
+        print(f"\nERROR: git push failed (exit {result.returncode})", file=sys.stderr)
+        sys.exit(1)
 
     print(f"\nDone. Release workflow will run at:")
     print(f"  https://github.com/auths-dev/auths/actions")
