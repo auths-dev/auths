@@ -123,7 +123,7 @@ def main() -> None:
 
     print(f"\nCreating tag {tag}...", flush=True)
     result = subprocess.run(
-        ["git", "tag", tag],
+        ["git", "tag", "-a", tag, "-m", f"release: release for {version}"],
         cwd=CARGO_TOML.parent,
     )
     if result.returncode != 0:
