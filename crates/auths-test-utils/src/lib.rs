@@ -3,3 +3,5 @@
 pub mod crypto {
     pub use auths_crypto::testing::create_test_keypair;
 }
+
+pub mod git;

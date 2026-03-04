@@ -19,12 +19,7 @@ thiserror.workspace = true
 chrono = "0.4"
 log = "0.4"
 
-[features]
-test-utils = ["dep:tempfile"]
-
-[dependencies.tempfile]
-version = "3"
-optional = true
-
 [dev-dependencies]
 auths-sdk = { workspace = true, features = ["test-utils"] }
+auths-test-utils = { path = "../auths-test-utils" }
+tempfile = "3"

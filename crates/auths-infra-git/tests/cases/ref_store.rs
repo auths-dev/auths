@@ -2,7 +2,7 @@ use auths_core::ports::storage::{RefReader, RefWriter, StorageError};
 use auths_infra_git::{GitRefStore, GitRepo};
 
 fn setup() -> (tempfile::TempDir, GitRepo) {
-    let (dir, _repo) = auths_infra_git::testing::init_test_repo();
+    let (dir, _repo) = auths_test_utils::git::init_test_repo();
     let git_repo = GitRepo::open(dir.path()).unwrap();
     (dir, git_repo)
 }

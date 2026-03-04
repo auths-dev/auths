@@ -92,7 +92,7 @@ fn double_rotation_does_not_corrupt_kel() {
 
 #[test]
 fn rotation_after_interaction_events_preserves_kel_integrity() {
-    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
@@ -127,7 +127,7 @@ fn rotation_after_interaction_events_preserves_kel_integrity() {
 
 #[test]
 fn anchoring_works_with_rotated_key_after_ixn() {
-    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
@@ -160,7 +160,7 @@ fn anchoring_works_with_rotated_key_after_ixn() {
 
 #[test]
 fn multiple_rotations_interleaved_with_ixn() {
-    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);

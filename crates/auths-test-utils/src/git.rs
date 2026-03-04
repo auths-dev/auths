@@ -8,9 +8,6 @@ use tempfile::TempDir;
 /// Creates a new `TempDir`, calls `git2::Repository::init`, and sets
 /// `user.name` / `user.email` so that commits work out of the box.
 ///
-/// Args:
-/// * None
-///
 /// Usage:
 /// ```ignore
 /// let (temp_dir, repo) = init_test_repo();
@@ -31,9 +28,6 @@ pub fn init_test_repo() -> (TempDir, git2::Repository) {
 /// The template is created once (via `OnceLock`) and reused across all calls
 /// within the same test binary. Each call gets its own independent `TempDir`
 /// containing a full copy of the template, so tests remain isolated.
-///
-/// Args:
-/// * None
 ///
 /// Usage:
 /// ```ignore

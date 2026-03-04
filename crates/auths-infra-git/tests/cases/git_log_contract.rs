@@ -47,7 +47,7 @@ auths_sdk::git_log_provider_contract_tests!(
 auths_sdk::git_log_provider_contract_tests!(
     git2_provider,
     {
-        let (dir, repo) = auths_infra_git::testing::init_test_repo();
+        let (dir, repo) = auths_test_utils::git::init_test_repo();
         create_commit(&repo, "first");
         create_commit(&repo, "second");
         create_commit(&repo, "third");

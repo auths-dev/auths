@@ -409,9 +409,9 @@ dependencies = [
  "auths-core",
  "auths-crypto",
  "auths-index",
- "auths-infra-git",
  "auths-infra-http",
  "auths-policy",
+ "auths-test-utils",
  "auths-verifier",
  "base58",
  "base64",
@@ -465,6 +465,7 @@ version = "0.0.1-rc.5"
 dependencies = [
  "auths-core",
  "auths-sdk",
+ "auths-test-utils",
  "auths-verifier",
  "chrono",
  "git2",
@@ -579,6 +580,16 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "auths-test-utils"
+version = "0.0.1-rc.13"
+dependencies = [
+ "auths-crypto",
+ "git2",
+ "ring",
+ "tempfile",
 ]
 
 [[package]]

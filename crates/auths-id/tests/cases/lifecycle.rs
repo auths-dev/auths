@@ -171,7 +171,7 @@ fn rotate_identity(
 #[tokio::test(flavor = "multi_thread")]
 async fn test_full_identity_lifecycle() {
     let kc = IsolatedKeychainHandle::new();
-    let (_dir, _repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
@@ -249,7 +249,7 @@ async fn test_full_identity_lifecycle() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_attestation_chain_after_rotation() {
     let kc = IsolatedKeychainHandle::new();
-    let (_dir, _repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
@@ -308,7 +308,7 @@ async fn test_attestation_chain_after_rotation() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_verify_device_authorization_lifecycle() {
     let kc = IsolatedKeychainHandle::new();
-    let (_dir, _repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
@@ -364,7 +364,7 @@ async fn test_verify_device_authorization_lifecycle() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_multiple_rotations_maintain_verification() {
     let kc = IsolatedKeychainHandle::new();
-    let (_dir, _repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
@@ -437,7 +437,7 @@ async fn test_multiple_rotations_maintain_verification() {
 #[test]
 fn test_init_creates_keri_kel() {
     let kc = IsolatedKeychainHandle::new();
-    let (_dir, _repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 
@@ -469,7 +469,7 @@ fn test_init_creates_keri_kel() {
 #[test]
 fn test_rotation_appends_to_kel() {
     let kc = IsolatedKeychainHandle::new();
-    let (_dir, _repo) = auths_infra_git::testing::init_test_repo();
+    let (_dir, _repo) = auths_test_utils::git::init_test_repo();
     let repo_path = _dir.path().to_path_buf();
     let passphrase = "Test-P@ss12345";
 

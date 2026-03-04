@@ -50,6 +50,7 @@ deny = [
     "auths-index",
     "auths-radicle",
     "auths-sdk",
+    "auths-test-utils",
   ], reason = "git2 must stay in storage/adapter layer; auths-sdk dev-dep only" },
 ]
 

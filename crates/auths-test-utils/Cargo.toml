@@ -3,7 +3,10 @@ name = "auths-test-utils"
 version = "0.0.1-rc.13"
 edition = "2024"
 rust-version = "1.93"
+license.workspace = true
 
 [dependencies]
 auths-crypto = { path = "../auths-crypto", features = ["test-utils"] }
+git2 = "0.20.4"
 ring = "0.17.14"
+tempfile = "3"
