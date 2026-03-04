@@ -90,7 +90,7 @@ harness = false
 
 [features]
 default = []
-test-utils = []
+test-utils = ["auths-crypto/test-utils"]
 keychain-linux-secretservice = ["dep:secret-service"]
 keychain-windows = ["dep:windows"]
 keychain-file-fallback = []
