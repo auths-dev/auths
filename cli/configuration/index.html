@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://docs.auths.dev/plans/v1_launch/">
+        <link rel="canonical" href="https://docs.auths.dev/cli/configuration/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>v0.1.0 Launch Plan - Auths</title>
+        <title>Configuration - Auths</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#v010-launch-plan" class="md-skip">
+        <a href="#configuration" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              v0.1.0 Launch Plan
+              Configuration
             
           </span>
         </div>
@@ -822,33 +822,33 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#executive-summary" class="md-nav__link">
+  <a href="#editing-the-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Executive Summary
+        Editing the Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Editing the Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-the-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using the CLI
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#tier-0-launch-blockers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tier 0: Launch Blockers
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Tier 0: Launch Blockers">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#03-remove-cross-crate-re-export-of-identitydid-from-auths-core" class="md-nav__link">
+  <a href="#editing-the-file-directly" class="md-nav__link">
     <span class="md-ellipsis">
       
-        0.3 — Remove cross-crate re-export of IdentityDID from auths-core
+        Editing the file directly
       
     </span>
   </a>
@@ -861,22 +861,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tier-3-post-launch-v01x-patch-series" class="md-nav__link">
+  <a href="#passphrase-caching" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tier 3: Post-Launch (v0.1.x Patch Series)
+        Passphrase Caching
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Tier 3: Post-Launch (v0.1.x Patch Series)">
+    <nav class="md-nav" aria-label="Passphrase Caching">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#31-complete-anyhow-to-thiserror-migration-in-sdk-error-types" class="md-nav__link">
+  <a href="#passphrasecache" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3.1 — Complete anyhow-to-thiserror migration in SDK error types
+        passphrase.cache
       
     </span>
   </a>
@@ -884,10 +884,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#32-monitor-rustsec-2023-0071-rsa-timing" class="md-nav__link">
+  <a href="#passphraseduration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3.2 — Monitor RUSTSEC-2023-0071 (RSA timing)
+        passphrase.duration
       
     </span>
   </a>
@@ -895,32 +895,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#33-reduce-getrandom-version-spread" class="md-nav__link">
+  <a href="#environment-variable-override" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3.3 — Reduce getrandom version spread
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#34-cross-crate-failure-mode-tests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3.4 — Cross-crate failure mode tests
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#35-expand-adversarial-attestation-tests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3.5 — Expand adversarial attestation tests
+        Environment variable override
       
     </span>
   </a>
@@ -933,32 +911,60 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#release-checklist" class="md-nav__link">
+  <a href="#platform-specific-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Release Checklist
+        Platform-Specific Behavior
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Platform-Specific Behavior">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#macos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#effort-summary" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#linux" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Effort Summary
+        Linux
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#launch-workflow" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#windows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Launch workflow
+        Windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
       
     </span>
   </a>
@@ -993,200 +999,154 @@
   
 
 
-<h1 id="v010-launch-plan">v0.1.0 Launch Plan<a class="headerlink" href="#v010-launch-plan" title="Permanent link">&para;</a></h1>
-<blockquote>
-<p>Audit date: 2026-03-03
-Current version: 0.0.1-rc.5
-Target version: 0.1.0</p>
-</blockquote>
-<p>This plan captures everything that must, should, or could be addressed before
-cutting the first public release. Items are organized by priority tier, with
-effort estimates and owner suggestions.</p>
-<hr />
-<h2 id="executive-summary">Executive Summary<a class="headerlink" href="#executive-summary" title="Permanent link">&para;</a></h2>
-<p>The codebase is architecturally sound: crate boundaries are clean, the
-cryptographic primitives are well-chosen (ring, blake3, argon2), and the
-documentation is unusually mature for a pre-1.0 project. The main risks are:</p>
-<ol>
-<li><strong>WASM verification is broken</strong> — <code>WebCryptoProvider::verify_ed25519()</code> is a
-   stub that will silently fail at runtime</li>
-<li><strong>Error handling policy is not enforced</strong> — 16 files in auths-id use <code>anyhow</code>
-   despite the documented ban on it in domain crates</li>
-<li><strong>FFI/WASM boundaries have zero dedicated tests</strong> — 950+ lines of binding
-   code with no smoke tests</li>
-<li><strong>Public API surface leaks internals</strong> — <code>pub use api::*</code> and
-   <code>pub use storage::*</code> in auths-core expose platform-specific keychains</li>
-</ol>
-<p>None of these are architectural problems. They are all fixable with targeted
-work across 2-3 sprints.</p>
-<hr />
-<h2 id="tier-0-launch-blockers">Tier 0: Launch Blockers<a class="headerlink" href="#tier-0-launch-blockers" title="Permanent link">&para;</a></h2>
-<p>These must be resolved before tagging v0.1.0. A release with any of these
-creates real risk of broken consumers or security issues.</p>
-<h3 id="03-remove-cross-crate-re-export-of-identitydid-from-auths-core">0.3 — Remove cross-crate re-export of <code>IdentityDID</code> from auths-core<a class="headerlink" href="#03-remove-cross-crate-re-export-of-identitydid-from-auths-core" title="Permanent link">&para;</a></h3>
-<p><strong>File:</strong> <code>crates/auths-core/src/storage/keychain.rs:36</code></p>
-<p><code>pub use auths_verifier::IdentityDID</code> creates a confusing re-export chain where
-consumers can import the same type from two different crates. This will cause
-type mismatch errors when consumers use both crates.</p>
-<p><strong>Fix:</strong> Remove the re-export. Consumers should import <code>IdentityDID</code> from
-<code>auths_verifier</code> directly.</p>
-<p><strong>Effort:</strong> 2 hours (+ fixing downstream imports)
-<strong>Owner:</strong> Core maintainer</p>
-<hr />
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">for</span><span class="w"> </span>crate<span class="w"> </span><span class="k">in</span><span class="w"> </span>auths-crypto<span class="w"> </span>auths-verifier<span class="w"> </span>auths-core<span class="w"> </span>auths-id<span class="w"> </span>auths-policy<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">             </span>auths-index<span class="w"> </span>auths-telemetry<span class="w"> </span>auths-sdk<span class="w"> </span>auths-storage<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">             </span>auths-infra-git<span class="w"> </span>auths-infra-http<span class="w"> </span>auths-cli<span class="p">;</span><span class="w"> </span><span class="k">do</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;--- </span><span class="nv">$crate</span><span class="s2"> ---&quot;</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>cargo<span class="w"> </span>publish<span class="w"> </span>--dry-run<span class="w"> </span>-p<span class="w"> </span><span class="nv">$crate</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-5
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">done</span>
+<h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
+<p>Auths stores its configuration in <code>~/.auths/config.toml</code>. This file controls how passphrase caching and authentication behave across commits and signing operations.</p>
+<h2 id="editing-the-configuration">Editing the Configuration<a class="headerlink" href="#editing-the-configuration" title="Permanent link">&para;</a></h2>
+<p>You can manage configuration using the <code>auths config</code> command or by editing the file directly.</p>
+<h3 id="using-the-cli">Using the CLI<a class="headerlink" href="#using-the-cli" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Set a value</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>&lt;key&gt;<span class="w"> </span>&lt;value&gt;
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Get a value</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>auths<span class="w"> </span>config<span class="w"> </span>get<span class="w"> </span>&lt;key&gt;
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Show full configuration</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>auths<span class="w"> </span>config<span class="w"> </span>show
 </span></code></pre></div>
-<p>This catches: missing fields, files too large, undeclared dependencies,
-path-only deps without version, etc.</p>
-<p><strong>Effort:</strong> 1 hour (fix issues as found)</p>
-<hr />
-<h2 id="tier-3-post-launch-v01x-patch-series">Tier 3: Post-Launch (v0.1.x Patch Series)<a class="headerlink" href="#tier-3-post-launch-v01x-patch-series" title="Permanent link">&para;</a></h2>
-<p>Track these but don't block the release.</p>
-<h3 id="31-complete-anyhow-to-thiserror-migration-in-sdk-error-types">3.1 — Complete anyhow-to-thiserror migration in SDK error types<a class="headerlink" href="#31-complete-anyhow-to-thiserror-migration-in-sdk-error-types" title="Permanent link">&para;</a></h3>
-<p>The <code>StorageError(#[source] anyhow::Error)</code> and
-<code>NetworkError(#[source] anyhow::Error)</code> variants in
-<code>crates/auths-sdk/src/error.rs</code> are documented as transitional. Replace with
-domain-specific variants and remove the <code>map_storage_err()</code> helpers.</p>
-<h3 id="32-monitor-rustsec-2023-0071-rsa-timing">3.2 — Monitor RUSTSEC-2023-0071 (RSA timing)<a class="headerlink" href="#32-monitor-rustsec-2023-0071-rsa-timing" title="Permanent link">&para;</a></h3>
-<p>The <code>rsa</code> crate pulled by <code>ssh-key</code> has a known timing side-channel. No
-upstream fix exists. Monitor for an update and bump <code>ssh-key</code> when available.
-Impact is limited since Auths uses Ed25519 exclusively for its own operations.</p>
-<h3 id="33-reduce-getrandom-version-spread">3.3 — Reduce getrandom version spread<a class="headerlink" href="#33-reduce-getrandom-version-spread" title="Permanent link">&para;</a></h3>
-<p>Currently 3 versions in the lockfile (0.2, 0.3, 0.4) due to <code>ring</code> pulling
-0.2 and WASM needing 0.4. This is correctly managed with feature flags but
-adds binary size. When <code>ring</code> updates its getrandom dependency, consolidate.</p>
-<h3 id="34-cross-crate-failure-mode-tests">3.4 — Cross-crate failure mode tests<a class="headerlink" href="#34-cross-crate-failure-mode-tests" title="Permanent link">&para;</a></h3>
-<p>No tests currently verify that an identity created in auths-id and
-intentionally corrupted will fail cleanly in auths-verifier. Add integration
-tests that exercise the full create-corrupt-verify pipeline.</p>
-<h3 id="35-expand-adversarial-attestation-tests">3.5 — Expand adversarial attestation tests<a class="headerlink" href="#35-expand-adversarial-attestation-tests" title="Permanent link">&para;</a></h3>
-<p>Current adversarial tests cover revocation tampering and issuer signature
-forgery. Missing:
-- Device signature tampering (valid issuer sig, invalid device sig)
-- Cross-signature attacks (swap issuer and device signatures)
-- Capability escalation (modify capabilities array, verify signature rejects)</p>
-<hr />
-<h2 id="release-checklist">Release Checklist<a class="headerlink" href="#release-checklist" title="Permanent link">&para;</a></h2>
-<p>When all Tier 0 items are resolved and Tier 1 items are triaged:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[ ] All Tier 0 items resolved
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>[ ] cargo fmt --check --all passes
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>[ ] cargo clippy --all-targets --all-features -- -D warnings passes
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>[ ] cargo nextest run --workspace passes
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>[ ] cargo test --all --doc passes
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>[ ] WASM check passes (cd crates/auths-verifier &amp;&amp; cargo check --target wasm32-unknown-unknown --no-default-features --features wasm)
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>[ ] cargo publish --dry-run passes for all stable crates
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>[ ] Bump workspace version from 0.0.1-rc.5 to 0.1.0
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>[ ] Update CHANGELOG.md with ## [0.1.0] section
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>[ ] Tag: git tag -a v0.1.0 -m &quot;v0.1.0&quot;
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>[ ] Publish crates in dependency order:
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    1. auths-crypto
-</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    2. auths-verifier
-</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    3. auths-core
-</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    4. auths-policy
-</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    5. auths-telemetry
-</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    6. auths-id
-</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    7. auths-index
-</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    8. auths-storage, auths-infra-git, auths-infra-http
-</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    9. auths-sdk
-</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    10. auths-cli
+<h3 id="editing-the-file-directly">Editing the file directly<a class="headerlink" href="#editing-the-file-directly" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># The config file lives at:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>~/.auths/config.toml
 </span></code></pre></div>
+<p>Example <code>config.toml</code>:</p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">[passphrase]</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">cache</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;always&quot;</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">biometric</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span></code></pre></div>
+<p>If the file doesn't exist, Auths uses sensible defaults. Running any <code>auths config set</code> command will create it.</p>
 <hr />
-<h2 id="effort-summary">Effort Summary<a class="headerlink" href="#effort-summary" title="Permanent link">&para;</a></h2>
+<h2 id="passphrase-caching">Passphrase Caching<a class="headerlink" href="#passphrase-caching" title="Permanent link">&para;</a></h2>
+<p>Every <code>git commit</code> invokes <code>auths-sign</code>, which needs your passphrase to decrypt the signing key. The <code>passphrase.cache</code> setting controls how often you're prompted.</p>
+<h3 id="passphrasecache"><code>passphrase.cache</code><a class="headerlink" href="#passphrasecache" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>Tier</th>
-<th>Items</th>
-<th>Estimated Effort</th>
+<th>Value</th>
+<th>Behavior</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>0 — Blockers</td>
-<td>5</td>
-<td>4-7 days</td>
+<td><code>session</code></td>
+<td><strong>(default)</strong> Passphrase is held in the agent's memory. You're prompted once per agent lifetime. Restarting the agent or your machine clears it.</td>
 </tr>
 <tr>
-<td>1 — Should fix</td>
-<td>8</td>
-<td>8-12 days</td>
+<td><code>always</code></td>
+<td>Passphrase is stored in the OS keychain (macOS Keychain, Linux Secret Service). You're prompted once, then never again until you clear it.</td>
 </tr>
 <tr>
-<td>2 — Nice to have</td>
-<td>6</td>
-<td>4-6 days</td>
+<td><code>duration</code></td>
+<td>Like <code>always</code>, but the cached passphrase expires after a configurable time window.</td>
 </tr>
 <tr>
-<td>3 — Post-launch</td>
-<td>5</td>
-<td>Ongoing</td>
+<td><code>never</code></td>
+<td>Always prompt interactively. No caching of any kind.</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Critical path:</strong> Tier 0 items are independent of each other and can be
-parallelized across 2-3 engineers. The WASM crypto stub (0.1) and FFI tests
-(0.4, 0.5) are the most time-sensitive since they gate the embedding story.
-The API surface cleanup (0.2, 0.3) is the most semver-sensitive since public
-API changes after 0.1.0 require a minor version bump.</p>
-<hr />
-<h2 id="launch-workflow">Launch workflow<a class="headerlink" href="#launch-workflow" title="Permanent link">&para;</a></h2>
-<p>Step 1: Login
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>cargo login
-</span></code></pre></div></p>
-<h1 id="paste-your-cratesio-api-token">Paste your crates.io API token<a class="headerlink" href="#paste-your-cratesio-api-token" title="Permanent link">&para;</a></h1>
-<p>Step 2: Dry run first</p>
-<p>Run this to catch packaging issues before publishing anything:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">for</span><span class="w"> </span>crate<span class="w"> </span><span class="k">in</span><span class="w"> </span>auths-crypto<span class="w"> </span>auths-policy<span class="w"> </span>auths-telemetry<span class="w"> </span>auths-index<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">            </span>auths-verifier<span class="w"> </span>auths-core<span class="w"> </span>auths-infra-http<span class="w"> </span>auths-id<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">            </span>auths-storage<span class="w"> </span>auths-sdk<span class="w"> </span>auths-infra-git<span class="w"> </span>auths-cli<span class="w"> </span>auths<span class="p">;</span><span class="w"> </span><span class="k">do</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;=== </span><span class="nv">$crate</span><span class="s2"> ===&quot;</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>cargo<span class="w"> </span>publish<span class="w"> </span>--dry-run<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$crate</span><span class="s2">&quot;</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-3
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nb">echo</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="k">done</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>passphrase.cache<span class="w"> </span>always
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>passphrase.cache<span class="w"> </span>session
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>passphrase.cache<span class="w"> </span>duration
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>passphrase.cache<span class="w"> </span>never
 </span></code></pre></div>
-<p>Step 3: Publish in dependency order</p>
-<p>Each cargo publish needs the previous crate to be indexed (takes ~30s-1min), so add a sleep between them:</p>
-<h1 id="tier-0-no-workspace-dependencies">Tier 0: No workspace dependencies<a class="headerlink" href="#tier-0-no-workspace-dependencies" title="Permanent link">&para;</a></h1>
-<p>cargo publish -p auths-crypto
-cargo publish -p auths-policy
-cargo publish -p auths-telemetry
-cargo publish -p auths-index
-sleep 60</p>
-<h1 id="tier-1-depends-on-tier-0">Tier 1: Depends on Tier 0<a class="headerlink" href="#tier-1-depends-on-tier-0" title="Permanent link">&para;</a></h1>
-<p>cargo publish -p auths-verifier    # depends on auths-crypto
-sleep 60</p>
-<h1 id="tier-2-depends-on-tier-0-1">Tier 2: Depends on Tier 0-1<a class="headerlink" href="#tier-2-depends-on-tier-0-1" title="Permanent link">&para;</a></h1>
-<p>cargo publish -p auths-core        # depends on auths-crypto, auths-verifier
-cargo publish -p auths-infra-http  # depends on auths-core, auths-verifier
-sleep 60</p>
-<h1 id="tier-3-depends-on-tier-0-2">Tier 3: Depends on Tier 0-2<a class="headerlink" href="#tier-3-depends-on-tier-0-2" title="Permanent link">&para;</a></h1>
-<p>cargo publish -p auths-id          # depends on core, crypto, policy, verifier, index
-cargo publish -p auths-sdk         # depends on core, id, policy, crypto, verifier
-cargo publish -p auths-storage     # depends on core, id, verifier, index
-sleep 60</p>
-<h1 id="tier-4-depends-on-tier-0-3">Tier 4: Depends on Tier 0-3<a class="headerlink" href="#tier-4-depends-on-tier-0-3" title="Permanent link">&para;</a></h1>
-<p>cargo publish -p auths-infra-git   # depends on core, sdk, verifier
-sleep 60</p>
-<h1 id="tier-5-depends-on-everything">Tier 5: Depends on everything<a class="headerlink" href="#tier-5-depends-on-everything" title="Permanent link">&para;</a></h1>
-<p>cargo publish -p auths-cli
-sleep 30</p>
-<h1 id="wrapper-crate-currently-empty-deps-publish-whenever">Wrapper crate (currently empty deps, publish whenever)<a class="headerlink" href="#wrapper-crate-currently-empty-deps-publish-whenever" title="Permanent link">&para;</a></h1>
-<p>cargo publish -p auths</p>
-<p>Important notes</p>
+<h3 id="passphraseduration"><code>passphrase.duration</code><a class="headerlink" href="#passphraseduration" title="Permanent link">&para;</a></h3>
+<p>Only used when <code>cache = "duration"</code>. Sets how long the cached passphrase remains valid.</p>
+<p>Supported formats: <code>7d</code> (days), <code>24h</code> (hours), <code>30m</code> (minutes), <code>3600s</code> or <code>3600</code> (seconds).</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>passphrase.cache<span class="w"> </span>duration
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>passphrase.duration<span class="w"> </span>7d
+</span></code></pre></div>
+<p>If not set, defaults to <code>24h</code>.</p>
+<h3 id="environment-variable-override">Environment variable override<a class="headerlink" href="#environment-variable-override" title="Permanent link">&para;</a></h3>
+<p>Setting <code>AUTHS_PASSPHRASE</code> bypasses all caching and prompts. This is intended for CI/CD environments.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">AUTHS_PASSPHRASE</span><span class="o">=</span>my-secret<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;automated commit&quot;</span>
+</span></code></pre></div>
+<hr />
+<h2 id="platform-specific-behavior">Platform-Specific Behavior<a class="headerlink" href="#platform-specific-behavior" title="Permanent link">&para;</a></h2>
+<h3 id="macos">macOS<a class="headerlink" href="#macos" title="Permanent link">&para;</a></h3>
+<h4 id="touch-id-passphrasebiometric">Touch ID (<code>passphrase.biometric</code>)<a class="headerlink" href="#touch-id-passphrasebiometric" title="Permanent link">&para;</a></h4>
+<p>When <code>passphrase.cache</code> is set to <code>always</code> or <code>duration</code>, macOS can protect the cached passphrase with Touch ID. On subsequent commits, macOS presents a Touch ID dialog instead of a text passphrase prompt.</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>true</code></td>
+<td><strong>(default on macOS)</strong> Cached passphrase requires Touch ID or device passcode to access.</td>
+</tr>
+<tr>
+<td><code>false</code></td>
+<td>Cached passphrase is returned silently from the keychain without biometric verification.</td>
+</tr>
+</tbody>
+</table>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Enable Touch ID (default)</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>passphrase.biometric<span class="w"> </span><span class="nb">true</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Disable Touch ID, use silent keychain access</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>auths<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>passphrase.biometric<span class="w"> </span><span class="nb">false</span>
+</span></code></pre></div>
+<p>The passphrase is stored in macOS Keychain under the service name <code>dev.auths.passphrase</code>. You can inspect it in Keychain Access.app.</p>
+<p><strong>Requirements:</strong>
+- Touch ID must be enrolled on the device
+- If Touch ID is unavailable, macOS falls back to the device passcode</p>
+<h3 id="linux">Linux<a class="headerlink" href="#linux" title="Permanent link">&para;</a></h3>
+<p>When <code>passphrase.cache</code> is set to <code>always</code> or <code>duration</code>, Linux stores the passphrase via the <a href="https://specifications.freedesktop.org/secret-service/latest/">freedesktop.org Secret Service API</a>. This works with:</p>
 <ul>
-<li>Version bump first — you'll want to update the workspace version in Cargo.toml from 0.0.1-rc.5 to 0.1.0 before
-publishing. Every version.workspace = true crate picks it up automatically, but the [workspace.dependencies] version
-strings also need updating.</li>
-<li>You can't overwrite — once a version is published to crates.io, it's permanent. If something goes wrong mid-publish, bump
-to 0.1.1 for the remaining crates.</li>
-<li>The sleeps are conservative — crates.io indexing usually takes 30-60 seconds. If a publish fails with "can't find
-dependency", just wait and retry.</li>
-<li>auths-test-utils and xtask are publish = false and will be skipped automatically.</li>
+<li>GNOME Keyring</li>
+<li>KWallet</li>
+<li>KeePassXC (with Secret Service integration enabled)</li>
 </ul>
+<p>The <code>passphrase.biometric</code> setting is ignored on Linux.</p>
+<p><strong>Requirements:</strong>
+- The <code>keychain-linux-secretservice</code> feature must be enabled at compile time.
+- A Secret Service provider must be running (most desktop environments include one).</p>
+<h3 id="windows">Windows<a class="headerlink" href="#windows" title="Permanent link">&para;</a></h3>
+<p>Passphrase caching via the OS credential store is not yet implemented on Windows. The <code>session</code> and <code>never</code> modes work normally.</p>
+<hr />
+<h2 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>passphrase.cache</code></td>
+<td><code>always</code> | <code>session</code> | <code>duration</code> | <code>never</code></td>
+<td><code>session</code></td>
+<td>How passphrases are cached between signing operations.</td>
+</tr>
+<tr>
+<td><code>passphrase.duration</code></td>
+<td>string (e.g. <code>7d</code>, <code>24h</code>)</td>
+<td><code>24h</code></td>
+<td>TTL for cached passphrase. Only used with <code>cache = "duration"</code>.</td>
+</tr>
+<tr>
+<td><code>passphrase.biometric</code></td>
+<td><code>true</code> | <code>false</code></td>
+<td><code>true</code> on macOS, <code>false</code> elsewhere</td>
+<td>Protect cached passphrase with Touch ID on macOS.</td>
+</tr>
+</tbody>
+</table>
 
 
 
