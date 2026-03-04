@@ -9,7 +9,6 @@ members = [
   "crates/auths-policy",
   "crates/auths-verifier",
   "crates/auths-telemetry",
-  "crates/auths-test-utils",
   "crates/auths-crypto",
   "crates/auths-sdk",
   "crates/auths-infra-git",
@@ -43,7 +42,6 @@ auths-index = { path = "crates/auths-index", version = "0.0.1-rc.3" }
 auths-telemetry = { path = "crates/auths-telemetry", version = "0.0.1-rc.3" }
 auths-crypto = { path = "crates/auths-crypto", version = "0.0.1-rc.3", default-features = false }
 auths-sdk = { path = "crates/auths-sdk", version = "0.0.1-rc.3" }
-auths-test-utils = { path = "crates/auths-test-utils", version = "0.0.1-rc.3" }
 auths-infra-git = { path = "crates/auths-infra-git", version = "0.0.1-rc.3" }
 auths-infra-http = { path = "crates/auths-infra-http", version = "0.0.1-rc.3" }
 auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.3" }
