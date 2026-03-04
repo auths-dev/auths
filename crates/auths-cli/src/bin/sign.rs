@@ -116,6 +116,11 @@ fn get_passphrase(alias: &str) -> Result<Zeroizing<String>> {
         PassphraseCachePolicy::Always | PassphraseCachePolicy::Duration
     ) {
         let cache = get_passphrase_cache(biometric);
+        match cache.load(alias) {
+            Err(e) => eprintln!("Warning: Failed to load cached passphrase: {}", e),
+            Ok(None) => {}
+            Ok(Some(_)) => {}
+        }
         if let Ok(Some((cached, stored_at))) = cache.load(alias) {
             if *policy == PassphraseCachePolicy::Always {
                 return Ok(cached);
@@ -146,7 +151,9 @@ fn get_passphrase(alias: &str) -> Result<Zeroizing<String>> {
     ) {
         let cache = get_passphrase_cache(biometric);
         let now = chrono::Utc::now().timestamp();
-        let _ = cache.store(alias, &passphrase, now);
+        if let Err(e) = cache.store(alias, &passphrase, now) {
+            eprintln!("Warning: Failed to cache passphrase: {}", e);
+        }
     }
 
     Ok(passphrase)
