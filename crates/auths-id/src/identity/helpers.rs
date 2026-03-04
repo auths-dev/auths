@@ -1,21 +1,23 @@
 use crate::error::StorageError;
-use git2::Repository;
+#[cfg(feature = "git-storage")]
+use crate::storage::git_refs::aggregate_canonical_refs;
 use pkcs8::{
     AlgorithmIdentifierRef, PrivateKeyInfo,
     der::{Decode, Encode},
 };
-use serde_json::Value;
+#[cfg(feature = "git-storage")]
 use std::collections::HashMap;
 use thiserror::Error;
 
 use ring::rand::SystemRandom;
 use ring::signature::Ed25519KeyPair;
 
-use crate::storage::{attestation::AttestationSource, git_refs::aggregate_canonical_refs};
+use crate::storage::attestation::AttestationSource;
 
-use auths_core::storage::keychain::IdentityDID;
 use auths_verifier::core::Attestation;
 use auths_verifier::types::DeviceDID;
+
+pub use crate::identity::managed::ManagedIdentity;
 
 const OID_ED25519: pkcs8::der::asn1::ObjectIdentifier =
     pkcs8::der::asn1::ObjectIdentifier::new_unwrap("1.3.101.112");
@@ -40,9 +42,10 @@ impl Identity {
         Ok(all_attestations)
     }
 
+    #[cfg(feature = "git-storage")]
     pub fn canonical_refs(
         &self,
-        repo: &Repository,
+        repo: &git2::Repository,
     ) -> Result<HashMap<String, String>, StorageError> {
         aggregate_canonical_refs(repo, &self.device_dids)
     }
@@ -84,13 +87,6 @@ impl From<pkcs8::der::Error> for IdentityError {
     fn from(err: pkcs8::der::Error) -> Self {
         IdentityError::Pkcs8DecodeError(err.to_string())
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct ManagedIdentity {
-    pub controller_did: IdentityDID,
-    pub storage_id: String,
-    pub metadata: Option<Value>,
 }
 
 /// Extract the Ed25519 32-byte seed from PKCS#8-encoded key material.

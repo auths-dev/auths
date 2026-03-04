@@ -18,7 +18,8 @@ use crate::keri::{
     Event, IcpEvent, KERI_VERSION, KeriSequence, Prefix, Said, create_keri_identity,
     finalize_icp_event, serialize_for_signing,
 };
-use crate::storage::identity::{GitIdentityStorage, IdentityStorage};
+use crate::storage::identity::IdentityStorage;
+use crate::storage::identity_git::GitIdentityStorage;
 use crate::storage::layout::StorageLayoutConfig;
 use crate::storage::registry::RegistryBackend;
 use crate::witness_config::WitnessConfig;

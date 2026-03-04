@@ -5,7 +5,8 @@
 //! while the actual attestation data is still loaded from Git.
 
 use crate::error::StorageError;
-use crate::storage::attestation::{AttestationSource, GitAttestationStorage};
+use crate::storage::attestation::AttestationSource;
+use crate::storage::attestation_git::GitAttestationStorage;
 use crate::storage::layout::StorageLayoutConfig;
 use auths_index::{AttestationIndex, IndexedAttestation, rebuild_attestations_from_git};
 use auths_verifier::core::Attestation;

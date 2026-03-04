@@ -1,5 +1,7 @@
-use auths_id::storage::attestation::{AttestationSource, GitAttestationStorage};
-use auths_id::storage::identity::{GitIdentityStorage, IdentityStorage};
+use auths_id::storage::attestation::AttestationSource;
+use auths_id::storage::attestation_git::GitAttestationStorage;
+use auths_id::storage::identity::IdentityStorage;
+use auths_id::storage::identity_git::GitIdentityStorage;
 use auths_id::storage::layout::StorageLayoutConfig;
 use auths_id::storage::layout::{attestation_ref_for_device, identity_ref};
 use auths_verifier::types::DeviceDID;

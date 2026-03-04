@@ -15,7 +15,7 @@ default = ["git-storage"]
 git-storage = ["dep:git2", "dep:dirs", "dep:tempfile", "dep:tokio"]
 indexed-storage = ["auths-index"]
 witness-client = ["dep:auths-infra-http"]
-test-utils = ["auths-crypto/test-utils", "git-storage", "dep:mockall"]
+test-utils = ["auths-crypto/test-utils", "dep:mockall"]
 
 [dependencies]
 async-trait = "0.1"
