@@ -1,4 +1,4 @@
-use auths_test_utils::crypto::create_test_keypair;
+use auths_crypto::testing::create_test_keypair;
 use auths_verifier::core::{
     Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
     canonicalize_attestation_data,

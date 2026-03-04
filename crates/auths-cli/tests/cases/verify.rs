@@ -1,7 +1,7 @@
 #![allow(deprecated)] // cargo_bin is deprecated but replacement requires significant refactor
 
 use assert_cmd::Command;
-use auths_test_utils::crypto::gen_keypair;
+use auths_crypto::testing::gen_keypair;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::{
     Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,

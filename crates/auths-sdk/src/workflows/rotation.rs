@@ -464,9 +464,9 @@ mod tests {
     use auths_id::ports::registry::RegistryBackend;
     use auths_id::storage::attestation::AttestationSource;
     use auths_id::storage::identity::IdentityStorage;
-    use auths_test_utils::fakes::attestation::{FakeAttestationSink, FakeAttestationSource};
-    use auths_test_utils::fakes::identity_storage::FakeIdentityStorage;
-    use auths_test_utils::fakes::registry::FakeRegistryBackend;
+    use auths_id::testing::fakes::FakeIdentityStorage;
+    use auths_id::testing::fakes::FakeRegistryBackend;
+    use auths_id::testing::fakes::{FakeAttestationSink, FakeAttestationSource};
 
     use crate::setup::setup_developer;
     use crate::types::{DeveloperSetupConfig, GitSigningScope};

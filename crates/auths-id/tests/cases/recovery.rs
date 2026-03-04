@@ -5,7 +5,7 @@ use auths_id::keri::{
     rotate_keys_with_backend, validate_kel,
 };
 use auths_id::storage::registry::backend::RegistryBackend;
-use auths_test_utils::fakes::registry::FakeRegistryBackend;
+use auths_id::testing::fakes::FakeRegistryBackend;
 use ring::rand::SystemRandom;
 use ring::signature::Ed25519KeyPair;
 

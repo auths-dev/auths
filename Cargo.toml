@@ -9,7 +9,6 @@ members = [
   "crates/auths-policy",
   "crates/auths-verifier",
   "crates/auths-telemetry",
-  "crates/auths-test-utils",
   "crates/auths-crypto",
   "crates/auths-sdk",
   "crates/auths-infra-git",
@@ -22,7 +21,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.0.1-rc.1"
+version = "0.0.1-rc.3"
 license = "Apache-2.0"
 rust-version = "1.93"
 
@@ -35,15 +34,14 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 git2 = "0.20.4"
 
-auths-core = { path = "crates/auths-core", version = "0.0.1-rc.1" }
-auths-id = { path = "crates/auths-id", version = "0.0.1-rc.1" }
-auths-verifier = { path = "crates/auths-verifier", version = "0.0.1-rc.1", default-features = false }
-auths-policy = { path = "crates/auths-policy", version = "0.0.1-rc.1" }
-auths-index = { path = "crates/auths-index", version = "0.0.1-rc.1" }
-auths-telemetry = { path = "crates/auths-telemetry", version = "0.0.1-rc.1" }
-auths-crypto = { path = "crates/auths-crypto", version = "0.0.1-rc.1", default-features = false }
-auths-sdk = { path = "crates/auths-sdk", version = "0.0.1-rc.1" }
-auths-test-utils = { path = "crates/auths-test-utils", version = "0.0.1-rc.1" }
-auths-infra-git = { path = "crates/auths-infra-git", version = "0.0.1-rc.1" }
-auths-infra-http = { path = "crates/auths-infra-http", version = "0.0.1-rc.1" }
-auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.1" }
+auths-core = { path = "crates/auths-core", version = "0.0.1-rc.3" }
+auths-id = { path = "crates/auths-id", version = "0.0.1-rc.3" }
+auths-verifier = { path = "crates/auths-verifier", version = "0.0.1-rc.3", default-features = false }
+auths-policy = { path = "crates/auths-policy", version = "0.0.1-rc.3" }
+auths-index = { path = "crates/auths-index", version = "0.0.1-rc.3" }
+auths-telemetry = { path = "crates/auths-telemetry", version = "0.0.1-rc.3" }
+auths-crypto = { path = "crates/auths-crypto", version = "0.0.1-rc.3", default-features = false }
+auths-sdk = { path = "crates/auths-sdk", version = "0.0.1-rc.3" }
+auths-infra-git = { path = "crates/auths-infra-git", version = "0.0.1-rc.3" }
+auths-infra-http = { path = "crates/auths-infra-http", version = "0.0.1-rc.3" }
+auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.3" }

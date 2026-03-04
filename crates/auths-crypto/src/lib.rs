@@ -28,5 +28,8 @@ pub use provider::{
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use ring_provider::RingCryptoProvider;
 pub use ssh::{SshKeyError, openssh_pub_to_raw_ed25519};
+#[cfg(all(any(test, feature = "test-utils"), not(target_arch = "wasm32")))]
+pub mod testing;
+
 #[cfg(feature = "wasm")]
 pub use webcrypto_provider::WebCryptoProvider;

@@ -37,6 +37,8 @@
 //! [`KeyStorage`]: crate::storage::KeyStorage
 
 mod builder;
+mod deterministic_uuid;
+mod in_memory_storage;
 
 // Re-export test utilities from storage::memory
 pub use crate::storage::memory::{
@@ -46,3 +48,7 @@ pub use crate::storage::memory::{
 
 // Re-export builder types
 pub use builder::{TestIdentity, TestIdentityBuilder, TestPassphraseProvider};
+
+// Re-export deterministic UUID provider and in-memory storage
+pub use deterministic_uuid::DeterministicUuidProvider;
+pub use in_memory_storage::InMemoryStorage;

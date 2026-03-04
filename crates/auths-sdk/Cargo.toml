@@ -26,8 +26,13 @@ hex = "0.4"
 html-escape = "0.2"
 zeroize = "1.8"
 
+[features]
+test-utils = ["auths-id/test-utils"]
+
 [dev-dependencies]
-auths-test-utils.workspace = true
+auths-core = { workspace = true, features = ["test-utils"] }
+auths-id = { workspace = true, features = ["test-utils"] }
+auths-verifier = { workspace = true, features = ["test-utils"] }
 auths-storage = { workspace = true, features = ["backend-git"] }
 git2 = "0.20.4"
 sha2 = "0.10"

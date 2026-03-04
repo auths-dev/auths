@@ -168,7 +168,7 @@ pub async fn verify_witness_receipts(
 mod tests {
     use super::*;
     use auths_crypto::RingCryptoProvider;
-    use auths_test_utils::crypto::create_test_keypair;
+    use auths_crypto::testing::create_test_keypair;
     use ring::signature::Ed25519KeyPair;
 
     fn provider() -> RingCryptoProvider {

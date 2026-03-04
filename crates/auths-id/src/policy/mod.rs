@@ -45,6 +45,7 @@ use chrono::{DateTime, Utc};
 use crate::keri::KeyState;
 use crate::keri::event::EventReceipts;
 use crate::keri::types::Said;
+#[cfg(feature = "git-storage")]
 use crate::storage::receipts::{check_receipt_consistency, verify_receipt_signature};
 
 // Re-export policy types for convenience
@@ -277,6 +278,7 @@ pub trait WitnessKeyResolver: Send + Sync {
 /// - `ReceiptVerificationResult::InvalidSignature` if signature verification fails
 /// - Otherwise, proceeds to policy evaluation and returns `ReceiptVerificationResult::Valid`
 ///   if policy allows, or the policy's `Decision` otherwise
+#[cfg(feature = "git-storage")]
 pub fn verify_receipts(
     receipts: &EventReceipts,
     threshold: usize,
@@ -348,6 +350,7 @@ pub fn verify_receipts(
 ///
 /// - `Deny` with appropriate reason if any verification fails
 /// - Otherwise, result of `evaluate_compiled`
+#[cfg(feature = "git-storage")]
 #[allow(clippy::too_many_arguments)]
 pub fn evaluate_with_receipts(
     identity: &KeyState,

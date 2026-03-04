@@ -23,3 +23,7 @@ pub use blob_store::GitBlobStore;
 pub use event_log::GitEventLog;
 pub use ref_store::GitRefStore;
 pub use repo::GitRepo;
+
+/// Test utilities for auths-infra-git consumers (behind `test-utils` feature).
+#[cfg(any(test, feature = "test-utils"))]
+pub mod testing;

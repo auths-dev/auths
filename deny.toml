@@ -50,12 +50,15 @@ deny = [
     "auths-index",
     "auths-radicle",
     "auths-sdk",
-    "auths-test-utils",
   ], reason = "git2 must stay in storage/adapter layer; auths-sdk dev-dep only" },
 ]
 
 [advisories]
-ignore = []
+ignore = [
+  # rsa Marvin Attack (RUSTSEC-2023-0071) — transitive via ssh-key v0.6;
+  # no fix available until ssh-key upgrades to rsa v0.10+
+  "RUSTSEC-2023-0071",
+]
 
 [sources]
 unknown-registry = "warn"

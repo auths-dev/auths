@@ -63,18 +63,27 @@ Private functions don't need to be documented - but you can if it seems like an 
 ## Crate Architecture
 
 ```
-auths-core        →  auths-id  →  auths-cli
-(cryptography,        (identity,     (user commands)
- keychains)           git storage)
-
-auths-verifier    (standalone, minimal deps for FFI/WASM embedding)
-auths-index       (SQLite-backed O(1) attestation lookups)
-auths-nostr       (Nostr protocol integration)
+Layer 0: auths-crypto     (cryptographic primitives, DID:key encoding)
+Layer 1: auths-verifier   (standalone verification, FFI/WASM)
+Layer 2: auths-core       (keychains, signing, policy, ports)
+Layer 3: auths-id         (identity, attestation, KERI, traits)
+         auths-policy     (policy expression engine)
+Layer 4: auths-storage    (Git/SQL storage adapters)
+         auths-sdk        (application services)
+Layer 5: auths-infra-git  (Git client adapter)
+         auths-infra-http (HTTP client adapter)
+Layer 6: auths-cli        (user commands)
 ```
 
-**auths-core**: Foundation layer with Ed25519 cryptography (ring), platform keychains (macOS Security Framework, Linux Secret Service, Windows Credential Manager), and encryption primitives.
+**auths-crypto**: Layer 0 cryptographic primitives — Ed25519, KERI key parsing, DID:key encoding.
 
-**auths-id**: Identity and attestation logic. Stores data as Git refs under `refs/auths/` and `refs/keri/`. Key traits: `IdentityStorage`, `AttestationSource`, `AttestationSink`.
+**auths-verifier**: Minimal-dependency verification library for FFI/WASM embedding. Depends only on auths-crypto.
+
+**auths-core**: Foundation layer with platform keychains (macOS Security Framework, Linux Secret Service, Windows Credential Manager), signing, policy, and port abstractions.
+
+**auths-id**: Identity and attestation domain logic. Defines key traits: `IdentityStorage`, `AttestationSource`, `AttestationSink`. KERI identity management. Refs stored under `refs/auths/` and `refs/keri/`.
+
+**auths-storage**: Storage backend implementations — `GitAttestationStorage`, `GitIdentityStorage`, `GitRefSink`, `GitRegistryBackend`.
 
 **auths-cli**: Command-line interface with three binaries: `auths`, `auths-sign`, `auths-verify`. Uses clap for argument parsing.
 

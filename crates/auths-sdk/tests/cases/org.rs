@@ -1,14 +1,14 @@
+use auths_core::testing::DeterministicUuidProvider;
 use auths_id::ports::registry::RegistryBackend;
+use auths_id::testing::fakes::FakeRegistryBackend;
 use auths_sdk::error::OrgError;
 use auths_sdk::workflows::org::{
     AddMemberCommand, RevokeMemberCommand, Role, UpdateCapabilitiesCommand,
     add_organization_member, revoke_organization_member, update_member_capabilities,
 };
-use auths_test_utils::fakes::clock::MockClock;
-use auths_test_utils::fakes::id::DeterministicUuidProvider;
-use auths_test_utils::fakes::registry::FakeRegistryBackend;
 use auths_verifier::Capability;
 use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
+use auths_verifier::testing::MockClock;
 use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::TimeZone;
 

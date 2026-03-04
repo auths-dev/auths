@@ -18,8 +18,7 @@ use crate::keri::{
     Event, IcpEvent, KERI_VERSION, KeriSequence, Prefix, Said, create_keri_identity,
     finalize_icp_event, serialize_for_signing,
 };
-use crate::storage::identity::{GitIdentityStorage, IdentityStorage};
-use crate::storage::layout::StorageLayoutConfig;
+use crate::storage::identity::IdentityStorage;
 use crate::storage::registry::RegistryBackend;
 use crate::witness_config::WitnessConfig;
 
@@ -37,19 +36,19 @@ use auths_core::{
 /// * `local_key_alias` - Alias for storing the key in the keychain.
 /// * `metadata` - Optional metadata to associate with the identity.
 /// * `passphrase_provider` - Provider for key encryption passphrase.
-/// * `config` - Storage layout configuration.
+/// * `identity_storage` - Storage backend for persisting the identity.
 /// * `keychain` - Key storage backend.
 ///
 /// Usage:
 /// ```ignore
-/// let (did, alias) = initialize_keri_identity(&path, "my-key", None, &provider, &config, &keychain)?;
+/// let (did, alias) = initialize_keri_identity(&path, "my-key", None, &provider, &storage, &keychain)?;
 /// ```
 pub fn initialize_keri_identity(
     repo_path: &Path,
     local_key_alias: &KeyAlias,
     metadata: Option<serde_json::Value>,
     passphrase_provider: &dyn PassphraseProvider,
-    config: &StorageLayoutConfig,
+    identity_storage: &dyn IdentityStorage,
     keychain: &(dyn KeyStorage + Send + Sync),
 ) -> Result<(IdentityDID, KeyAlias), InitError> {
     let repo = Repository::open(repo_path)?;
@@ -69,8 +68,7 @@ pub fn initialize_keri_identity(
     let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
     keychain.store_key(&next_alias, &controller_did, &encrypted_next)?;
 
-    GitIdentityStorage::new(repo_path.to_path_buf(), config.clone())
-        .create_identity(controller_did.as_str(), metadata)?;
+    identity_storage.create_identity(controller_did.as_str(), metadata)?;
 
     Ok((controller_did, local_key_alias.clone()))
 }

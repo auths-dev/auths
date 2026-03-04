@@ -260,6 +260,7 @@ pub fn sanitize_did_for_ref(did: &str) -> String {
 }
 
 /// Determines the actual repository path from an optional `--repo` argument.
+#[cfg(feature = "git-storage")]
 pub fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf, StorageError> {
     match repo_arg {
         Some(pathbuf) if !pathbuf.as_os_str().is_empty() => Ok(pathbuf),

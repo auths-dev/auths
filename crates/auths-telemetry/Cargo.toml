@@ -22,5 +22,8 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
+[features]
+test-utils = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

@@ -4,6 +4,9 @@ version.workspace = true
 edition = "2024"
 publish = true
 license.workspace = true
+description = "Storage backends for Auths identity system — Git and SQL adapters"
+repository = "https://github.com/auths-dev/auths"
+readme = "README.md"
 keywords = ["storage", "git", "sqlite", "identity", "adapter"]
 categories = ["database"]
 
@@ -33,3 +36,14 @@ auths-index = { workspace = true, optional = true }
 backend-git = ["dep:git2", "dep:fs2", "dep:tempfile", "dep:tokio", "dep:async-trait"]
 backend-postgres = ["dep:sqlx", "dep:tokio", "dep:async-trait"]
 indexed-storage = ["dep:auths-index"]
+
+[dev-dependencies]
+auths-id = { workspace = true, features = ["test-utils"] }
+auths-core = { workspace = true, features = ["test-utils"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
+tempfile = "3"
+
+[[bench]]
+name = "registry"
+harness = false
+required-features = ["backend-git"]

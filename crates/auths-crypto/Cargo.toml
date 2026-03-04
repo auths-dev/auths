@@ -12,6 +12,7 @@ categories = ["cryptography"]
 default = ["native"]
 native = ["dep:ring", "dep:tokio"]
 wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
+test-utils = ["dep:ring"]
 
 [dependencies]
 async-trait = "0.1"

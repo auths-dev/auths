@@ -19,6 +19,9 @@ pub use logging::{init_json_tracing, init_tracing};
 pub use metrics::{PrometheusHandle, init_prometheus};
 pub use ports::EventSink;
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod testing;
+
 /// Initialises JSON tracing and the Prometheus metrics recorder.
 ///
 /// Call once at process startup before any metrics or tracing macros are invoked.

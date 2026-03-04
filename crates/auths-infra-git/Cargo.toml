@@ -17,6 +17,12 @@ thiserror.workspace = true
 chrono = "0.4"
 log = "0.4"
 
+[features]
+test-utils = ["dep:tempfile"]
+
+[dependencies.tempfile]
+version = "3"
+optional = true
+
 [dev-dependencies]
-auths-test-utils.workspace = true
-tempfile = "3"
+auths-sdk = { workspace = true, features = ["test-utils"] }

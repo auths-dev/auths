@@ -1,11 +1,5 @@
+use auths_crypto::testing::create_test_keypair;
 use auths_crypto::{CryptoProvider, RingCryptoProvider};
-use ring::signature::{Ed25519KeyPair, KeyPair};
-
-fn create_test_keypair(seed: &[u8; 32]) -> (Ed25519KeyPair, [u8; 32]) {
-    let keypair = Ed25519KeyPair::from_seed_unchecked(seed).unwrap();
-    let public_key: [u8; 32] = keypair.public_key().as_ref().try_into().unwrap();
-    (keypair, public_key)
-}
 
 #[tokio::test]
 async fn ring_provider_verifies_valid_signature() {

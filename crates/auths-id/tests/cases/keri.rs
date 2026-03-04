@@ -29,7 +29,7 @@ fn make_test_attestation(issuer: &str, subject: &str) -> TestAttestation {
 /// Tests the full KERI lifecycle: inception -> rotation -> rotation -> resolution
 #[test]
 fn full_keri_lifecycle() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     // === Phase 1: Inception ===
     let init: InceptionResult = create_keri_identity(&repo, None).unwrap();
@@ -97,7 +97,7 @@ fn full_keri_lifecycle() {
 /// Tests device attestation anchoring via IXN events
 #[test]
 fn device_enrollment_with_anchoring() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     // Create identity
     let init = create_keri_identity(&repo, None).unwrap();
@@ -130,7 +130,7 @@ fn device_enrollment_with_anchoring() {
 /// Tests that multiple attestations can be anchored
 #[test]
 fn multiple_device_attestations() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
@@ -172,7 +172,7 @@ fn multiple_device_attestations() {
 /// Tests that rotation invalidates without proper commitment
 #[test]
 fn rotation_requires_commitment() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
 
@@ -186,7 +186,7 @@ fn rotation_requires_commitment() {
 /// Tests KEL validation detects sequence tampering
 #[test]
 fn kel_validation_rejects_sequence_tampering() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
     let _rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
@@ -208,7 +208,7 @@ fn kel_validation_rejects_sequence_tampering() {
 /// Tests that unanchored attestations are not found
 #[test]
 fn unanchored_attestation_not_found() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
@@ -224,7 +224,7 @@ fn unanchored_attestation_not_found() {
 /// Tests that key state is correct after operations
 #[test]
 fn key_state_reflects_operations() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
 
@@ -244,7 +244,7 @@ fn key_state_reflects_operations() {
 /// Tests that did:keri parsing works correctly
 #[test]
 fn did_keri_parsing() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
     let did = format!("did:keri:{}", init.prefix);
@@ -261,7 +261,7 @@ fn did_keri_parsing() {
 /// Tests anchor verification by digest
 #[test]
 fn verify_anchor_by_digest_works() {
-    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let (_dir, repo) = auths_infra_git::testing::init_test_repo();
 
     let init = create_keri_identity(&repo, None).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);

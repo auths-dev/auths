@@ -67,3 +67,7 @@ pub mod trust;
 #[cfg(feature = "git-storage")]
 pub mod witness;
 pub mod witness_config;
+
+/// Test utilities for auths-id consumers (behind `test-utils` feature).
+#[cfg(any(test, feature = "test-utils"))]
+pub mod testing;

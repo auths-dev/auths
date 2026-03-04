@@ -102,6 +102,7 @@ pub mod cache;
 pub mod event;
 #[cfg(feature = "git-storage")]
 pub mod inception;
+#[cfg(feature = "git-storage")]
 pub mod incremental;
 #[cfg(feature = "git-storage")]
 pub mod kel;
