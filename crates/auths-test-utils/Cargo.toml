@@ -2,7 +2,7 @@
 name = "auths-test-utils"
 version.workspace = true
 edition = "2024"
-publish = false
+publish = true
 license.workspace = true
 description = "Shared test utilities for the auths workspace"
 
