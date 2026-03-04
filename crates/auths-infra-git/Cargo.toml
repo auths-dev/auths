@@ -1,5 +1,6 @@
 [package]
 name = "auths-infra-git"
+description = "Git client adapter for Auths - enables communication with Auths services over Git"
 version.workspace = true
 edition = "2024"
 publish = true
