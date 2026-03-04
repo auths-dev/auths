@@ -1,5 +1,6 @@
 use anyhow::Error;
 use auths_core::error::{AgentError, AuthsErrorInfo as CoreErrorInfo};
+use auths_sdk::signing::SigningError;
 use auths_verifier::{AttestationError, AuthsErrorInfo as VerifierErrorInfo};
 use colored::Colorize;
 
@@ -34,6 +35,28 @@ fn render_text(err: &Error) {
             eprintln!("Docs: {}", url);
         }
         eprintln!();
+        return;
+    }
+
+    if let Some(signing_err) = err.downcast_ref::<SigningError>() {
+        let message = format!("{signing_err}");
+        out.print_error(&out.bold(&message));
+        eprintln!();
+        let suggestion = match signing_err {
+            SigningError::PassphraseExhausted { attempts } => Some(format!(
+                "All {attempts} passphrase attempt(s) failed.\n     Forgot your passphrase? Run: auths key reset <alias>"
+            )),
+            SigningError::IdentityFrozen(_) => {
+                Some("To unfreeze: auths emergency unfreeze".to_string())
+            }
+            SigningError::KeychainUnavailable(_) => Some(format!(
+                "Cannot access system keychain.\n\n     If running headless (CI/Docker), set:\n       export AUTHS_KEYCHAIN_BACKEND=file\n       export AUTHS_PASSPHRASE=<your-passphrase>\n\n     See: {DOCS_BASE_URL}/cli/troubleshooting/"
+            )),
+            _ => None,
+        };
+        if let Some(suggestion) = suggestion {
+            eprintln!("  fix:  {suggestion}");
+        }
         return;
     }
 
@@ -97,6 +120,18 @@ fn render_json(err: &Error) {
             Some(cli_err.suggestion()),
             cli_err.docs_url().map(|s| s.to_string()),
         )
+    } else if let Some(signing_err) = err.downcast_ref::<SigningError>() {
+        let suggestion = match signing_err {
+            SigningError::PassphraseExhausted { attempts } => Some(format!(
+                "All {} passphrase attempt(s) failed. Run: auths key reset <alias>",
+                attempts
+            )),
+            SigningError::IdentityFrozen(_) => {
+                Some("To unfreeze: auths emergency unfreeze".to_string())
+            }
+            _ => None,
+        };
+        build_json(None, &format!("{signing_err}"), suggestion.as_deref(), None)
     } else if let Some(agent_err) = err.downcast_ref::<AgentError>() {
         let code = CoreErrorInfo::error_code(agent_err);
         build_json(

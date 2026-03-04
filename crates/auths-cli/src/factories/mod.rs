@@ -9,6 +9,7 @@ use anyhow::Result;
 
 use auths_core::config::EnvironmentConfig;
 use auths_core::signing::{CachedPassphraseProvider, PassphraseProvider};
+use auths_sdk::ports::agent::AgentSigningPort;
 
 use crate::cli::AuthsCli;
 use crate::config::{CliConfig, OutputFormat};
@@ -64,4 +65,24 @@ pub fn build_config(cli: &AuthsCli) -> Result<CliConfig> {
         http_client,
         env_config,
     })
+}
+
+/// Build the platform-appropriate agent signing provider.
+///
+/// Returns `CliAgentAdapter` on Unix, `NoopAgentProvider` elsewhere.
+///
+/// Usage:
+/// ```ignore
+/// let agent = build_agent_provider();
+/// let ctx = CommitSigningContext { agent_signing: agent, .. };
+/// ```
+pub fn build_agent_provider() -> Arc<dyn AgentSigningPort + Send + Sync> {
+    #[cfg(unix)]
+    {
+        Arc::new(crate::adapters::agent::CliAgentAdapter)
+    }
+    #[cfg(not(unix))]
+    {
+        Arc::new(auths_sdk::ports::agent::NoopAgentProvider)
+    }
 }

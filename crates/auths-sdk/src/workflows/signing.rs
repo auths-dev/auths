@@ -5,6 +5,7 @@
 //! Tier 3: Direct signing with decrypted seed.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use zeroize::Zeroizing;
@@ -12,13 +13,46 @@ use zeroize::Zeroizing;
 use auths_core::AgentError;
 use auths_core::crypto::signer::decrypt_keypair;
 use auths_core::crypto::ssh::{SecureSeed, extract_seed_from_pkcs8};
-use auths_core::storage::keychain::KeyAlias;
+use auths_core::signing::PassphraseProvider;
+use auths_core::storage::keychain::{KeyAlias, KeyStorage};
 
-use crate::context::AuthsContext;
-use crate::ports::agent::AgentSigningError;
+use crate::ports::agent::{AgentSigningError, AgentSigningPort};
 use crate::signing::{self, SigningError};
 
 const DEFAULT_MAX_PASSPHRASE_ATTEMPTS: usize = 3;
+
+/// Minimal dependency set for the commit signing workflow.
+///
+/// Avoids requiring the full [`AuthsContext`](crate::context::AuthsContext)
+/// when only signing-related ports are needed (e.g. in the `auths-sign` binary).
+///
+/// Usage:
+/// ```ignore
+/// let deps = CommitSigningContext {
+///     key_storage: Arc::from(keychain),
+///     passphrase_provider: Arc::new(my_provider),
+///     agent_signing: Arc::new(my_agent),
+/// };
+/// CommitSigningWorkflow::execute(&deps, params, Utc::now())?;
+/// ```
+pub struct CommitSigningContext {
+    /// Platform keychain or test fake for key material storage.
+    pub key_storage: Arc<dyn KeyStorage + Send + Sync>,
+    /// Passphrase provider for key decryption during signing operations.
+    pub passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
+    /// Agent-based signing port for delegating operations to a running agent process.
+    pub agent_signing: Arc<dyn AgentSigningPort + Send + Sync>,
+}
+
+impl From<&crate::context::AuthsContext> for CommitSigningContext {
+    fn from(ctx: &crate::context::AuthsContext) -> Self {
+        Self {
+            key_storage: ctx.key_storage.clone(),
+            passphrase_provider: ctx.passphrase_provider.clone(),
+            agent_signing: ctx.agent_signing.clone(),
+        }
+    }
+}
 
 /// Parameters for a commit signing operation.
 ///
@@ -95,7 +129,7 @@ impl CommitSigningParams {
 /// Tier 3: Direct signing with decrypted seed.
 ///
 /// Args:
-/// * `ctx`: Runtime context with injected ports.
+/// * `ctx`: Signing dependencies (keychain, passphrase provider, agent port).
 /// * `params`: Signing parameters.
 /// * `now`: Wall-clock time for freeze validation.
 ///
@@ -110,11 +144,11 @@ impl CommitSigningWorkflow {
     /// Execute the three-tier commit signing flow.
     ///
     /// Args:
-    /// * `ctx`: Runtime context providing keychain, passphrase provider, and agent port.
+    /// * `ctx`: Signing dependencies providing keychain, passphrase provider, and agent port.
     /// * `params`: Commit signing parameters.
     /// * `now`: Current wall-clock time for freeze validation.
     pub fn execute(
-        ctx: &AuthsContext,
+        ctx: &CommitSigningContext,
         params: CommitSigningParams,
         now: DateTime<Utc>,
     ) -> Result<String, SigningError> {
@@ -143,7 +177,7 @@ impl CommitSigningWorkflow {
 }
 
 fn try_agent_sign(
-    ctx: &AuthsContext,
+    ctx: &CommitSigningContext,
     params: &CommitSigningParams,
 ) -> Result<String, SigningError> {
     ctx.agent_signing
@@ -157,7 +191,7 @@ fn try_agent_sign(
 }
 
 fn load_key_with_passphrase_retry(
-    ctx: &AuthsContext,
+    ctx: &CommitSigningContext,
     params: &CommitSigningParams,
 ) -> Result<Zeroizing<Vec<u8>>, SigningError> {
     let alias = KeyAlias::new_unchecked(&params.key_alias);
