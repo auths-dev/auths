@@ -5,3 +5,4 @@ mod ffi_smoke;
 mod kel_verification;
 mod proptest_core;
 mod revocation_adversarial;
+mod serialization_pinning;
