@@ -5,7 +5,8 @@ edition = "2024"
 description = "Application services layer for Auths identity operations"
 publish = true
 license.workspace = true
-repository = "https://github.com/auths-dev/auths"
+repository.workspace = true
+homepage.workspace = true
 keywords = ["sdk", "identity", "did", "cryptography", "attestation"]
 categories = ["cryptography", "authentication"]
 

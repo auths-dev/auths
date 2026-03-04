@@ -7,6 +7,8 @@ publish = true
 license.workspace = true
 keywords = ["http", "infrastructure", "client", "adapter"]
 categories = ["web-programming::http-client"]
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 async-trait = "0.1"

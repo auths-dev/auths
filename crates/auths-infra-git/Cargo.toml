@@ -7,6 +7,8 @@ publish = true
 license.workspace = true
 keywords = ["git", "infrastructure", "storage", "adapter"]
 categories = ["development-tools"]
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 auths-core = { workspace = true }
