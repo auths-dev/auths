@@ -1,0 +1,62 @@
+[package]
+name = "auths-oidc-bridge"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "OIDC bridge: exchanges KERI attestation chains for cloud-provider JWTs"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["identity", "oidc", "jwt", "keri"]
+categories = ["authentication", "web-programming"]
+
+[features]
+default = []
+github-oidc = ["dep:reqwest"]
+
+[[bin]]
+name = "auths-oidc-bridge"
+path = "src/main.rs"
+
+[lib]
+name = "auths_oidc_bridge"
+path = "src/lib.rs"
+
+[dependencies]
+auths-telemetry.workspace = true
+auths-verifier = { workspace = true, features = ["native"] }
+
+anyhow = "1"
+axum = "0.8"
+governor = { version = "0.8", features = ["dashmap"] }
+base64.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+jsonwebtoken = "9"
+rand = "0.8"
+rsa = { version = "0.9", features = ["pem"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+tracing = "0.1"
+uuid.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
+
+[dev-dependencies]
+auths-crypto.workspace = true
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tempfile = "3"
+ring.workspace = true
+json-canon = "0.1"
+bs58.workspace = true
+base64.workspace = true
+chrono = "0.4"
+hex = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-sts = "1"

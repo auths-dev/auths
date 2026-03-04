@@ -1,6 +1,8 @@
 # Auths
 
-Decentralized identity for developers. One identity, multiple devices, Git-native storage.
+Decentralized identity for individuals, AI agents, and their organizations.
+
+One identity, multiple devices, Git-native storage.
 
 ## Install
 

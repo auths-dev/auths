@@ -29,6 +29,7 @@ deny = [
   { crate = "reqwest", wrappers = [
     "auths-infra-http",
     "auths-cli",
+    "auths-oidc-bridge",
   ], reason = "HTTP clients must be confined to adapter layer" },
 
   # dialoguer is a terminal UX dependency — CLI only
@@ -39,6 +40,7 @@ deny = [
     "auths-infra-http",
     "auths-cli",
     "auths-core",
+    "auths-oidc-bridge",
   ], reason = "HTTP framework confined to adapter crates" },
 
   # git2 must not be a production dependency of auths-sdk or auths-core
