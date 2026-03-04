@@ -7,9 +7,12 @@ use crate::crypto::signer::{decrypt_keypair, extract_seed_from_key_bytes};
 use crate::error::AgentError;
 use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 
+use crate::config::PassphraseCachePolicy;
+use crate::storage::passphrase_cache::PassphraseCache;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zeroize::Zeroizing;
 
 /// Type alias for passphrase callback functions.
@@ -425,6 +428,116 @@ impl PassphraseProvider for CachedPassphraseProvider {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(prompt_message);
+    }
+}
+
+/// A `PassphraseProvider` that wraps an inner provider with OS keychain caching.
+///
+/// On `get_passphrase()`, checks the OS keychain first via `PassphraseCache::load`.
+/// If a cached value exists and hasn't expired per the configured policy/TTL,
+/// returns it immediately. Otherwise delegates to the inner provider, then
+/// stores the result in the OS keychain for subsequent invocations.
+///
+/// Args:
+/// * `inner`: The underlying provider to prompt the user when cache misses.
+/// * `cache`: Platform keychain cache (macOS Security Framework, Linux Secret Service, etc.).
+/// * `alias`: Key alias used as the cache key in the OS keychain.
+/// * `policy`: The configured `PassphraseCachePolicy`.
+/// * `ttl_secs`: Optional TTL in seconds (for `Duration` policy).
+///
+/// Usage:
+/// ```ignore
+/// use auths_core::signing::{KeychainPassphraseProvider, PassphraseProvider};
+/// use auths_core::config::PassphraseCachePolicy;
+/// use auths_core::storage::passphrase_cache::get_passphrase_cache;
+///
+/// let inner = Arc::new(some_provider);
+/// let cache = get_passphrase_cache(true);
+/// let provider = KeychainPassphraseProvider::new(
+///     inner, cache, "main".to_string(),
+///     PassphraseCachePolicy::Duration, Some(3600),
+/// );
+/// let passphrase = provider.get_passphrase("Enter passphrase:")?;
+/// ```
+pub struct KeychainPassphraseProvider {
+    inner: Arc<dyn PassphraseProvider + Send + Sync>,
+    cache: Box<dyn PassphraseCache>,
+    alias: String,
+    policy: PassphraseCachePolicy,
+    ttl_secs: Option<i64>,
+}
+
+impl KeychainPassphraseProvider {
+    /// Creates a new `KeychainPassphraseProvider`.
+    ///
+    /// Args:
+    /// * `inner`: Fallback provider for cache misses.
+    /// * `cache`: OS keychain cache implementation.
+    /// * `alias`: Key alias used as the keychain entry identifier.
+    /// * `policy`: Caching policy controlling storage/expiry behavior.
+    /// * `ttl_secs`: TTL in seconds when `policy` is `Duration`.
+    pub fn new(
+        inner: Arc<dyn PassphraseProvider + Send + Sync>,
+        cache: Box<dyn PassphraseCache>,
+        alias: String,
+        policy: PassphraseCachePolicy,
+        ttl_secs: Option<i64>,
+    ) -> Self {
+        Self {
+            inner,
+            cache,
+            alias,
+            policy,
+            ttl_secs,
+        }
+    }
+
+    fn is_expired(&self, stored_at_unix: i64) -> bool {
+        match self.policy {
+            PassphraseCachePolicy::Always => false,
+            PassphraseCachePolicy::Never => true,
+            PassphraseCachePolicy::Session => true,
+            PassphraseCachePolicy::Duration => {
+                let ttl = self.ttl_secs.unwrap_or(3600);
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                now - stored_at_unix > ttl
+            }
+        }
+    }
+}
+
+impl PassphraseProvider for KeychainPassphraseProvider {
+    fn get_passphrase(&self, prompt_message: &str) -> Result<Zeroizing<String>, AgentError> {
+        if self.policy != PassphraseCachePolicy::Never
+            && let Ok(Some((passphrase, stored_at))) = self.cache.load(&self.alias)
+        {
+            if !self.is_expired(stored_at) {
+                return Ok(passphrase);
+            }
+            let _ = self.cache.delete(&self.alias);
+        }
+
+        let passphrase = self.inner.get_passphrase(prompt_message)?;
+
+        if self.policy != PassphraseCachePolicy::Never
+            && self.policy != PassphraseCachePolicy::Session
+        {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            let _ = self.cache.store(&self.alias, &passphrase, now);
+        }
+
+        Ok(passphrase)
+    }
+
+    fn on_incorrect_passphrase(&self, prompt_message: &str) {
+        let _ = self.cache.delete(&self.alias);
+        self.inner.on_incorrect_passphrase(prompt_message);
     }
 }
 

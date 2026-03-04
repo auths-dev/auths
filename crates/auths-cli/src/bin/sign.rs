@@ -31,9 +31,10 @@ use clap::Parser;
 
 use auths_cli::core::pubkey_cache::get_cached_pubkey;
 use auths_cli::factories::build_agent_provider;
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::{CachedPassphraseProvider, PassphraseProvider};
+use auths_core::config::{EnvironmentConfig, load_config};
+use auths_core::signing::{KeychainPassphraseProvider, PassphraseProvider};
 use auths_core::storage::keychain::get_platform_keychain;
+use auths_core::storage::passphrase_cache::{get_passphrase_cache, parse_duration_str};
 use auths_sdk::workflows::signing::{
     CommitSigningContext, CommitSigningParams, CommitSigningWorkflow,
 };
@@ -101,7 +102,7 @@ fn parse_key_identifier(key_file: &str) -> Result<String> {
     }
 }
 
-fn build_signing_context() -> Result<CommitSigningContext> {
+fn build_signing_context(alias: &str) -> Result<CommitSigningContext> {
     let env_config = EnvironmentConfig::from_env();
 
     let keychain =
@@ -111,10 +112,20 @@ fn build_signing_context() -> Result<CommitSigningContext> {
         if let Some(passphrase) = env_config.keychain.passphrase.clone() {
             Arc::new(auths_core::PrefilledPassphraseProvider::new(&passphrase))
         } else {
+            let config = load_config();
+            let cache = get_passphrase_cache(config.passphrase.biometric);
+            let ttl_secs = config
+                .passphrase
+                .duration
+                .as_deref()
+                .and_then(parse_duration_str);
             let inner = Arc::new(auths_cli::core::provider::CliPassphraseProvider::new());
-            Arc::new(CachedPassphraseProvider::new(
+            Arc::new(KeychainPassphraseProvider::new(
                 inner,
-                std::time::Duration::from_secs(3600),
+                cache,
+                alias.to_string(),
+                config.passphrase.cache,
+                ttl_secs,
             ))
         };
 
@@ -243,7 +254,7 @@ fn run_sign(args: &Args) -> Result<()> {
 
     let repo_path = auths_id::storage::layout::resolve_repo_path(None).ok();
 
-    let ctx = build_signing_context()?;
+    let ctx = build_signing_context(&alias)?;
     let mut params = CommitSigningParams::new(&alias, namespace, data).with_pubkey(pubkey);
     if let Some(path) = repo_path {
         params = params.with_repo_path(path);

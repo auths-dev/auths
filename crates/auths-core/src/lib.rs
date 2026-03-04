@@ -82,4 +82,4 @@ pub use agent::{
 };
 pub use crypto::{EncryptionAlgorithm, SignerKey};
 pub use error::{AgentError, AuthsErrorInfo};
-pub use signing::PrefilledPassphraseProvider;
+pub use signing::{KeychainPassphraseProvider, PrefilledPassphraseProvider};
