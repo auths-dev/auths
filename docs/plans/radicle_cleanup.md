@@ -23,7 +23,7 @@ This document provides a review and evaluation of tasks `fn-5.1` through `fn-5.1
 - **fn-5.4**: Completes the wiring of the identity module.
 
 ### Phase 2: Core Logic Refactoring (fn-5.5 - fn-5.7)
-- **fn-5.5**: Correctly identifies `is_abandoned` and `devices` as necessary fields for a "Person View." 
+- **fn-5.5**: Correctly identifies `is_abandoned` and `devices` as necessary fields for a "Person View."
 - **fn-5.6**: Exposing `resolve_keri` as the "rich" API while keeping the `DidResolver` trait implementation separate is the right move for internal vs. external consumption.
 - **fn-5.7**: The WASM binding audit is vital. Mismatched JSON field names between Rust and TS are the most frequent cause of WASM integration bugs.
 

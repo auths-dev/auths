@@ -10,6 +10,7 @@
 # === Build artifacts ===
 /build/
 /dist/
+**/dist/
 /*.wasm
 *.dSYM
 *.o
