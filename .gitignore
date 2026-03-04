@@ -120,6 +120,7 @@ RustAgentDemo/*.a
 # Product specific
 concat_output.txt
 CLAUDE.md
+.cargo/cargo-deny.log
 
 # Git worktrees
 .worktrees/

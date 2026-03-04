@@ -8,6 +8,7 @@ use crate::commands::artifact::ArtifactCommand;
 use crate::commands::audit::AuditCommand;
 use crate::commands::commit::CommitCmd;
 use crate::commands::completions::CompletionsCommand;
+use crate::commands::config::ConfigCommand;
 use crate::commands::debug::DebugCmd;
 use crate::commands::device::DeviceCommand;
 use crate::commands::doctor::DoctorCommand;
@@ -110,6 +111,7 @@ pub enum RootCommand {
     Audit(AuditCommand),
     Agent(AgentCommand),
     Witness(WitnessCommand),
+    Config(ConfigCommand),
 
     #[command(hide = true)]
     Commit(CommitCmd),

@@ -48,6 +48,7 @@ fn run() -> Result<()> {
         RootCommand::Audit(cmd) => cmd.execute(&ctx),
         RootCommand::Agent(cmd) => cmd.execute(&ctx),
         RootCommand::Witness(cmd) => cmd.execute(&ctx),
+        RootCommand::Config(cmd) => cmd.execute(&ctx),
         RootCommand::Commit(cmd) => cmd.execute(&ctx),
         RootCommand::Debug(cmd) => cmd.execute(&ctx),
     }
