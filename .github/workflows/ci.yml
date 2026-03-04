@@ -123,6 +123,6 @@ jobs:
             target
           key: ${{ runner.os }}-wasm-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-wasm-
-      - name: Check WASM target
+      - name: Build WASM target
         working-directory: crates/auths-verifier
-        run: cargo check --target wasm32-unknown-unknown --no-default-features --features wasm
+        run: cargo build --target wasm32-unknown-unknown --no-default-features --features wasm

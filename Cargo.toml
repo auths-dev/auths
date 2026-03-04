@@ -25,6 +25,8 @@ exclude = [
 version = "0.0.1-rc.4"
 license = "Apache-2.0"
 rust-version = "1.93"
+repository = "https://github.com/auths-dev/auths"
+homepage = "https://github.com/auths-dev/auths"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

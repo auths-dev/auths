@@ -7,6 +7,8 @@ publish = true
 license.workspace = true
 keywords = ["telemetry", "security", "events", "observability"]
 categories = ["development-tools"]
+repository.workspace = true
+homepage.workspace = true
 
 [lib]
 name = "auths_telemetry"

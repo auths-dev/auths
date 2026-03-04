@@ -7,6 +7,8 @@ license.workspace = true
 description = "Cryptographic primitives for Auths: KERI key parsing and DID:key encoding"
 keywords = ["cryptography", "ed25519", "did", "verification", "signing"]
 categories = ["cryptography"]
+repository.workspace = true
+homepage.workspace = true
 
 [features]
 default = ["native"]

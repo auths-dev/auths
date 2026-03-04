@@ -46,9 +46,9 @@ PUBLISH_BATCHES: list[list[str]] = [
     ["auths-verifier", "auths-keri"],
     ["auths-core"],
     ["auths-infra-http"],
-    ["auths-id"],
     ["auths-storage", "auths-sdk"],
     ["auths-infra-git"],
+    ["auths-id"],
     ["auths-cli"],
 ]
 
