@@ -15,6 +15,7 @@ default = ["git-storage"]
 git-storage = ["dep:git2", "dep:dirs", "dep:tempfile", "dep:tokio"]
 indexed-storage = ["auths-index"]
 witness-client = ["dep:auths-infra-http"]
+test-utils = ["auths-crypto/test-utils", "git-storage", "dep:mockall"]
 
 [dependencies]
 async-trait = "0.1"
@@ -45,6 +46,7 @@ tokio = { version = "1", features = ["rt", "sync"], optional = true }
 url = { version = "2", features = ["serde"] }
 uuid = "1.16.0"
 zerocopy = "0.8.24"
+mockall = { version = "0.13", optional = true }
 
 # Optional dependencies
 auths-index = { workspace = true, optional = true }

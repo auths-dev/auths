@@ -186,6 +186,7 @@ cargo publish -p auths-crypto
 cargo publish -p auths-policy
 cargo publish -p auths-telemetry
 cargo publish -p auths-index
+cargo publish -p auths-test-utils
 sleep 60
 
 # Tier 1: Depends on Tier 0
@@ -195,6 +196,7 @@ sleep 60
 # Tier 2: Depends on Tier 0-1
 cargo publish -p auths-core        # depends on auths-crypto, auths-verifier
 cargo publish -p auths-infra-http  # depends on auths-core, auths-verifier
+cargo publish -p auths-storage
 sleep 60
 
 # Tier 3: Depends on Tier 0-2
