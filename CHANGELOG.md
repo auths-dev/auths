@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1-rc.2] to [0.0.1-rc.3] - 2026-03-04
+
+> These releases were bumped while resolving circular dev-dependency cycles that blocked `cargo publish --workspace`. Key fixes: distributed the `auths-test-utils` monolith into per-crate `test-utils` features, removed the `auths-infra-git` upward dev-dependency from `auths-id`, and moved git-storage implementations from `auths-id` to `auths-storage`. See `docs/plans/dependency-architecture-refactor.md` for full details.
+
+## [0.0.1-rc.1] - 2026-03-04
+
 ### Added
 
 - **`auths-crypto`: `CryptoProvider` trait and native/WASM abstraction** — new async `CryptoProvider` trait abstracting Ed25519 operations (sign, verify, generate keypair, derive public key from seed). `RingCryptoProvider` implements the trait for native targets using `ring`. `WebCryptoProvider` stub scaffolded for `wasm32` targets. Feature-gated: `native` enables ring+tokio, `wasm` enables the WASM path. `SecureSeed` (zeroize-on-drop) is now the canonical key representation across all crates.
