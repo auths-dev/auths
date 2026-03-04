@@ -217,10 +217,15 @@ mod macos {
             let _ = self.delete(alias);
 
             if self.biometric {
-                self.store_with_biometric(alias, passphrase, stored_at_unix)
-            } else {
-                self.store_without_biometric(alias, passphrase, stored_at_unix)
+                // Biometric requires code-signing entitlements; fall back if missing
+                match self.store_with_biometric(alias, passphrase, stored_at_unix) {
+                    Ok(()) => return Ok(()),
+                    Err(_) => {
+                        return self.store_without_biometric(alias, passphrase, stored_at_unix);
+                    }
+                }
             }
+            self.store_without_biometric(alias, passphrase, stored_at_unix)
         }
 
         fn load(&self, alias: &str) -> Result<Option<(Zeroizing<String>, i64)>, AgentError> {
