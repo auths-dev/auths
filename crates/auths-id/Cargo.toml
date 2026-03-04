@@ -55,7 +55,6 @@ auths-infra-http = { workspace = true, optional = true }
 [dev-dependencies]
 auths-core = { workspace = true, features = ["test-utils"] }
 auths-infra-git = { workspace = true, features = ["test-utils"] }
-auths-storage = { workspace = true, features = ["backend-git"] }
 criterion = { version = "0.8.2", features = ["html_reports"] }
 rand = "0.10.0"
 base58 = "0.2"
@@ -63,10 +62,6 @@ proptest = "1.4"
 serial_test = "3"
 futures = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-
-[[bench]]
-name = "registry"
-harness = false
 
 [lints.clippy]
 print_stdout = "deny"

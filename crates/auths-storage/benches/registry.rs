@@ -1,6 +1,6 @@
 //! Benchmarks for registry operations.
 //!
-//! Run with: cargo bench --package auths-id
+//! Run with: cargo bench --package auths-storage
 
 use auths_core::crypto::said::{compute_next_commitment, compute_said};
 use auths_id::keri::event::{Event, IcpEvent, IxnEvent, KeriSequence};

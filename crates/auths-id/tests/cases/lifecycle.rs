@@ -7,7 +7,7 @@ use auths_id::identity::rotate::rotate_keri_identity;
 use auths_id::keri::{Event, GitKel, resolve_did_keri, resolve_did_keri_at_sequence, validate_kel};
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::layout::StorageLayoutConfig;
-use auths_storage::git::GitIdentityStorage;
+use auths_id::testing::fakes::FakeIdentityStorage;
 use auths_verifier::verify::{verify_at_time, verify_with_keys};
 use auths_verifier::{DeviceDID, VerificationStatus, verify_chain, verify_device_authorization};
 
@@ -30,8 +30,7 @@ fn init_identity(
     keychain: &IsolatedKeychainHandle,
 ) -> (String, String) {
     let provider = TestPassphraseProvider::new(passphrase);
-    let config = StorageLayoutConfig::default();
-    let identity_storage = GitIdentityStorage::new(repo_path, config);
+    let identity_storage = FakeIdentityStorage::new();
 
     let alias = KeyAlias::new_unchecked(alias);
     let (did, alias) = initialize_keri_identity(

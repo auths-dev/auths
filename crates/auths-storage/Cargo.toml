@@ -33,3 +33,14 @@ auths-index = { workspace = true, optional = true }
 backend-git = ["dep:git2", "dep:fs2", "dep:tempfile", "dep:tokio", "dep:async-trait"]
 backend-postgres = ["dep:sqlx", "dep:tokio", "dep:async-trait"]
 indexed-storage = ["dep:auths-index"]
+
+[dev-dependencies]
+auths-id = { workspace = true, features = ["test-utils"] }
+auths-core = { workspace = true, features = ["test-utils"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
+tempfile = "3"
+
+[[bench]]
+name = "registry"
+harness = false
+required-features = ["backend-git"]
