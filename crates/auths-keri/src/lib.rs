@@ -13,7 +13,7 @@
 //! Provides bidirectional conversion between Auths' internal JSON event
 //! representation and spec-compliant CESR streams (Trust over IP KERI v0.9).
 //! The reason for this separate crate is to isolate the CESR-specific logic
-//! and dependencies
+//! and dependencies, especially given KERI spec is still an evolving draft.
 //!
 //! The core identity crates (`auths-id`, `auths-verifier`) are unchanged.
 //! This crate wraps their types for export/import without replacing them.
