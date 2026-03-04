@@ -32,10 +32,11 @@ jobs:
             target: aarch64-apple-darwin
             asset_name: auths-macos-aarch64
             ext: .tar.gz
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            asset_name: auths-windows-x86_64
-            ext: .zip
+          # No windows support for now
+          # - os: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   asset_name: auths-windows-x86_64
+          #   ext: .zip
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
