@@ -55,5 +55,9 @@ pub mod types;
 /// Higher-level identity workflows (rotation, provisioning, auditing).
 pub mod workflows;
 
+/// Test utilities for auths-sdk consumers (behind `test-utils` feature).
+#[cfg(any(test, feature = "test-utils"))]
+pub mod testing;
+
 pub use context::AuthsContext;
 pub use context::EventSink;
