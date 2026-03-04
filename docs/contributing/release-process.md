@@ -85,6 +85,7 @@ cargo publish -p auths-policy
 cargo publish -p auths-telemetry
 sleep 60
 cargo publish -p auths-verifier
+cargo publish -p auths-keri
 cargo publish -p auths-core
 sleep 60
 cargo publish -p auths-infra-http
