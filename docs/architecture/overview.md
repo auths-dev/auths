@@ -6,66 +6,70 @@ How Auths is built: crate dependency graph, data flow, and system-level design.
 
 ```mermaid
 flowchart TD
-    subgraph Presentation["Presentation Layer"]
+    subgraph Presentation["Presentation Layer (6)"]
         CLI["auths-cli<br/><small>auths, auths-sign, auths-verify</small>"]
     end
 
-    subgraph Domain["Domain Layer"]
+    subgraph Infrastructure["Infrastructure Layer (5)"]
+        INFRA_GIT["auths-infra-git<br/><small>Git audit adapter</small>"]
+        INFRA_HTTP["auths-infra-http<br/><small>HTTP transport</small>"]
+    end
+
+    subgraph Services["Services Layer (4)"]
         SDK["auths-sdk<br/><small>workflows, clock injection</small>"]
-        ID["auths-id<br/><small>identity, attestation, KERI, Git storage</small>"]
+        STORAGE["auths-storage<br/><small>Git/SQL storage adapters</small>"]
+    end
+
+    subgraph Domain["Domain Layer (3)"]
+        ID["auths-id<br/><small>identity, attestation, KERI, traits</small>"]
         POLICY["auths-policy<br/><small>authorization evaluation</small>"]
-        INDEX["auths-index<br/><small>SQLite O(1) attestation lookups</small>"]
     end
 
-    subgraph Core["Core Layer"]
-        CORE["auths-core<br/><small>keychains, signing, SAID</small>"]
-        CRYPTO["auths-crypto<br/><small>CryptoProvider, DID encoding</small>"]
+    subgraph Core["Core Layer (2)"]
+        CORE["auths-core<br/><small>keychains, signing, ports</small>"]
     end
 
-    subgraph Verification["Verification Layer (standalone)"]
+    subgraph Verification["Verification Layer (1)"]
         VERIFIER["auths-verifier<br/><small>FFI, WASM, minimal deps</small>"]
     end
 
-    subgraph Infrastructure["Infrastructure Layer"]
-        INFRA_GIT["auths-infra-git<br/><small>Git transport</small>"]
-        INFRA_HTTP["auths-infra-http<br/><small>HTTP transport</small>"]
-        STORAGE["auths-storage<br/><small>storage adapters</small>"]
+    subgraph Crypto["Crypto Layer (0)"]
+        CRYPTO["auths-crypto<br/><small>CryptoProvider, DID encoding</small>"]
     end
 
     CLI --> SDK
+    CLI --> INFRA_GIT
+    CLI --> INFRA_HTTP
+    INFRA_GIT --> SDK
     SDK --> ID
     SDK --> CORE
+    STORAGE --> ID
     ID --> CORE
     ID --> POLICY
     ID --> VERIFIER
+    CORE --> VERIFIER
     CORE --> CRYPTO
     VERIFIER --> CRYPTO
-    INDEX --> ID
-    CLI --> INFRA_GIT
-    CLI --> INFRA_HTTP
-    ID --> STORAGE
 ```
 
 ## Crate Dependency Graph
 
-The workspace contains 14 crates organized into clear layers. Dependencies flow strictly downward -- core and domain crates never reference presentation layer crates.
+The workspace contains 14 crates organized into 7 layers. Dependencies flow strictly downward -- core and domain crates never reference presentation layer crates.
 
-| Crate | Role | Key Dependencies |
-|-------|------|------------------|
-| `auths-cli` | Three binaries: `auths`, `auths-sign`, `auths-verify` | auths-sdk, auths-id, clap |
-| `auths-sdk` | Orchestration workflows, clock boundary | auths-core, auths-id |
-| `auths-id` | Identity, attestation, KERI protocol, Git storage | auths-core, auths-verifier, git2 |
-| `auths-core` | Keychains, signing, SAID computation, encryption | auths-crypto, ring, blake3 |
-| `auths-crypto` | `CryptoProvider` trait, DID encoding, KERI key parsing | ring (optional), bs58, base64 |
-| `auths-verifier` | Standalone verification for FFI/WASM embedding | auths-crypto, json-canon, blake3 |
-| `auths-policy` | Authorization policy evaluation | auths-verifier |
-| `auths-index` | SQLite-backed O(1) attestation lookups | auths-id |
-| `auths-infra-git` | Git transport adapters | git2 |
-| `auths-infra-http` | HTTP transport adapters | reqwest |
-| `auths-storage` | Storage backend abstractions | - |
-| `auths-telemetry` | Observability and metrics | - |
-| `auths-radicle` | Radicle protocol integration | auths-id |
-| `auths-test-utils` | Shared test helpers | auths-crypto |
+| Crate | Layer | Role | Key Dependencies |
+|-------|-------|------|------------------|
+| `auths-crypto` | 0 | `CryptoProvider` trait, DID encoding, KERI key parsing | ring (optional), bs58, base64 |
+| `auths-verifier` | 1 | Standalone verification for FFI/WASM embedding | auths-crypto |
+| `auths-core` | 2 | Keychains, signing, SAID computation, encryption, ports | auths-crypto, auths-verifier |
+| `auths-id` | 3 | Identity, attestation, KERI protocol, trait definitions | auths-core, auths-verifier |
+| `auths-policy` | 3 | Authorization policy evaluation | auths-verifier |
+| `auths-storage` | 4 | Git/SQL storage adapters (`GitAttestationStorage`, `GitRegistryBackend`, etc.) | auths-id, git2 |
+| `auths-sdk` | 4 | Orchestration workflows, clock boundary | auths-core, auths-id |
+| `auths-infra-git` | 5 | Git audit adapter | auths-sdk, git2 |
+| `auths-infra-http` | 5 | HTTP transport adapters | auths-id, reqwest |
+| `auths-cli` | 6 | Three binaries: `auths`, `auths-sign`, `auths-verify` | auths-sdk, auths-id, clap |
+| `auths-index` | - | SQLite-backed O(1) attestation lookups | auths-id |
+| `auths-telemetry` | - | Observability and metrics | - |
 
 ## Data Flow
 
@@ -144,15 +148,21 @@ sequenceDiagram
 
 | Crate | Flag | Effect |
 |-------|------|--------|
-| `auths-core` | `keychain-file-fallback` | File-based key storage fallback |
-| `auths-core` | `keychain-windows` | Windows Credential Manager support |
-| `auths-core` | `crypto-secp256k1` | secp256k1 curve support |
-| `auths-core` | `test-utils` | Test helper exports |
-| `auths-id` | `git-storage` | Git-backed storage (inception, KEL, rotation) |
-| `auths-id` | `indexed-storage` | SQLite-indexed attestation lookups |
-| `auths-id` | `witness-client` | Witness receipt collection |
 | `auths-crypto` | `native` | ring-based Ed25519 (default) |
 | `auths-crypto` | `wasm` | WebCrypto-based Ed25519 |
+| `auths-crypto` | `test-utils` | Shared test keypairs (`get_shared_keypair`, `create_test_keypair`) |
 | `auths-verifier` | `native` | ring-based verification (default) |
 | `auths-verifier` | `ffi` | C FFI exports via libc |
 | `auths-verifier` | `wasm` | WASM exports via wasm-bindgen |
+| `auths-verifier` | `test-utils` | `MockClock` for time-controlled tests |
+| `auths-core` | `keychain-file-fallback` | File-based key storage fallback |
+| `auths-core` | `keychain-windows` | Windows Credential Manager support |
+| `auths-core` | `crypto-secp256k1` | secp256k1 curve support |
+| `auths-core` | `test-utils` | In-memory storage, fakes, test providers |
+| `auths-id` | `git-storage` | Git-backed KERI, rotation, attestation operations (default) |
+| `auths-id` | `indexed-storage` | SQLite-indexed attestation lookups |
+| `auths-id` | `witness-client` | Witness receipt collection |
+| `auths-id` | `test-utils` | Fakes, mocks, fixtures, contract test macros |
+| `auths-storage` | `backend-git` | Git-backed storage (git2, fs2, tempfile) |
+| `auths-storage` | `backend-postgres` | PostgreSQL storage (sqlx) |
+| `auths-sdk` | `test-utils` | `FakeGitLogProvider` and contract macros |
