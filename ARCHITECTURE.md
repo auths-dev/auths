@@ -214,18 +214,22 @@ graph TD
   auths-core --> auths-crypto
   auths-core --> auths-verifier
   auths-id --> auths-core
+  auths-id --> auths-crypto
   auths-id --> auths-verifier
   auths-id --> auths-policy
   auths-id --> auths-index
+  auths-id --> auths-infra-git
   auths-id --> auths-infra-http
   auths-storage --> auths-id
   auths-storage --> auths-core
   auths-storage --> auths-index
+  auths-storage --> auths-verifier
   auths-sdk --> auths-id
   auths-sdk --> auths-core
   auths-sdk --> auths-crypto
   auths-sdk --> auths-verifier
   auths-sdk --> auths-policy
+  auths-sdk --> auths-storage
   auths-infra-git --> auths-sdk
   auths-infra-git --> auths-core
   auths-infra-git --> auths-verifier
