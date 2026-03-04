@@ -29,9 +29,10 @@ const ARGON2_PARAMS_LEN: usize = 12;
 /// Returns Argon2id parameters for key derivation.
 ///
 /// Production builds use OWASP-recommended settings (m=64 MiB, t=3).
-/// Test builds use minimal settings (m=8 KiB, t=1) to keep the test suite fast.
-/// The parameters are embedded in the encrypted blob, so decryption always uses
-/// the values from the blob header rather than this getter.
+/// Test and `test-utils` builds use minimal settings (m=8 KiB, t=1) to keep
+/// both unit and integration test suites fast. The parameters are embedded in
+/// the encrypted blob, so decryption always uses the values from the blob
+/// header rather than this getter.
 ///
 /// Args:
 /// * None
@@ -42,9 +43,9 @@ const ARGON2_PARAMS_LEN: usize = 12;
 /// let argon2 = Argon2::new(Argon2Algorithm::Argon2id, Version::V0x13, params);
 /// ```
 pub fn get_kdf_params() -> Result<Params, AgentError> {
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-utils")))]
     let params = Params::new(65536, 3, 1, Some(SYMMETRIC_KEY_LEN));
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     let params = Params::new(8, 1, 1, Some(SYMMETRIC_KEY_LEN));
     params.map_err(|e| AgentError::CryptoError(format!("Invalid Argon2 params: {}", e)))
 }
@@ -253,11 +254,23 @@ fn decrypt_bytes_argon2(encrypted: &[u8], passphrase: &str) -> Result<Vec<u8>, A
     let salt = &encrypted[offset..offset + SALT_LEN];
     offset += SALT_LEN;
 
-    let m_cost = u32::from_le_bytes(encrypted[offset..offset + 4].try_into().unwrap());
+    let m_cost = u32::from_le_bytes(
+        encrypted[offset..offset + 4]
+            .try_into()
+            .map_err(|_| AgentError::CryptoError("invalid m_cost bytes".into()))?,
+    );
     offset += 4;
-    let t_cost = u32::from_le_bytes(encrypted[offset..offset + 4].try_into().unwrap());
+    let t_cost = u32::from_le_bytes(
+        encrypted[offset..offset + 4]
+            .try_into()
+            .map_err(|_| AgentError::CryptoError("invalid t_cost bytes".into()))?,
+    );
     offset += 4;
-    let p_cost = u32::from_le_bytes(encrypted[offset..offset + 4].try_into().unwrap());
+    let p_cost = u32::from_le_bytes(
+        encrypted[offset..offset + 4]
+            .try_into()
+            .map_err(|_| AgentError::CryptoError("invalid p_cost bytes".into()))?,
+    );
     offset += 4;
 
     let algo_tag = encrypted[offset];

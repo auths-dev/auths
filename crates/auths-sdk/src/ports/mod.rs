@@ -1,3 +1,5 @@
+/// Agent-based signing port for delegating operations to a running agent process.
+pub mod agent;
 /// Artifact source port for computing digests and metadata.
 pub mod artifact;
 /// Diagnostic provider ports for system health checks.

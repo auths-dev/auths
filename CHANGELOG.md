@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`auths-core`: SSH agent abstracted behind `SshAgentPort` trait** — `Command::new("ssh-add")` subprocess calls extracted from `runtime.rs` into a new `ports::ssh_agent` module with `SshAgentPort` trait and `SshAgentError` typed error. `MacOsSshAgentAdapter` in `auths-cli` implements the trait. Enables testing and alternative SSH agent backends without subprocess shell-outs.
+- **`auths-core`/`auths-sdk`: `#![deny(clippy::unwrap_used, clippy::expect_used)]` enforced** — all `unwrap()`/`expect()` calls in production code replaced with proper error propagation (`?`, `map_err`, `unwrap_or_else` for poisoned mutexes). `allow-unwrap-in-tests` and `allow-expect-in-tests` set in `.clippy.toml` to preserve test ergonomics. `witness/server.rs` `create_receipt` and `sign_payload` now return `Result` instead of panicking.
+- **`auths-core`: `CommitSigningContext` dependency struct** — lightweight struct holding `key_storage`, `passphrase_provider`, and `agent_signing` trait objects, replacing scattered parameter passing in the signing pipeline.
+
+### Fixed
+
+- **CI: `Cargo.lock` now committed** — the blanket `*.lock` gitignore pattern was preventing `Cargo.lock` from being tracked, causing `cargo audit` in CI to fail. Replaced with specific JS lock file patterns (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`).
+- **CI: Platform-gated dead code in `passphrase_cache.rs`** — `PASSPHRASE_SERVICE`, `encode_secret`, and `decode_secret` now gated with `#[cfg(any(target_os = "macos", ...))]` to eliminate dead-code warnings on Linux CI builds.
+
+## [0.0.1-rc.2] to [0.0.1-rc.3] - 2026-03-04
+
+> These releases were bumped while resolving circular dev-dependency cycles that blocked `cargo publish --workspace`. Key fixes: distributed the `auths-test-utils` monolith into per-crate `test-utils` features, removed the `auths-infra-git` upward dev-dependency from `auths-id`, and moved git-storage implementations from `auths-id` to `auths-storage`. See `docs/plans/dependency-architecture-refactor.md` for full details.
+
+## [0.0.1-rc.1] - 2026-03-04
+
 ### Added
 
 - **`auths-crypto`: `CryptoProvider` trait and native/WASM abstraction** — new async `CryptoProvider` trait abstracting Ed25519 operations (sign, verify, generate keypair, derive public key from seed). `RingCryptoProvider` implements the trait for native targets using `ring`. `WebCryptoProvider` stub scaffolded for `wasm32` targets. Feature-gated: `native` enables ring+tokio, `wasm` enables the WASM path. `SecureSeed` (zeroize-on-drop) is now the canonical key representation across all crates.

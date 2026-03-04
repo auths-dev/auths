@@ -102,7 +102,9 @@ __pycache__/
 *.auths.json
 
 # === Misc ===
-*.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 *.code-workspace
 *.iml
 *.sublime-workspace

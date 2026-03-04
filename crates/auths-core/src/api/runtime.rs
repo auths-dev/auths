@@ -49,10 +49,9 @@ use std::io::Write;
 
 #[cfg(target_os = "macos")]
 use {
-    anyhow::Result as AnyhowResult, // Use anyhow result for ssh-add interactions
+    anyhow::Result as AnyhowResult,
     std::fs::{self, Permissions},
     std::os::unix::fs::PermissionsExt,
-    std::process::{Command, Output},
     tempfile::Builder as TempFileBuilder,
 };
 
@@ -483,23 +482,30 @@ pub fn get_agent_key_count_with_handle(handle: &AgentHandle) -> Result<usize, Ag
 }
 
 /// Attempts to register all keys currently loaded in the specified agent handle
-/// with the system's running `ssh-agent` on macOS using the `ssh-add` command.
+/// with the system's running SSH agent via the injected `SshAgentPort`.
 ///
 /// This iterates through the unlocked keys in the agent core, converts each to
-/// OpenSSH PEM format, writes it to a temporary file, and calls `ssh-add` on it.
+/// OpenSSH PEM format, writes it to a temporary file, and delegates to the
+/// provided `ssh_agent` port for the actual registration.
 ///
-/// # Arguments
-/// * `handle` - The agent handle containing the keys to register
+/// Args:
+/// * `handle` - The agent handle containing the keys to register.
+/// * `ssh_agent_socket` - Optional path to the SSH agent socket (for diagnostics).
+/// * `ssh_agent` - Port implementation that registers keys with the system agent.
 ///
-/// # Returns
-/// A `Result` containing a list of `KeyRegistrationStatus` structs detailing the
-/// outcome for each key, or an `AgentError` if accessing the agent core state fails.
+/// Usage:
+/// ```ignore
+/// use auths_core::api::runtime::register_keys_with_macos_agent_with_handle;
+///
+/// let statuses = register_keys_with_macos_agent_with_handle(&handle, None, &adapter)?;
+/// ```
 #[cfg(target_os = "macos")]
 pub fn register_keys_with_macos_agent_with_handle(
     handle: &AgentHandle,
     ssh_agent_socket: Option<&std::path::Path>,
+    ssh_agent: &dyn crate::ports::ssh_agent::SshAgentPort,
 ) -> Result<Vec<KeyRegistrationStatus>, AgentError> {
-    info!("Attempting to register keys from agent handle with macOS system ssh-agent...");
+    info!("Attempting to register keys from agent handle with system ssh-agent...");
     if ssh_agent_socket.is_none() {
         warn!("SSH_AUTH_SOCK not configured. System ssh-agent may not be running or configured.");
     }
@@ -517,7 +523,7 @@ pub fn register_keys_with_macos_agent_with_handle(
             .collect()
     };
 
-    register_keys_with_macos_agent_internal(keys_to_register)
+    register_keys_with_macos_agent_internal(keys_to_register, ssh_agent)
 }
 
 /// Stub function for non-macOS platforms.
@@ -525,17 +531,24 @@ pub fn register_keys_with_macos_agent_with_handle(
 pub fn register_keys_with_macos_agent_with_handle(
     _handle: &AgentHandle,
     _ssh_agent_socket: Option<&std::path::Path>,
+    _ssh_agent: &dyn crate::ports::ssh_agent::SshAgentPort,
 ) -> Result<Vec<KeyRegistrationStatus>, AgentError> {
     info!("Not on macOS, skipping system ssh-agent registration.");
     Ok(vec![])
 }
 
-/// Internal helper that performs the actual macOS ssh-agent registration.
+/// Internal helper that performs the actual system SSH agent registration.
+///
+/// Converts each PKCS#8 key to OpenSSH PEM, writes to a temp file, and
+/// delegates to the injected `SshAgentPort` for the actual `ssh-add` call.
 #[cfg(target_os = "macos")]
 #[allow(clippy::too_many_lines)]
 fn register_keys_with_macos_agent_internal(
     keys_to_register: Vec<(Vec<u8>, Zeroizing<Vec<u8>>)>,
+    ssh_agent: &dyn crate::ports::ssh_agent::SshAgentPort,
 ) -> Result<Vec<KeyRegistrationStatus>, AgentError> {
+    use crate::ports::ssh_agent::SshAgentError;
+
     if keys_to_register.is_empty() {
         info!("No keys to register with system agent.");
         return Ok(vec![]);
@@ -574,7 +587,7 @@ fn register_keys_with_macos_agent_internal(
             message: None,
         };
 
-        let result: AnyhowResult<Output> = (|| {
+        let result: AnyhowResult<()> = (|| {
             let pkcs8_bytes = pkcs8_bytes_zeroizing.as_ref();
             let private_key_info = PrivateKeyInfo::from_der(pkcs8_bytes)
                 .context("Failed to parse PKCS#8 DER for ssh-add")?;
@@ -587,6 +600,7 @@ fn register_keys_with_macos_agent_internal(
                     seed_bytes.len()
                 );
             }
+            #[allow(clippy::expect_used)] // length validated by the 32-byte check above
             let seed_array: [u8; 32] = seed_bytes.try_into().expect("Length checked");
             let ssh_ed_keypair = SshEdKeypair::from_seed(&seed_array);
             let keypair_data = KeypairData::Ed25519(ssh_ed_keypair);
@@ -624,64 +638,37 @@ fn register_keys_with_macos_agent_internal(
                 "Attempting ssh-add for temporary key file: {:?}",
                 temp_file_path
             );
-            let output = Command::new("ssh-add").arg(&temp_file_path).output()?;
-            debug!("ssh-add command finished for {:?}", temp_file_path);
-            Ok(output)
+            ssh_agent
+                .register_key(&temp_file_path)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            debug!("ssh-add finished for {:?}", temp_file_path);
+            Ok(())
         })();
 
         match result {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .to_lowercase();
-                let stderr = String::from_utf8_lossy(&output.stderr)
-                    .trim()
-                    .to_lowercase();
-                let full_output = format!("ssh-add stdout: '{}', stderr: '{}'", stdout, stderr);
-                status.message = Some(full_output.clone());
-
-                if output.status.success() {
-                    if stdout.contains("identity added") {
-                        info!(
-                            "ssh-add successful for {}: Identity added.",
-                            fingerprint_str
-                        );
-                        status.status = RegistrationOutcome::Added;
-                    } else if stderr.contains("already exists") || stdout.contains("already exists")
-                    {
-                        info!(
-                            "ssh-add skipped for {}: Identity already exists.",
-                            fingerprint_str
-                        );
-                        status.status = RegistrationOutcome::AlreadyExists;
-                    } else {
-                        warn!(
-                            "ssh-add command succeeded for {} but output was unexpected: {}",
-                            fingerprint_str, full_output
-                        );
-                        status.status = RegistrationOutcome::Added;
-                    }
-                } else {
-                    error!(
-                        "ssh-add command failed for {}: {}",
-                        fingerprint_str, full_output
-                    );
-                    if stderr.contains("could not open a connection")
-                        || stderr.contains("connection refused")
-                        || stderr.contains("communication with agent failed")
-                    {
-                        status.status = RegistrationOutcome::AgentNotFound;
-                    } else {
-                        status.status = RegistrationOutcome::CommandFailed;
-                    }
-                }
+            Ok(()) => {
+                info!(
+                    "ssh-add successful for {}: Identity added.",
+                    fingerprint_str
+                );
+                status.status = RegistrationOutcome::Added;
+                status.message = Some("Identity added via ssh-agent port".to_string());
             }
             Err(e) => {
-                error!(
-                    "Error during registration process for {}: {:?}",
-                    fingerprint_str, e
-                );
-                if e.downcast_ref::<std::io::Error>().is_some() {
+                // Map SshAgentError variants to RegistrationOutcome
+                if let Some(agent_err) = e.downcast_ref::<SshAgentError>() {
+                    match agent_err {
+                        SshAgentError::NotAvailable(_) => {
+                            status.status = RegistrationOutcome::AgentNotFound;
+                        }
+                        SshAgentError::CommandFailed(_) => {
+                            status.status = RegistrationOutcome::CommandFailed;
+                        }
+                        SshAgentError::IoError(_) => {
+                            status.status = RegistrationOutcome::IoError;
+                        }
+                    }
+                } else if e.downcast_ref::<std::io::Error>().is_some() {
                     status.status = RegistrationOutcome::IoError;
                 } else if e.downcast_ref::<ssh_key::Error>().is_some()
                     || e.downcast_ref::<pkcs8::Error>().is_some()
@@ -691,14 +678,18 @@ fn register_keys_with_macos_agent_internal(
                 } else {
                     status.status = RegistrationOutcome::InternalError;
                 }
-                status.message = Some(format!("Internal error during registration: {}", e));
+                error!(
+                    "Error during registration process for {}: {:?}",
+                    fingerprint_str, e
+                );
+                status.message = Some(format!("Registration error: {}", e));
             }
         }
         results.push(status);
     }
 
     info!(
-        "Finished attempting macOS system agent registration for {} keys.",
+        "Finished attempting system agent registration for {} keys.",
         results.len()
     );
     Ok(results)

@@ -16,6 +16,8 @@ use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 
+use crate::ports::agent::{AgentSigningPort, NoopAgentProvider};
+
 /// A required builder field was not set before calling `build()`.
 #[derive(Debug, Clone)]
 pub struct BuilderError(pub &'static str);
@@ -111,6 +113,10 @@ pub struct AuthsContext {
     /// UUID generator port. Defaults to [`SystemUuidProvider`] (random v4 UUIDs).
     /// Override with a deterministic stub in tests.
     pub uuid_provider: Arc<dyn UuidProvider + Send + Sync>,
+    /// Agent-based signing port for delegating operations to a running agent process.
+    /// Defaults to [`NoopAgentProvider`] — set via `.agent_signing(...)` when the
+    /// platform supports agent-based signing (Unix with auths-agent).
+    pub agent_signing: Arc<dyn AgentSigningPort + Send + Sync>,
 }
 
 impl AuthsContext {
@@ -139,6 +145,7 @@ impl AuthsContext {
             attestation_source: None,
             passphrase_provider: None,
             uuid_provider: None,
+            agent_signing: None,
         }
     }
 }
@@ -164,6 +171,7 @@ pub struct AuthsContextBuilder<R, K, C> {
     attestation_source: Option<Arc<dyn AttestationSource + Send + Sync>>,
     passphrase_provider: Option<Arc<dyn PassphraseProvider + Send + Sync>>,
     uuid_provider: Option<Arc<dyn UuidProvider + Send + Sync>>,
+    agent_signing: Option<Arc<dyn AgentSigningPort + Send + Sync>>,
 }
 
 impl<K, C> AuthsContextBuilder<Missing, K, C> {
@@ -190,6 +198,7 @@ impl<K, C> AuthsContextBuilder<Missing, K, C> {
             attestation_source: self.attestation_source,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
+            agent_signing: self.agent_signing,
         }
     }
 }
@@ -218,6 +227,7 @@ impl<R, C> AuthsContextBuilder<R, Missing, C> {
             attestation_source: self.attestation_source,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
+            agent_signing: self.agent_signing,
         }
     }
 }
@@ -247,6 +257,7 @@ impl<R, K> AuthsContextBuilder<R, K, Missing> {
             attestation_source: self.attestation_source,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
+            agent_signing: self.agent_signing,
         }
     }
 }
@@ -274,6 +285,7 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
             attestation_source: self.attestation_source,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
+            agent_signing: self.agent_signing,
         }
     }
 
@@ -300,6 +312,7 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
             attestation_source: self.attestation_source,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
+            agent_signing: self.agent_signing,
         }
     }
 
@@ -326,6 +339,7 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
             attestation_source: self.attestation_source,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
+            agent_signing: self.agent_signing,
         }
     }
 
@@ -352,6 +366,7 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
             attestation_source: Some(source),
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
+            agent_signing: self.agent_signing,
         }
     }
 
@@ -381,6 +396,7 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
             attestation_source: self.attestation_source,
             passphrase_provider: Some(provider),
             uuid_provider: self.uuid_provider,
+            agent_signing: self.agent_signing,
         }
     }
 
@@ -410,6 +426,38 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
             attestation_source: self.attestation_source,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: Some(provider),
+            agent_signing: self.agent_signing,
+        }
+    }
+
+    /// Set the agent signing port for delegating signing to a running agent process.
+    ///
+    /// Defaults to [`NoopAgentProvider`] (all operations return `Unavailable`)
+    /// when not called. Set this on Unix platforms where the auths-agent daemon
+    /// is available.
+    ///
+    /// Args:
+    /// * `provider`: Any type implementing [`AgentSigningPort`].
+    ///
+    /// Usage:
+    /// ```ignore
+    /// builder.agent_signing(Arc::new(CliAgentAdapter::new(socket_path)))
+    /// ```
+    pub fn agent_signing(
+        self,
+        provider: Arc<dyn AgentSigningPort + Send + Sync>,
+    ) -> AuthsContextBuilder<R, K, C> {
+        AuthsContextBuilder {
+            registry: self.registry,
+            key_storage: self.key_storage,
+            clock: self.clock,
+            event_sink: self.event_sink,
+            identity_storage: self.identity_storage,
+            attestation_sink: self.attestation_sink,
+            attestation_source: self.attestation_source,
+            passphrase_provider: self.passphrase_provider,
+            uuid_provider: self.uuid_provider,
+            agent_signing: Some(provider),
         }
     }
 }
@@ -455,6 +503,9 @@ impl
             uuid_provider: self
                 .uuid_provider
                 .unwrap_or_else(|| Arc::new(SystemUuidProvider)),
+            agent_signing: self
+                .agent_signing
+                .unwrap_or_else(|| Arc::new(NoopAgentProvider)),
         })
     }
 }

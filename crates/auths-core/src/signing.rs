@@ -383,13 +383,16 @@ impl CachedPassphraseProvider {
     /// Call this on logout, lock, or when the session ends to ensure
     /// cached credentials don't persist in memory.
     pub fn clear_cache(&self) {
-        self.cache.lock().unwrap().clear();
+        self.cache.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 }
 
 impl PassphraseProvider for CachedPassphraseProvider {
     fn get_passphrase(&self, prompt_message: &str) -> Result<Zeroizing<String>, AgentError> {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|e| AgentError::MutexError(e.to_string()))?;
 
         // Check cache for unexpired entry
         if let Some((passphrase, cached_at)) = cache.get(prompt_message) {
@@ -406,7 +409,10 @@ impl PassphraseProvider for CachedPassphraseProvider {
         let passphrase = self.inner.get_passphrase(prompt_message)?;
 
         // Store in cache - clone the passphrase since we return the original
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|e| AgentError::MutexError(e.to_string()))?;
         cache.insert(
             prompt_message.to_string(),
             (passphrase.clone(), Instant::now()),
@@ -415,7 +421,10 @@ impl PassphraseProvider for CachedPassphraseProvider {
     }
 
     fn on_incorrect_passphrase(&self, prompt_message: &str) {
-        self.cache.lock().unwrap().remove(prompt_message);
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(prompt_message);
     }
 }
 
@@ -484,7 +493,10 @@ impl UnifiedPassphraseProvider {
 
 impl PassphraseProvider for UnifiedPassphraseProvider {
     fn get_passphrase(&self, prompt_message: &str) -> Result<Zeroizing<String>, AgentError> {
-        let mut guard = self.cached.lock().unwrap();
+        let mut guard = self
+            .cached
+            .lock()
+            .map_err(|e| AgentError::MutexError(e.to_string()))?;
         if let Some(ref cached) = *guard {
             return Ok(Zeroizing::new(cached.as_str().to_string()));
         }

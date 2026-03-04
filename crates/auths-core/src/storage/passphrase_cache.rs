@@ -19,6 +19,10 @@ pub trait PassphraseCache: Send + Sync {
     fn delete(&self, alias: &str) -> Result<(), AgentError>;
 }
 
+#[cfg(any(
+    target_os = "macos",
+    all(target_os = "linux", feature = "keychain-linux-secretservice")
+))]
 const PASSPHRASE_SERVICE: &str = "dev.auths.passphrase";
 
 /// No-op cache that never stores or returns anything.
@@ -43,11 +47,18 @@ impl PassphraseCache for NoopPassphraseCache {
     }
 }
 
-// The stored secret value format is: "timestamp|passphrase"
+#[cfg(any(
+    target_os = "macos",
+    all(target_os = "linux", feature = "keychain-linux-secretservice")
+))]
 fn encode_secret(passphrase: &str, stored_at_unix: i64) -> String {
     format!("{}|{}", stored_at_unix, passphrase)
 }
 
+#[cfg(any(
+    target_os = "macos",
+    all(target_os = "linux", feature = "keychain-linux-secretservice")
+))]
 fn decode_secret(secret: &str) -> Option<(Zeroizing<String>, i64)> {
     let (ts_str, passphrase) = secret.split_once('|')?;
     let ts: i64 = ts_str.parse().ok()?;
@@ -573,35 +584,43 @@ mod tests {
         cache.delete("any").unwrap();
     }
 
-    #[test]
-    fn encode_decode_roundtrip() {
-        let encoded = encode_secret("my-passphrase", 1700000000);
-        let (pass, ts) = decode_secret(&encoded).unwrap();
-        assert_eq!(*pass, "my-passphrase");
-        assert_eq!(ts, 1700000000);
-    }
+    #[cfg(any(
+        target_os = "macos",
+        all(target_os = "linux", feature = "keychain-linux-secretservice")
+    ))]
+    mod secret_encoding {
+        use super::*;
 
-    #[test]
-    fn decode_handles_pipe_in_passphrase() {
-        let encoded = encode_secret("pass|with|pipes", 100);
-        let (pass, ts) = decode_secret(&encoded).unwrap();
-        assert_eq!(*pass, "pass|with|pipes");
-        assert_eq!(ts, 100);
-    }
+        #[test]
+        fn encode_decode_roundtrip() {
+            let encoded = encode_secret("my-passphrase", 1700000000);
+            let (pass, ts) = decode_secret(&encoded).unwrap();
+            assert_eq!(*pass, "my-passphrase");
+            assert_eq!(ts, 1700000000);
+        }
 
-    #[test]
-    fn decode_rejects_empty() {
-        assert!(decode_secret("").is_none());
-    }
+        #[test]
+        fn decode_handles_pipe_in_passphrase() {
+            let encoded = encode_secret("pass|with|pipes", 100);
+            let (pass, ts) = decode_secret(&encoded).unwrap();
+            assert_eq!(*pass, "pass|with|pipes");
+            assert_eq!(ts, 100);
+        }
 
-    #[test]
-    fn decode_rejects_no_pipe() {
-        assert!(decode_secret("12345").is_none());
-    }
+        #[test]
+        fn decode_rejects_empty() {
+            assert!(decode_secret("").is_none());
+        }
 
-    #[test]
-    fn decode_rejects_bad_timestamp() {
-        assert!(decode_secret("notanumber|pass").is_none());
+        #[test]
+        fn decode_rejects_no_pipe() {
+            assert!(decode_secret("12345").is_none());
+        }
+
+        #[test]
+        fn decode_rejects_bad_timestamp() {
+            assert!(decode_secret("notanumber|pass").is_none());
+        }
     }
 
     #[test]

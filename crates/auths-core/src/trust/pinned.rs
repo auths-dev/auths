@@ -221,9 +221,11 @@ impl PinnedIdentityStore {
     }
 }
 
-/// Simple advisory file lock. Blocks until acquired. Released on drop.
+/// Simple advisory file lock. Blocks until acquired. Released on drop by closing the fd.
+///
+/// The lock file is NOT deleted on drop. Deleting creates a race where two
+/// threads acquire flock on different inodes simultaneously.
 struct LockGuard {
-    path: PathBuf,
     _file: fs::File,
 }
 
@@ -253,13 +255,7 @@ impl LockGuard {
             // On non-Unix, best-effort: existence of lock file is the lock.
         }
 
-        Ok(Self { path, _file: file })
-    }
-}
-
-impl Drop for LockGuard {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        Ok(Self { _file: file })
     }
 }
 

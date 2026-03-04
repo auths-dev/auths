@@ -11,6 +11,7 @@ fn provider() -> RingCryptoProvider {
 }
 
 /// Fallback runtime for contexts where no tokio runtime is active (e.g. FFI).
+#[allow(clippy::expect_used)] // tokio runtime creation is genuinely fatal if it fails
 static FALLBACK_RT: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()

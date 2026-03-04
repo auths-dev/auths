@@ -10,7 +10,8 @@
 //!
 //! ## Passphrase-Free Signing
 //!
-//! This program implements a three-tier signing strategy:
+//! This program implements a three-tier signing strategy via
+//! [`CommitSigningWorkflow`]:
 //!
 //! 1. **Tier 1: Agent signing** - If the agent is running with keys loaded,
 //!    sign via the agent without any passphrase prompt.
@@ -21,22 +22,21 @@
 //! 3. **Tier 3: Direct signing** - If agent approach fails, fall back to
 //!    direct passphrase-based signing via SDK pipeline.
 
-use anyhow::{Context, Result, anyhow, bail};
-#[cfg(unix)]
-use auths_cli::commands::agent::{ensure_agent_running, get_default_socket_path};
-use auths_cli::core::pubkey_cache::{cache_pubkey, get_cached_pubkey};
-#[cfg(unix)]
-use auths_core::agent::{AgentStatus, add_identity, agent_sign, check_agent_status};
-use auths_core::config::{PassphraseCachePolicy, load_config};
-use auths_core::crypto::ssh::{
-    construct_sshsig_pem, construct_sshsig_signed_data, extract_pubkey_from_key_bytes,
-};
-use auths_core::storage::passphrase_cache::{get_passphrase_cache, parse_duration_str};
-use auths_sdk::signing::{self, SigningConfig};
-use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
-use zeroize::Zeroizing;
+use std::sync::Arc;
+
+use anyhow::{Context, Result, anyhow, bail};
+use clap::Parser;
+
+use auths_cli::core::pubkey_cache::get_cached_pubkey;
+use auths_cli::factories::build_agent_provider;
+use auths_core::config::EnvironmentConfig;
+use auths_core::signing::{CachedPassphraseProvider, PassphraseProvider};
+use auths_core::storage::keychain::get_platform_keychain;
+use auths_sdk::workflows::signing::{
+    CommitSigningContext, CommitSigningParams, CommitSigningWorkflow,
+};
 
 /// Auths SSH signing program for Git integration.
 ///
@@ -101,116 +101,28 @@ fn parse_key_identifier(key_file: &str) -> Result<String> {
     }
 }
 
-fn get_passphrase(alias: &str) -> Result<Zeroizing<String>> {
-    if let Ok(p) = std::env::var("AUTHS_PASSPHRASE") {
-        return Ok(Zeroizing::new(p));
-    }
+fn build_signing_context() -> Result<CommitSigningContext> {
+    let env_config = EnvironmentConfig::from_env();
 
-    let config = load_config();
-    let policy = &config.passphrase.cache;
+    let keychain =
+        get_platform_keychain().map_err(|e| anyhow!("Failed to access keychain: {e}"))?;
 
-    let biometric = config.passphrase.biometric;
+    let passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync> =
+        if let Some(passphrase) = env_config.keychain.passphrase.clone() {
+            Arc::new(auths_core::PrefilledPassphraseProvider::new(&passphrase))
+        } else {
+            let inner = Arc::new(auths_cli::core::provider::CliPassphraseProvider::new());
+            Arc::new(CachedPassphraseProvider::new(
+                inner,
+                std::time::Duration::from_secs(3600),
+            ))
+        };
 
-    if matches!(
-        policy,
-        PassphraseCachePolicy::Always | PassphraseCachePolicy::Duration
-    ) {
-        let cache = get_passphrase_cache(biometric);
-        if let Ok(Some((cached, stored_at))) = cache.load(alias) {
-            if *policy == PassphraseCachePolicy::Always {
-                return Ok(cached);
-            }
-            // Duration mode: check TTL
-            let ttl_secs = config
-                .passphrase
-                .duration
-                .as_deref()
-                .and_then(parse_duration_str)
-                .unwrap_or(86400); // default 24h
-            let now = chrono::Utc::now().timestamp();
-            if now - stored_at < ttl_secs {
-                return Ok(cached);
-            }
-            // Expired — delete and fall through to prompt
-            let _ = cache.delete(alias);
-        }
-    }
-
-    let passphrase = rpassword::prompt_password(format!("Passphrase for '{}': ", alias))
-        .map(Zeroizing::new)
-        .context("Failed to read passphrase from terminal")?;
-
-    if matches!(
-        policy,
-        PassphraseCachePolicy::Always | PassphraseCachePolicy::Duration
-    ) {
-        let cache = get_passphrase_cache(biometric);
-        let now = chrono::Utc::now().timestamp();
-        if let Err(e) = cache.store(alias, &passphrase, now) {
-            eprintln!("Warning: Failed to cache passphrase: {}", e);
-        }
-    }
-
-    Ok(passphrase)
-}
-
-#[cfg(unix)]
-fn try_sign_via_agent(alias: &str, data: &[u8], namespace: &str) -> Result<Option<String>> {
-    let socket_path = match get_default_socket_path() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Could not determine agent socket path: {}", e);
-            return Ok(None);
-        }
-    };
-
-    match check_agent_status(&socket_path) {
-        AgentStatus::Running { key_count } => {
-            if key_count == 0 {
-                eprintln!("Agent running but no keys loaded");
-                return Ok(None);
-            }
-        }
-        AgentStatus::ConnectionFailed => {
-            eprintln!("Agent connection failed");
-            return Ok(None);
-        }
-        AgentStatus::NotRunning => {
-            return Ok(None);
-        }
-    }
-
-    let pubkey = match get_cached_pubkey(alias) {
-        Ok(Some(pk)) => pk,
-        Ok(None) => {
-            eprintln!("No cached pubkey for alias '{}', need passphrase", alias);
-            return Ok(None);
-        }
-        Err(e) => {
-            eprintln!("Error reading pubkey cache: {}", e);
-            return Ok(None);
-        }
-    };
-
-    let sig_data = construct_sshsig_signed_data(data, namespace)
-        .context("Failed to construct SSHSIG signed data")?;
-
-    match agent_sign(&socket_path, &pubkey, &sig_data) {
-        Ok(signature) => {
-            let pem = construct_sshsig_pem(&pubkey, &signature, namespace)
-                .context("Failed to construct SSHSIG PEM")?;
-            Ok(Some(pem))
-        }
-        Err(e) => {
-            eprintln!("Agent signing failed: {}", e);
-            Ok(None)
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn try_sign_via_agent(_alias: &str, _data: &[u8], _namespace: &str) -> Result<Option<String>> {
-    Ok(None)
+    Ok(CommitSigningContext {
+        key_storage: Arc::from(keychain),
+        passphrase_provider,
+        agent_signing: build_agent_provider(),
+    })
 }
 
 fn main() {
@@ -327,49 +239,18 @@ fn run_sign(args: &Args) -> Result<()> {
     let data = fs::read(buffer_file)
         .with_context(|| format!("Failed to read input file: {}", buffer_file.display()))?;
 
-    // TIER 1: Try passphrase-free agent signing
-    if let Some(pem) = try_sign_via_agent(&alias, &data, namespace)? {
-        let sig_path = format!("{}.sig", buffer_file.display());
-        fs::write(&sig_path, &pem)
-            .with_context(|| format!("Failed to write signature to: {}", sig_path))?;
-        return Ok(());
-    }
+    let pubkey = get_cached_pubkey(&alias).ok().flatten().unwrap_or_default();
 
-    // TIER 2: Auto-start agent (best effort)
-    #[cfg(unix)]
-    let _ = ensure_agent_running(true);
-
-    // Load key from keychain with passphrase retry
-    let key_bytes = load_key_with_retry(&alias)?;
-
-    // Cache pubkey and load into agent (best effort)
-    if let Ok(pubkey) = extract_pubkey_from_key_bytes(&key_bytes) {
-        if let Err(e) = cache_pubkey(&alias, &pubkey) {
-            eprintln!("Warning: Failed to cache pubkey: {}", e);
-        }
-
-        #[cfg(unix)]
-        if let Ok(socket_path) = get_default_socket_path()
-            && let Err(e) = add_identity(&socket_path, &key_bytes)
-        {
-            eprintln!("Warning: Failed to add key to agent: {}", e);
-        }
-    }
-
-    // TIER 3: Direct signing via SDK pipeline
-    let config = SigningConfig {
-        namespace: namespace.to_string(),
-    };
     let repo_path = auths_id::storage::layout::resolve_repo_path(None).ok();
-    let seed = auths_core::crypto::ssh::extract_seed_from_pkcs8(&key_bytes)
-        .context("Failed to extract seed from PKCS#8")?;
 
-    if let Some(ref path) = repo_path {
-        signing::validate_freeze_state(path, chrono::Utc::now()).map_err(|e| anyhow!("{}", e))?;
+    let ctx = build_signing_context()?;
+    let mut params = CommitSigningParams::new(&alias, namespace, data).with_pubkey(pubkey);
+    if let Some(path) = repo_path {
+        params = params.with_repo_path(path);
     }
 
-    let signature_pem =
-        signing::sign_with_seed(&seed, &data, &config.namespace).map_err(|e| anyhow!("{}", e))?;
+    let signature_pem = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now())
+        .map_err(anyhow::Error::new)?;
 
     let sig_path = format!("{}.sig", buffer_file.display());
     fs::write(&sig_path, &signature_pem)
@@ -378,46 +259,11 @@ fn run_sign(args: &Args) -> Result<()> {
     Ok(())
 }
 
-fn load_key_with_retry(alias: &str) -> Result<Zeroizing<Vec<u8>>> {
-    use auths_core::crypto::signer::decrypt_keypair;
-    use auths_core::error::AgentError;
-    use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
-
-    let keychain =
-        get_platform_keychain().map_err(|e| anyhow!("Failed to get platform keychain: {e}"))?;
-    let (_identity_did, encrypted_data) = keychain
-        .load_key(&KeyAlias::new_unchecked(alias))
-        .map_err(|e| anyhow!("{e}"))?;
-
-    const MAX_ATTEMPTS: u32 = 3;
-
-    for attempt in 1..=MAX_ATTEMPTS {
-        let passphrase = get_passphrase(alias)?;
-
-        match decrypt_keypair(&encrypted_data, &passphrase) {
-            Ok(decrypted) => return Ok(decrypted),
-            Err(AgentError::IncorrectPassphrase) => {
-                if attempt < MAX_ATTEMPTS {
-                    eprintln!("Incorrect passphrase for '{}'. Try again.", alias);
-                } else {
-                    eprintln!(
-                        "{} incorrect attempts for key '{}'.\n  \
-                         Forgot your passphrase? Run: auths key reset {}",
-                        MAX_ATTEMPTS, alias, alias
-                    );
-                    std::process::exit(1);
-                }
-            }
-            Err(e) => return Err(anyhow::Error::new(e)),
-        }
-    }
-
-    bail!("Failed to decrypt key after maximum attempts")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auths_core::crypto::ssh::construct_sshsig_signed_data;
+    use zeroize::Zeroizing;
 
     #[test]
     fn test_args_accepts_o_flag() {

@@ -78,9 +78,23 @@ GitHub Actions picks up the `v*` tag and runs `.github/workflows/release.yml`.
 #### 4. Publish Rust crates (optional)
 
 ```bash
-cargo publish -p auths_core
-cargo publish -p auths_id
-cargo publish -p auths_verifier
+cargo publish -p auths
+cargo publish -p auths-crypto
+sleep 60
+cargo publish -p auths-verifier
+cargo publish -p auths-core
+cargo publish -p auths-index
+cargo publish -p auths-infra-http
+cargo publish -p auths-policy
+sleep 60
+cargo publish -p auths-id
+sleep 60
+cargo publish -p auths-storage
+cargo publish -p auths-sdk
+cargo publish -p auths-infra-git
+cargo publish -p auths-telemetry
+sleep 60
+cargo publish -p auths-cli
 ```
 
 #### 5. Publish SDK packages (optional)
