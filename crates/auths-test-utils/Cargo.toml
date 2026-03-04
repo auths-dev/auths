@@ -1,0 +1,9 @@
+[package]
+name = "auths-test-utils"
+version = "0.0.1-rc.13"
+edition = "2024"
+rust-version = "1.93"
+
+[dependencies]
+auths-crypto = { path = "../auths-crypto", features = ["test-utils"] }
+ring = "0.17.14"
