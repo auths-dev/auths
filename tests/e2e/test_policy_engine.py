@@ -7,25 +7,37 @@ import pytest
 from helpers.cli import run_auths
 
 SIMPLE_POLICY = {
-    "and": [
-        {"has_capability": "sign:commit"},
-        {"not_expired": True},
-    ]
+    "op": "And",
+    "args": [
+        {"op": "HasCapability", "args": "sign:commit"},
+        {"op": "NotExpired"},
+    ],
 }
 
 COMPLEX_POLICY = {
-    "or": [
-        {"and": [{"is_agent": True}, {"has_capability": "sign:commit"}]},
+    "op": "Or",
+    "args": [
         {
-            "and": [
-                {"is_workload": True},
-                {"has_capability": "deploy:staging"},
-            ]
+            "op": "And",
+            "args": [
+                {"op": "HasCapability", "args": "sign:commit"},
+                {"op": "NotRevoked"},
+            ],
         },
-    ]
+        {
+            "op": "And",
+            "args": [
+                {"op": "HasCapability", "args": "deploy:staging"},
+                {"op": "NotExpired"},
+            ],
+        },
+    ],
 }
 
-INVALID_POLICY = {"unknown_operator": True}
+INVALID_POLICY = {"op": "UnknownOp"}
+
+TEST_ISSUER = "did:keri:ETestIssuer123456789012345678901234567890ab"
+TEST_SUBJECT = "did:keri:ETestSubject12345678901234567890123456789ab"
 
 
 @pytest.mark.requires_binary
@@ -52,10 +64,7 @@ class TestPolicyEngine:
             ["policy", "lint", str(policy_file)],
             env=isolated_env,
         )
-        if "lint" in result.stderr.lower() or result.returncode != 0:
-            result.assert_failure()
-        else:
-            pytest.skip("policy lint may not validate JSON syntax")
+        result.assert_failure()
 
     def test_policy_compile_valid(self, auths_bin, isolated_env, tmp_path):
         policy_file = tmp_path / "policy.json"
@@ -78,10 +87,11 @@ class TestPolicyEngine:
         context_file.write_text(
             json.dumps(
                 {
+                    "issuer": TEST_ISSUER,
+                    "subject": TEST_SUBJECT,
                     "capabilities": ["sign:commit"],
-                    "is_agent": True,
-                    "is_expired": False,
-                    "is_revoked": False,
+                    "revoked": False,
+                    "expires_at": "2099-12-31T23:59:59Z",
                 }
             )
         )
@@ -100,7 +110,8 @@ class TestPolicyEngine:
         if result.returncode != 0:
             pytest.skip(f"policy explain not available: {result.stderr}")
         result.assert_success()
-        assert "allow" in result.stdout.lower() or "deny" in result.stdout.lower()
+        output = (result.stdout + result.stderr).lower()
+        assert "allow" in output or "deny" in output
 
     def test_policy_test_passing(self, auths_bin, isolated_env, tmp_path):
         policy_file = tmp_path / "policy.json"
@@ -111,12 +122,15 @@ class TestPolicyEngine:
             json.dumps(
                 [
                     {
-                        "description": "agent with sign:commit should pass",
+                        "name": "agent with sign:commit should pass",
                         "context": {
+                            "issuer": TEST_ISSUER,
+                            "subject": TEST_SUBJECT,
                             "capabilities": ["sign:commit"],
-                            "is_expired": False,
+                            "revoked": False,
+                            "expires_at": "2099-12-31T23:59:59Z",
                         },
-                        "expected": "allow",
+                        "expect": "Allow",
                     }
                 ]
             )
@@ -140,12 +154,15 @@ class TestPolicyEngine:
             json.dumps(
                 [
                     {
-                        "description": "should fail - wrong expected",
+                        "name": "should fail - wrong expected",
                         "context": {
+                            "issuer": TEST_ISSUER,
+                            "subject": TEST_SUBJECT,
                             "capabilities": ["sign:commit"],
-                            "is_expired": False,
+                            "revoked": False,
+                            "expires_at": "2099-12-31T23:59:59Z",
                         },
-                        "expected": "deny",
+                        "expect": "Deny",
                     }
                 ]
             )
@@ -156,10 +173,7 @@ class TestPolicyEngine:
             ["policy", "test", str(policy_file), "--tests", str(tests_file)],
             env=isolated_env,
         )
-        if "test" not in result.stderr.lower() and result.returncode == 0:
-            pytest.skip("policy test may not detect mismatches")
-        else:
-            result.assert_failure()
+        result.assert_failure()
 
     def test_policy_diff(self, auths_bin, isolated_env, tmp_path):
         old_policy = tmp_path / "old.json"

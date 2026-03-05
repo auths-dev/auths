@@ -68,17 +68,26 @@ class TestIdentityLifecycle:
         result = run_auths(auths_bin, ["id", "show", "--json"], env=init_identity)
         if result.returncode == 0 and result.stdout.strip().startswith("{"):
             data = json.loads(result.stdout)
-            if "did" in data:
-                assert_did_format(data["did"])
+            controller_did = data.get("data", {}).get("controller_did")
+            if controller_did:
+                assert_did_format(controller_did)
         else:
-            # GAP: `auths id show --json` may not be implemented
             pytest.skip("auths id show --json not supported")
 
     def test_id_export_bundle(self, auths_bin, init_identity, tmp_path):
         bundle_path = tmp_path / "bundle.json"
         result = run_auths(
             auths_bin,
-            ["id", "export-bundle", "--output", str(bundle_path)],
+            [
+                "id",
+                "export-bundle",
+                "--alias",
+                "main",
+                "--output",
+                str(bundle_path),
+                "--max-age-secs",
+                "3600",
+            ],
             env=init_identity,
         )
         if result.returncode == 0:
@@ -86,7 +95,6 @@ class TestIdentityLifecycle:
             data = json.loads(bundle_path.read_text())
             assert isinstance(data, dict)
         else:
-            # GAP: export-bundle may not be implemented
             pytest.skip("auths id export-bundle not supported")
 
     @pytest.mark.slow
@@ -110,7 +118,16 @@ class TestIdentityLifecycle:
         bundle_path = tmp_path / "bundle.json"
         export = run_auths(
             auths_bin,
-            ["id", "export-bundle", "--output", str(bundle_path)],
+            [
+                "id",
+                "export-bundle",
+                "--alias",
+                "main",
+                "--output",
+                str(bundle_path),
+                "--max-age-secs",
+                "3600",
+            ],
             env=isolated_env,
         )
         if export.returncode != 0:

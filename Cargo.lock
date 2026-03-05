@@ -511,6 +511,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-mcp-server"
+version = "0.0.1-rc.7"
+dependencies = [
+ "anyhow",
+ "auths-oidc-bridge",
+ "auths-telemetry",
+ "auths-verifier",
+ "axum",
+ "base64",
+ "chrono",
+ "http-body-util",
+ "jsonwebtoken",
+ "reqwest 0.12.28",
+ "ring",
+ "rsa",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+]
+
+[[package]]
 name = "auths-oidc-bridge"
 version = "0.0.1-rc.7"
 dependencies = [
@@ -588,6 +614,7 @@ dependencies = [
  "hex",
  "html-escape",
  "json-canon",
+ "reqwest 0.12.28",
  "ring",
  "serde",
  "serde_json",

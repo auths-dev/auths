@@ -1,0 +1,48 @@
+[package]
+name = "auths-mcp-server"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "Reference MCP tool server with Auths-backed JWT authorization"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["identity", "mcp", "jwt", "agent", "authorization"]
+categories = ["authentication", "web-programming"]
+
+[[bin]]
+name = "auths-mcp-server"
+path = "src/main.rs"
+
+[lib]
+name = "auths_mcp_server"
+path = "src/lib.rs"
+
+[dependencies]
+auths-oidc-bridge.workspace = true
+auths-telemetry.workspace = true
+auths-verifier = { workspace = true, features = ["native"] }
+
+anyhow = "1"
+axum = "0.8"
+jsonwebtoken = "9"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror.workspace = true
+tokio.workspace = true
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+tracing = "0.1"
+
+[dev-dependencies]
+base64.workspace = true
+chrono = "0.4"
+http-body-util = "0.1"
+ring.workspace = true
+rsa = { version = "0.9", features = ["pem"] }
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

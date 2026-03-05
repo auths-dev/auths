@@ -16,6 +16,7 @@ members = [
   "crates/auths-storage",
   "crates/auths-keri",
   "crates/auths-oidc-bridge",
+  "crates/auths-mcp-server",
   "crates/auths-pairing-protocol",
   "crates/xtask",
 ]

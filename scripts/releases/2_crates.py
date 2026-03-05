@@ -23,7 +23,7 @@ Publish order (dependency layers):
     Batch 1: auths, auths-crypto, auths-index, auths-policy, auths-telemetry
     Batch 2: auths-verifier, auths-keri
     Batch 3: auths-core, auths-oidc-bridge
-    Batch 4: auths-infra-http
+    Batch 4: auths-infra-http, auths-mcp-server
     Batch 5: auths-id  (depends on core, crypto, policy, verifier, infra-http)
     Batch 6: auths-storage, auths-sdk  (both depend on auths-id)
     Batch 7: auths-infra-git  (depends on auths-sdk)
@@ -45,7 +45,7 @@ PUBLISH_BATCHES: list[list[str]] = [
     ["auths", "auths-crypto", "auths-index", "auths-policy", "auths-telemetry"],
     ["auths-verifier", "auths-keri", "auths-pairing-protocol"],
     ["auths-core", "auths-oidc-bridge"],
-    ["auths-infra-http"],
+    ["auths-infra-http", "auths-mcp-server"],
     ["auths-id"],
     ["auths-storage", "auths-sdk"],
     ["auths-infra-git"],

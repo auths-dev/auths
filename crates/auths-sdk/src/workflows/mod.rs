@@ -1,6 +1,8 @@
 pub mod artifact;
 pub mod audit;
 pub mod diagnostics;
+#[cfg(feature = "mcp")]
+pub mod mcp;
 pub mod org;
 pub mod policy_diff;
 pub mod provision;

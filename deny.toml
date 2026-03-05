@@ -30,6 +30,10 @@ deny = [
     "auths-infra-http",
     "auths-cli",
     "auths-oidc-bridge",
+    "auths-mcp-server",
+    "auths-id",
+    "xtask",
+    "jsonschema",
   ], reason = "HTTP clients must be confined to adapter layer" },
 
   # dialoguer is a terminal UX dependency — CLI only
@@ -41,6 +45,7 @@ deny = [
     "auths-cli",
     "auths-core",
     "auths-oidc-bridge",
+    "auths-mcp-server",
   ], reason = "HTTP framework confined to adapter crates" },
 
   # git2 must not be a production dependency of auths-sdk or auths-core

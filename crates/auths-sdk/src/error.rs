@@ -244,6 +244,47 @@ impl From<auths_core::ports::network::NetworkError> for RegistrationError {
     }
 }
 
+/// Errors from MCP token exchange operations.
+///
+/// Usage:
+/// ```ignore
+/// match result {
+///     Err(McpAuthError::BridgeUnreachable(msg)) => { /* retry later */ }
+///     Err(McpAuthError::InsufficientCapabilities { .. }) => { /* request fewer caps */ }
+///     Err(e) => return Err(e.into()),
+///     Ok(token) => { /* use token */ }
+/// }
+/// ```
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum McpAuthError {
+    /// The OIDC bridge is unreachable.
+    #[error("bridge unreachable: {0}")]
+    BridgeUnreachable(String),
+
+    /// The bridge returned a non-success status.
+    #[error("token exchange failed (HTTP {status}): {body}")]
+    TokenExchangeFailed {
+        /// HTTP status code from the bridge.
+        status: u16,
+        /// Response body.
+        body: String,
+    },
+
+    /// The bridge response could not be parsed.
+    #[error("invalid response: {0}")]
+    InvalidResponse(String),
+
+    /// The bridge rejected the requested capabilities.
+    #[error("insufficient capabilities: requested {requested:?}")]
+    InsufficientCapabilities {
+        /// The capabilities that were requested.
+        requested: Vec<String>,
+        /// Detail from the bridge error response.
+        detail: String,
+    },
+}
+
 /// Errors from organization member management workflows.
 ///
 /// Usage:
