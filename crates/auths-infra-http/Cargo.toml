@@ -30,3 +30,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "tim
 
 [features]
 witness-server = ["auths-core/witness-server"]
+
+[lints]
+workspace = true

@@ -1,4 +1,9 @@
-#![allow(clippy::print_stdout, clippy::print_stderr, clippy::disallowed_methods)]
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::disallowed_methods,
+    clippy::exit
+)]
 //! auths-verify: SSH signature verification for Auths identities
 //!
 //! Supports two modes:

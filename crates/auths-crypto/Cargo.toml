@@ -43,6 +43,5 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
-[lints.clippy]
-print_stdout = "deny"
-print_stderr = "deny"
+[lints]
+workspace = true

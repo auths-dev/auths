@@ -64,6 +64,5 @@ serial_test = "3"
 futures = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
-[lints.clippy]
-print_stdout = "deny"
-print_stderr = "deny"
+[lints]
+workspace = true

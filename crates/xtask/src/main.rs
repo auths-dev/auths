@@ -1,5 +1,5 @@
 // Build tooling — env::var access is expected.
-#![allow(clippy::disallowed_methods)]
+#![allow(clippy::disallowed_methods, clippy::print_stdout, clippy::print_stderr)]
 mod ci_setup;
 mod gen_docs;
 mod gen_schema;

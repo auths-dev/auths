@@ -50,3 +50,13 @@ auths-infra-git = { path = "crates/auths-infra-git", version = "0.0.1-rc.4" }
 auths-infra-http = { path = "crates/auths-infra-http", version = "0.0.1-rc.4" }
 auths-oidc-bridge = { path = "crates/auths-oidc-bridge", version = "0.0.1-rc.6" }
 auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.4" }
+
+[workspace.lints.clippy]
+print_stdout = "deny"
+print_stderr = "deny"
+exit = "deny"
+dbg_macro = "deny"
+disallowed_methods = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
