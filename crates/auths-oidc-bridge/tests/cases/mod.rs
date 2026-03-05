@@ -5,3 +5,5 @@ mod helpers;
 mod oidc;
 #[cfg(feature = "oidc-policy")]
 mod policy_gate;
+#[cfg(feature = "oidc-trust")]
+mod trust_registry;
