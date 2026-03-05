@@ -15,6 +15,7 @@ categories = ["authentication", "web-programming"]
 default = []
 github-oidc = ["dep:reqwest"]
 oidc-policy = ["dep:auths-policy"]
+oidc-trust = ["dep:auths-policy"]
 
 [[bin]]
 name = "auths-oidc-bridge"

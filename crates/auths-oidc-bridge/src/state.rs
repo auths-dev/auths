@@ -24,6 +24,8 @@ struct BridgeStateInner {
     rate_limiter: Option<PrefixRateLimiter>,
     #[cfg(feature = "oidc-policy")]
     workload_policy: Option<auths_policy::CompiledPolicy>,
+    #[cfg(feature = "oidc-trust")]
+    trust_registry: Option<auths_policy::TrustRegistry>,
     #[cfg(feature = "github-oidc")]
     github_jwks: Option<crate::github_oidc::JwksClient>,
 }
@@ -44,6 +46,9 @@ impl BridgeState {
         #[cfg(feature = "oidc-policy")]
         let workload_policy = build_workload_policy(&config)?;
 
+        #[cfg(feature = "oidc-trust")]
+        let trust_registry = build_trust_registry(&config)?;
+
         #[cfg(feature = "github-oidc")]
         let github_jwks = build_github_jwks_client(&config);
 
@@ -56,6 +61,8 @@ impl BridgeState {
                 rate_limiter,
                 #[cfg(feature = "oidc-policy")]
                 workload_policy,
+                #[cfg(feature = "oidc-trust")]
+                trust_registry,
                 #[cfg(feature = "github-oidc")]
                 github_jwks,
             }),
@@ -86,6 +93,12 @@ impl BridgeState {
     #[cfg(feature = "oidc-policy")]
     pub fn workload_policy(&self) -> Option<&auths_policy::CompiledPolicy> {
         self.inner.workload_policy.as_ref()
+    }
+
+    /// Get a reference to the trust registry (if configured).
+    #[cfg(feature = "oidc-trust")]
+    pub fn trust_registry(&self) -> Option<&auths_policy::TrustRegistry> {
+        self.inner.trust_registry.as_ref()
     }
 
     /// Get a reference to the GitHub JWKS client (if configured).
@@ -186,6 +199,33 @@ fn build_workload_policy(
         }
         None => Ok(None),
     }
+}
+
+#[cfg(feature = "oidc-trust")]
+fn build_trust_registry(
+    config: &BridgeConfig,
+) -> Result<Option<auths_policy::TrustRegistry>, BridgeError> {
+    let Some(ref path) = config.trust_registry_path else {
+        tracing::info!("No trust registry configured — all providers allowed");
+        return Ok(None);
+    };
+
+    let bytes = std::fs::read(path).map_err(|e| {
+        BridgeError::Internal(format!(
+            "failed to read trust registry file {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let registry: auths_policy::TrustRegistry = serde_json::from_slice(&bytes).map_err(|e| {
+        BridgeError::Internal(format!(
+            "failed to parse trust registry file {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    tracing::info!(entries = registry.entries().len(), "Loaded trust registry");
+    Ok(Some(registry))
 }
 
 /// Load or generate the RSA signing key based on config.

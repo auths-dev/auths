@@ -61,6 +61,10 @@ pub struct BridgeConfig {
     #[cfg(feature = "oidc-policy")]
     pub workload_policy_json: Option<String>,
 
+    /// Path to a JSON file containing trust registry entries.
+    #[cfg(feature = "oidc-trust")]
+    pub trust_registry_path: Option<PathBuf>,
+
     /// GitHub OIDC issuer URL (default: "https://token.actions.githubusercontent.com").
     #[cfg(feature = "github-oidc")]
     pub github_oidc_issuer: Option<String>,
@@ -96,6 +100,8 @@ impl Default for BridgeConfig {
             workload_policy_path: None,
             #[cfg(feature = "oidc-policy")]
             workload_policy_json: None,
+            #[cfg(feature = "oidc-trust")]
+            trust_registry_path: None,
             #[cfg(feature = "github-oidc")]
             github_oidc_issuer: None,
             #[cfg(feature = "github-oidc")]
@@ -208,6 +214,13 @@ impl BridgeConfig {
     #[cfg(feature = "oidc-policy")]
     pub fn with_workload_policy_json(mut self, json: impl Into<String>) -> Self {
         self.workload_policy_json = Some(json.into());
+        self
+    }
+
+    /// Set the trust registry JSON file path.
+    #[cfg(feature = "oidc-trust")]
+    pub fn with_trust_registry_path(mut self, path: PathBuf) -> Self {
+        self.trust_registry_path = Some(path);
         self
     }
 
