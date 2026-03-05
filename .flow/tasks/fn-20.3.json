@@ -7,10 +7,22 @@
     "fn-20.2"
   ],
   "epic": "fn-20",
+  "evidence": {
+    "builds": [
+      "auths-core",
+      "auths-cli",
+      "auths-sdk"
+    ],
+    "deleted": [
+      "token.rs",
+      "response.rs",
+      "types.rs"
+    ]
+  },
   "id": "fn-20.3",
   "priority": null,
   "spec_path": ".flow/tasks/fn-20.3.md",
-  "status": "todo",
+  "status": "done",
   "title": "Wire auths-core pairing module as re-export facade",
-  "updated_at": "2026-03-05T10:38:06.689658Z"
+  "updated_at": "2026-03-05T11:21:03.641496Z"
 }

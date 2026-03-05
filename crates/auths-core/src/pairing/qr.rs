@@ -3,8 +3,8 @@
 use qrcode::QrCode;
 use qrcode::render::unicode;
 
-use super::error::PairingError;
-use super::token::PairingToken;
+use super::PairingError;
+use auths_pairing_protocol::PairingToken;
 
 /// QR code rendering options.
 #[derive(Debug, Clone)]
