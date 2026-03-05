@@ -1,0 +1,216 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Attestation",
+  "description": "Represents a 2-way key attestation between a primary identity and a device key.",
+  "type": "object",
+  "required": [
+    "device_public_key",
+    "device_signature",
+    "issuer",
+    "rid",
+    "subject",
+    "version"
+  ],
+  "properties": {
+    "capabilities": {
+      "description": "Capabilities this attestation grants.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Capability"
+      }
+    },
+    "delegated_by": {
+      "description": "DID of the attestation that delegated authority (for chain tracking).",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/IdentityDID"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "device_public_key": {
+      "description": "Ed25519 public key of the device (32 bytes, hex-encoded in JSON).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Ed25519PublicKey"
+        }
+      ]
+    },
+    "device_signature": {
+      "description": "Device's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Ed25519Signature"
+        }
+      ]
+    },
+    "expires_at": {
+      "description": "Expiration timestamp, if set.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "identity_signature": {
+      "description": "Issuer's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Ed25519Signature"
+        }
+      ]
+    },
+    "issuer": {
+      "description": "DID of the issuing identity.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/IdentityDID"
+        }
+      ]
+    },
+    "note": {
+      "description": "Optional human-readable note.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload": {
+      "description": "Optional arbitrary JSON payload."
+    },
+    "revoked_at": {
+      "description": "Timestamp when the attestation was revoked, if applicable.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "rid": {
+      "description": "Record identifier linking this attestation to its storage ref.",
+      "type": "string"
+    },
+    "role": {
+      "description": "Role for org membership attestations.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Role"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "signer_type": {
+      "description": "The type of entity that produced this signature (human, agent, workload). Included in the canonical JSON before signing — the signature covers this field.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SignerType"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "subject": {
+      "description": "DID of the device being attested.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/DeviceDID"
+        }
+      ]
+    },
+    "timestamp": {
+      "description": "Creation timestamp.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "version": {
+      "description": "Schema version.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    }
+  },
+  "definitions": {
+    "Capability": {
+      "description": "A validated capability identifier.\n\nCapabilities are the atomic unit of authorization in Auths. They follow a namespace convention:\n\n- Well-known capabilities: `sign_commit`, `sign_release`, `manage_members`, `rotate_keys` - Custom capabilities: any valid string (alphanumeric + `:` + `-` + `_`, max 64 chars)\n\nThe `auths:` prefix is reserved for future well-known capabilities and cannot be used in custom capabilities created via `parse()`.\n\n# Examples\n\n``` use auths_verifier::Capability;\n\n// Well-known capabilities let cap = Capability::sign_commit(); assert_eq!(cap.as_str(), \"sign_commit\");\n\n// Custom capabilities let custom = Capability::parse(\"acme:deploy\").unwrap(); assert_eq!(custom.as_str(), \"acme:deploy\");\n\n// Reserved namespace is rejected assert!(Capability::parse(\"auths:custom\").is_err()); ```",
+      "type": "string"
+    },
+    "DeviceDID": {
+      "description": "Wrapper around a device DID string that ensures Git-safe ref formatting.",
+      "type": "string"
+    },
+    "Ed25519PublicKey": {
+      "description": "Ed25519 public key (32 bytes, hex-encoded)",
+      "type": "string",
+      "format": "hex"
+    },
+    "Ed25519Signature": {
+      "description": "Ed25519 signature (64 bytes, hex-encoded)",
+      "type": "string",
+      "format": "hex"
+    },
+    "IdentityDID": {
+      "description": "Strongly-typed wrapper for identity DIDs (e.g., `\"did:keri:E...\"`).\n\nUsage: ```ignore let did = IdentityDID::new(\"did:keri:Eabc123\"); assert_eq!(did.as_str(), \"did:keri:Eabc123\");\n\nlet s: String = did.into_inner(); ```",
+      "type": "string"
+    },
+    "Role": {
+      "description": "Role classification for organization members.\n\nGoverns the default capability set assigned at member authorization time. Serializes as lowercase strings: `\"admin\"`, `\"member\"`, `\"readonly\"`.",
+      "oneOf": [
+        {
+          "description": "Full admin access with all capabilities.",
+          "type": "string",
+          "enum": [
+            "admin"
+          ]
+        },
+        {
+          "description": "Standard member with signing capabilities.",
+          "type": "string",
+          "enum": [
+            "member"
+          ]
+        },
+        {
+          "description": "Read-only access; no signing capabilities.",
+          "type": "string",
+          "enum": [
+            "readonly"
+          ]
+        }
+      ]
+    },
+    "SignerType": {
+      "description": "The type of entity that produced a signature.\n\nDuplicated here (also in `auths-policy`) because `auths-verifier` is a standalone minimal-dependency crate that cannot depend on `auths-policy`.",
+      "oneOf": [
+        {
+          "description": "A human user.",
+          "type": "string",
+          "enum": [
+            "Human"
+          ]
+        },
+        {
+          "description": "An autonomous AI agent.",
+          "type": "string",
+          "enum": [
+            "Agent"
+          ]
+        },
+        {
+          "description": "A CI/CD workload or service identity.",
+          "type": "string",
+          "enum": [
+            "Workload"
+          ]
+        }
+      ]
+    }
+  }
+}
