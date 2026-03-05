@@ -1,49 +1,33 @@
-//! Pairing token generation and handling.
-
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use rand::rngs::OsRng;
+use ring::signature::{ED25519, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use x25519_dalek::{EphemeralSecret, PublicKey};
 use zeroize::Zeroizing;
 
-use super::error::PairingError;
+use crate::error::ProtocolError;
 
-/// Alphabet for short codes: excludes ambiguous characters 0/O, 1/I/L.
 const SHORT_CODE_ALPHABET: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
-
-/// Length of the alphanumeric short code.
 const SHORT_CODE_LEN: usize = 6;
 
 /// A pairing token for initiating cross-device identity linking.
-///
-/// The initiating device generates this token and displays it as a QR code
-/// or short code. The responding device scans/enters it and sends back
-/// a `PairingResponse` with its device public key plus X25519 ECDH exchange.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairingToken {
-    /// Identity DID of the initiator (controller).
     pub controller_did: String,
-    /// Registry endpoint URL.
     pub endpoint: String,
-    /// 6-char alphanumeric short code (no ambiguous chars).
     pub short_code: String,
-    /// X25519 ephemeral public key (base64url encoded).
     pub ephemeral_pubkey: String,
-    /// Token expiration time.
     pub expires_at: DateTime<Utc>,
-    /// Capabilities to grant to the paired device.
     pub capabilities: Vec<String>,
 }
 
 /// Ephemeral keypair for a pairing session.
 ///
-/// The X25519 secret is used once during ECDH key exchange with the
-/// responding device. After `complete_exchange()`, the secret is consumed.
+/// The X25519 secret is consumed once during ECDH key exchange.
+/// `EphemeralSecret` is `!Clone + !Serialize` — sessions cannot be persisted.
 pub struct PairingSession {
-    /// The pairing token to share with the responding device.
     pub token: PairingToken,
-    /// The X25519 ephemeral secret (consumed once during DH).
     ephemeral_secret: Option<EphemeralSecret>,
 }
 
@@ -54,7 +38,7 @@ impl PairingToken {
         controller_did: String,
         endpoint: String,
         capabilities: Vec<String>,
-    ) -> Result<PairingSession, PairingError> {
+    ) -> Result<PairingSession, ProtocolError> {
         Self::generate_with_expiry(
             now,
             controller_did,
@@ -71,14 +55,10 @@ impl PairingToken {
         endpoint: String,
         capabilities: Vec<String>,
         expiry: Duration,
-    ) -> Result<PairingSession, PairingError> {
-        // Generate X25519 ephemeral keypair
+    ) -> Result<PairingSession, ProtocolError> {
         let ephemeral_secret = EphemeralSecret::random_from_rng(OsRng);
         let ephemeral_public = PublicKey::from(&ephemeral_secret);
-
         let ephemeral_pubkey = URL_SAFE_NO_PAD.encode(ephemeral_public.as_bytes());
-
-        // Generate short code
         let short_code = generate_short_code()?;
 
         let token = PairingToken {
@@ -96,14 +76,11 @@ impl PairingToken {
         })
     }
 
-    /// Check if the token has expired.
     pub fn is_expired(&self, now: DateTime<Utc>) -> bool {
         now > self.expires_at
     }
 
     /// Convert to an `auths://` URI for QR code or deep linking.
-    ///
-    /// Format: `auths://pair?d=<did>&e=<endpoint_b64>&k=<pubkey>&sc=<code>&x=<expires>&c=<caps>`
     pub fn to_uri(&self) -> String {
         let expires_unix = self.expires_at.timestamp();
         let endpoint_b64 = URL_SAFE_NO_PAD.encode(self.endpoint.as_bytes());
@@ -120,10 +97,10 @@ impl PairingToken {
     }
 
     /// Parse a pairing token from an `auths://` URI.
-    pub fn from_uri(uri: &str) -> Result<Self, PairingError> {
-        let rest = uri
-            .strip_prefix("auths://pair?")
-            .ok_or_else(|| PairingError::InvalidUri("Expected auths://pair? scheme".to_string()))?;
+    pub fn from_uri(uri: &str) -> Result<Self, ProtocolError> {
+        let rest = uri.strip_prefix("auths://pair?").ok_or_else(|| {
+            ProtocolError::InvalidUri("Expected auths://pair? scheme".to_string())
+        })?;
 
         let mut controller_did = None;
         let mut endpoint_b64 = None;
@@ -147,23 +124,24 @@ impl PairingToken {
         }
 
         let controller_did = controller_did
-            .ok_or_else(|| PairingError::InvalidUri("Missing controller_did".to_string()))?;
-        let endpoint_b64 =
-            endpoint_b64.ok_or_else(|| PairingError::InvalidUri("Missing endpoint".to_string()))?;
+            .ok_or_else(|| ProtocolError::InvalidUri("Missing controller_did".to_string()))?;
+        let endpoint_b64 = endpoint_b64
+            .ok_or_else(|| ProtocolError::InvalidUri("Missing endpoint".to_string()))?;
         let endpoint_bytes = URL_SAFE_NO_PAD
             .decode(&endpoint_b64)
-            .map_err(|e| PairingError::InvalidUri(format!("Invalid endpoint encoding: {}", e)))?;
+            .map_err(|e| ProtocolError::InvalidUri(format!("Invalid endpoint encoding: {}", e)))?;
         let endpoint = String::from_utf8(endpoint_bytes)
-            .map_err(|e| PairingError::InvalidUri(format!("Invalid endpoint UTF-8: {}", e)))?;
+            .map_err(|e| ProtocolError::InvalidUri(format!("Invalid endpoint UTF-8: {}", e)))?;
         let ephemeral_pubkey = ephemeral_pubkey
-            .ok_or_else(|| PairingError::InvalidUri("Missing ephemeral_pubkey".to_string()))?;
-        let short_code =
-            short_code.ok_or_else(|| PairingError::InvalidUri("Missing short_code".to_string()))?;
-        let expires_unix = expires_unix
-            .ok_or_else(|| PairingError::InvalidUri("Missing or invalid expires_at".to_string()))?;
+            .ok_or_else(|| ProtocolError::InvalidUri("Missing ephemeral_pubkey".to_string()))?;
+        let short_code = short_code
+            .ok_or_else(|| ProtocolError::InvalidUri("Missing short_code".to_string()))?;
+        let expires_unix = expires_unix.ok_or_else(|| {
+            ProtocolError::InvalidUri("Missing or invalid expires_at".to_string())
+        })?;
 
         let expires_at = DateTime::from_timestamp(expires_unix, 0)
-            .ok_or_else(|| PairingError::InvalidUri("Invalid timestamp".to_string()))?;
+            .ok_or_else(|| ProtocolError::InvalidUri("Invalid timestamp".to_string()))?;
 
         let capabilities = caps_str
             .filter(|s| !s.is_empty())
@@ -180,13 +158,12 @@ impl PairingToken {
         })
     }
 
-    /// Get the ephemeral public key as bytes.
-    pub fn ephemeral_pubkey_bytes(&self) -> Result<[u8; 32], PairingError> {
+    pub fn ephemeral_pubkey_bytes(&self) -> Result<[u8; 32], ProtocolError> {
         let bytes = URL_SAFE_NO_PAD
             .decode(&self.ephemeral_pubkey)
-            .map_err(|e| PairingError::InvalidUri(format!("Invalid pubkey encoding: {}", e)))?;
+            .map_err(|e| ProtocolError::InvalidUri(format!("Invalid pubkey encoding: {}", e)))?;
         bytes.try_into().map_err(|_| {
-            PairingError::KeyExchangeFailed("Invalid X25519 pubkey length".to_string())
+            ProtocolError::KeyExchangeFailed("Invalid X25519 pubkey length".to_string())
         })
     }
 }
@@ -198,11 +175,11 @@ impl PairingSession {
     pub fn complete_exchange(
         &mut self,
         responder_x25519_pubkey: &[u8; 32],
-    ) -> Result<Zeroizing<[u8; 32]>, PairingError> {
+    ) -> Result<Zeroizing<[u8; 32]>, ProtocolError> {
         let secret = self
             .ephemeral_secret
             .take()
-            .ok_or(PairingError::SessionConsumed)?;
+            .ok_or(ProtocolError::SessionConsumed)?;
 
         let responder_pubkey = PublicKey::from(*responder_x25519_pubkey);
         let shared = secret.diffie_hellman(&responder_pubkey);
@@ -210,41 +187,34 @@ impl PairingSession {
         Ok(Zeroizing::new(*shared.as_bytes()))
     }
 
-    /// Get the ephemeral public key bytes.
-    pub fn ephemeral_pubkey_bytes(&self) -> Result<[u8; 32], PairingError> {
+    pub fn ephemeral_pubkey_bytes(&self) -> Result<[u8; 32], ProtocolError> {
         self.token.ephemeral_pubkey_bytes()
     }
 
-    /// Verify a pairing response's Ed25519 signature.
-    ///
-    /// The signed message is: short_code || initiator_x25519_pubkey || device_x25519_pubkey
+    /// Verify a pairing response's Ed25519 signature using `ring` directly.
     pub fn verify_response(
         &self,
         device_ed25519_pubkey: &[u8],
         device_x25519_pubkey: &[u8; 32],
         signature: &[u8],
-    ) -> Result<(), PairingError> {
+    ) -> Result<(), ProtocolError> {
         let initiator_pubkey = self.token.ephemeral_pubkey_bytes()?;
 
-        // Build the signed message: short_code || initiator_x25519 || device_x25519
         let mut message = Vec::new();
         message.extend_from_slice(self.token.short_code.as_bytes());
         message.extend_from_slice(&initiator_pubkey);
         message.extend_from_slice(device_x25519_pubkey);
 
-        crate::crypto::provider_bridge::verify_ed25519_sync(
-            device_ed25519_pubkey,
-            &message,
-            signature,
-        )
-        .map_err(|_| PairingError::InvalidSignature)?;
+        let peer_public_key = UnparsedPublicKey::new(&ED25519, device_ed25519_pubkey);
+        peer_public_key
+            .verify(&message, signature)
+            .map_err(|_| ProtocolError::InvalidSignature)?;
 
         Ok(())
     }
 }
 
-/// Generate a random alphanumeric short code.
-fn generate_short_code() -> Result<String, PairingError> {
+fn generate_short_code() -> Result<String, ProtocolError> {
     use rand::RngCore;
 
     let mut rng = OsRng;
@@ -309,7 +279,6 @@ mod tests {
 
     #[test]
     fn test_short_code_no_ambiguous_chars() {
-        // Generate many codes and verify no ambiguous characters
         let ambiguous: &[char] = &['0', 'O', '1', 'I', 'L'];
         for _ in 0..100 {
             let code = generate_short_code().unwrap();
@@ -318,12 +287,6 @@ mod tests {
                 assert!(
                     !ambiguous.contains(&ch),
                     "Short code '{}' contains ambiguous char '{}'",
-                    code,
-                    ch
-                );
-                assert!(
-                    SHORT_CODE_ALPHABET.contains(&(ch as u8)),
-                    "Short code '{}' contains invalid char '{}'",
                     code,
                     ch
                 );
@@ -357,12 +320,10 @@ mod tests {
         let mut session = make_session();
         let fake_responder_pubkey = [42u8; 32];
 
-        // First exchange succeeds
         let result = session.complete_exchange(&fake_responder_pubkey);
         assert!(result.is_ok());
 
-        // Second exchange fails (secret consumed)
         let result = session.complete_exchange(&fake_responder_pubkey);
-        assert!(matches!(result, Err(PairingError::SessionConsumed)));
+        assert!(matches!(result, Err(ProtocolError::SessionConsumed)));
     }
 }

@@ -41,13 +41,14 @@ dirs = "6.0.0"
 multibase = "0.9.1"
 anyhow = "1.0"
 auths-crypto = { workspace = true, features = ["native"] }
+auths-pairing-protocol = { workspace = true }
 blake3 = "1.5"
 pkcs8 = "0.10.2"
 hex = "0.4.3"
 tempfile = "3.19.1"
 chrono = { version = "0.4", features = ["serde"] }
 qrcode = "0.14"
-schemars = "0.8"
+schemars.workspace = true
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 
 auths-verifier = { workspace = true, features = ["native"] }

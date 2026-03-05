@@ -9,6 +9,7 @@
 mod ci_setup;
 mod gen_docs;
 mod gen_schema;
+mod schemas;
 mod shell;
 
 use clap::{Parser, Subcommand};
@@ -33,6 +34,10 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Generate JSON Schema files from Rust contract types into schemas/
+    GenerateSchemas,
+    /// Validate test fixture JSON files against committed schemas
+    ValidateSchemas,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -47,5 +52,7 @@ fn main() -> anyhow::Result<()> {
         Command::CiSetup => ci_setup::run(),
         Command::GenSchema => gen_schema::run(workspace_root()),
         Command::GenDocs { check } => gen_docs::run(workspace_root(), check),
+        Command::GenerateSchemas => schemas::generate(workspace_root()),
+        Command::ValidateSchemas => schemas::validate(workspace_root()),
     }
 }

@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IcpEvent",
+  "description": "Inception event.",
+  "type": "object",
+  "required": [
+    "i",
+    "k",
+    "n",
+    "s",
+    "v"
+  ],
+  "properties": {
+    "a": {
+      "description": "Anchored seals (attached data digests).",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Seal"
+      }
+    },
+    "b": {
+      "description": "Witness list (DIDs or URLs of witnesses).",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bt": {
+      "description": "Witness threshold.",
+      "default": "",
+      "type": "string"
+    },
+    "d": {
+      "description": "Self-Addressing Identifier (SAID) of this event.",
+      "default": "",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Said"
+        }
+      ]
+    },
+    "i": {
+      "description": "KERI prefix — same as `d` for inception.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Prefix"
+        }
+      ]
+    },
+    "k": {
+      "description": "Current signing keys (base64url-encoded with derivation prefix).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "kt": {
+      "description": "Signing key threshold.",
+      "default": "",
+      "type": "string"
+    },
+    "n": {
+      "description": "Next-key commitments (Blake3 hashes of the pre-rotation public keys).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nt": {
+      "description": "Next-key commitment threshold.",
+      "default": "",
+      "type": "string"
+    },
+    "s": {
+      "description": "Sequence number (always `\"0\"` for inception).",
+      "type": "string"
+    },
+    "v": {
+      "description": "KERI version string (e.g. `\"KERI10JSON\"`).",
+      "type": "string"
+    },
+    "x": {
+      "description": "Ed25519 signature over the canonical event body.",
+      "default": "",
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "Prefix": {
+      "description": "Strongly-typed KERI identifier prefix (e.g., `\"ETest123...\"`).\n\nA prefix is the self-addressing identifier derived from the inception event's Blake3 hash. Always starts with 'E' (Blake3-256 derivation code).\n\nArgs: * Inner `String` should start with `'E'` (enforced by `new()`, not by serde).\n\nUsage: ```ignore let prefix = Prefix::new(\"ETest123abc\".to_string())?; assert_eq!(prefix.as_str(), \"ETest123abc\"); ```",
+      "type": "string"
+    },
+    "Said": {
+      "description": "KERI Self-Addressing Identifier (SAID).\n\nA Blake3 hash that uniquely identifies a KERI event. Creates the hash chain: each event's `p` (previous) field is the prior event's SAID.\n\nStructurally identical to `Prefix` (both start with 'E') but semantically distinct — a prefix identifies an *identity*, a SAID identifies an *event*.\n\nArgs: * Inner `String` should start with `'E'` (enforced by `new()`, not by serde).\n\nUsage: ```ignore let said = Said::new(\"ESAID123\".to_string())?; assert_eq!(said.as_str(), \"ESAID123\"); ```",
+      "type": "string"
+    },
+    "Seal": {
+      "description": "A seal anchors external data in a KERI event.",
+      "type": "object",
+      "required": [
+        "d",
+        "type"
+      ],
+      "properties": {
+        "d": {
+          "description": "Digest (SAID) of the anchored data.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Said"
+            }
+          ]
+        },
+        "type": {
+          "description": "Semantic type label (e.g. `\"device-attestation\"`).",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

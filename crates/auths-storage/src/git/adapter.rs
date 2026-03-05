@@ -565,6 +565,224 @@ impl GitRegistryBackend {
 
         Ok(())
     }
+
+    /// Applies multiple KEL events in a single Git commit.
+    ///
+    /// Args:
+    /// * `events`: Ordered list of (prefix, event) pairs to apply atomically.
+    ///   If any event fails validation, the entire batch is rejected.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// backend.batch_append_events(&events)?;
+    /// ```
+    pub fn batch_append_events(&self, events: &[(Prefix, Event)]) -> Result<(), RegistryError> {
+        if events.is_empty() {
+            return Ok(());
+        }
+
+        let _lock = AdvisoryLock::acquire(&self.repo_path)?;
+        let repo = self.open_repo()?;
+        let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, base_tree.clone());
+        let mut mutator = TreeMutator::new();
+
+        let mut state_overlay: std::collections::HashMap<String, KeyState> =
+            std::collections::HashMap::new();
+        let mut tip_overlay: std::collections::HashMap<String, TipInfo> =
+            std::collections::HashMap::new();
+        let mut identity_delta: i64 = 0;
+
+        for (i, (prefix, event)) in events.iter().enumerate() {
+            let result = self.validate_and_stage_event(
+                prefix,
+                event,
+                &navigator,
+                &mut mutator,
+                &mut state_overlay,
+                &mut tip_overlay,
+                &mut identity_delta,
+            );
+
+            if let Err(e) = result {
+                return Err(RegistryError::BatchValidationFailed {
+                    index: i,
+                    source: Box::new(e),
+                });
+            }
+        }
+
+        self.update_metadata(&mut mutator, &navigator, identity_delta, 0, 0)?;
+
+        let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
+        self.create_commit(
+            &repo,
+            new_tree_oid,
+            Some(&parent),
+            &format!("batch: {} events", events.len()),
+        )?;
+
+        #[cfg(feature = "indexed-storage")]
+        for (prefix_str, state) in &state_overlay {
+            if let Some(index) = &self.index {
+                let indexed = auths_index::IndexedIdentity {
+                    prefix: prefix_str.clone(),
+                    current_keys: state.current_keys.clone(),
+                    sequence: state.sequence,
+                    tip_said: state.last_event_said.to_string(),
+                    updated_at: self.clock.now(),
+                };
+                #[allow(clippy::unwrap_used)]
+                if let Err(e) = index.lock().unwrap().upsert_identity(&indexed) {
+                    log::warn!("Index update failed for identity {}: {}", prefix_str, e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate a single event and stage its mutations, using overlays for batch state.
+    #[allow(clippy::too_many_arguments)]
+    fn validate_and_stage_event(
+        &self,
+        prefix: &Prefix,
+        event: &Event,
+        navigator: &TreeNavigator,
+        mutator: &mut TreeMutator,
+        state_overlay: &mut std::collections::HashMap<String, KeyState>,
+        tip_overlay: &mut std::collections::HashMap<String, TipInfo>,
+        identity_delta: &mut i64,
+    ) -> Result<(), RegistryError> {
+        let base_path = identity_path(prefix)?;
+        let seq = event.sequence().value();
+        let event_path = paths::event_file(&base_path, seq);
+        let tip_path = paths::tip_file(&base_path);
+        let state_path = paths::state_file(&base_path);
+        let prefix_key = prefix.to_string();
+
+        // CONSTRAINT 1: Refuse if event file already exists (check Git, not overlay — overlay can't have duplicates)
+        if navigator.exists_path(&event_path) {
+            return Err(RegistryError::EventExists {
+                prefix: prefix_key,
+                seq,
+            });
+        }
+
+        // CONSTRAINT 2: Event prefix must match argument
+        if event.prefix() != prefix {
+            return Err(RegistryError::InvalidPrefix {
+                prefix: prefix_key,
+                reason: format!(
+                    "event prefix '{}' does not match expected '{}'",
+                    event.prefix(),
+                    prefix
+                ),
+            });
+        }
+
+        // CONSTRAINT 3: Sequence must be monotonic (check overlay first, then Git)
+        let current_tip = tip_overlay.get(&prefix_key).cloned().or_else(|| {
+            navigator
+                .read_blob_path(&tip_path)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<TipInfo>(&bytes).ok())
+        });
+
+        let expected_seq = current_tip.as_ref().map(|t| t.sequence + 1).unwrap_or(0);
+        if seq != expected_seq {
+            return Err(RegistryError::SequenceGap {
+                prefix: prefix_key,
+                expected: expected_seq,
+                got: seq,
+            });
+        }
+
+        // CONSTRAINT 4: First event must be inception
+        if seq == 0 && !event.is_inception() {
+            return Err(RegistryError::Internal(
+                "First event (seq 0) must be inception".into(),
+            ));
+        }
+
+        // CONSTRAINT 5: Non-inception events must chain to previous SAID
+        if seq > 0 {
+            let prev_said = event.previous().ok_or_else(|| {
+                RegistryError::Internal(format!(
+                    "Event at seq {} must have previous SAID (p field)",
+                    seq
+                ))
+            })?;
+
+            let expected_prev = current_tip
+                .as_ref()
+                .map(|t| t.said.as_str())
+                .ok_or_else(|| {
+                    RegistryError::Internal("No tip found for non-zero sequence".into())
+                })?;
+
+            if prev_said != expected_prev {
+                return Err(RegistryError::SaidMismatch {
+                    expected: expected_prev.to_string(),
+                    actual: prev_said.to_string(),
+                });
+            }
+        }
+
+        // CONSTRAINT 6: Verify SAID matches computed hash
+        verify_event_said(event).map_err(|e| match e {
+            ValidationError::InvalidSaid { expected, actual } => RegistryError::SaidMismatch {
+                expected: expected.to_string(),
+                actual: actual.to_string(),
+            },
+            _ => RegistryError::InvalidEvent {
+                reason: e.to_string(),
+            },
+        })?;
+
+        // Get current state (overlay first, then Git)
+        let current_state = state_overlay.get(&prefix_key).cloned().or_else(|| {
+            navigator
+                .read_blob_path(&state_path)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<CachedStateJson>(&bytes).ok())
+                .map(|c| c.state)
+        });
+
+        // CONSTRAINT 7: Verify cryptographic integrity
+        verify_event_crypto(event, current_state.as_ref()).map_err(|e| match e {
+            ValidationError::SignatureFailed { sequence } => RegistryError::InvalidEvent {
+                reason: format!("Signature verification failed at sequence {}", sequence),
+            },
+            ValidationError::CommitmentMismatch { sequence } => RegistryError::InvalidEvent {
+                reason: format!("Pre-rotation commitment mismatch at sequence {}", sequence),
+            },
+            _ => RegistryError::InvalidEvent {
+                reason: e.to_string(),
+            },
+        })?;
+
+        // Stage mutations
+        let event_json = serde_json::to_vec_pretty(event)?;
+        mutator.write_blob(&event_path, event_json);
+
+        let tip = TipInfo::new(seq, event.said().clone());
+        mutator.write_blob(&tip_path, serde_json::to_vec_pretty(&tip)?);
+
+        let new_state = self.compute_state_after_event(current_state.as_ref(), event)?;
+        let cached_state = CachedStateJson::new(new_state.clone(), event.said().clone());
+        mutator.write_blob(&state_path, serde_json::to_vec_pretty(&cached_state)?);
+
+        // Update overlays
+        tip_overlay.insert(prefix_key.clone(), tip);
+        state_overlay.insert(prefix_key, new_state);
+
+        if seq == 0 {
+            *identity_delta += 1;
+        }
+
+        Ok(())
+    }
 }
 
 impl RegistryBackend for GitRegistryBackend {

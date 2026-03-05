@@ -34,6 +34,7 @@ const ROTATE_KEYS: &str = "rotate_keys";
 /// Prevents accidental substitution of a DID, Git ref, or other string where a
 /// resource ID is expected.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct ResourceId(String);
 
@@ -101,6 +102,7 @@ impl PartialEq<String> for ResourceId {
 /// Governs the default capability set assigned at member authorization time.
 /// Serializes as lowercase strings: `"admin"`, `"member"`, `"readonly"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     /// Full admin access with all capabilities.
@@ -234,6 +236,26 @@ impl AsRef<[u8]> for Ed25519PublicKey {
     }
 }
 
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for Ed25519PublicKey {
+    fn schema_name() -> String {
+        "Ed25519PublicKey".to_owned()
+    }
+
+    fn json_schema(_gen: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        schemars::schema::SchemaObject {
+            instance_type: Some(schemars::schema::InstanceType::String.into()),
+            format: Some("hex".to_owned()),
+            metadata: Some(Box::new(schemars::schema::Metadata {
+                description: Some("Ed25519 public key (32 bytes, hex-encoded)".to_owned()),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+        .into()
+    }
+}
+
 /// Error type for Ed25519 public key construction.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Ed25519KeyError {
@@ -298,6 +320,26 @@ impl std::fmt::Display for Ed25519Signature {
 impl AsRef<[u8]> for Ed25519Signature {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for Ed25519Signature {
+    fn schema_name() -> String {
+        "Ed25519Signature".to_owned()
+    }
+
+    fn json_schema(_gen: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        schemars::schema::SchemaObject {
+            instance_type: Some(schemars::schema::InstanceType::String.into()),
+            format: Some("hex".to_owned()),
+            metadata: Some(Box::new(schemars::schema::Metadata {
+                description: Some("Ed25519 signature (64 bytes, hex-encoded)".to_owned()),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+        .into()
     }
 }
 
@@ -374,6 +416,7 @@ pub enum CapabilityError {
 /// assert!(Capability::parse("auths:custom").is_err());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(try_from = "String", into = "String")]
 pub struct Capability(String);
 
@@ -597,6 +640,7 @@ impl From<Capability> for String {
 /// Contains all the information needed to verify commit signatures without
 /// requiring access to the identity repository or daemon.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct IdentityBundle {
     /// The DID of the identity (e.g., "did:keri:...")
     pub identity_did: String,
@@ -634,6 +678,7 @@ impl IdentityBundle {
 
 /// Represents a 2-way key attestation between a primary identity and a device key.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Attestation {
     /// Schema version.
     pub version: u32,
@@ -688,6 +733,7 @@ pub struct Attestation {
 /// Duplicated here (also in `auths-policy`) because `auths-verifier` is a
 /// standalone minimal-dependency crate that cannot depend on `auths-policy`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum SignerType {
     /// A human user.
     Human,
@@ -904,6 +950,7 @@ impl Attestation {
 /// The policy itself (public info) is stored in Git at:
 /// `refs/auths/policies/threshold/<policy_id>`
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ThresholdPolicy {
     /// Minimum signers required (M in M-of-N)
     pub threshold: u8,

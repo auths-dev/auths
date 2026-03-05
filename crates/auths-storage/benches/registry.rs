@@ -226,11 +226,109 @@ fn bench_event_append_scaling(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmark batch vs sequential for N events to a single identity.
+fn bench_batch_vs_sequential(c: &mut Criterion) {
+    let mut group = c.benchmark_group("batch_vs_sequential");
+
+    for n in [100, 500, 1000] {
+        // Sequential: append N events one at a time
+        group.throughput(Throughput::Elements(n));
+        group.bench_with_input(BenchmarkId::new("sequential", n), &n, |b, &n| {
+            b.iter_with_setup(
+                || {
+                    let (dir, backend) = setup_registry();
+                    let (icp, prefix, keypair) = make_signed_icp();
+
+                    let mut events = vec![(prefix.clone(), icp.clone())];
+                    let mut prev_said = icp.said().to_string();
+                    for seq in 1..n {
+                        let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                        prev_said = ixn.said().to_string();
+                        events.push((prefix.clone(), ixn));
+                    }
+                    (dir, backend, events)
+                },
+                |(_dir, backend, events)| {
+                    for (prefix, event) in &events {
+                        let _ = black_box(backend.append_event(prefix, event));
+                    }
+                },
+            );
+        });
+
+        // Batch: append N events in a single batch call
+        group.bench_with_input(BenchmarkId::new("batch", n), &n, |b, &n| {
+            b.iter_with_setup(
+                || {
+                    let (dir, backend) = setup_registry();
+                    let (icp, prefix, keypair) = make_signed_icp();
+
+                    let mut events = vec![(prefix.clone(), icp.clone())];
+                    let mut prev_said = icp.said().to_string();
+                    for seq in 1..n {
+                        let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                        prev_said = ixn.said().to_string();
+                        events.push((prefix.clone(), ixn));
+                    }
+                    (dir, backend, events)
+                },
+                |(_dir, backend, events)| {
+                    let _ = black_box(backend.batch_append_events(&events));
+                },
+            );
+        });
+    }
+
+    group.finish();
+}
+
+/// Benchmark batch across multiple identities (100 identities x 10 events each).
+fn bench_batch_mixed_prefix(c: &mut Criterion) {
+    let mut group = c.benchmark_group("batch_mixed_prefix");
+
+    for (identity_count, events_per_id) in [(10, 10), (100, 10)] {
+        let total = identity_count * events_per_id;
+        group.throughput(Throughput::Elements(total));
+        group.bench_with_input(
+            BenchmarkId::from_parameter(format!("{identity_count}ids_x_{events_per_id}events")),
+            &(identity_count, events_per_id),
+            |b, &(id_count, ev_count)| {
+                b.iter_with_setup(
+                    || {
+                        let (dir, backend) = setup_registry();
+                        let mut all_events = Vec::new();
+
+                        for _ in 0..id_count {
+                            let (icp, prefix, keypair) = make_signed_icp();
+                            all_events.push((prefix.clone(), icp.clone()));
+
+                            let mut prev_said = icp.said().to_string();
+                            for seq in 1..ev_count {
+                                let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                                prev_said = ixn.said().to_string();
+                                all_events.push((prefix.clone(), ixn));
+                            }
+                        }
+                        (dir, backend, all_events)
+                    },
+                    |(_dir, backend, events)| {
+                        let _ = black_box(backend.batch_append_events(&events));
+                    },
+                );
+            },
+        );
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_cached_key_state_lookup,
     bench_cache_cold_start,
     bench_event_append,
     bench_event_append_scaling,
+    bench_batch_vs_sequential,
+    bench_batch_mixed_prefix,
 );
 criterion_main!(benches);

@@ -1,31 +1,24 @@
-//! Pairing response handling with X25519 ECDH key exchange.
-
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use rand::rngs::OsRng;
+use ring::signature::{ED25519, Ed25519KeyPair, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use x25519_dalek::{EphemeralSecret, PublicKey};
 use zeroize::Zeroizing;
 
 use auths_crypto::SecureSeed;
 
-use super::error::PairingError;
-use super::token::PairingToken;
+use crate::error::ProtocolError;
+use crate::token::PairingToken;
 
 /// A response to a pairing request from the responding device.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairingResponse {
-    /// The short code from the pairing token.
     pub short_code: String,
-    /// Responder's ephemeral X25519 public key (base64url encoded).
     pub device_x25519_pubkey: String,
-    /// Responder's Ed25519 signing public key (base64url encoded).
     pub device_signing_pubkey: String,
-    /// Responder's DID (did:key:z6Mk...).
     pub device_did: String,
-    /// Ed25519 signature over: short_code || initiator_x25519 || device_x25519
     pub signature: String,
-    /// Optional friendly device name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_name: Option<String>,
 }
@@ -47,40 +40,30 @@ impl PairingResponse {
         device_pubkey: &[u8; 32],
         device_did: String,
         device_name: Option<String>,
-    ) -> Result<(Self, Zeroizing<[u8; 32]>), PairingError> {
-        use crate::crypto::provider_bridge;
-
+    ) -> Result<(Self, Zeroizing<[u8; 32]>), ProtocolError> {
         if token.is_expired(now) {
-            return Err(PairingError::Expired);
+            return Err(ProtocolError::Expired);
         }
 
-        // Generate device X25519 ephemeral key
         let device_x25519_secret = EphemeralSecret::random_from_rng(OsRng);
         let device_x25519_public = PublicKey::from(&device_x25519_secret);
 
-        // Decode initiator's X25519 public key from token
         let initiator_x25519_bytes = token.ephemeral_pubkey_bytes()?;
         let initiator_x25519 = PublicKey::from(initiator_x25519_bytes);
 
-        // Perform ECDH
         let shared = device_x25519_secret.diffie_hellman(&initiator_x25519);
         let shared_secret = Zeroizing::new(*shared.as_bytes());
 
-        // Encode device Ed25519 public key
         let device_signing_pubkey = URL_SAFE_NO_PAD.encode(device_pubkey);
-
-        // Encode device X25519 public key
         let device_x25519_pubkey_str = URL_SAFE_NO_PAD.encode(device_x25519_public.as_bytes());
 
-        // Build the binding message: short_code || initiator_x25519 || device_x25519
         let mut message = Vec::new();
         message.extend_from_slice(token.short_code.as_bytes());
         message.extend_from_slice(&initiator_x25519_bytes);
         message.extend_from_slice(device_x25519_public.as_bytes());
 
-        // Sign with Ed25519 via CryptoProvider
-        let sig_bytes = provider_bridge::sign_ed25519_sync(device_seed, &message)
-            .map_err(|_| PairingError::KeyGenFailed("Ed25519 signing failed".to_string()))?;
+        // Sign with Ed25519 via ring directly (no tokio needed)
+        let sig_bytes = sign_ed25519_sync(device_seed, &message)?;
         let signature = URL_SAFE_NO_PAD.encode(&sig_bytes);
 
         let response = PairingResponse {
@@ -100,63 +83,88 @@ impl PairingResponse {
     /// Args:
     /// * `now` - Current time for expiry checking
     /// * `token` - The pairing token to verify against
-    pub fn verify(&self, now: DateTime<Utc>, token: &PairingToken) -> Result<(), PairingError> {
-        use crate::crypto::provider_bridge;
-
+    pub fn verify(&self, now: DateTime<Utc>, token: &PairingToken) -> Result<(), ProtocolError> {
         if token.is_expired(now) {
-            return Err(PairingError::Expired);
+            return Err(ProtocolError::Expired);
         }
 
-        // Decode keys
         let initiator_x25519_bytes = token.ephemeral_pubkey_bytes()?;
         let device_x25519_bytes = self.device_x25519_pubkey_bytes()?;
         let device_signing_bytes = self.device_signing_pubkey_bytes()?;
         let signature_bytes = URL_SAFE_NO_PAD
             .decode(&self.signature)
-            .map_err(|_| PairingError::InvalidSignature)?;
+            .map_err(|_| ProtocolError::InvalidSignature)?;
 
-        // Reconstruct the binding message
         let mut message = Vec::new();
         message.extend_from_slice(token.short_code.as_bytes());
         message.extend_from_slice(&initiator_x25519_bytes);
         message.extend_from_slice(&device_x25519_bytes);
 
-        // Verify Ed25519 signature via CryptoProvider
-        provider_bridge::verify_ed25519_sync(&device_signing_bytes, &message, &signature_bytes)
-            .map_err(|_| PairingError::InvalidSignature)?;
+        let peer_public_key = UnparsedPublicKey::new(&ED25519, &device_signing_bytes);
+        peer_public_key
+            .verify(&message, &signature_bytes)
+            .map_err(|_| ProtocolError::InvalidSignature)?;
 
         Ok(())
     }
 
-    /// Get the device X25519 public key as bytes.
-    pub fn device_x25519_pubkey_bytes(&self) -> Result<[u8; 32], PairingError> {
+    pub fn device_x25519_pubkey_bytes(&self) -> Result<[u8; 32], ProtocolError> {
         let bytes = URL_SAFE_NO_PAD
             .decode(&self.device_x25519_pubkey)
-            .map_err(|_| PairingError::InvalidSignature)?;
+            .map_err(|_| ProtocolError::InvalidSignature)?;
         bytes.try_into().map_err(|_| {
-            PairingError::KeyExchangeFailed("Invalid X25519 pubkey length".to_string())
+            ProtocolError::KeyExchangeFailed("Invalid X25519 pubkey length".to_string())
         })
     }
 
-    /// Get the device Ed25519 signing public key as bytes.
-    pub fn device_signing_pubkey_bytes(&self) -> Result<Vec<u8>, PairingError> {
+    pub fn device_signing_pubkey_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
         URL_SAFE_NO_PAD
             .decode(&self.device_signing_pubkey)
-            .map_err(|_| PairingError::InvalidSignature)
+            .map_err(|_| ProtocolError::InvalidSignature)
     }
+}
+
+/// Sign a message with Ed25519 using ring directly (sync, no tokio).
+fn sign_ed25519_sync(seed: &SecureSeed, message: &[u8]) -> Result<Vec<u8>, ProtocolError> {
+    let keypair = Ed25519KeyPair::from_seed_unchecked(seed.as_bytes())
+        .map_err(|e| ProtocolError::KeyGenFailed(format!("{e}")))?;
+    Ok(keypair.sign(message).as_ref().to_vec())
+}
+
+/// Generate a fresh Ed25519 keypair using ring directly (sync, no tokio).
+#[cfg(test)]
+fn generate_ed25519_keypair_sync() -> Result<(SecureSeed, [u8; 32]), ProtocolError> {
+    use ring::rand::SystemRandom;
+    use ring::signature::KeyPair;
+
+    let rng = SystemRandom::new();
+    let pkcs8_doc = Ed25519KeyPair::generate_pkcs8(&rng)
+        .map_err(|_| ProtocolError::KeyGenFailed("Key generation failed".to_string()))?;
+    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8_doc.as_ref())
+        .map_err(|e| ProtocolError::KeyGenFailed(format!("{e}")))?;
+
+    let public_key: [u8; 32] = keypair
+        .public_key()
+        .as_ref()
+        .try_into()
+        .map_err(|_| ProtocolError::KeyGenFailed("Public key not 32 bytes".to_string()))?;
+
+    // ring's Ed25519 PKCS#8 v2 places the seed at bytes [16..48]
+    let pkcs8_bytes = pkcs8_doc.as_ref();
+    let seed: [u8; 32] = pkcs8_bytes[16..48]
+        .try_into()
+        .map_err(|_| ProtocolError::KeyGenFailed("Seed extraction failed".to_string()))?;
+
+    Ok((SecureSeed::new(seed), public_key))
 }
 
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::crypto::provider_bridge;
+    use crate::token::PairingToken;
 
-    fn generate_test_seed_and_pubkey() -> (SecureSeed, [u8; 32]) {
-        provider_bridge::generate_ed25519_keypair_sync().unwrap()
-    }
-
-    fn make_token() -> super::super::token::PairingSession {
+    fn make_token() -> crate::token::PairingSession {
         PairingToken::generate(
             chrono::Utc::now(),
             "did:keri:test123".to_string(),
@@ -170,7 +178,7 @@ mod tests {
     fn test_create_and_verify_response() {
         let now = chrono::Utc::now();
         let session = make_token();
-        let (seed, pubkey) = generate_test_seed_and_pubkey();
+        let (seed, pubkey) = generate_ed25519_keypair_sync().unwrap();
 
         let (response, _shared_secret) = PairingResponse::create(
             now,
@@ -198,7 +206,7 @@ mod tests {
             Duration::seconds(-1),
         )
         .unwrap();
-        let (seed, pubkey) = generate_test_seed_and_pubkey();
+        let (seed, pubkey) = generate_ed25519_keypair_sync().unwrap();
 
         let result = PairingResponse::create(
             now,
@@ -208,14 +216,14 @@ mod tests {
             "did:key:z6MkTest".to_string(),
             None,
         );
-        assert!(matches!(result, Err(PairingError::Expired)));
+        assert!(matches!(result, Err(ProtocolError::Expired)));
     }
 
     #[test]
     fn test_tampered_signature_rejected() {
         let now = chrono::Utc::now();
         let session = make_token();
-        let (seed, pubkey) = generate_test_seed_and_pubkey();
+        let (seed, pubkey) = generate_ed25519_keypair_sync().unwrap();
 
         let (mut response, _) = PairingResponse::create(
             now,
@@ -227,20 +235,19 @@ mod tests {
         )
         .unwrap();
 
-        // Tamper with the signature
         let mut sig_bytes = URL_SAFE_NO_PAD.decode(&response.signature).unwrap();
         sig_bytes[0] ^= 0xFF;
         response.signature = URL_SAFE_NO_PAD.encode(&sig_bytes);
 
         let result = response.verify(now, &session.token);
-        assert!(matches!(result, Err(PairingError::InvalidSignature)));
+        assert!(matches!(result, Err(ProtocolError::InvalidSignature)));
     }
 
     #[test]
     fn test_shared_secret_matches() {
         let now = chrono::Utc::now();
         let mut session = make_token();
-        let (seed, pubkey) = generate_test_seed_and_pubkey();
+        let (seed, pubkey) = generate_ed25519_keypair_sync().unwrap();
 
         let (response, responder_secret) = PairingResponse::create(
             now,
@@ -252,11 +259,9 @@ mod tests {
         )
         .unwrap();
 
-        // Initiator completes exchange
         let device_x25519_bytes = response.device_x25519_pubkey_bytes().unwrap();
         let initiator_secret = session.complete_exchange(&device_x25519_bytes).unwrap();
 
-        // Both sides should derive the same shared secret
         assert_eq!(*initiator_secret, *responder_secret);
     }
 
@@ -264,7 +269,7 @@ mod tests {
     fn test_session_consumed_prevents_reuse() {
         let now = chrono::Utc::now();
         let mut session = make_token();
-        let (seed, pubkey) = generate_test_seed_and_pubkey();
+        let (seed, pubkey) = generate_ed25519_keypair_sync().unwrap();
 
         let (response, _) = PairingResponse::create(
             now,
@@ -278,11 +283,9 @@ mod tests {
 
         let device_x25519_bytes = response.device_x25519_pubkey_bytes().unwrap();
 
-        // First exchange succeeds
         assert!(session.complete_exchange(&device_x25519_bytes).is_ok());
 
-        // Second exchange fails
         let result = session.complete_exchange(&device_x25519_bytes);
-        assert!(matches!(result, Err(PairingError::SessionConsumed)));
+        assert!(matches!(result, Err(ProtocolError::SessionConsumed)));
     }
 }

@@ -18,7 +18,7 @@ path = "src/lib.rs"
 chrono = { version = "0.4", features = ["serde"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.18.1"
-schemars = { version = "1.2.1", features = ["derive"] }
+schemars.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

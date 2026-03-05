@@ -16,6 +16,7 @@ members = [
   "crates/auths-storage",
   "crates/auths-keri",
   "crates/auths-oidc-bridge",
+  "crates/auths-pairing-protocol",
   "crates/xtask",
 ]
 exclude = [
@@ -37,6 +38,7 @@ base64 = "0.22.1"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 git2 = "0.20.4"
+schemars = "0.8"
 
 auths-core = { path = "crates/auths-core", version = "0.0.1-rc.4" }
 auths-id = { path = "crates/auths-id", version = "0.0.1-rc.4" }
@@ -49,6 +51,7 @@ auths-sdk = { path = "crates/auths-sdk", version = "0.0.1-rc.4" }
 auths-infra-git = { path = "crates/auths-infra-git", version = "0.0.1-rc.4" }
 auths-infra-http = { path = "crates/auths-infra-http", version = "0.0.1-rc.4" }
 auths-oidc-bridge = { path = "crates/auths-oidc-bridge", version = "0.0.1-rc.6" }
+auths-pairing-protocol = { path = "crates/auths-pairing-protocol", version = "0.0.1-rc.7" }
 auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.4" }
 
 [workspace.lints.clippy]

@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93
         with:
           components: rustfmt
       - run: cargo fmt --check --all
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93
         with:
           components: clippy
       - uses: actions/cache@v4
@@ -48,6 +48,27 @@ jobs:
           key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-clippy-
       - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  schemas:
+    name: Schema validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-schemas-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-schemas-
+      - name: Regenerate schemas and check for drift
+        run: |
+          cargo run -p xtask -- generate-schemas
+          git diff --exit-code schemas/
+      - name: Validate fixtures against schemas
+        run: cargo run -p xtask -- validate-schemas
 
   test:
     name: Test (${{ matrix.os }})
@@ -61,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93
 
       - uses: actions/cache@v4
         with:
@@ -112,7 +133,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93
         with:
           targets: wasm32-unknown-unknown
       - uses: actions/cache@v4

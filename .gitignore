@@ -110,6 +110,7 @@ pnpm-lock.yaml
 *.sublime-workspace
 *.sublime-project
 *.flow
+.flow/
 
 # === Local environment ===
 .env
