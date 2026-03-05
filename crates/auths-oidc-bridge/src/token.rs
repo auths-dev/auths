@@ -71,6 +71,16 @@ pub struct ExchangeRequest {
     /// Minimum witness threshold.
     #[serde(default)]
     pub witness_threshold: Option<usize>,
+    /// OIDC provider issuer URL for trust registry lookup.
+    #[cfg(feature = "oidc-trust")]
+    #[serde(default)]
+    pub provider_issuer: Option<String>,
+
+    /// Repository identifier for trust registry repo matching.
+    #[cfg(feature = "oidc-trust")]
+    #[serde(default)]
+    pub repository: Option<String>,
+
     /// Optional GitHub Actions OIDC token for cross-referencing.
     #[cfg(feature = "github-oidc")]
     #[serde(default)]

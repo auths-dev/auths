@@ -76,6 +76,7 @@ impl OidcIssuer {
     pub async fn exchange(
         &self,
         request: &ExchangeRequest,
+        #[cfg(feature = "oidc-trust")] trust_registry: Option<&auths_policy::TrustRegistry>,
         #[cfg(feature = "oidc-policy")] workload_policy: Option<&auths_policy::CompiledPolicy>,
         #[cfg(feature = "github-oidc")] github_cross_ref: Option<
             &crate::cross_reference::CrossReferenceResult,
@@ -111,7 +112,7 @@ impl OidcIssuer {
             .map(|a| a.issuer.to_string())
             .unwrap_or_default();
 
-        // 7. Extract capabilities from last attestation, applying scope-down
+        // 7. Extract capabilities from last attestation
         let chain_granted: Vec<String> = chain
             .last()
             .map(|a| {
@@ -121,6 +122,61 @@ impl OidcIssuer {
                     .collect()
             })
             .unwrap_or_default();
+
+        // 7.5. Trust registry: narrow capabilities and cap TTL
+        #[cfg(feature = "oidc-trust")]
+        let (chain_granted, ttl_secs) = if let Some(registry) = trust_registry {
+            let provider = request.provider_issuer.as_deref().ok_or_else(|| {
+                BridgeError::InvalidRequest(
+                    "provider_issuer is required when trust registry is configured".into(),
+                )
+            })?;
+
+            let entry =
+                registry
+                    .lookup(provider)
+                    .ok_or_else(|| BridgeError::ProviderNotTrusted {
+                        provider: provider.to_string(),
+                    })?;
+
+            if let Some(ref repo) = request.repository
+                && !entry.repo_allowed(repo)
+            {
+                return Err(BridgeError::RepositoryNotAllowed {
+                    repo: repo.clone(),
+                    provider: provider.to_string(),
+                });
+            }
+
+            let narrowed: Vec<String> = chain_granted
+                .iter()
+                .filter(|c| {
+                    entry
+                        .allowed_capabilities
+                        .iter()
+                        .any(|a| a.as_str() == c.as_str())
+                })
+                .cloned()
+                .collect();
+
+            if narrowed.is_empty() && !chain_granted.is_empty() {
+                return Err(BridgeError::CapabilityNotAllowed {
+                    requested: chain_granted,
+                    allowed: entry
+                        .allowed_capabilities
+                        .iter()
+                        .map(|c| c.as_str().to_string())
+                        .collect(),
+                });
+            }
+
+            let capped_ttl = std::cmp::min(ttl_secs, entry.max_token_ttl_seconds);
+            (narrowed, capped_ttl)
+        } else {
+            (chain_granted, ttl_secs)
+        };
+
+        // 7.6. Apply scope-down
         let capabilities =
             Self::scope_capabilities(&chain_granted, request.requested_capabilities.as_deref())?;
 

@@ -152,6 +152,8 @@ async fn token_exchange(
     let response = issuer
         .exchange(
             &request,
+            #[cfg(feature = "oidc-trust")]
+            state.trust_registry(),
             #[cfg(feature = "oidc-policy")]
             state.workload_policy(),
             #[cfg(feature = "github-oidc")]
