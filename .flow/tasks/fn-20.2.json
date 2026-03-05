@@ -7,10 +7,18 @@
     "fn-20.1"
   ],
   "epic": "fn-20",
+  "evidence": {
+    "files": [
+      "src/token.rs",
+      "src/response.rs",
+      "src/types.rs"
+    ],
+    "tests": "5 token tests + 5 response tests migrated"
+  },
   "id": "fn-20.2",
   "priority": null,
   "spec_path": ".flow/tasks/fn-20.2.md",
-  "status": "todo",
+  "status": "done",
   "title": "Move protocol types and logic from auths-core to new crate",
-  "updated_at": "2026-03-05T10:43:15.119279Z"
+  "updated_at": "2026-03-05T11:18:41.927557Z"
 }

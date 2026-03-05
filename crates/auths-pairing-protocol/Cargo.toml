@@ -1,0 +1,26 @@
+[package]
+name = "auths-pairing-protocol"
+version.workspace = true
+edition = "2024"
+publish = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Transport-agnostic pairing protocol for auths identity system"
+keywords = ["pairing", "identity", "x25519", "ecdh", "protocol"]
+categories = ["cryptography"]
+
+[dependencies]
+auths-crypto = { workspace = true }
+ring.workspace = true
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+rand = "0.8"
+base64.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+zeroize = { version = "1.8.1", features = ["serde", "derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror.workspace = true
+
+[lints]
+workspace = true
