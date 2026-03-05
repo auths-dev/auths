@@ -132,6 +132,8 @@ impl JwksClient {
     pub fn new(issuer: &str, expected_audience: &str, cache_ttl: Duration) -> Self {
         let jwks_url = format!("{}/.well-known/jwks", issuer.trim_end_matches('/'));
         Self {
+            // INVARIANT: reqwest Client::builder with only timeout cannot fail
+            #[allow(clippy::expect_used)]
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 .build()

@@ -144,6 +144,8 @@ impl IntoResponse for BridgeError {
         if let Some(secs) = retry_after {
             response.headers_mut().insert(
                 axum::http::header::RETRY_AFTER,
+                // INVARIANT: u64.to_string() always produces valid header value chars
+                #[allow(clippy::unwrap_used)]
                 axum::http::HeaderValue::from_str(&secs.to_string()).unwrap(),
             );
         }

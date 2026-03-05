@@ -2,7 +2,9 @@
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::disallowed_methods,
-    clippy::exit
+    clippy::exit,
+    clippy::unwrap_used,
+    clippy::expect_used
 )]
 //! auths-sign: Git SSH signing program compatible with `gpg.ssh.program`
 //!
