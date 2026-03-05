@@ -7,10 +7,16 @@
     "fn-19.1"
   ],
   "epic": "fn-19",
+  "evidence": {
+    "benchmarks": [
+      "batch_vs_sequential (100/500/1000 events)",
+      "batch_mixed_prefix (10x10, 100x10)"
+    ]
+  },
   "id": "fn-19.3",
   "priority": null,
   "spec_path": ".flow/tasks/fn-19.3.md",
-  "status": "todo",
+  "status": "done",
   "title": "Add batch benchmarks (1000 events batch vs sequential)",
-  "updated_at": "2026-03-05T10:21:44.543962Z"
+  "updated_at": "2026-03-05T11:14:43.918598Z"
 }

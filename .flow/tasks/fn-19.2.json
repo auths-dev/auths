@@ -7,10 +7,18 @@
     "fn-19.1"
   ],
   "epic": "fn-19",
+  "evidence": {
+    "tests": [
+      "sequential_batches_produce_correct_state",
+      "parallel_batch_writers_different_identities",
+      "batch_and_single_event_interleaving",
+      "batch_cas_failure_returns_clear_error"
+    ]
+  },
   "id": "fn-19.2",
   "priority": null,
   "spec_path": ".flow/tasks/fn-19.2.md",
-  "status": "todo",
+  "status": "done",
   "title": "Add concurrent batch writer tests",
-  "updated_at": "2026-03-05T10:21:44.210433Z"
+  "updated_at": "2026-03-05T11:14:43.704519Z"
 }
