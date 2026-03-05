@@ -1361,6 +1361,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#adr-005-ed25519-only-for-hsm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADR-005: Ed25519-only for HSM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stride-threat-model" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1560,6 +1571,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#adr-005-ed25519-only-for-hsm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADR-005: Ed25519-only for HSM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stride-threat-model" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1701,6 +1723,12 @@
 <td>Accepted</td>
 <td>2026-02-27</td>
 </tr>
+<tr>
+<td><a href="#adr-005-ed25519-only-for-hsm">ADR-005</a></td>
+<td>Ed25519-only for HSM</td>
+<td>Accepted</td>
+<td>2026-03-05</td>
+</tr>
 </tbody>
 </table>
 <h2 id="adr-format">ADR format<a class="headerlink" href="#adr-format" title="Permanent link">&para;</a></h2>
@@ -1789,6 +1817,35 @@
 <li><code>pg_try_advisory_xact_lock</code> returns immediately and auto-releases on crash -- no stale locks.</li>
 </ul>
 <p><strong>Trade-offs:</strong> <code>spawn_blocking</code> closures require owned data (<code>move</code>); keypair re-materialization adds ~2us overhead per signing operation.</p>
+<h2 id="adr-005-ed25519-only-for-hsm">ADR-005: Ed25519-only for HSM<a class="headerlink" href="#adr-005-ed25519-only-for-hsm" title="Permanent link">&para;</a></h2>
+<p><strong>Decision:</strong> The PKCS#11 HSM backend targets Ed25519 exclusively via <code>CKM_EDDSA</code>. No P-256 or other curve support is added.</p>
+<p><strong>Context:</strong></p>
+<ul>
+<li>Apple Secure Enclave only supports P-256 via public CryptoKit APIs (<code>SecureEnclave.P256</code>). Ed25519 is used internally by Platform SSO but through private APIs unavailable to third-party developers.</li>
+<li>CryptoKit's <code>Curve25519.Signing</code> module is software-only (no Secure Enclave backing).</li>
+<li>AWS CloudHSM, Azure Managed HSM, and Google Cloud KMS support P-256 but not Ed25519 (<code>CKM_EDDSA</code>) as of PKCS#11 v2.40.</li>
+<li>Adding P-256 would require changes across every layer: KERI CESR prefix codes, DID:key multicodec, SSHSIG formatting, <code>auths-verifier</code>, attestation signing.</li>
+</ul>
+<p><strong>Rationale:</strong></p>
+<ul>
+<li>No cross-cutting crypto changes — existing KERI events, DIDs, and verification remain untouched.</li>
+<li>Single algorithm path through signing and verification reduces implementation and testing surface.</li>
+<li>Ed25519 advantages preserved: deterministic signatures, small keys (32 bytes), no parameter choices.</li>
+</ul>
+<p><strong>Compatible HSMs:</strong> YubiKey HSM2, Thales Luna, Nitrokey HSM, SoftHSMv2 (testing).</p>
+<p><strong>Trade-offs:</strong></p>
+<ul>
+<li>Cannot use Apple Secure Enclave (P-256 only via public API).</li>
+<li>Cannot use AWS CloudHSM, Azure Managed HSM, Google Cloud KMS (P-256 only).</li>
+<li>Limits FIPS 140-2 compliance story (NIST curves required by some standards).</li>
+</ul>
+<p><strong>Future path:</strong></p>
+<ul>
+<li>Multi-curve support epic (est. 3-4 weeks) as prerequisite for P-256 backends.</li>
+<li>Apple Secure Enclave adapter gated behind multi-curve.</li>
+<li>Cloud HSM adapters (AWS CloudHSM, Azure, GCP) also gated behind multi-curve.</li>
+<li>Monitor Apple exposing Ed25519 Secure Enclave APIs publicly (Platform SSO already uses it internally).</li>
+</ul>
 <hr />
 <h2 id="stride-threat-model">STRIDE threat model<a class="headerlink" href="#stride-threat-model" title="Permanent link">&para;</a></h2>
 <p>A comprehensive STRIDE threat analysis covering six trust boundaries (FFI surface, cryptographic enclave, KERI chain integrity, clock/timestamp, tenant namespace, session/Postgres singleton) is maintained as <code>THREAT-MODEL-001-stride.md</code>. It documents all controls with code evidence and residual risk ratings.</p>
