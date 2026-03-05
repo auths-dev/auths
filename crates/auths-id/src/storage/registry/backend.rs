@@ -229,6 +229,15 @@ pub enum RegistryError {
         /// Name of the unimplemented method.
         method: &'static str,
     },
+
+    /// A batch operation failed validation at a specific event index.
+    #[error("Batch validation failed at index {index}: {source}")]
+    BatchValidationFailed {
+        /// Zero-based index of the failing event in the batch.
+        index: usize,
+        /// The underlying validation error.
+        source: Box<RegistryError>,
+    },
 }
 
 impl RegistryError {
