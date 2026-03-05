@@ -209,6 +209,8 @@ impl AttestationSink for RegistryAttestationStorage {
                 config.device_attestation_prefix, device_did_sanitized
             );
 
+            #[allow(clippy::disallowed_methods)]
+            // Timestamp fallback for missing attestation timestamp
             let indexed = IndexedAttestation {
                 rid: attestation.rid.to_string(),
                 issuer_did: attestation.issuer.to_string(),
@@ -232,6 +234,7 @@ impl AttestationSink for RegistryAttestationStorage {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};

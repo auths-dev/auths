@@ -1804,6 +1804,7 @@ impl StorageDriver for GitRegistryBackend {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use auths_core::crypto::said::compute_next_commitment;
@@ -3842,7 +3843,11 @@ mod index_consistency_tests {
             device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
-            timestamp: Some(Utc::now()),
+            timestamp: Some(
+                chrono::DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            ),
             note: None,
             payload: None,
             role: None,
@@ -4003,6 +4008,7 @@ mod index_consistency_tests {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tenant_isolation_tests {
     use std::ops::ControlFlow;
     use std::sync::Arc;

@@ -167,6 +167,7 @@ fn capability_name(cap: &Capability) -> &str {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature};

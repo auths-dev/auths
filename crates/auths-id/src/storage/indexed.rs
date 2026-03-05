@@ -79,6 +79,7 @@ impl IndexedAttestationStorage {
     }
 
     /// Updates the index with a new or modified attestation.
+    #[allow(clippy::disallowed_methods)] // Timestamp fallback for missing attestation timestamp
     pub fn update_index(
         &self,
         att: &Attestation,

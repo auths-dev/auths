@@ -108,6 +108,7 @@ impl TenantMetadata {
     ///
     /// Args:
     /// * `tenant_id`: Canonical (already-normalized) tenant identifier.
+    #[allow(clippy::disallowed_methods)] // Factory method — timestamp boundary
     pub fn new_active(tenant_id: impl Into<String>) -> Self {
         Self {
             version: 1,

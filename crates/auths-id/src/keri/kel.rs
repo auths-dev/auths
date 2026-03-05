@@ -467,6 +467,7 @@ impl<'a> GitKel<'a> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::keri::{IxnEvent, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, Seal};

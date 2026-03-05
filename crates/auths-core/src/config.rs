@@ -65,6 +65,7 @@ impl KeychainConfig {
     /// let config = KeychainConfig::from_env();
     /// let keychain = get_platform_keychain_with_config(&EnvironmentConfig { keychain: config, ..Default::default() })?;
     /// ```
+    #[allow(clippy::disallowed_methods)] // Designated env-var reading boundary
     pub fn from_env() -> Self {
         Self {
             backend: std::env::var("AUTHS_KEYCHAIN_BACKEND").ok(),
@@ -107,6 +108,7 @@ impl EnvironmentConfig {
     /// ```ignore
     /// let env = EnvironmentConfig::from_env();
     /// ```
+    #[allow(clippy::disallowed_methods)] // Designated env-var reading boundary
     pub fn from_env() -> Self {
         Self {
             auths_home: std::env::var("AUTHS_HOME")

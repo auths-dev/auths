@@ -392,6 +392,7 @@ pub fn evaluate_with_receipts(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;

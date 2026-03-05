@@ -106,6 +106,7 @@ pub fn enforce_simple(policy: &CompiledPolicy, ctx: &EvalContext) -> Decision {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::compile::compile;

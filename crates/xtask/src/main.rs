@@ -1,3 +1,5 @@
+// Build tooling — env::var access is expected.
+#![allow(clippy::disallowed_methods)]
 mod ci_setup;
 mod gen_docs;
 mod gen_schema;

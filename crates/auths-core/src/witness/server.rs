@@ -428,6 +428,7 @@ fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), Stri
 
 /// POST /witness/:prefix/event - Submit an event for witnessing.
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::disallowed_methods)] // Server handler is a clock boundary
 async fn submit_event(
     State(state): State<WitnessServerState>,
     AxumPath(prefix_str): AxumPath<String>,

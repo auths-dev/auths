@@ -34,6 +34,7 @@ pub trait ClockProvider: Send + Sync {
 pub struct SystemClock;
 
 impl ClockProvider for SystemClock {
+    #[allow(clippy::disallowed_methods)] // SystemClock is the designated Utc::now() boundary
     fn now(&self) -> DateTime<Utc> {
         Utc::now()
     }
