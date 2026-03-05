@@ -171,8 +171,10 @@ pub enum IdSubcommand {
         alias: String,
 
         /// Output file path for the JSON bundle.
-        #[arg(long, short, help = "Output file path")]
-        output: PathBuf,
+        // Named `output_file` because the top-level `Cli` has a global `--output`
+        // (OutputFormat) arg; clap panics on the field-name collision.
+        #[arg(long = "output", short = 'o')]
+        output_file: PathBuf,
 
         /// TTL in seconds. The bundle will fail verification after this many seconds.
         #[arg(
@@ -517,13 +519,13 @@ pub fn handle_id(
 
         IdSubcommand::ExportBundle {
             alias,
-            output,
+            output_file,
             max_age_secs,
         } => {
             println!("📦 Exporting identity bundle...");
             println!("   Using Repository:  {:?}", repo_path);
             println!("   Key Alias:         {}", alias);
-            println!("   Output File:       {:?}", output);
+            println!("   Output File:       {:?}", output_file);
 
             // Load identity
             let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
@@ -565,14 +567,17 @@ pub fn handle_id(
             // Write to output file
             let json = serde_json::to_string_pretty(&bundle)
                 .context("Failed to serialize identity bundle")?;
-            fs::write(&output, &json)
-                .with_context(|| format!("Failed to write bundle to {:?}", output))?;
+            fs::write(&output_file, &json)
+                .with_context(|| format!("Failed to write bundle to {:?}", output_file))?;
 
             println!("\n✅ Identity bundle exported successfully!");
-            println!("   Output:            {:?}", output);
+            println!("   Output:            {:?}", output_file);
             println!("   Attestations:      {}", bundle.attestation_chain.len());
             println!("\nUsage in CI:");
-            println!("   auths verify-commit --identity-bundle {:?} HEAD", output);
+            println!(
+                "   auths verify-commit --identity-bundle {:?} HEAD",
+                output_file
+            );
 
             Ok(())
         }

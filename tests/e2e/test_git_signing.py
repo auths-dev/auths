@@ -1,11 +1,32 @@
 """E2E tests for git commit signing and verification."""
 
 import shutil
+from pathlib import Path
 
 import pytest
 
 from helpers.cli import run_auths, run_git
 from helpers.git import configure_signing, make_commit
+
+
+def _generate_allowed_signers(auths_bin, git_repo: Path, env: dict) -> Path:
+    """Generate allowed-signers file inside the git repo's .auths/ dir."""
+    auths_dir = git_repo / ".auths"
+    auths_dir.mkdir(exist_ok=True)
+    signers_file = auths_dir / "allowed_signers"
+    run_auths(
+        auths_bin,
+        [
+            "git",
+            "allowed-signers",
+            "--repo",
+            env["AUTHS_HOME"],
+            "--output",
+            str(signers_file),
+        ],
+        env=env,
+    ).assert_success()
+    return signers_file
 
 
 @pytest.mark.requires_binary
@@ -22,6 +43,8 @@ class TestGitSigning:
         sha = make_commit(git_repo, "signed commit", init_identity)
         assert len(sha) == 40
 
+        _generate_allowed_signers(auths_bin, git_repo, init_identity)
+
         result = run_auths(
             auths_bin, ["verify", sha], cwd=git_repo, env=init_identity
         )
@@ -31,12 +54,14 @@ class TestGitSigning:
 
     def test_verify_unsigned_commit(self, auths_bin, init_identity, git_repo):
         sha = make_commit(git_repo, "unsigned commit", init_identity)
+
+        _generate_allowed_signers(auths_bin, git_repo, init_identity)
+
         result = run_auths(
             auths_bin, ["verify", sha], cwd=git_repo, env=init_identity
         )
         # Unsigned commit should report as unverified
         if result.returncode == 0:
-            # GAP: verify may succeed but with a warning
             pass
         else:
             result.assert_failure()
@@ -50,6 +75,8 @@ class TestGitSigning:
         for i in range(3):
             sha = make_commit(git_repo, f"commit {i}", init_identity)
             shas.append(sha)
+
+        _generate_allowed_signers(auths_bin, git_repo, init_identity)
 
         for sha in shas:
             result = run_auths(
@@ -66,7 +93,7 @@ class TestGitSigning:
 
         result = run_auths(
             auths_sign_bin,
-            ["-Y", "sign", "-n", "git", "-f", "auths:default", str(data_file)],
+            ["-Y", "sign", "-n", "git", "-f", "auths:main", str(data_file)],
             env=init_identity,
         )
         if result.returncode != 0:
@@ -85,7 +112,7 @@ class TestGitSigning:
                 "git",
                 "allowed-signers",
                 "--repo",
-                str(git_repo),
+                init_identity["AUTHS_HOME"],
                 "--output",
                 str(signers_file),
             ],

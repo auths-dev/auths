@@ -2,137 +2,96 @@
 
 import pytest
 
-from helpers.cli import run_auths
+from helpers.cli import export_attestation, get_device_did, run_auths
+
+
+def _link_device(auths_bin, env, *, capabilities=None, expires_in_days=None):
+    """Link a device and return the CLI result."""
+    did = get_device_did(auths_bin, env)
+    args = [
+        "device",
+        "link",
+        "--identity-key-alias",
+        "main",
+        "--device-key-alias",
+        "main",
+        "--device-did",
+        did,
+    ]
+    if capabilities:
+        args += ["--capabilities", capabilities]
+    if expires_in_days:
+        args += ["--expires-in-days", str(expires_in_days)]
+    return run_auths(auths_bin, args, env=env)
 
 
 @pytest.mark.requires_binary
 class TestDeviceAttestation:
     def test_device_link(self, auths_bin, init_identity):
-        result = run_auths(
-            auths_bin,
-            [
-                "device",
-                "link",
-                "--identity-key-alias",
-                "default",
-                "--device-key-alias",
-                "default",
-            ],
-            env=init_identity,
-        )
+        result = _link_device(auths_bin, init_identity)
         if result.returncode != 0:
-            # GAP: device link may require different arguments
             pytest.skip(f"device link not available: {result.stderr}")
 
     def test_device_list_after_link(self, auths_bin, init_identity):
-        link = run_auths(
-            auths_bin,
-            [
-                "device",
-                "link",
-                "--identity-key-alias",
-                "default",
-                "--device-key-alias",
-                "default",
-            ],
-            env=init_identity,
-        )
+        link = _link_device(auths_bin, init_identity)
         if link.returncode != 0:
             pytest.skip("device link not available")
 
         list_result = run_auths(auths_bin, ["device", "list"], env=init_identity)
         list_result.assert_success()
-        # GAP: does `device list` support --json?
         assert len(list_result.stdout.strip()) > 0
 
     def test_device_revoke(self, auths_bin, init_identity):
-        link = run_auths(
-            auths_bin,
-            [
-                "device",
-                "link",
-                "--identity-key-alias",
-                "default",
-                "--device-key-alias",
-                "default",
-            ],
-            env=init_identity,
-        )
+        link = _link_device(auths_bin, init_identity)
         if link.returncode != 0:
             pytest.skip("device link not available")
 
-        # Extract device DID from link output or device list
-        list_result = run_auths(auths_bin, ["device", "list"], env=init_identity)
-        list_result.assert_success()
+        did = get_device_did(auths_bin, init_identity)
 
-        # GAP: need to extract device DID from output
-        # For now, test that revoke command is accepted
         revoke = run_auths(
             auths_bin,
             [
                 "device",
                 "revoke",
                 "--device-did",
-                "did:key:z6MkTest",
+                did,
                 "--identity-key-alias",
-                "default",
+                "main",
             ],
             env=init_identity,
         )
-        # Revoke of nonexistent device should fail gracefully
+        # Revoke should succeed or fail gracefully
         assert revoke.returncode in (0, 1)
 
-    def test_device_verify(self, auths_bin, init_identity):
-        link = run_auths(
+    def test_device_verify(self, auths_bin, init_identity, tmp_path):
+        att_file = tmp_path / "attestation.json"
+        att_data = export_attestation(init_identity, att_file)
+        issuer_pk = att_data["device_public_key"]
+
+        verify = run_auths(
             auths_bin,
             [
                 "device",
-                "link",
-                "--identity-key-alias",
-                "default",
-                "--device-key-alias",
-                "default",
+                "verify",
+                "--attestation",
+                str(att_file),
+                "--issuer-pk",
+                issuer_pk,
             ],
             env=init_identity,
         )
-        if link.returncode != 0:
-            pytest.skip("device link not available")
-
-        verify = run_auths(auths_bin, ["device", "verify"], env=init_identity)
-        if verify.returncode != 0:
-            pytest.skip(f"device verify not available: {verify.stderr}")
+        verify.assert_success()
 
     def test_attest_agent(self, auths_bin, init_identity):
-        result = run_auths(
-            auths_bin,
-            [
-                "attest",
-                "--subject",
-                "did:key:z6MkTestAgent",
-                "--capabilities",
-                "sign:commit",
-                "--signer-type",
-                "agent",
-            ],
-            env=init_identity,
+        result = _link_device(
+            auths_bin, init_identity, capabilities="sign:commit"
         )
         if result.returncode != 0:
-            # GAP: attest may require linked device first
-            pytest.skip(f"attest not available: {result.stderr}")
+            pytest.skip(f"device link with capabilities not available: {result.stderr}")
 
     def test_attest_with_expiry(self, auths_bin, init_identity):
-        result = run_auths(
-            auths_bin,
-            [
-                "attest",
-                "--subject",
-                "did:key:z6MkTestAgent2",
-                "--capabilities",
-                "sign:commit",
-                "--expires-in",
-                "1h",
-            ],
-            env=init_identity,
+        result = _link_device(
+            auths_bin, init_identity, expires_in_days=1
         )
         if result.returncode != 0:
-            pytest.skip(f"attest with expiry not available: {result.stderr}")
+            pytest.skip(f"device link with expiry not available: {result.stderr}")
