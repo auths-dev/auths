@@ -22,7 +22,8 @@ pub struct WitnessCommand {
 #[derive(Subcommand, Debug, Clone)]
 pub enum WitnessSubcommand {
     /// Start the witness HTTP server.
-    Serve {
+    #[command(visible_alias = "serve")]
+    Start {
         /// Address to bind to (e.g., "127.0.0.1:3333").
         #[clap(long, default_value = "127.0.0.1:3333")]
         bind: SocketAddr,
@@ -32,7 +33,7 @@ pub enum WitnessSubcommand {
         db_path: PathBuf,
 
         /// Witness DID (auto-generated if not provided).
-        #[clap(long)]
+        #[clap(long, visible_alias = "witness")]
         witness_did: Option<String>,
     },
 
@@ -57,7 +58,7 @@ pub enum WitnessSubcommand {
 /// Handle witness commands.
 pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<()> {
     match cmd.subcommand {
-        WitnessSubcommand::Serve {
+        WitnessSubcommand::Start {
             bind,
             db_path,
             witness_did,

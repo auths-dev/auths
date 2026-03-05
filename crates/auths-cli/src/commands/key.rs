@@ -32,8 +32,12 @@ pub enum KeySubcommand {
     /// Export a stored key in various formats (requires passphrase for some formats).
     Export {
         /// Local alias of the key to export.
-        #[arg(long, help = "Local alias of the key to export.")]
-        alias: String,
+        #[arg(
+            long = "key-alias",
+            visible_alias = "alias",
+            help = "Local alias of the key to export."
+        )]
+        key_alias: String,
 
         /// Passphrase to decrypt the key (needed for 'pem'/'pub' formats).
         #[arg(
@@ -53,15 +57,23 @@ pub enum KeySubcommand {
     /// Remove a key from the platform's secure storage by alias.
     Delete {
         /// Local alias of the key to remove.
-        #[arg(long, help = "Local alias of the key to remove.")]
-        alias: String,
+        #[arg(
+            long = "key-alias",
+            visible_alias = "alias",
+            help = "Local alias of the key to remove."
+        )]
+        key_alias: String,
     },
 
     /// Import an Ed25519 key from a 32-byte seed file and store it encrypted.
     Import {
         /// Local alias to assign to the imported key.
-        #[arg(long, help = "Local alias to assign to the imported key.")]
-        alias: String,
+        #[arg(
+            long = "key-alias",
+            visible_alias = "alias",
+            help = "Local alias to assign to the imported key."
+        )]
+        key_alias: String,
 
         /// Path to the file containing the raw 32-byte Ed25519 seed.
         #[arg(
@@ -96,8 +108,8 @@ pub enum KeySubcommand {
     ///     --dst-backend file --dst-file /tmp/ci-keychain.enc --dst-passphrase "$CI_PASS"
     CopyBackend {
         /// Alias of the key to copy from the current (source) keychain.
-        #[arg(long)]
-        alias: String,
+        #[arg(long = "key-alias", visible_alias = "alias")]
+        key_alias: String,
 
         /// Destination backend type. Currently supported: "file".
         #[arg(long)]
@@ -118,26 +130,26 @@ pub fn handle_key(cmd: KeyCommand) -> Result<()> {
     match cmd.command {
         KeySubcommand::List => key_list(),
         KeySubcommand::Export {
-            alias,
+            key_alias,
             passphrase,
             format,
-        } => key_export(&alias, &passphrase, format),
-        KeySubcommand::Delete { alias } => key_delete(&alias),
+        } => key_export(&key_alias, &passphrase, format),
+        KeySubcommand::Delete { key_alias } => key_delete(&key_alias),
         KeySubcommand::Import {
-            alias,
+            key_alias,
             seed_file,
             controller_did,
         } => {
             let identity_did = IdentityDID::new(controller_did);
-            key_import(&alias, &seed_file, &identity_did)
+            key_import(&key_alias, &seed_file, &identity_did)
         }
         KeySubcommand::CopyBackend {
-            alias,
+            key_alias,
             dst_backend,
             dst_file,
             dst_passphrase,
         } => key_copy_backend(
-            &alias,
+            &key_alias,
             &dst_backend,
             dst_file.as_ref(),
             dst_passphrase.as_deref(),

@@ -37,9 +37,14 @@ pub struct PairCommand {
     #[clap(long)]
     pub no_qr: bool,
 
-    /// Custom expiry time in seconds (default: 300 = 5 minutes)
-    #[clap(long, value_name = "SECONDS", default_value = "300")]
-    pub expiry: u64,
+    /// Custom timeout in seconds for the pairing session (default: 300 = 5 minutes)
+    #[clap(
+        long,
+        visible_alias = "expiry",
+        value_name = "SECONDS",
+        default_value = "300"
+    )]
+    pub timeout: u64,
 
     /// Skip registry server (offline mode, for testing)
     #[clap(long)]
@@ -72,7 +77,7 @@ pub fn handle_pair(
     match (&cmd.join, &cmd.registry, cmd.offline) {
         // Offline mode takes priority
         (None, _, true) => {
-            offline::handle_initiate_offline(cmd.no_qr, cmd.expiry, &cmd.capabilities)
+            offline::handle_initiate_offline(cmd.no_qr, cmd.timeout, &cmd.capabilities)
         }
 
         // Join with explicit registry -> online join
@@ -102,7 +107,7 @@ pub fn handle_pair(
                 http_client,
                 registry,
                 cmd.no_qr,
-                cmd.expiry,
+                cmd.timeout,
                 &cmd.capabilities,
                 env_config,
             ))
@@ -115,7 +120,7 @@ pub fn handle_pair(
             rt.block_on(lan::handle_initiate_lan(
                 cmd.no_qr,
                 cmd.no_mdns,
-                cmd.expiry,
+                cmd.timeout,
                 &cmd.capabilities,
                 env_config,
             ))
@@ -129,7 +134,7 @@ pub fn handle_pair(
                 http_client,
                 DEFAULT_REGISTRY,
                 cmd.no_qr,
-                cmd.expiry,
+                cmd.timeout,
                 &cmd.capabilities,
                 env_config,
             ))

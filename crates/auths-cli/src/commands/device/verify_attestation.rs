@@ -43,7 +43,7 @@ pub struct VerifyCommand {
     ///
     /// Looks up the public key from pinned identity store or roots.json.
     /// Uses --trust policy to determine behavior for unknown identities.
-    #[arg(long = "issuer-did", value_parser)]
+    #[arg(long = "issuer-did", visible_alias = "issuer", value_parser)]
     pub issuer_did: Option<String>,
 
     /// Trust policy for unknown identities.

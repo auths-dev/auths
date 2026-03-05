@@ -66,8 +66,9 @@ pub struct OrgCommand {
 /// Subcommands for managing authorizations issued by this identity.
 #[derive(Subcommand, Debug, Clone)]
 pub enum OrgSubcommand {
-    /// Initialize a new organization identity
-    Init {
+    /// Create a new organization identity
+    #[command(visible_alias = "init")]
+    Create {
         /// Organization name
         #[arg(long)]
         name: String,
@@ -81,8 +82,8 @@ pub enum OrgSubcommand {
         metadata_file: Option<PathBuf>,
     },
     Attest {
-        #[arg(long)]
-        subject: String,
+        #[arg(long = "subject-did", visible_alias = "subject")]
+        subject_did: String,
         #[arg(long)]
         payload_file: PathBuf,
         #[arg(long)]
@@ -93,16 +94,16 @@ pub enum OrgSubcommand {
         signer_alias: Option<String>,
     },
     Revoke {
-        #[arg(long)]
-        subject: String,
+        #[arg(long = "subject-did", visible_alias = "subject")]
+        subject_did: String,
         #[arg(long)]
         note: Option<String>,
         #[arg(long)]
         signer_alias: Option<String>,
     },
     Show {
-        #[arg(long)]
-        subject: String,
+        #[arg(long = "subject-did", visible_alias = "subject")]
+        subject_did: String,
         #[arg(long, action = ArgAction::SetTrue)]
         include_revoked: bool,
     },
@@ -117,8 +118,8 @@ pub enum OrgSubcommand {
         org: String,
 
         /// Member identity ID to add
-        #[arg(long)]
-        member: String,
+        #[arg(long = "member-did", visible_alias = "member")]
+        member_did: String,
 
         /// Role to assign (admin, member, readonly)
         #[arg(long, value_enum)]
@@ -144,8 +145,8 @@ pub enum OrgSubcommand {
         org: String,
 
         /// Member identity ID to revoke
-        #[arg(long)]
-        member: String,
+        #[arg(long = "member-did", visible_alias = "member")]
+        member_did: String,
 
         /// Reason for revocation
         #[arg(long)]
@@ -198,7 +199,7 @@ pub fn handle_org(
     let resolver: DefaultDidResolver = DefaultDidResolver::with_repo(&repo_path);
 
     match cmd.subcommand {
-        OrgSubcommand::Init {
+        OrgSubcommand::Create {
             name,
             local_key_alias,
             metadata_file,
@@ -389,7 +390,7 @@ pub fn handle_org(
         }
 
         OrgSubcommand::Attest {
-            subject,      // The subject DID (String)
+            subject_did,  // The subject DID (String)
             payload_file, // Path to the JSON payload
             note,         // Optional note (String)
             expires_at,   // Optional RFC3339 expiration string
@@ -432,11 +433,11 @@ pub fn handle_org(
             let _pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase)
                 .context("Failed to decrypt signer key (invalid passphrase?)")?;
 
-            let subject_did = DeviceDID::new(subject.clone());
+            let subject_device_did = DeviceDID::new(subject_did.clone());
 
             // --- Resolve device public key using the custom resolver IF did:key ---
-            let device_resolved = resolver.resolve(&subject).with_context(|| {
-                format!("Failed to resolve public key for subject: {}", subject)
+            let device_resolved = resolver.resolve(&subject_did).with_context(|| {
+                format!("Failed to resolve public key for subject: {}", subject_did)
             })?;
             let device_pk_bytes = *device_resolved.public_key();
 
@@ -457,7 +458,7 @@ pub fn handle_org(
                 now,
                 &rid,
                 &controller_did,
-                &subject_did,
+                &subject_device_did,
                 device_pk_bytes.as_bytes(),
                 Some(payload),
                 &meta,
@@ -478,18 +479,18 @@ pub fn handle_org(
 
             println!(
                 "\n✅ Org attestation created successfully from '{}' → '{}'",
-                controller_did, subject_did
+                controller_did, subject_device_did
             );
 
             Ok(())
         }
 
         OrgSubcommand::Revoke {
-            subject,
+            subject_did,
             note,
             signer_alias,
         } => {
-            println!("🛑 Revoking org authorization for subject: {subject}");
+            println!("🛑 Revoking org authorization for subject: {subject_did}");
             println!("   Using Repository:         {:?}", repo_path);
             println!("   Using Identity Ref:       '{}'", config.identity_ref);
             println!(
@@ -520,13 +521,13 @@ pub fn handle_org(
                 decrypt_keypair(&encrypted_key, &pass).context("Failed to decrypt identity key")?;
 
             // Allow both did:key and did:keri as subject input
-            let subject_did = DeviceDID::new(subject.clone());
+            let subject_device_did = DeviceDID::new(subject_did.clone());
             let now = Utc::now();
 
             // Look up the subject's public key from existing attestations
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
             let existing = attestation_storage
-                .load_attestations_for_device(&subject_did)
+                .load_attestations_for_device(&subject_device_did)
                 .context("Failed to load attestations for subject")?;
             let device_public_key = existing
                 .iter()
@@ -539,7 +540,7 @@ pub fn handle_org(
             let attestation = create_signed_revocation(
                 &rid,
                 &controller_did,
-                &subject_did,
+                &subject_device_did,
                 device_public_key.as_bytes(),
                 note,
                 None,
@@ -555,21 +556,21 @@ pub fn handle_org(
                 .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
                 .context("Failed to write revocation")?;
 
-            println!("\n✅ Revoked authorization for subject {subject}");
+            println!("\n✅ Revoked authorization for subject {subject_did}");
 
             Ok(())
         }
 
         OrgSubcommand::Show {
-            subject,
+            subject_did,
             include_revoked,
         } => {
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
             let resolver = DefaultDidResolver::with_repo(&repo_path);
             let group = AttestationGroup::from_list(attestation_storage.load_all_attestations()?);
 
-            let subject_did = DeviceDID(subject.clone());
-            if let Some(list) = group.by_device.get(subject_did.as_str()) {
+            let subject_device_did = DeviceDID(subject_did.clone());
+            if let Some(list) = group.by_device.get(subject_device_did.as_str()) {
                 for (i, att) in list.iter().enumerate() {
                     if !include_revoked
                         && (att.is_revoked() || att.expires_at.is_some_and(|e| Utc::now() > e))
@@ -597,7 +598,7 @@ pub fn handle_org(
                     }
                 }
             } else {
-                println!("No authorizations found for subject: {}", subject);
+                println!("No authorizations found for subject: {}", subject_did);
             }
 
             Ok(())
@@ -631,7 +632,7 @@ pub fn handle_org(
 
         OrgSubcommand::AddMember {
             org,
-            member,
+            member_did: member,
             role: cli_role,
             capabilities,
             signer_alias,
@@ -793,7 +794,7 @@ pub fn handle_org(
 
         OrgSubcommand::RevokeMember {
             org,
-            member,
+            member_did: member,
             note,
             signer_alias,
         } => {

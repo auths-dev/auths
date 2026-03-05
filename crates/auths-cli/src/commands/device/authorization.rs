@@ -80,17 +80,23 @@ pub enum DeviceSubcommand {
     /// Authorize a new device to act on behalf of the identity.
     #[command(visible_alias = "add")]
     Link {
-        #[arg(long, help = "Local alias of the *identity's* key (used for signing).")]
+        #[arg(
+            long,
+            visible_alias = "ika",
+            help = "Local alias of the *identity's* key (used for signing)."
+        )]
         identity_key_alias: String,
 
         #[arg(
             long,
+            visible_alias = "dka",
             help = "Local alias of the *new device's* key (must be imported first)."
         )]
         device_key_alias: String,
 
         #[arg(
             long,
+            visible_alias = "device",
             help = "Identity ID of the new device being authorized (must match device-key-alias)."
         )]
         device_did: String,
@@ -111,6 +117,7 @@ pub enum DeviceSubcommand {
 
         #[arg(
             long,
+            visible_alias = "days",
             value_name = "DAYS",
             help = "Optional number of days until this device authorization expires."
         )]
@@ -132,7 +139,11 @@ pub enum DeviceSubcommand {
 
     /// Revoke an existing device authorization using the identity key.
     Revoke {
-        #[arg(long, help = "Identity ID of the device authorization to revoke.")]
+        #[arg(
+            long,
+            visible_alias = "device",
+            help = "Identity ID of the device authorization to revoke."
+        )]
         device_did: String,
 
         #[arg(
@@ -147,7 +158,11 @@ pub enum DeviceSubcommand {
 
     /// Resolve a device DID to its controller identity DID.
     Resolve {
-        #[arg(long, help = "The device DID to resolve (e.g. did:key:z6Mk...).")]
+        #[arg(
+            long,
+            visible_alias = "device",
+            help = "The device DID to resolve (e.g. did:key:z6Mk...)."
+        )]
         device_did: String,
     },
 
@@ -160,24 +175,31 @@ pub enum DeviceSubcommand {
 
     /// Extend the expiration date of an existing device authorization.
     Extend {
-        #[arg(long, help = "Identity ID of the device authorization to extend.")]
+        #[arg(
+            long,
+            visible_alias = "device",
+            help = "Identity ID of the device authorization to extend."
+        )]
         device_did: String,
 
         #[arg(
-            long,
+            long = "expires-in-days",
+            visible_alias = "days",
             value_name = "DAYS",
             help = "Number of days to extend the expiration by (from now)."
         )]
-        days: i64,
+        expires_in_days: i64,
 
         #[arg(
             long = "identity-key-alias",
+            visible_alias = "ika",
             help = "Local alias of the *identity's* key (required for re-signing)."
         )]
         identity_key_alias: String,
 
         #[arg(
             long = "device-key-alias",
+            visible_alias = "dka",
             help = "Local alias of the *device's* key (required for re-signing)."
         )]
         device_key_alias: String,
@@ -297,14 +319,14 @@ pub fn handle_device(
 
         DeviceSubcommand::Extend {
             device_did,
-            days,
+            expires_in_days,
             identity_key_alias,
             device_key_alias,
         } => handle_extend(
             &repo_path,
             &config,
             &device_did,
-            days,
+            expires_in_days,
             &identity_key_alias,
             &device_key_alias,
             passphrase_provider,

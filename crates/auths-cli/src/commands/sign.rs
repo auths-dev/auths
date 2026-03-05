@@ -100,7 +100,7 @@ pub struct SignCommand {
     pub device_key_alias: Option<String>,
 
     /// Number of days until the signature expires (for artifact signing).
-    #[arg(long, value_name = "N")]
+    #[arg(long, visible_alias = "days", value_name = "N")]
     pub expires_in_days: Option<i64>,
 
     /// Optional note to embed in the attestation (for artifact signing).
