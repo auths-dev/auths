@@ -481,6 +481,8 @@
       
         
       
+        
+      
     
     
     
@@ -1040,7 +1042,7 @@
 <p>The <code>signer_type</code> enum (<code>Human</code>, <code>Agent</code>, <code>Workload</code>) exists in code and is mentioned once in <code>attestation-format.md</code> but is never explained or motivated.</p>
 <p><strong>Tasks:</strong></p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>README.md</strong> -- Add a section "Agent &amp; Workload Identity" after "What can you do with Auths?" showing:</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>README.md</strong> -- Add a section "Agent &amp; Workload Identity" after "What can you do with Auths?" showing:</li>
 <li>How a CI runner or AI agent gets a <code>did:keri</code> identity</li>
 <li>How an org issues a scoped attestation to an agent (<code>signer_type: Agent</code>, time-limited, capability-restricted)</li>
 <li>How a human delegates authority to an agent with <code>delegated_by</code></li>
@@ -1048,7 +1050,7 @@
 <p>Keep it to ~20 lines with a code example</p>
 </li>
 <li class="task-list-item">
-<p><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>docs/architecture/attestation-format.md</strong> -- Expand the <code>signer_type</code> field documentation. Currently it's one cell in a table. Add a subsection "Signer Types: Human, Agent, Workload" explaining:</p>
+<p><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>docs/architecture/attestation-format.md</strong> -- Expand the <code>signer_type</code> field documentation. Currently it's one cell in a table. Add a subsection "Signer Types: Human, Agent, Workload" explaining:</p>
 </li>
 <li>When to use each type</li>
 <li>How <code>signer_type</code> enables policy engines to distinguish human vs. automated actions</li>
@@ -1059,7 +1061,7 @@
 <p>Auths has <code>delegated_by</code>, attestation chains, and <code>verify_chain()</code> -- but there's no doc showing the full delegation flow.</p>
 <p><strong>Tasks:</strong></p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>docs/getting-started/delegation.md</strong> (new file) -- A short guide:</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>docs/getting-started/delegation.md</strong> (new file) -- A short guide:</li>
 <li>Human creates identity, links device</li>
 <li>Human issues attestation to an AI agent with <code>delegated_by</code> pointing to the human's attestation</li>
 <li>Agent acts, signs artifacts</li>
@@ -1073,8 +1075,8 @@
 <p><strong>Problem:</strong> The NIST paper lists OAuth 2.0/2.1 and OIDC as primary standards. Auths already does GitHub OAuth for platform claims. But there's no doc explaining how Auths identities bridge to enterprise OIDC -- how an org can issue attestations based on OIDC tokens, or how an Auths <code>did:keri</code> can be presented alongside an OIDC flow.</p>
 <p><strong>Tasks:</strong></p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>docs/architecture/oidc-bridge.md</strong> (new file) -- Explain the design pattern:</li>
-<li>base this on the</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>docs/architecture/oidc-bridge.md</strong> (new file) -- Explain the design pattern:</li>
+<li>base this on the /Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-oidc-bridge crate</li>
 <li>Auths identity is the root; OIDC is a claim/proof that can be linked</li>
 <li>GitHub OAuth flow already works this way (show it)</li>
 <li>How an enterprise IdP (Okta, Azure AD) could issue attestations after OIDC verification</li>
@@ -1085,7 +1087,7 @@
 <p><strong>Problem:</strong> The NIST paper explicitly asks about zero-trust principles for agent authorization (SP 800-207). Auths IS zero-trust by design -- no implicit trust, verify every attestation, no central authority -- but the docs never use the phrase or map to zero-trust concepts.</p>
 <p><strong>Tasks:</strong></p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>docs/getting-started/trust-model.md</strong> -- Add a section "Zero-Trust by Design" near the top, mapping:</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>docs/getting-started/trust-model.md</strong> -- Add a section "Zero-Trust by Design" near the top, mapping:</li>
 <li>"Never trust, always verify" = every attestation is verified cryptographically, no server trust</li>
 <li>"Least privilege" = capability-scoped attestations with expiration</li>
 <li>"Assume breach" = pre-rotation means key compromise is survivable</li>
@@ -1096,7 +1098,7 @@
 <p><strong>Problem:</strong> The NIST paper's use case #3 is "Enterprise AI agents for software development and deployment." The vision doc mentions CI/CD but the actual docs don't show how a CI runner gets an identity and signs under an org policy.</p>
 <p><strong>Tasks:</strong></p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>docs/getting-started/sharing-your-identity.md</strong> -- Expand the "Export an identity bundle for CI" section into a fuller "CI/CD &amp; Automated Agent Identity" section:</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>docs/getting-started/sharing-your-identity.md</strong> -- Expand the "Export an identity bundle for CI" section into a fuller "CI/CD &amp; Automated Agent Identity" section:</li>
 <li>How to create a dedicated agent identity (not just export a human's bundle)</li>
 <li>How to issue a time-limited, capability-restricted attestation to a CI agent</li>
 <li>How the CI agent signs artifacts and the org verifies them</li>
@@ -1107,17 +1109,17 @@
 <p><strong>Tasks:</strong></p>
 <ul class="task-list">
 <li class="task-list-item">
-<p><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>README.md</strong> -- In the new "Agent &amp; Workload Identity" section, add one sentence: "Auths attestations can serve as the cryptographic identity layer behind MCP's OAuth-based authorization, providing verifiable delegation chains from human principals to AI agents."</p>
+<p><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>README.md</strong> -- In the new "Agent &amp; Workload Identity" section, add one sentence: "Auths attestations can serve as the cryptographic identity layer behind MCP's OAuth-based authorization, providing verifiable delegation chains from human principals to AI agents."</p>
 </li>
 <li class="task-list-item">
-<p><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>docs/architecture/oidc-bridge.md</strong> -- Include an "MCP Integration" subsection showing where Auths fits in the MCP auth flow (MCP uses OAuth; Auths provides the identity that the OAuth token represents)</p>
+<p><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>docs/architecture/oidc-bridge.md</strong> -- Include an "MCP Integration" subsection showing where Auths fits in the MCP auth flow (MCP uses OAuth; Auths provides the identity that the OAuth token represents)</p>
 </li>
 </ul>
 <h3 id="7-no-comparison-to-spiffespire">7. No comparison to SPIFFE/SPIRE<a class="headerlink" href="#7-no-comparison-to-spiffespire" title="Permanent link">&para;</a></h3>
 <p><strong>Problem:</strong> The NIST paper mentions SPIFFE/SPIRE for workload identity. Auths solves a similar problem differently. A brief comparison would help the NIST reader understand positioning.</p>
 <p><strong>Tasks:</strong></p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>docs/architecture/oidc-bridge.md</strong> (or rename to <code>enterprise-integration.md</code>) -- Add a "Comparison with SPIFFE/SPIRE" subsection:</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>docs/architecture/oidc-bridge.md</strong> (or rename to <code>enterprise-integration.md</code>) -- Add a "Comparison with SPIFFE/SPIRE" subsection:</li>
 <li>SPIFFE: centralized SPIRE server issues SVIDs, runtime attestation</li>
 <li>Auths: self-certifying, no central issuer, Git-native, works offline</li>
 <li>Complementary: SPIFFE for service mesh workload identity, Auths for developer/agent identity with delegation chains</li>
@@ -1128,7 +1130,7 @@
 <p>The KEL IS a tamper-proof log. Attestation lifecycle is tracked in Git commits. But there's no doc that explicitly frames this as an audit capability.</p>
 <p><strong>Tasks:</strong></p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>docs/getting-started/trust-model.md</strong> -- Add a section "Audit Trail" after the trust boundaries summary:</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>docs/getting-started/trust-model.md</strong> -- Add a section "Audit Trail" after the trust boundaries summary:</li>
 <li>KEL = tamper-evident history of every key operation</li>
 <li>Attestation Git refs = lifecycle audit (creation, extension, revocation as commits)</li>
 <li>Seals = cryptographic binding of external events to the identity timeline</li>

@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://docs.auths.dev/getting-started/sharing-your-identity/">
+        <link rel="canonical" href="https://docs.auths.dev/architecture/oidc-bridge/">
       
       
-        <link rel="prev" href="../signing-commits/">
+        <link rel="prev" href="../attestation-format/">
       
       
-        <link rel="next" href="../how-it-works/">
+        <link rel="next" href="../cryptography/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Sharing Your Identity - Auths</title>
+        <title>OIDC Bridge - Auths</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#sharing-your-identity" class="md-skip">
+        <a href="#oidc-bridge" class="md-skip">
           Skip to content
         </a>
       
@@ -115,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Sharing Your Identity
+              OIDC Bridge
             
           </span>
         </div>
@@ -239,13 +239,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../install/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../getting-started/install/" class="md-tabs__link">
           
   
   
@@ -327,6 +325,8 @@
   
   
   
+    
+  
   
     
     
@@ -334,11 +334,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../architecture/overview/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../overview/" class="md-tabs__link">
           
   
   
@@ -468,52 +470,49 @@
       
   
   
+  
+  
     
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
   
   
   
-    
-    
+    <a href="../../getting-started/install/" class="md-nav__link">
       
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-        
-      
-    
-    
-    
-      
-        
-        
-      
-      
-        
-      
-    
-    
-      
-    
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
-        
-          
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
-            
   
   
   <span class="md-ellipsis">
@@ -527,448 +526,12 @@
   
   
 
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Getting Started
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
   
 
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../install/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Installation
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../your-first-identity/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Your First Identity
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../signing-commits/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Signing Commits
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Sharing Your Identity
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Sharing Your Identity
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#register-with-the-auths-registry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Register with the Auths Registry
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#link-a-platform-account" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Link a platform account
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-are-attestations" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What are attestations?
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="What are attestations?">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#why-attestations-matter" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why attestations matter
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#view-your-attestations" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        View your attestations
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cicd-automated-agent-identity" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CI/CD &amp; automated agent identity
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="CI/CD &amp; automated agent identity">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#create-a-dedicated-agent-identity" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Create a dedicated agent identity
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#issue-a-scoped-attestation-from-a-human" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Issue a scoped attestation from a human
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#agent-signs-artifacts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Agent signs artifacts
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#verify-agent-signatures" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Verify agent signatures
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#export-an-identity-bundle" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Export an identity bundle
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#cloud-credentials-via-oidc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Cloud credentials via OIDC
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#next-how-it-works" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Next: How It Works
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../how-it-works/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    How It Works
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../identity-lifecycle/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Identity Lifecycle
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../delegation/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Delegation
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../trust-model/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Trust Model
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
       
     </li>
   
@@ -1114,6 +677,8 @@
       
   
   
+    
+  
   
   
     
@@ -1127,28 +692,25 @@
     
     
       
+        
+        
+      
       
         
       
     
     
       
-        
-        
-      
     
-    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
-  
-  
-  
-    
-  
-  
-  
-    <a href="../../architecture/overview/" class="md-nav__link">
-      
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
   
   
   <span class="md-ellipsis">
@@ -1162,14 +724,649 @@
   
   
 
-      
-        <span class="md-nav__icon md-icon"></span>
-      
-    </a>
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
   
 
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
   
 
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../identity-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identity Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../git-as-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git as Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../attestation-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Attestation Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OIDC Bridge
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OIDC Bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#design-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design pattern
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-token-exchange-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the token exchange works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the token exchange works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#jwt-claims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JWT claims
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#capability-scope-down" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capability scope-down
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cloud-provider-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud provider integration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cloud provider integration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#aws-sts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AWS STS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gcp-workload-identity-federation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GCP Workload Identity Federation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#azure-ad" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Azure AD
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#github-actions-oidc-cross-referencing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GitHub Actions OIDC cross-referencing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-spiffespire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison with SPIFFE/SPIRE
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key rotation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cryptography/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cryptography
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crate Deep Dives
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Crate Deep Dives
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../crates/auths-core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-core
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../crates/auths-id/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-id
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../crates/auths-verifier/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-verifier
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../crates/auths-sdk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    auths-sdk
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
       
     </li>
   
@@ -1269,10 +1466,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#register-with-the-auths-registry" class="md-nav__link">
+  <a href="#design-pattern" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Register with the Auths Registry
+        Design pattern
       
     </span>
   </a>
@@ -1280,33 +1477,33 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#link-a-platform-account" class="md-nav__link">
+  <a href="#how-the-token-exchange-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Link a platform account
+        How the token exchange works
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-are-attestations" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What are attestations?
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="What are attestations?">
+    <nav class="md-nav" aria-label="How the token exchange works">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#why-attestations-matter" class="md-nav__link">
+  <a href="#jwt-claims" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why attestations matter
+        JWT claims
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#capability-scope-down" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capability scope-down
       
     </span>
   </a>
@@ -1319,33 +1516,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#view-your-attestations" class="md-nav__link">
+  <a href="#cloud-provider-integration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View your attestations
+        Cloud provider integration
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cicd-automated-agent-identity" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CI/CD &amp; automated agent identity
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="CI/CD &amp; automated agent identity">
+    <nav class="md-nav" aria-label="Cloud provider integration">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#create-a-dedicated-agent-identity" class="md-nav__link">
+  <a href="#aws-sts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Create a dedicated agent identity
+        AWS STS
       
     </span>
   </a>
@@ -1353,10 +1539,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#issue-a-scoped-attestation-from-a-human" class="md-nav__link">
+  <a href="#gcp-workload-identity-federation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Issue a scoped attestation from a human
+        GCP Workload Identity Federation
       
     </span>
   </a>
@@ -1364,43 +1550,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#agent-signs-artifacts" class="md-nav__link">
+  <a href="#azure-ad" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Agent signs artifacts
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#verify-agent-signatures" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Verify agent signatures
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#export-an-identity-bundle" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Export an identity bundle
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#cloud-credentials-via-oidc" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Cloud credentials via OIDC
+        Azure AD
       
     </span>
   </a>
@@ -1413,10 +1566,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#next-how-it-works" class="md-nav__link">
+  <a href="#github-actions-oidc-cross-referencing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Next: How It Works
+        GitHub Actions OIDC cross-referencing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-with-spiffespire" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison with SPIFFE/SPIRE
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key rotation
       
     </span>
   </a>
@@ -1465,11 +1651,37 @@
   
     
     
+      
+  
+  
+    
+    
       <li class="md-path__item">
-        <a href="../install/" class="md-path__link">
+        <a href="../overview/" class="md-path__link">
           
   <span class="md-ellipsis">
-    Getting Started
+    Architecture
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../overview/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Design
   </span>
 
         </a>
@@ -1491,129 +1703,177 @@
   
 
 
-<h1 id="sharing-your-identity">Sharing Your Identity<a class="headerlink" href="#sharing-your-identity" title="Permanent link">&para;</a></h1>
-<p>Register your identity on a public registry so others can discover and verify your work.</p>
-<h2 id="register-with-the-auths-registry">Register with the Auths Registry<a class="headerlink" href="#register-with-the-auths-registry" title="Permanent link">&para;</a></h2>
-<p>If you ran <code>auths init --profile developer</code> interactively, your identity was registered automatically during setup. To register manually or re-register with a different registry:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>auths<span class="w"> </span>id<span class="w"> </span>register
+<h1 id="oidc-bridge">OIDC Bridge<a class="headerlink" href="#oidc-bridge" title="Permanent link">&para;</a></h1>
+<p>How Auths identities integrate with enterprise identity infrastructure through standard OIDC federation.</p>
+<h2 id="design-pattern">Design pattern<a class="headerlink" href="#design-pattern" title="Permanent link">&para;</a></h2>
+<p>Auths identities are self-certifying — they don't depend on any central authority. But cloud providers (AWS, GCP, Azure) and enterprise systems authenticate workloads through OAuth 2.0 and OpenID Connect. The OIDC bridge connects these two worlds: it verifies a KERI attestation chain cryptographically and issues a standard JWT that any OIDC relying party can consume.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌──────────────────────┐
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│  Agent / Workload    │
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│  (holds private key  │
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   + attestation      │
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   chain)             │
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>└──────────┬───────────┘
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>           │ POST /token
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>           │ {attestation_chain, root_public_key}
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>           ▼
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>┌──────────────────────┐
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│  OIDC Bridge         │
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│  (auths-oidc-bridge) │
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│                      │
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│  1. Verify chain     │ ← no IdP callback, pure crypto
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│  2. Scope-down caps  │
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│  3. Issue RS256 JWT  │
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>└──────────┬───────────┘
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>           │ Standard JWT (Bearer token)
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>           ▼
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>┌──────────────────────┐
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│  Cloud Provider      │
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│  (AWS STS, GCP WIF,  │
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   Azure AD)          │
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│                      │
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│  Validates JWT via   │
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│  /.well-known/jwks   │
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│  Issues temp creds   │
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>└──────────────────────┘
 </span></code></pre></div>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Success! Identity registered at https://auths-registry.fly.dev
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>DID: EAbcd1234...
-</span></code></pre></div>
-<p>By default this publishes to the Auths public registry. To use a different registry:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>auths<span class="w"> </span>id<span class="w"> </span>register<span class="w"> </span>--registry<span class="w"> </span>https://your-registry.example.com
-</span></code></pre></div>
-<p>Registration uploads your identity document and device attestations so that anyone with your DID can look up your public key and verify your signatures.</p>
-<h2 id="link-a-platform-account">Link a platform account<a class="headerlink" href="#link-a-platform-account" title="Permanent link">&para;</a></h2>
-<p>Platform claims connect your cryptographic identity to accounts on platforms like GitHub. This makes it possible to look up an Auths identity by a GitHub username instead of a raw DID.</p>
-<p>During <code>auths init</code>, you are offered the option to link GitHub. To add a claim after setup:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>auths<span class="w"> </span>id<span class="w"> </span>claim<span class="w"> </span>github
-</span></code></pre></div>
-<p>The command walks you through an OAuth flow: it opens your browser, authenticates you with GitHub, publishes a signed proof (a GitHub Gist), and submits the claim to the registry.</p>
-<h2 id="what-are-attestations">What are attestations?<a class="headerlink" href="#what-are-attestations" title="Permanent link">&para;</a></h2>
-<p>Attestations are the foundation of trust in Auths. An attestation is a signed JSON document that records a specific authorization, such as "identity X authorizes device Y to sign commits."</p>
-<p>Every attestation contains:</p>
+<p>The bridge exposes standard OIDC discovery endpoints (<code>/.well-known/openid-configuration</code> and <code>/.well-known/jwks.json</code>) so cloud providers can validate issued JWTs without any custom integration.</p>
+<h2 id="how-the-token-exchange-works">How the token exchange works<a class="headerlink" href="#how-the-token-exchange-works" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Client submits</strong> an attestation chain and the root identity's Ed25519 public key to <code>/token</code>.</li>
+<li><strong>Bridge verifies</strong> the chain using <code>auths-verifier</code> — validates every signature, checks expiration, confirms capability scoping, and optionally verifies witness quorum.</li>
+<li><strong>Bridge issues</strong> an RS256 JWT containing standard OIDC claims (<code>iss</code>, <code>sub</code>, <code>aud</code>, <code>exp</code>) plus Auths-specific claims (<code>keri_prefix</code>, <code>capabilities</code>, <code>witness_quorum</code>).</li>
+<li><strong>Cloud provider validates</strong> the JWT against the bridge's JWKS endpoint and issues temporary credentials.</li>
+</ol>
+<h3 id="jwt-claims">JWT claims<a class="headerlink" href="#jwt-claims" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Purpose</th>
+<th>Claim</th>
+<th>Source</th>
+<th>Example</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>issuer</code></td>
-<td>The <code>did:keri</code> identity that granted the authorization</td>
+<td><code>iss</code></td>
+<td>Bridge's configured issuer URL</td>
+<td><code>https://oidc.example.com</code></td>
 </tr>
 <tr>
-<td><code>subject</code></td>
-<td>The <code>did:key</code> device being authorized</td>
+<td><code>sub</code></td>
+<td>Root identity from attestation chain</td>
+<td><code>did:keri:EAbcdef...</code></td>
 </tr>
 <tr>
-<td><code>device_public_key</code></td>
-<td>The raw Ed25519 public key of the authorized device</td>
+<td><code>aud</code></td>
+<td>Cloud provider or custom audience</td>
+<td><code>sts.amazonaws.com</code></td>
 </tr>
 <tr>
-<td><code>identity_signature</code></td>
-<td>Signature from the identity controller</td>
-</tr>
-<tr>
-<td><code>device_signature</code></td>
-<td>Counter-signature from the device</td>
+<td><code>keri_prefix</code></td>
+<td>Extracted from subject DID</td>
+<td><code>EAbcdef...</code></td>
 </tr>
 <tr>
 <td><code>capabilities</code></td>
-<td>What the device is allowed to do (e.g., <code>sign_commit</code>)</td>
+<td>Intersection of chain-granted and requested</td>
+<td><code>["sign:commit", "deploy:staging"]</code></td>
 </tr>
 <tr>
-<td><code>expires_at</code></td>
-<td>Optional expiration timestamp</td>
+<td><code>target_provider</code></td>
+<td>Auto-detected from audience format</td>
+<td><code>aws</code>, <code>gcp</code>, <code>azure</code></td>
+</tr>
+<tr>
+<td><code>witness_quorum</code></td>
+<td>From witness verification (if provided)</td>
+<td><code>{"required": 2, "verified": 2}</code></td>
 </tr>
 </tbody>
 </table>
-<p>Attestations are stored as Git refs under <code>refs/auths/</code> in the identity repository at <code>~/.auths</code>. They are dual-signed -- both the identity controller and the device must sign -- so a compromised device alone cannot forge an authorization.</p>
-<h3 id="why-attestations-matter">Why attestations matter<a class="headerlink" href="#why-attestations-matter" title="Permanent link">&para;</a></h3>
-<p>Without attestations, a public key proves nothing on its own. Anyone can generate a keypair. Attestations create a verifiable chain from a long-lived identity to an ephemeral device key, answering the question: "Was this device actually authorized by the person who controls this identity?"</p>
-<p>When someone verifies your commit, the verification checks:</p>
+<h3 id="capability-scope-down">Capability scope-down<a class="headerlink" href="#capability-scope-down" title="Permanent link">&para;</a></h3>
+<p>When an agent requests a token, it can request a subset of its chain-granted capabilities. The bridge computes the intersection: if the chain grants <code>[sign:commit, deploy:staging, deploy:production]</code> and the agent requests <code>[deploy:staging]</code>, the JWT contains only <code>[deploy:staging]</code>. This enforces least privilege at the protocol level.</p>
+<h2 id="cloud-provider-integration">Cloud provider integration<a class="headerlink" href="#cloud-provider-integration" title="Permanent link">&para;</a></h2>
+<p>The bridge has been validated against each major cloud provider's OIDC federation mechanism. No cloud-side changes are required beyond the standard OIDC provider registration.</p>
+<h3 id="aws-sts">AWS STS<a class="headerlink" href="#aws-sts" title="Permanent link">&para;</a></h3>
+<p>Register the bridge as an OIDC identity provider in IAM, then configure a role's trust policy to accept JWTs from the bridge:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;Effect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Allow&quot;</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;Principal&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">&quot;Federated&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;arn:aws:iam::123456789012:oidc-provider/oidc.example.com&quot;</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;Action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sts:AssumeRoleWithWebIdentity&quot;</span><span class="p">,</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">&quot;Condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">&quot;StringEquals&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">&quot;oidc.example.com:aud&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sts.amazonaws.com&quot;</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>The agent calls <code>AssumeRoleWithWebIdentity</code> with the bridge-issued JWT and receives temporary AWS credentials.</p>
+<h3 id="gcp-workload-identity-federation">GCP Workload Identity Federation<a class="headerlink" href="#gcp-workload-identity-federation" title="Permanent link">&para;</a></h3>
+<p>Configure a Workload Identity Pool with an OIDC provider pointing to the bridge. The agent exchanges the JWT through GCP's STS endpoint (<code>sts.googleapis.com/v1/token</code>) using the standard <code>urn:ietf:params:oauth:grant-type:token-exchange</code> grant type.</p>
+<h3 id="azure-ad">Azure AD<a class="headerlink" href="#azure-ad" title="Permanent link">&para;</a></h3>
+<p>Register the bridge as a federated identity credential on an App Registration. The agent presents the JWT as a client assertion to Azure's OAuth 2.0 token endpoint.</p>
+<h2 id="github-actions-oidc-cross-referencing">GitHub Actions OIDC cross-referencing<a class="headerlink" href="#github-actions-oidc-cross-referencing" title="Permanent link">&para;</a></h2>
+<p>When running inside GitHub Actions, the bridge can cross-reference the GitHub-issued OIDC token with the Auths attestation chain. The agent submits both its attestation chain and the GitHub Actions OIDC token. The bridge verifies both independently and embeds <code>github_actor</code> and <code>github_repository</code> in the issued JWT, binding the cryptographic identity to the CI environment.</p>
+<p>This prevents confused deputy attacks: the bridge validates that the GitHub token's actor matches the expected identity, ensuring a workflow cannot present another user's attestation chain.</p>
+<h2 id="mcp-integration">MCP integration<a class="headerlink" href="#mcp-integration" title="Permanent link">&para;</a></h2>
+<p>The <a href="https://modelcontextprotocol.io/">Model Context Protocol (MCP)</a> uses OAuth 2.0 for authorization between AI agents and tool servers. The OIDC bridge provides the identity layer behind MCP's OAuth flow:</p>
 <ol>
-<li><strong>SSH signature</strong> -- the commit was signed by a specific public key</li>
-<li><strong>Attestation chain</strong> -- that public key was authorized by your identity</li>
-<li><strong>Identity</strong> -- the identity is registered and discoverable</li>
+<li><strong>MCP server</strong> requires OAuth authorization from connecting agents.</li>
+<li><strong>Agent</strong> holds an Auths attestation chain with scoped capabilities.</li>
+<li><strong>Agent</strong> exchanges its attestation chain for a JWT via the OIDC bridge.</li>
+<li><strong>Agent</strong> presents the JWT to the MCP server as a Bearer token.</li>
+<li><strong>MCP server</strong> validates the JWT and inspects the <code>capabilities</code> claim to authorize tool access.</li>
 </ol>
-<p>This three-layer check means a verifier does not need to trust a central authority. They can independently verify the entire chain using only Git data and the public registry.</p>
-<h2 id="view-your-attestations">View your attestations<a class="headerlink" href="#view-your-attestations" title="Permanent link">&para;</a></h2>
-<p>List all devices authorized under your identity:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>auths<span class="w"> </span>device<span class="w"> </span>list
-</span></code></pre></div>
-<p>To include revoked or expired devices:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>auths<span class="w"> </span>device<span class="w"> </span>list<span class="w"> </span>--include-revoked
-</span></code></pre></div>
-<h2 id="cicd-automated-agent-identity">CI/CD &amp; automated agent identity<a class="headerlink" href="#cicd-automated-agent-identity" title="Permanent link">&para;</a></h2>
-<p>CI runners and automated agents should hold their own identities — not borrow a human's credentials. Auths supports this through dedicated agent identities with scoped, time-limited attestations.</p>
-<h3 id="create-a-dedicated-agent-identity">Create a dedicated agent identity<a class="headerlink" href="#create-a-dedicated-agent-identity" title="Permanent link">&para;</a></h3>
-<p>Rather than exporting a human's identity bundle to CI, create a separate identity for the runner:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># On the CI runner (or during provisioning)</span>
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>auths<span class="w"> </span>init<span class="w"> </span>--profile<span class="w"> </span>agent
-</span></code></pre></div>
-<p>This gives the runner its own <code>did:keri</code> identity and device key, independent of any human operator.</p>
-<h3 id="issue-a-scoped-attestation-from-a-human">Issue a scoped attestation from a human<a class="headerlink" href="#issue-a-scoped-attestation-from-a-human" title="Permanent link">&para;</a></h3>
-<p>A human operator issues an attestation granting the CI agent specific capabilities:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>auths<span class="w"> </span>attestation<span class="w"> </span>issue<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>--subject<span class="w"> </span>did:key:z6MkCIRunner...<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--signer-type<span class="w"> </span>Workload<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--capabilities<span class="w"> </span><span class="s2">&quot;sign:commit,sign:release&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--delegated-by<span class="w"> </span>did:keri:EHumanAdmin...<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span>--expires-in<span class="w"> </span>7d
-</span></code></pre></div>
-<p>The attestation:</p>
-<ul>
-<li>Uses <code>signer_type: Workload</code> to identify this as an automated process</li>
-<li>Grants only <code>sign:commit</code> and <code>sign:release</code> — not <code>deploy:production</code> or <code>manage_members</code></li>
-<li>Expires in 7 days, requiring periodic re-authorization</li>
-<li>Includes <code>delegated_by</code> linking back to the authorizing human</li>
-</ul>
-<h3 id="agent-signs-artifacts">Agent signs artifacts<a class="headerlink" href="#agent-signs-artifacts" title="Permanent link">&para;</a></h3>
-<p>The CI agent signs commits and releases using its own key:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-S<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Release v2.1.0&quot;</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>auths<span class="w"> </span>sign<span class="w"> </span>--file<span class="w"> </span>release-v2.1.0.tar.gz
-</span></code></pre></div>
-<p>Every signature is traceable through the attestation chain: <code>CI runner → human admin → organization</code>.</p>
-<h3 id="verify-agent-signatures">Verify agent signatures<a class="headerlink" href="#verify-agent-signatures" title="Permanent link">&para;</a></h3>
-<p>Any verifier can validate the agent's work by checking the full chain:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>auths<span class="w"> </span>verify-commit<span class="w"> </span>HEAD
-</span></code></pre></div>
-<p>The verifier confirms: the commit was signed by a device with a valid attestation, the attestation was issued by an authorized human, and the capabilities include <code>sign:commit</code>.</p>
-<h3 id="export-an-identity-bundle">Export an identity bundle<a class="headerlink" href="#export-an-identity-bundle" title="Permanent link">&para;</a></h3>
-<p>For environments where the full identity repository is unavailable, export a portable bundle:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>auths<span class="w"> </span>id<span class="w"> </span>export-bundle<span class="w"> </span>--alias<span class="w"> </span>main<span class="w"> </span>--output<span class="w"> </span>identity-bundle.json<span class="w"> </span>--max-age-secs<span class="w"> </span><span class="m">86400</span>
-</span></code></pre></div>
-<p>The bundle contains the public key and attestation chain. Use it in CI:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>auths<span class="w"> </span>verify<span class="w"> </span>HEAD<span class="w"> </span>--identity-bundle<span class="w"> </span>identity-bundle.json
-</span></code></pre></div>
-<h3 id="cloud-credentials-via-oidc">Cloud credentials via OIDC<a class="headerlink" href="#cloud-credentials-via-oidc" title="Permanent link">&para;</a></h3>
-<p>For CI agents that need cloud access (AWS, GCP, Azure), the <a href="../../architecture/oidc-bridge/">OIDC bridge</a> exchanges the attestation chain for a standard JWT — no static API keys or long-lived service account credentials required.</p>
-<h2 id="next-how-it-works">Next: How It Works<a class="headerlink" href="#next-how-it-works" title="Permanent link">&para;</a></h2>
-<p>You have a signed identity, signed commits, and a public registry entry. To understand the cryptographic primitives and storage model behind all of this, continue to the <a href="../how-it-works/">How It Works</a> section.</p>
+<p>The result: MCP gets standard OAuth tokens, but those tokens are backed by cryptographically verifiable delegation chains traceable to human principals — not opaque API keys or borrowed service account credentials.</p>
+<h2 id="comparison-with-spiffespire">Comparison with SPIFFE/SPIRE<a class="headerlink" href="#comparison-with-spiffespire" title="Permanent link">&para;</a></h2>
+<p><a href="https://spiffe.io/">SPIFFE</a> and Auths both address workload identity but differ in architecture:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>SPIFFE/SPIRE</th>
+<th>Auths</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Identity issuance</strong></td>
+<td>Centralized SPIRE server issues SVIDs</td>
+<td>Self-certifying identifiers, no central issuer</td>
+</tr>
+<tr>
+<td><strong>Verification</strong></td>
+<td>Requires access to SPIRE server or trust bundle</td>
+<td>Offline verification from attestation chain alone</td>
+</tr>
+<tr>
+<td><strong>Delegation</strong></td>
+<td>Not natively supported</td>
+<td>First-class cryptographic delegation chains with capability scoping</td>
+</tr>
+<tr>
+<td><strong>Key rotation</strong></td>
+<td>SPIRE server rotates SVIDs on schedule</td>
+<td>KERI pre-rotation — controller rotates locally, verifiable by anyone</td>
+</tr>
+<tr>
+<td><strong>Storage</strong></td>
+<td>In-memory or database-backed</td>
+<td>Git-native (refs, commits)</td>
+</tr>
+<tr>
+<td><strong>Primary use case</strong></td>
+<td>Service mesh workload identity</td>
+<td>Developer, agent, and workload identity with delegation</td>
+</tr>
+</tbody>
+</table>
+<p>The two are complementary. SPIFFE is well-suited for service-to-service authentication within a managed infrastructure. Auths addresses the gap SPIFFE does not cover: cross-boundary identity, delegation chains from humans to agents, and offline verification in environments where a SPIRE server is unreachable.</p>
+<h2 id="key-rotation">Key rotation<a class="headerlink" href="#key-rotation" title="Permanent link">&para;</a></h2>
+<p>The bridge supports RSA signing key rotation with an overlap window. During rotation, both the current and previous keys appear in the JWKS endpoint, allowing relying parties to validate JWTs signed with either key. After the overlap window, the previous key is dropped via an admin endpoint.</p>
 
 
 

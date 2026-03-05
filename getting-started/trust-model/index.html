@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://docs.auths.dev/getting-started/trust-model/">
       
       
-        <link rel="prev" href="../identity-lifecycle/">
+        <link rel="prev" href="../delegation/">
       
       
         <link rel="next" href="../../guides/identity/multi-device/">
@@ -489,6 +489,8 @@
       
         
       
+        
+      
     
     
     
@@ -711,6 +713,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../delegation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delegation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -772,6 +802,17 @@
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#zero-trust-by-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zero-trust by design
+      
+    </span>
+  </a>
+  
+</li>
       
         <li class="md-nav__item">
   <a href="#verification-without-a-central-authority" class="md-nav__link">
@@ -972,6 +1013,17 @@
     <span class="md-ellipsis">
       
         Trust boundaries summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit-trail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit trail
       
     </span>
   </a>
@@ -1289,6 +1341,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#zero-trust-by-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zero-trust by design
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#verification-without-a-central-authority" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1493,6 +1556,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#audit-trail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit trail
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1563,6 +1637,15 @@
 
 <h1 id="trust-model">Trust Model<a class="headerlink" href="#trust-model" title="Permanent link">&para;</a></h1>
 <p>Auths enables cryptographic verification without a central authority. This page explains how trust is established, maintained, and verified -- and where the security boundaries are.</p>
+<h2 id="zero-trust-by-design">Zero-trust by design<a class="headerlink" href="#zero-trust-by-design" title="Permanent link">&para;</a></h2>
+<p>Auths implements the core tenets of zero-trust architecture (NIST SP 800-207) as structural properties, not bolted-on policies:</p>
+<ul>
+<li><strong>Never trust, always verify.</strong> Every attestation is verified cryptographically — signatures, expiration, capability scope. No implicit trust is granted based on network location, credential source, or issuer reputation. Verification is a pure computation requiring no server contact.</li>
+<li><strong>Least privilege.</strong> Attestations grant specific capabilities (<code>sign:commit</code>, <code>deploy:staging</code>) with mandatory expiration. Delegation chains enforce capability narrowing: a child entity can never hold more authority than its parent granted.</li>
+<li><strong>Assume breach.</strong> KERI pre-rotation means key compromise is survivable. The next rotation key is pre-committed as a hash in the current event — an attacker who steals the active key cannot rotate to a key they control.</li>
+<li><strong>Verify explicitly.</strong> Dual signatures (identity + device) on every attestation, hash-chained Key Event Logs, and optional witness receipts provide independent, layered verification that does not depend on a single trust anchor.</li>
+</ul>
+<p>These properties hold whether the identity belongs to a human developer, an AI agent, or a CI/CD workload.</p>
 <h2 id="verification-without-a-central-authority">Verification without a central authority<a class="headerlink" href="#verification-without-a-central-authority" title="Permanent link">&para;</a></h2>
 <p>Traditional identity systems rely on a central authority (a CA, an identity provider, a blockchain) to vouch for the binding between an identity and a key. Auths takes a different approach: <strong>the identity is the event log itself</strong>.</p>
 <p>Trust in Auths is rooted in three properties:</p>
@@ -1816,6 +1899,15 @@
 </span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>└─────────────────────────────────────────────────────────┘
 </span></code></pre></div>
 <p>Trust flows from the top down: you trust a root identity (out-of-band), the KEL proves the key history is intact, attestations prove devices are authorized, and witnesses provide additional assurance against equivocation.</p>
+<h2 id="audit-trail">Audit trail<a class="headerlink" href="#audit-trail" title="Permanent link">&para;</a></h2>
+<p>Auths provides tamper-evident audit capabilities as a structural property of the identity system, not as a separate logging layer.</p>
+<ul>
+<li><strong>Key Event Log (KEL):</strong> Every key operation — inception, rotation, interaction — is a signed, content-addressed record in a hash chain. The KEL is an immutable, independently verifiable history of every change to an identity's cryptographic state.</li>
+<li><strong>Attestation lifecycle in Git:</strong> Attestation creation, extension, and revocation are recorded as Git commits under <code>refs/auths/</code>. The commit history is the lifecycle audit trail — who authorized what, when, and under what constraints.</li>
+<li><strong>Seals:</strong> Interaction events can include seals — cryptographic digests that bind external data (attestation creation, revocations, delegations) to a specific point in the identity's event timeline.</li>
+<li><strong>Delegation chain provenance:</strong> Every agent action that produces a signature is traceable through the attestation chain back to the authorizing human. The <code>delegated_by</code> field, combined with <code>signer_type</code>, creates an unbroken accountability chain from autonomous action to human authorization.</li>
+</ul>
+<p>Because identifiers are self-certifying and logs are hash-chained, audit entries are independently verifiable without access to any central system.</p>
 
 
 
