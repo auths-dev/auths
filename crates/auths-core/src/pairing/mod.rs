@@ -5,12 +5,12 @@ mod error;
 mod qr;
 
 // Re-export protocol types
+pub use auths_pairing_protocol::types;
 pub use auths_pairing_protocol::{
     Base64UrlEncoded, CreateSessionRequest, CreateSessionResponse, GetSessionResponse,
     PairingResponse, PairingSession, PairingToken, ProtocolError, SessionStatus,
     SubmitResponseRequest, SuccessResponse, normalize_short_code,
 };
-pub use auths_pairing_protocol::types;
 
 // Local exports
 pub use error::PairingError;

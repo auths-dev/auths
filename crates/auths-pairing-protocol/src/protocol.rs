@@ -154,7 +154,14 @@ pub fn respond_to_pairing(
     device_name: Option<String>,
 ) -> Result<(PairingResponse, Zeroizing<[u8; 32]>), ProtocolError> {
     let token: PairingToken = serde_json::from_slice(token_bytes)?;
-    PairingResponse::create(now, &token, device_seed, device_pubkey, device_did, device_name)
+    PairingResponse::create(
+        now,
+        &token,
+        device_seed,
+        device_pubkey,
+        device_did,
+        device_name,
+    )
 }
 
 #[cfg(test)]
@@ -186,9 +193,15 @@ mod tests {
 
         let (seed, pubkey) = generate_test_keypair();
         let token_bytes = serde_json::to_vec(&token).unwrap();
-        let (response, responder_secret) =
-            respond_to_pairing(now, &token_bytes, &seed, &pubkey, "did:key:z6MkTest".to_string(), None)
-                .unwrap();
+        let (response, responder_secret) = respond_to_pairing(
+            now,
+            &token_bytes,
+            &seed,
+            &pubkey,
+            "did:key:z6MkTest".to_string(),
+            None,
+        )
+        .unwrap();
 
         let response_bytes = serde_json::to_vec(&response).unwrap();
         let completed = protocol.complete(now, &response_bytes).unwrap();
@@ -212,9 +225,7 @@ mod tests {
         .unwrap();
 
         let token = session.token.clone();
-        let protocol = PairingProtocol {
-            session,
-        };
+        let protocol = PairingProtocol { session };
 
         let (seed, pubkey) = generate_test_keypair();
         let (response, _) = PairingResponse::create(

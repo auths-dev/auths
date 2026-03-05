@@ -337,6 +337,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "auths-crypto",
+ "auths-pairing-protocol",
  "auths-verifier",
  "axum",
  "axum-server",
@@ -542,6 +543,22 @@ dependencies = [
  "tower-http",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "auths-pairing-protocol"
+version = "0.0.1-rc.7"
+dependencies = [
+ "auths-crypto",
+ "base64",
+ "chrono",
+ "rand 0.8.5",
+ "ring",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "x25519-dalek",
+ "zeroize",
 ]
 
 [[package]]

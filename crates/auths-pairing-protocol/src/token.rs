@@ -1,7 +1,7 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use rand::rngs::OsRng;
-use ring::signature::{UnparsedPublicKey, ED25519};
+use ring::signature::{ED25519, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use x25519_dalek::{EphemeralSecret, PublicKey};
 use zeroize::Zeroizing;
@@ -98,9 +98,9 @@ impl PairingToken {
 
     /// Parse a pairing token from an `auths://` URI.
     pub fn from_uri(uri: &str) -> Result<Self, ProtocolError> {
-        let rest = uri
-            .strip_prefix("auths://pair?")
-            .ok_or_else(|| ProtocolError::InvalidUri("Expected auths://pair? scheme".to_string()))?;
+        let rest = uri.strip_prefix("auths://pair?").ok_or_else(|| {
+            ProtocolError::InvalidUri("Expected auths://pair? scheme".to_string())
+        })?;
 
         let mut controller_did = None;
         let mut endpoint_b64 = None;
@@ -125,8 +125,8 @@ impl PairingToken {
 
         let controller_did = controller_did
             .ok_or_else(|| ProtocolError::InvalidUri("Missing controller_did".to_string()))?;
-        let endpoint_b64 =
-            endpoint_b64.ok_or_else(|| ProtocolError::InvalidUri("Missing endpoint".to_string()))?;
+        let endpoint_b64 = endpoint_b64
+            .ok_or_else(|| ProtocolError::InvalidUri("Missing endpoint".to_string()))?;
         let endpoint_bytes = URL_SAFE_NO_PAD
             .decode(&endpoint_b64)
             .map_err(|e| ProtocolError::InvalidUri(format!("Invalid endpoint encoding: {}", e)))?;
@@ -134,8 +134,8 @@ impl PairingToken {
             .map_err(|e| ProtocolError::InvalidUri(format!("Invalid endpoint UTF-8: {}", e)))?;
         let ephemeral_pubkey = ephemeral_pubkey
             .ok_or_else(|| ProtocolError::InvalidUri("Missing ephemeral_pubkey".to_string()))?;
-        let short_code =
-            short_code.ok_or_else(|| ProtocolError::InvalidUri("Missing short_code".to_string()))?;
+        let short_code = short_code
+            .ok_or_else(|| ProtocolError::InvalidUri("Missing short_code".to_string()))?;
         let expires_unix = expires_unix.ok_or_else(|| {
             ProtocolError::InvalidUri("Missing or invalid expires_at".to_string())
         })?;

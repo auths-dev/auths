@@ -104,10 +104,7 @@ fn sequential_batches_produce_correct_state() {
     let backend2 =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(dir.path()));
     backend2
-        .batch_append_events(&[
-            (e4.1.clone(), e4.0.clone()),
-            (e5.1.clone(), e5.0.clone()),
-        ])
+        .batch_append_events(&[(e4.1.clone(), e4.0.clone()), (e5.1.clone(), e5.0.clone())])
         .unwrap();
 
     assert_eq!(backend2.metadata().unwrap().identity_count, 5);
@@ -234,8 +231,7 @@ fn batch_and_single_event_interleaving() {
                     Ok(()) => break,
                     Err(e) => {
                         let msg = format!("{e}");
-                        if msg.contains("Concurrent modification")
-                            || msg.contains("already exists")
+                        if msg.contains("Concurrent modification") || msg.contains("already exists")
                         {
                             thread::sleep(std::time::Duration::from_millis(10));
                             continue;

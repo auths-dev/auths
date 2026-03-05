@@ -233,58 +233,50 @@ fn bench_batch_vs_sequential(c: &mut Criterion) {
     for n in [100, 500, 1000] {
         // Sequential: append N events one at a time
         group.throughput(Throughput::Elements(n));
-        group.bench_with_input(
-            BenchmarkId::new("sequential", n),
-            &n,
-            |b, &n| {
-                b.iter_with_setup(
-                    || {
-                        let (dir, backend) = setup_registry();
-                        let (icp, prefix, keypair) = make_signed_icp();
+        group.bench_with_input(BenchmarkId::new("sequential", n), &n, |b, &n| {
+            b.iter_with_setup(
+                || {
+                    let (dir, backend) = setup_registry();
+                    let (icp, prefix, keypair) = make_signed_icp();
 
-                        let mut events = vec![(prefix.clone(), icp.clone())];
-                        let mut prev_said = icp.said().to_string();
-                        for seq in 1..n {
-                            let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
-                            prev_said = ixn.said().to_string();
-                            events.push((prefix.clone(), ixn));
-                        }
-                        (dir, backend, events)
-                    },
-                    |(_dir, backend, events)| {
-                        for (prefix, event) in &events {
-                            let _ = black_box(backend.append_event(prefix, event));
-                        }
-                    },
-                );
-            },
-        );
+                    let mut events = vec![(prefix.clone(), icp.clone())];
+                    let mut prev_said = icp.said().to_string();
+                    for seq in 1..n {
+                        let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                        prev_said = ixn.said().to_string();
+                        events.push((prefix.clone(), ixn));
+                    }
+                    (dir, backend, events)
+                },
+                |(_dir, backend, events)| {
+                    for (prefix, event) in &events {
+                        let _ = black_box(backend.append_event(prefix, event));
+                    }
+                },
+            );
+        });
 
         // Batch: append N events in a single batch call
-        group.bench_with_input(
-            BenchmarkId::new("batch", n),
-            &n,
-            |b, &n| {
-                b.iter_with_setup(
-                    || {
-                        let (dir, backend) = setup_registry();
-                        let (icp, prefix, keypair) = make_signed_icp();
+        group.bench_with_input(BenchmarkId::new("batch", n), &n, |b, &n| {
+            b.iter_with_setup(
+                || {
+                    let (dir, backend) = setup_registry();
+                    let (icp, prefix, keypair) = make_signed_icp();
 
-                        let mut events = vec![(prefix.clone(), icp.clone())];
-                        let mut prev_said = icp.said().to_string();
-                        for seq in 1..n {
-                            let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
-                            prev_said = ixn.said().to_string();
-                            events.push((prefix.clone(), ixn));
-                        }
-                        (dir, backend, events)
-                    },
-                    |(_dir, backend, events)| {
-                        let _ = black_box(backend.batch_append_events(&events));
-                    },
-                );
-            },
-        );
+                    let mut events = vec![(prefix.clone(), icp.clone())];
+                    let mut prev_said = icp.said().to_string();
+                    for seq in 1..n {
+                        let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                        prev_said = ixn.said().to_string();
+                        events.push((prefix.clone(), ixn));
+                    }
+                    (dir, backend, events)
+                },
+                |(_dir, backend, events)| {
+                    let _ = black_box(backend.batch_append_events(&events));
+                },
+            );
+        });
     }
 
     group.finish();

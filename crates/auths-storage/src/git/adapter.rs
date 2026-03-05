@@ -576,10 +576,7 @@ impl GitRegistryBackend {
     /// ```ignore
     /// backend.batch_append_events(&events)?;
     /// ```
-    pub fn batch_append_events(
-        &self,
-        events: &[(Prefix, Event)],
-    ) -> Result<(), RegistryError> {
+    pub fn batch_append_events(&self, events: &[(Prefix, Event)]) -> Result<(), RegistryError> {
         if events.is_empty() {
             return Ok(());
         }

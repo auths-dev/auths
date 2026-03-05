@@ -1,7 +1,7 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use rand::rngs::OsRng;
-use ring::signature::{Ed25519KeyPair, UnparsedPublicKey, ED25519};
+use ring::signature::{ED25519, Ed25519KeyPair, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use x25519_dalek::{EphemeralSecret, PublicKey};
 use zeroize::Zeroizing;
