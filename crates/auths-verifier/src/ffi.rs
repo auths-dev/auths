@@ -9,6 +9,8 @@ use std::os::raw::c_int;
 use std::panic;
 use std::slice;
 
+// INVARIANT: Tokio runtime creation is fatal at FFI boundary; cannot propagate Result across FFI
+#[allow(clippy::expect_used)]
 fn with_runtime<F: std::future::Future>(f: F) -> F::Output {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
