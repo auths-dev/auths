@@ -339,6 +339,20 @@ fn get_backend_by_name(
             let storage = new_encrypted_file_storage(config)?;
             Ok(Box::new(storage))
         }
+        #[cfg(feature = "keychain-pkcs11")]
+        "hsm" | "pkcs11" => {
+            info!("Using PKCS#11 HSM backend (AUTHS_KEYCHAIN_BACKEND={name})");
+            let pkcs11_config =
+                config
+                    .pkcs11
+                    .as_ref()
+                    .ok_or_else(|| AgentError::BackendInitFailed {
+                        backend: "pkcs11",
+                        error: "PKCS#11 configuration required (set AUTHS_PKCS11_LIBRARY)".into(),
+                    })?;
+            let storage = super::pkcs11::Pkcs11KeyRef::new(pkcs11_config)?;
+            Ok(Box::new(storage))
+        }
         _ => {
             warn!(
                 "Unknown keychain backend '{}', using platform default",
@@ -370,6 +384,47 @@ fn new_encrypted_file_storage(
     }
 
     Ok(storage)
+}
+
+/// Creates a PKCS#11-backed [`SecureSigner`](crate::signing::SecureSigner) from the
+/// environment config, if the backend is set to `"pkcs11"` or `"hsm"`.
+///
+/// Returns `None` if the keychain backend is not PKCS#11.
+///
+/// Args:
+/// * `config`: Environment configuration.
+///
+/// Usage:
+/// ```ignore
+/// if let Some(signer) = get_pkcs11_signer(&env)? {
+///     signer.sign_with_alias(&alias, &provider, message)?;
+/// }
+/// ```
+#[cfg(feature = "keychain-pkcs11")]
+pub fn get_pkcs11_signer(
+    config: &EnvironmentConfig,
+) -> Result<Option<Box<dyn crate::signing::SecureSigner>>, AgentError> {
+    let is_pkcs11 = config
+        .keychain
+        .backend
+        .as_deref()
+        .map(|b| matches!(b.to_lowercase().as_str(), "hsm" | "pkcs11"))
+        .unwrap_or(false);
+
+    if !is_pkcs11 {
+        return Ok(None);
+    }
+
+    let pkcs11_config = config
+        .pkcs11
+        .as_ref()
+        .ok_or_else(|| AgentError::BackendInitFailed {
+            backend: "pkcs11",
+            error: "PKCS#11 configuration required (set AUTHS_PKCS11_LIBRARY)".into(),
+        })?;
+
+    let signer = super::pkcs11::Pkcs11Signer::new(pkcs11_config)?;
+    Ok(Some(Box::new(signer)))
 }
 
 impl KeyStorage for Arc<dyn KeyStorage + Send + Sync> {
