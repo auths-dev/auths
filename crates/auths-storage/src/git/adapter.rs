@@ -643,6 +643,7 @@ impl GitRegistryBackend {
     }
 
     /// Validate a single event and stage its mutations, using overlays for batch state.
+    #[allow(clippy::too_many_arguments)]
     fn validate_and_stage_event(
         &self,
         prefix: &Prefix,
