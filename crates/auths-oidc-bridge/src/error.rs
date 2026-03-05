@@ -83,6 +83,34 @@ pub enum BridgeError {
     #[cfg(feature = "github-oidc")]
     #[error("actor mismatch: expected {expected}, got {actual}")]
     ActorMismatch { expected: String, actual: String },
+
+    /// OIDC provider not found in trust registry.
+    #[cfg(feature = "oidc-trust")]
+    #[error("OIDC provider not in trust registry: {provider}")]
+    ProviderNotTrusted { provider: String },
+
+    /// Repository not allowed for this provider.
+    #[cfg(feature = "oidc-trust")]
+    #[error("repository not allowed for provider {provider}: {repo}")]
+    RepositoryNotAllowed { repo: String, provider: String },
+
+    /// Requested capabilities not allowed by trust registry.
+    #[cfg(feature = "oidc-trust")]
+    #[error("no allowed capabilities match request")]
+    CapabilityNotAllowed {
+        requested: Vec<String>,
+        allowed: Vec<String>,
+    },
+
+    /// Workload policy denied the token exchange.
+    #[cfg(feature = "oidc-policy")]
+    #[error("policy denied: {0}")]
+    PolicyDenied(String),
+
+    /// Policy compilation failed at startup.
+    #[cfg(feature = "oidc-policy")]
+    #[error("policy compilation failed: {0}")]
+    PolicyCompilationFailed(String),
 }
 
 /// Error response body.
@@ -124,6 +152,25 @@ impl IntoResponse for BridgeError {
             }
             #[cfg(feature = "github-oidc")]
             BridgeError::ActorMismatch { .. } => (StatusCode::FORBIDDEN, "ACTOR_MISMATCH"),
+            #[cfg(feature = "oidc-trust")]
+            BridgeError::ProviderNotTrusted { .. } => {
+                (StatusCode::FORBIDDEN, "PROVIDER_NOT_TRUSTED")
+            }
+            #[cfg(feature = "oidc-trust")]
+            BridgeError::RepositoryNotAllowed { .. } => {
+                (StatusCode::FORBIDDEN, "REPOSITORY_NOT_ALLOWED")
+            }
+            #[cfg(feature = "oidc-trust")]
+            BridgeError::CapabilityNotAllowed { .. } => {
+                (StatusCode::FORBIDDEN, "CAPABILITY_NOT_ALLOWED")
+            }
+            #[cfg(feature = "oidc-policy")]
+            BridgeError::PolicyDenied(_) => (StatusCode::FORBIDDEN, "POLICY_DENIED"),
+            #[cfg(feature = "oidc-policy")]
+            BridgeError::PolicyCompilationFailed(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "POLICY_COMPILATION_FAILED",
+            ),
         };
 
         let retry_after = if let BridgeError::RateLimited {

@@ -14,6 +14,8 @@ categories = ["authentication", "web-programming"]
 [features]
 default = []
 github-oidc = ["dep:reqwest"]
+oidc-policy = ["dep:auths-policy"]
+oidc-trust = ["dep:auths-policy"]
 
 [[bin]]
 name = "auths-oidc-bridge"
@@ -24,6 +26,7 @@ name = "auths_oidc_bridge"
 path = "src/lib.rs"
 
 [dependencies]
+auths-policy = { workspace = true, optional = true }
 auths-telemetry.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
 

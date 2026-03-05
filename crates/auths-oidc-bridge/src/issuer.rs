@@ -66,14 +66,18 @@ impl OidcIssuer {
     ///
     /// Args:
     /// * `request`: The exchange request containing the attestation chain.
+    /// * `workload_policy`: Optional compiled policy to evaluate before issuance (oidc-policy feature).
+    /// * `github_cross_ref`: Optional GitHub OIDC cross-reference result (github-oidc feature).
     ///
     /// Usage:
     /// ```ignore
-    /// let response = issuer.exchange(&request, None)?;
+    /// let response = issuer.exchange(&request, None, None)?;
     /// ```
     pub async fn exchange(
         &self,
         request: &ExchangeRequest,
+        #[cfg(feature = "oidc-trust")] trust_registry: Option<&auths_policy::TrustRegistry>,
+        #[cfg(feature = "oidc-policy")] workload_policy: Option<&auths_policy::CompiledPolicy>,
         #[cfg(feature = "github-oidc")] github_cross_ref: Option<
             &crate::cross_reference::CrossReferenceResult,
         >,
@@ -108,7 +112,7 @@ impl OidcIssuer {
             .map(|a| a.issuer.to_string())
             .unwrap_or_default();
 
-        // 7. Extract capabilities from last attestation, applying scope-down
+        // 7. Extract capabilities from last attestation
         let chain_granted: Vec<String> = chain
             .last()
             .map(|a| {
@@ -118,6 +122,61 @@ impl OidcIssuer {
                     .collect()
             })
             .unwrap_or_default();
+
+        // 7.5. Trust registry: narrow capabilities and cap TTL
+        #[cfg(feature = "oidc-trust")]
+        let (chain_granted, ttl_secs) = if let Some(registry) = trust_registry {
+            let provider = request.provider_issuer.as_deref().ok_or_else(|| {
+                BridgeError::InvalidRequest(
+                    "provider_issuer is required when trust registry is configured".into(),
+                )
+            })?;
+
+            let entry =
+                registry
+                    .lookup(provider)
+                    .ok_or_else(|| BridgeError::ProviderNotTrusted {
+                        provider: provider.to_string(),
+                    })?;
+
+            if let Some(ref repo) = request.repository
+                && !entry.repo_allowed(repo)
+            {
+                return Err(BridgeError::RepositoryNotAllowed {
+                    repo: repo.clone(),
+                    provider: provider.to_string(),
+                });
+            }
+
+            let narrowed: Vec<String> = chain_granted
+                .iter()
+                .filter(|c| {
+                    entry
+                        .allowed_capabilities
+                        .iter()
+                        .any(|a| a.as_str() == c.as_str())
+                })
+                .cloned()
+                .collect();
+
+            if narrowed.is_empty() && !chain_granted.is_empty() {
+                return Err(BridgeError::CapabilityNotAllowed {
+                    requested: chain_granted,
+                    allowed: entry
+                        .allowed_capabilities
+                        .iter()
+                        .map(|c| c.as_str().to_string())
+                        .collect(),
+                });
+            }
+
+            let capped_ttl = std::cmp::min(ttl_secs, entry.max_token_ttl_seconds);
+            (narrowed, capped_ttl)
+        } else {
+            (chain_granted, ttl_secs)
+        };
+
+        // 7.6. Apply scope-down
         let capabilities =
             Self::scope_capabilities(&chain_granted, request.requested_capabilities.as_deref())?;
 
@@ -159,7 +218,22 @@ impl OidcIssuer {
             github_repository: None,
         };
 
-        // 9. Sign JWT with RS256
+        // 9. Evaluate workload policy (if configured)
+        #[cfg(feature = "oidc-policy")]
+        if let Some(policy) = workload_policy {
+            // INVARIANT: u64 epoch seconds always fits in DateTime (overflows at ~292 billion years)
+            #[allow(clippy::expect_used)]
+            let now_dt = chrono::DateTime::from_timestamp(now as i64, 0)
+                .expect("u64 epoch seconds always fits in DateTime");
+            let ctx = crate::policy_adapter::build_eval_context_from_oidc(&claims, now_dt)?;
+            let decision = auths_policy::evaluate_strict(policy, &ctx);
+            if decision.outcome != auths_policy::Outcome::Allow {
+                tracing::info!(reason = %decision.message, "auths.exchange.policy_denied");
+                return Err(BridgeError::PolicyDenied(decision.message));
+            }
+        }
+
+        // 10. Sign JWT with RS256
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(self.kid.clone());
 
