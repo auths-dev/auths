@@ -1,10 +1,9 @@
 use std::sync::{Arc, Barrier};
 use std::thread;
 
-use auths_core::crypto::said::{compute_next_commitment, compute_said};
+use auths_core::crypto::said::compute_next_commitment;
 use auths_id::keri::KeriSequence;
-use auths_id::keri::event::{Event, IcpEvent, IxnEvent};
-use auths_id::keri::seal::Seal;
+use auths_id::keri::event::{Event, IcpEvent};
 use auths_id::keri::types::{Prefix, Said};
 use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
 use auths_id::storage::registry::backend::RegistryBackend;
@@ -47,27 +46,6 @@ fn make_signed_icp() -> (Event, Prefix, Ed25519KeyPair) {
 
     let prefix = finalized.i.clone();
     (Event::Icp(finalized), prefix, keypair)
-}
-
-fn make_signed_ixn(prefix: &Prefix, seq: u64, prev_said: &str, keypair: &Ed25519KeyPair) -> Event {
-    let mut ixn = IxnEvent {
-        v: "KERI10JSON".to_string(),
-        d: Said::default(),
-        i: prefix.clone(),
-        s: KeriSequence::new(seq),
-        p: Said::new_unchecked(prev_said.to_string()),
-        a: vec![Seal::device_attestation("EConcurrentBatch")],
-        x: String::new(),
-    };
-
-    let json = serde_json::to_vec(&Event::Ixn(ixn.clone())).unwrap();
-    ixn.d = compute_said(&json);
-
-    let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
-    let sig = keypair.sign(&canonical);
-    ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
-    Event::Ixn(ixn)
 }
 
 fn setup() -> (TempDir, GitRegistryBackend) {
