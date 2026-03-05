@@ -65,10 +65,10 @@ jobs:
           restore-keys: ${{ runner.os }}-schemas-
       - name: Regenerate schemas and check for drift
         run: |
-          cargo xtask generate-schemas
+          cargo run -p xtask -- generate-schemas
           git diff --exit-code schemas/
       - name: Validate fixtures against schemas
-        run: cargo xtask validate-schemas
+        run: cargo run -p xtask -- validate-schemas
 
   test:
     name: Test (${{ matrix.os }})
