@@ -13,6 +13,8 @@ pub use metrics_exporter_prometheus::PrometheusHandle;
 /// ```ignore
 /// let handle = auths_telemetry::init_prometheus();
 /// ```
+// INVARIANT: Prometheus recorder installation is a one-time global operation; failure is fatal
+#[allow(clippy::expect_used)]
 pub fn init_prometheus() -> PrometheusHandle {
     metrics_exporter_prometheus::PrometheusBuilder::new()
         .install_recorder()
