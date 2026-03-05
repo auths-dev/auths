@@ -1,6 +1,7 @@
 use auths_id::ports::registry::RegistryBackend;
-use auths_id::testing::fixtures::test_inception_event;
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
+
+use super::mock_ed25519_keypairs::mock_inception_event;
 
 fn setup() -> (GitRegistryBackend, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
@@ -21,7 +22,7 @@ fn batch_empty_is_noop() {
 #[test]
 fn batch_single_inception() {
     let (backend, _dir) = setup();
-    let event = test_inception_event("batch-single");
+    let event = mock_inception_event(0);
     let prefix = event.prefix().clone();
 
     backend
@@ -39,9 +40,9 @@ fn batch_single_inception() {
 #[test]
 fn batch_multiple_prefixes() {
     let (backend, _dir) = setup();
-    let e1 = test_inception_event("batch-multi-1");
-    let e2 = test_inception_event("batch-multi-2");
-    let e3 = test_inception_event("batch-multi-3");
+    let e1 = mock_inception_event(0);
+    let e2 = mock_inception_event(1);
+    let e3 = mock_inception_event(2);
     let p1 = e1.prefix().clone();
     let p2 = e2.prefix().clone();
     let p3 = e3.prefix().clone();
@@ -66,8 +67,8 @@ fn batch_multiple_prefixes() {
 fn batch_validation_failure_reports_index() {
     let (backend, _dir) = setup();
 
-    let e1 = test_inception_event("batch-fail-1");
-    let e2 = test_inception_event("batch-fail-2");
+    let e1 = mock_inception_event(3);
+    let e2 = mock_inception_event(4);
     let p1 = e1.prefix().clone();
     let p2 = e2.prefix().clone();
 
@@ -98,8 +99,8 @@ fn batch_validation_failure_reports_index() {
 fn batch_duplicate_prefix_same_seq_fails() {
     let (backend, _dir) = setup();
 
-    let e1 = test_inception_event("batch-dup-1");
-    let e2 = test_inception_event("batch-dup-2");
+    let e1 = mock_inception_event(5);
+    let e2 = mock_inception_event(6);
     let p1 = e1.prefix().clone();
 
     // Two ICPs for different prefixes in same batch is fine,

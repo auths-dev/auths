@@ -184,3 +184,49 @@ git config --global user.email "test@example.com"
 ```
 
 If tests fail locally with "please tell me who you are" errors, run these commands.
+
+## Test key material
+
+Cryptographic key generation (`Ed25519KeyPair::generate_pkcs8`, RSA prime finding) requires OS entropy and is expensive in debug builds — often 2-3 seconds per key in CI. This adds up fast when tests create multiple identities.
+
+**Always use pre-generated static keys in tests.** Store them as `const` byte arrays, not generated at runtime.
+
+### Ed25519
+
+For tests needing a small number of distinct identities, use the pre-generated PKCS8 DER constants in `crates/auths-storage/tests/cases/mock_ed25519_keypairs.rs`. These were generated once offline and stored inline — `Ed25519KeyPair::from_pkcs8` is just parsing, zero entropy.
+
+For tests needing many unique keys (e.g. concurrency tests with 18+ identities), use deterministic seeds with `Ed25519KeyPair::from_seed_unchecked(&[N; 32])`. This derives the keypair via pure math — instant, no OS entropy.
+
+**Never use `Ed25519KeyPair::generate_pkcs8(&rng)` in tests.** It reads `/dev/urandom` and takes seconds per call in CI debug mode.
+
+To generate new PKCS8 constants if needed:
+
+```rust
+fn main() {
+    use ring::signature::{Ed25519KeyPair, KeyPair};
+    use ring::rand::SystemRandom;
+
+    let rng = SystemRandom::new();
+
+    for i in 0..20 {
+        let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let bytes = pkcs8.as_ref();
+        let kp = Ed25519KeyPair::from_pkcs8(bytes).unwrap();
+        let pub_hex: String = kp.public_key().as_ref()
+            .iter().map(|b| format!("{b:02x}")).collect();
+
+        println!("// Keypair {i} (pub: {pub_hex})");
+        println!("#[rustfmt::skip]");
+        print!("const PKCS8_{i}: &[u8] = &[");
+        for (j, b) in bytes.iter().enumerate() {
+            if j % 16 == 0 { print!("\n    "); }
+            print!("{b:#04x}, ");
+        }
+        println!("\n];\n");
+    }
+}
+```
+
+### RSA
+
+Same pattern — see `crates/auths-oidc-bridge/src/github_oidc.rs` which stores a pre-generated 2048-bit RSA key as `const TEST_RSA_PRIVATE_KEY_PEM`. Generated once with `openssl genrsa 2048 | openssl rsa -traditional`.
