@@ -1340,12 +1340,15 @@
 <h2 id="the-delegation-model">The delegation model<a class="headerlink" href="#the-delegation-model" title="Permanent link">&para;</a></h2>
 <p>Auths delegation is a cryptographic chain of signed attestations. Each link in the chain grants a subset of the parent's capabilities to a child entity. Capabilities can only narrow at each hop — never widen.</p>
 <pre class="mermaid"><code>graph TD
-    H["Human&lt;br/&gt;(did:keri:EHuman...)"]
-    A["AI Agent&lt;br/&gt;(did:keri:EAgent...)"]
-    S["Sub-Agent&lt;br/&gt;(did:keri:ESub...)"]
+    H["&lt;b&gt;Human&lt;/b&gt;&lt;br/&gt;did:keri:EHuman..."]
 
-    H --&gt;|"attestation: sign:commit, deploy:staging, deploy:production&lt;br/&gt;signer_type: Agent, delegated_by: did:keri:EHuman..."| A
-    A --&gt;|"attestation: deploy:staging ← narrowed&lt;br/&gt;signer_type: Agent, delegated_by: did:keri:EAgent..."| S</code></pre>
+    H -- "signs attestation" --&gt; A
+
+    A["&lt;b&gt;AI Agent&lt;/b&gt;&lt;br/&gt;did:keri:EAgent...&lt;br/&gt;&lt;br/&gt;capabilities: sign:commit, deploy:staging&lt;br/&gt;signer_type: Agent&lt;br/&gt;delegated_by: did:keri:EHuman..."]
+
+    A -- "delegates subset" --&gt; S
+
+    S["&lt;b&gt;Sub-Agent&lt;/b&gt;&lt;br/&gt;did:keri:ESubAgent...&lt;br/&gt;&lt;br/&gt;capabilities: deploy:staging&lt;br/&gt;signer_type: Agent&lt;br/&gt;delegated_by: did:keri:EAgent..."]</code></pre>
 <h2 id="step-1-human-creates-identity-and-links-a-device">Step 1: Human creates identity and links a device<a class="headerlink" href="#step-1-human-creates-identity-and-links-a-device" title="Permanent link">&para;</a></h2>
 <p>The human operator creates a KERI identity and links their device:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>auths<span class="w"> </span>init

@@ -1,0 +1,1981 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Decentralized identity for developers. One identity, multiple devices, Git-native storage.">
+      
+      
+      
+        <link rel="canonical" href="https://docs.auths.dev/plans/agent_launch/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>Auths Agent Identity: Engineering Roadmap & Market Strategy - Auths</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#auths-agent-identity-engineering-roadmap-market-strategy" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Auths" class="md-header__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Auths
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Auths Agent Identity: Engineering Roadmap &amp; Market Strategy
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/install/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/identity/multi-device/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../sdk/rust/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  SDK & Libraries
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/development-setup/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Auths" class="md-nav__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    Auths
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../getting-started/install/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../guides/identity/multi-device/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../sdk/rust/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK & Libraries
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../architecture/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../contributing/development-setup/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#executive-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Executive Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-1-what-exists-vs-whats-missing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 1: What Exists vs. What's Missing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 1: What Exists vs. What&#39;s Missing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#already-built-the-feedback-underestimates-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Already Built (the feedback underestimates this)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-yet-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not Yet Built
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2-feedback-corrections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 2: Feedback Corrections
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2: Feedback Corrections">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-static-service-accounts-as-the-only-competitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. "Static Service Accounts" as the only competitor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-10m-implement-spiffespire-baselines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. "$10M: Implement SPIFFE/SPIRE Baselines"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-ngac-next-generation-access-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. "NGAC (Next Generation Access Control)"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-decouple-orchestration-from-authorization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. "Decouple Orchestration from Authorization"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-ephemeral-state-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. "Ephemeral State Management"
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-3-revised-epics-nist-aligned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 3: Revised Epics (NIST-Aligned)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 3: Revised Epics (NIST-Aligned)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#epic-1-mcp-native-agent-authorization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 1: MCP-Native Agent Authorization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-2-oauth-21-on-behalf-of-delegation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 2: OAuth 2.1 "On Behalf Of" Delegation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-3-non-repudiation-audit-logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 3: Non-Repudiation Audit Logging
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-4-spiffe-bridge-not-replacement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 4: SPIFFE Bridge (Not Replacement)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-5-human-in-the-loop-approval-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 5: Human-in-the-Loop Approval Gates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-6-scim-provisioning-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 6: SCIM Provisioning API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#epic-7-context-aware-dynamic-authorization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Epic 7: Context-Aware Dynamic Authorization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-4-valuation-milestones-revised" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 4: Valuation Milestones (Revised)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 4: Valuation Milestones (Revised)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#current-state-4-6m-seed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current State (~$4-6M Seed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-15m-post-seed-pre-series-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        $10-15M (Post-Seed / Pre-Series A)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#20-30m-series-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        $20-30M (Series A)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#60-100m-series-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        $60-100M (Series B)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#300m-series-c-category-leader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        $300M+ (Series C / Category Leader)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-5-the-structural-moat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 5: The Structural Moat
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-6-execution-priority-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 6: Execution Priority Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="auths-agent-identity-engineering-roadmap-market-strategy">Auths Agent Identity: Engineering Roadmap &amp; Market Strategy<a class="headerlink" href="#auths-agent-identity-engineering-roadmap-market-strategy" title="Permanent link">&para;</a></h1>
+<h2 id="executive-summary">Executive Summary<a class="headerlink" href="#executive-summary" title="Permanent link">&para;</a></h2>
+<p>The agentic AI market is projected to grow from $7.55B (2025) to $199B by 2034 (CAGR 43.8%). NIST released its <a href="https://www.nccoe.nist.gov/projects/software-and-ai-agent-identity-and-authorization">NCCoE concept paper on AI agent identity</a> in February 2026, signaling that agent identity is now a regulatory-grade concern. The <a href="https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization">MCP specification</a> now mandates OAuth 2.1 for tool authorization. An <a href="https://www.ietf.org/archive/id/draft-oauth-ai-agents-on-behalf-of-user-01.html">IETF draft</a> formalizes "on behalf of" delegation for AI agents. Auth0 launched a <a href="https://auth0.com/blog/auth0-token-vault-secure-token-exchange-for-ai-agents/">Token Vault</a> specifically for AI agent credential management. HashiCorp positions <a href="https://www.hashicorp.com/en/blog/spiffe-securing-the-identity-of-agentic-ai-and-non-human-actors">SPIFFE as the "TCP/IP of agent identity"</a>.</p>
+<p>Auths has a structural advantage none of these players possess: <strong>cryptographic delegation chains with capability narrowing from human to agent to sub-agent, verifiable offline, stored in Git</strong>. This document maps the feedback's valuation milestones against the actual codebase state and defines the engineering work to capture this market.</p>
+<hr />
+<h2 id="part-1-what-exists-vs-whats-missing">Part 1: What Exists vs. What's Missing<a class="headerlink" href="#part-1-what-exists-vs-whats-missing" title="Permanent link">&para;</a></h2>
+<h3 id="already-built-the-feedback-underestimates-this">Already Built (the feedback underestimates this)<a class="headerlink" href="#already-built-the-feedback-underestimates-this" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Location</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent provisioning API (headless, CI-ready)</td>
+<td><code>auths-id/src/agent_identity.rs</code></td>
+<td>Full. <code>provision_agent_identity()</code> with persistent/ephemeral storage modes, <code>AgentProvisioningConfig</code>, <code>AgentIdentityBundle</code>.</td>
+</tr>
+<tr>
+<td><code>SignerType</code> enum (Human/Agent/Workload)</td>
+<td><code>auths-verifier/src/core.rs:686-698</code></td>
+<td>Full. Signed into canonical attestation data — cannot be forged post-signing.</td>
+</tr>
+<tr>
+<td>Delegation chains with <code>delegated_by</code></td>
+<td><code>auths-verifier/src/core.rs:676-678</code></td>
+<td>Full. Field included in signed envelope.</td>
+</tr>
+<tr>
+<td>Chain verification with capability narrowing</td>
+<td><code>auths-verifier/src/verifier.rs:138-166</code></td>
+<td>Full. Set-intersection semantics — capabilities can only narrow, never expand.</td>
+</tr>
+<tr>
+<td>Policy engine (IsAgent/IsHuman/IsWorkload predicates)</td>
+<td><code>auths-policy/src/eval.rs:380-411</code></td>
+<td>Full. Also: <code>MaxChainDepth</code>, <code>WorkloadIssuerIs</code>, <code>WorkloadClaimEquals</code>, <code>DelegatedBy</code>.</td>
+</tr>
+<tr>
+<td>OIDC bridge (attestation chain -&gt; JWT)</td>
+<td><code>auths-oidc-bridge/src/</code></td>
+<td>Full. Token exchange, JWKS endpoint, cloud provider auto-detection (AWS/GCP/Azure).</td>
+</tr>
+<tr>
+<td>GitHub Actions OIDC cross-referencing</td>
+<td><code>auths-oidc-bridge/src/github_oidc.rs</code></td>
+<td>Full. Confused-deputy prevention via actor/repo validation.</td>
+</tr>
+<tr>
+<td>Agent signing daemon (IPC over Unix socket)</td>
+<td><code>auths-cli/src/commands/agent.rs</code></td>
+<td>Full. start/stop/status/lock/unlock/install-service (launchd/systemd).</td>
+</tr>
+<tr>
+<td>Ephemeral agent identities (InMemory mode)</td>
+<td><code>auths-id/src/agent_identity.rs:62-64</code></td>
+<td>Full. Stateless containers (Fargate, Docker). Identity dies with process.</td>
+</tr>
+<tr>
+<td>MCP integration pattern</td>
+<td><code>docs/architecture/oidc-bridge.md:92-102</code></td>
+<td>Documented. Agent exchanges attestation chain for JWT, presents to MCP server as Bearer token.</td>
+</tr>
+<tr>
+<td>SPIFFE comparison &amp; positioning</td>
+<td><code>docs/architecture/oidc-bridge.md:104-117</code></td>
+<td>Documented. Auths covers delegation gap SPIFFE doesn't address.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="not-yet-built">Not Yet Built<a class="headerlink" href="#not-yet-built" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>NIST Alignment</th>
+<th>Gap Size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MCP tool server with Auths-native auth</td>
+<td>NIST Focus Area 2 (Authorization)</td>
+<td>Medium -- need an <code>auths-mcp-server</code> crate</td>
+</tr>
+<tr>
+<td>SPIFFE SVID compatibility layer</td>
+<td>NIST scope (SPIFFE referenced)</td>
+<td>Medium -- bidirectional translation, not replacement</td>
+</tr>
+<tr>
+<td>OAuth 2.1 "on behalf of" (IETF draft)</td>
+<td>NIST Focus Area 3 (Access Delegation)</td>
+<td>Medium -- extend OIDC bridge with <code>act</code> claim</td>
+</tr>
+<tr>
+<td>Automatic chain depth calculation</td>
+<td>Internal gap</td>
+<td>Small -- ~50 lines in verify.rs</td>
+</tr>
+<tr>
+<td>OIDC trust registry</td>
+<td>NIST Focus Area 2</td>
+<td>Medium -- covered in v2_launch.md</td>
+</tr>
+<tr>
+<td>Non-repudiation audit logging</td>
+<td>NIST Focus Area 4 (Logging)</td>
+<td>Large -- new crate</td>
+</tr>
+<tr>
+<td>Human-in-the-loop approval gates</td>
+<td>NIST Focus Area 3</td>
+<td>Medium -- policy + webhook</td>
+</tr>
+<tr>
+<td>SCIM provisioning API</td>
+<td>Enterprise IAM integration</td>
+<td>Medium -- REST handlers</td>
+</tr>
+<tr>
+<td>NGAC graph-based authorization</td>
+<td>Beyond current policy engine</td>
+<td>Large -- research-grade</td>
+</tr>
+<tr>
+<td>HSM/hardware key storage</td>
+<td>Enterprise compliance</td>
+<td>Large -- covered in v2_launch.md</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-2-feedback-corrections">Part 2: Feedback Corrections<a class="headerlink" href="#part-2-feedback-corrections" title="Permanent link">&para;</a></h2>
+<p>The feedback structures valuation milestones ($4M -&gt; $500M) around building capabilities that <strong>largely already exist</strong>. Here's what the feedback gets wrong:</p>
+<h3 id="1-static-service-accounts-as-the-only-competitor">1. "Static Service Accounts" as the only competitor<a class="headerlink" href="#1-static-service-accounts-as-the-only-competitor" title="Permanent link">&para;</a></h3>
+<p>The landscape has shifted dramatically since the feedback was written. The real competitors in 2026 are:</p>
+<ul>
+<li><strong>Auth0 Token Vault</strong>: <a href="https://auth0.com/blog/auth0-token-vault-secure-token-exchange-for-ai-agents/">Launched</a> with RFC 8693 token exchange for AI agents, 30+ pre-integrated OAuth providers, MCP support. Backed by Okta/Auth0 distribution. However: centralized, no delegation chains, no offline verification.</li>
+<li><strong>HashiCorp Vault + SPIFFE</strong>: <a href="https://www.hashicorp.com/en/blog/spiffe-securing-the-identity-of-agentic-ai-and-non-human-actors">Positioning SPIFFE for agentic AI</a>. Vault Enterprise 1.21 adds SPIFFE integration. However: requires SPIRE server (centralized), no human-&gt;agent delegation, no capability narrowing.</li>
+<li><strong>Google A2A Protocol</strong>: Agent-to-agent communication protocol. No identity primitive -- relies on external identity providers.</li>
+<li><strong>MCP Authorization Layer</strong>: <a href="https://stackoverflow.blog/2026/01/21/is-that-allowed-authentication-and-authorization-in-model-context-protocol">MCP spec</a> now requires OAuth 2.1, but "leaves authorization up to the implementer." This is the gap Auths fills.</li>
+</ul>
+<h3 id="2-10m-implement-spiffespire-baselines">2. "$10M: Implement SPIFFE/SPIRE Baselines"<a class="headerlink" href="#2-10m-implement-spiffespire-baselines" title="Permanent link">&para;</a></h3>
+<p>Wrong framing. Auths should not implement SPIFFE -- it should <strong>bridge to SPIFFE</strong>. SPIFFE handles infrastructure-level workload identity (container attestation, node attestation). Auths handles the layer above: who authorized this workload, what can it do, and who is accountable. The two are complementary, not competitive. The OIDC bridge already provides the integration surface.</p>
+<h3 id="3-ngac-next-generation-access-control">3. "NGAC (Next Generation Access Control)"<a class="headerlink" href="#3-ngac-next-generation-access-control" title="Permanent link">&para;</a></h3>
+<p>Premature. The existing <code>auths-policy</code> engine is already attribute-based with 30+ evaluation predicates, three-valued logic (Allow/Deny/Indeterminate), and composable expressions. NGAC's graph-based model adds complexity without clear user demand. The right move is to extend the existing engine with context-aware predicates rather than replace it with NGAC.</p>
+<h3 id="4-decouple-orchestration-from-authorization">4. "Decouple Orchestration from Authorization"<a class="headerlink" href="#4-decouple-orchestration-from-authorization" title="Permanent link">&para;</a></h3>
+<p>Already done. The SDK's <code>AuthsContext</code> injects all dependencies. The <code>CommitSigningWorkflow</code> in <code>auths-sdk/src/workflows/signing.rs</code> is fully decoupled from CLI concerns. Ports (<code>AgentSigningPort</code>, <code>GitLogProvider</code>, etc.) abstract all I/O.</p>
+<h3 id="5-ephemeral-state-management">5. "Ephemeral State Management"<a class="headerlink" href="#5-ephemeral-state-management" title="Permanent link">&para;</a></h3>
+<p>Already done. <code>AgentStorageMode::InMemory</code> creates a process-lifetime tempdir. Identity is torn down when the process exits (<code>std::mem::forget(tmp)</code> prevents premature cleanup but the OS reclaims on exit).</p>
+<hr />
+<h2 id="part-3-revised-epics-nist-aligned">Part 3: Revised Epics (NIST-Aligned)<a class="headerlink" href="#part-3-revised-epics-nist-aligned" title="Permanent link">&para;</a></h2>
+<p>The NIST NCCoE concept paper defines <a href="https://www.nccoe.nist.gov/projects/software-and-ai-agent-identity-and-authorization">four focus areas</a>. Every epic below maps to one or more:</p>
+<ol>
+<li><strong>Identification</strong>: Distinguishing AI agents from humans, managing agent metadata</li>
+<li><strong>Authorization</strong>: OAuth 2.0/2.1, policy-based access control</li>
+<li><strong>Access Delegation</strong>: Linking user identities to agents, maintaining accountability</li>
+<li><strong>Logging &amp; Transparency</strong>: Linking agent actions to non-human entities</li>
+</ol>
+<hr />
+<h3 id="epic-1-mcp-native-agent-authorization">Epic 1: MCP-Native Agent Authorization<a class="headerlink" href="#epic-1-mcp-native-agent-authorization" title="Permanent link">&para;</a></h3>
+<p><strong>NIST alignment</strong>: Focus Areas 1, 2
+<strong>Priority: P0</strong>
+<strong>Effort: 3-4 weeks</strong></p>
+<p>MCP is becoming the universal protocol for AI agents accessing tools. The <a href="https://stackoverflow.blog/2026/01/21/is-that-allowed-authentication-and-authorization-in-model-context-protocol">MCP spec now classifies servers as OAuth Resource Servers</a>, but "leaves authorization up to the implementer." Auths fills this gap: MCP gets OAuth tokens, but those tokens carry cryptographic delegation provenance.</p>
+<h4 id="11-create-auths-mcp-server-crate">1.1 Create <code>auths-mcp-server</code> crate<a class="headerlink" href="#11-create-auths-mcp-server-crate" title="Permanent link">&para;</a></h4>
+<p>A reference MCP tool server that demonstrates Auths-backed authorization. This is the developer on-ramp -- an AI engineer drops it into their agent framework and gets cryptographic identity for free.</p>
+<p><strong>File to create:</strong> <code>crates/auths-mcp-server/src/lib.rs</code></p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="sd">/// MCP tool server middleware that validates Auths-backed JWTs.</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="sd">///</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="sd">/// Extracts the Bearer token from the Authorization header, validates it</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="sd">/// against the OIDC bridge&#39;s JWKS endpoint, and checks capabilities</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="sd">/// against the requested tool.</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="sd">///</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="sd">/// Args:</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="sd">/// * `jwks_url`: The OIDC bridge&#39;s `/.well-known/jwks.json` endpoint.</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="sd">/// * `tool_capabilities`: Map of tool names to required capabilities.</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="sd">///</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="sd">/// Usage:</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="sd">/// ```ignore</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="sd">/// let auth = AuthsToolAuth::new(</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="sd">///     &quot;https://oidc.example.com/.well-known/jwks.json&quot;,</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="sd">///     HashMap::from([</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="sd">///         (&quot;read_file&quot;, &quot;fs:read&quot;),</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="sd">///         (&quot;write_file&quot;, &quot;fs:write&quot;),</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="sd">///         (&quot;deploy&quot;, &quot;deploy:staging&quot;),</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="sd">///     ]),</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="sd">/// );</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="sd">/// ```</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">AuthsToolAuth</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="n">jwks_url</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="n">tool_capabilities</span><span class="p">:</span><span class="w"> </span><span class="nc">HashMap</span><span class="o">&lt;</span><span class="nb">String</span><span class="p">,</span><span class="w"> </span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="n">jwks_cache</span><span class="p">:</span><span class="w"> </span><span class="nc">Arc</span><span class="o">&lt;</span><span class="n">RwLock</span><span class="o">&lt;</span><span class="n">CachedJwks</span><span class="o">&gt;&gt;</span><span class="p">,</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="p">}</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="k">impl</span><span class="w"> </span><span class="n">AuthsToolAuth</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">    </span><span class="sd">/// Validate an incoming MCP tool invocation against the agent&#39;s capabilities.</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">    </span><span class="sd">///</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">    </span><span class="sd">/// Args:</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">    </span><span class="sd">/// * `bearer_token`: The JWT from the Authorization header.</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">    </span><span class="sd">/// * `tool_name`: The MCP tool being invoked.</span>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">authorize_tool_call</span><span class="p">(</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">        </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">        </span><span class="n">bearer_token</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="kt">str</span><span class="p">,</span>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">        </span><span class="n">tool_name</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="kt">str</span><span class="p">,</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="w">    </span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">VerifiedAgent</span><span class="p">,</span><span class="w"> </span><span class="n">AuthError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">claims</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">validate_jwt</span><span class="p">(</span><span class="n">bearer_token</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">required_cap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">tool_capabilities</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="n">tool_name</span><span class="p">)</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">            </span><span class="p">.</span><span class="n">ok_or</span><span class="p">(</span><span class="n">AuthError</span><span class="p">::</span><span class="n">UnknownTool</span><span class="p">(</span><span class="n">tool_name</span><span class="p">.</span><span class="n">to_string</span><span class="p">()))</span><span class="o">?</span><span class="p">;</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="n">claims</span><span class="p">.</span><span class="n">capabilities</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="o">&amp;</span><span class="n">required_cap</span><span class="p">.</span><span class="n">to_string</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nb">Err</span><span class="p">(</span><span class="n">AuthError</span><span class="p">::</span><span class="n">InsufficientCapabilities</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="w">                </span><span class="n">required</span><span class="p">:</span><span class="w"> </span><span class="nc">required_cap</span><span class="p">.</span><span class="n">to_string</span><span class="p">(),</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="w">                </span><span class="n">granted</span><span class="p">:</span><span class="w"> </span><span class="nc">claims</span><span class="p">.</span><span class="n">capabilities</span><span class="p">.</span><span class="n">clone</span><span class="p">(),</span>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="w">            </span><span class="p">});</span>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="w">        </span><span class="p">}</span>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="w">        </span><span class="nb">Ok</span><span class="p">(</span><span class="n">VerifiedAgent</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="w">            </span><span class="n">did</span><span class="p">:</span><span class="w"> </span><span class="nc">claims</span><span class="p">.</span><span class="n">sub</span><span class="p">,</span>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a><span class="w">            </span><span class="n">keri_prefix</span><span class="p">:</span><span class="w"> </span><span class="nc">claims</span><span class="p">.</span><span class="n">keri_prefix</span><span class="p">,</span>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="w">            </span><span class="n">signer_type</span><span class="p">:</span><span class="w"> </span><span class="nc">claims</span><span class="p">.</span><span class="n">signer_type</span><span class="p">(),</span>
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="w">            </span><span class="n">capabilities</span><span class="p">:</span><span class="w"> </span><span class="nc">claims</span><span class="p">.</span><span class="n">capabilities</span><span class="p">,</span>
+</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="w">            </span><span class="n">delegated_by</span><span class="p">:</span><span class="w"> </span><span class="nc">claims</span><span class="p">.</span><span class="n">delegated_by</span><span class="p">(),</span>
+</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="w">        </span><span class="p">})</span>
+</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><strong>Why this matters</strong>: Every MCP tool server today does ad-hoc authorization (API keys, service accounts). This crate makes it one line to add cryptographic agent identity to any MCP server. The developer experience is: <code>cargo add auths-mcp-server</code>, configure tool-&gt;capability mapping, done.</p>
+<h4 id="12-agent-side-mcp-client-helper">1.2 Agent-side MCP client helper<a class="headerlink" href="#12-agent-side-mcp-client-helper" title="Permanent link">&para;</a></h4>
+<p><strong>File to create:</strong> <code>crates/auths-sdk/src/workflows/mcp.rs</code></p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="sd">/// Acquires an OAuth Bearer token for MCP tool server access.</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="sd">///</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="sd">/// Exchanges the agent&#39;s attestation chain for a scoped JWT via the OIDC bridge,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="sd">/// then attaches it to outgoing MCP requests.</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="sd">///</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="sd">/// Args:</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="sd">/// * `bridge_url`: The OIDC bridge endpoint.</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="sd">/// * `chain`: The agent&#39;s attestation chain.</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="sd">/// * `root_public_key`: The root identity&#39;s Ed25519 public key.</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="sd">/// * `requested_capabilities`: Capabilities needed for this MCP session.</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="sd">///</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="sd">/// Usage:</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="sd">/// ```ignore</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="sd">/// let token = acquire_mcp_token(&amp;bridge_url, &amp;chain, &amp;root_pk, &amp;[&quot;fs:read&quot;]).await?;</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="sd">/// ```</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="k">pub</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">acquire_mcp_token</span><span class="p">(</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">    </span><span class="n">bridge_url</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="kt">str</span><span class="p">,</span>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="w">    </span><span class="n">chain</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="p">[</span><span class="n">Attestation</span><span class="p">],</span>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">    </span><span class="n">root_public_key</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="p">[</span><span class="kt">u8</span><span class="p">],</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="w">    </span><span class="n">requested_capabilities</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="p">[</span><span class="o">&amp;</span><span class="kt">str</span><span class="p">],</span>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="nb">String</span><span class="p">,</span><span class="w"> </span><span class="n">McpAuthError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="w">    </span><span class="c1">// POST to bridge /token endpoint with attestation chain</span>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="w">    </span><span class="c1">// Returns JWT with scoped capabilities</span>
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="w">    </span><span class="fm">todo!</span><span class="p">()</span>
+</span><span id="__span-1-25"><a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="13-python-sdk-wrapper-for-ai-frameworks">1.3 Python SDK wrapper for AI frameworks<a class="headerlink" href="#13-python-sdk-wrapper-for-ai-frameworks" title="Permanent link">&para;</a></h4>
+<p>Most AI agent frameworks (LangChain, AutoGen, CrewAI, Semantic Kernel) are Python. The <code>auths-verifier</code> WASM bindings or C FFI provide the bridge, but a thin Python SDK is the adoption accelerant.</p>
+<p><strong>File to create:</strong> <code>sdks/python/auths_agent/auth.py</code></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="sd">&quot;&quot;&quot;Auths agent identity for Python AI frameworks.</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="sd">Usage with LangChain:</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="sd">    from auths_agent import AuthsAgentAuth</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="sd">    auth = AuthsAgentAuth(</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="sd">        bridge_url=&quot;https://oidc.example.com&quot;,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="sd">        attestation_chain_path=&quot;~/.auths-agent/chain.json&quot;,</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="sd">    )</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="sd">    # Get Bearer token for MCP tool access</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="sd">    token = auth.get_token(capabilities=[&quot;fs:read&quot;, &quot;web:search&quot;])</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="sd">&quot;&quot;&quot;</span>
+</span></code></pre></div>
+<p><strong>Testing (E2E):</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># 1. Provision agent identity</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>auths<span class="w"> </span>agent<span class="w"> </span>provision<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;mcp-test-agent&quot;</span><span class="w"> </span>--capabilities<span class="w"> </span><span class="s2">&quot;fs:read,fs:write&quot;</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># 2. Start OIDC bridge</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>auths-oidc-bridge<span class="w"> </span>--config<span class="w"> </span>bridge.toml<span class="w"> </span><span class="p">&amp;</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># 3. Start reference MCP server with Auths auth</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>cargo<span class="w"> </span>run<span class="w"> </span>-p<span class="w"> </span>auths-mcp-server<span class="w"> </span>--<span class="w"> </span>--bridge-url<span class="w"> </span>http://localhost:3300<span class="w"> </span><span class="p">&amp;</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="c1"># 4. Agent exchanges attestation for JWT and calls MCP tool</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8080/mcp/tools/read_file<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="k">$(</span>auths<span class="w"> </span>token<span class="w"> </span>exchange<span class="w"> </span>--capabilities<span class="w"> </span>fs:read<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;path&quot;: &quot;/tmp/test.txt&quot;}&#39;</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="c1"># 5. Attempt unauthorized tool -- should fail</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8080/mcp/tools/deploy<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="k">$(</span>auths<span class="w"> </span>token<span class="w"> </span>exchange<span class="w"> </span>--capabilities<span class="w"> </span>fs:read<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;env&quot;: &quot;production&quot;}&#39;</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="c1"># Expected: 403 Forbidden -- missing &quot;deploy:staging&quot; capability</span>
+</span></code></pre></div></p>
+<hr />
+<h3 id="epic-2-oauth-21-on-behalf-of-delegation">Epic 2: OAuth 2.1 "On Behalf Of" Delegation<a class="headerlink" href="#epic-2-oauth-21-on-behalf-of-delegation" title="Permanent link">&para;</a></h3>
+<p><strong>NIST alignment</strong>: Focus Area 3 (Access Delegation)
+<strong>Priority: P0</strong>
+<strong>Effort: 2-3 weeks</strong></p>
+<p>The <a href="https://www.ietf.org/archive/id/draft-oauth-ai-agents-on-behalf-of-user-01.html">IETF draft for OAuth 2.0 "on behalf of" for AI agents</a> formalizes the pattern Auths already implements cryptographically. The draft introduces <code>requested_actor</code> and <code>actor_token</code> parameters so authorization servers can issue tokens that explicitly represent "Agent X acting on behalf of User Y."</p>
+<p>Auths' attestation chains already encode this relationship (<code>delegated_by</code> + <code>signer_type</code>). The gap is surfacing it in the JWT format the IETF draft expects.</p>
+<h4 id="21-add-act-actor-claim-to-bridge-issued-jwts">2.1 Add <code>act</code> (actor) claim to bridge-issued JWTs<a class="headerlink" href="#21-add-act-actor-claim-to-bridge-issued-jwts" title="Permanent link">&para;</a></h4>
+<p>The IETF draft specifies an <code>act</code> claim in issued JWTs that identifies the actor (agent) distinct from the subject (human). Currently, the OIDC bridge issues <code>sub</code> as the root KERI DID. The <code>act</code> claim should identify the leaf agent.</p>
+<p><strong>File to modify:</strong> <code>crates/auths-oidc-bridge/src/token.rs</code></p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="sd">/// Extended OIDC claims with RFC 8693 actor claim.</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">OidcClaims</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="c1">// ... existing fields ...</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="sd">/// RFC 8693 actor claim -- identifies the agent acting on behalf of the subject.</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="sd">/// Present when the attestation chain has depth &gt; 0 (delegation occurred).</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="sd">///</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="sd">/// Usage:</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="sd">/// ```ignore</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="sd">/// // JWT payload:</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="sd">/// // &quot;sub&quot;: &quot;did:keri:EHuman123...&quot;,   // the human who authorized</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">    </span><span class="sd">/// // &quot;act&quot;: { &quot;sub&quot;: &quot;did:keri:EAgent456...&quot; }  // the agent performing the action</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="sd">/// ```</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="cp">#[serde(skip_serializing_if = </span><span class="s">&quot;Option::is_none&quot;</span><span class="cp">)]</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">act</span><span class="p">:</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="n">ActorClaim</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="p">}</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="sd">/// The actor performing actions on behalf of the subject.</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="cp">#[derive(Debug, Clone, Serialize, Deserialize)]</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">ActorClaim</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">    </span><span class="sd">/// The actor&#39;s DID (the leaf agent in the delegation chain).</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">sub</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">    </span><span class="sd">/// The actor&#39;s signer type.</span>
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">    </span><span class="cp">#[serde(skip_serializing_if = </span><span class="s">&quot;Option::is_none&quot;</span><span class="cp">)]</span>
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">signer_type</span><span class="p">:</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="22-support-rfc-8693-token-exchange-at-the-bridge">2.2 Support RFC 8693 token exchange at the bridge<a class="headerlink" href="#22-support-rfc-8693-token-exchange-at-the-bridge" title="Permanent link">&para;</a></h4>
+<p>The OIDC bridge currently accepts attestation chains at <code>/token</code>. Extend it to also accept RFC 8693 <code>urn:ietf:params:oauth:grant-type:token-exchange</code> requests, where an existing JWT can be exchanged for a narrower-scoped JWT. This enables agent-&gt;sub-agent delegation through standard OAuth flows.</p>
+<p><strong>File to modify:</strong> <code>crates/auths-oidc-bridge/src/routes.rs</code></p>
+<p>Add a new route handler for token exchange:</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="sd">/// RFC 8693 token exchange endpoint.</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="sd">///</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="sd">/// Accepts a subject_token (existing JWT) and an actor_token (agent attestation),</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="sd">/// and issues a new JWT with narrowed capabilities representing the actor</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="sd">/// acting on behalf of the original subject.</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="sd">///</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="sd">/// Args:</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="sd">/// * `grant_type`: Must be `urn:ietf:params:oauth:grant-type:token-exchange`</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="sd">/// * `subject_token`: The parent agent&#39;s JWT</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="sd">/// * `actor_token`: The sub-agent&#39;s attestation chain (JSON)</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="sd">/// * `scope`: Requested capabilities (subset of parent&#39;s)</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="k">async</span><span class="w"> </span><span class="k">fn</span><span class="w"> </span><span class="nf">handle_token_exchange</span><span class="p">(</span>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">    </span><span class="n">State</span><span class="p">(</span><span class="n">state</span><span class="p">):</span><span class="w"> </span><span class="nc">State</span><span class="o">&lt;</span><span class="n">BridgeState</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">    </span><span class="n">Form</span><span class="p">(</span><span class="n">params</span><span class="p">):</span><span class="w"> </span><span class="nc">Form</span><span class="o">&lt;</span><span class="n">TokenExchangeParams</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">Result</span><span class="o">&lt;</span><span class="n">Json</span><span class="o">&lt;</span><span class="n">TokenExchangeResponse</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">BridgeError</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">    </span><span class="c1">// 1. Validate the subject_token JWT</span>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">    </span><span class="c1">// 2. Verify the actor&#39;s attestation chain</span>
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="w">    </span><span class="c1">// 3. Intersect requested scope with subject_token&#39;s capabilities</span>
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="w">    </span><span class="c1">// 4. Issue new JWT with act claim pointing to the sub-agent</span>
+</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="w">    </span><span class="fm">todo!</span><span class="p">()</span>
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><strong>Testing:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># 1. Human&#39;s agent gets initial JWT</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">TOKEN</span><span class="o">=</span><span class="k">$(</span>auths<span class="w"> </span>token<span class="w"> </span>exchange<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--bridge<span class="w"> </span>http://localhost:3300<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--capabilities<span class="w"> </span><span class="s2">&quot;sign:commit,deploy:staging&quot;</span><span class="k">)</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># 2. Agent delegates to sub-agent via RFC 8693 token exchange</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="nv">SUB_TOKEN</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:3300/token<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span>-d<span class="w"> </span><span class="s2">&quot;grant_type=urn:ietf:params:oauth:grant-type:token-exchange&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span>-d<span class="w"> </span><span class="s2">&quot;subject_token=</span><span class="nv">$TOKEN</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">  </span>-d<span class="w"> </span><span class="s2">&quot;actor_token=</span><span class="k">$(</span>cat<span class="w"> </span>sub-agent-chain.json<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">  </span>-d<span class="w"> </span><span class="s2">&quot;scope=deploy:staging&quot;</span><span class="k">)</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="c1"># 3. Verify sub-token has act claim and narrowed scope</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="nb">echo</span><span class="w"> </span><span class="nv">$SUB_TOKEN</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jwt<span class="w"> </span>decode
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="c1"># Expected: sub=did:keri:EHuman, act.sub=did:keri:ESubAgent, capabilities=[deploy:staging]</span>
+</span></code></pre></div></p>
+<hr />
+<h3 id="epic-3-non-repudiation-audit-logging">Epic 3: Non-Repudiation Audit Logging<a class="headerlink" href="#epic-3-non-repudiation-audit-logging" title="Permanent link">&para;</a></h3>
+<p><strong>NIST alignment</strong>: Focus Area 4 (Logging &amp; Transparency)
+<strong>Priority: P1</strong>
+<strong>Effort: 3-4 weeks</strong></p>
+<p>The NIST concept paper's fourth focus area is "Linking specific AI agent actions to their non-human entity to enable effective visibility into system activity." Auths' Git-native storage provides a natural append-only ledger. Every agent action can be logged as a signed Git commit, creating a tamper-evident audit trail traceable to the authorizing human.</p>
+<h4 id="31-create-auths-audit-crate">3.1 Create <code>auths-audit</code> crate<a class="headerlink" href="#31-create-auths-audit-crate" title="Permanent link">&para;</a></h4>
+<p><strong>File to create:</strong> <code>crates/auths-audit/src/lib.rs</code></p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="sd">/// An audit entry recording an agent&#39;s action, cryptographically bound to</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="sd">/// its attestation chain and the authorizing human&#39;s identity.</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="sd">///</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="sd">/// Stored as signed JSON blobs under `refs/auths/audit/&lt;agent-did&gt;/`.</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="sd">///</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="sd">/// Args:</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="sd">/// * `agent_did`: The agent&#39;s KERI identity.</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="sd">/// * `action`: What the agent did (e.g., &quot;tool:read_file&quot;, &quot;deploy:staging&quot;).</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="sd">/// * `target`: What was acted upon (e.g., file path, deployment ID).</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="sd">/// * `attestation_rid`: The attestation RID that authorized this action.</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="sd">/// * `delegation_chain_root`: The human DID at the root of the delegation chain.</span>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">AuditEntry</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">timestamp</span><span class="p">:</span><span class="w"> </span><span class="nc">DateTime</span><span class="o">&lt;</span><span class="n">Utc</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">agent_did</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">action</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">target</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">attestation_rid</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">delegation_chain_root</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span>
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">signer_type</span><span class="p">:</span><span class="w"> </span><span class="nc">SignerType</span><span class="p">,</span>
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a><span class="w">    </span><span class="sd">/// Ed25519 signature over the canonical JSON of this entry.</span>
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">signature</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="kt">u8</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="32-audit-middleware-for-mcp-server">3.2 Audit middleware for MCP server<a class="headerlink" href="#32-audit-middleware-for-mcp-server" title="Permanent link">&para;</a></h4>
+<p>Every tool invocation through <code>auths-mcp-server</code> automatically logs an <code>AuditEntry</code>. The audit log is a Git ref (<code>refs/auths/audit/</code>) -- tamper-evident, replicable, and queryable with standard Git tools.</p>
+<h4 id="33-cli-audit-query-commands">3.3 CLI audit query commands<a class="headerlink" href="#33-cli-audit-query-commands" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Show all actions by a specific agent</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>auths<span class="w"> </span>audit<span class="w"> </span>log<span class="w"> </span>--agent<span class="w"> </span>did:keri:EAgent456...
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Show all actions authorized by a specific human</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>auths<span class="w"> </span>audit<span class="w"> </span>log<span class="w"> </span>--root<span class="w"> </span>did:keri:EHuman123...
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Show all deploy actions in the last 24h</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>auths<span class="w"> </span>audit<span class="w"> </span>log<span class="w"> </span>--action<span class="w"> </span><span class="s2">&quot;deploy:*&quot;</span><span class="w"> </span>--since<span class="w"> </span>24h
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="c1"># Export as JSON for SIEM integration</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>auths<span class="w"> </span>audit<span class="w"> </span><span class="nb">export</span><span class="w"> </span>--format<span class="w"> </span>json<span class="w"> </span>--since<span class="w"> </span>7d<span class="w"> </span>&gt;<span class="w"> </span>audit.json
+</span></code></pre></div>
+<p><strong>Testing:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># 1. Agent performs MCP tool call</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8080/mcp/tools/read_file<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$TOKEN</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;path&quot;: &quot;/tmp/test.txt&quot;}&#39;</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># 2. Verify audit entry was created</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>auths<span class="w"> </span>audit<span class="w"> </span>log<span class="w"> </span>--agent<span class="w"> </span>did:keri:EAgent456...<span class="w"> </span>--since<span class="w"> </span>1m
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># Expected: timestamp | agent DID | tool:read_file | /tmp/test.txt | root:did:keri:EHuman123...</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="c1"># 3. Verify audit entry signature</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>auths<span class="w"> </span>audit<span class="w"> </span>verify<span class="w"> </span>--entry<span class="w"> </span>&lt;entry-id&gt;
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="c1"># Expected: &quot;Signature valid. Authorized by: did:keri:EHuman123... via delegation chain.&quot;</span>
+</span></code></pre></div></p>
+<hr />
+<h3 id="epic-4-spiffe-bridge-not-replacement">Epic 4: SPIFFE Bridge (Not Replacement)<a class="headerlink" href="#epic-4-spiffe-bridge-not-replacement" title="Permanent link">&para;</a></h3>
+<p><strong>NIST alignment</strong>: Focus Areas 1, 2
+<strong>Priority: P1</strong>
+<strong>Effort: 2-3 weeks</strong></p>
+<p>SPIFFE handles infrastructure-level identity ("this container is running in Kubernetes namespace X"). Auths handles authorization-level identity ("this agent is authorized by Human Y to do Z"). The bridge connects them: a SPIFFE SVID proves the runtime environment, an Auths attestation proves the authorization chain. Together they answer both "where is this running?" and "who said it could?"</p>
+<h4 id="41-spiffe-svid-verification-in-the-oidc-bridge">4.1 SPIFFE SVID verification in the OIDC bridge<a class="headerlink" href="#41-spiffe-svid-verification-in-the-oidc-bridge" title="Permanent link">&para;</a></h4>
+<p><strong>File to modify:</strong> <code>crates/auths-oidc-bridge/src/lib.rs</code></p>
+<p>Accept a SPIFFE SVID as an optional attestation of the runtime environment during token exchange. The bridge embeds the SPIFFE ID in the issued JWT as a <code>spiffe_id</code> claim, binding the cryptographic identity to the physical execution boundary.</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="sd">/// Optional SPIFFE workload attestation submitted alongside the attestation chain.</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="sd">///</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="sd">/// When present, the bridge verifies the X.509 SVID against the SPIFFE trust bundle</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="sd">/// and embeds the SPIFFE ID in the issued JWT.</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="sd">///</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="sd">/// Usage:</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="sd">/// ```ignore</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="sd">/// POST /token</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="sd">/// {</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="sd">///   &quot;attestation_chain&quot;: [...],</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="sd">///   &quot;root_public_key&quot;: &quot;...&quot;,</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="sd">///   &quot;spiffe_svid&quot;: &quot;&lt;base64-encoded X.509 SVID&gt;&quot;,</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="sd">///   &quot;spiffe_trust_bundle&quot;: &quot;&lt;base64-encoded trust bundle&gt;&quot;</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="sd">/// }</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="sd">/// ```</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">SpiffeAttestation</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">svid</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="kt">u8</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">trust_bundle</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="kt">u8</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="42-svid-to-attestation-translation">4.2 SVID-to-Attestation translation<a class="headerlink" href="#42-svid-to-attestation-translation" title="Permanent link">&para;</a></h4>
+<p>For environments that already use SPIFFE, provide a function to bootstrap an Auths attestation chain from a verified SVID. The SVID proves runtime identity; the Auths chain adds capability scoping and human-traceable delegation.</p>
+<p><strong>Testing:</strong>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># 1. In a SPIRE-managed environment, get SVID</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nv">SVID</span><span class="o">=</span><span class="k">$(</span>spire-agent<span class="w"> </span>api<span class="w"> </span>fetch<span class="w"> </span>x509<span class="w"> </span>-socketPath<span class="w"> </span>/run/spire/sockets/agent.sock<span class="k">)</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># 2. Exchange SVID + attestation chain for JWT</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:3300/token<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span>-d<span class="w"> </span><span class="s2">&quot;{</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="s2">    \&quot;attestation_chain\&quot;: </span><span class="k">$(</span>cat<span class="w"> </span>chain.json<span class="k">)</span><span class="s2">,</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="s2">    \&quot;root_public_key\&quot;: \&quot;...\&quot;,</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="s2">    \&quot;spiffe_svid\&quot;: \&quot;</span><span class="nv">$SVID</span><span class="s2">\&quot;</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="s2">  }&quot;</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="c1"># 3. Verify JWT contains both KERI and SPIFFE identifiers</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="nb">echo</span><span class="w"> </span><span class="nv">$TOKEN</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jwt<span class="w"> </span>decode
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="c1"># Expected: sub=did:keri:E..., spiffe_id=spiffe://cluster.local/ns/default/sa/agent</span>
+</span></code></pre></div></p>
+<hr />
+<h3 id="epic-5-human-in-the-loop-approval-gates">Epic 5: Human-in-the-Loop Approval Gates<a class="headerlink" href="#epic-5-human-in-the-loop-approval-gates" title="Permanent link">&para;</a></h3>
+<p><strong>NIST alignment</strong>: Focus Area 3 (Access Delegation)
+<strong>Priority: P2</strong>
+<strong>Effort: 2-3 weeks</strong></p>
+<p>The NIST concept paper specifically calls out "human-in-the-loop approval to autonomous action" as a spectrum that identity systems must support. The policy engine already has the predicates; what's missing is the execution mechanism that pauses an agent when it hits a policy boundary.</p>
+<h4 id="51-policy-driven-approval-gates">5.1 Policy-driven approval gates<a class="headerlink" href="#51-policy-driven-approval-gates" title="Permanent link">&para;</a></h4>
+<p>Extend the policy engine with a new decision outcome: <code>RequiresApproval</code>. When an action exceeds a risk threshold (e.g., deploying to production, deleting data), the policy engine returns this outcome instead of Allow/Deny. The MCP server or SDK pauses execution and emits an approval request.</p>
+<p><strong>File to modify:</strong> <code>crates/auths-policy/src/decision.rs</code></p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">pub</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="nc">Outcome</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="n">Allow</span><span class="p">,</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="n">Deny</span><span class="p">,</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="n">Indeterminate</span><span class="p">,</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="sd">/// Action requires human approval before proceeding.</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="sd">/// The agent&#39;s execution is paused until an approval attestation is received.</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="n">RequiresApproval</span><span class="p">,</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="52-approval-attestation-format">5.2 Approval attestation format<a class="headerlink" href="#52-approval-attestation-format" title="Permanent link">&para;</a></h4>
+<p>A human approves by issuing a short-lived, single-use attestation:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">&quot;issuer&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;did:keri:EHuman123...&quot;</span><span class="p">,</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="nt">&quot;subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;did:keri:EAgent456...&quot;</span><span class="p">,</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span><span class="nt">&quot;capabilities&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;deploy:production&quot;</span><span class="p">],</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span><span class="nt">&quot;signer_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Human&quot;</span><span class="p">,</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">  </span><span class="nt">&quot;expires_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-03-05T10:35:00Z&quot;</span><span class="p">,</span>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">  </span><span class="nt">&quot;note&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Approved deploy to production for release v2.1.0&quot;</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>This attestation is verified by the MCP server/SDK before allowing the action to proceed. The 5-minute expiry ensures the approval is contextual, not blanket.</p>
+<h4 id="53-approval-notification-channels">5.3 Approval notification channels<a class="headerlink" href="#53-approval-notification-channels" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>CLI</strong>: <code>auths approve --request &lt;request-id&gt;</code> (for local development)</li>
+<li><strong>Webhook</strong>: POST to configured URL with approval request payload (for Slack/Teams integration)</li>
+<li><strong>MCP</strong>: Use MCP's <a href="https://blog.modelcontextprotocol.io/posts/2025-11-25-first-mcp-anniversary/">elicitation</a> to request user confirmation through the agent's UI</li>
+</ul>
+<hr />
+<h3 id="epic-6-scim-provisioning-api">Epic 6: SCIM Provisioning API<a class="headerlink" href="#epic-6-scim-provisioning-api" title="Permanent link">&para;</a></h3>
+<p><strong>NIST alignment</strong>: Focus Area 1 (Identification)
+<strong>Priority: P2</strong>
+<strong>Effort: 2-3 weeks</strong></p>
+<p>Enterprises manage identities through SCIM (System for Cross-domain Identity Management). Adding SCIM support means IT teams can provision/deprovision agent identities through their existing directory (Okta, Azure AD, Google Workspace) rather than running CLI commands.</p>
+<h4 id="61-scim-resource-types-for-agents">6.1 SCIM resource types for agents<a class="headerlink" href="#61-scim-resource-types-for-agents" title="Permanent link">&para;</a></h4>
+<p><strong>File to create:</strong> <code>crates/auths-scim/src/lib.rs</code></p>
+<p>Map Auths agent identities to SCIM resource types:</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="sd">/// SCIM User resource representing an Auths agent identity.</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="sd">///</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="sd">/// Maps SCIM standard attributes to Auths identity fields:</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="sd">/// - `userName` -&gt; agent name</span>
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="sd">/// - `externalId` -&gt; KERI DID</span>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="sd">/// - `active` -&gt; not revoked</span>
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="sd">/// - `entitlements` -&gt; capabilities</span>
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="sd">/// - Custom schema extension for delegation chain metadata</span>
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">ScimAgentResource</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">schemas</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span>
+</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">id</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span><span class="w">          </span><span class="c1">// Auths internal ID</span>
+</span><span id="__span-14-12"><a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">external_id</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span><span class="w"> </span><span class="c1">// KERI DID</span>
+</span><span id="__span-14-13"><a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">user_name</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="p">,</span><span class="w">   </span><span class="c1">// Agent name</span>
+</span><span id="__span-14-14"><a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">active</span><span class="p">:</span><span class="w"> </span><span class="kt">bool</span><span class="p">,</span><span class="w">        </span><span class="c1">// Not revoked</span>
+</span><span id="__span-14-15"><a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">entitlements</span><span class="p">:</span><span class="w"> </span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">ScimEntitlement</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="c1">// Capabilities</span>
+</span><span id="__span-14-16"><a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="p">}</span>
+</span></code></pre></div>
+<h4 id="62-rest-endpoints">6.2 REST endpoints<a class="headerlink" href="#62-rest-endpoints" title="Permanent link">&para;</a></h4>
+<p>Standard SCIM endpoints (<code>/scim/v2/Users</code>, <code>/scim/v2/Groups</code>) backed by the Git registry. When an enterprise directory deprovisions an agent, the SCIM handler revokes the agent's attestation.</p>
+<hr />
+<h3 id="epic-7-context-aware-dynamic-authorization">Epic 7: Context-Aware Dynamic Authorization<a class="headerlink" href="#epic-7-context-aware-dynamic-authorization" title="Permanent link">&para;</a></h3>
+<p><strong>NIST alignment</strong>: Focus Area 2 (Authorization)
+<strong>Priority: P3</strong>
+<strong>Effort: 3-4 weeks</strong></p>
+<p>The feedback proposes NGAC (graph-based authorization). The pragmatic move is to extend the existing policy engine with <strong>context-reactive predicates</strong> rather than replace it with a new graph model. This delivers the same outcome (dynamic authorization based on changing context) with far less complexity.</p>
+<h4 id="71-data-classification-predicates">7.1 Data classification predicates<a class="headerlink" href="#71-data-classification-predicates" title="Permanent link">&para;</a></h4>
+<p>When an agent retrieves a document classified as "Internal Confidential," its ability to call external tools should be automatically restricted. Extend the policy engine:</p>
+<p><strong>File to modify:</strong> <code>crates/auths-policy/src/expr.rs</code></p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="sd">/// Checks if the current data context has a classification at or below the threshold.</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="sd">/// Example: If context has &quot;confidential&quot; data, deny &quot;webhook:external&quot; capability.</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">DataClassificationBelow</span><span class="p">(</span><span class="nb">String</span><span class="p">),</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="sd">/// Checks if the current session has accumulated data from multiple sensitivity levels.</span>
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="sd">/// Prevents confused deputy attacks where an agent aggregates sensitive data</span>
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="sd">/// then exfiltrates it through a low-sensitivity channel.</span>
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="n">NoSensitivityEscalation</span><span class="p">,</span>
+</span></code></pre></div>
+<h4 id="72-session-scoped-capability-reduction">7.2 Session-scoped capability reduction<a class="headerlink" href="#72-session-scoped-capability-reduction" title="Permanent link">&para;</a></h4>
+<p>The SDK maintains a session context that narrows available capabilities as the agent interacts with sensitive resources. This is an enforcement mechanism, not just a policy check -- the session's effective capabilities are recomputed after every tool call.</p>
+<hr />
+<h2 id="part-4-valuation-milestones-revised">Part 4: Valuation Milestones (Revised)<a class="headerlink" href="#part-4-valuation-milestones-revised" title="Permanent link">&para;</a></h2>
+<p>The feedback's milestones are directionally correct but miscalibrate what's already built. Here's a recalibrated view:</p>
+<h3 id="current-state-4-6m-seed">Current State (~$4-6M Seed)<a class="headerlink" href="#current-state-4-6m-seed" title="Permanent link">&para;</a></h3>
+<p>What exists today is <strong>not</strong> a fragile prototype. It's a production-grade identity primitive with:
+- Full delegation chain verification (offline, no server)
+- Three-tier signing workflow with platform keychain integration
+- OIDC federation to AWS/GCP/Azure
+- Policy engine with 30+ predicates
+- Mobile FFI (UniFFI), WASM, and C FFI
+- Agent provisioning API with ephemeral/persistent modes</p>
+<p>The gap is <strong>ecosystem integration, not core capability</strong>.</p>
+<h3 id="10-15m-post-seed-pre-series-a">$10-15M (Post-Seed / Pre-Series A)<a class="headerlink" href="#10-15m-post-seed-pre-series-a" title="Permanent link">&para;</a></h3>
+<p><strong>Deliverables:</strong> Epics 1 + 2 (MCP integration + OAuth 2.1 OBO)</p>
+<p>The product becomes usable by AI engineers without leaving their framework. A LangChain developer adds <code>auths-agent</code> to their Python project, calls <code>auth.get_token()</code>, and gets cryptographic identity for their agent's MCP tool calls. Every action is traceable to a human principal.</p>
+<p><strong>Proof point:</strong> Working demo of "Agent signs a commit and deploys to staging, fully traceable to the authorizing human, with capability narrowing enforced at every hop."</p>
+<h3 id="20-30m-series-a">$20-30M (Series A)<a class="headerlink" href="#20-30m-series-a" title="Permanent link">&para;</a></h3>
+<p><strong>Deliverables:</strong> Epics 3 + 4 + 6 (Audit logging + SPIFFE bridge + SCIM)</p>
+<p>Enterprise IT teams can provision agent identities through their existing directory (Okta/Azure AD via SCIM), bind them to SPIFFE runtime attestation, and get tamper-evident audit logs. SOCs can answer "which human authorized this agent to deploy to production at 3am?"</p>
+<p><strong>Proof point:</strong> Integration with a Fortune 500's CI/CD pipeline. Audit logs feed into Splunk/Datadog.</p>
+<h3 id="60-100m-series-b">$60-100M (Series B)<a class="headerlink" href="#60-100m-series-b" title="Permanent link">&para;</a></h3>
+<p><strong>Deliverables:</strong> Epics 5 + 7 (HITL approval gates + dynamic authorization)</p>
+<p>The platform enforces real-time authorization boundaries. An agent that reads a confidential document is automatically blocked from calling external webhooks. High-risk actions (production deploys, data deletion) require human approval via MCP elicitation or Slack webhook. This is the "confused deputy" mitigation that the NIST concept paper calls for.</p>
+<p><strong>Proof point:</strong> NIST NCCoE demonstration project participation. FedRAMP authorization in progress.</p>
+<h3 id="300m-series-c-category-leader">$300M+ (Series C / Category Leader)<a class="headerlink" href="#300m-series-c-category-leader" title="Permanent link">&para;</a></h3>
+<p><strong>Deliverables:</strong> Protocol standardization + cross-domain federation</p>
+<p>Auths attestation chains become the wire format for agent-to-agent trust across enterprise boundaries. Company A's procurement agent presents an attestation chain to Company B's supply chain agent. Both verify offline. The OIDC bridge handles trust translation. Auths is the protocol layer, not just a product.</p>
+<p><strong>Proof point:</strong> IETF RFC or NIST SP referencing Auths' delegation chain format.</p>
+<hr />
+<h2 id="part-5-the-structural-moat">Part 5: The Structural Moat<a class="headerlink" href="#part-5-the-structural-moat" title="Permanent link">&para;</a></h2>
+<p>Every competitor in this space has a centralized dependency:</p>
+<table>
+<thead>
+<tr>
+<th>Competitor</th>
+<th>Central Dependency</th>
+<th>What happens when it's down?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Auth0 Token Vault</td>
+<td>Auth0's servers</td>
+<td>All agent auth fails</td>
+</tr>
+<tr>
+<td>HashiCorp Vault + SPIFFE</td>
+<td>SPIRE server</td>
+<td>No new SVIDs issued</td>
+</tr>
+<tr>
+<td>Google A2A</td>
+<td>Google's identity services</td>
+<td>No agent-to-agent trust</td>
+</tr>
+<tr>
+<td>Okta/CyberArk NHI</td>
+<td>Vendor's cloud</td>
+<td>All non-human identity fails</td>
+</tr>
+</tbody>
+</table>
+<p>Auths has <strong>none</strong>. Verification is a pure computation over the attestation chain and a root public key. No network call. No server dependency. Works in air-gapped environments, on submarines, in disconnected edge deployments.</p>
+<p>The delegation chain is the second moat. No other system provides:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Human (KERI, hardware-backed)
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  -&gt; Device (Ed25519 dual-signed)
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>    -&gt; AI Agent (scoped: sign:commit, 24h TTL)
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>      -&gt; Sub-Agent (scoped: deploy:staging, 1h TTL)
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>        -&gt; MCP Tool Call (scoped: fs:read, single-use)
+</span></code></pre></div>
+<p>Each link is independently verifiable. Capabilities only narrow. Any link can be revoked without affecting the chain above it. This is the zero-trust delegation model that the NIST concept paper describes but no one else has implemented.</p>
+<hr />
+<h2 id="part-6-execution-priority-summary">Part 6: Execution Priority Summary<a class="headerlink" href="#part-6-execution-priority-summary" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Epic</th>
+<th>NIST Focus</th>
+<th>Priority</th>
+<th>Effort</th>
+<th>Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>MCP-native agent authorization</td>
+<td>1, 2</td>
+<td>P0</td>
+<td>3-4 weeks</td>
+<td>Developer on-ramp, framework integration</td>
+</tr>
+<tr>
+<td>2</td>
+<td>OAuth 2.1 "on behalf of"</td>
+<td>3</td>
+<td>P0</td>
+<td>2-3 weeks</td>
+<td>Standards compliance, delegation chain in JWT</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Non-repudiation audit logging</td>
+<td>4</td>
+<td>P1</td>
+<td>3-4 weeks</td>
+<td>Enterprise SOC requirement</td>
+</tr>
+<tr>
+<td>4</td>
+<td>SPIFFE bridge</td>
+<td>1, 2</td>
+<td>P1</td>
+<td>2-3 weeks</td>
+<td>Infrastructure interop</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Human-in-the-loop approval</td>
+<td>3</td>
+<td>P2</td>
+<td>2-3 weeks</td>
+<td>Risk management, confused deputy prevention</td>
+</tr>
+<tr>
+<td>6</td>
+<td>SCIM provisioning</td>
+<td>1</td>
+<td>P2</td>
+<td>2-3 weeks</td>
+<td>Enterprise directory integration</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Context-aware dynamic auth</td>
+<td>2</td>
+<td>P3</td>
+<td>3-4 weeks</td>
+<td>Advanced authorization, data classification</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Critical path:</strong> Epics 1 + 2 are the immediate priority. They transform Auths from "identity primitive" to "agent authorization infrastructure" and align directly with the NIST NCCoE demonstration scope.</p>
+<hr />
+<h2 id="sources">Sources<a class="headerlink" href="#sources" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="https://www.nccoe.nist.gov/projects/software-and-ai-agent-identity-and-authorization">NIST NCCoE: Software and AI Agent Identity and Authorization</a></li>
+<li><a href="https://www.nccoe.nist.gov/sites/default/files/2026-02/accelerating-the-adoption-of-software-and-ai-agent-identity-and-authorization-concept-paper.pdf">NIST NCCoE Concept Paper (PDF, Feb 2026)</a></li>
+<li><a href="https://www.nist.gov/caisi/ai-agent-standards-initiative">NIST AI Agent Standards Initiative</a></li>
+<li><a href="https://www.ietf.org/archive/id/draft-oauth-ai-agents-on-behalf-of-user-01.html">IETF Draft: OAuth 2.0 On-Behalf-Of for AI Agents</a></li>
+<li><a href="https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization">MCP Authorization Specification (2025-03-26)</a></li>
+<li><a href="https://stackoverflow.blog/2026/01/21/is-that-allowed-authentication-and-authorization-in-model-context-protocol">Stack Overflow: Authentication and Authorization in MCP</a></li>
+<li><a href="https://auth0.com/blog/auth0-token-vault-secure-token-exchange-for-ai-agents/">Auth0 Token Vault for AI Agents</a></li>
+<li><a href="https://www.hashicorp.com/en/blog/spiffe-securing-the-identity-of-agentic-ai-and-non-human-actors">HashiCorp: SPIFFE for Agentic AI and Non-Human Actors</a></li>
+<li><a href="https://www.hashicorp.com/en/blog/zero-trust-for-agentic-systems-managing-non-human-identities-at-scale">HashiCorp: Zero Trust for Agentic Systems</a></li>
+<li><a href="https://next.redhat.com/2026/02/26/zero-trust-for-autonomous-agentic-ai-systems-building-more-secure-foundations/">Red Hat: Zero Trust for Autonomous Agentic AI Systems</a></li>
+<li><a href="https://riptides.io/blog-post/spiffe-meets-oauth2-current-landscape-for-secure-workload-identity-in-the-agentic-ai-era/">SPIFFE Meets OAuth2: Workload Identity in the Agentic AI Era</a></li>
+<li><a href="https://www.precedenceresearch.com/agentic-ai-market">Agentic AI Market Size: $199B by 2034, CAGR 43.8%</a></li>
+<li><a href="https://auth0.com/blog/mcp-specs-update-all-about-auth/">Auth0 MCP Spec Updates (June 2025)</a></li>
+<li><a href="https://dasroot.net/posts/2026/02/securing-model-context-protocol-oauth-mtls-zero-trust/">Securing MCP: OAuth, mTLS, Zero Trust</a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/auths-dev/auths" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.prune", "navigation.path", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tabs.link", "announce.dismiss"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
