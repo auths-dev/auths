@@ -22,6 +22,8 @@ struct BridgeStateInner {
     config: BridgeConfig,
     clock: ClockFn,
     rate_limiter: Option<PrefixRateLimiter>,
+    #[cfg(feature = "oidc-policy")]
+    workload_policy: Option<auths_policy::CompiledPolicy>,
     #[cfg(feature = "github-oidc")]
     github_jwks: Option<crate::github_oidc::JwksClient>,
 }
@@ -39,6 +41,9 @@ impl BridgeState {
         let issuer = OidcIssuer::new_with_clock(&config, &key_manager, clock.clone())?;
         let rate_limiter = build_rate_limiter(&config);
 
+        #[cfg(feature = "oidc-policy")]
+        let workload_policy = build_workload_policy(&config)?;
+
         #[cfg(feature = "github-oidc")]
         let github_jwks = build_github_jwks_client(&config);
 
@@ -49,6 +54,8 @@ impl BridgeState {
                 config,
                 clock,
                 rate_limiter,
+                #[cfg(feature = "oidc-policy")]
+                workload_policy,
                 #[cfg(feature = "github-oidc")]
                 github_jwks,
             }),
@@ -73,6 +80,12 @@ impl BridgeState {
     /// Get a reference to the rate limiter (if enabled).
     pub fn rate_limiter(&self) -> Option<&PrefixRateLimiter> {
         self.inner.rate_limiter.as_ref()
+    }
+
+    /// Get a reference to the compiled workload policy (if configured).
+    #[cfg(feature = "oidc-policy")]
+    pub fn workload_policy(&self) -> Option<&auths_policy::CompiledPolicy> {
+        self.inner.workload_policy.as_ref()
     }
 
     /// Get a reference to the GitHub JWKS client (if configured).
@@ -138,6 +151,40 @@ fn build_rate_limiter(config: &BridgeConfig) -> Option<PrefixRateLimiter> {
         ))
     } else {
         None
+    }
+}
+
+#[cfg(feature = "oidc-policy")]
+fn build_workload_policy(
+    config: &BridgeConfig,
+) -> Result<Option<auths_policy::CompiledPolicy>, BridgeError> {
+    let json_bytes = if let Some(ref path) = config.workload_policy_path {
+        let bytes = std::fs::read(path).map_err(|e| {
+            BridgeError::PolicyCompilationFailed(format!(
+                "failed to read policy file {}: {e}",
+                path.display()
+            ))
+        })?;
+        tracing::info!(path = %path.display(), "Loading workload policy from file");
+        Some(bytes)
+    } else if let Some(ref json) = config.workload_policy_json {
+        tracing::info!("Loading workload policy from inline JSON");
+        Some(json.as_bytes().to_vec())
+    } else {
+        tracing::warn!("No workload policy configured — all token exchanges will be allowed");
+        None
+    };
+
+    match json_bytes {
+        Some(bytes) => {
+            let policy = auths_policy::compile_from_json(&bytes).map_err(|errors| {
+                let msgs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+                BridgeError::PolicyCompilationFailed(msgs.join("; "))
+            })?;
+            tracing::info!("Workload policy compiled successfully");
+            Ok(Some(policy))
+        }
+        None => Ok(None),
     }
 }
 

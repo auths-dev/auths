@@ -279,7 +279,7 @@ pub struct OidcClaims {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActorClaim {
     /// The actor's DID (the leaf agent in the delegation chain).
-    pub sub: String,
+    pub sub: String, # BIG QUESTION: should this be typed, and not a plain String?
     /// The actor's signer type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signer_type: Option<String>,
@@ -365,11 +365,11 @@ The NIST concept paper's fourth focus area is "Linking specific AI agent actions
 /// * `delegation_chain_root`: The human DID at the root of the delegation chain.
 pub struct AuditEntry {
     pub timestamp: DateTime<Utc>,
-    pub agent_did: String,
-    pub action: String,
+    pub agent_did: String, # BIG QUESTION: should this be strongly typed and not just a plan String?
+    pub action: String, # BIG QUESTION: should this be strongly typed and not just a plan String?
     pub target: String,
-    pub attestation_rid: String,
-    pub delegation_chain_root: String,
+    pub attestation_rid: String, # BIG QUESTION: should this be strongly typed and not just a plan String?
+    pub delegation_chain_root: String, # BIG QUESTION: should this be strongly typed and not just a plan String?
     pub signer_type: SignerType,
     /// Ed25519 signature over the canonical JSON of this entry.
     pub signature: Vec<u8>,

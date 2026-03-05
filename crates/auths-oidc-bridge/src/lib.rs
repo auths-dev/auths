@@ -21,6 +21,8 @@ pub mod error;
 pub mod github_oidc;
 pub mod issuer;
 pub mod jwks;
+#[cfg(feature = "oidc-policy")]
+pub mod policy_adapter;
 pub mod rate_limit;
 pub mod routes;
 pub mod state;
