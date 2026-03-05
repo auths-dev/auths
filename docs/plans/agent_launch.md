@@ -190,7 +190,7 @@ pub async fn acquire_mcp_token(
 ) -> Result<String, McpAuthError> {
     // POST to bridge /token endpoint with attestation chain
     // Returns JWT with scoped capabilities
-    todo!()
+    todo!() // Make a full implementation
 }
 ```
 
@@ -217,6 +217,7 @@ Usage with LangChain:
 ```
 
 **Testing (E2E):**
+YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
 ```bash
 # 1. Provision agent identity
 auths agent provision --name "mcp-test-agent" --capabilities "fs:read,fs:write"
@@ -238,6 +239,10 @@ curl -X POST http://localhost:8080/mcp/tools/deploy \
   -d '{"env": "production"}'
 # Expected: 403 Forbidden -- missing "deploy:staging" capability
 ```
+YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
+
+Lastly, review /Users/bordumb/workspace/repositories/auths-base/auths/scripts/releases/2_crates.py
+And make sure to add the new auths-mcp-server crate in the proper place there
 
 ---
 
@@ -319,6 +324,7 @@ async fn handle_token_exchange(
 ```
 
 **Testing:**
+YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
 ```bash
 # 1. Human's agent gets initial JWT
 TOKEN=$(auths token exchange \
@@ -336,6 +342,7 @@ SUB_TOKEN=$(curl -X POST http://localhost:3300/token \
 echo $SUB_TOKEN | jwt decode
 # Expected: sub=did:keri:EHuman, act.sub=did:keri:ESubAgent, capabilities=[deploy:staging]
 ```
+YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
 
 ---
 
@@ -397,6 +404,7 @@ auths audit export --format json --since 7d > audit.json
 ```
 
 **Testing:**
+YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
 ```bash
 # 1. Agent performs MCP tool call
 curl -X POST http://localhost:8080/mcp/tools/read_file \
@@ -411,6 +419,8 @@ auths audit log --agent did:keri:EAgent456... --since 1m
 auths audit verify --entry <entry-id>
 # Expected: "Signature valid. Authorized by: did:keri:EHuman123... via delegation chain."
 ```
+YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
+
 
 ---
 
@@ -455,6 +465,7 @@ pub struct SpiffeAttestation {
 For environments that already use SPIFFE, provide a function to bootstrap an Auths attestation chain from a verified SVID. The SVID proves runtime identity; the Auths chain adds capability scoping and human-traceable delegation.
 
 **Testing:**
+YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
 ```bash
 # 1. In a SPIRE-managed environment, get SVID
 SVID=$(spire-agent api fetch x509 -socketPath /run/spire/sockets/agent.sock)
@@ -471,6 +482,7 @@ curl -X POST http://localhost:3300/token \
 echo $TOKEN | jwt decode
 # Expected: sub=did:keri:E..., spiffe_id=spiffe://cluster.local/ns/default/sa/agent
 ```
+YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
 
 ---
 
@@ -551,7 +563,7 @@ Map Auths agent identities to SCIM resource types:
 pub struct ScimAgentResource {
     pub schemas: Vec<String>,
     pub id: String,          // Auths internal ID
-    pub external_id: String, // KERI DID
+    pub external_id: String, // KERI DID  # BIG QUESTION: should this be strongly typed and not just a plan String?
     pub user_name: String,   // Agent name
     pub active: bool,        // Not revoked
     pub entitlements: Vec<ScimEntitlement>, // Capabilities

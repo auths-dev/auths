@@ -16,6 +16,9 @@ classifiers = [
     "Topic :: Security :: Cryptography",
 ]
 
+[dependency-groups]
+dev = ["pytest>=7"]
+
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"

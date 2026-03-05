@@ -81,7 +81,7 @@ def isolated_env(tmp_path, auths_bin):
         "AUTHS_HOME": str(auths_home),
         "AUTHS_KEYCHAIN_BACKEND": "file",
         "AUTHS_KEYCHAIN_FILE": str(keychain_file),
-        "AUTHS_PASSPHRASE": "test-passphrase",
+        "AUTHS_PASSPHRASE": "TestPassphrase!42",
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_AUTHOR_NAME": "Test User",
         "GIT_COMMITTER_NAME": "Test User",

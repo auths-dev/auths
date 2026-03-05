@@ -40,7 +40,7 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_verifier::core::{Attestation, SignerType};
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::DeviceDID;
-use ring::signature::{Ed25519KeyPair, KeyPair};
+use ring::signature::KeyPair;
 
 use std::sync::Arc;
 
@@ -304,10 +304,10 @@ fn extract_public_key(
         .get_passphrase("agent key passphrase")
         .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
 
-    let pkcs8 = decrypt_keypair(&encrypted, &passphrase)
+    let decrypted = decrypt_keypair(&encrypted, &passphrase)
         .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
 
-    let kp = Ed25519KeyPair::from_pkcs8(&pkcs8)
+    let kp = crate::identity::helpers::load_keypair_from_der_or_seed(&decrypted)
         .map_err(|e| AgentProvisioningError::KeychainAccess(format!("bad pkcs8: {}", e)))?;
 
     let pk: [u8; 32] = kp
