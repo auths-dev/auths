@@ -24,6 +24,51 @@ pub fn set_encryption_algorithm(algo: EncryptionAlgorithm) {
     *ENCRYPTION_ALGO.write().unwrap() = algo;
 }
 
+/// PKCS#11 HSM configuration, sourced from `AUTHS_PKCS11_*` environment variables.
+///
+/// Args:
+/// * `library_path`: Path to the PKCS#11 shared library (e.g. `libsofthsm2.so`).
+/// * `slot_id`: Numeric slot identifier (mutually exclusive with `token_label`).
+/// * `token_label`: Token label for slot lookup (mutually exclusive with `slot_id`).
+/// * `pin`: User PIN for the HSM token.
+/// * `key_label`: PKCS#11 object label for the Ed25519 key.
+///
+/// Usage:
+/// ```ignore
+/// let config = Pkcs11Config::from_env();
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct Pkcs11Config {
+    /// Path to the PKCS#11 shared library (e.g. `libsofthsm2.so`).
+    pub library_path: Option<PathBuf>,
+    /// Numeric slot identifier; mutually exclusive with `token_label`.
+    pub slot_id: Option<u64>,
+    /// Human-readable token label used to locate the slot.
+    pub token_label: Option<String>,
+    /// User PIN for the token session.
+    pub pin: Option<String>,
+    /// Default key label for signing operations.
+    pub key_label: Option<String>,
+}
+
+impl Pkcs11Config {
+    /// Build a `Pkcs11Config` from `AUTHS_PKCS11_*` environment variables.
+    #[allow(clippy::disallowed_methods)]
+    pub fn from_env() -> Self {
+        Self {
+            library_path: std::env::var("AUTHS_PKCS11_LIBRARY")
+                .ok()
+                .map(PathBuf::from),
+            slot_id: std::env::var("AUTHS_PKCS11_SLOT")
+                .ok()
+                .and_then(|s| s.parse().ok()),
+            token_label: std::env::var("AUTHS_PKCS11_TOKEN_LABEL").ok(),
+            pin: std::env::var("AUTHS_PKCS11_PIN").ok(),
+            key_label: std::env::var("AUTHS_PKCS11_KEY_LABEL").ok(),
+        }
+    }
+}
+
 /// Keychain backend configuration, typically sourced from environment variables.
 ///
 /// Use `KeychainConfig::from_env()` at process boundaries (CLI entry point, FFI
@@ -96,6 +141,9 @@ pub struct EnvironmentConfig {
     pub keychain: KeychainConfig,
     /// Path to the SSH agent socket (`SSH_AUTH_SOCK`).
     pub ssh_agent_socket: Option<PathBuf>,
+    /// PKCS#11 HSM configuration.
+    #[cfg(feature = "keychain-pkcs11")]
+    pub pkcs11: Option<Pkcs11Config>,
 }
 
 impl EnvironmentConfig {
@@ -117,6 +165,15 @@ impl EnvironmentConfig {
                 .map(PathBuf::from),
             keychain: KeychainConfig::from_env(),
             ssh_agent_socket: std::env::var("SSH_AUTH_SOCK").ok().map(PathBuf::from),
+            #[cfg(feature = "keychain-pkcs11")]
+            pkcs11: {
+                let cfg = Pkcs11Config::from_env();
+                if cfg.library_path.is_some() {
+                    Some(cfg)
+                } else {
+                    None
+                }
+            },
         }
     }
 
@@ -146,6 +203,8 @@ pub struct EnvironmentConfigBuilder {
     auths_home: Option<PathBuf>,
     keychain: Option<KeychainConfig>,
     ssh_agent_socket: Option<PathBuf>,
+    #[cfg(feature = "keychain-pkcs11")]
+    pkcs11: Option<Pkcs11Config>,
 }
 
 impl EnvironmentConfigBuilder {
@@ -167,12 +226,21 @@ impl EnvironmentConfigBuilder {
         self
     }
 
+    /// Set the PKCS#11 configuration.
+    #[cfg(feature = "keychain-pkcs11")]
+    pub fn pkcs11(mut self, config: Pkcs11Config) -> Self {
+        self.pkcs11 = Some(config);
+        self
+    }
+
     /// Consume the builder and produce an `EnvironmentConfig`.
     pub fn build(self) -> EnvironmentConfig {
         EnvironmentConfig {
             auths_home: self.auths_home,
             keychain: self.keychain.unwrap_or_default(),
             ssh_agent_socket: self.ssh_agent_socket,
+            #[cfg(feature = "keychain-pkcs11")]
+            pkcs11: self.pkcs11,
         }
     }
 }

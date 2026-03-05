@@ -57,6 +57,9 @@ uuid.workspace = true
 # Optional secp256k1/BIP340 Schnorr support for Nostr
 k256 = { version = "0.13", features = ["schnorr"], optional = true }
 
+# Optional PKCS#11 HSM support
+cryptoki = { version = "0.12", optional = true }
+
 # Optional witness server dependencies
 axum = { version = "0.8", optional = true }
 tower = { version = "0.5", features = ["util"], optional = true }
@@ -95,6 +98,7 @@ keychain-linux-secretservice = ["dep:secret-service"]
 keychain-windows = ["dep:windows"]
 keychain-file-fallback = []
 crypto-secp256k1 = ["dep:k256"]
+keychain-pkcs11 = ["dep:cryptoki"]
 witness-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:sqlite"]
 tls = ["dep:axum-server", "witness-server"]
 

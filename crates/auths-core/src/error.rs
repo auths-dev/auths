@@ -121,6 +121,23 @@ pub enum AgentError {
     /// The passphrase does not meet strength requirements.
     #[error("Passphrase too weak: {0}")]
     WeakPassphrase(String),
+
+    // --- HSM / PKCS#11 errors ---
+    /// HSM PIN is locked after too many failed attempts.
+    #[error("HSM PIN is locked — reset required")]
+    HsmPinLocked,
+
+    /// HSM device was removed during operation.
+    #[error("HSM device removed")]
+    HsmDeviceRemoved,
+
+    /// HSM session expired or was closed unexpectedly.
+    #[error("HSM session expired")]
+    HsmSessionExpired,
+
+    /// HSM does not support the requested cryptographic mechanism.
+    #[error("HSM does not support mechanism: {0}")]
+    HsmUnsupportedMechanism(String),
 }
 
 impl AuthsErrorInfo for AgentError {
@@ -146,6 +163,10 @@ impl AuthsErrorInfo for AgentError {
             Self::CredentialTooLarge { .. } => "AUTHS_CREDENTIAL_TOO_LARGE",
             Self::AgentLocked => "AUTHS_AGENT_LOCKED",
             Self::WeakPassphrase(_) => "AUTHS_WEAK_PASSPHRASE",
+            Self::HsmPinLocked => "AUTHS_HSM_PIN_LOCKED",
+            Self::HsmDeviceRemoved => "AUTHS_HSM_DEVICE_REMOVED",
+            Self::HsmSessionExpired => "AUTHS_HSM_SESSION_EXPIRED",
+            Self::HsmUnsupportedMechanism(_) => "AUTHS_HSM_UNSUPPORTED_MECHANISM",
         }
     }
 
@@ -183,6 +204,12 @@ impl AuthsErrorInfo for AgentError {
             | Self::CredentialTooLarge { .. } => None,
             Self::WeakPassphrase(_) => {
                 Some("Use at least 12 characters with uppercase, lowercase, and a digit or symbol")
+            }
+            Self::HsmPinLocked => Some("Reset the HSM PIN using your HSM vendor's admin tools"),
+            Self::HsmDeviceRemoved => Some("Reconnect the HSM device and try again"),
+            Self::HsmSessionExpired => Some("Retry the operation — a new session will be opened"),
+            Self::HsmUnsupportedMechanism(_) => {
+                Some("Check that your HSM supports Ed25519 (CKM_EDDSA)")
             }
         }
     }

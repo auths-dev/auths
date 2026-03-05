@@ -96,6 +96,24 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
 
+      - name: Install SoftHSMv2 (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get install -y softhsm2
+          mkdir -p /tmp/softhsm/tokens
+          echo "directories.tokendir = /tmp/softhsm/tokens" > /tmp/softhsm2.conf
+          softhsm2-util --init-token --slot 0 --label "auths-test" --pin 12345678 --so-pin 12345678
+          echo "SOFTHSM2_CONF=/tmp/softhsm2.conf" >> "$GITHUB_ENV"
+
+      - name: Install SoftHSMv2 (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install softhsm
+          mkdir -p /tmp/softhsm/tokens
+          echo "directories.tokendir = /tmp/softhsm/tokens" > /tmp/softhsm2.conf
+          softhsm2-util --init-token --slot 0 --label "auths-test" --pin 12345678 --so-pin 12345678
+          echo "SOFTHSM2_CONF=/tmp/softhsm2.conf" >> "$GITHUB_ENV"
+
       - name: Configure Git
         run: |
           git config --global user.name "CI"
@@ -149,3 +167,47 @@ jobs:
       - name: Build WASM with wasm-pack
         working-directory: crates/auths-verifier
         run: wasm-pack build --target bundler --no-default-features --features wasm
+
+  e2e-tests:
+    name: E2E Tests (${{ matrix.os }})
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-e2e-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-e2e-
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Build auths binaries
+        run: cargo build --package auths_cli
+
+      - name: Configure git
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@auths.dev"
+
+      - name: Run E2E tests
+        working-directory: tests/e2e
+        run: uv run pytest -v --junitxml=../../results-${{ matrix.os }}.xml
+        env:
+          AUTHS_BIN: ${{ github.workspace }}/target/debug/auths
+          AUTHS_SIGN_BIN: ${{ github.workspace }}/target/debug/auths-sign
+          AUTHS_VERIFY_BIN: ${{ github.workspace }}/target/debug/auths-verify
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ matrix.os }}
+          path: results-*.xml

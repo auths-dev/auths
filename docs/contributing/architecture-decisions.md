@@ -10,6 +10,7 @@ This page summarizes the key architectural decisions in Auths and links to the f
 | [ADR-002](#adr-002-git-backed-keri-ledger) | Git-backed KERI ledger | Accepted | 2026-02-27 |
 | [ADR-003](#adr-003-tiered-cache-and-write-contention) | Tiered cache and write-contention mitigation | Accepted | 2026-02-27 |
 | [ADR-004](#adr-004-async-executor-protection) | Async executor protection | Accepted | 2026-02-27 |
+| [ADR-005](#adr-005-ed25519-only-for-hsm) | Ed25519-only for HSM | Accepted | 2026-03-05 |
 
 ## ADR format
 
@@ -121,6 +122,38 @@ KERI events are stored as Git commits (ADR-002), giving the KEL content-addresse
 - `pg_try_advisory_xact_lock` returns immediately and auto-releases on crash -- no stale locks.
 
 **Trade-offs:** `spawn_blocking` closures require owned data (`move`); keypair re-materialization adds ~2us overhead per signing operation.
+
+## ADR-005: Ed25519-only for HSM
+
+**Decision:** The PKCS#11 HSM backend targets Ed25519 exclusively via `CKM_EDDSA`. No P-256 or other curve support is added.
+
+**Context:**
+
+- Apple Secure Enclave only supports P-256 via public CryptoKit APIs (`SecureEnclave.P256`). Ed25519 is used internally by Platform SSO but through private APIs unavailable to third-party developers.
+- CryptoKit's `Curve25519.Signing` module is software-only (no Secure Enclave backing).
+- AWS CloudHSM, Azure Managed HSM, and Google Cloud KMS support P-256 but not Ed25519 (`CKM_EDDSA`) as of PKCS#11 v2.40.
+- Adding P-256 would require changes across every layer: KERI CESR prefix codes, DID:key multicodec, SSHSIG formatting, `auths-verifier`, attestation signing.
+
+**Rationale:**
+
+- No cross-cutting crypto changes — existing KERI events, DIDs, and verification remain untouched.
+- Single algorithm path through signing and verification reduces implementation and testing surface.
+- Ed25519 advantages preserved: deterministic signatures, small keys (32 bytes), no parameter choices.
+
+**Compatible HSMs:** YubiKey HSM2, Thales Luna, Nitrokey HSM, SoftHSMv2 (testing).
+
+**Trade-offs:**
+
+- Cannot use Apple Secure Enclave (P-256 only via public API).
+- Cannot use AWS CloudHSM, Azure Managed HSM, Google Cloud KMS (P-256 only).
+- Limits FIPS 140-2 compliance story (NIST curves required by some standards).
+
+**Future path:**
+
+- Multi-curve support epic (est. 3-4 weeks) as prerequisite for P-256 backends.
+- Apple Secure Enclave adapter gated behind multi-curve.
+- Cloud HSM adapters (AWS CloudHSM, Azure, GCP) also gated behind multi-curve.
+- Monitor Apple exposing Ed25519 Secure Enclave APIs publicly (Platform SSO already uses it internally).
 
 ---
 
