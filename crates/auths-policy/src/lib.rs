@@ -41,6 +41,7 @@ pub mod enforce;
 pub mod eval;
 pub mod expr;
 pub mod glob;
+pub mod trust;
 pub mod types;
 
 pub use builder::PolicyBuilder;
@@ -55,6 +56,7 @@ pub use enforce::{Divergence, enforce, enforce_simple};
 pub use eval::{evaluate_strict, evaluate3};
 pub use expr::Expr;
 pub use glob::glob_match;
+pub use trust::{TrustRegistry, TrustRegistryEntry, ValidatedIssuerUrl};
 pub use types::{
     CanonicalCapability, CanonicalDid, CapabilityParseError, DidParseError, GlobParseError,
     QuorumPolicy, SignerType, ValidatedGlob,
