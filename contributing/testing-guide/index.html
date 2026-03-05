@@ -1222,6 +1222,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#test-key-material" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test key material
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Test key material">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ed25519" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ed25519
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rsa" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RSA
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1582,6 +1621,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#test-key-material" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test key material
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Test key material">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ed25519" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ed25519
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rsa" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RSA
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1869,6 +1947,40 @@
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>config<span class="w"> </span>--global<span class="w"> </span>user.email<span class="w"> </span><span class="s2">&quot;test@example.com&quot;</span>
 </span></code></pre></div>
 <p>If tests fail locally with "please tell me who you are" errors, run these commands.</p>
+<h2 id="test-key-material">Test key material<a class="headerlink" href="#test-key-material" title="Permanent link">&para;</a></h2>
+<p>Cryptographic key generation (<code>Ed25519KeyPair::generate_pkcs8</code>, RSA prime finding) requires OS entropy and is expensive in debug builds — often 2-3 seconds per key in CI. This adds up fast when tests create multiple identities.</p>
+<p><strong>Always use pre-generated static keys in tests.</strong> Store them as <code>const</code> byte arrays, not generated at runtime.</p>
+<h3 id="ed25519">Ed25519<a class="headerlink" href="#ed25519" title="Permanent link">&para;</a></h3>
+<p>For tests needing a small number of distinct identities, use the pre-generated PKCS8 DER constants in <code>crates/auths-storage/tests/cases/mock_ed25519_keypairs.rs</code>. These were generated once offline and stored inline — <code>Ed25519KeyPair::from_pkcs8</code> is just parsing, zero entropy.</p>
+<p>For tests needing many unique keys (e.g. concurrency tests with 18+ identities), use deterministic seeds with <code>Ed25519KeyPair::from_seed_unchecked(&amp;[N; 32])</code>. This derives the keypair via pure math — instant, no OS entropy.</p>
+<p><strong>Never use <code>Ed25519KeyPair::generate_pkcs8(&amp;rng)</code> in tests.</strong> It reads <code>/dev/urandom</code> and takes seconds per call in CI debug mode.</p>
+<p>To generate new PKCS8 constants if needed:</p>
+<div class="language-rust highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">fn</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">    </span><span class="k">use</span><span class="w"> </span><span class="n">ring</span><span class="p">::</span><span class="n">signature</span><span class="p">::{</span><span class="n">Ed25519KeyPair</span><span class="p">,</span><span class="w"> </span><span class="n">KeyPair</span><span class="p">};</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="k">use</span><span class="w"> </span><span class="n">ring</span><span class="p">::</span><span class="n">rand</span><span class="p">::</span><span class="n">SystemRandom</span><span class="p">;</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">rng</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SystemRandom</span><span class="p">::</span><span class="n">new</span><span class="p">();</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="mi">0</span><span class="o">..</span><span class="mi">20</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">pkcs8</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Ed25519KeyPair</span><span class="p">::</span><span class="n">generate_pkcs8</span><span class="p">(</span><span class="o">&amp;</span><span class="n">rng</span><span class="p">).</span><span class="n">unwrap</span><span class="p">();</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">bytes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pkcs8</span><span class="p">.</span><span class="n">as_ref</span><span class="p">();</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">kp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Ed25519KeyPair</span><span class="p">::</span><span class="n">from_pkcs8</span><span class="p">(</span><span class="n">bytes</span><span class="p">).</span><span class="n">unwrap</span><span class="p">();</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">pub_hex</span><span class="p">:</span><span class="w"> </span><span class="nb">String</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">kp</span><span class="p">.</span><span class="n">public_key</span><span class="p">().</span><span class="n">as_ref</span><span class="p">()</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">            </span><span class="p">.</span><span class="n">iter</span><span class="p">().</span><span class="n">map</span><span class="p">(</span><span class="o">|</span><span class="n">b</span><span class="o">|</span><span class="w"> </span><span class="fm">format!</span><span class="p">(</span><span class="s">&quot;{b:02x}&quot;</span><span class="p">)).</span><span class="n">collect</span><span class="p">();</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="w">        </span><span class="fm">println!</span><span class="p">(</span><span class="s">&quot;// Keypair {i} (pub: {pub_hex})&quot;</span><span class="p">);</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="w">        </span><span class="fm">println!</span><span class="p">(</span><span class="s">&quot;#[rustfmt::skip]&quot;</span><span class="p">);</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="w">        </span><span class="fm">print!</span><span class="p">(</span><span class="s">&quot;const PKCS8_{i}: &amp;[u8] = &amp;[&quot;</span><span class="p">);</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="w">        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">j</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">bytes</span><span class="p">.</span><span class="n">iter</span><span class="p">().</span><span class="n">enumerate</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="fm">print!</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">    &quot;</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="w">            </span><span class="fm">print!</span><span class="p">(</span><span class="s">&quot;{b:#04x}, &quot;</span><span class="p">);</span>
+</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="w">        </span><span class="p">}</span>
+</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="w">        </span><span class="fm">println!</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">];</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="rsa">RSA<a class="headerlink" href="#rsa" title="Permanent link">&para;</a></h3>
+<p>Same pattern — see <code>crates/auths-oidc-bridge/src/github_oidc.rs</code> which stores a pre-generated 2048-bit RSA key as <code>const TEST_RSA_PRIVATE_KEY_PEM</code>. Generated once with <code>openssl genrsa 2048 | openssl rsa -traditional</code>.</p>
 
 
 

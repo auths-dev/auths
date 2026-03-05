@@ -1,0 +1,1943 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Decentralized identity for developers. One identity, multiple devices, Git-native storage.">
+      
+      
+      
+        <link rel="canonical" href="https://docs.auths.dev/plans/authsec_competition/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>AuthSec Competitive Analysis - Auths</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#authsec-competitive-analysis" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Auths" class="md-header__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Auths
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              AuthSec Competitive Analysis
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/install/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/identity/multi-device/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../sdk/rust/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  SDK & Libraries
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/development-setup/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Auths" class="md-nav__button md-logo" aria-label="Auths" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    Auths
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/auths-dev/auths" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    auths-dev/auths
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../getting-started/install/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../guides/identity/multi-device/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../sdk/rust/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK & Libraries
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../architecture/overview/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    
+  
+  
+  
+    <a href="../../contributing/development-setup/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#executive-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Executive Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-1-what-authsec-actually-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 1: What AuthSec Actually Is
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 1: What AuthSec Actually Is">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-identity-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Identity Model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-authorization-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Authorization Model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-mcp-integration-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 MCP Integration Pattern
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-ciba-client-initiated-backchannel-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 CIBA (Client-Initiated Backchannel Authentication)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-delegation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Delegation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-secret-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7 Secret Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2-head-to-head-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 2: Head-to-Head Comparison
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2: Head-to-Head Comparison">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-fundamental-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Fundamental Architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-workload-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Workload Identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-authorization-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Authorization / Policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-developer-experience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Developer Experience
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-supply-chain-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 Supply Chain &amp; Provenance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-maturity-ecosystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Maturity &amp; Ecosystem
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-3-where-authsec-has-advantages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 3: Where AuthSec Has Advantages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 3: Where AuthSec Has Advantages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-mcp-server-integration-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 MCP Server Integration (Today)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-mobile-authenticator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Mobile Authenticator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-ciba-headerless-auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 CIBA (Headerless Auth)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-enterprise-sso-saml-active-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Enterprise SSO (SAML, Active Directory)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-multi-tenant-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 Multi-Tenant Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-4-where-auths-has-structural-advantages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 4: Where Auths Has Structural Advantages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 4: Where Auths Has Structural Advantages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-no-infrastructure-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 No Infrastructure Required
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-identity-portability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Identity Portability
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-offline-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 Offline Verification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-key-rotation-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 Key Rotation Safety
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-witness-quorum-decentralized-accountability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 Witness Quorum (Decentralized Accountability)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-supply-chain-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.6 Supply Chain Security
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#47-policy-expressiveness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.7 Policy Expressiveness
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#48-cryptographic-attestation-chains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.8 Cryptographic Attestation Chains
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-5-strategic-positioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 5: Strategic Positioning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 5: Strategic Positioning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-the-market-confusion-risk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 The Market Confusion Risk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-complementary-not-competitive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Complementary, Not Competitive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-where-to-win" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 Where to Win
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-recommended-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4 Recommended Response
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-6-technical-gaps-to-close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 6: Technical Gaps to Close
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="authsec-competitive-analysis">AuthSec Competitive Analysis<a class="headerlink" href="#authsec-competitive-analysis" title="Permanent link">&para;</a></h1>
+<h2 id="executive-summary">Executive Summary<a class="headerlink" href="#executive-summary" title="Permanent link">&para;</a></h2>
+<p>AuthSec (<code>authsec.ai</code>) is an open-source, agent-first identity platform targeting MCP (Model Context Protocol) servers and AI agent infrastructure. It provides centralized authentication (OAuth 2.1, SAML, CIBA) and workload identity (SPIFFE/SPIRE X.509) with a managed SaaS backend.</p>
+<p><strong>Auths and AuthSec are not direct competitors.</strong> They solve adjacent problems with fundamentally different architectures. AuthSec is a centralized identity platform that bolts auth onto AI agents. Auths is a decentralized identity primitive that makes cryptographic identity infrastructure-free. Where they overlap is in workload identity, capability-scoped delegation, and OIDC token exchange — but their trust models are incompatible at the philosophical level.</p>
+<p>The competitive risk is not technical substitution but <strong>market confusion</strong>: both use similar terminology (attestation, capabilities, workload identity, zero-trust) while meaning very different things. This document disambiguates them.</p>
+<hr />
+<h2 id="part-1-what-authsec-actually-is">Part 1: What AuthSec Actually Is<a class="headerlink" href="#part-1-what-authsec-actually-is" title="Permanent link">&para;</a></h2>
+<h3 id="11-architecture">1.1 Architecture<a class="headerlink" href="#11-architecture" title="Permanent link">&para;</a></h3>
+<p>AuthSec is a <strong>four-service Go/Gin backend</strong> behind <code>dev.api.authsec.dev</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>User Management API (v4.0.0)</td>
+<td>Multi-tenant user auth, MFA, directory sync</td>
+</tr>
+<tr>
+<td>Auth Manager API (v1.1.0)</td>
+<td>JWT generation, group management, token validation</td>
+</tr>
+<tr>
+<td>Client Management API (v0.4.0)</td>
+<td>Client CRUD, tenant-specific config</td>
+</tr>
+<tr>
+<td>WebAuthn &amp; MFA API (v2.0)</td>
+<td>WebAuthn registration, TOTP, SMS verification</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Stack</strong>: Go/Gin + PostgreSQL + HashiCorp Vault + SPIRE + Prometheus. Frontend: React 19/Vite 6. Mobile: Expo 54/React Native.</p>
+<p>All components are MIT-licensed. Self-hosting is supported. The managed service runs at <code>app.authsec.dev</code>.</p>
+<h3 id="12-identity-model">1.2 Identity Model<a class="headerlink" href="#12-identity-model" title="Permanent link">&para;</a></h3>
+<p>AuthSec has a <strong>dual identity plane</strong>:</p>
+<p><strong>User identity</strong> (humans): OAuth 2.1 with PKCE, SAML 2.0, OIDC federation, CIBA (push-to-mobile), WebAuthn/FIDO2, TOTP. After authentication, a JWT is issued containing <code>email</code>, <code>tenant_id</code>, <code>user_id</code>, <code>org_id</code>, <code>roles</code>, <code>groups</code>, <code>scopes</code>, <code>resources</code>, <code>permissions</code>. This JWT drives all authorization decisions.</p>
+<p><strong>Workload identity</strong> (agents/services): SPIFFE/SPIRE issues X.509-SVIDs (short-lived certificates) through SPIRE agents. Attestation uses Kubernetes selectors (namespace, service account, pod labels). Certificates auto-rotate every 30 minutes. Workloads present mTLS certificates for service-to-service communication.</p>
+<h3 id="13-authorization-model">1.3 Authorization Model<a class="headerlink" href="#13-authorization-model" title="Permanent link">&para;</a></h3>
+<p>Five-dimensional RBAC:</p>
+<ol>
+<li><strong>Roles</strong> — e.g., <code>admin</code>, <code>editor</code>, <code>viewer</code></li>
+<li><strong>Groups</strong> — e.g., <code>engineering</code>, <code>devops</code></li>
+<li><strong>Scopes</strong> — e.g., <code>read</code>, <code>write</code>, <code>deploy</code></li>
+<li><strong>Resources</strong> — e.g., <code>production</code>, <code>staging</code></li>
+<li><strong>Permissions</strong> — Composite <code>resource:action</code> strings</li>
+</ol>
+<p>Evaluation supports AND/OR logic: <code>require_all=True</code> (all dimensions must match) or <code>require_all=False</code> (any one match suffices).</p>
+<h3 id="14-mcp-integration-pattern">1.4 MCP Integration Pattern<a class="headerlink" href="#14-mcp-integration-pattern" title="Permanent link">&para;</a></h3>
+<p>The core value proposition — "3 lines of code" to add auth to an MCP server:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nd">@protected_by_AuthSec</span><span class="p">(</span><span class="s2">&quot;tool_name&quot;</span><span class="p">,</span> <span class="n">roles</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;admin&quot;</span><span class="p">],</span> <span class="n">scopes</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;write&quot;</span><span class="p">])</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">my_tool</span><span class="p">(</span><span class="n">arguments</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">session</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">user</span> <span class="o">=</span> <span class="n">arguments</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;_user_info&quot;</span><span class="p">)</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="k">return</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Hello </span><span class="si">{</span><span class="n">user</span><span class="p">[</span><span class="s1">&#39;email&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">}]</span>
+</span></code></pre></div>
+<p><strong>Flow</strong>: Unauthenticated users see only OAuth management tools. After browser-redirect OAuth flow, JWT is decoded and cached. Protected tools become visible based on RBAC evaluation. Each tool call triggers upstream validation via the SDK Manager service. <code>_user_info</code> is injected into tool arguments automatically.</p>
+<h3 id="15-ciba-client-initiated-backchannel-authentication">1.5 CIBA (Client-Initiated Backchannel Authentication)<a class="headerlink" href="#15-ciba-client-initiated-backchannel-authentication" title="Permanent link">&para;</a></h3>
+<p>Enables "headerless" authentication — no browser redirects. User receives a push notification on the AuthSec mobile authenticator, approves, and the agent receives a JWT. Designed for voice assistants, CLI tools, IoT devices, and desktop apps.</p>
+<h3 id="16-delegation">1.6 Delegation<a class="headerlink" href="#16-delegation" title="Permanent link">&para;</a></h3>
+<p>The <code>DelegationClient</code> enables AI agents to act on behalf of users:
+- Users grant scoped, time-limited permissions to agents
+- Agents pull JWT-SVID delegation tokens
+- Tokens contain: permissions list, audience, expiration
+- Auto-refresh before expiry</p>
+<h3 id="17-secret-management">1.7 Secret Management<a class="headerlink" href="#17-secret-management" title="Permanent link">&para;</a></h3>
+<p><code>ServiceAccessSDK</code> wraps HashiCorp Vault for secure credential retrieval. MCP tools access third-party APIs without exposing raw credentials. All secrets are encrypted at rest and retrieved per-session.</p>
+<hr />
+<h2 id="part-2-head-to-head-comparison">Part 2: Head-to-Head Comparison<a class="headerlink" href="#part-2-head-to-head-comparison" title="Permanent link">&para;</a></h2>
+<h3 id="21-fundamental-architecture">2.1 Fundamental Architecture<a class="headerlink" href="#21-fundamental-architecture" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Auths</th>
+<th>AuthSec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Trust model</strong></td>
+<td>Self-certifying (no authority)</td>
+<td>Centralized authority (SaaS or self-hosted)</td>
+</tr>
+<tr>
+<td><strong>Identity primitive</strong></td>
+<td><code>did:keri:E...</code> (hash of inception event)</td>
+<td>UUID/email in PostgreSQL</td>
+</tr>
+<tr>
+<td><strong>Infrastructure requirement</strong></td>
+<td>Git (already everywhere)</td>
+<td>Go backend + PostgreSQL + Vault + SPIRE + Prometheus</td>
+</tr>
+<tr>
+<td><strong>Key management</strong></td>
+<td>Platform keychain (macOS/Linux/Windows)</td>
+<td>HashiCorp Vault</td>
+</tr>
+<tr>
+<td><strong>Verification model</strong></td>
+<td>Offline, stateless (WASM/FFI embeddable)</td>
+<td>Online (requires SDK Manager API call)</td>
+</tr>
+<tr>
+<td><strong>Key rotation</strong></td>
+<td>KERI pre-rotation (planned, safe)</td>
+<td>SPIRE auto-rotation (30-min SVIDs)</td>
+</tr>
+<tr>
+<td><strong>Identity portability</strong></td>
+<td>Fully portable (<code>did:keri</code> is forge-agnostic)</td>
+<td>Locked to AuthSec instance</td>
+</tr>
+<tr>
+<td><strong>Vendor lock-in</strong></td>
+<td>None</td>
+<td>High (identity lives in their PostgreSQL)</td>
+</tr>
+<tr>
+<td><strong>Offline capability</strong></td>
+<td>Full (200KB WASM verifier)</td>
+<td>None (all validation server-side)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-workload-identity">2.2 Workload Identity<a class="headerlink" href="#22-workload-identity" title="Permanent link">&para;</a></h3>
+<p>This is the primary area of overlap.</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Auths</th>
+<th>AuthSec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Workload credential</strong></td>
+<td>Signed attestation chain → OIDC JWT</td>
+<td>SPIFFE X.509-SVID → JWT</td>
+</tr>
+<tr>
+<td><strong>Attestation</strong></td>
+<td>Cryptographic (dual-signed, chain-verified)</td>
+<td>Kubernetes selectors (namespace, service account)</td>
+</tr>
+<tr>
+<td><strong>Trust anchor</strong></td>
+<td>Self-certifying identity + optional witness quorum</td>
+<td>SPIRE server trust bundle</td>
+</tr>
+<tr>
+<td><strong>Capability model</strong></td>
+<td>First-class, intersected along chain, policy-evaluated</td>
+<td>RBAC roles/scopes (flat, not chain-intersected)</td>
+</tr>
+<tr>
+<td><strong>Cloud provider bridge</strong></td>
+<td>OIDC bridge → AWS STS / GCP WIF / Azure AD</td>
+<td>Not built-in (separate integration)</td>
+</tr>
+<tr>
+<td><strong>GitHub Actions integration</strong></td>
+<td>OIDC cross-reference (verify OIDC token + KERI identity simultaneously)</td>
+<td>Not built-in</td>
+</tr>
+<tr>
+<td><strong>TTL enforcement</strong></td>
+<td>Trust registry caps + bridge max TTL + policy</td>
+<td>SVID rotation interval (30 min default)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key insight</strong>: AuthSec's workload identity is <strong>Kubernetes-native</strong> (SPIRE attestation via pod selectors). Auths' workload identity is <strong>Git-native</strong> (attestation chain from identity to device to workload). AuthSec requires Kubernetes. Auths requires Git.</p>
+<h3 id="23-authorization-policy">2.3 Authorization / Policy<a class="headerlink" href="#23-authorization-policy" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Auths</th>
+<th>AuthSec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Policy language</strong></td>
+<td>Declarative expression AST (And/Or/Not + 20+ predicates)</td>
+<td>Five-dimensional RBAC (roles/groups/scopes/resources/permissions)</td>
+</tr>
+<tr>
+<td><strong>Evaluation</strong></td>
+<td>Local, compiled, deterministic</td>
+<td>Remote API call to SDK Manager</td>
+</tr>
+<tr>
+<td><strong>Predicates</strong></td>
+<td><code>HasCapability</code>, <code>IssuerIs</code>, <code>NotExpired</code>, <code>RefMatches</code>, <code>PathAllowed</code>, <code>IsAgent</code>, <code>IsHuman</code>, <code>IsWorkload</code>, <code>RepoIs</code>, <code>EnvIs</code>, etc.</td>
+<td>Role membership, scope check, resource check</td>
+</tr>
+<tr>
+<td><strong>Composability</strong></td>
+<td>Arbitrary nesting (And/Or/Not) with depth limits</td>
+<td>AND/OR at top level only</td>
+</tr>
+<tr>
+<td><strong>Audit trail</strong></td>
+<td><code>Decision</code> struct with <code>reason</code>, <code>message</code>, <code>policy_hash</code></td>
+<td>Server-side logging</td>
+</tr>
+<tr>
+<td><strong>Policy storage</strong></td>
+<td>JSON/TOML, compiled at startup</td>
+<td>Dashboard UI + database</td>
+</tr>
+<tr>
+<td><strong>Git ref scoping</strong></td>
+<td>First-class (<code>RefMatches("refs/heads/main")</code>)</td>
+<td>Not applicable</td>
+</tr>
+<tr>
+<td><strong>File path scoping</strong></td>
+<td>First-class (<code>PathAllowed(["src/**"])</code>)</td>
+<td>Not applicable</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key insight</strong>: Auths' policy engine is a <strong>general-purpose authorization language</strong> with developer-workflow predicates (Git refs, file paths, environments). AuthSec's RBAC is a <strong>standard enterprise access control model</strong> with no developer-workflow awareness.</p>
+<h3 id="24-developer-experience">2.4 Developer Experience<a class="headerlink" href="#24-developer-experience" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Auths</th>
+<th>AuthSec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Setup</strong></td>
+<td><code>cargo install auths &amp;&amp; auths init</code> (30 seconds)</td>
+<td>Register on dashboard, create workspace, obtain client_id, configure OAuth callbacks</td>
+</tr>
+<tr>
+<td><strong>Git signing</strong></td>
+<td>Native (<code>auths sign commit</code>, Git hook integration)</td>
+<td>Not applicable</td>
+</tr>
+<tr>
+<td><strong>Commit verification</strong></td>
+<td><code>auths verify HEAD</code> or embedded WASM</td>
+<td>Not applicable</td>
+</tr>
+<tr>
+<td><strong>CI/CD integration</strong></td>
+<td><code>auths init --profile ci</code> (ephemeral identity)</td>
+<td>SPIRE agent + Kubernetes deployment</td>
+</tr>
+<tr>
+<td><strong>MCP server auth</strong></td>
+<td>Not yet built (but OIDC bridge enables it)</td>
+<td>Core use case (decorator pattern)</td>
+</tr>
+<tr>
+<td><strong>SDKs</strong></td>
+<td>Rust (primary), WASM (browser/Node), FFI (C/Swift/Kotlin)</td>
+<td>Python, TypeScript, Go</td>
+</tr>
+<tr>
+<td><strong>Mobile</strong></td>
+<td>Not yet built</td>
+<td>Expo/React Native authenticator app</td>
+</tr>
+</tbody>
+</table>
+<h3 id="25-supply-chain-provenance">2.5 Supply Chain &amp; Provenance<a class="headerlink" href="#25-supply-chain-provenance" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Auths</th>
+<th>AuthSec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Artifact signing</strong></td>
+<td><code>auths artifact sign &lt;file&gt;</code></td>
+<td>Not applicable</td>
+</tr>
+<tr>
+<td><strong>Commit signing</strong></td>
+<td>Native (Ed25519 via Git)</td>
+<td>Not applicable</td>
+</tr>
+<tr>
+<td><strong>Attestation chains</strong></td>
+<td>Core primitive (transitive delegation)</td>
+<td>Not applicable</td>
+</tr>
+<tr>
+<td><strong>Witness quorum</strong></td>
+<td>Built-in (N-of-M independent receipting)</td>
+<td>Not applicable</td>
+</tr>
+<tr>
+<td><strong>Software provenance</strong></td>
+<td>Core use case (Sigstore-complementary)</td>
+<td>Not applicable</td>
+</tr>
+</tbody>
+</table>
+<h3 id="26-maturity-ecosystem">2.6 Maturity &amp; Ecosystem<a class="headerlink" href="#26-maturity-ecosystem" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Auths</th>
+<th>AuthSec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Codebase</strong></td>
+<td>~80K lines Rust, 18 crates, layered architecture</td>
+<td>~9 repos (Go + Python + TypeScript + React)</td>
+</tr>
+<tr>
+<td><strong>GitHub activity</strong></td>
+<td>Active development</td>
+<td>37 commits on main SDK repo, 1 star</td>
+</tr>
+<tr>
+<td><strong>License</strong></td>
+<td>(check project)</td>
+<td>MIT across all repos</td>
+</tr>
+<tr>
+<td><strong>Documentation</strong></td>
+<td>CLAUDE.md, extensive inline docs, plan docs</td>
+<td>Docusaurus site (partially broken at time of review)</td>
+</tr>
+<tr>
+<td><strong>Community</strong></td>
+<td>Early</td>
+<td>Very early</td>
+</tr>
+<tr>
+<td><strong>Production readiness</strong></td>
+<td>Pre-launch (hardening in progress)</td>
+<td>Pre-launch (v0.x APIs)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="part-3-where-authsec-has-advantages">Part 3: Where AuthSec Has Advantages<a class="headerlink" href="#part-3-where-authsec-has-advantages" title="Permanent link">&para;</a></h2>
+<h3 id="31-mcp-server-integration-today">3.1 MCP Server Integration (Today)<a class="headerlink" href="#31-mcp-server-integration-today" title="Permanent link">&para;</a></h3>
+<p>AuthSec has a <strong>working MCP auth solution now</strong>. The <code>@protected_by_AuthSec()</code> decorator pattern is trivial to adopt. Tool visibility control (hiding tools until authenticated) is a genuinely useful UX pattern. Auths does not currently have an MCP SDK.</p>
+<p><strong>Mitigation</strong>: Auths' OIDC bridge can issue JWTs consumable by MCP servers, but we lack the SDK wrapper and decorator pattern. Building <code>auths-mcp-sdk</code> (Python/TypeScript) would close this gap.</p>
+<h3 id="32-mobile-authenticator">3.2 Mobile Authenticator<a class="headerlink" href="#32-mobile-authenticator" title="Permanent link">&para;</a></h3>
+<p>AuthSec has a mobile app (Expo/React Native) that supports TOTP, CIBA push notifications, and biometrics. This enables "approve from your phone" flows. Auths has no mobile presence.</p>
+<p><strong>Mitigation</strong>: Auths' WASM verifier could be embedded in a React Native app. The attestation-based model actually makes this simpler (no server round-trip needed for verification). But the app doesn't exist yet.</p>
+<h3 id="33-ciba-headerless-auth">3.3 CIBA (Headerless Auth)<a class="headerlink" href="#33-ciba-headerless-auth" title="Permanent link">&para;</a></h3>
+<p>CIBA is genuinely useful for AI agents that can't do browser redirects. Voice assistants, CLI tools, and headless agents need this. Auths' model doesn't require browser redirects at all (attestations are bearer proofs), but we haven't marketed this or built the convenience wrappers.</p>
+<h3 id="34-enterprise-sso-saml-active-directory">3.4 Enterprise SSO (SAML, Active Directory)<a class="headerlink" href="#34-enterprise-sso-saml-active-directory" title="Permanent link">&para;</a></h3>
+<p>AuthSec supports SAML 2.0, Active Directory sync (via <code>ad-agent</code>), and Entra ID integration. Enterprise buyers expect this. Auths has no SAML or AD integration.</p>
+<p><strong>Mitigation</strong>: Auths' identity model is orthogonal to SSO — a <code>did:keri</code> identity can be linked to an enterprise SSO identity via platform claims. But the integration doesn't exist yet.</p>
+<h3 id="35-multi-tenant-dashboard">3.5 Multi-Tenant Dashboard<a class="headerlink" href="#35-multi-tenant-dashboard" title="Permanent link">&para;</a></h3>
+<p>AuthSec has a full React admin dashboard for managing users, roles, clients, and policies. Auths is CLI-only.</p>
+<p><strong>Mitigation</strong>: The CLI-first approach is a strength for developer adoption but a weakness for enterprise sales. A web dashboard for trust registry and policy management would address this.</p>
+<hr />
+<h2 id="part-4-where-auths-has-structural-advantages">Part 4: Where Auths Has Structural Advantages<a class="headerlink" href="#part-4-where-auths-has-structural-advantages" title="Permanent link">&para;</a></h2>
+<h3 id="41-no-infrastructure-required">4.1 No Infrastructure Required<a class="headerlink" href="#41-no-infrastructure-required" title="Permanent link">&para;</a></h3>
+<p>AuthSec requires Go backend + PostgreSQL + HashiCorp Vault + SPIRE + Prometheus. Auths requires Git. This is not a marginal difference — it's a category difference. Every developer already has Git. Nobody already has a SPIRE deployment.</p>
+<p><strong>Implication</strong>: Auths can achieve adoption at the individual developer level without any organizational procurement. AuthSec requires an infrastructure decision before a single developer can use it.</p>
+<h3 id="42-identity-portability">4.2 Identity Portability<a class="headerlink" href="#42-identity-portability" title="Permanent link">&para;</a></h3>
+<p>AuthSec identities live in their PostgreSQL database. Migrating away means losing your identity. Auths identities are self-certifying — <code>did:keri:E...</code> is derived from the inception event hash, not from any platform. Your identity follows you across GitHub, GitLab, Radicle, Forgejo, or any future forge.</p>
+<p><strong>Implication</strong>: Auths identities survive platform death. AuthSec identities don't.</p>
+<h3 id="43-offline-verification">4.3 Offline Verification<a class="headerlink" href="#43-offline-verification" title="Permanent link">&para;</a></h3>
+<p>AuthSec requires an API call to the SDK Manager for every authorization decision. Auths' verifier is a 200KB WASM module that runs offline — in browsers, CI runners, edge functions, mobile apps, or embedded systems. No network, no server, no single point of failure.</p>
+<p><strong>Implication</strong>: Auths can verify identity in air-gapped environments, submarines, Mars rovers, or just someone's laptop with no internet. AuthSec cannot.</p>
+<h3 id="44-key-rotation-safety">4.4 Key Rotation Safety<a class="headerlink" href="#44-key-rotation-safety" title="Permanent link">&para;</a></h3>
+<p>AuthSec rotates SPIRE SVIDs every 30 minutes, which protects against compromise but doesn't help with identity continuity — if the SPIRE root CA is compromised, everything is compromised. Auths uses KERI pre-rotation: when creating an identity, you commit to the hash of your next key. If the current key is compromised, the attacker cannot rotate because they lack the pre-image of the next key hash. Rotation is a planned lifecycle event, not an emergency.</p>
+<p><strong>Implication</strong>: Auths' key compromise model is architecturally superior. Compromise in AuthSec requires trusting a single CA. Compromise in Auths requires breaking pre-rotation commitments AND witness quorum.</p>
+<h3 id="45-witness-quorum-decentralized-accountability">4.5 Witness Quorum (Decentralized Accountability)<a class="headerlink" href="#45-witness-quorum-decentralized-accountability" title="Permanent link">&para;</a></h3>
+<p>Auths' witness model provides independent accountability without centralization. N-of-M independent witnesses must receipt a key event before it's accepted. This prevents an attacker from presenting different key histories to different verifiers. AuthSec has no equivalent — trust is centralized in SPIRE.</p>
+<h3 id="46-supply-chain-security">4.6 Supply Chain Security<a class="headerlink" href="#46-supply-chain-security" title="Permanent link">&para;</a></h3>
+<p>Auths was built for commit signing, artifact signing, and attestation chains. This is the core use case. AuthSec has no supply chain capabilities — it's an auth platform bolted onto AI agent infrastructure.</p>
+<p><strong>Implication</strong>: Auths is positioned for SLSA compliance, software provenance, and supply chain integrity. AuthSec is positioned for API access control.</p>
+<h3 id="47-policy-expressiveness">4.7 Policy Expressiveness<a class="headerlink" href="#47-policy-expressiveness" title="Permanent link">&para;</a></h3>
+<p>Auths' policy engine has 20+ predicates including developer-workflow-specific ones (<code>RefMatches</code>, <code>PathAllowed</code>, <code>EnvIs</code>, <code>IsAgent</code>, <code>IsHuman</code>). Policies compose arbitrarily with And/Or/Not and compile to deterministic evaluation. AuthSec has five-dimensional RBAC with AND/OR at the top level.</p>
+<p><strong>Implication</strong>: "Only human signers can modify <code>refs/heads/main</code>, but CI workloads can deploy to staging if they have <code>deploy_staging</code> capability and the attestation chain has witness quorum" — this is one policy expression in Auths. It's not expressible in AuthSec's RBAC model.</p>
+<h3 id="48-cryptographic-attestation-chains">4.8 Cryptographic Attestation Chains<a class="headerlink" href="#48-cryptographic-attestation-chains" title="Permanent link">&para;</a></h3>
+<p>Auths' attestation chains are self-contained, offline-verifiable proofs of delegated authority. The verification question is "here's the proof" not "ask the server." Each link is dual-signed, capabilities are intersected, and the chain can be verified by anyone with the root public key.</p>
+<p>AuthSec's delegation is JWT-based — you call the server, it gives you a token, the token is opaque to the relying party. If the server is down, delegation doesn't work.</p>
+<hr />
+<h2 id="part-5-strategic-positioning">Part 5: Strategic Positioning<a class="headerlink" href="#part-5-strategic-positioning" title="Permanent link">&para;</a></h2>
+<h3 id="51-the-market-confusion-risk">5.1 The Market Confusion Risk<a class="headerlink" href="#51-the-market-confusion-risk" title="Permanent link">&para;</a></h3>
+<p>Both projects use overlapping terminology:</p>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Auths Meaning</th>
+<th>AuthSec Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Attestation</strong></td>
+<td>Cryptographically signed, chain-verifiable delegation proof</td>
+<td>Kubernetes pod selector matching via SPIRE</td>
+</tr>
+<tr>
+<td><strong>Capability</strong></td>
+<td>First-class, intersectable, policy-evaluated authorization scope</td>
+<td>RBAC scope/permission string</td>
+</tr>
+<tr>
+<td><strong>Zero-trust</strong></td>
+<td>No central authority, self-certifying identities, offline verification</td>
+<td>Short-lived certificates, mTLS, per-call validation</td>
+</tr>
+<tr>
+<td><strong>Workload identity</strong></td>
+<td>Git-native attestation chain + OIDC bridge</td>
+<td>SPIFFE X.509-SVID via Kubernetes SPIRE</td>
+</tr>
+<tr>
+<td><strong>Policy</strong></td>
+<td>Declarative expression AST with 20+ predicates</td>
+<td>Dashboard-configured RBAC rules</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Risk</strong>: Enterprise buyers searching for "workload identity" or "agent authentication" may find AuthSec and assume it covers the same ground as Auths. It doesn't — but the terminology overlap makes this non-obvious.</p>
+<h3 id="52-complementary-not-competitive">5.2 Complementary, Not Competitive<a class="headerlink" href="#52-complementary-not-competitive" title="Permanent link">&para;</a></h3>
+<p>The two projects are actually complementary:</p>
+<ul>
+<li><strong>AuthSec</strong> answers: "How do I add OAuth login to my MCP server?"</li>
+<li><strong>Auths</strong> answers: "How do I cryptographically prove who wrote this code and what they're authorized to do?"</li>
+</ul>
+<p>A realistic enterprise deployment could use both:
+1. AuthSec for user-facing MCP server authentication (OAuth, RBAC, CIBA)
+2. Auths for developer identity, commit signing, artifact provenance, and CI/CD capability delegation</p>
+<p>The OIDC bridge is the natural integration point: Auths issues JWTs that AuthSec could consume as a trusted identity provider.</p>
+<h3 id="53-where-to-win">5.3 Where to Win<a class="headerlink" href="#53-where-to-win" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Segment</th>
+<th>Winner</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MCP server auth (today)</td>
+<td>AuthSec</td>
+<td>They have SDKs and decorator patterns</td>
+</tr>
+<tr>
+<td>Developer commit signing</td>
+<td>Auths</td>
+<td>AuthSec doesn't do this</td>
+</tr>
+<tr>
+<td>Supply chain provenance</td>
+<td>Auths</td>
+<td>AuthSec doesn't do this</td>
+</tr>
+<tr>
+<td>CI/CD capability delegation</td>
+<td>Auths</td>
+<td>Attestation chains + trust registry + policy engine</td>
+</tr>
+<tr>
+<td>Enterprise SSO integration</td>
+<td>AuthSec</td>
+<td>SAML, AD sync, dashboard</td>
+</tr>
+<tr>
+<td>Air-gapped / offline environments</td>
+<td>Auths</td>
+<td>WASM verifier, no server dependency</td>
+</tr>
+<tr>
+<td>Kubernetes-native workloads</td>
+<td>AuthSec</td>
+<td>SPIFFE/SPIRE is purpose-built for K8s</td>
+</tr>
+<tr>
+<td>Git-native developer workflows</td>
+<td>Auths</td>
+<td>Git refs, commit signing, ref-scoped policy</td>
+</tr>
+<tr>
+<td>Individual developer adoption</td>
+<td>Auths</td>
+<td><code>cargo install auths &amp;&amp; auths init</code> vs. deploy 5 services</td>
+</tr>
+<tr>
+<td>Enterprise procurement</td>
+<td>AuthSec</td>
+<td>Dashboard, multi-tenant, SAML</td>
+</tr>
+</tbody>
+</table>
+<h3 id="54-recommended-response">5.4 Recommended Response<a class="headerlink" href="#54-recommended-response" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p><strong>Don't compete on MCP auth directly.</strong> Build <code>auths-mcp-sdk</code> as a thin wrapper that uses the OIDC bridge, but don't try to replicate AuthSec's OAuth/SAML/CIBA stack. Instead, position Auths as the identity layer that MCP auth platforms (including AuthSec) can trust.</p>
+</li>
+<li>
+<p><strong>Lean into supply chain.</strong> AuthSec has zero supply chain capabilities. This is Auths' moat. Commit signing, artifact provenance, attestation chains, and SLSA compliance are areas where AuthSec cannot compete without rebuilding from scratch.</p>
+</li>
+<li>
+<p><strong>Emphasize infrastructure-free.</strong> "Works with Git you already have" vs. "deploy Go + PostgreSQL + Vault + SPIRE + Prometheus" is a devastating comparison for individual and small-team adoption.</p>
+</li>
+<li>
+<p><strong>Publish the OIDC bridge as an integration point.</strong> Position the bridge not as competition to AuthSec but as something AuthSec could consume. "AuthSec authenticates your users. Auths proves what your code is authorized to do."</p>
+</li>
+<li>
+<p><strong>Build the trust registry dashboard.</strong> The CLI-only story is fine for developers but insufficient for enterprise security teams. A minimal web UI for trust registry and policy management would close the enterprise gap without building a full SaaS platform.</p>
+</li>
+</ol>
+<hr />
+<h2 id="part-6-technical-gaps-to-close">Part 6: Technical Gaps to Close<a class="headerlink" href="#part-6-technical-gaps-to-close" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Gap</th>
+<th>Priority</th>
+<th>Effort</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MCP SDK (Python/TypeScript)</td>
+<td>P2</td>
+<td>1-2 weeks</td>
+<td>Thin wrapper around OIDC bridge. Not core to mission but closes marketing gap.</td>
+</tr>
+<tr>
+<td>Enterprise SSO (SAML)</td>
+<td>P3</td>
+<td>2-3 weeks</td>
+<td>Only needed for enterprise sales. Could use existing OIDC bridge as adapter.</td>
+</tr>
+<tr>
+<td>Trust registry web UI</td>
+<td>P2</td>
+<td>1-2 weeks</td>
+<td>Minimal React/HTMX dashboard for policy and trust registry management.</td>
+</tr>
+<tr>
+<td>Mobile verifier app</td>
+<td>P3</td>
+<td>2-3 weeks</td>
+<td>WASM verifier in React Native. Enables "verify from phone" use case.</td>
+</tr>
+<tr>
+<td>CIBA-equivalent flow</td>
+<td>P3</td>
+<td>1 week</td>
+<td>Auths doesn't need CIBA (attestations are bearer proofs), but marketing should explain why.</td>
+</tr>
+<tr>
+<td>Active Directory sync</td>
+<td>P4</td>
+<td>2 weeks</td>
+<td>Only for enterprise. Low priority until enterprise pipeline exists.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/auths-dev/auths" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.prune", "navigation.path", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tabs.link", "announce.dismiss"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
