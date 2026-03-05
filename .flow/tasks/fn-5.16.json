@@ -1,0 +1,26 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-02T18:20:11.505080Z",
+  "created_at": "2026-03-02T17:38:06.480086Z",
+  "depends_on": [
+    "fn-5.12",
+    "fn-5.14"
+  ],
+  "epic": "fn-5",
+  "evidence": {
+    "commits": [
+      "0d65747e"
+    ],
+    "prs": [],
+    "tests": [
+      "code review"
+    ]
+  },
+  "id": "fn-5.16",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-5.16.md",
+  "status": "done",
+  "title": "Implement auths.ts helper for local WASM verification",
+  "updated_at": "2026-03-02T18:21:34.972849Z"
+}

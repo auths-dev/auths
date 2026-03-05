@@ -1,0 +1,25 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T17:54:06.598316Z",
+  "created_at": "2026-03-04T14:12:39.177668Z",
+  "depends_on": [
+    "fn-14.1"
+  ],
+  "epic": "fn-14",
+  "evidence": {
+    "commits": [
+      "8efdd7239dc5cfbfc4bdf052da21b852cc45cb5e"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo nextest run -p auths-keri"
+    ]
+  },
+  "id": "fn-14.2",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-14.2.md",
+  "status": "done",
+  "title": "CESR codec -- encoding and decoding primitives",
+  "updated_at": "2026-03-04T17:57:03.420778Z"
+}

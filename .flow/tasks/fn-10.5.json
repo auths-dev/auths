@@ -1,0 +1,14 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-03-04T01:43:04.126530Z",
+  "depends_on": [],
+  "epic": "fn-10",
+  "id": "fn-10.5",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-10.5.md",
+  "status": "todo",
+  "title": "Add pairing session SDK workflows (create, poll, respond)",
+  "updated_at": "2026-03-04T01:45:06.526336Z"
+}

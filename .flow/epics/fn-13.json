@@ -1,0 +1,13 @@
+{
+  "branch_name": "fn-13",
+  "created_at": "2026-03-04T13:48:52.007698Z",
+  "depends_on_epics": [],
+  "id": "fn-13",
+  "next_task": 1,
+  "plan_review_status": "unknown",
+  "plan_reviewed_at": null,
+  "spec_path": ".flow/specs/fn-13.md",
+  "status": "open",
+  "title": "Refactor CLI signing orchestration into SDK",
+  "updated_at": "2026-03-04T13:49:40.310184Z"
+}

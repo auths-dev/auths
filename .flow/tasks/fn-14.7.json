@@ -1,0 +1,24 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T18:22:00.335287Z",
+  "created_at": "2026-03-04T14:12:39.946275Z",
+  "depends_on": [
+    "fn-14.5",
+    "fn-14.6"
+  ],
+  "epic": "fn-14",
+  "evidence": {
+    "clippy_clean": true,
+    "commit": "55310be",
+    "files_changed": 3,
+    "tests_failed": 0,
+    "tests_passed": 38
+  },
+  "id": "fn-14.7",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-14.7.md",
+  "status": "done",
+  "title": "Round-trip export/import and validation",
+  "updated_at": "2026-03-04T18:25:20.499225Z"
+}

@@ -1,0 +1,25 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-01T23:34:43.915409Z",
+  "created_at": "2026-03-01T22:47:51.133855Z",
+  "depends_on": [
+    "fn-1.6"
+  ],
+  "epic": "fn-1",
+  "evidence": {
+    "commits": [
+      "e7d038d"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo nextest run -p auths-radicle"
+    ]
+  },
+  "id": "fn-1.9",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-1.9.md",
+  "status": "done",
+  "title": "Enforcement mode configuration (observe/enforce)",
+  "updated_at": "2026-03-01T23:34:44.087077Z"
+}

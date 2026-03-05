@@ -1,0 +1,25 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T17:58:45.333221Z",
+  "created_at": "2026-03-04T14:12:39.328680Z",
+  "depends_on": [
+    "fn-14.2"
+  ],
+  "epic": "fn-14",
+  "evidence": {
+    "commits": [
+      "11b01297085d638e4716a10dee57116b7e6f9bcc"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo nextest run -p auths-keri -E 'test(said)'"
+    ]
+  },
+  "id": "fn-14.3",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-14.3.md",
+  "status": "done",
+  "title": "Spec-compliant SAID computation",
+  "updated_at": "2026-03-04T17:59:51.396721Z"
+}

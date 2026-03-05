@@ -1,0 +1,13 @@
+{
+  "branch_name": "fn-17",
+  "created_at": "2026-03-05T02:38:16.450030Z",
+  "depends_on_epics": [],
+  "id": "fn-17",
+  "next_task": 1,
+  "plan_review_status": "unknown",
+  "plan_reviewed_at": null,
+  "spec_path": ".flow/specs/fn-17.md",
+  "status": "open",
+  "title": "OIDC Trust Registry",
+  "updated_at": "2026-03-05T02:38:49.882675Z"
+}

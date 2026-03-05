@@ -1,0 +1,37 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T03:39:06.187462Z",
+  "created_at": "2026-03-04T03:06:09.180194Z",
+  "depends_on": [
+    "fn-12.1",
+    "fn-12.2",
+    "fn-12.3",
+    "fn-12.4",
+    "fn-12.5",
+    "fn-12.6",
+    "fn-12.7"
+  ],
+  "epic": "fn-12",
+  "evidence": {
+    "commits": [
+      "db16be1"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo build -p auths-crypto --all-features",
+      "cargo build -p auths-verifier --all-features",
+      "cargo build -p auths-id --all-features",
+      "cargo build -p auths-sdk --all-features",
+      "cargo build -p auths-infra-git --all-features",
+      "cargo build -p auths-infra-http --all-features",
+      "cargo build -p auths-cli --all-features"
+    ]
+  },
+  "id": "fn-12.8",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-12.8.md",
+  "status": "done",
+  "title": "Migrate all consumers to per-crate test-utils",
+  "updated_at": "2026-03-04T03:46:11.443626Z"
+}

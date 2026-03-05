@@ -141,6 +141,7 @@ use std::ops::Deref;
 /// let s: String = did.into_inner();
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 pub struct IdentityDID(pub String);
 
@@ -240,6 +241,7 @@ impl PartialEq<IdentityDID> for &str {
 
 /// Wrapper around a device DID string that ensures Git-safe ref formatting.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct DeviceDID(pub String);
 
 impl DeviceDID {

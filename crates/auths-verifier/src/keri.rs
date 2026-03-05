@@ -60,6 +60,7 @@ fn validate_keri_derivation_code(s: &str, type_label: &'static str) -> Result<()
 /// assert_eq!(prefix.as_str(), "ETest123abc");
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 pub struct Prefix(String);
 
@@ -156,6 +157,7 @@ impl PartialEq<Prefix> for &str {
 /// assert_eq!(said.as_str(), "ESAID123");
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 pub struct Said(String);
 
@@ -305,6 +307,7 @@ use auths_crypto::KeriPublicKey;
 
 /// KERI event types for verification.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(tag = "t")]
 pub enum KeriEvent {
     /// Inception event (`icp`) — creates the identity and establishes the first key.
@@ -361,6 +364,7 @@ impl KeriEvent {
 
 /// Inception event.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct IcpEvent {
     /// KERI version string (e.g. `"KERI10JSON"`).
     pub v: String,
@@ -423,6 +427,7 @@ impl Serialize for IcpEvent {
 
 /// Rotation event.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RotEvent {
     /// KERI version string.
     pub v: String,
@@ -488,6 +493,7 @@ impl Serialize for RotEvent {
 
 /// Interaction event.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct IxnEvent {
     /// KERI version string.
     pub v: String,
@@ -530,6 +536,7 @@ impl Serialize for IxnEvent {
 
 /// A seal anchors external data in a KERI event.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Seal {
     /// Digest (SAID) of the anchored data.
     pub d: Said,

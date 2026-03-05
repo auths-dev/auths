@@ -1,0 +1,17 @@
+{
+  "id": "fn-6.3",
+  "epic": "fn-6",
+  "title": "Swap Did import in radicle-httpd identity.rs",
+  "status": "done",
+  "depends_on": ["fn-6.1"],
+  "spec_path": ".flow/tasks/fn-6.3.md",
+  "priority": null,
+  "assignee": null,
+  "created_at": "2026-03-02T22:00:00.000000Z",
+  "updated_at": "2026-03-02T22:00:00.000000Z",
+  "evidence": {
+    "commits": [],
+    "prs": [],
+    "tests": []
+  }
+}

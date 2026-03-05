@@ -1,0 +1,23 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-02T17:54:55.560861Z",
+  "created_at": "2026-03-02T17:38:03.733483Z",
+  "depends_on": [],
+  "epic": "fn-5",
+  "evidence": {
+    "commits": [
+      "f8f90b7beaabf1e9d180516a1e1a020c451ad247"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo build -p auths-radicle --all-features"
+    ]
+  },
+  "id": "fn-5.1",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-5.1.md",
+  "status": "done",
+  "title": "Fix identity.rs impl block structure (stray closing brace)",
+  "updated_at": "2026-03-02T17:57:00.469810Z"
+}

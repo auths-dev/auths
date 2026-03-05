@@ -1,0 +1,14 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-03-05T10:18:56.818701Z",
+  "depends_on": [],
+  "epic": "fn-20",
+  "id": "fn-20.1",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-20.1.md",
+  "status": "todo",
+  "title": "Create auths-pairing-protocol crate skeleton with protocol error types",
+  "updated_at": "2026-03-05T10:38:05.293540Z"
+}

@@ -1,0 +1,27 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T03:25:25.309792Z",
+  "created_at": "2026-03-04T03:06:08.749715Z",
+  "depends_on": [
+    "fn-12.1",
+    "fn-12.2",
+    "fn-12.4"
+  ],
+  "epic": "fn-12",
+  "evidence": {
+    "commits": [
+      "ecd8f8c"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo build -p auths-id --all-features"
+    ]
+  },
+  "id": "fn-12.5",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-12.5.md",
+  "status": "done",
+  "title": "auths-id: add test-utils feature",
+  "updated_at": "2026-03-04T03:36:12.995298Z"
+}

@@ -1,0 +1,26 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-02T18:23:30.025773Z",
+  "created_at": "2026-03-02T17:38:06.854679Z",
+  "depends_on": [
+    "fn-5.15",
+    "fn-5.16"
+  ],
+  "epic": "fn-5",
+  "evidence": {
+    "commits": [
+      "4ca323e4"
+    ],
+    "prs": [],
+    "tests": [
+      "code review"
+    ]
+  },
+  "id": "fn-5.18",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-5.18.md",
+  "status": "done",
+  "title": "(Optional) Add Playwright test for UI integration",
+  "updated_at": "2026-03-02T18:24:55.136948Z"
+}

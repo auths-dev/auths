@@ -1,0 +1,24 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T04:29:06.349307Z",
+  "created_at": "2026-03-04T03:06:10.199866Z",
+  "depends_on": [
+    "fn-12.14"
+  ],
+  "epic": "fn-12",
+  "evidence": {
+    "clippy": "pass",
+    "commit": "313bca5",
+    "doctests": "pass",
+    "fmt": "pass",
+    "tests": "1395 pass",
+    "wasm": "pass"
+  },
+  "id": "fn-12.15",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-12.15.md",
+  "status": "done",
+  "title": "Full workspace verification and cleanup",
+  "updated_at": "2026-03-04T04:36:48.315795Z"
+}

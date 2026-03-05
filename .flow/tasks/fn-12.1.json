@@ -1,0 +1,23 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T03:12:22.716812Z",
+  "created_at": "2026-03-04T03:06:08.179730Z",
+  "depends_on": [],
+  "epic": "fn-12",
+  "evidence": {
+    "commits": [
+      "630423576f7d728ab7309e612f2da8b46e580b09"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo build -p auths-crypto --all-features"
+    ]
+  },
+  "id": "fn-12.1",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-12.1.md",
+  "status": "done",
+  "title": "auths-crypto: add test-utils feature",
+  "updated_at": "2026-03-04T03:14:11.708528Z"
+}

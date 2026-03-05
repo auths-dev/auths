@@ -1,0 +1,36 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-03T05:42:33.790135Z",
+  "created_at": "2026-03-03T02:58:23.974406Z",
+  "depends_on": [
+    "fn-7.1",
+    "fn-7.2"
+  ],
+  "epic": "fn-7",
+  "evidence": {
+    "builds_clean": [
+      "auths-core",
+      "auths-id",
+      "auths-sdk",
+      "auths-cli",
+      "auths-radicle",
+      "auths-infra-http"
+    ],
+    "commits": [
+      "8a30b64",
+      "e6186ee"
+    ],
+    "test_counts": {
+      "auths-id": 337,
+      "auths-sdk": 70
+    },
+    "tests_passed": true
+  },
+  "id": "fn-7.6",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-7.6.md",
+  "status": "done",
+  "title": "SDK typed DIDs, Vec<Capability>, ResolvedDid enum",
+  "updated_at": "2026-03-03T06:14:05.973377Z"
+}

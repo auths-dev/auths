@@ -1,0 +1,27 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-03T06:14:34.144002Z",
+  "created_at": "2026-03-03T02:58:24.141100Z",
+  "depends_on": [
+    "fn-7.1",
+    "fn-7.4"
+  ],
+  "epic": "fn-7",
+  "evidence": {
+    "commits": [
+      "0747aeb"
+    ],
+    "tests": {
+      "auths-core": "248/248",
+      "auths-id": "337/337",
+      "auths-sdk": "70/70"
+    }
+  },
+  "id": "fn-7.7",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-7.7.md",
+  "status": "done",
+  "title": "Internal cleanup: typed DIDs across remaining structs",
+  "updated_at": "2026-03-03T06:37:14.586831Z"
+}

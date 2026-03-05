@@ -1,0 +1,25 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T14:56:46.794167Z",
+  "created_at": "2026-03-04T13:49:46.369013Z",
+  "depends_on": [],
+  "epic": "fn-13",
+  "evidence": {
+    "commits": [
+      "2146683"
+    ],
+    "tests": [
+      "cargo nextest run -p auths-core: 273 passed",
+      "cargo nextest run -p auths-sdk --features test-utils: 77 passed",
+      "cargo nextest run -p auths-cli: 142 passed",
+      "cargo clippy --all-targets --all-features -- -D warnings: clean"
+    ]
+  },
+  "id": "fn-13.5",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-13.5.md",
+  "status": "done",
+  "title": "Eliminate unwrap/expect in core and SDK production code",
+  "updated_at": "2026-03-04T15:13:00.023253Z"
+}

@@ -1,0 +1,16 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-03-04T01:43:03.980468Z",
+  "depends_on": [
+    "fn-10.3"
+  ],
+  "epic": "fn-10",
+  "id": "fn-10.4",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-10.4.md",
+  "status": "todo",
+  "title": "Refactor CLI claim.rs to use SDK submit_claim workflow",
+  "updated_at": "2026-03-04T01:45:06.238630Z"
+}

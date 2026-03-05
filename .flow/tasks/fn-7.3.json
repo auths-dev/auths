@@ -1,0 +1,21 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-03T04:41:10.730808Z",
+  "created_at": "2026-03-03T02:58:23.446319Z",
+  "depends_on": [
+    "fn-7.2"
+  ],
+  "epic": "fn-7",
+  "evidence": {
+    "commit": "4def61f",
+    "files_changed": 25,
+    "verification": "workspace builds, doc tests pass, WASM compiles"
+  },
+  "id": "fn-7.3",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-7.3.md",
+  "status": "done",
+  "title": "Add Ed25519Signature newtype, replace Vec<u8>",
+  "updated_at": "2026-03-03T04:59:08.285010Z"
+}

@@ -1,0 +1,22 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-04T04:26:54.539885Z",
+  "created_at": "2026-03-04T03:06:10.051978Z",
+  "depends_on": [
+    "fn-12.12",
+    "fn-12.13"
+  ],
+  "epic": "fn-12",
+  "evidence": {
+    "ci_updated": true,
+    "commit": "d3bcb9c",
+    "metadata_fixed": true
+  },
+  "id": "fn-12.14",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-12.14.md",
+  "status": "done",
+  "title": "Set up automated publish pipeline",
+  "updated_at": "2026-03-04T04:29:01.475670Z"
+}

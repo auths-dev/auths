@@ -1,0 +1,23 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-01T23:20:00.113720Z",
+  "created_at": "2026-03-01T22:47:49.796583Z",
+  "depends_on": [],
+  "epic": "fn-1",
+  "evidence": {
+    "commits": [
+      "821698a0035cd6499b5fa5a2310699d74cc7e492"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo nextest run -p auths-radicle -E test(refs)"
+    ]
+  },
+  "id": "fn-1.1",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-1.1.md",
+  "status": "done",
+  "title": "Define RIP-X ref path constants in auths-radicle",
+  "updated_at": "2026-03-01T23:22:42.381102Z"
+}

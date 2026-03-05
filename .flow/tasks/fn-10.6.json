@@ -1,0 +1,16 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-03-04T01:43:04.263666Z",
+  "depends_on": [
+    "fn-10.5"
+  ],
+  "epic": "fn-10",
+  "id": "fn-10.6",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-10.6.md",
+  "status": "todo",
+  "title": "Refactor CLI pairing handlers to use SDK pairing workflows",
+  "updated_at": "2026-03-04T01:45:06.825395Z"
+}

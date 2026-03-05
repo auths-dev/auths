@@ -1,0 +1,25 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-05T03:18:52.460921Z",
+  "created_at": "2026-03-05T02:38:55.848362Z",
+  "depends_on": [
+    "fn-17.3"
+  ],
+  "epic": "fn-17",
+  "evidence": {
+    "commits": [
+      "96e691d"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo test -p auths-oidc-bridge --all-features --no-run"
+    ]
+  },
+  "id": "fn-17.4",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-17.4.md",
+  "status": "done",
+  "title": "Integration tests for trust-registry-gated token exchange",
+  "updated_at": "2026-03-05T03:20:50.372520Z"
+}

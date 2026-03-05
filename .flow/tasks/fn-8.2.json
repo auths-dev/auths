@@ -1,0 +1,25 @@
+{
+  "assignee": "bordumbb@gmail.com",
+  "claim_note": "",
+  "claimed_at": "2026-03-03T20:57:24.544796Z",
+  "created_at": "2026-03-03T20:34:10.597222Z",
+  "depends_on": [],
+  "epic": "fn-8",
+  "evidence": {
+    "commits": [
+      "131a16cb9f80c7a39d3176146745281edce1eb9e"
+    ],
+    "prs": [],
+    "tests": [
+      "cargo build -p auths-core --all-features",
+      "cargo build -p auths-cli",
+      "cargo build -p auths-sdk"
+    ]
+  },
+  "id": "fn-8.2",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-8.2.md",
+  "status": "done",
+  "title": "Seal public API surface of auths-core",
+  "updated_at": "2026-03-03T20:59:40.382053Z"
+}
