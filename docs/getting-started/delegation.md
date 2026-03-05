@@ -6,20 +6,14 @@ How authority flows from a human operator to an AI agent (or any automated syste
 
 Auths delegation is a cryptographic chain of signed attestations. Each link in the chain grants a subset of the parent's capabilities to a child entity. Capabilities can only narrow at each hop — never widen.
 
-```
-Human (did:keri:EHuman...)
-  │
-  │  attestation: sign:commit, deploy:staging, deploy:production
-  │  signer_type: Agent, delegated_by: did:keri:EHuman...
-  │
-  ▼
-AI Agent (did:keri:EAgent...)
-  │
-  │  attestation: deploy:staging  ← narrowed from parent
-  │  signer_type: Agent, delegated_by: did:keri:EAgent...
-  │
-  ▼
-Sub-Agent (did:keri:ESub...)
+```mermaid
+graph TD
+    H["Human<br/>(did:keri:EHuman...)"]
+    A["AI Agent<br/>(did:keri:EAgent...)"]
+    S["Sub-Agent<br/>(did:keri:ESub...)"]
+
+    H -->|"attestation: sign:commit, deploy:staging, deploy:production<br/>signer_type: Agent, delegated_by: did:keri:EHuman..."| A
+    A -->|"attestation: deploy:staging ← narrowed<br/>signer_type: Agent, delegated_by: did:keri:EAgent..."| S
 ```
 
 ## Step 1: Human creates identity and links a device

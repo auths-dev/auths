@@ -6,35 +6,23 @@ How Auths identities integrate with enterprise identity infrastructure through s
 
 Auths identities are self-certifying — they don't depend on any central authority. But cloud providers (AWS, GCP, Azure) and enterprise systems authenticate workloads through OAuth 2.0 and OpenID Connect. The OIDC bridge connects these two worlds: it verifies a KERI attestation chain cryptographically and issues a standard JWT that any OIDC relying party can consume.
 
-```
-┌──────────────────────┐
-│  Agent / Workload    │
-│  (holds private key  │
-│   + attestation      │
-│   chain)             │
-└──────────┬───────────┘
-           │ POST /token
-           │ {attestation_chain, root_public_key}
-           ▼
-┌──────────────────────┐
-│  OIDC Bridge         │
-│  (auths-oidc-bridge) │
-│                      │
-│  1. Verify chain     │ ← no IdP callback, pure crypto
-│  2. Scope-down caps  │
-│  3. Issue RS256 JWT  │
-└──────────┬───────────┘
-           │ Standard JWT (Bearer token)
-           ▼
-┌──────────────────────┐
-│  Cloud Provider      │
-│  (AWS STS, GCP WIF,  │
-│   Azure AD)          │
-│                      │
-│  Validates JWT via   │
-│  /.well-known/jwks   │
-│  Issues temp creds   │
-└──────────────────────┘
+```mermaid
+graph TD
+    A["Agent / Workload<br/>(holds private key + attestation chain)"]
+    B["OIDC Bridge<br/>(auths-oidc-bridge)"]
+    C["Cloud Provider<br/>(AWS STS, GCP WIF, Azure AD)"]
+
+    A -->|"POST /token<br/>{attestation_chain, root_public_key}"| B
+    B -->|"Standard JWT (Bearer token)"| C
+
+    subgraph Bridge["Bridge internals (no IdP callback)"]
+        B1["1. Verify chain"] --> B2["2. Scope-down capabilities"] --> B3["3. Issue RS256 JWT"]
+    end
+
+    B -.-> Bridge
+
+    C -->|"Validates JWT via<br/>/.well-known/jwks.json"| B
+    C -->|"Issues temporary credentials"| D["Agent uses cloud resources"]
 ```
 
 The bridge exposes standard OIDC discovery endpoints (`/.well-known/openid-configuration` and `/.well-known/jwks.json`) so cloud providers can validate issued JWTs without any custom integration.
