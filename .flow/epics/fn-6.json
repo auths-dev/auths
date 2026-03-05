@@ -1,8 +1,0 @@
-{
-  "id": "fn-6",
-  "title": "Swap Did import in radicle-httpd to auths-radicle re-export",
-  "status": "open",
-  "created_at": "2026-03-02T22:00:00.000000Z",
-  "updated_at": "2026-03-02T22:00:00.000000Z",
-  "spec_path": ".flow/epics/fn-6.md"
-}
