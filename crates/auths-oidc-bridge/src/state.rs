@@ -184,7 +184,6 @@ fn build_workload_policy(
         tracing::info!("Loading workload policy from inline JSON");
         Some(json.as_bytes().to_vec())
     } else {
-        tracing::warn!("No workload policy configured — all token exchanges will be allowed");
         None
     };
 
@@ -206,7 +205,6 @@ fn build_trust_registry(
     config: &BridgeConfig,
 ) -> Result<Option<auths_policy::TrustRegistry>, BridgeError> {
     let Some(ref path) = config.trust_registry_path else {
-        tracing::info!("No trust registry configured — all providers allowed");
         return Ok(None);
     };
 

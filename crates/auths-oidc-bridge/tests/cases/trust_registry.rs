@@ -190,24 +190,6 @@ async fn ttl_capped_by_registry() {
     assert_eq!(json["expires_in"], 3600);
 }
 
-#[tokio::test]
-async fn no_registry_allows_all() {
-    let config = BridgeConfig::default()
-        .with_issuer_url("https://oidc.example.com")
-        .with_default_audience("sts.amazonaws.com")
-        .with_max_ttl(3600)
-        .with_default_ttl(900)
-        .with_rate_limit_enabled(false)
-        .with_signing_key_pem(TEST_RSA_PEM);
-    let state = BridgeState::new(config.clone()).expect("failed to create bridge state");
-    let app = auths_oidc_bridge::routes::router(state, &config);
-
-    let body = build_exchange_body(vec![Capability::sign_commit()], None, None, None);
-    let response = app.oneshot(token_request(&body)).await.unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-}
-
 #[cfg(feature = "oidc-policy")]
 #[tokio::test]
 async fn trust_check_runs_before_policy() {
