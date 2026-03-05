@@ -6,11 +6,13 @@
 //! apps can use it with their own transport layer.
 
 mod error;
+mod protocol;
 mod response;
 mod token;
 pub mod types;
 
 pub use error::ProtocolError;
+pub use protocol::{CompletedPairing, PairingProtocol, respond_to_pairing};
 pub use response::PairingResponse;
 pub use token::{PairingSession, PairingToken, normalize_short_code};
 pub use types::*;

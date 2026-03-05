@@ -7,10 +7,22 @@
     "fn-20.3"
   ],
   "epic": "fn-20",
+  "evidence": {
+    "files": [
+      "src/protocol.rs",
+      "src/lib.rs",
+      "scripts/releases/2_crates.py"
+    ],
+    "tests": [
+      "happy_path_initiate_and_complete",
+      "expired_token_fails",
+      "invalid_response_bytes_fails"
+    ]
+  },
   "id": "fn-20.4",
   "priority": null,
   "spec_path": ".flow/tasks/fn-20.4.md",
-  "status": "todo",
+  "status": "done",
   "title": "Add protocol state machine and update publish ordering",
-  "updated_at": "2026-03-05T10:38:07.238838Z"
+  "updated_at": "2026-03-05T11:25:33.385954Z"
 }
