@@ -68,8 +68,13 @@ pub enum AgentSubcommand {
     /// Unlock the agent (re-load keys)
     Unlock {
         /// Key alias to unlock
-        #[arg(long, default_value = "default", help = "Key alias to unlock")]
-        key: String,
+        #[arg(
+            long = "agent-key-alias",
+            visible_alias = "key",
+            default_value = "default",
+            help = "Key alias to unlock"
+        )]
+        agent_key_alias: String,
     },
 
     /// Install as a system service (launchd on macOS, systemd on Linux)
@@ -177,7 +182,7 @@ pub fn handle_agent(cmd: AgentCommand) -> Result<()> {
         AgentSubcommand::Status => show_status(),
         AgentSubcommand::Env { shell } => output_env(shell),
         AgentSubcommand::Lock => lock_agent(),
-        AgentSubcommand::Unlock { key } => unlock_agent(&key),
+        AgentSubcommand::Unlock { agent_key_alias } => unlock_agent(&agent_key_alias),
         AgentSubcommand::InstallService {
             dry_run,
             force,

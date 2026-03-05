@@ -222,7 +222,11 @@ fn handle_lint(cmd: LintCommand) -> Result<()> {
                 limits.max_json_bytes
             ));
         }
-        return Ok(());
+        anyhow::bail!(
+            "file exceeds size limit: {} > {}",
+            bytes,
+            limits.max_json_bytes
+        );
     }
 
     // Parse JSON
@@ -254,6 +258,7 @@ fn handle_lint(cmd: LintCommand) -> Result<()> {
             } else {
                 out.println(&format!("{} Invalid JSON: {}", out.error("x"), e));
             }
+            anyhow::bail!("lint failed: {}", e);
         }
     }
 

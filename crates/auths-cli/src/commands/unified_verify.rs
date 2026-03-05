@@ -79,7 +79,7 @@ pub struct UnifiedVerifyCommand {
     pub issuer_pk: Option<String>,
 
     /// Issuer identity ID for attestation trust-based key resolution.
-    #[arg(long = "issuer-did")]
+    #[arg(long = "issuer-did", visible_alias = "issuer")]
     pub issuer_did: Option<String>,
 
     /// Path to witness receipts JSON file.

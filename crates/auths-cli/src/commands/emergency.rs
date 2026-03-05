@@ -139,7 +139,7 @@ pub struct ReportCommand {
     pub events: usize,
 
     /// Output file path (defaults to stdout).
-    #[arg(long = "file", short = 'o')]
+    #[arg(long = "output", visible_alias = "file", short = 'o')]
     pub output_file: Option<PathBuf>,
 
     /// Path to the Auths repository.

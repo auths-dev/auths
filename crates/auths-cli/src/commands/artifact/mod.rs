@@ -34,16 +34,21 @@ pub enum ArtifactSubcommand {
         /// Local alias of the identity key (used for signing). Omit for CI device-only signing.
         #[arg(
             long,
+            visible_alias = "ika",
             help = "Local alias of the identity key. Omit for device-only CI signing."
         )]
         identity_key_alias: Option<String>,
 
         /// Local alias of the device key (used for dual-signing).
-        #[arg(long, help = "Local alias of the device key (used for dual-signing).")]
+        #[arg(
+            long,
+            visible_alias = "dka",
+            help = "Local alias of the device key (used for dual-signing)."
+        )]
         device_key_alias: String,
 
         /// Number of days until the signature expires.
-        #[arg(long, value_name = "N")]
+        #[arg(long, visible_alias = "days", value_name = "N")]
         expires_in_days: Option<i64>,
 
         /// Optional note to embed in the attestation.

@@ -69,6 +69,54 @@ def run_auths(
     )
 
 
+def get_identity_did(binary: Path, env: dict[str, str]) -> str:
+    """Extract the controller DID from `auths id show --json`."""
+    result = run_auths(binary, ["id", "show", "--json"], env=env)
+    result.assert_success()
+    return result.json["data"]["controller_did"]
+
+
+def get_device_did(binary: Path, env: dict[str, str]) -> str:
+    """Extract the first device DID from `auths status --json`."""
+    result = run_auths(binary, ["status", "--json"], env=env)
+    result.assert_success()
+    devices = result.json["data"]["devices"]["devices_detail"]
+    assert len(devices) > 0, "No devices found in status output"
+    return devices[0]["device_did"]
+
+
+def export_attestation(env: dict[str, str], out_path: Path) -> dict:
+    """Extract the first attestation from the auths git repo to a file.
+
+    Returns the parsed attestation JSON.
+    """
+    auths_home = Path(env["AUTHS_HOME"])
+
+    ls = run_git(
+        ["ls-tree", "-r", "--name-only", "refs/auths/registry"],
+        cwd=auths_home,
+        env=env,
+    )
+    ls.assert_success()
+
+    att_path = None
+    for line in ls.stdout.splitlines():
+        if line.endswith("/attestation.json"):
+            att_path = line
+            break
+    assert att_path is not None, "No attestation found in auths repo"
+
+    show = run_git(
+        ["show", f"refs/auths/registry:{att_path}"],
+        cwd=auths_home,
+        env=env,
+    )
+    show.assert_success()
+
+    out_path.write_text(show.stdout)
+    return json.loads(show.stdout)
+
+
 def run_git(
     args: list[str],
     *,
