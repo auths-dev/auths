@@ -3773,6 +3773,7 @@ mod tests {
 }
 
 #[cfg(all(test, feature = "indexed-storage"))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod index_consistency_tests {
     use super::*;
     use auths_core::crypto::said::compute_next_commitment;

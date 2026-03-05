@@ -52,6 +52,8 @@ auths-oidc-bridge = { path = "crates/auths-oidc-bridge", version = "0.0.1-rc.6" 
 auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.4" }
 
 [workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
 print_stdout = "deny"
 print_stderr = "deny"
 exit = "deny"

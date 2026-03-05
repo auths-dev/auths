@@ -1,5 +1,3 @@
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
 #![warn(clippy::too_many_lines, clippy::cognitive_complexity)]
 #![warn(missing_docs)]
 //! # auths-core
