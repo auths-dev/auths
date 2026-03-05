@@ -85,7 +85,7 @@ async fn exchange_with_denying_policy_returns_403() {
 
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(json["error_code"], "POLICY_DENIED");
+    assert_eq!(json["code"], "POLICY_DENIED");
 }
 
 #[tokio::test]
@@ -109,8 +109,8 @@ async fn exchange_with_no_policy_succeeds() {
 
 #[tokio::test]
 async fn exchange_with_capability_policy_matches() {
-    // Policy requires sign:commit, chain has it → allow
-    let policy = r#"{"op": "HasCapability", "args": "sign:commit"}"#;
+    // Policy requires sign_commit, chain has it → allow
+    let policy = r#"{"op": "HasCapability", "args": "sign_commit"}"#;
     let app = test_app_with_policy(policy);
 
     let body = build_exchange_body(vec![Capability::sign_commit()]);

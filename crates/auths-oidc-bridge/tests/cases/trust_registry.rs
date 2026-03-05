@@ -89,7 +89,7 @@ fn github_registry_json() -> String {
         "entries": [{
             "provider_issuer": GITHUB_ISSUER,
             "allowed_repos": ["myorg/*"],
-            "allowed_capabilities": ["sign:commit", "deploy:staging"],
+            "allowed_capabilities": ["sign_commit", "deploy_staging"],
             "max_token_ttl_seconds": 3600,
             "require_witness_quorum": null
         }]
@@ -156,7 +156,7 @@ async fn disallowed_repo_returns_403() {
 async fn no_capability_overlap_returns_403() {
     let (app, _file) = test_app_with_trust_registry(&github_registry_json());
 
-    // Chain has deploy:production, but registry only allows sign:commit and deploy:staging
+    // Chain has deploy:production, but registry only allows sign_commit and deploy_staging
     let body = build_exchange_body(
         vec![Capability::parse("deploy:production").unwrap()],
         Some(GITHUB_ISSUER),
