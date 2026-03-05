@@ -120,12 +120,14 @@ impl AttestationSink for GitRefSink {
                 .is_some_and(|pa| pa.is_revoked())
         {
             "🛑 Revoked device attestation"
-        } else if previous_attestation.is_none() {
-            "✅ Linked device attestation"
-        } else if *attestation != *previous_attestation.as_ref().unwrap() {
-            "🔄 Updated device attestation"
+        } else if let Some(prev) = &previous_attestation {
+            if *attestation != *prev {
+                "🔄 Updated device attestation"
+            } else {
+                "📄 Updated device attestation record (no change detected)"
+            }
         } else {
-            "📄 Updated device attestation record (no change detected)"
+            "✅ Linked device attestation"
         };
         debug!("Commit message determined: '{}'", message);
 

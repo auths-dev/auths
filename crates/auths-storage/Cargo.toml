@@ -48,3 +48,6 @@ tempfile = "3"
 name = "registry"
 harness = false
 required-features = ["backend-git"]
+
+[lints]
+workspace = true

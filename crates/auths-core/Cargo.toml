@@ -97,6 +97,5 @@ crypto-secp256k1 = ["dep:k256"]
 witness-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:sqlite"]
 tls = ["dep:axum-server", "witness-server"]
 
-[lints.clippy]
-print_stdout = "deny"
-print_stderr = "deny"
+[lints]
+workspace = true

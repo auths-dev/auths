@@ -12,4 +12,7 @@ categories = ["authentication", "cryptography"]
 
 # Re-exports will be added once all crates are published under hyphenated names.
 # See: https://github.com/auths-dev/auths
+[lints]
+workspace = true
+
 [dependencies]

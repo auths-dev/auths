@@ -332,6 +332,7 @@ pub fn inspect_cache(auths_home: &Path, did: &str) -> Result<Option<CachedKelSta
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::keri::Prefix;

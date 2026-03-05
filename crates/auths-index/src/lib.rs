@@ -1,3 +1,5 @@
+// Index uses Utc::now() as fallback for unparseable timestamps in stored data.
+#![allow(clippy::disallowed_methods)]
 //! SQLite-backed index for O(1) attestation, identity, and org member lookups.
 //!
 //! This crate provides an index layer that enables fast queries on attestation metadata

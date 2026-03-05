@@ -29,6 +29,7 @@ pub use provider::{
 pub use ring_provider::RingCryptoProvider;
 pub use ssh::{SshKeyError, openssh_pub_to_raw_ed25519};
 #[cfg(all(any(test, feature = "test-utils"), not(target_arch = "wasm32")))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 pub mod testing;
 
 #[cfg(feature = "wasm")]

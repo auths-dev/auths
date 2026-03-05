@@ -808,6 +808,7 @@ pub fn parse_kel_json(json: &str) -> Result<Vec<KeriEvent>, KeriVerifyError> {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use auths_crypto::RingCryptoProvider;

@@ -237,6 +237,8 @@ impl PolicyBuilder {
     pub fn try_build(self) -> Result<CompiledPolicy, Vec<CompileError>> {
         let expr = match self.conditions.len() {
             0 => Expr::True,
+            // INVARIANT: len()==1 guarantees next() returns Some
+            #[allow(clippy::unwrap_used)]
             1 => self.conditions.into_iter().next().unwrap(),
             _ => Expr::And(self.conditions),
         };
@@ -248,6 +250,7 @@ impl PolicyBuilder {
     /// # Panics
     ///
     /// Panics if any condition contains invalid data (e.g., malformed DID).
+    #[allow(clippy::expect_used)]
     pub fn build(self) -> CompiledPolicy {
         self.try_build().expect("PolicyBuilder: invalid policy")
     }

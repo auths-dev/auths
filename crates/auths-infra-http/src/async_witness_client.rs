@@ -57,6 +57,8 @@ impl HttpAsyncWitnessClient {
     /// ```ignore
     /// let client = HttpAsyncWitnessClient::new("http://witness:3000", 1);
     /// ```
+    // INVARIANT: reqwest Client::builder with only timeout cannot fail
+    #[allow(clippy::expect_used)]
     pub fn new(base_url: impl Into<String>, quorum_size: usize) -> Self {
         let timeout = Duration::from_secs(5);
         Self {
@@ -80,6 +82,8 @@ impl HttpAsyncWitnessClient {
     /// let client = HttpAsyncWitnessClient::new("http://witness:3000", 1)
     ///     .with_timeout(Duration::from_secs(30));
     /// ```
+    // INVARIANT: reqwest Client::builder with only timeout cannot fail
+    #[allow(clippy::expect_used)]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self.client = reqwest::Client::builder()

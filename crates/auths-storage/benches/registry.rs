@@ -1,6 +1,7 @@
 //! Benchmarks for registry operations.
 //!
 //! Run with: cargo bench --package auths-storage
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auths_core::crypto::said::{compute_next_commitment, compute_said};
 use auths_id::keri::event::{Event, IcpEvent, IxnEvent, KeriSequence};

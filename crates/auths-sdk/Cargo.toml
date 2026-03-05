@@ -38,3 +38,6 @@ auths-storage = { workspace = true, features = ["backend-git"] }
 git2 = "0.20.4"
 sha2 = "0.10"
 tempfile = "3"
+
+[lints]
+workspace = true

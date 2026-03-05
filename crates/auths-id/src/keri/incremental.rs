@@ -279,7 +279,8 @@ fn build_delta_with_linearity_check(
             return Ok(None);
         }
 
-        // Exactly 1 parent - continue walking
+        // INVARIANT: parent_count==1 verified above
+        #[allow(clippy::expect_used)]
         let parent = kel.parent_hash(current)?.expect("parent_count was 1");
 
         if parent == cached_hash {

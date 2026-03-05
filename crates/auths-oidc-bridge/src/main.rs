@@ -1,3 +1,5 @@
+// Server binary — env::var and Utc::now() are expected at the process boundary.
+#![allow(clippy::disallowed_methods)]
 //! Auths OIDC Bridge binary.
 //!
 //! # Environment Variables

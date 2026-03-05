@@ -37,11 +37,9 @@ use git2::Oid;
 /// let hash = oid_to_event_hash(oid);
 /// ```
 pub fn oid_to_event_hash(oid: Oid) -> EventHash {
-    // git2::Oid::as_bytes() returns &[u8] of length 20
-    let bytes: [u8; 20] = oid
-        .as_bytes()
-        .try_into()
-        .expect("git2::Oid is always 20 bytes");
+    // INVARIANT: git2::Oid is always 20 bytes
+    #[allow(clippy::expect_used)]
+    let bytes: [u8; 20] = oid.as_bytes().try_into().expect("git2::Oid is 20 bytes");
     EventHash::from_bytes(bytes)
 }
 
@@ -58,7 +56,9 @@ pub fn oid_to_event_hash(oid: Oid) -> EventHash {
 /// let oid = event_hash_to_oid(hash);
 /// ```
 pub fn event_hash_to_oid(hash: EventHash) -> Oid {
-    Oid::from_bytes(hash.as_bytes()).expect("EventHash is always 20 bytes")
+    // INVARIANT: EventHash is always 20 bytes
+    #[allow(clippy::expect_used)]
+    Oid::from_bytes(hash.as_bytes()).expect("EventHash is 20 bytes")
 }
 
 #[cfg(test)]

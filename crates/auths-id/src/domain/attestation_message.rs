@@ -22,16 +22,19 @@ pub fn determine_commit_message(
 ) -> &'static str {
     if attestation.is_revoked() && !previous.as_ref().is_some_and(|pa| pa.is_revoked()) {
         "Revoked device attestation"
-    } else if previous.is_none() {
-        "Linked device attestation"
-    } else if *attestation != *previous.unwrap() {
-        "Updated device attestation"
+    } else if let Some(prev) = previous {
+        if *attestation != *prev {
+            "Updated device attestation"
+        } else {
+            "Updated device attestation record (no change detected)"
+        }
     } else {
-        "Updated device attestation record (no change detected)"
+        "Linked device attestation"
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use auths_core::storage::keychain::IdentityDID;

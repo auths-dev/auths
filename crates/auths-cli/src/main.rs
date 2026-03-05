@@ -1,5 +1,12 @@
-// CLI binary legitimately prints to stdout/stderr for user output.
-#![allow(clippy::print_stdout, clippy::print_stderr)]
+// CLI is the presentation boundary — Utc::now(), env::var, and printing are expected here.
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::disallowed_methods,
+    clippy::exit,
+    clippy::unwrap_used,
+    clippy::expect_used
+)]
 use anyhow::Result;
 use clap::Parser;
 

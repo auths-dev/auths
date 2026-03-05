@@ -8,12 +8,15 @@ Auths delegation is a cryptographic chain of signed attestations. Each link in t
 
 ```mermaid
 graph TD
-    H["Human<br/>(did:keri:EHuman...)"]
-    A["AI Agent<br/>(did:keri:EAgent...)"]
-    S["Sub-Agent<br/>(did:keri:ESub...)"]
+    H["<b>Human</b><br/>did:keri:EHuman..."]
 
-    H -->|"attestation: sign:commit, deploy:staging, deploy:production<br/>signer_type: Agent, delegated_by: did:keri:EHuman..."| A
-    A -->|"attestation: deploy:staging ← narrowed<br/>signer_type: Agent, delegated_by: did:keri:EAgent..."| S
+    H -- "signs attestation" --> A
+
+    A["<b>AI Agent</b><br/>did:keri:EAgent...<br/><br/>capabilities: sign:commit, deploy:staging<br/>signer_type: Agent<br/>delegated_by: did:keri:EHuman..."]
+
+    A -- "delegates subset" --> S
+
+    S["<b>Sub-Agent</b><br/>did:keri:ESubAgent...<br/><br/>capabilities: deploy:staging<br/>signer_type: Agent<br/>delegated_by: did:keri:EAgent..."]
 ```
 
 ## Step 1: Human creates identity and links a device

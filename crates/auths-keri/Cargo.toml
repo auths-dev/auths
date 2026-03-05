@@ -24,6 +24,5 @@ thiserror.workspace = true
 [dev-dependencies]
 proptest = "1.4"
 
-[lints.clippy]
-print_stdout = "deny"
-print_stderr = "deny"
+[lints]
+workspace = true

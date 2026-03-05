@@ -715,6 +715,8 @@ impl RegistryBackend for GitRegistryBackend {
                 tip_said: event.said().to_string(),
                 updated_at: self.clock.now(),
             };
+            // INVARIANT: Mutex poisoning is fatal by design
+            #[allow(clippy::unwrap_used)]
             if let Err(e) = index.lock().unwrap().upsert_identity(&indexed) {
                 log::warn!("Index update failed for identity {}: {}", prefix, e);
             }
@@ -977,6 +979,8 @@ impl RegistryBackend for GitRegistryBackend {
                 expires_at: attestation.expires_at,
                 updated_at: attestation.timestamp.unwrap_or_else(|| self.clock.now()),
             };
+            // INVARIANT: Mutex poisoning is fatal by design
+            #[allow(clippy::unwrap_used)]
             if let Err(e) = index.lock().unwrap().upsert_attestation(&indexed) {
                 log::warn!(
                     "Index update failed for attestation {}: {}",
@@ -1149,6 +1153,8 @@ impl RegistryBackend for GitRegistryBackend {
                 expires_at: member.expires_at,
                 updated_at: member.timestamp.unwrap_or_else(|| self.clock.now()),
             };
+            // INVARIANT: Mutex poisoning is fatal by design
+            #[allow(clippy::unwrap_used)]
             if let Err(e) = index.lock().unwrap().upsert_org_member(&indexed) {
                 log::warn!(
                     "Index update failed for org member {} in {}: {}",
@@ -1307,6 +1313,8 @@ impl RegistryBackend for GitRegistryBackend {
             return self.list_org_members(org, filter);
         };
 
+        // INVARIANT: Mutex poisoning is fatal by design
+        #[allow(clippy::unwrap_used)]
         let indexed = index
             .lock()
             .unwrap()
@@ -1637,13 +1645,13 @@ impl GitRegistryBackend {
         let repo = self.open_repo().map_err(DriverStorageError::io)?;
 
         let (parent, base_tree) = match self.current_commit_and_tree(&repo) {
-            Ok((commit, tree)) => (Some(commit), Some(tree)),
+            Ok((commit, tree)) => (commit, tree),
             Err(RegistryError::NotFound { .. }) => return Ok(()), // Nothing to delete
             Err(e) => return Err(DriverStorageError::io(e)),
         };
 
         // Check if path exists
-        let navigator = TreeNavigator::new(&repo, base_tree.clone().unwrap());
+        let navigator = TreeNavigator::new(&repo, base_tree.clone());
         if !navigator.exists_path(path) {
             return Ok(()); // Idempotent delete
         }
@@ -1652,16 +1660,11 @@ impl GitRegistryBackend {
         mutator.delete(path);
 
         let tree_oid = mutator
-            .build_tree(&repo, base_tree.as_ref())
+            .build_tree(&repo, Some(&base_tree))
             .map_err(DriverStorageError::io)?;
 
-        self.create_commit(
-            &repo,
-            tree_oid,
-            parent.as_ref(),
-            &format!("delete {}", path),
-        )
-        .map_err(DriverStorageError::io)?;
+        self.create_commit(&repo, tree_oid, Some(&parent), &format!("delete {}", path))
+            .map_err(DriverStorageError::io)?;
 
         Ok(())
     }
@@ -1804,6 +1807,7 @@ impl StorageDriver for GitRegistryBackend {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use auths_core::crypto::said::compute_next_commitment;
@@ -3769,6 +3773,7 @@ mod tests {
 }
 
 #[cfg(all(test, feature = "indexed-storage"))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod index_consistency_tests {
     use super::*;
     use auths_core::crypto::said::compute_next_commitment;
@@ -3842,7 +3847,11 @@ mod index_consistency_tests {
             device_signature: Ed25519Signature::empty(),
             revoked_at: None,
             expires_at: None,
-            timestamp: Some(Utc::now()),
+            timestamp: Some(
+                chrono::DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            ),
             note: None,
             payload: None,
             role: None,
@@ -4003,6 +4012,7 @@ mod index_consistency_tests {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tenant_isolation_tests {
     use std::ops::ControlFlow;
     use std::sync::Arc;

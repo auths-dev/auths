@@ -492,6 +492,7 @@ impl KeychainPassphraseProvider {
         }
     }
 
+    #[allow(clippy::disallowed_methods)] // Passphrase cache is a system boundary
     fn is_expired(&self, stored_at_unix: i64) -> bool {
         match self.policy {
             PassphraseCachePolicy::Always => false,
@@ -510,6 +511,7 @@ impl KeychainPassphraseProvider {
 }
 
 impl PassphraseProvider for KeychainPassphraseProvider {
+    #[allow(clippy::disallowed_methods)] // Passphrase cache is a system boundary
     fn get_passphrase(&self, prompt_message: &str) -> Result<Zeroizing<String>, AgentError> {
         if self.policy != PassphraseCachePolicy::Never
             && let Ok(Some((passphrase, stored_at))) = self.cache.load(&self.alias)

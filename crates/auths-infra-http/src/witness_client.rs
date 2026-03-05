@@ -24,6 +24,8 @@ pub struct HttpWitnessClient {
 }
 
 impl HttpWitnessClient {
+    // INVARIANT: reqwest Client::builder with only timeout cannot fail
+    #[allow(clippy::expect_used)]
     pub fn new(timeout: Duration) -> Self {
         Self {
             client: reqwest::Client::builder()

@@ -108,7 +108,9 @@ impl RegistryDidResolver {
 impl DidResolver for RegistryDidResolver {
     fn resolve(&self, did: &str) -> Result<ResolvedDid, DidResolverError> {
         if did.starts_with("did:keri:") {
-            let prefix = did.strip_prefix("did:keri:").unwrap();
+            let Some(prefix) = did.strip_prefix("did:keri:") else {
+                unreachable!("starts_with guard ensures strip_prefix succeeds");
+            };
             if prefix.is_empty() {
                 return Err(DidResolverError::InvalidDidKeyFormat(
                     "Empty KERI prefix".into(),
@@ -151,16 +153,8 @@ pub fn did_key_to_ed25519(did: &str) -> Result<Ed25519PublicKey, DidResolverErro
 }
 
 /// Convert a 32-byte Ed25519 public key to `did:key` format.
-///
-/// # Panics
-///
-/// Panics if `public_key` is not exactly 32 bytes. Callers are expected
-/// to pass validated Ed25519 key material.
-pub fn ed25519_to_did_key(public_key: &[u8]) -> String {
-    let array: [u8; 32] = public_key
-        .try_into()
-        .expect("ed25519_to_did_key requires exactly 32 bytes");
-    auths_crypto::ed25519_pubkey_to_did_key(&array)
+pub fn ed25519_to_did_key(public_key: &[u8; 32]) -> String {
+    auths_crypto::ed25519_pubkey_to_did_key(public_key)
 }
 
 #[cfg(test)]

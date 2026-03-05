@@ -267,6 +267,7 @@ pub fn normalize_short_code(code: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

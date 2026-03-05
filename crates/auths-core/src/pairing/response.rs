@@ -147,6 +147,7 @@ impl PairingResponse {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::crypto::provider_bridge;

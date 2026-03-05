@@ -69,7 +69,7 @@ pub struct BridgeConfig {
 impl Default for BridgeConfig {
     fn default() -> Self {
         Self {
-            bind_addr: "0.0.0.0:3300".parse().unwrap(),
+            bind_addr: std::net::SocketAddr::from(([0, 0, 0, 0], 3300)),
             issuer_url: "http://localhost:3300".to_string(),
             default_audience: None,
             allowed_audiences: None,

@@ -1,3 +1,5 @@
+// OIDC bridge is a server boundary — Utc::now() is expected for token issuance.
+#![allow(clippy::disallowed_methods)]
 //! # auths-oidc-bridge
 //!
 //! OIDC bridge that exchanges KERI attestation chains for short-lived RS256 JWTs

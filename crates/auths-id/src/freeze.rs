@@ -155,6 +155,7 @@ pub fn parse_duration(s: &str) -> Result<chrono::Duration, FreezeError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

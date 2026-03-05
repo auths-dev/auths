@@ -231,6 +231,7 @@ pub fn expected_org_issuer(org: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature};

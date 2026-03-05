@@ -1461,7 +1461,9 @@ mod tests {
             identity_did: "did:keri:test123".to_string(),
             public_key_hex: "aabbccdd".to_string(),
             attestation_chain: vec![],
-            bundle_timestamp: Utc::now(),
+            bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
             max_valid_for_secs: 86400,
         };
 
@@ -1517,7 +1519,9 @@ mod tests {
             identity_did: "did:keri:example".to_string(),
             public_key_hex: "deadbeef".to_string(),
             attestation_chain: vec![attestation],
-            bundle_timestamp: Utc::now(),
+            bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
             max_valid_for_secs: 86400,
         };
 

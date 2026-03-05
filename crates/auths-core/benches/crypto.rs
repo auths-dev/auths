@@ -1,6 +1,7 @@
 //! Benchmarks for cryptographic operations in auths-core.
 //!
 //! Run with: cargo bench --package auths_core
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use auths_core::crypto::signer::{SeedSignerKey, SignerKey, decrypt_keypair, encrypt_keypair};
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};

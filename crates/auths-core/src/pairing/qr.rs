@@ -106,6 +106,7 @@ pub fn format_pairing_qr(token: &PairingToken) -> Result<String, PairingError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 
