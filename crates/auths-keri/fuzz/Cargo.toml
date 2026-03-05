@@ -1,0 +1,29 @@
+[package]
+name = "auths-keri-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.auths_keri]
+package = "auths-keri"
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "fuzz_cesr_import"
+path = "fuzz_targets/fuzz_cesr_import.rs"
+test = false
+doc = false
+bench = false

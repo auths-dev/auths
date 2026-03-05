@@ -1,0 +1,30 @@
+name: Fuzz
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: auths-verifier
+            target: attestation_parse
+          - crate: auths-verifier
+            target: did_parse
+          - crate: auths-verifier
+            target: verify_chain
+          - crate: auths-policy
+            target: policy_eval
+          - crate: auths-keri
+            target: fuzz_cesr_import
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz
+      - name: Run fuzz target (${{ matrix.crate }}/${{ matrix.target }})
+        run: cd crates/${{ matrix.crate }} && cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60
