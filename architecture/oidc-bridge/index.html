@@ -1707,35 +1707,22 @@
 <p>How Auths identities integrate with enterprise identity infrastructure through standard OIDC federation.</p>
 <h2 id="design-pattern">Design pattern<a class="headerlink" href="#design-pattern" title="Permanent link">&para;</a></h2>
 <p>Auths identities are self-certifying — they don't depend on any central authority. But cloud providers (AWS, GCP, Azure) and enterprise systems authenticate workloads through OAuth 2.0 and OpenID Connect. The OIDC bridge connects these two worlds: it verifies a KERI attestation chain cryptographically and issues a standard JWT that any OIDC relying party can consume.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌──────────────────────┐
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│  Agent / Workload    │
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│  (holds private key  │
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   + attestation      │
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   chain)             │
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>└──────────┬───────────┘
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>           │ POST /token
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>           │ {attestation_chain, root_public_key}
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>           ▼
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>┌──────────────────────┐
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│  OIDC Bridge         │
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│  (auths-oidc-bridge) │
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│                      │
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│  1. Verify chain     │ ← no IdP callback, pure crypto
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│  2. Scope-down caps  │
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│  3. Issue RS256 JWT  │
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>└──────────┬───────────┘
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>           │ Standard JWT (Bearer token)
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>           ▼
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>┌──────────────────────┐
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│  Cloud Provider      │
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│  (AWS STS, GCP WIF,  │
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   Azure AD)          │
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│                      │
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│  Validates JWT via   │
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│  /.well-known/jwks   │
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│  Issues temp creds   │
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>└──────────────────────┘
-</span></code></pre></div>
+<pre class="mermaid"><code>graph TD
+    A["Agent / Workload&lt;br/&gt;(holds private key + attestation chain)"]
+    B["OIDC Bridge&lt;br/&gt;(auths-oidc-bridge)"]
+    C["Cloud Provider&lt;br/&gt;(AWS STS, GCP WIF, Azure AD)"]
+
+    A --&gt;|"POST /token&lt;br/&gt;{attestation_chain, root_public_key}"| B
+    B --&gt;|"Standard JWT (Bearer token)"| C
+
+    subgraph Bridge["Bridge internals (no IdP callback)"]
+        B1["1. Verify chain"] --&gt; B2["2. Scope-down capabilities"] --&gt; B3["3. Issue RS256 JWT"]
+    end
+
+    B -.-&gt; Bridge
+
+    C --&gt;|"Validates JWT via&lt;br/&gt;/.well-known/jwks.json"| B
+    C --&gt;|"Issues temporary credentials"| D["Agent uses cloud resources"]</code></pre>
 <p>The bridge exposes standard OIDC discovery endpoints (<code>/.well-known/openid-configuration</code> and <code>/.well-known/jwks.json</code>) so cloud providers can validate issued JWTs without any custom integration.</p>
 <h2 id="how-the-token-exchange-works">How the token exchange works<a class="headerlink" href="#how-the-token-exchange-works" title="Permanent link">&para;</a></h2>
 <ol>
@@ -1797,18 +1784,18 @@
 <p>The bridge has been validated against each major cloud provider's OIDC federation mechanism. No cloud-side changes are required beyond the standard OIDC provider registration.</p>
 <h3 id="aws-sts">AWS STS<a class="headerlink" href="#aws-sts" title="Permanent link">&para;</a></h3>
 <p>Register the bridge as an OIDC identity provider in IAM, then configure a role's trust policy to accept JWTs from the bridge:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;Effect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Allow&quot;</span><span class="p">,</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;Principal&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">&quot;Federated&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;arn:aws:iam::123456789012:oidc-provider/oidc.example.com&quot;</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;Action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sts:AssumeRoleWithWebIdentity&quot;</span><span class="p">,</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">&quot;Condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">&quot;StringEquals&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">&quot;oidc.example.com:aud&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sts.amazonaws.com&quot;</span>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="p">}</span>
-</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="p">}</span>
-</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;Effect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Allow&quot;</span><span class="p">,</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;Principal&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">&quot;Federated&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;arn:aws:iam::123456789012:oidc-provider/oidc.example.com&quot;</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">&quot;Action&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sts:AssumeRoleWithWebIdentity&quot;</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">&quot;Condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">&quot;StringEquals&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">      </span><span class="nt">&quot;oidc.example.com:aud&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sts.amazonaws.com&quot;</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">}</span>
 </span></code></pre></div>
 <p>The agent calls <code>AssumeRoleWithWebIdentity</code> with the bridge-issued JWT and receives temporary AWS credentials.</p>
 <h3 id="gcp-workload-identity-federation">GCP Workload Identity Federation<a class="headerlink" href="#gcp-workload-identity-federation" title="Permanent link">&para;</a></h3>
