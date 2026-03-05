@@ -66,14 +66,17 @@ impl OidcIssuer {
     ///
     /// Args:
     /// * `request`: The exchange request containing the attestation chain.
+    /// * `workload_policy`: Optional compiled policy to evaluate before issuance (oidc-policy feature).
+    /// * `github_cross_ref`: Optional GitHub OIDC cross-reference result (github-oidc feature).
     ///
     /// Usage:
     /// ```ignore
-    /// let response = issuer.exchange(&request, None)?;
+    /// let response = issuer.exchange(&request, None, None)?;
     /// ```
     pub async fn exchange(
         &self,
         request: &ExchangeRequest,
+        #[cfg(feature = "oidc-policy")] workload_policy: Option<&auths_policy::CompiledPolicy>,
         #[cfg(feature = "github-oidc")] github_cross_ref: Option<
             &crate::cross_reference::CrossReferenceResult,
         >,
@@ -159,7 +162,22 @@ impl OidcIssuer {
             github_repository: None,
         };
 
-        // 9. Sign JWT with RS256
+        // 9. Evaluate workload policy (if configured)
+        #[cfg(feature = "oidc-policy")]
+        if let Some(policy) = workload_policy {
+            // INVARIANT: u64 epoch seconds always fits in DateTime (overflows at ~292 billion years)
+            #[allow(clippy::expect_used)]
+            let now_dt = chrono::DateTime::from_timestamp(now as i64, 0)
+                .expect("u64 epoch seconds always fits in DateTime");
+            let ctx = crate::policy_adapter::build_eval_context_from_oidc(&claims, now_dt)?;
+            let decision = auths_policy::evaluate_strict(policy, &ctx);
+            if decision.outcome != auths_policy::Outcome::Allow {
+                tracing::info!(reason = %decision.message, "auths.exchange.policy_denied");
+                return Err(BridgeError::PolicyDenied(decision.message));
+            }
+        }
+
+        // 10. Sign JWT with RS256
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(self.kid.clone());
 
