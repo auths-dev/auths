@@ -187,10 +187,8 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
                 out.newline();
                 match prompt_platform_verification(
                     &out,
-                    &result.identity_did,
-                    &result.key_alias,
-                    ctx.passphrase_provider.as_ref(),
-                    &ctx.http_client,
+                    Arc::clone(&ctx.passphrase_provider),
+                    &ctx.env_config,
                 )? {
                     Some((url, _username)) => {
                         out.print_success(&format!("Proof anchored: {}", url));
@@ -469,10 +467,8 @@ fn prompt_for_git_scope(interactive: bool) -> Result<GitSigningScope> {
 
 fn prompt_platform_verification(
     out: &Output,
-    controller_did: &str,
-    key_alias: &str,
-    passphrase_provider: &dyn PassphraseProvider,
-    http_client: &reqwest::Client,
+    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
+    env_config: &auths_core::config::EnvironmentConfig,
 ) -> Result<Option<(String, String)>> {
     let items = [
         "GitHub — link your GitHub identity (recommended)",
@@ -488,19 +484,94 @@ fn prompt_platform_verification(
 
     match selection {
         0 => {
-            use crate::services::providers::github::GitHubProvider;
-            use crate::services::providers::{ClaimContext, PlatformClaimProvider};
+            use std::time::Duration;
 
-            let provider = GitHubProvider;
-            let ctx = ClaimContext {
-                out,
-                controller_did,
-                key_alias,
-                passphrase_provider,
-                http_client,
-            };
-            let auth = provider.authenticate_and_publish(&ctx)?;
-            Ok(Some((auth.proof_url, auth.username)))
+            use auths_core::ports::platform::OAuthDeviceFlowProvider;
+            use auths_core::ports::platform::PlatformProofPublisher;
+            use auths_infra_http::{HttpGistPublisher, HttpGitHubOAuthProvider};
+            use auths_sdk::workflows::platform::create_signed_platform_claim;
+
+            const GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";
+            let client_id = std::env::var("AUTHS_GITHUB_CLIENT_ID")
+                .unwrap_or_else(|_| GITHUB_CLIENT_ID.to_string());
+
+            let auths_dir = get_auths_repo_path()?;
+            let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider))?;
+
+            let oauth = HttpGitHubOAuthProvider::new();
+            let publisher = HttpGistPublisher::new();
+
+            let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
+
+            let device_code = rt
+                .block_on(oauth.request_device_code(&client_id, "read:user gist"))
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            out.println(&format!(
+                "  Enter this code: {}",
+                out.bold(&device_code.user_code)
+            ));
+            out.println(&format!(
+                "  At: {}",
+                out.info(&device_code.verification_uri)
+            ));
+            if let Err(e) = open::that(&device_code.verification_uri) {
+                out.print_warn(&format!("Could not open browser automatically: {e}"));
+                out.println("  Please open the URL above manually.");
+            } else {
+                out.println("  Browser opened — waiting for authorization...");
+            }
+
+            let expires_in = Duration::from_secs(device_code.expires_in);
+            let interval = Duration::from_secs(device_code.interval);
+
+            let access_token = rt
+                .block_on(oauth.poll_for_token(
+                    &client_id,
+                    &device_code.device_code,
+                    interval,
+                    expires_in,
+                ))
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            let profile = rt
+                .block_on(oauth.fetch_user_profile(&access_token))
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            out.print_success(&format!("Authenticated as @{}", profile.login));
+
+            let controller_did =
+                auths_sdk::pairing::load_controller_did(ctx.identity_storage.as_ref())
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            let identity_did =
+                auths_core::storage::keychain::IdentityDID::new_unchecked(controller_did.clone());
+            let aliases = ctx
+                .key_storage
+                .list_aliases_for_identity(&identity_did)
+                .context("failed to list key aliases")?;
+            let key_alias = aliases
+                .into_iter()
+                .find(|a| !a.contains("--next-"))
+                .ok_or_else(|| anyhow::anyhow!("no signing key found for {controller_did}"))?;
+
+            let claim_json = create_signed_platform_claim(
+                "github",
+                &profile.login,
+                &controller_did,
+                &key_alias,
+                &ctx,
+                chrono::Utc::now(),
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            let proof_url = rt
+                .block_on(publisher.publish_proof(&access_token, &claim_json))
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            out.print_success(&format!("Published proof Gist: {}", out.info(&proof_url)));
+
+            Ok(Some((proof_url, profile.login)))
         }
         1 => {
             out.print_warn("GitLab integration is coming soon. Continuing as anonymous.");
