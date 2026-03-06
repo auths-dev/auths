@@ -492,6 +492,84 @@ pub fn complete_pairing_from_response(
     })
 }
 
+/// Load device signing material from the local keychain via the context's injected providers.
+///
+/// Loads the managed identity to find the controller DID, resolves the signing key alias,
+/// decrypts the key using the context's passphrase provider, and derives the device DID.
+///
+/// The passphrase prompt is delegated to `ctx.passphrase_provider` — the CLI sets this
+/// to `CliPassphraseProvider` which handles stdin; tests may use a prefilled provider.
+///
+/// Args:
+/// * `ctx`: Runtime context supplying `identity_storage`, `key_storage`, and `passphrase_provider`.
+///
+/// Usage:
+/// ```ignore
+/// let material = load_device_signing_material(&ctx)?;
+/// join_pairing_session(code, registry, &relay, now, &material, hostname).await?;
+/// ```
+pub fn load_device_signing_material(
+    ctx: &AuthsContext,
+) -> Result<DeviceSigningMaterial, PairingError> {
+    use auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync;
+    use auths_core::crypto::signer::decrypt_keypair;
+    use auths_id::identity::helpers::ManagedIdentity;
+
+    let managed: ManagedIdentity = ctx
+        .identity_storage
+        .load_identity()
+        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
+
+    let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
+    let aliases = ctx
+        .key_storage
+        .list_aliases_for_identity(&controller_identity_did)
+        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
+
+    let key_alias = aliases
+        .into_iter()
+        .find(|a| !a.contains("--next-"))
+        .ok_or_else(|| {
+            PairingError::IdentityNotFound(format!(
+                "no signing key found for identity {}",
+                managed.controller_did
+            ))
+        })?;
+
+    let (_did, encrypted_key) = ctx
+        .key_storage
+        .load_key(&key_alias)
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    let prompt = format!("Enter passphrase for key '{}': ", key_alias);
+    let passphrase = ctx
+        .passphrase_provider
+        .get_passphrase(&prompt)
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    let pkcs8_bytes = decrypt_keypair(&encrypted_key, passphrase.as_str())
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    let (seed, pubkey_32) = auths_crypto::parse_ed25519_key_material(&pkcs8_bytes)
+        .ok()
+        .and_then(|(seed, maybe_pk)| maybe_pk.map(|pk| (seed, pk)))
+        .or_else(|| {
+            let seed = auths_crypto::parse_ed25519_seed(&pkcs8_bytes).ok()?;
+            let pk = ed25519_public_key_from_seed_sync(&seed).ok()?;
+            Some((seed, pk))
+        })
+        .ok_or_else(|| {
+            PairingError::KeyExchangeFailed("failed to parse Ed25519 key material".into())
+        })?;
+
+    Ok(DeviceSigningMaterial {
+        seed: SecureSeed::new(*seed.as_bytes()),
+        public_key: pubkey_32,
+        device_did: DeviceDID::from_ed25519(&pubkey_32),
+        controller_did: managed.controller_did.to_string(),
+    })
+}
+
 /// Load the controller DID from a pre-initialized identity storage adapter.
 ///
 /// Args:
