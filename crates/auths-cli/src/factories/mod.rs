@@ -1,4 +1,3 @@
-pub mod network;
 pub mod storage;
 
 use std::io::IsTerminal;
@@ -17,7 +16,7 @@ use crate::core::provider::{CliPassphraseProvider, PrefilledPassphraseProvider};
 
 /// Builds the full CLI configuration from parsed arguments.
 ///
-/// Constructs the passphrase provider, HTTP client, and output settings.
+/// Constructs the passphrase provider and output settings.
 /// This is the composition root — the only place where concrete adapter
 /// types are instantiated.
 ///
@@ -55,14 +54,12 @@ pub fn build_config(cli: &AuthsCli) -> Result<CliConfig> {
         };
 
     let is_interactive = std::io::stdout().is_terminal();
-    let http_client = network::build_http_client()?;
 
     Ok(CliConfig {
         repo_path: cli.repo.clone(),
         output_format,
         is_interactive,
         passphrase_provider,
-        http_client,
         env_config,
     })
 }
