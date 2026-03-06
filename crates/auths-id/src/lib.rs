@@ -70,4 +70,5 @@ pub mod witness_config;
 
 /// Test utilities for auths-id consumers (behind `test-utils` feature).
 #[cfg(any(test, feature = "test-utils"))]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 pub mod testing;

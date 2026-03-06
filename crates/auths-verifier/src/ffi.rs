@@ -9,9 +9,7 @@ use std::os::raw::c_int;
 use std::panic;
 use std::slice;
 
-// SAFETY: Tokio runtime creation is unrecoverable at the FFI boundary — Result cannot cross
-// extern "C" functions. A panic here is intentional; the process cannot serve FFI callers
-// without an async runtime.
+// INVARIANT: Tokio runtime creation is fatal at FFI boundary; cannot propagate Result across FFI
 #[allow(clippy::expect_used)]
 fn with_runtime<F: std::future::Future>(f: F) -> F::Output {
     tokio::runtime::Builder::new_current_thread()
