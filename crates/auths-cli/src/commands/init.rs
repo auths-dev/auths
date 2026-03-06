@@ -10,15 +10,11 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::sync::Arc;
 
-use auths_core::ports::clock::SystemClock;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::{KeyAlias, KeyStorage, get_platform_keychain};
-use auths_id::attestation::export::AttestationSink;
-use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 use auths_infra_http::HttpRegistryClient;
-use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::git_config::GitConfigProvider;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::types::{
@@ -30,6 +26,7 @@ use auths_storage::git::{
 };
 
 use crate::adapters::git_config::SystemGitConfigProvider;
+use crate::factories::storage::build_auths_context;
 
 use super::init_helpers::{
     check_git_version, detect_ci_environment, generate_allowed_signers, get_auths_repo_path,
@@ -161,7 +158,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
                 };
 
             // Build SDK context with injected backends
-            let sdk_ctx = build_sdk_context(&registry_path)?;
+            let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
 
             // EXECUTE
             let signer = StorageSigner::new(keychain);
@@ -233,7 +230,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
             ensure_registry_dir(&registry_path)?;
 
             // Build SDK context with injected backends
-            let sdk_ctx = build_sdk_context(&registry_path)?;
+            let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
 
             // EXECUTE
             let result = auths_sdk::setup::create_ci_identity(config, &sdk_ctx)?;
@@ -253,7 +250,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
                 ensure_registry_dir(&registry_path)?;
 
                 // Build SDK context with injected backends
-                let sdk_ctx = build_sdk_context(&registry_path)?;
+                let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
 
                 // EXECUTE
                 let result = auths_sdk::setup::create_agent_identity(
@@ -699,30 +696,6 @@ fn ensure_registry_dir(registry_path: &Path) -> Result<()> {
     }
     auths_sdk::setup::install_registry_hook(registry_path);
     Ok(())
-}
-
-fn build_sdk_context(registry_path: &Path) -> Result<AuthsContext> {
-    let backend: Arc<dyn RegistryBackend + Send + Sync> = Arc::new(
-        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(registry_path)),
-    );
-    let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
-        Arc::new(RegistryIdentityStorage::new(registry_path.to_path_buf()));
-    let attestation_store = Arc::new(RegistryAttestationStorage::new(registry_path));
-    let attestation_sink: Arc<dyn AttestationSink + Send + Sync> =
-        Arc::clone(&attestation_store) as Arc<dyn AttestationSink + Send + Sync>;
-    let attestation_source: Arc<dyn AttestationSource + Send + Sync> =
-        attestation_store as Arc<dyn AttestationSource + Send + Sync>;
-    let key_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::from(
-        get_platform_keychain().map_err(|e| anyhow!("Failed to access keychain: {}", e))?,
-    );
-    Ok(AuthsContext::builder()
-        .registry(backend)
-        .key_storage(key_storage)
-        .clock(Arc::new(SystemClock))
-        .identity_storage(identity_storage)
-        .attestation_sink(attestation_sink)
-        .attestation_source(attestation_source)
-        .build()?)
 }
 
 fn check_keychain_access(out: &Output) -> Result<Box<dyn KeyStorage + Send + Sync>> {

@@ -7,53 +7,20 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use auths_core::config::EnvironmentConfig;
-use auths_core::ports::clock::SystemClock;
 use auths_core::signing::{PassphraseProvider, UnifiedPassphraseProvider};
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
-use auths_id::attestation::export::AttestationSink;
+use auths_core::storage::keychain::KeyAlias;
 use auths_id::attestation::group::AttestationGroup;
 use auths_id::identity::helpers::ManagedIdentity;
-use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::storage::layout::{self, StorageLayoutConfig};
-use auths_sdk::context::AuthsContext;
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use chrono::Utc;
 
 use crate::commands::registry_overrides::RegistryOverrides;
-
-fn build_device_context(
-    repo_path: &Path,
-    env_config: &EnvironmentConfig,
-    passphrase_provider: Option<Arc<dyn PassphraseProvider + Send + Sync>>,
-) -> Result<AuthsContext> {
-    let backend: Arc<dyn RegistryBackend + Send + Sync> = Arc::new(
-        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(repo_path)),
-    );
-    let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
-        Arc::new(RegistryIdentityStorage::new(repo_path.to_path_buf()));
-    let attestation_store = Arc::new(RegistryAttestationStorage::new(repo_path));
-    let attestation_sink: Arc<dyn AttestationSink + Send + Sync> =
-        Arc::clone(&attestation_store) as Arc<dyn AttestationSink + Send + Sync>;
-    let attestation_source: Arc<dyn AttestationSource + Send + Sync> =
-        attestation_store as Arc<dyn AttestationSource + Send + Sync>;
-    let key_storage =
-        get_platform_keychain_with_config(env_config).context("Failed to initialize keychain")?;
-    let mut builder = AuthsContext::builder()
-        .registry(backend)
-        .key_storage(Arc::from(key_storage))
-        .clock(Arc::new(SystemClock))
-        .identity_storage(identity_storage)
-        .attestation_sink(attestation_sink)
-        .attestation_source(attestation_source);
-    if let Some(pp) = passphrase_provider {
-        builder = builder.passphrase_provider(pp);
-    }
-    Ok(builder.build()?)
-}
+use crate::factories::storage::build_auths_context;
 
 #[derive(Args, Debug, Clone)]
 #[command(about = "Manage device authorizations within an identity repository.")]
@@ -277,7 +244,7 @@ pub fn handle_device(
 
             let passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync> =
                 Arc::new(UnifiedPassphraseProvider::new(passphrase_provider));
-            let ctx = build_device_context(
+            let ctx = build_auths_context(
                 &repo_path,
                 env_config,
                 Some(Arc::clone(&passphrase_provider)),
@@ -298,7 +265,7 @@ pub fn handle_device(
             identity_key_alias,
             note,
         } => {
-            let ctx = build_device_context(
+            let ctx = build_auths_context(
                 &repo_path,
                 env_config,
                 Some(Arc::clone(&passphrase_provider)),
@@ -419,7 +386,7 @@ fn handle_extend(
         identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
         device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
     };
-    let ctx = build_device_context(repo_path, env_config, Some(passphrase_provider))?;
+    let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))?;
 
     let result = auths_sdk::device::extend_device_authorization(
         config,

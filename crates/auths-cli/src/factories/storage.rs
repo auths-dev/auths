@@ -1,7 +1,21 @@
 use std::path::Path;
+use std::sync::Arc;
 
+use anyhow::Result;
+use auths_core::config::EnvironmentConfig;
+use auths_core::ports::clock::SystemClock;
 use auths_core::ports::storage::StorageError;
+use auths_core::signing::PassphraseProvider;
+use auths_core::storage::keychain::get_platform_keychain_with_config;
+use auths_id::attestation::export::AttestationSink;
+use auths_id::ports::registry::RegistryBackend;
+use auths_id::storage::attestation::AttestationSource;
+use auths_id::storage::identity::IdentityStorage;
 use auths_infra_git::GitRepo;
+use auths_sdk::context::AuthsContext;
+use auths_storage::git::{
+    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
+};
 
 /// Opens an existing Git repository at the given path.
 ///
@@ -76,6 +90,51 @@ pub fn discover_git_repo(start_path: &Path) -> Result<std::path::PathBuf, Storag
         .or_else(|| repo.path().parent())
         .ok_or_else(|| StorageError::Io("could not determine repository path".into()))?;
     Ok(path.to_path_buf())
+}
+
+/// Builds a canonical `AuthsContext` for CLI commands.
+///
+/// This is the single composition root for all storage and keychain wiring.
+/// All commands that need an `AuthsContext` must use this function instead
+/// of assembling the context inline.
+///
+/// Args:
+/// * `repo_path`: Path to the auths registry Git repository.
+/// * `env_config`: Environment configuration used to select the keychain backend.
+/// * `passphrase_provider`: Optional passphrase provider; `None` uses the keychain default.
+///
+/// Usage:
+/// ```ignore
+/// let ctx = build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
+/// ```
+pub fn build_auths_context(
+    repo_path: &Path,
+    env_config: &EnvironmentConfig,
+    passphrase_provider: Option<Arc<dyn PassphraseProvider + Send + Sync>>,
+) -> Result<AuthsContext> {
+    let backend: Arc<dyn RegistryBackend + Send + Sync> = Arc::new(
+        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(repo_path)),
+    );
+    let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
+        Arc::new(RegistryIdentityStorage::new(repo_path.to_path_buf()));
+    let attestation_store = Arc::new(RegistryAttestationStorage::new(repo_path));
+    let attestation_sink: Arc<dyn AttestationSink + Send + Sync> =
+        Arc::clone(&attestation_store) as Arc<dyn AttestationSink + Send + Sync>;
+    let attestation_source: Arc<dyn AttestationSource + Send + Sync> =
+        attestation_store as Arc<dyn AttestationSource + Send + Sync>;
+    let key_storage = get_platform_keychain_with_config(env_config)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize keychain: {}", e))?;
+    let mut builder = AuthsContext::builder()
+        .registry(backend)
+        .key_storage(Arc::from(key_storage))
+        .clock(Arc::new(SystemClock))
+        .identity_storage(identity_storage)
+        .attestation_sink(attestation_sink)
+        .attestation_source(attestation_source);
+    if let Some(pp) = passphrase_provider {
+        builder = builder.passphrase_provider(pp);
+    }
+    Ok(builder.build()?)
 }
 
 /// Reads a Git configuration value from the default config.
