@@ -4,6 +4,7 @@
 
 use pyo3::prelude::*;
 
+pub mod identity;
 pub mod runtime;
 pub mod sign;
 pub mod token;
@@ -28,6 +29,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign::verify_action_envelope, m)?)?;
 
     m.add_function(wrap_pyfunction!(token::get_token, m)?)?;
+
+    m.add_class::<identity::AgentBundle>()?;
+    m.add_function(wrap_pyfunction!(identity::create_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::provision_agent, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::link_device_to_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::revoke_device_from_identity, m)?)?;
 
     Ok(())
 }
