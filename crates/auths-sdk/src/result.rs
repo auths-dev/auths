@@ -94,6 +94,8 @@ pub struct RotationResult {
     pub new_key_fingerprint: String,
     /// Hex-encoded fingerprint of the previous signing key.
     pub previous_key_fingerprint: String,
+    /// KERI sequence number after this rotation event.
+    pub sequence: u64,
 }
 
 /// Outcome of a successful device authorization extension.

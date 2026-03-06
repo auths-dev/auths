@@ -18,11 +18,11 @@ use auths_verifier::core::Capability;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
-fn resolve_passphrase(passphrase: Option<String>) -> String {
+pub(crate) fn resolve_passphrase(passphrase: Option<String>) -> String {
     passphrase.unwrap_or_else(|| std::env::var("AUTHS_PASSPHRASE").unwrap_or_default())
 }
 
-fn make_keychain_config(passphrase: &str) -> EnvironmentConfig {
+pub(crate) fn make_keychain_config(passphrase: &str) -> EnvironmentConfig {
     EnvironmentConfig {
         auths_home: None,
         keychain: KeychainConfig {

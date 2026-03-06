@@ -6,6 +6,7 @@ use pyo3::prelude::*;
 
 pub mod identity;
 pub mod identity_sign;
+pub mod rotation;
 pub mod runtime;
 pub mod sign;
 pub mod token;
@@ -44,6 +45,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(identity_sign::sign_as_identity, m)?)?;
     m.add_function(wrap_pyfunction!(identity_sign::sign_action_as_identity, m)?)?;
+
+    m.add_class::<rotation::PyRotationResult>()?;
+    m.add_function(wrap_pyfunction!(rotation::rotate_identity_ffi, m)?)?;
 
     Ok(())
 }

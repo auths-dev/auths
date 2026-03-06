@@ -110,8 +110,16 @@ class Agent:
     label: str
     attestation: str
 
+@dataclass
+class RotationResult:
+    controller_did: str
+    new_key_fingerprint: str
+    previous_key_fingerprint: str
+    sequence: int
+
 class IdentityService:
     def create(self, label: str = "main", repo_path: str | None = None, passphrase: str | None = None) -> Identity: ...
+    def rotate(self, identity_did: str, *, passphrase: str | None = None) -> RotationResult: ...
     def provision_agent(self, identity_did: str, name: str, capabilities: list[str], expires_in_secs: int | None = None, passphrase: str | None = None) -> Agent: ...
 
 # -- Device resources --

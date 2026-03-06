@@ -242,6 +242,7 @@ pub fn rotate_identity(
         controller_did: identity.controller_did,
         new_key_fingerprint: hex::encode(&new_pubkey[..8]),
         previous_key_fingerprint,
+        sequence: state.sequence + 1,
     })
 }
 

@@ -30,6 +30,7 @@ from auths._native import (
 from auths.agent import AgentAuth
 from auths.devices import Device, DeviceService
 from auths.identity import Agent, Identity, IdentityService
+from auths.rotation import RotationResult
 from auths.verify import WitnessConfig, WitnessKey
 from auths.git import (
     CommitResult,
@@ -78,6 +79,7 @@ __all__ = [
     "IdentityService",
     "Device",
     "DeviceService",
+    "RotationResult",
     "WitnessConfig",
     "WitnessKey",
 ]
