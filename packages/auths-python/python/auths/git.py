@@ -17,6 +17,30 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 
+def generate_allowed_signers(repo_path: str = "~/.auths") -> str:
+    """Generate an allowed_signers file content from live Auths storage.
+
+    Reads device attestations from the Git-backed identity store and
+    formats them for ``gpg.ssh.allowedSignersFile``. Revoked attestations
+    and devices with undecodable keys are silently skipped.
+
+    Args:
+        repo_path: Path to the Auths identity repository.
+
+    Returns:
+        Formatted allowed_signers file content, or an empty string if no
+        attestations are found. Write this to a file or pass to
+        ``verify_commit_range``.
+
+    Usage:
+        content = generate_allowed_signers()
+        Path(".auths/allowed_signers").write_text(content)
+    """
+    from auths._native import generate_allowed_signers_file
+
+    return generate_allowed_signers_file(repo_path)
+
+
 class ErrorCode:
     """Stable error codes for commit verification failures."""
 

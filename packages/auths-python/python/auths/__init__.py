@@ -28,7 +28,7 @@ from auths._native import (
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
-from auths.artifact import ArtifactSigningResult
+from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
 from auths.attestation_query import Attestation, AttestationService
 from auths.commit import CommitSigningResult
 from auths.jwt import AuthsClaims
@@ -44,6 +44,7 @@ from auths.git import (
     LayoutInfo,
     VerifyResult,
     discover_layout,
+    generate_allowed_signers,
     verify_commit_range,
 )
 
@@ -66,12 +67,14 @@ __all__ = [
     "verify_chain",
     "verify_attestation_with_capability",
     "verify_chain_with_capability",
+    "verify_chain_with_witnesses",
     "verify_device_authorization",
     "sign_bytes",
     "sign_action",
     "verify_action_envelope",
     "get_token",
     "AgentAuth",
+    "ArtifactPublishResult",
     "ArtifactSigningResult",
     "Attestation",
     "AttestationService",
@@ -85,6 +88,7 @@ __all__ = [
     "LayoutInfo",
     "LayoutError",
     "discover_layout",
+    "generate_allowed_signers",
     "verify_commit_range",
     "Identity",
     "AgentIdentity",
