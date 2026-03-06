@@ -30,6 +30,7 @@ from auths._native import (
 from auths.agent import AgentAuth
 from auths.devices import Device, DeviceService
 from auths.identity import Agent, Identity, IdentityService
+from auths.verify import WitnessConfig, WitnessKey
 from auths.git import (
     CommitResult,
     ErrorCode,
@@ -77,4 +78,6 @@ __all__ = [
     "IdentityService",
     "Device",
     "DeviceService",
+    "WitnessConfig",
+    "WitnessKey",
 ]

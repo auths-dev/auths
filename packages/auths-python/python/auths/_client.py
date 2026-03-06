@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import json
+
 from auths._native import (
     get_token as _get_token,
     sign_action as _sign_action,
@@ -13,12 +15,14 @@ from auths._native import (
     verify_attestation_with_capability as _verify_attestation_with_capability,
     verify_chain as _verify_chain,
     verify_chain_with_capability as _verify_chain_with_capability,
+    verify_chain_with_witnesses as _verify_chain_with_witnesses,
     verify_device_authorization as _verify_device_authorization,
 )
 from auths._errors import CryptoError, NetworkError, VerificationError
 
 if TYPE_CHECKING:
     from auths._native import VerificationReport, VerificationResult
+    from auths.verify import WitnessConfig
 
 
 def _map_verify_error(exc: Exception) -> Exception:
@@ -109,18 +113,29 @@ class Auths:
         attestations: list[str],
         root_key: str,
         required_capability: str | None = None,
+        witnesses: WitnessConfig | None = None,
     ) -> VerificationReport:
-        """Verify an attestation chain, optionally checking a required capability.
+        """Verify an attestation chain, optionally with witness quorum.
 
         Args:
-            attestations: List of attestation JSON strings.
+            attestations: List of attestation JSON strings, ordered root-to-leaf.
             root_key: Root identity's public key hex.
             required_capability: If set, verify the chain grants this capability.
+            witnesses: If set, enforces witness receipt quorum.
 
         Usage:
-            result = auths.verify_chain(chain, root_key, required_capability="deploy")
+            report = auths.verify_chain(chain, root_key, witnesses=config)
         """
         try:
+            if witnesses:
+                keys_json = [
+                    json.dumps({"did": k.did, "public_key_hex": k.public_key_hex})
+                    for k in witnesses.keys
+                ]
+                return _verify_chain_with_witnesses(
+                    attestations, root_key,
+                    witnesses.receipts, keys_json, witnesses.threshold,
+                )
             if required_capability:
                 return _verify_chain_with_capability(
                     attestations, root_key, required_capability

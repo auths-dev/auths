@@ -4,9 +4,11 @@ use auths_verifier::verify::{
     verify_at_time as rust_verify_at_time,
     verify_chain as rust_verify_chain,
     verify_chain_with_capability as rust_verify_chain_with_capability,
+    verify_chain_with_witnesses as rust_verify_chain_with_witnesses,
     verify_device_authorization as rust_verify_device_authorization,
     verify_with_capability as rust_verify_with_capability, verify_with_keys,
 };
+use auths_verifier::witness::{WitnessReceipt, WitnessVerifyConfig};
 use chrono::{DateTime, Utc};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -424,5 +426,106 @@ pub fn verify_at_time_with_capability(
             valid: false,
             error: Some(e.to_string()),
         }),
+    })
+}
+
+/// Verify a chain of attestations with witness receipt quorum enforcement.
+///
+/// Args:
+/// * `attestations_json`: List of attestation JSON strings.
+/// * `root_pk_hex`: The root identity's Ed25519 public key in hex format.
+/// * `receipts_json`: List of JSON-serialized witness receipt objects.
+/// * `witness_keys_json`: List of JSON objects with `{"did": "...", "public_key_hex": "..."}`.
+/// * `threshold`: Minimum number of valid receipts required.
+///
+/// Usage:
+/// ```ignore
+/// let report = verify_chain_with_witnesses(py, vec!["...".into()], "ab12...", vec![], vec![], 2)?;
+/// ```
+#[pyfunction]
+pub fn verify_chain_with_witnesses(
+    py: Python<'_>,
+    attestations_json: Vec<String>,
+    root_pk_hex: &str,
+    receipts_json: Vec<String>,
+    witness_keys_json: Vec<String>,
+    threshold: usize,
+) -> PyResult<VerificationReport> {
+    let total: usize = attestations_json.iter().map(|s| s.len()).sum();
+    if total > MAX_JSON_BATCH_SIZE {
+        return Err(PyValueError::new_err(format!(
+            "Total attestation JSON too large: {total} bytes, max {MAX_JSON_BATCH_SIZE}",
+        )));
+    }
+
+    let root_pk_bytes = hex::decode(root_pk_hex)
+        .map_err(|e| PyValueError::new_err(format!("Invalid root public key hex: {e}")))?;
+
+    if root_pk_bytes.len() != 32 {
+        return Err(PyValueError::new_err(format!(
+            "Invalid root public key length: expected 32 bytes (64 hex chars), got {}",
+            root_pk_bytes.len()
+        )));
+    }
+
+    let attestations: Vec<Attestation> = attestations_json
+        .iter()
+        .enumerate()
+        .map(|(i, json)| {
+            serde_json::from_str(json)
+                .map_err(|e| PyValueError::new_err(format!("Failed to parse attestation {i}: {e}")))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let receipts: Vec<WitnessReceipt> = receipts_json
+        .iter()
+        .enumerate()
+        .map(|(i, json)| {
+            serde_json::from_str(json)
+                .map_err(|e| PyValueError::new_err(format!("Failed to parse witness receipt {i}: {e}")))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    #[derive(serde::Deserialize)]
+    struct WitnessKeyInput {
+        did: String,
+        public_key_hex: String,
+    }
+
+    let witness_keys: Vec<(String, Vec<u8>)> = witness_keys_json
+        .iter()
+        .enumerate()
+        .map(|(i, json)| {
+            let input: WitnessKeyInput = serde_json::from_str(json)
+                .map_err(|e| PyValueError::new_err(format!("Failed to parse witness key {i}: {e}")))?;
+            let pk_bytes = hex::decode(&input.public_key_hex)
+                .map_err(|e| PyValueError::new_err(format!("Invalid witness key {i} hex: {e}")))?;
+            if pk_bytes.len() != 32 {
+                return Err(PyValueError::new_err(format!(
+                    "Invalid witness key {i} length: expected 32 bytes, got {}",
+                    pk_bytes.len()
+                )));
+            }
+            Ok((input.did, pk_bytes))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let config = WitnessVerifyConfig {
+        receipts: &receipts,
+        witness_keys: &witness_keys,
+        threshold,
+    };
+
+    py.allow_threads(|| {
+        match runtime().block_on(rust_verify_chain_with_witnesses(
+            &attestations,
+            &root_pk_bytes,
+            &config,
+        )) {
+            Ok(report) => Ok(report.into()),
+            Err(e) => Err(PyRuntimeError::new_err(format!(
+                "Chain verification with witnesses failed: {e}"
+            ))),
+        }
     })
 }
