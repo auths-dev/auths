@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added (fn-24: Unified Python SDK)
+### Added (Unified Python SDK)
 
 - **`auths-python`: Unified Python SDK package** — consolidated `auths-verifier-python` and `auths-agent-python` into a single `packages/auths-python` crate. Shared FFI runtime, module registration, and type definitions in `src/runtime.rs` and `src/types.rs`.
 - **`auths-python`: `Auths` client class** — Stripe-style client with `repo_path` and `passphrase` constructor, resource services (`auths.identities`, `auths.devices`), and typed error hierarchy (`AuthsError`, `CryptoError`, `KeychainError`, `StorageError`, `NetworkError`, `IdentityError`, `VerificationError`).
@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`auths-python`: Capability-scoped verification** — `verify_attestation_with_capability` and `verify_chain_with_capability` FFI functions. Python wrappers on the `Auths` client.
 - **`auths-python`: Getting Started README** — quickstart example covering identity creation, device linking, signing, and verification.
 
-### Added (fn-25: Python SDK Advanced Lifecycle)
+### Added (Python SDK Advanced Lifecycle)
 
 - **`auths-python`: Time-pinned verification** — `verify_at_time` and `verify_at_time_with_capability` FFI functions accept an ISO 8601 timestamp string, enabling "was this valid at time T?" queries for audit and compliance.
 - **`auths-python`: Witness chain verification** — `verify_chain_with_witnesses` FFI function accepts witness receipts, threshold, and public keys for k-of-n quorum verification.
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`auths-python`: Policy engine** — `compile_policy` FFI function, `PyCompiledPolicy` and `PyEvalContext` classes. `PolicyBuilder` fluent API for constructing policies in Python.
 - **`auths-python`: JWT validation** — `AuthsClaims` dataclass and JWKS client helper for validating Auths-issued JWTs.
 
-### Changed (fn-25: Semantic Naming Consistency)
+### Changed (Semantic Naming Consistency)
 
 - **`auths-sdk`: Identity creation function renames** — `setup_developer()` → `create_developer_identity()`, `quick_setup()` → `create_developer_identity_quick()`, `setup_ci()` → `create_ci_identity()`, `setup_agent()` → `create_agent_identity()`, `build_agent_proposal()` → `build_agent_identity_proposal()`. Naming now conveys identity lifecycle semantics ("create" = inception) rather than generic "setup".
 - **`auths-sdk`: Config type renames** — `DeveloperSetupConfig` → `CreateDeveloperIdentityConfig`, `CiSetupConfig` → `CreateCiIdentityConfig`, `AgentSetupConfig` → `CreateAgentIdentityConfig` (with corresponding builder renames).
