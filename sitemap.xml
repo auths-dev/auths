@@ -2,282 +2,282 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://docs.auths.dev/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/AGENT_PROVISIONING/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/rip-x-multi-device-identity/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/attestation-format/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/cryptography/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/git-as-storage/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/identity-model/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/oidc-bridge/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/overview/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/crates/auths-core/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/crates/auths-id/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/crates/auths-sdk/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/architecture/crates/auths-verifier/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/cli/configuration/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/cli/commands/advanced/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/cli/commands/primary/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/cloud-ci/telemetry/schema/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/contributing/architecture-decisions/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/contributing/coding-standards/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/contributing/development-setup/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/contributing/glossary/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/contributing/project-structure/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/contributing/pull-request-process/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/contributing/release-process/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/contributing/testing-guide/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/getting-started/delegation/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/getting-started/how-it-works/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/getting-started/identity-lifecycle/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/getting-started/install/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/getting-started/sharing-your-identity/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/getting-started/signing-commits/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/getting-started/trust-model/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/getting-started/your-first-identity/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/advanced/custom-policies/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/advanced/wasm-verification/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/git/signing-configuration/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/git/team-workflows/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/git/verifying-commits/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/identity/backup-and-recovery/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/identity/key-rotation/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/identity/multi-device/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/identity/profiles/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/platforms/ci-cd/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/platforms/github-claims/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/guides/platforms/radicle/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/NITS_focus/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/agent_launch/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/authsec_competition/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/dependency-architecture-refactor/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/frontend_identity_unification/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/full_radicle_integration/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/keri_improvement/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/radicle_cleanup/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/radicle_integration/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/typing_improvement/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/v1_launch/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/v2_launch/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/plans/vision/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/crate-index/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/rust/error-handling/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/rust/identity-operations/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/rust/overview/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/rust/quickstart/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/rust/signing-and-verification/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/rust/storage-backends/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/verifier/ffi/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/verifier/python/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/verifier/wasm/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/smoketests/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/smoketests/learnings/</loc>
-         <lastmod>2026-03-05</lastmod>
+         <lastmod>2026-03-06</lastmod>
     </url>
 </urlset>
