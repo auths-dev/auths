@@ -1,8 +1,11 @@
-"""Tests for artifact attestation signing (fn-25.6)."""
+"""Tests for artifact attestation signing and publishing."""
+
+from unittest.mock import MagicMock
 
 import pytest
 
-from auths import ArtifactSigningResult
+from auths import ArtifactPublishResult, ArtifactSigningResult
+from auths.artifact import ArtifactPublishResult as ArtifactPublishFromModule
 from auths.artifact import ArtifactSigningResult as ArtifactFromModule
 
 
@@ -71,3 +74,110 @@ class TestImports:
         from auths._native import sign_artifact
         with pytest.raises(FileNotFoundError, match="not found"):
             sign_artifact("/nonexistent/path/file.bin", "main", "/tmp", None, None, None)
+
+
+class TestArtifactPublishResult:
+
+    def test_fields(self):
+        r = ArtifactPublishResult(
+            attestation_rid="rid-abc",
+            package_name="npm:react@18.3.0",
+            signer_did="did:keri:abc",
+        )
+        assert r.attestation_rid == "rid-abc"
+        assert r.package_name == "npm:react@18.3.0"
+        assert r.signer_did == "did:keri:abc"
+
+    def test_package_name_none(self):
+        r = ArtifactPublishResult(attestation_rid="x", package_name=None, signer_did="y")
+        assert r.package_name is None
+
+    def test_repr_truncates_long_rid(self):
+        long_rid = "a" * 60
+        r = ArtifactPublishResult(attestation_rid=long_rid, package_name=None, signer_did="did:keri:z")
+        assert len(repr(r)) < len(long_rid) + 40
+        assert "..." in repr(r)
+
+    def test_repr_with_package(self):
+        r = ArtifactPublishResult(attestation_rid="rid", package_name="npm:x", signer_did="did:keri:abc")
+        assert "npm:x" in repr(r)
+
+    def test_repr_without_package(self):
+        r = ArtifactPublishResult(attestation_rid="rid", package_name=None, signer_did="did:keri:abc")
+        assert "pkg" not in repr(r)
+
+    def test_top_level_export(self):
+        assert ArtifactPublishResult is ArtifactPublishFromModule
+
+
+class TestPublishArtifactNative:
+
+    def test_import(self):
+        from auths._native import publish_artifact  # noqa: F401
+
+    def test_invalid_json_raises(self):
+        from auths._native import publish_artifact
+        with pytest.raises((ValueError, RuntimeError)):
+            publish_artifact("not-json", "http://localhost", None)
+
+    def test_unreachable_host_raises(self):
+        from auths._native import publish_artifact
+        with pytest.raises((RuntimeError, OSError, ConnectionError)):
+            publish_artifact('{"attestation":"x"}', "http://127.0.0.1:1", None)
+
+
+class TestPublishArtifactClient:
+
+    def test_method_exists(self):
+        from auths import Auths
+        assert hasattr(Auths, "publish_artifact")
+
+    def test_returns_result_type(self, monkeypatch):
+        import auths._native as native
+        mock_raw = MagicMock()
+        mock_raw.attestation_rid = "rid-1"
+        mock_raw.package_name = "npm:foo"
+        mock_raw.signer_did = "did:keri:abc"
+        monkeypatch.setattr(native, "publish_artifact", lambda *_: mock_raw)
+        from auths import Auths
+        result = Auths().publish_artifact('{"a":1}', registry_url="http://x")
+        assert isinstance(result, ArtifactPublishResult)
+        assert result.attestation_rid == "rid-1"
+
+    def test_duplicate_raises_storage_error(self, monkeypatch):
+        import auths._native as native
+
+        def _raise(*_):
+            raise RuntimeError("duplicate_attestation: artifact attestation already published (duplicate RID)")
+
+        monkeypatch.setattr(native, "publish_artifact", _raise)
+        from auths import Auths
+        from auths._errors import StorageError
+        with pytest.raises(StorageError) as exc_info:
+            Auths().publish_artifact('{"a":1}', registry_url="http://x")
+        assert exc_info.value.code == "duplicate_attestation"
+
+    def test_verification_failed_raises_verification_error(self, monkeypatch):
+        import auths._native as native
+
+        def _raise(*_):
+            raise RuntimeError("verification_failed: signature rejected by registry")
+
+        monkeypatch.setattr(native, "publish_artifact", _raise)
+        from auths import Auths
+        from auths._errors import VerificationError
+        with pytest.raises(VerificationError) as exc_info:
+            Auths().publish_artifact('{"a":1}', registry_url="http://x")
+        assert exc_info.value.code == "verification_failed"
+
+    def test_network_error_raises_network_error(self, monkeypatch):
+        import auths._native as native
+
+        def _raise(*_):
+            raise RuntimeError("registry unreachable: connection refused")
+
+        monkeypatch.setattr(native, "publish_artifact", _raise)
+        from auths import Auths
+        from auths._errors import NetworkError
+        with pytest.raises(NetworkError):
+            Auths().publish_artifact('{"a":1}', registry_url="http://x")
