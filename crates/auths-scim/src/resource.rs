@@ -46,7 +46,7 @@ fn default_active() -> bool {
 ///
 /// All fields default for deserialization since clients omit `meta` on POST.
 /// The server always overwrites these with authoritative values.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ScimMeta {
     pub resource_type: String,
@@ -54,18 +54,6 @@ pub struct ScimMeta {
     pub last_modified: DateTime<Utc>,
     pub version: String,
     pub location: String,
-}
-
-impl Default for ScimMeta {
-    fn default() -> Self {
-        Self {
-            resource_type: String::new(),
-            created: DateTime::default(),
-            last_modified: DateTime::default(),
-            version: String::new(),
-            location: String::new(),
-        }
-    }
 }
 
 /// Auths-specific SCIM extension attributes.

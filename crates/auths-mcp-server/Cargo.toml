@@ -20,7 +20,7 @@ name = "auths_mcp_server"
 path = "src/lib.rs"
 
 [dependencies]
-auths-oidc-bridge.workspace = true
+auths-jwt.workspace = true
 auths-telemetry.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
 

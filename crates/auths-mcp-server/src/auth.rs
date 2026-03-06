@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use auths_oidc_bridge::token::OidcClaims;
+use auths_jwt::OidcClaims;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 
 use crate::error::McpServerError;
