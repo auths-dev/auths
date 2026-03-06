@@ -325,8 +325,7 @@ pub fn delegate_agent(
         .attestation_sink(attestation_storage.clone())
         .attestation_source(attestation_storage.clone())
         .passphrase_provider(provider)
-        .build()
-        .map_err(|e| PyRuntimeError::new_err(format!("Context build failed: {e}")))?;
+        .build();
 
     py.allow_threads(|| {
         let result = link_device(link_config, &ctx, clock.as_ref())
@@ -420,8 +419,7 @@ pub fn link_device_to_identity(
         .attestation_sink(attestation_storage.clone())
         .attestation_source(attestation_storage)
         .passphrase_provider(provider)
-        .build()
-        .map_err(|e| PyRuntimeError::new_err(format!("Context build failed: {e}")))?;
+        .build();
 
     py.allow_threads(|| {
         let result = link_device(link_config, &ctx, clock.as_ref())
@@ -482,8 +480,7 @@ pub fn revoke_device_from_identity(
         .attestation_sink(attestation_storage.clone())
         .attestation_source(attestation_storage)
         .passphrase_provider(provider)
-        .build()
-        .map_err(|e| PyRuntimeError::new_err(format!("Context build failed: {e}")))?;
+        .build();
 
     py.allow_threads(|| {
         revoke_device(device_did, &alias, &ctx, note, clock.as_ref())

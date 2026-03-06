@@ -4,7 +4,7 @@ use std::sync::Arc;
 use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{get_platform_keychain_with_config, KeyAlias};
 use auths_sdk::context::AuthsContext;
-use auths_sdk::device::extend_device_authorization;
+use auths_sdk::device::extend_device;
 use auths_sdk::types::DeviceExtensionConfig;
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
@@ -102,17 +102,16 @@ pub fn extend_device_authorization_ffi(
         .attestation_sink(attestation_storage.clone())
         .attestation_source(attestation_storage)
         .passphrase_provider(provider)
-        .build()
-        .map_err(|e| PyRuntimeError::new_err(format!("Context build failed: {e}")))?;
+        .build();
 
     py.allow_threads(|| {
-        let result = extend_device_authorization(ext_config, &ctx, clock.as_ref())
+        let result = extend_device(ext_config, &ctx, clock.as_ref())
             .map_err(|e| PyRuntimeError::new_err(format!("Device extension failed: {e}")))?;
 
         Ok(PyDeviceExtension {
             device_did: result.device_did.to_string(),
             new_expires_at: result.new_expires_at.to_rfc3339(),
-            previous_expires_at: result.previous_expires_at.map(|t| t.to_rfc3339()),
+            previous_expires_at: result.previous_expires_at.map(|t: chrono::DateTime<chrono::Utc>| t.to_rfc3339()),
         })
     })
 }

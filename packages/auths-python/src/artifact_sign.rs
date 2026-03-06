@@ -6,7 +6,7 @@ use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{get_platform_keychain_with_config, KeyAlias};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
-use auths_sdk::signing::{sign_artifact_attestation, ArtifactSigningParams, SigningKeyMaterial};
+use auths_sdk::signing::{sign_artifact as sdk_sign_artifact, ArtifactSigningParams, SigningKeyMaterial};
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
@@ -159,8 +159,7 @@ fn build_context_and_sign(
         .attestation_sink(attestation_storage.clone())
         .attestation_source(attestation_storage)
         .passphrase_provider(provider)
-        .build()
-        .map_err(|e| PyRuntimeError::new_err(format!("Context build failed: {e}")))?;
+        .build();
 
     let file_size = artifact
         .metadata()
@@ -175,7 +174,7 @@ fn build_context_and_sign(
         note,
     };
 
-    let result = sign_artifact_attestation(params, &ctx)
+    let result = sdk_sign_artifact(params, &ctx)
         .map_err(|e| PyRuntimeError::new_err(format!("Artifact signing failed: {e}")))?;
 
     Ok(PyArtifactResult {

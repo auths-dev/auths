@@ -88,8 +88,7 @@ pub fn rotate_identity_ffi(
         .attestation_sink(attestation_storage.clone())
         .attestation_source(attestation_storage)
         .passphrase_provider(provider)
-        .build()
-        .map_err(|e| PyRuntimeError::new_err(format!("Context build failed: {e}")))?;
+        .build();
 
     let alias = identity_key_alias
         .map(|a| {
