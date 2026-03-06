@@ -1,5 +1,6 @@
 use anyhow::Error;
 use auths_core::error::{AgentError, AuthsErrorInfo as CoreErrorInfo};
+use auths_sdk::error::{DeviceError, SetupError};
 use auths_sdk::signing::SigningError;
 use auths_verifier::{AttestationError, AuthsErrorInfo as VerifierErrorInfo};
 use colored::Colorize;
@@ -82,6 +83,28 @@ fn render_text(err: &Error) {
         if let Some(url) = docs_url(code) {
             eprintln!("  docs: {url}");
         }
+    } else if let Some(setup_err) = err.downcast_ref::<SetupError>() {
+        let code = CoreErrorInfo::error_code(setup_err);
+        let message = format!("{setup_err}");
+        out.print_error(&out.bold(&message));
+        eprintln!();
+        if let Some(suggestion) = CoreErrorInfo::suggestion(setup_err) {
+            eprintln!("  fix:  {suggestion}");
+        }
+        if let Some(url) = docs_url(code) {
+            eprintln!("  docs: {url}");
+        }
+    } else if let Some(device_err) = err.downcast_ref::<DeviceError>() {
+        let code = CoreErrorInfo::error_code(device_err);
+        let message = format!("{device_err}");
+        out.print_error(&out.bold(&message));
+        eprintln!();
+        if let Some(suggestion) = CoreErrorInfo::suggestion(device_err) {
+            eprintln!("  fix:  {suggestion}");
+        }
+        if let Some(url) = docs_url(code) {
+            eprintln!("  docs: {url}");
+        }
     } else {
         // Fallback for generic anyhow::Error
         let msg = err.to_string();
@@ -146,6 +169,22 @@ fn render_json(err: &Error) {
             Some(code),
             &format!("{att_err}"),
             VerifierErrorInfo::suggestion(att_err),
+            docs_url(code),
+        )
+    } else if let Some(setup_err) = err.downcast_ref::<SetupError>() {
+        let code = CoreErrorInfo::error_code(setup_err);
+        build_json(
+            Some(code),
+            &format!("{setup_err}"),
+            CoreErrorInfo::suggestion(setup_err),
+            docs_url(code),
+        )
+    } else if let Some(device_err) = err.downcast_ref::<DeviceError>() {
+        let code = CoreErrorInfo::error_code(device_err);
+        build_json(
+            Some(code),
+            &format!("{device_err}"),
+            CoreErrorInfo::suggestion(device_err),
             docs_url(code),
         )
     } else {

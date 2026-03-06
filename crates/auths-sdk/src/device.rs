@@ -16,7 +16,7 @@ use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
 use crate::context::AuthsContext;
-use crate::error::{DeviceError, DeviceExtensionError, SdkStorageError};
+use crate::error::{DeviceError, DeviceExtensionError};
 use crate::result::{DeviceExtensionResult, DeviceLinkResult};
 use crate::types::{DeviceExtensionConfig, DeviceLinkConfig};
 
@@ -145,11 +145,7 @@ pub fn revoke_device(
 
     ctx.attestation_sink
         .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(revocation))
-        .map_err(|e| {
-            DeviceError::StorageError(SdkStorageError::OperationFailed(format!(
-                "failed to save revocation: {e}"
-            )))
-        })?;
+        .map_err(|e| DeviceError::StorageError(e.into()))?;
 
     Ok(())
 }
@@ -183,7 +179,7 @@ pub fn extend_device_authorization(
     let group = AttestationGroup::from_list(
         ctx.attestation_source
             .load_all_attestations()
-            .map_err(|e| DeviceExtensionError::StorageError(e.to_string()))?,
+            .map_err(|e| DeviceExtensionError::StorageError(e.into()))?,
     );
 
     let device_did_obj = DeviceDID(config.device_did.clone());
@@ -230,7 +226,7 @@ pub fn extend_device_authorization(
 
     ctx.attestation_sink
         .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(extended.clone()))
-        .map_err(|e| DeviceExtensionError::StorageError(e.to_string()))?;
+        .map_err(|e| DeviceExtensionError::StorageError(e.into()))?;
 
     ctx.attestation_sink.sync_index(&extended);
 
@@ -273,7 +269,7 @@ fn extract_device_key(
         alias,
         passphrase_provider,
     )
-    .map_err(|e| DeviceError::StorageError(SdkStorageError::OperationFailed(e.to_string())))?;
+    .map_err(DeviceError::CryptoError)?;
 
     let device_did = DeviceDID::from_ed25519(pk_bytes.as_slice().try_into().map_err(|_| {
         DeviceError::CryptoError(auths_core::AgentError::InvalidInput(
@@ -323,11 +319,7 @@ fn sign_and_persist_attestation(
 
     attestation_sink
         .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
-        .map_err(|e| {
-            DeviceError::StorageError(SdkStorageError::OperationFailed(format!(
-                "failed to save attestation: {e}"
-            )))
-        })?;
+        .map_err(|e| DeviceError::StorageError(e.into()))?;
 
     Ok(attestation_rid)
 }
@@ -336,11 +328,9 @@ fn find_device_public_key(
     attestation_source: &dyn AttestationSource,
     device_did: &str,
 ) -> Result<Ed25519PublicKey, DeviceError> {
-    let attestations = attestation_source.load_all_attestations().map_err(|e| {
-        DeviceError::StorageError(SdkStorageError::OperationFailed(format!(
-            "failed to load attestations: {e}"
-        )))
-    })?;
+    let attestations = attestation_source
+        .load_all_attestations()
+        .map_err(|e| DeviceError::StorageError(e.into()))?;
 
     for att in &attestations {
         if att.subject.as_str() == device_did {

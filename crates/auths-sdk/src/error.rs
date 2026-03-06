@@ -1,18 +1,35 @@
+use auths_core::error::AuthsErrorInfo;
 use thiserror::Error;
 
-/// Wrapper for storage errors originating from `auths-id` traits.
-/// Preserves the full error display string from the underlying storage layer.
+/// Typed storage errors originating from the `auths-id` layer.
 ///
 /// Usage:
 /// ```ignore
 /// storage.save(data)
-///     .map_err(|e| SetupError::StorageError(SdkStorageError::OperationFailed(e.to_string())))?;
+///     .map_err(|e| SetupError::StorageError(e.into()))?;
 /// ```
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum SdkStorageError {
-    /// A storage operation failed with the given message.
-    #[error("storage operation failed: {0}")]
-    OperationFailed(String),
+    /// Identity or attestation storage operation failed (identity layer).
+    #[error(transparent)]
+    Identity(#[from] auths_id::error::StorageError),
+
+    /// Identity initialization failed.
+    #[error(transparent)]
+    Init(#[from] auths_id::error::InitError),
+
+    /// Agent provisioning failed.
+    #[error(transparent)]
+    AgentProvisioning(#[from] auths_id::agent_identity::AgentProvisioningError),
+
+    /// Driver-level storage operation failed.
+    #[error(transparent)]
+    Driver(#[from] auths_id::storage::StorageError),
+
+    /// Attestation creation failed.
+    #[error(transparent)]
+    Attestation(#[from] auths_verifier::error::AttestationError),
 }
 
 /// Errors from identity setup operations (developer, CI, agent).
@@ -142,7 +159,7 @@ pub enum DeviceExtensionError {
 
     /// A storage operation failed.
     #[error("storage error: {0}")]
-    StorageError(String),
+    StorageError(#[source] SdkStorageError),
 }
 
 /// Errors from identity rotation operations.
@@ -244,6 +261,60 @@ impl From<auths_core::ports::network::NetworkError> for RegistrationError {
     }
 }
 
+impl AuthsErrorInfo for SetupError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::IdentityAlreadyExists { .. } => "AUTHS_IDENTITY_ALREADY_EXISTS",
+            Self::KeychainUnavailable { .. } => "AUTHS_KEYCHAIN_UNAVAILABLE",
+            Self::CryptoError(e) => e.error_code(),
+            Self::StorageError(_) => "AUTHS_SETUP_STORAGE_ERROR",
+            Self::GitConfigError(_) => "AUTHS_GIT_CONFIG_ERROR",
+            Self::RegistrationFailed(_) => "AUTHS_REGISTRATION_FAILED",
+            Self::PlatformVerificationFailed(_) => "AUTHS_PLATFORM_VERIFICATION_FAILED",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::IdentityAlreadyExists { .. } => {
+                Some("Use `auths id show` to inspect the existing identity")
+            }
+            Self::KeychainUnavailable { .. } => {
+                Some("Run `auths doctor` to diagnose keychain issues")
+            }
+            Self::CryptoError(e) => e.suggestion(),
+            Self::StorageError(_) => Some("Check file permissions and disk space"),
+            Self::GitConfigError(_) => {
+                Some("Ensure Git is configured: git config --global user.name/email")
+            }
+            Self::RegistrationFailed(_) => Some("Check network connectivity and try again"),
+            Self::PlatformVerificationFailed(_) => None,
+        }
+    }
+}
+
+impl AuthsErrorInfo for DeviceError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::IdentityNotFound { .. } => "AUTHS_IDENTITY_NOT_FOUND",
+            Self::DeviceNotFound { .. } => "AUTHS_DEVICE_NOT_FOUND",
+            Self::AttestationError(_) => "AUTHS_ATTESTATION_ERROR",
+            Self::CryptoError(e) => e.error_code(),
+            Self::StorageError(_) => "AUTHS_DEVICE_STORAGE_ERROR",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::IdentityNotFound { .. } => Some("Run `auths init` to create an identity first"),
+            Self::DeviceNotFound { .. } => Some("Run `auths device list` to see linked devices"),
+            Self::AttestationError(_) => None,
+            Self::CryptoError(e) => e.suggestion(),
+            Self::StorageError(_) => Some("Check file permissions and disk space"),
+        }
+    }
+}
+
 /// Errors from MCP token exchange operations.
 ///
 /// Usage:
@@ -339,6 +410,8 @@ pub enum OrgError {
     #[error("invalid public key: {0}")]
     InvalidPublicKey(String),
 
+    // TECH-DEBT(fn-33): migrate Storage(String) to typed SdkStorageError variant
+    // (call sites in workflows/org.rs, not in the fn-33.1 scope)
     /// A storage operation failed.
     #[error("storage error: {0}")]
     Storage(String),
@@ -381,6 +454,7 @@ pub enum ApprovalError {
     #[error("approval partially applied — attestation stored but nonce/cleanup failed: {0}")]
     PartialApproval(String),
 
+    // TECH-DEBT(fn-33): migrate ApprovalStorage(String) to typed SdkStorageError variant
     /// A storage operation failed.
     #[error("storage error: {0}")]
     ApprovalStorage(String),

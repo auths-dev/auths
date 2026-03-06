@@ -11,7 +11,7 @@ use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
 use crate::context::AuthsContext;
-use crate::error::{SdkStorageError, SetupError};
+use crate::error::SetupError;
 use crate::ports::git_config::GitConfigProvider;
 use crate::result::{
     CreateAgentIdentityResult, CreateCiIdentityResult, CreateIdentityResult, PlatformClaimResult,
@@ -143,20 +143,12 @@ fn derive_keys(
         keychain,
         config.witness_config.as_ref(),
     )
-    .map_err(|e| {
-        SetupError::StorageError(SdkStorageError::OperationFailed(format!(
-            "failed to initialize identity: {e}"
-        )))
-    })?;
+    .map_err(|e| SetupError::StorageError(e.into()))?;
 
     let did_str = controller_did.into_inner();
     ctx.identity_storage
         .create_identity(&did_str, None)
-        .map_err(|e| {
-            SetupError::StorageError(SdkStorageError::OperationFailed(format!(
-                "failed to persist identity: {e}"
-            )))
-        })?;
+        .map_err(|e| SetupError::StorageError(e.into()))?;
 
     Ok((did_str, config.key_alias.clone()))
 }
@@ -189,11 +181,10 @@ fn bind_device(
     passphrase_provider: &dyn PassphraseProvider,
     now: DateTime<Utc>,
 ) -> Result<DeviceDID, SetupError> {
-    let managed = ctx.identity_storage.load_identity().map_err(|e| {
-        SetupError::StorageError(SdkStorageError::OperationFailed(format!(
-            "failed to load identity for device linking: {e}"
-        )))
-    })?;
+    let managed = ctx
+        .identity_storage
+        .load_identity()
+        .map_err(|e| SetupError::StorageError(e.into()))?;
 
     let pk_bytes = auths_core::storage::keychain::extract_public_key_bytes(
         keychain,
@@ -229,19 +220,11 @@ fn bind_device(
         None,
         None,
     )
-    .map_err(|e| {
-        SetupError::StorageError(SdkStorageError::OperationFailed(format!(
-            "attestation creation failed: {e}"
-        )))
-    })?;
+    .map_err(|e| SetupError::StorageError(e.into()))?;
 
     ctx.attestation_sink
         .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
-        .map_err(|e| {
-            SetupError::StorageError(SdkStorageError::OperationFailed(format!(
-                "failed to save device attestation: {e}"
-            )))
-        })?;
+        .map_err(|e| SetupError::StorageError(e.into()))?;
 
     Ok(device_did)
 }
@@ -355,11 +338,7 @@ fn initialize_ci_keys(
         keychain,
         None,
     )
-    .map_err(|e| {
-        SetupError::StorageError(SdkStorageError::OperationFailed(format!(
-            "failed to initialize CI identity: {e}"
-        )))
-    })?;
+    .map_err(|e| SetupError::StorageError(e.into()))?;
 
     Ok((controller_did.into_inner(), key_alias))
 }
@@ -467,11 +446,7 @@ pub fn create_agent_identity(
             passphrase_provider,
             keychain,
         )
-        .map_err(|e| {
-            SetupError::StorageError(SdkStorageError::OperationFailed(format!(
-                "agent provisioning failed: {e}"
-            )))
-        })?;
+        .map_err(|e| SetupError::StorageError(e.into()))?;
 
         return Ok(CreateAgentIdentityResult {
             agent_did: bundle.agent_did,

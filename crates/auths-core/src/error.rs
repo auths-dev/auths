@@ -241,6 +241,31 @@ pub enum TrustError {
     PolicyRejected(String),
 }
 
+impl AuthsErrorInfo for TrustError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Io(_) => "AUTHS_TRUST_IO_ERROR",
+            Self::InvalidData(_) => "AUTHS_TRUST_INVALID_DATA",
+            Self::NotFound(_) => "AUTHS_TRUST_NOT_FOUND",
+            Self::Serialization(_) => "AUTHS_TRUST_SERIALIZATION_ERROR",
+            Self::AlreadyExists(_) => "AUTHS_TRUST_ALREADY_EXISTS",
+            Self::Lock(_) => "AUTHS_TRUST_LOCK_FAILED",
+            Self::PolicyRejected(_) => "AUTHS_TRUST_POLICY_REJECTED",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::NotFound(_) => Some("Run `auths trust list` to see pinned identities"),
+            Self::PolicyRejected(_) => Some("Run `auths trust add` to pin this identity"),
+            Self::Lock(_) => Some("Check file permissions and try again"),
+            Self::Io(_) => Some("Check disk space and file permissions"),
+            Self::AlreadyExists(_) => Some("Run `auths trust list` to see existing entries"),
+            Self::InvalidData(_) | Self::Serialization(_) => None,
+        }
+    }
+}
+
 impl From<AgentError> for ssh_agent_lib::error::AgentError {
     fn from(err: AgentError) -> Self {
         match err {
