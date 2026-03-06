@@ -199,7 +199,9 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
             Ok(_) => VERIFY_SUCCESS,
             Err(e) => {
                 error!("FFI verify failed: Verification logic error: {}", e);
-                // Map AttestationError to C error codes
+                // TECH-DEBT(fn-33): error code mapping couples to message text —
+                // if AttestationError message strings change, these codes break silently.
+                // Fix: add a structured variant or error_code() method to AttestationError.
                 match e {
                     AttestationError::VerificationError(msg) => {
                         let lower_msg = msg.to_lowercase();
