@@ -527,8 +527,8 @@ pub struct DeviceExtensionConfig {
     pub days: u32,
     /// Keychain alias for the identity signing key.
     pub identity_key_alias: KeyAlias,
-    /// Keychain alias for the device signing key.
-    pub device_key_alias: KeyAlias,
+    /// Keychain alias for the device signing key (pass `None` to skip device co-signing).
+    pub device_key_alias: Option<KeyAlias>,
 }
 
 /// Configuration for rotating an identity's signing keys.

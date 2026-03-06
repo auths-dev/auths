@@ -87,7 +87,7 @@ fn extend_device_authorization_updates_expiry() {
         device_did: device_did.clone(),
         days: 365,
         identity_key_alias: key_alias.clone(),
-        device_key_alias: KeyAlias::new_unchecked("device-key"),
+        device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
     };
 
     let result = extend_device_authorization(config, &ctx, &SystemClock).unwrap();
@@ -122,7 +122,7 @@ fn extend_device_authorization_nonexistent_device_returns_error() {
         device_did: "did:key:zDoesNotExist".to_string(),
         days: 30,
         identity_key_alias: key_alias,
-        device_key_alias: KeyAlias::new_unchecked("device-key"),
+        device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
     };
 
     let result = extend_device_authorization(config, &ctx, &SystemClock);

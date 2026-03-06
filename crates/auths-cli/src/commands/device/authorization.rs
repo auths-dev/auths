@@ -417,7 +417,7 @@ fn handle_extend(
         device_did: device_did.to_string(),
         days: days as u32,
         identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
-        device_key_alias: KeyAlias::new_unchecked(device_key_alias),
+        device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
     };
     let ctx = build_device_context(repo_path, env_config, Some(passphrase_provider))?;
 

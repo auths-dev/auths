@@ -129,8 +129,15 @@ class Device:
     did: str
     attestation_id: str
 
+@dataclass
+class DeviceExtension:
+    device_did: str
+    new_expires_at: str
+    previous_expires_at: str | None
+
 class DeviceService:
     def link(self, identity_did: str, capabilities: list[str] | None = None, expires_in_days: int | None = None, passphrase: str | None = None) -> Device: ...
+    def extend(self, device_did: str, identity_did: str, *, days: int = 90, passphrase: str | None = None) -> DeviceExtension: ...
     def revoke(self, device_did: str, identity_did: str, note: str | None = None, passphrase: str | None = None) -> None: ...
 
 # -- Agent --

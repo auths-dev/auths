@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from auths._native import (
+    extend_device_authorization_ffi as _extend_device,
     link_device_to_identity as _link_device,
     revoke_device_from_identity as _revoke_device,
 )
@@ -20,6 +21,21 @@ class Device:
 
     did: str
     attestation_id: str
+
+
+@dataclass
+class DeviceExtension:
+    """Result of extending a device's authorization period."""
+
+    device_did: str
+    new_expires_at: str
+    previous_expires_at: str | None
+
+    def __repr__(self) -> str:
+        return (
+            f"DeviceExtension(device='{self.device_did[:20]}...', "
+            f"expires='{self.new_expires_at}')"
+        )
 
 
 class DeviceService:
@@ -60,6 +76,39 @@ class DeviceService:
             expires_in_days,
         )
         return Device(did=device_did, attestation_id=attestation_id)
+
+    def extend(
+        self,
+        device_did: str,
+        identity_did: str,
+        *,
+        days: int = 90,
+        passphrase: str | None = None,
+    ) -> DeviceExtension:
+        """Extend a device's authorization period.
+
+        Renews the device's expiry without revoking and re-linking.
+        Expired devices can be extended (grace period). Revoked devices cannot.
+
+        Args:
+            device_did: The device's DID (did:key:z...).
+            identity_did: The identity key alias for signing.
+            days: Number of days to extend from now (default: 90).
+            passphrase: Optional passphrase for keychain access.
+
+        Usage:
+            ext = auths.devices.extend(device.did, identity.did, days=90)
+            print(f"Extended until: {ext.new_expires_at}")
+        """
+        pp = passphrase or self._client._passphrase
+        result = _extend_device(
+            device_did, identity_did, days, self._client.repo_path, pp
+        )
+        return DeviceExtension(
+            device_did=result.device_did,
+            new_expires_at=result.new_expires_at,
+            previous_expires_at=result.previous_expires_at,
+        )
 
     def revoke(
         self,

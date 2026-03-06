@@ -4,6 +4,7 @@
 
 use pyo3::prelude::*;
 
+pub mod device_ext;
 pub mod identity;
 pub mod identity_sign;
 pub mod rotation;
@@ -48,6 +49,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<rotation::PyRotationResult>()?;
     m.add_function(wrap_pyfunction!(rotation::rotate_identity_ffi, m)?)?;
+
+    m.add_class::<device_ext::PyDeviceExtension>()?;
+    m.add_function(wrap_pyfunction!(device_ext::extend_device_authorization_ffi, m)?)?;
 
     Ok(())
 }

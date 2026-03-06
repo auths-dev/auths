@@ -200,6 +200,7 @@ pub fn extend_device_authorization(
         });
     }
 
+    let previous_expires_at = latest.expires_at;
     let now = clock.now();
     let new_expires_at = now + chrono::Duration::days(config.days as i64);
 
@@ -220,7 +221,7 @@ pub fn extend_device_authorization(
         &signer,
         ctx.passphrase_provider.as_ref(),
         Some(&config.identity_key_alias),
-        Some(&config.device_key_alias),
+        config.device_key_alias.as_ref(),
         vec![],
         None,
         None,
@@ -236,6 +237,7 @@ pub fn extend_device_authorization(
     Ok(DeviceExtensionResult {
         device_did: DeviceDID::new(config.device_did),
         new_expires_at,
+        previous_expires_at,
     })
 }
 

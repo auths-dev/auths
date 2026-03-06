@@ -111,6 +111,8 @@ pub struct DeviceExtensionResult {
     pub device_did: DeviceDID,
     /// The new expiration timestamp for the device authorization.
     pub new_expires_at: chrono::DateTime<chrono::Utc>,
+    /// The previous expiration timestamp (None if the device had no expiry set).
+    pub previous_expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Outcome of a successful platform claim verification.
