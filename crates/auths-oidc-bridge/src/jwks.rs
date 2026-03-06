@@ -115,6 +115,18 @@ impl KeyManager {
     pub fn drop_previous(&mut self) {
         self.previous_jwk = None;
     }
+
+    /// Returns a `DecodingKey` for verifying JWTs issued by this key manager.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let dk = key_manager.decoding_key()?;
+    /// let token_data = jsonwebtoken::decode::<Claims>(&token, &dk, &validation)?;
+    /// ```
+    pub fn decoding_key(&self) -> Result<jsonwebtoken::DecodingKey, BridgeError> {
+        jsonwebtoken::DecodingKey::from_rsa_pem(&self.private_key_pem)
+            .map_err(|e| BridgeError::KeyError(format!("failed to create decoding key: {e}")))
+    }
 }
 
 /// Build a JWK from an RSA private key, including RFC 7638 thumbprint as `kid`.

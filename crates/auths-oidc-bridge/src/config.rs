@@ -53,6 +53,9 @@ pub struct BridgeConfig {
     /// Log level filter.
     pub log_level: String,
 
+    /// Maximum delegation depth for RFC 8693 token exchange `act` claim nesting.
+    pub max_delegation_depth: u32,
+
     /// Path to a JSON file containing the workload policy expression.
     #[cfg(feature = "oidc-policy")]
     pub workload_policy_path: Option<PathBuf>,
@@ -96,6 +99,7 @@ impl Default for BridgeConfig {
             admin_token: None,
             enable_cors: false,
             log_level: "info".to_string(),
+            max_delegation_depth: 5,
             #[cfg(feature = "oidc-policy")]
             workload_policy_path: None,
             #[cfg(feature = "oidc-policy")]
@@ -200,6 +204,12 @@ impl BridgeConfig {
     /// Set log level.
     pub fn with_log_level(mut self, level: impl Into<String>) -> Self {
         self.log_level = level.into();
+        self
+    }
+
+    /// Set the maximum delegation depth for RFC 8693 token exchange.
+    pub fn with_max_delegation_depth(mut self, depth: u32) -> Self {
+        self.max_delegation_depth = depth;
         self
     }
 

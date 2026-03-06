@@ -65,6 +65,18 @@ pub enum BridgeError {
     #[error("unauthorized: {0}")]
     Unauthorized(String),
 
+    /// RFC 8693 unsupported grant type.
+    #[error("unsupported grant type: {0}")]
+    UnsupportedGrantType(String),
+
+    /// RFC 8693 invalid grant (subject_token or actor_token failed validation).
+    #[error("invalid grant: {0}")]
+    InvalidGrant(String),
+
+    /// RFC 8693 delegation depth exceeded.
+    #[error("delegation depth exceeded: depth {depth}, max {max}")]
+    DelegationDepthExceeded { depth: u32, max: u32 },
+
     /// Internal server error.
     #[error("internal error: {0}")]
     Internal(String),
@@ -141,6 +153,13 @@ impl IntoResponse for BridgeError {
             }
             BridgeError::RateLimited { .. } => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED"),
             BridgeError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED"),
+            BridgeError::UnsupportedGrantType(_) => {
+                (StatusCode::BAD_REQUEST, "UNSUPPORTED_GRANT_TYPE")
+            }
+            BridgeError::InvalidGrant(_) => (StatusCode::BAD_REQUEST, "INVALID_GRANT"),
+            BridgeError::DelegationDepthExceeded { .. } => {
+                (StatusCode::BAD_REQUEST, "DELEGATION_DEPTH_EXCEEDED")
+            }
             BridgeError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
             #[cfg(feature = "github-oidc")]
             BridgeError::GitHubTokenInvalid(_) => {

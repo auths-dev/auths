@@ -14,7 +14,7 @@ use tower_http::trace::TraceLayer;
 use crate::config::BridgeConfig;
 use crate::error::BridgeError;
 use crate::state::BridgeState;
-use crate::token::{ExchangeRequest, TokenResponse};
+use crate::token::{ExchangeRequest, OAuthErrorResponse, TokenExchangeRequest, TokenResponse};
 
 /// Build the application router.
 pub fn router(state: BridgeState, config: &BridgeConfig) -> Router {
@@ -22,6 +22,7 @@ pub fn router(state: BridgeState, config: &BridgeConfig) -> Router {
         .route("/.well-known/openid-configuration", get(openid_config))
         .route("/.well-known/jwks.json", get(jwks))
         .route("/token", post(token_exchange))
+        .route("/token/exchange", post(rfc8693_token_exchange))
         .route("/health", get(health));
 
     if config.admin_token.is_some() {
@@ -78,6 +79,8 @@ async fn openid_config(State(state): State<BridgeState>) -> Json<OpenIdConfigura
             "witness_quorum".to_string(),
             "github_actor".to_string(),
             "github_repository".to_string(),
+            "act".to_string(),
+            "spiffe_id".to_string(),
         ],
     })
 }
@@ -162,6 +165,29 @@ async fn token_exchange(
         .await?;
 
     Ok(Json(response))
+}
+
+/// `POST /token/exchange` — RFC 8693 token exchange (form-encoded).
+async fn rfc8693_token_exchange(
+    State(state): State<BridgeState>,
+    axum::extract::Form(request): axum::extract::Form<TokenExchangeRequest>,
+) -> Result<Json<crate::token::TokenExchangeResponse>, (StatusCode, Json<OAuthErrorResponse>)> {
+    let km = state.key_manager().read().await;
+    let decoding_key = km.decoding_key().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(OAuthErrorResponse {
+                error: "server_error".into(),
+                error_description: e.to_string(),
+            }),
+        )
+    })?;
+
+    let issuer = state.issuer().read().await;
+    issuer
+        .exchange_token(&request, &decoding_key)
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(e)))
 }
 
 /// Verify the admin Bearer token from request headers.

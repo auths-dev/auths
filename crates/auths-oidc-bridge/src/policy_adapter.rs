@@ -92,6 +92,8 @@ mod tests {
             witness_quorum: None,
             github_actor: github_actor.map(String::from),
             github_repository: github_repo.map(String::from),
+            act: None,
+            spiffe_id: None,
         }
     }
 

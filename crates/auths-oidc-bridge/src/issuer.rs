@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use jsonwebtoken::{Algorithm, EncodingKey, Header};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use uuid::Uuid;
 
 use crate::audience::{AudienceValidation, validate_audience_format};
@@ -10,11 +10,17 @@ use crate::config::BridgeConfig;
 use crate::error::BridgeError;
 use crate::jwks::KeyManager;
 use crate::token::{
-    ExchangeRequest, OidcClaims, TokenResponse, WitnessQuorumClaim, extract_keri_prefix,
+    ActorClaim, ExchangeRequest, OAuthErrorResponse, OidcClaims, TokenExchangeRequest,
+    TokenExchangeResponse, TokenResponse, WitnessQuorumClaim, build_act_claim, extract_keri_prefix,
 };
 
 /// Clock function type: returns current Unix timestamp in seconds.
 pub type ClockFn = Arc<dyn Fn() -> u64 + Send + Sync>;
+
+/// RFC 8693 grant type URI.
+pub const GRANT_TYPE_TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
+/// RFC 8693 JWT token type URI.
+pub const TOKEN_TYPE_JWT: &str = "urn:ietf:params:oauth:token-type:jwt";
 
 /// Issues OIDC JWTs after verifying KERI attestation chains.
 pub struct OidcIssuer {
@@ -27,6 +33,7 @@ pub struct OidcIssuer {
     max_ttl_secs: u64,
     audience_validation: AudienceValidation,
     clock: ClockFn,
+    max_delegation_depth: u32,
 }
 
 impl OidcIssuer {
@@ -59,6 +66,7 @@ impl OidcIssuer {
             max_ttl_secs: config.max_ttl_secs,
             audience_validation: config.audience_validation,
             clock,
+            max_delegation_depth: config.max_delegation_depth,
         })
     }
 
@@ -82,22 +90,15 @@ impl OidcIssuer {
             &crate::cross_reference::CrossReferenceResult,
         >,
     ) -> Result<TokenResponse, BridgeError> {
-        // 1. Decode hex root public key
         let root_pk = hex::decode(&request.root_public_key).map_err(|e| {
             BridgeError::InvalidRootKey(format!("failed to decode hex public key: {e}"))
         })?;
 
-        // 2. Determine and validate audience
         let audience = self.resolve_audience(request)?;
         let audience_kind = validate_audience_format(&audience, &self.audience_validation)?;
-
-        // 3. Determine and validate TTL
         let ttl_secs = self.resolve_ttl(request)?;
-
-        // 4. Verify the attestation chain
         let report = self.verify_chain(request, &root_pk).await?;
 
-        // 5. Check report validity
         if !report.is_valid() {
             return Err(BridgeError::ChainVerificationFailed(format!(
                 "verification status: {:?}",
@@ -105,14 +106,12 @@ impl OidcIssuer {
             )));
         }
 
-        // 6. Extract subject from chain[0].issuer
         let chain = &request.attestation_chain;
         let subject = chain
             .first()
             .map(|a| a.issuer.to_string())
             .unwrap_or_default();
 
-        // 7. Extract capabilities from last attestation
         let chain_granted: Vec<String> = chain
             .last()
             .map(|a| {
@@ -123,7 +122,6 @@ impl OidcIssuer {
             })
             .unwrap_or_default();
 
-        // 7.5. Trust registry: narrow capabilities and cap TTL
         #[cfg(feature = "oidc-trust")]
         let (chain_granted, ttl_secs) = if let Some(registry) = trust_registry {
             let provider = request.provider_issuer.as_deref().ok_or_else(|| {
@@ -176,11 +174,9 @@ impl OidcIssuer {
             (chain_granted, ttl_secs)
         };
 
-        // 7.6. Apply scope-down
         let capabilities =
             Self::scope_capabilities(&chain_granted, request.requested_capabilities.as_deref())?;
 
-        // 8. Build claims
         let now = (self.clock)();
         let keri_prefix = extract_keri_prefix(&subject);
 
@@ -196,6 +192,8 @@ impl OidcIssuer {
 
         #[allow(clippy::disallowed_methods)]
         let jti = Uuid::new_v4().to_string();
+
+        let act = build_act_claim(chain);
 
         let claims = OidcClaims {
             iss: self.issuer_url.clone(),
@@ -216,12 +214,12 @@ impl OidcIssuer {
             github_actor: None,
             #[cfg(not(feature = "github-oidc"))]
             github_repository: None,
+            act,
+            spiffe_id: None,
         };
 
-        // 9. Evaluate workload policy (if configured)
         #[cfg(feature = "oidc-policy")]
         if let Some(policy) = workload_policy {
-            // INVARIANT: u64 epoch seconds always fits in DateTime (overflows at ~292 billion years)
             #[allow(clippy::expect_used)]
             let now_dt = chrono::DateTime::from_timestamp(now as i64, 0)
                 .expect("u64 epoch seconds always fits in DateTime");
@@ -233,7 +231,6 @@ impl OidcIssuer {
             }
         }
 
-        // 10. Sign JWT with RS256
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(self.kid.clone());
 
@@ -245,6 +242,169 @@ impl OidcIssuer {
             token_type: "Bearer".to_string(),
             expires_in: ttl_secs,
             subject,
+        })
+    }
+
+    /// RFC 8693 token exchange: exchange a subject_token (+ optional actor_token) for a new JWT.
+    ///
+    /// Args:
+    /// * `request`: The form-encoded token exchange request.
+    /// * `decoding_key`: RSA public key for self-verification of subject_token.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let response = issuer.exchange_token(&request, &decoding_key)?;
+    /// ```
+    pub fn exchange_token(
+        &self,
+        request: &TokenExchangeRequest,
+        decoding_key: &DecodingKey,
+    ) -> Result<TokenExchangeResponse, OAuthErrorResponse> {
+        if request.grant_type != GRANT_TYPE_TOKEN_EXCHANGE {
+            return Err(OAuthErrorResponse {
+                error: "unsupported_grant_type".into(),
+                error_description: format!("expected {GRANT_TYPE_TOKEN_EXCHANGE}"),
+            });
+        }
+
+        if request.subject_token_type != TOKEN_TYPE_JWT {
+            return Err(OAuthErrorResponse {
+                error: "invalid_request".into(),
+                error_description: format!("subject_token_type must be {TOKEN_TYPE_JWT}"),
+            });
+        }
+
+        // Self-verify the subject_token (issued by this bridge)
+        let mut validation = Validation::new(Algorithm::RS256);
+        validation.set_issuer(&[&self.issuer_url]);
+        // Accept any audience for self-issued tokens
+        validation.validate_aud = false;
+
+        let subject_data =
+            jsonwebtoken::decode::<OidcClaims>(&request.subject_token, decoding_key, &validation)
+                .map_err(|e| OAuthErrorResponse {
+                error: "invalid_grant".into(),
+                error_description: format!("subject_token validation failed: {e}"),
+            })?;
+
+        let subject_claims = subject_data.claims;
+        let now = (self.clock)();
+
+        // Check subject_token expiry
+        if subject_claims.exp <= now {
+            return Err(OAuthErrorResponse {
+                error: "invalid_grant".into(),
+                error_description: "subject_token has expired".into(),
+            });
+        }
+
+        let remaining_secs = subject_claims.exp - now;
+
+        // Parse requested scope (space-separated capabilities)
+        let requested_caps: Option<Vec<String>> = request
+            .scope
+            .as_ref()
+            .map(|s| s.split_whitespace().map(String::from).collect());
+
+        // Capability intersection
+        let capabilities = match requested_caps {
+            Some(ref requested) => {
+                let intersection: Vec<String> = requested
+                    .iter()
+                    .filter(|r| subject_claims.capabilities.contains(r))
+                    .cloned()
+                    .collect();
+                if intersection.is_empty() {
+                    return Err(OAuthErrorResponse {
+                        error: "invalid_scope".into(),
+                        error_description: "requested scope not available in subject_token".into(),
+                    });
+                }
+                intersection
+            }
+            None => subject_claims.capabilities.clone(),
+        };
+
+        // Token lifetime: min(max_ttl, remaining_secs)
+        let ttl_secs = std::cmp::min(self.max_ttl_secs, remaining_secs);
+
+        // Build actor claim for the exchanged token
+        let act = if let Some(ref actor_token_str) = request.actor_token {
+            let actor_data =
+                jsonwebtoken::decode::<OidcClaims>(actor_token_str, decoding_key, &validation)
+                    .map_err(|e| OAuthErrorResponse {
+                        error: "invalid_grant".into(),
+                        error_description: format!("actor_token validation failed: {e}"),
+                    })?;
+
+            let actor_claims = actor_data.claims;
+
+            // Check delegation depth
+            let existing_depth = count_act_depth(&subject_claims.act);
+            if existing_depth + 1 > self.max_delegation_depth {
+                return Err(OAuthErrorResponse {
+                    error: "invalid_grant".into(),
+                    error_description: format!(
+                        "delegation depth {} exceeds max {}",
+                        existing_depth + 1,
+                        self.max_delegation_depth
+                    ),
+                });
+            }
+
+            // Build nested act: actor acts on behalf, wrapping existing act chain
+            Some(ActorClaim {
+                sub: actor_claims.sub.clone(),
+                signer_type: None,
+                act: subject_claims.act.map(Box::new),
+            })
+        } else {
+            subject_claims.act.clone()
+        };
+
+        #[allow(clippy::disallowed_methods)]
+        let jti = Uuid::new_v4().to_string();
+
+        let new_claims = OidcClaims {
+            iss: self.issuer_url.clone(),
+            sub: subject_claims.sub.clone(),
+            aud: subject_claims.aud.clone(),
+            exp: now + ttl_secs,
+            iat: now,
+            jti,
+            keri_prefix: subject_claims.keri_prefix.clone(),
+            target_provider: subject_claims.target_provider.clone(),
+            capabilities: capabilities.clone(),
+            witness_quorum: subject_claims.witness_quorum.clone(),
+            github_actor: subject_claims.github_actor.clone(),
+            github_repository: subject_claims.github_repository.clone(),
+            act,
+            spiffe_id: subject_claims.spiffe_id.clone(),
+        };
+
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(self.kid.clone());
+
+        let token =
+            jsonwebtoken::encode(&header, &new_claims, &self.encoding_key).map_err(|e| {
+                OAuthErrorResponse {
+                    error: "server_error".into(),
+                    error_description: format!("JWT encoding failed: {e}"),
+                }
+            })?;
+
+        let scope_str = if requested_caps.is_some() {
+            Some(capabilities.join(" "))
+        } else {
+            None
+        };
+
+        Ok(TokenExchangeResponse {
+            access_token: token,
+            issued_token_type: TOKEN_TYPE_JWT.to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: ttl_secs,
+            scope: scope_str,
         })
     }
 
@@ -271,7 +431,6 @@ impl OidcIssuer {
         requested: Option<&[String]>,
     ) -> Result<Vec<String>, BridgeError> {
         let Some(requested) = requested else {
-            // No scope-down requested: return all chain-granted capabilities
             return Ok(chain_granted.to_vec());
         };
 
@@ -320,7 +479,6 @@ impl OidcIssuer {
             return Err(BridgeError::InvalidChain("empty attestation chain".into()));
         }
 
-        // If witness data is provided, use witness-aware verification
         if let (Some(receipts), Some(keys), Some(threshold)) = (
             &request.witness_receipts,
             &request.witness_keys,
@@ -358,5 +516,12 @@ impl OidcIssuer {
                     BridgeError::ChainVerificationFailed(format!("verification error: {e}"))
                 })
         }
+    }
+}
+
+fn count_act_depth(act: &Option<ActorClaim>) -> u32 {
+    match act {
+        None => 0,
+        Some(a) => 1 + count_act_depth(&a.act.as_deref().cloned()),
     }
 }
