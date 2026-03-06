@@ -36,7 +36,7 @@ class KeychainError(AuthsError):
 class StorageError(AuthsError):
     """Git storage operation failed.
 
-    Codes: repo_not_found, ref_conflict, corrupt_data.
+    Codes: repo_not_found, ref_conflict, corrupt_data, duplicate_attestation.
     """
 
 

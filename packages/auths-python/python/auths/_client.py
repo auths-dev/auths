@@ -18,11 +18,11 @@ from auths._native import (
     verify_chain_with_witnesses as _verify_chain_with_witnesses,
     verify_device_authorization as _verify_device_authorization,
 )
-from auths._errors import CryptoError, NetworkError, VerificationError
+from auths._errors import CryptoError, NetworkError, StorageError, VerificationError
 
 if TYPE_CHECKING:
     from auths._native import VerificationReport, VerificationResult
-    from auths.artifact import ArtifactSigningResult
+    from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
     from auths.commit import CommitSigningResult
     from auths.verify import WitnessConfig
 
@@ -358,6 +358,45 @@ class Auths:
             )
         except (ValueError, RuntimeError) as exc:
             raise _map_sign_error(exc) from exc
+
+    def publish_artifact(
+        self,
+        attestation_json: str,
+        *,
+        registry_url: str,
+        package_name: str | None = None,
+    ) -> "ArtifactPublishResult":
+        """Publish a signed attestation to a registry.
+
+        Args:
+            attestation_json: The attestation JSON string from sign_artifact().
+            registry_url: Base URL of the target registry.
+            package_name: Optional ecosystem-prefixed identifier (e.g. "npm:react@18.3.0").
+
+        Usage:
+            signed = auths.sign_artifact("release.tar.gz", identity_did=did)
+            result = auths.publish_artifact(
+                signed.attestation_json,
+                registry_url="https://registry.example.com",
+            )
+        """
+        from auths._native import publish_artifact as _publish_artifact
+        from auths.artifact import ArtifactPublishResult
+
+        try:
+            raw = _publish_artifact(attestation_json, registry_url, package_name)
+            return ArtifactPublishResult(
+                attestation_rid=raw.attestation_rid,
+                package_name=raw.package_name,
+                signer_did=raw.signer_did,
+            )
+        except (ValueError, RuntimeError) as exc:
+            msg = str(exc)
+            if "duplicate_attestation" in msg:
+                raise StorageError(msg, code="duplicate_attestation") from exc
+            if "verification_failed" in msg:
+                raise VerificationError(msg, code="verification_failed") from exc
+            raise _map_network_error(exc) from exc
 
     def get_token(
         self,
