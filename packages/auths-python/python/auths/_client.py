@@ -117,6 +117,59 @@ class Auths:
         except (ValueError, RuntimeError) as exc:
             raise _map_verify_error(exc) from exc
 
+    def sign_as(
+        self,
+        message: bytes,
+        identity: str,
+        passphrase: Optional[str] = None,
+    ) -> str:
+        """Sign bytes using a keychain-stored identity key.
+
+        Args:
+            message: Bytes to sign.
+            identity: The identity DID (did:keri:...) whose key to use.
+            passphrase: Override passphrase (default: client passphrase or AUTHS_PASSPHRASE).
+
+        Usage:
+            identity = auths.identities.create(label="laptop")
+            sig = auths.sign_as(b"hello", identity=identity.did)
+        """
+        from auths._native import sign_as_identity
+
+        pp = passphrase or self._passphrase
+        try:
+            return sign_as_identity(message, identity, self.repo_path, pp)
+        except (ValueError, RuntimeError) as exc:
+            raise _map_sign_error(exc) from exc
+
+    def sign_action_as(
+        self,
+        action_type: str,
+        payload: str,
+        identity: str,
+        passphrase: Optional[str] = None,
+    ) -> str:
+        """Sign an action envelope using a keychain-stored identity key.
+
+        Args:
+            action_type: Action type string.
+            payload: JSON payload string.
+            identity: The identity DID whose key to use.
+            passphrase: Override passphrase.
+
+        Usage:
+            envelope = auths.sign_action_as("deploy", payload_json, identity=identity.did)
+        """
+        from auths._native import sign_action_as_identity
+
+        pp = passphrase or self._passphrase
+        try:
+            return sign_action_as_identity(
+                action_type, payload, identity, self.repo_path, pp
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise _map_sign_error(exc) from exc
+
     def get_token(
         self,
         bridge_url: str,
