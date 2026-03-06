@@ -117,20 +117,29 @@ impl KeyStorage for MemoryKeychainHandle {
     ) -> Result<(), AgentError> {
         MEMORY_KEYCHAIN
             .lock()
-            .unwrap()
+            .map_err(|_| AgentError::MutexError("global memory keychain".into()))?
             .store_key(alias, identity_did, encrypted_key_data)
     }
 
     fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
-        MEMORY_KEYCHAIN.lock().unwrap().load_key(alias)
+        MEMORY_KEYCHAIN
+            .lock()
+            .map_err(|_| AgentError::MutexError("global memory keychain".into()))?
+            .load_key(alias)
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
-        MEMORY_KEYCHAIN.lock().unwrap().delete_key(alias)
+        MEMORY_KEYCHAIN
+            .lock()
+            .map_err(|_| AgentError::MutexError("global memory keychain".into()))?
+            .delete_key(alias)
     }
 
     fn list_aliases(&self) -> Result<Vec<KeyAlias>, AgentError> {
-        MEMORY_KEYCHAIN.lock().unwrap().list_aliases()
+        MEMORY_KEYCHAIN
+            .lock()
+            .map_err(|_| AgentError::MutexError("global memory keychain".into()))?
+            .list_aliases()
     }
 
     fn list_aliases_for_identity(
@@ -139,14 +148,14 @@ impl KeyStorage for MemoryKeychainHandle {
     ) -> Result<Vec<KeyAlias>, AgentError> {
         MEMORY_KEYCHAIN
             .lock()
-            .unwrap()
+            .map_err(|_| AgentError::MutexError("global memory keychain".into()))?
             .list_aliases_for_identity(identity_did)
     }
 
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
         MEMORY_KEYCHAIN
             .lock()
-            .unwrap()
+            .map_err(|_| AgentError::MutexError("global memory keychain".into()))?
             .get_identity_for_alias(alias)
     }
 
@@ -194,20 +203,29 @@ impl KeyStorage for IsolatedKeychainHandle {
     ) -> Result<(), AgentError> {
         self.store
             .lock()
-            .unwrap()
+            .map_err(|_| AgentError::MutexError("isolated memory keychain".into()))?
             .store_key(alias, identity_did, encrypted_key_data)
     }
 
     fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
-        self.store.lock().unwrap().load_key(alias)
+        self.store
+            .lock()
+            .map_err(|_| AgentError::MutexError("isolated memory keychain".into()))?
+            .load_key(alias)
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
-        self.store.lock().unwrap().delete_key(alias)
+        self.store
+            .lock()
+            .map_err(|_| AgentError::MutexError("isolated memory keychain".into()))?
+            .delete_key(alias)
     }
 
     fn list_aliases(&self) -> Result<Vec<KeyAlias>, AgentError> {
-        self.store.lock().unwrap().list_aliases()
+        self.store
+            .lock()
+            .map_err(|_| AgentError::MutexError("isolated memory keychain".into()))?
+            .list_aliases()
     }
 
     fn list_aliases_for_identity(
@@ -216,12 +234,15 @@ impl KeyStorage for IsolatedKeychainHandle {
     ) -> Result<Vec<KeyAlias>, AgentError> {
         self.store
             .lock()
-            .unwrap()
+            .map_err(|_| AgentError::MutexError("isolated memory keychain".into()))?
             .list_aliases_for_identity(identity_did)
     }
 
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
-        self.store.lock().unwrap().get_identity_for_alias(alias)
+        self.store
+            .lock()
+            .map_err(|_| AgentError::MutexError("isolated memory keychain".into()))?
+            .get_identity_for_alias(alias)
     }
 
     fn backend_name(&self) -> &'static str {
@@ -232,6 +253,10 @@ impl KeyStorage for IsolatedKeychainHandle {
 /// Returns a cleared memory keychain handle, used in tests.
 #[cfg(any(test, feature = "test-utils"))]
 pub fn get_test_memory_keychain() -> Box<dyn KeyStorage + Send + Sync> {
-    MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
+    MEMORY_KEYCHAIN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear_all()
+        .ok();
     Box::new(MemoryKeychainHandle)
 }
