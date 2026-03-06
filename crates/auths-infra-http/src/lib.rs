@@ -11,13 +11,21 @@
 //! - [`HttpIdentityResolver`] — DID resolution over HTTP
 
 mod async_witness_client;
+mod claim_client;
 mod error;
+mod github_gist;
+mod github_oauth;
 mod identity_resolver;
+mod pairing_client;
 mod registry_client;
 mod request;
 mod witness_client;
 
 pub use async_witness_client::HttpAsyncWitnessClient;
+pub use claim_client::HttpRegistryClaimClient;
+pub use github_gist::HttpGistPublisher;
+pub use github_oauth::HttpGitHubOAuthProvider;
 pub use identity_resolver::HttpIdentityResolver;
+pub use pairing_client::HttpPairingRelayClient;
 pub use registry_client::HttpRegistryClient;
 pub use witness_client::HttpWitnessClient;

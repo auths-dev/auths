@@ -14,7 +14,6 @@ pub mod config;
 pub mod core;
 pub mod errors;
 pub mod factories;
-pub mod services;
 pub mod telemetry;
 pub mod ux;
 

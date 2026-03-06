@@ -2,9 +2,11 @@ pub mod approval;
 pub mod artifact;
 pub mod audit;
 pub mod diagnostics;
+pub mod git_integration;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod org;
+pub mod platform;
 pub mod policy_diff;
 pub mod provision;
 pub mod rotation;

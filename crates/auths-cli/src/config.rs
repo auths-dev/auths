@@ -16,7 +16,6 @@ pub struct CliConfig {
     pub output_format: OutputFormat,
     pub is_interactive: bool,
     pub passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
-    pub http_client: reqwest::Client,
     pub env_config: EnvironmentConfig,
 }
 

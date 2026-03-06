@@ -344,6 +344,10 @@ pub enum OrgError {
     Storage(String),
 }
 
+/// Re-export from `auths-core` — defined there to avoid a circular dependency with
+/// `auths-infra-http` (which implements the platform port traits).
+pub use auths_core::ports::platform::PlatformError;
+
 /// Errors from approval workflow operations.
 #[derive(Debug, Error)]
 #[non_exhaustive]

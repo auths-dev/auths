@@ -2,7 +2,11 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use serde::{Deserialize, Serialize};
+use auths_infra_http::HttpRegistryClient;
+use auths_sdk::workflows::artifact::{
+    ArtifactPublishConfig, ArtifactPublishError, publish_artifact,
+};
+use serde::Serialize;
 
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
@@ -10,13 +14,6 @@ use crate::ux::format::{JsonResponse, Output, is_json_mode};
 struct PublishJsonResponse {
     attestation_rid: String,
     registry: String,
-    package_name: Option<String>,
-    signer_did: String,
-}
-
-#[derive(Deserialize)]
-struct ArtifactPublishResponse {
-    attestation_rid: String,
     package_name: Option<String>,
     signer_did: String,
 }
@@ -99,84 +96,60 @@ async fn handle_publish_async(
         None
     };
 
-    let registry_url = registry.trim_end_matches('/');
-    let response = transmit_publish(registry_url, &attestation, package_name.as_deref()).await?;
-    let status = response.status();
+    let registry_url = registry.trim_end_matches('/').to_string();
+    let registry_client =
+        HttpRegistryClient::new_with_timeouts(Duration::from_secs(30), Duration::from_secs(60));
+    let config = ArtifactPublishConfig {
+        attestation,
+        package_name,
+        registry_url: registry_url.clone(),
+    };
 
-    match status.as_u16() {
-        201 => {
-            let body: ArtifactPublishResponse = response
-                .json()
-                .await
-                .context("Failed to parse publish response")?;
-
-            if is_json_mode() {
-                let json_resp = JsonResponse::success(
-                    "artifact publish",
-                    PublishJsonResponse {
-                        attestation_rid: body.attestation_rid.clone(),
-                        registry: registry_url.to_string(),
-                        package_name: body.package_name.clone(),
-                        signer_did: body.signer_did.clone(),
-                    },
-                );
-                json_resp.print()?;
-            } else {
-                let out = Output::stdout();
-                if let Some(ref pkg) = body.package_name {
-                    println!("Anchoring signature for {}...", out.info(pkg));
-                }
-                println!(
-                    "{} Cryptographic attestation anchored at {}",
-                    out.success("Success!"),
-                    out.bold(registry_url)
-                );
-                println!("Attestation RID: {}", out.info(&body.attestation_rid));
-                println!();
-                if let Some(ref pkg) = body.package_name {
-                    println!(
-                        "View your trust graph online: {}/registry?q={}",
-                        registry_url, pkg
-                    );
-                }
+    let body = publish_artifact(&config, &registry_client)
+        .await
+        .map_err(|e| match e {
+            ArtifactPublishError::DuplicateAttestation => {
+                anyhow::anyhow!("Artifact attestation already published (duplicate RID).")
             }
+            ArtifactPublishError::VerificationFailed(msg) => {
+                anyhow::anyhow!("Signature verification failed at registry: {}", msg)
+            }
+            ArtifactPublishError::RegistryError { status, body } => {
+                anyhow::anyhow!("Registry error ({}): {}", status, body)
+            }
+            other => anyhow::anyhow!("{}", other),
+        })?;
+
+    if is_json_mode() {
+        let json_resp = JsonResponse::success(
+            "artifact publish",
+            PublishJsonResponse {
+                attestation_rid: body.attestation_rid.clone(),
+                registry: registry_url.clone(),
+                package_name: body.package_name.clone(),
+                signer_did: body.signer_did.clone(),
+            },
+        );
+        json_resp.print()?;
+    } else {
+        let out = Output::stdout();
+        if let Some(ref pkg) = body.package_name {
+            println!("Anchoring signature for {}...", out.info(pkg));
         }
-        409 => {
-            bail!("Artifact attestation already published (duplicate RID).");
-        }
-        422 => {
-            let body = response.text().await.unwrap_or_default();
-            bail!("Signature verification failed at registry: {}", body);
-        }
-        _ => {
-            let body = response.text().await.unwrap_or_default();
-            bail!("Registry error ({}): {}", status, body);
+        println!(
+            "{} Cryptographic attestation anchored at {}",
+            out.success("Success!"),
+            out.bold(&registry_url)
+        );
+        println!("Attestation RID: {}", out.info(&body.attestation_rid));
+        println!();
+        if let Some(ref pkg) = body.package_name {
+            println!(
+                "View your trust graph online: {}/registry?q={}",
+                registry_url, pkg
+            );
         }
     }
 
     Ok(())
-}
-
-async fn transmit_publish(
-    registry: &str,
-    attestation: &serde_json::Value,
-    package_name: Option<&str>,
-) -> Result<reqwest::Response> {
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(30))
-        .timeout(Duration::from_secs(60))
-        .build()
-        .context("Failed to create HTTP client")?;
-
-    let endpoint = format!("{}/v1/artifacts/publish", registry);
-    let mut body = serde_json::json!({ "attestation": attestation });
-    if let Some(name) = package_name {
-        body["package_name"] = serde_json::Value::String(name.to_string());
-    }
-    client
-        .post(&endpoint)
-        .json(&body)
-        .send()
-        .await
-        .context("Failed to connect to registry server")
 }

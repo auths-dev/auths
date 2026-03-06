@@ -4,15 +4,21 @@
 //! and creating device attestations. All presentation concerns
 //! (spinners, passphrase prompts, console output) remain in the CLI.
 
-use auths_core::pairing::normalize_short_code;
+use auths_core::pairing::types::{Base64UrlEncoded, SubmitResponseRequest};
+use auths_core::pairing::{PairingResponse, PairingToken, SessionStatus, normalize_short_code};
 use auths_core::ports::clock::ClockProvider;
+use auths_core::ports::pairing::PairingRelayClient;
 use auths_core::signing::PassphraseProvider;
-use auths_core::storage::keychain::{KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_crypto::SecureSeed;
 use auths_id::attestation::export::AttestationSink;
 use auths_id::storage::identity::IdentityStorage;
+use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use crate::context::AuthsContext;
 
 /// Errors from pairing operations.
 #[derive(Debug, thiserror::Error)]
@@ -486,6 +492,84 @@ pub fn complete_pairing_from_response(
     })
 }
 
+/// Load device signing material from the local keychain via the context's injected providers.
+///
+/// Loads the managed identity to find the controller DID, resolves the signing key alias,
+/// decrypts the key using the context's passphrase provider, and derives the device DID.
+///
+/// The passphrase prompt is delegated to `ctx.passphrase_provider` — the CLI sets this
+/// to `CliPassphraseProvider` which handles stdin; tests may use a prefilled provider.
+///
+/// Args:
+/// * `ctx`: Runtime context supplying `identity_storage`, `key_storage`, and `passphrase_provider`.
+///
+/// Usage:
+/// ```ignore
+/// let material = load_device_signing_material(&ctx)?;
+/// join_pairing_session(code, registry, &relay, now, &material, hostname).await?;
+/// ```
+pub fn load_device_signing_material(
+    ctx: &AuthsContext,
+) -> Result<DeviceSigningMaterial, PairingError> {
+    use auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync;
+    use auths_core::crypto::signer::decrypt_keypair;
+    use auths_id::identity::helpers::ManagedIdentity;
+
+    let managed: ManagedIdentity = ctx
+        .identity_storage
+        .load_identity()
+        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
+
+    let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
+    let aliases = ctx
+        .key_storage
+        .list_aliases_for_identity(&controller_identity_did)
+        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
+
+    let key_alias = aliases
+        .into_iter()
+        .find(|a| !a.contains("--next-"))
+        .ok_or_else(|| {
+            PairingError::IdentityNotFound(format!(
+                "no signing key found for identity {}",
+                managed.controller_did
+            ))
+        })?;
+
+    let (_did, encrypted_key) = ctx
+        .key_storage
+        .load_key(&key_alias)
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    let prompt = format!("Enter passphrase for key '{}': ", key_alias);
+    let passphrase = ctx
+        .passphrase_provider
+        .get_passphrase(&prompt)
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    let pkcs8_bytes = decrypt_keypair(&encrypted_key, passphrase.as_str())
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    let (seed, pubkey_32) = auths_crypto::parse_ed25519_key_material(&pkcs8_bytes)
+        .ok()
+        .and_then(|(seed, maybe_pk)| maybe_pk.map(|pk| (seed, pk)))
+        .or_else(|| {
+            let seed = auths_crypto::parse_ed25519_seed(&pkcs8_bytes).ok()?;
+            let pk = ed25519_public_key_from_seed_sync(&seed).ok()?;
+            Some((seed, pk))
+        })
+        .ok_or_else(|| {
+            PairingError::KeyExchangeFailed("failed to parse Ed25519 key material".into())
+        })?;
+
+    Ok(DeviceSigningMaterial {
+        seed: SecureSeed::new(*seed.as_bytes()),
+        public_key: pubkey_32,
+        device_did: DeviceDID::from_ed25519(&pubkey_32),
+        controller_did: managed.controller_did.to_string(),
+    })
+}
+
 /// Load the controller DID from a pre-initialized identity storage adapter.
 ///
 /// Args:
@@ -503,4 +587,257 @@ pub fn load_controller_did(identity_storage: &dyn IdentityStorage) -> Result<Str
         .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
 
     Ok(managed.controller_did.into_inner())
+}
+
+/// Key material loaded from the local device keychain for use in pairing operations.
+///
+/// Usage:
+/// ```ignore
+/// let material = load_device_signing_material(&ctx)?;
+/// join_pairing_session(code, registry, &relay, now, &material, hostname).await?;
+/// ```
+pub struct DeviceSigningMaterial {
+    /// Ed25519 seed bytes for signing and ECDH.
+    pub seed: SecureSeed,
+    /// Ed25519 public key (32 bytes).
+    pub public_key: [u8; 32],
+    /// DID of the local device.
+    pub device_did: DeviceDID,
+    /// DID of the controller identity this device belongs to.
+    pub controller_did: String,
+}
+
+/// Progress events fired by [`initiate_online_pairing`] so the CLI can update spinners.
+///
+/// The SDK fires these during the async operation — the callback must not block.
+pub enum PairingStatus {
+    /// The session was registered; contains the token for QR display and TTL info.
+    SessionCreated {
+        /// Pairing token (used to render the QR code).
+        token: PairingToken,
+        /// Session time-to-live in seconds.
+        ttl_seconds: u64,
+    },
+    /// The SDK is now waiting for a device to respond.
+    WaitingForApproval,
+    /// A device response was received.
+    Approved,
+}
+
+/// Orchestrate an online pairing session: register, wait for approval, complete attestation.
+///
+/// Fires `on_status` callbacks as the session progresses so the CLI can update
+/// spinners and display QR code output without any knowledge of the HTTP transport.
+///
+/// Args:
+/// * `params`: Session parameters (controller DID, registry, capabilities, expiry).
+/// * `relay`: Pairing relay client (HTTP implementation injected by CLI).
+/// * `ctx`: Runtime context carrying identity/attestation storage and key material.
+/// * `now`: Current time (injected by caller — no `Utc::now()` in SDK).
+/// * `on_status`: Optional progress callback; fires `SessionCreated`, `WaitingForApproval`, `Approved`.
+///
+/// Usage:
+/// ```ignore
+/// let result = initiate_online_pairing(params, &relay, &ctx, Utc::now(), Some(&on_status)).await?;
+/// ```
+pub async fn initiate_online_pairing<R: PairingRelayClient>(
+    params: PairingSessionParams,
+    relay: &R,
+    ctx: &AuthsContext,
+    now: DateTime<Utc>,
+    on_status: Option<&(dyn Fn(PairingStatus) + Send + Sync)>,
+) -> Result<PairingCompletionResult, PairingError> {
+    let registry = params.registry.clone();
+    let expiry = std::time::Duration::from_secs(params.expiry_secs);
+
+    let session_req = build_pairing_session_request(now, params)?;
+    let mut session = session_req.session;
+    let create_request = session_req.create_request;
+    let session_id = create_request.session_id.clone();
+
+    let created = relay
+        .create_session(&registry, &create_request)
+        .await
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    if let Some(cb) = on_status {
+        cb(PairingStatus::SessionCreated {
+            token: session.token.clone(),
+            ttl_seconds: created.ttl_seconds,
+        });
+    }
+
+    if let Some(cb) = on_status {
+        cb(PairingStatus::WaitingForApproval);
+    }
+
+    let session_state = relay
+        .wait_for_update(&registry, &session_id, expiry)
+        .await
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    let state = match session_state {
+        None => return Err(PairingError::SessionExpired),
+        Some(s) => s,
+    };
+
+    match state.status {
+        SessionStatus::Responded => {}
+        SessionStatus::Cancelled => {
+            return Err(PairingError::SessionNotAvailable("cancelled".into()));
+        }
+        SessionStatus::Expired => return Err(PairingError::SessionExpired),
+        other => return Err(PairingError::SessionNotAvailable(format!("{other:?}"))),
+    }
+
+    let response = state.response.ok_or_else(|| {
+        PairingError::StorageError(
+            "server returned Responded status but no response payload".into(),
+        )
+    })?;
+
+    if let Some(cb) = on_status {
+        cb(PairingStatus::Approved);
+    }
+
+    let device_x25519_bytes: [u8; 32] = response
+        .device_x25519_pubkey
+        .decode()
+        .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid X25519 pubkey: {e}")))?
+        .try_into()
+        .map_err(|_| PairingError::KeyExchangeFailed("X25519 pubkey must be 32 bytes".into()))?;
+
+    let device_signing_bytes = response
+        .device_signing_pubkey
+        .decode()
+        .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid Ed25519 pubkey: {e}")))?;
+
+    let signature_bytes = response
+        .signature
+        .decode()
+        .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid signature: {e}")))?;
+
+    session
+        .verify_response(
+            &device_signing_bytes,
+            &device_x25519_bytes,
+            &signature_bytes,
+        )
+        .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
+
+    let _shared_secret = session
+        .complete_exchange(&device_x25519_bytes)
+        .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
+
+    let controller_did = load_controller_did(ctx.identity_storage.as_ref())?;
+    let controller_identity_did = IdentityDID::new_unchecked(controller_did.clone());
+    let aliases = ctx
+        .key_storage
+        .list_aliases_for_identity(&controller_identity_did)
+        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
+    let identity_key_alias = aliases
+        .into_iter()
+        .find(|a| !a.contains("--next-"))
+        .ok_or_else(|| {
+            PairingError::IdentityNotFound(format!("no signing key found for {controller_did}"))
+        })?;
+
+    let decrypted = DecryptedPairingResponse {
+        auths_dir: PathBuf::new(),
+        device_pubkey: device_signing_bytes,
+        device_did: response.device_did.to_string(),
+        device_name: response.device_name.clone(),
+        capabilities: session.token.capabilities.clone(),
+        identity_key_alias,
+    };
+
+    complete_pairing_from_response(
+        decrypted,
+        Arc::clone(&ctx.identity_storage),
+        Arc::clone(&ctx.attestation_sink),
+        Arc::clone(&ctx.key_storage),
+        Arc::clone(&ctx.passphrase_provider),
+        ctx.clock.as_ref(),
+    )
+}
+
+/// Orchestrate joining a pairing session: lookup by code, create ECDH response, submit.
+///
+/// The CLI retains passphrase prompting and key loading (see `DeviceSigningMaterial`).
+/// This function contains only the protocol logic: code validation, session lookup,
+/// ECDH response creation, and submission.
+///
+/// Args:
+/// * `code`: Short code entered by the user (normalized internally).
+/// * `registry_url`: Pairing relay server URL.
+/// * `relay`: Pairing relay client.
+/// * `now`: Current time (injected by caller).
+/// * `material`: Decrypted device signing material loaded by the CLI.
+/// * `device_name`: Optional friendly name to include in the response.
+///
+/// Usage:
+/// ```ignore
+/// let result = join_pairing_session(code, registry, &relay, now, &material, hostname).await?;
+/// ```
+pub async fn join_pairing_session<R: PairingRelayClient>(
+    code: &str,
+    registry_url: &str,
+    relay: &R,
+    now: DateTime<Utc>,
+    material: &DeviceSigningMaterial,
+    device_name: Option<String>,
+) -> Result<PairingCompletionResult, PairingError> {
+    let normalized = validate_short_code(code)?;
+
+    let session_data = relay
+        .lookup_by_code(registry_url, &normalized)
+        .await
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    verify_session_status(&session_data.status)?;
+
+    let token_data = session_data
+        .token
+        .ok_or_else(|| PairingError::StorageError("session has no token data".into()))?;
+
+    let token = PairingToken {
+        controller_did: token_data.controller_did.clone(),
+        endpoint: registry_url.to_string(),
+        short_code: normalized.clone(),
+        ephemeral_pubkey: token_data.ephemeral_pubkey.to_string(),
+        expires_at: chrono::DateTime::from_timestamp(token_data.expires_at, 0).unwrap_or(now),
+        capabilities: token_data.capabilities.clone(),
+    };
+
+    if token.is_expired(now) {
+        return Err(PairingError::SessionExpired);
+    }
+
+    let (pairing_response, _shared_secret) = PairingResponse::create(
+        now,
+        &token,
+        &material.seed,
+        &material.public_key,
+        material.device_did.to_string(),
+        device_name,
+    )
+    .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
+
+    let submit_req = SubmitResponseRequest {
+        device_x25519_pubkey: Base64UrlEncoded::from_raw(pairing_response.device_x25519_pubkey),
+        device_signing_pubkey: Base64UrlEncoded::from_raw(pairing_response.device_signing_pubkey),
+        device_did: pairing_response.device_did.clone(),
+        signature: Base64UrlEncoded::from_raw(pairing_response.signature),
+        device_name: pairing_response.device_name,
+    };
+
+    relay
+        .submit_response(registry_url, &session_data.session_id, &submit_req)
+        .await
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    Ok(PairingCompletionResult::Success {
+        device_did: pairing_response.device_did,
+        device_name: None,
+    })
 }

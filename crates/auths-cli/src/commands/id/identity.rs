@@ -211,7 +211,6 @@ pub fn handle_id(
     attestation_prefix_override: Option<String>,
     attestation_blob_name_override: Option<String>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
-    http_client: &reqwest::Client,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
     // Determine repo path using the passed Option
@@ -587,7 +586,7 @@ pub fn handle_id(
         }
 
         IdSubcommand::Claim(claim_cmd) => {
-            super::claim::handle_claim(&claim_cmd, &repo_path, passphrase_provider, http_client)
+            super::claim::handle_claim(&claim_cmd, &repo_path, passphrase_provider, env_config)
         }
 
         IdSubcommand::Migrate(migrate_cmd) => super::migrate::handle_migrate(migrate_cmd),

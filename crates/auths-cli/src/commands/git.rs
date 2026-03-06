@@ -4,15 +4,13 @@
 //! Auths device authorizations.
 
 use anyhow::{Context, Result, bail};
-use auths_id::storage::attestation::AttestationSource;
+use auths_sdk::workflows::git_integration::{compute_allowed_signers, format_allowed_signers_file};
 use auths_storage::git::RegistryAttestationStorage;
 use clap::{Parser, Subcommand};
-use ssh_key::PublicKey as SshPublicKey;
-use ssh_key::public::Ed25519PublicKey;
-use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::{fs, path::Path};
 
 #[derive(Parser, Debug, Clone)]
 #[command(about = "Git integration commands.")]
@@ -97,11 +95,9 @@ fn handle_install_hooks(
     cmd: InstallHooksCommand,
     auths_repo_override: Option<PathBuf>,
 ) -> Result<()> {
-    // Find the .git directory
     let git_dir = find_git_dir(&cmd.repo)?;
     let hooks_dir = git_dir.join("hooks");
 
-    // Create hooks directory if it doesn't exist
     if !hooks_dir.exists() {
         fs::create_dir_all(&hooks_dir)
             .with_context(|| format!("Failed to create hooks directory: {:?}", hooks_dir))?;
@@ -109,9 +105,7 @@ fn handle_install_hooks(
 
     let post_merge_path = hooks_dir.join("post-merge");
 
-    // Check if hook already exists
     if post_merge_path.exists() && !cmd.force {
-        // Read existing content to check if it's an Auths hook
         let existing = fs::read_to_string(&post_merge_path)
             .with_context(|| format!("Failed to read existing hook: {:?}", post_merge_path))?;
 
@@ -134,21 +128,17 @@ fn handle_install_hooks(
         }
     }
 
-    // Resolve auths repo path
     let auths_repo = if let Some(override_path) = auths_repo_override {
         override_path
     } else {
         expand_tilde(&cmd.auths_repo)?
     };
 
-    // Generate hook script
     let hook_script = generate_post_merge_hook(&auths_repo, &cmd.allowed_signers_path);
 
-    // Write hook
     fs::write(&post_merge_path, &hook_script)
         .with_context(|| format!("Failed to write hook: {:?}", post_merge_path))?;
 
-    // Make executable (chmod 755) - Unix only
     #[cfg(unix)]
     {
         let mut perms = fs::metadata(&post_merge_path)?.permissions();
@@ -163,7 +153,6 @@ fn handle_install_hooks(
         cmd.allowed_signers_path
     );
 
-    // Create the .auths directory if needed
     if let Some(parent) = cmd.allowed_signers_path.parent()
         && !parent.as_os_str().is_empty()
         && !parent.exists()
@@ -173,34 +162,14 @@ fn handle_install_hooks(
         println!("Created directory {:?}", parent);
     }
 
-    // Generate initial allowed_signers file
     println!("\nGenerating initial allowed_signers file...");
     let storage = RegistryAttestationStorage::new(&auths_repo);
 
-    match storage.load_all_attestations() {
-        Ok(attestations) => {
-            let mut entries: Vec<String> = Vec::new();
-            for att in attestations {
-                if att.is_revoked() {
-                    continue;
-                }
-                let principal = get_principal(&att);
-                if let Ok(ssh_key) = public_key_to_ssh(att.device_public_key.as_bytes()) {
-                    entries.push(format!("{} namespaces=\"git\" {}", principal, ssh_key));
-                }
-            }
-            entries.sort();
-            entries.dedup();
-
-            let output = if entries.is_empty() {
-                String::new()
-            } else {
-                format!("{}\n", entries.join("\n"))
-            };
-
+    match compute_allowed_signers(&storage) {
+        Ok(entries) => {
+            let output = format_allowed_signers_file(&entries);
             fs::write(&cmd.allowed_signers_path, &output)
                 .with_context(|| format!("Failed to write {:?}", cmd.allowed_signers_path))?;
-
             println!(
                 "Wrote {} entries to {:?}",
                 entries.len(),
@@ -216,21 +185,18 @@ fn handle_install_hooks(
     Ok(())
 }
 
-/// Find the .git directory for a repository path.
-fn find_git_dir(repo_path: &std::path::Path) -> Result<PathBuf> {
+fn find_git_dir(repo_path: &Path) -> Result<PathBuf> {
     let repo_path = if repo_path.to_string_lossy() == "." {
         std::env::current_dir().context("Failed to get current directory")?
     } else {
         repo_path.to_path_buf()
     };
 
-    // Check for .git directory
     let git_dir = repo_path.join(".git");
     if git_dir.is_dir() {
         return Ok(git_dir);
     }
 
-    // Check if .git is a file (worktree or submodule)
     if git_dir.is_file() {
         let content = fs::read_to_string(&git_dir)
             .with_context(|| format!("Failed to read {:?}", git_dir))?;
@@ -246,7 +212,6 @@ fn find_git_dir(repo_path: &std::path::Path) -> Result<PathBuf> {
         }
     }
 
-    // Check if we're inside a git directory
     if repo_path.join("HEAD").exists() && repo_path.join("config").exists() {
         return Ok(repo_path);
     }
@@ -258,11 +223,7 @@ fn find_git_dir(repo_path: &std::path::Path) -> Result<PathBuf> {
     );
 }
 
-/// Generate the post-merge hook script.
-fn generate_post_merge_hook(
-    auths_repo: &std::path::Path,
-    allowed_signers_path: &std::path::Path,
-) -> String {
+fn generate_post_merge_hook(auths_repo: &Path, allowed_signers_path: &Path) -> String {
     format!(
         r#"#!/bin/bash
 # Auto-generated by auths git install-hooks
@@ -282,7 +243,6 @@ fn handle_allowed_signers(
     _attestation_prefix_override: Option<String>,
     _attestation_blob_name_override: Option<String>,
 ) -> Result<()> {
-    // Resolve repository path
     let repo_path = if let Some(override_path) = repo_override {
         override_path
     } else {
@@ -292,51 +252,11 @@ fn handle_allowed_signers(
     // Note: Layout config overrides are deprecated with registry backend.
     // The registry uses a fixed path structure under refs/auths/registry.
 
-    // Create attestation storage
     let storage = RegistryAttestationStorage::new(&repo_path);
+    let entries =
+        compute_allowed_signers(&storage).context("Failed to load attestations from repository")?;
 
-    // Load all attestations
-    let attestations = storage
-        .load_all_attestations()
-        .context("Failed to load attestations from repository")?;
-
-    // Generate allowed_signers entries
-    let mut entries: Vec<String> = Vec::new();
-
-    for att in attestations {
-        // Skip revoked attestations
-        if att.is_revoked() {
-            continue;
-        }
-
-        // Get principal (email) from payload or generate from DID
-        let principal = get_principal(&att);
-
-        // Convert device public key to SSH format
-        let ssh_key = match public_key_to_ssh(att.device_public_key.as_bytes()) {
-            Ok(key) => key,
-            Err(e) => {
-                eprintln!("Warning: skipping device {} - {}", att.subject, e);
-                continue;
-            }
-        };
-
-        // Format: principal namespaces="git" keytype key
-        let entry = format!("{} namespaces=\"git\" {}", principal, ssh_key);
-        entries.push(entry);
-    }
-
-    // Sort for deterministic output
-    entries.sort();
-    entries.dedup();
-
-    // Output
-    let output = entries.join("\n");
-    let output = if output.is_empty() {
-        output
-    } else {
-        format!("{}\n", output)
-    };
+    let output = format_allowed_signers_file(&entries);
 
     if let Some(output_path) = cmd.output_file {
         fs::write(&output_path, &output)
@@ -349,48 +269,7 @@ fn handle_allowed_signers(
     Ok(())
 }
 
-/// Extract principal (email) from attestation payload, or generate from DID.
-pub(crate) fn get_principal(att: &auths_verifier::core::Attestation) -> String {
-    // Check for email in payload
-    if let Some(ref payload) = att.payload
-        && let Some(email) = payload.get("email").and_then(|v| v.as_str())
-        && !email.is_empty()
-    {
-        return email.to_string();
-    }
-
-    // Fallback: generate from device DID
-    // did:key:z6Mk... -> z6Mk...@auths.local
-    let did_str = att.subject.to_string();
-    let local_part = did_str.strip_prefix("did:key:").unwrap_or(&did_str);
-
-    format!("{}@auths.local", local_part)
-}
-
-/// Convert raw Ed25519 public key bytes to SSH public key string.
-pub(crate) fn public_key_to_ssh(public_key_bytes: &[u8]) -> Result<String> {
-    if public_key_bytes.len() != 32 {
-        anyhow::bail!(
-            "Invalid Ed25519 public key length: expected 32, got {}",
-            public_key_bytes.len()
-        );
-    }
-
-    // Create Ed25519PublicKey from raw bytes
-    let ed25519_pk = Ed25519PublicKey::try_from(public_key_bytes)
-        .context("Failed to parse Ed25519 public key")?;
-
-    // Wrap in SshPublicKey
-    let ssh_pk = SshPublicKey::from(ed25519_pk);
-
-    // Format as OpenSSH string (e.g., "ssh-ed25519 AAAA...")
-    ssh_pk
-        .to_openssh()
-        .context("Failed to format SSH public key")
-}
-
-/// Expand ~ to home directory.
-fn expand_tilde(path: &std::path::Path) -> Result<PathBuf> {
+fn expand_tilde(path: &Path) -> Result<PathBuf> {
     let path_str = path.to_string_lossy();
     if path_str.starts_with("~/") || path_str == "~" {
         let home = dirs::home_dir().context("Failed to determine home directory")?;
@@ -421,6 +300,7 @@ impl ExecutableCommand for GitCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auths_sdk::workflows::git_integration::public_key_to_ssh;
     use tempfile::TempDir;
 
     #[test]
@@ -447,7 +327,6 @@ mod tests {
 
     #[test]
     fn test_public_key_to_ssh() {
-        // Test with a known Ed25519 public key
         let pk_bytes: [u8; 32] = [
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
             0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
@@ -463,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_public_key_to_ssh_invalid_length() {
-        let pk_bytes = vec![0u8; 16]; // Too short
+        let pk_bytes = vec![0u8; 16];
         let result = public_key_to_ssh(&pk_bytes);
         assert!(result.is_err());
     }

@@ -206,7 +206,7 @@ pub async fn handle_initiate_lan(
 }
 
 /// Join a LAN pairing session by discovering it via mDNS.
-pub async fn handle_join_lan(code: &str) -> Result<()> {
+pub async fn handle_join_lan(code: &str, env_config: &EnvironmentConfig) -> Result<()> {
     use auths_core::pairing::normalize_short_code;
 
     let normalized = normalize_short_code(code);
@@ -243,5 +243,5 @@ pub async fn handle_join_lan(code: &str) -> Result<()> {
     let registry = format!("http://{}", addr);
 
     // Delegate to the standard join flow
-    super::join::handle_join(&normalized, &registry).await
+    super::join::handle_join(&normalized, &registry, env_config).await
 }

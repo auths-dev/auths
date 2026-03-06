@@ -69,11 +69,7 @@ pub struct PairCommand {
 /// | `pair --join CODE`           | LAN join: mDNS discover -> join       |
 /// | `pair --join CODE --registry`| Online join (existing)                |
 /// | `pair --offline`             | Offline mode (no network)             |
-pub fn handle_pair(
-    cmd: PairCommand,
-    http_client: &reqwest::Client,
-    env_config: &EnvironmentConfig,
-) -> Result<()> {
+pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<()> {
     match (&cmd.join, &cmd.registry, cmd.offline) {
         // Offline mode takes priority
         (None, _, true) => {
@@ -83,28 +79,27 @@ pub fn handle_pair(
         // Join with explicit registry -> online join
         (Some(code), Some(registry), _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(join::handle_join(code, registry))
+            rt.block_on(join::handle_join(code, registry, env_config))
         }
 
         // Join without registry -> LAN join via mDNS
         #[cfg(feature = "lan-pairing")]
         (Some(code), None, _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(lan::handle_join_lan(code))
+            rt.block_on(lan::handle_join_lan(code, env_config))
         }
 
         // Join without registry and no LAN feature -> use default registry
         #[cfg(not(feature = "lan-pairing"))]
         (Some(code), None, _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(join::handle_join(code, DEFAULT_REGISTRY))
+            rt.block_on(join::handle_join(code, DEFAULT_REGISTRY, env_config))
         }
 
         // Initiate with explicit registry -> online mode
         (None, Some(registry), _) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(online::handle_initiate_online(
-                http_client,
                 registry,
                 cmd.no_qr,
                 cmd.timeout,
@@ -131,7 +126,6 @@ pub fn handle_pair(
         (None, None, false) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(online::handle_initiate_online(
-                http_client,
                 DEFAULT_REGISTRY,
                 cmd.no_qr,
                 cmd.timeout,
