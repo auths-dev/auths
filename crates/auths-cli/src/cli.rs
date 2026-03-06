@@ -21,6 +21,7 @@ use crate::commands::key::KeyCommand;
 use crate::commands::learn::LearnCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
+use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::trust::TrustCommand;
@@ -113,6 +114,7 @@ pub enum RootCommand {
     Audit(AuditCommand),
     Agent(AgentCommand),
     Witness(WitnessCommand),
+    Scim(ScimCommand),
     Config(ConfigCommand),
 
     #[command(hide = true)]

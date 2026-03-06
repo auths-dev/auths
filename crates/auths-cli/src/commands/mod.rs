@@ -23,6 +23,7 @@ pub mod learn;
 pub mod org;
 pub mod policy;
 pub mod provision;
+pub mod scim;
 pub mod sign;
 pub mod status;
 pub mod trust;

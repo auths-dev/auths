@@ -1,0 +1,49 @@
+[package]
+name = "auths-scim-server"
+version.workspace = true
+edition = "2021"
+description = "SCIM 2.0 provisioning server for Auths agent identities"
+publish = false
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["scim", "provisioning", "server"]
+categories = ["authentication", "web-programming"]
+
+[[bin]]
+name = "auths-scim-server"
+path = "src/main.rs"
+
+[lib]
+name = "auths_scim_server"
+path = "src/lib.rs"
+
+[dependencies]
+auths-scim = { path = "../auths-scim" }
+auths-telemetry.workspace = true
+
+anyhow = "1"
+axum = { version = "0.8", features = ["macros"] }
+chrono = { version = "0.4", features = ["serde"] }
+governor = { version = "0.8", features = ["dashmap"] }
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-uuid-1", "with-serde_json-1"] }
+deadpool-postgres = { version = "0.14", features = ["serde"] }
+postgres-types = { version = "0.2", features = ["derive"] }
+thiserror.workspace = true
+tokio.workspace = true
+tower-http = { version = "0.6", features = ["trace", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

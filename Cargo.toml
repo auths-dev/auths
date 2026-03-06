@@ -18,6 +18,8 @@ members = [
   "crates/auths-oidc-bridge",
   "crates/auths-mcp-server",
   "crates/auths-pairing-protocol",
+  "crates/auths-scim",
+  "crates/auths-scim-server",
   "crates/xtask",
 ]
 exclude = [
