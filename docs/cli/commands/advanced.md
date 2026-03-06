@@ -49,7 +49,7 @@ auths device extend
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--device-did <DEVICE_DID>` | — |  |
-| `--days <DAYS>` | — |  |
+| `--expires-in-days <DAYS>` | — |  |
 | `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — |  |
 | `--device-key-alias <DEVICE_KEY_ALIAS>` | — |  |
 <!-- END GENERATED: auths device extend -->
@@ -100,7 +100,7 @@ auths key import
 <!-- BEGIN GENERATED: auths key import -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--alias <ALIAS>` | — |  |
+| `--key-alias <KEY_ALIAS>` | — |  |
 | `--seed-file <SEED_FILE>` | — |  |
 | `--controller-did <CONTROLLER_DID>` | — |  |
 <!-- END GENERATED: auths key import -->
@@ -116,7 +116,7 @@ auths key export
 <!-- BEGIN GENERATED: auths key export -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--alias <ALIAS>` | — |  |
+| `--key-alias <KEY_ALIAS>` | — |  |
 | `--passphrase <PASSPHRASE>` | — |  |
 | `--format <FORMAT>` | — |  |
 <!-- END GENERATED: auths key export -->
@@ -132,7 +132,7 @@ auths key delete
 <!-- BEGIN GENERATED: auths key delete -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--alias <ALIAS>` | — |  |
+| `--key-alias <KEY_ALIAS>` | — |  |
 <!-- END GENERATED: auths key delete -->
 
 ---
@@ -248,9 +248,5 @@ auths emergency report
 ```
 
 <!-- BEGIN GENERATED: auths emergency report -->
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--events <EVENTS>` | `100` | Include last N events in report |
-| `-o, --file <OUTPUT_FILE>` | — | Output file path (defaults to stdout) |
-| `--repo <REPO>` | — | Path to the Auths repository |
+_No options._
 <!-- END GENERATED: auths emergency report -->
