@@ -1,3 +1,4 @@
+use auths_core::ports::network::NetworkError;
 use thiserror::Error;
 
 /// Wrapper for storage errors originating from `auths-id` traits.
@@ -342,6 +343,44 @@ pub enum OrgError {
     /// A storage operation failed.
     #[error("storage error: {0}")]
     Storage(String),
+}
+
+/// Errors from platform identity claim operations (OAuth, proof publishing, registry submission).
+///
+/// Usage:
+/// ```ignore
+/// match result {
+///     Err(PlatformError::AccessDenied) => { /* user denied */ }
+///     Err(PlatformError::ExpiredToken) => { /* device code expired, restart flow */ }
+///     Err(PlatformError::Network(e)) => { /* retry */ }
+///     Err(e) => return Err(e.into()),
+///     Ok(response) => { /* proceed */ }
+/// }
+/// ```
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum PlatformError {
+    /// OAuth authorization is pending — the user has not yet approved.
+    #[error("OAuth authorization pending")]
+    AuthorizationPending,
+    /// OAuth server requested slower polling.
+    #[error("OAuth slow down")]
+    SlowDown,
+    /// The user explicitly denied the OAuth authorization request.
+    #[error("OAuth access denied")]
+    AccessDenied,
+    /// The device code has expired; the flow must be restarted.
+    #[error("device code expired")]
+    ExpiredToken,
+    /// A network-level error occurred.
+    #[error("network error: {0}")]
+    Network(#[source] NetworkError),
+    /// A platform-specific error with a human-readable message.
+    #[error("platform error: {message}")]
+    Platform {
+        /// Human-readable error detail from the platform API.
+        message: String,
+    },
 }
 
 /// Errors from approval workflow operations.

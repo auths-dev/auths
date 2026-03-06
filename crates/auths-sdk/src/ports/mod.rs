@@ -10,3 +10,5 @@ pub mod git;
 pub mod git_config;
 /// Pairing relay client port for communicating with a pairing relay server.
 pub mod pairing;
+/// Platform claim port traits for OAuth device flow, proof publishing, and registry submission.
+pub mod platform;
