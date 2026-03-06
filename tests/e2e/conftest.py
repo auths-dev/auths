@@ -65,6 +65,15 @@ def auths_oidc_bridge_bin():
     return path
 
 
+@pytest.fixture(scope="session")
+def auths_scim_server_bin():
+    """Path to the `auths-scim-server` binary."""
+    path = _find_binary("AUTHS_SCIM_SERVER_BIN", "auths-scim-server")
+    if path is None:
+        pytest.skip("auths-scim-server binary not found")
+    return path
+
+
 @pytest.fixture
 def isolated_env(tmp_path, auths_bin):
     """Fully isolated environment for CLI tests."""

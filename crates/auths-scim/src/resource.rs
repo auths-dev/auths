@@ -14,13 +14,16 @@ use crate::constants::{SCHEMA_AUTHS_AGENT, SCHEMA_USER};
 #[serde(rename_all = "camelCase")]
 pub struct ScimUser {
     pub schemas: Vec<String>,
+    #[serde(default)]
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
     pub user_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    #[serde(default = "default_active")]
     pub active: bool,
+    #[serde(default)]
     pub meta: ScimMeta,
     /// Auths agent extension attributes.
     #[serde(rename = "urn:ietf:params:scim:schemas:extension:auths:2.0:Agent")]
@@ -35,15 +38,34 @@ impl ScimUser {
     }
 }
 
+fn default_active() -> bool {
+    true
+}
+
 /// SCIM resource metadata (RFC 7643 Section 3.1).
+///
+/// All fields default for deserialization since clients omit `meta` on POST.
+/// The server always overwrites these with authoritative values.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct ScimMeta {
     pub resource_type: String,
     pub created: DateTime<Utc>,
     pub last_modified: DateTime<Utc>,
     pub version: String,
     pub location: String,
+}
+
+impl Default for ScimMeta {
+    fn default() -> Self {
+        Self {
+            resource_type: String::new(),
+            created: DateTime::default(),
+            last_modified: DateTime::default(),
+            version: String::new(),
+            location: String::new(),
+        }
+    }
 }
 
 /// Auths-specific SCIM extension attributes.
