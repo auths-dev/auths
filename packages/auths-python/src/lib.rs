@@ -4,6 +4,7 @@
 
 use pyo3::prelude::*;
 
+pub mod artifact_sign;
 pub mod attestation_query;
 pub mod device_ext;
 pub mod identity;
@@ -53,6 +54,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<device_ext::PyDeviceExtension>()?;
     m.add_function(wrap_pyfunction!(device_ext::extend_device_authorization_ffi, m)?)?;
+
+    m.add_class::<artifact_sign::PyArtifactResult>()?;
+    m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact, m)?)?;
+    m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes, m)?)?;
 
     m.add_class::<attestation_query::PyAttestation>()?;
     m.add_function(wrap_pyfunction!(attestation_query::list_attestations, m)?)?;

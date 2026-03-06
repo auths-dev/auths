@@ -22,6 +22,7 @@ from auths._errors import CryptoError, NetworkError, VerificationError
 
 if TYPE_CHECKING:
     from auths._native import VerificationReport, VerificationResult
+    from auths.artifact import ArtifactSigningResult
     from auths.verify import WitnessConfig
 
 
@@ -237,6 +238,86 @@ class Auths:
         try:
             return sign_action_as_identity(
                 action_type, payload, identity, self.repo_path, pp
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise _map_sign_error(exc) from exc
+
+    def sign_artifact(
+        self,
+        path: str,
+        *,
+        identity_did: str,
+        expires_in_days: int | None = None,
+        note: str | None = None,
+    ) -> ArtifactSigningResult:
+        """Sign a file artifact, producing a dual-signed attestation.
+
+        Computes SHA-256 digest of the file and creates an attestation binding
+        the digest to your identity.
+
+        Args:
+            path: Path to the file to sign.
+            identity_did: The identity DID to sign with (used as key alias).
+            expires_in_days: Optional expiry for the attestation.
+            note: Optional human-readable note.
+
+        Usage:
+            result = auths.sign_artifact("release.tar.gz", identity_did=identity.did)
+        """
+        from auths._native import sign_artifact as _sign_artifact
+        from auths.artifact import ArtifactSigningResult
+
+        pp = self._passphrase
+        try:
+            raw = _sign_artifact(
+                path, identity_did, self.repo_path, pp, expires_in_days, note,
+            )
+            return ArtifactSigningResult(
+                attestation_json=raw.attestation_json,
+                rid=raw.rid,
+                digest=raw.digest,
+                file_size=raw.file_size,
+            )
+        except FileNotFoundError:
+            raise
+        except (ValueError, RuntimeError) as exc:
+            raise _map_sign_error(exc) from exc
+
+    def sign_artifact_bytes(
+        self,
+        data: bytes,
+        *,
+        identity_did: str,
+        expires_in_days: int | None = None,
+        note: str | None = None,
+    ) -> ArtifactSigningResult:
+        """Sign raw bytes, producing a dual-signed attestation.
+
+        Use this for non-file artifacts: container manifest digests,
+        git tree hashes, API response bodies.
+
+        Args:
+            data: The raw bytes to sign.
+            identity_did: The identity DID to sign with (used as key alias).
+            expires_in_days: Optional expiry for the attestation.
+            note: Optional human-readable note.
+
+        Usage:
+            result = auths.sign_artifact_bytes(manifest_bytes, identity_did=did)
+        """
+        from auths._native import sign_artifact_bytes as _sign_artifact_bytes
+        from auths.artifact import ArtifactSigningResult
+
+        pp = self._passphrase
+        try:
+            raw = _sign_artifact_bytes(
+                data, identity_did, self.repo_path, pp, expires_in_days, note,
+            )
+            return ArtifactSigningResult(
+                attestation_json=raw.attestation_json,
+                rid=raw.rid,
+                digest=raw.digest,
+                file_size=raw.file_size,
             )
         except (ValueError, RuntimeError) as exc:
             raise _map_sign_error(exc) from exc

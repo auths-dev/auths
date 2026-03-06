@@ -28,6 +28,7 @@ from auths._native import (
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
+from auths.artifact import ArtifactSigningResult
 from auths.attestation_query import Attestation, AttestationService
 from auths.devices import Device, DeviceExtension, DeviceService
 from auths.identity import Agent, Identity, IdentityService
@@ -68,6 +69,7 @@ __all__ = [
     "verify_action_envelope",
     "get_token",
     "AgentAuth",
+    "ArtifactSigningResult",
     "Attestation",
     "AttestationService",
     "CommitResult",
