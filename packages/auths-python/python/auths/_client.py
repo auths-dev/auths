@@ -7,6 +7,8 @@ from auths._native import (
     sign_action as _sign_action,
     sign_bytes as _sign_bytes,
     verify_action_envelope as _verify_action_envelope,
+    verify_at_time as _verify_at_time,
+    verify_at_time_with_capability as _verify_at_time_with_capability,
     verify_attestation as _verify_attestation,
     verify_attestation_with_capability as _verify_attestation_with_capability,
     verify_chain as _verify_chain,
@@ -23,6 +25,10 @@ def _map_verify_error(exc: Exception) -> Exception:
     msg = str(exc)
     if "public key" in msg.lower() or "hex" in msg.lower():
         return CryptoError(msg, code="invalid_key")
+    if "rfc 3339" in msg.lower():
+        return VerificationError(msg, code="invalid_timestamp")
+    if "future" in msg.lower() and "timestamp" in msg.lower():
+        return VerificationError(msg, code="future_timestamp")
     if "parse" in msg.lower() or "json" in msg.lower():
         return VerificationError(msg, code="invalid_signature")
     return VerificationError(msg, code="invalid_signature")
@@ -68,19 +74,28 @@ class Auths:
         attestation_json: str,
         issuer_key: str,
         required_capability: str | None = None,
+        at: str | None = None,
     ) -> VerificationResult:
-        """Verify a single attestation, optionally checking a required capability.
+        """Verify a single attestation, optionally at a specific historical timestamp.
 
         Args:
             attestation_json: The attestation JSON string.
             issuer_key: Issuer's public key hex.
             required_capability: If set, also verify the attestation grants this capability.
+            at: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
+                When set, checks validity at that point in time instead of now.
 
         Usage:
-            result = auths.verify(attestation, key)
-            result = auths.verify(attestation, key, required_capability="sign")
+            result = auths.verify(att_json, key, at="2024-06-15T00:00:00Z",
+                                  required_capability="deploy:staging")
         """
         try:
+            if at and required_capability:
+                return _verify_at_time_with_capability(
+                    attestation_json, issuer_key, at, required_capability
+                )
+            if at:
+                return _verify_at_time(attestation_json, issuer_key, at)
             if required_capability:
                 return _verify_attestation_with_capability(
                     attestation_json, issuer_key, required_capability

@@ -1,11 +1,13 @@
 use auths_verifier::core::{Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use auths_verifier::types::DeviceDID;
 use auths_verifier::verify::{
+    verify_at_time as rust_verify_at_time,
     verify_chain as rust_verify_chain,
     verify_chain_with_capability as rust_verify_chain_with_capability,
     verify_device_authorization as rust_verify_device_authorization,
     verify_with_capability as rust_verify_with_capability, verify_with_keys,
 };
+use chrono::{DateTime, Utc};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -285,4 +287,142 @@ pub fn verify_chain_with_capability(
             ))),
         },
     )
+}
+
+fn parse_rfc3339_timestamp(at_rfc3339: &str) -> PyResult<DateTime<Utc>> {
+    let at: DateTime<Utc> = at_rfc3339.parse::<DateTime<Utc>>().map_err(|_| {
+        if at_rfc3339.contains(' ') && !at_rfc3339.contains('T') {
+            PyValueError::new_err(format!(
+                "Expected RFC 3339 format like '2024-06-15T00:00:00Z', got '{at_rfc3339}'. \
+                 Hint: use 'T' between date and time, and append 'Z' or a UTC offset. \
+                 See https://www.rfc-editor.org/rfc/rfc3339"
+            ))
+        } else {
+            PyValueError::new_err(format!(
+                "Expected RFC 3339 format like '2024-06-15T00:00:00Z', got '{at_rfc3339}'. \
+                 See https://www.rfc-editor.org/rfc/rfc3339"
+            ))
+        }
+    })?;
+
+    let now = Utc::now();
+    let skew_tolerance = chrono::Duration::seconds(60);
+    if at > now + skew_tolerance {
+        return Err(PyValueError::new_err(format!(
+            "Timestamp {at_rfc3339} is in the future. \
+             Time-pinned verification requires a past or present timestamp."
+        )));
+    }
+
+    Ok(at)
+}
+
+fn parse_and_validate_attestation(
+    attestation_json: &str,
+    issuer_pk_hex: &str,
+) -> PyResult<(Attestation, Vec<u8>)> {
+    if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
+        return Err(PyValueError::new_err(format!(
+            "Attestation JSON too large: {} bytes, max {}",
+            attestation_json.len(),
+            MAX_ATTESTATION_JSON_SIZE
+        )));
+    }
+
+    let issuer_pk_bytes = hex::decode(issuer_pk_hex)
+        .map_err(|e| PyValueError::new_err(format!("Invalid issuer public key hex: {e}")))?;
+
+    if issuer_pk_bytes.len() != 32 {
+        return Err(PyValueError::new_err(format!(
+            "Invalid issuer public key length: expected 32 bytes (64 hex chars), got {}",
+            issuer_pk_bytes.len()
+        )));
+    }
+
+    let att: Attestation = serde_json::from_str(attestation_json)
+        .map_err(|e| PyValueError::new_err(format!("Failed to parse attestation JSON: {e}")))?;
+
+    Ok((att, issuer_pk_bytes))
+}
+
+/// Verify an attestation at a specific historical timestamp.
+///
+/// Args:
+/// * `attestation_json`: The attestation as a JSON string.
+/// * `issuer_pk_hex`: The issuer's Ed25519 public key in hex format (64 chars).
+/// * `at_rfc3339`: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
+///
+/// Usage:
+/// ```ignore
+/// let result = verify_at_time(py, "...", "abcd...", "2024-06-15T00:00:00Z")?;
+/// ```
+#[pyfunction]
+pub fn verify_at_time(
+    py: Python<'_>,
+    attestation_json: &str,
+    issuer_pk_hex: &str,
+    at_rfc3339: &str,
+) -> PyResult<VerificationResult> {
+    let at = parse_rfc3339_timestamp(at_rfc3339)?;
+    let (att, issuer_pk_bytes) = parse_and_validate_attestation(attestation_json, issuer_pk_hex)?;
+
+    py.allow_threads(|| match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+        Ok(_) => Ok(VerificationResult {
+            valid: true,
+            error: None,
+        }),
+        Err(e) => Ok(VerificationResult {
+            valid: false,
+            error: Some(e.to_string()),
+        }),
+    })
+}
+
+/// Verify an attestation at a specific historical timestamp with capability check.
+///
+/// Args:
+/// * `attestation_json`: The attestation as a JSON string.
+/// * `issuer_pk_hex`: The issuer's Ed25519 public key in hex format (64 chars).
+/// * `at_rfc3339`: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
+/// * `required_capability`: The capability string that must be present.
+///
+/// Usage:
+/// ```ignore
+/// let result = verify_at_time_with_capability(py, "...", "abcd...", "2024-06-15T00:00:00Z", "sign")?;
+/// ```
+#[pyfunction]
+pub fn verify_at_time_with_capability(
+    py: Python<'_>,
+    attestation_json: &str,
+    issuer_pk_hex: &str,
+    at_rfc3339: &str,
+    required_capability: &str,
+) -> PyResult<VerificationResult> {
+    let at = parse_rfc3339_timestamp(at_rfc3339)?;
+    let (att, issuer_pk_bytes) = parse_and_validate_attestation(attestation_json, issuer_pk_hex)?;
+
+    let cap = Capability::parse(required_capability)
+        .map_err(|e| PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}")))?;
+
+    py.allow_threads(|| match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+        Ok(_) => {
+            if att.capabilities.contains(&cap) {
+                Ok(VerificationResult {
+                    valid: true,
+                    error: None,
+                })
+            } else {
+                Ok(VerificationResult {
+                    valid: false,
+                    error: Some(format!(
+                        "Attestation does not grant required capability '{required_capability}'"
+                    )),
+                })
+            }
+        }
+        Err(e) => Ok(VerificationResult {
+            valid: false,
+            error: Some(e.to_string()),
+        }),
+    })
 }
