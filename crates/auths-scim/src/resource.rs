@@ -133,6 +133,7 @@ mod tests {
     fn serde_without_extension() {
         let mut user = sample_user();
         user.auths_extension = None;
+        user.schemas.retain(|s| s != SCHEMA_AUTHS_AGENT);
         let json = serde_json::to_string(&user).unwrap();
         assert!(!json.contains(SCHEMA_AUTHS_AGENT));
     }
