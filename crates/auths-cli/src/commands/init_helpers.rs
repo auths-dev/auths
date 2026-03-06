@@ -4,10 +4,9 @@ use dialoguer::MultiSelect;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use auths_id::storage::attestation::AttestationSource;
+use auths_sdk::workflows::git_integration::{compute_allowed_signers, format_allowed_signers_file};
 use auths_storage::git::RegistryAttestationStorage;
 
-use crate::commands::git::{get_principal, public_key_to_ssh};
 use crate::ux::format::Output;
 
 pub(crate) const MIN_GIT_VERSION: (u32, u32, u32) = (2, 34, 0);
@@ -108,28 +107,14 @@ pub(crate) fn generate_allowed_signers(key_alias: &str, out: &Output) -> Result<
 
     let repo_path = get_auths_repo_path()?;
     let storage = RegistryAttestationStorage::new(&repo_path);
-    let attestations = storage.load_all_attestations().unwrap_or_default();
-
-    let mut entries: Vec<String> = Vec::new();
-    for att in attestations {
-        if att.is_revoked() {
-            continue;
-        }
-        let principal = get_principal(&att);
-        let ssh_key = match public_key_to_ssh(att.device_public_key.as_bytes()) {
-            Ok(key) => key,
-            Err(_) => continue,
-        };
-        entries.push(format!("{} namespaces=\"git\" {}", principal, ssh_key));
-    }
-    entries.sort();
-    entries.dedup();
+    let entries = compute_allowed_signers(&storage).unwrap_or_default();
+    let content = format_allowed_signers_file(&entries);
 
     let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
     let ssh_dir = home.join(".ssh");
     std::fs::create_dir_all(&ssh_dir)?;
     let signers_path = ssh_dir.join("allowed_signers");
-    std::fs::write(&signers_path, entries.join("\n") + "\n")?;
+    std::fs::write(&signers_path, content)?;
 
     set_git_config(
         "gpg.ssh.allowedSignersFile",

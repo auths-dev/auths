@@ -2,6 +2,7 @@ pub mod approval;
 pub mod artifact;
 pub mod audit;
 pub mod diagnostics;
+pub mod git_integration;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod org;
