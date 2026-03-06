@@ -30,5 +30,6 @@ auths-core = { path = "../../crates/auths-core", features = ["keychain-file-fall
 auths-id = { path = "../../crates/auths-id" }
 auths-crypto = { path = "../../crates/auths-crypto" }
 auths-storage = { path = "../../crates/auths-storage", features = ["backend-git"] }
+auths-policy = { path = "../../crates/auths-policy" }
 shellexpand = "3"
 sha2 = "0.10"

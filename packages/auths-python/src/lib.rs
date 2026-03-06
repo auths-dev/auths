@@ -9,6 +9,7 @@ pub mod attestation_query;
 pub mod commit_sign;
 pub mod device_ext;
 pub mod identity;
+pub mod policy;
 pub mod identity_sign;
 pub mod rotation;
 pub mod runtime;
@@ -55,6 +56,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<device_ext::PyDeviceExtension>()?;
     m.add_function(wrap_pyfunction!(device_ext::extend_device_authorization_ffi, m)?)?;
+
+    m.add_class::<policy::PyCompiledPolicy>()?;
+    m.add_class::<policy::PyEvalContext>()?;
+    m.add_class::<policy::PyDecision>()?;
+    m.add_function(wrap_pyfunction!(policy::compile_policy, m)?)?;
 
     m.add_class::<artifact_sign::PyArtifactResult>()?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact, m)?)?;

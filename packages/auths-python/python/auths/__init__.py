@@ -74,6 +74,7 @@ __all__ = [
     "Attestation",
     "AttestationService",
     "CommitSigningResult",
+    "compile_policy",
     "CommitResult",
     "ErrorCode",
     "VerifyResult",
