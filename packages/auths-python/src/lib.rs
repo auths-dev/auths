@@ -6,6 +6,7 @@ use pyo3::prelude::*;
 
 pub mod artifact_sign;
 pub mod attestation_query;
+pub mod commit_sign;
 pub mod device_ext;
 pub mod identity;
 pub mod identity_sign;
@@ -58,6 +59,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<artifact_sign::PyArtifactResult>()?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact, m)?)?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes, m)?)?;
+
+    m.add_class::<commit_sign::PyCommitSignResult>()?;
+    m.add_function(wrap_pyfunction!(commit_sign::sign_commit, m)?)?;
 
     m.add_class::<attestation_query::PyAttestation>()?;
     m.add_function(wrap_pyfunction!(attestation_query::list_attestations, m)?)?;

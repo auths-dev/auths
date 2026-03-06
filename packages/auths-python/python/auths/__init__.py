@@ -30,6 +30,7 @@ from auths._native import (
 from auths.agent import AgentAuth
 from auths.artifact import ArtifactSigningResult
 from auths.attestation_query import Attestation, AttestationService
+from auths.commit import CommitSigningResult
 from auths.devices import Device, DeviceExtension, DeviceService
 from auths.identity import Agent, Identity, IdentityService
 from auths.rotation import RotationResult
@@ -72,6 +73,7 @@ __all__ = [
     "ArtifactSigningResult",
     "Attestation",
     "AttestationService",
+    "CommitSigningResult",
     "CommitResult",
     "ErrorCode",
     "VerifyResult",

@@ -23,6 +23,7 @@ from auths._errors import CryptoError, NetworkError, VerificationError
 if TYPE_CHECKING:
     from auths._native import VerificationReport, VerificationResult
     from auths.artifact import ArtifactSigningResult
+    from auths.commit import CommitSigningResult
     from auths.verify import WitnessConfig
 
 
@@ -238,6 +239,42 @@ class Auths:
         try:
             return sign_action_as_identity(
                 action_type, payload, identity, self.repo_path, pp
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise _map_sign_error(exc) from exc
+
+    def sign_commit(
+        self,
+        data: bytes,
+        *,
+        identity_did: str,
+        passphrase: str | None = None,
+    ) -> CommitSigningResult:
+        """Sign git commit/tag data, producing an SSHSIG PEM signature.
+
+        Uses a 3-tier fallback:
+        1. ssh-agent (fastest, works on dev machines with agent running)
+        2. auto-start agent (starts a transient agent process)
+        3. direct signing (works everywhere, including headless CI)
+
+        Args:
+            data: The raw commit or tag bytes to sign.
+            identity_did: The KERI DID of the identity to sign with.
+            passphrase: Optional passphrase (for headless envs without ssh-agent).
+
+        Usage:
+            result = auths.sign_commit(commit_bytes, identity_did=identity.did)
+        """
+        from auths._native import sign_commit as _sign_commit
+        from auths.commit import CommitSigningResult
+
+        pp = passphrase or self._passphrase
+        try:
+            raw = _sign_commit(data, identity_did, self.repo_path, pp)
+            return CommitSigningResult(
+                signature_pem=raw.signature_pem,
+                method=raw.method,
+                namespace=raw.namespace,
             )
         except (ValueError, RuntimeError) as exc:
             raise _map_sign_error(exc) from exc
