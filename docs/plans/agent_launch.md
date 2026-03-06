@@ -421,6 +421,8 @@ auths audit verify --entry <entry-id>
 ```
 YOU MUST ADD NEW e2e tests to /Users/bordumb/workspace/repositories/auths-base/auths/tests/e2e
 
+Lastly, review /Users/bordumb/workspace/repositories/auths-base/auths/scripts/releases/2_crates.py
+And make sure to add the new auths-mcp-server crate in the proper place there
 
 ---
 

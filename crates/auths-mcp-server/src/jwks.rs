@@ -1,6 +1,5 @@
 //! JWKS client for fetching and caching the OIDC bridge's public keys.
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use jsonwebtoken::DecodingKey;
@@ -126,9 +125,4 @@ impl JwksCache {
 fn find_key_in_jwks(jwks: &JwkSet, kid: &str) -> Option<DecodingKey> {
     jwks.find(kid)
         .and_then(|jwk| DecodingKey::from_jwk(jwk).ok())
-}
-
-/// Creates a JWKS cache wrapped in Arc for shared ownership.
-pub fn shared_cache(cache: JwksCache) -> Arc<JwksCache> {
-    Arc::new(cache)
 }
