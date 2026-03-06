@@ -4,7 +4,7 @@ use std::sync::Arc;
 use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::get_platform_keychain_with_config;
 use auths_sdk::context::AuthsContext;
-use auths_sdk::types::RotationConfig;
+use auths_sdk::types::IdentityRotationConfig;
 use auths_sdk::workflows::rotation::rotate_identity;
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
@@ -17,7 +17,7 @@ use crate::identity::{make_keychain_config, resolve_passphrase};
 
 #[pyclass]
 #[derive(Clone)]
-pub struct PyRotationResult {
+pub struct PyIdentityRotationResult {
     #[pyo3(get)]
     pub controller_did: String,
     #[pyo3(get)]
@@ -29,7 +29,7 @@ pub struct PyRotationResult {
 }
 
 #[pymethods]
-impl PyRotationResult {
+impl PyIdentityRotationResult {
     fn __repr__(&self) -> String {
         format!(
             "RotationResult(did='{}...', seq={}, new_key='{}...')",
@@ -60,7 +60,7 @@ pub fn rotate_identity_ffi(
     identity_key_alias: Option<&str>,
     next_key_alias: Option<&str>,
     passphrase: Option<String>,
-) -> PyResult<PyRotationResult> {
+) -> PyResult<PyIdentityRotationResult> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_keychain_config(&passphrase_str);
     let provider = Arc::new(PrefilledPassphraseProvider::new(&passphrase_str));
@@ -105,7 +105,7 @@ pub fn rotate_identity_ffi(
         })
         .transpose()?;
 
-    let rotation_config = RotationConfig {
+    let rotation_config = IdentityRotationConfig {
         repo_path: repo,
         identity_key_alias: alias,
         next_key_alias: next_alias,
@@ -115,7 +115,7 @@ pub fn rotate_identity_ffi(
         let result = rotate_identity(rotation_config, &ctx, clock.as_ref())
             .map_err(|e| PyRuntimeError::new_err(format!("Key rotation failed: {e}")))?;
 
-        Ok(PyRotationResult {
+        Ok(PyIdentityRotationResult {
             controller_did: result.controller_did.to_string(),
             new_key_fingerprint: result.new_key_fingerprint,
             previous_key_fingerprint: result.previous_key_fingerprint,

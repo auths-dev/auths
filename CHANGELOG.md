@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (fn-24: Unified Python SDK)
+
+- **`auths-python`: Unified Python SDK package** — consolidated `auths-verifier-python` and `auths-agent-python` into a single `packages/auths-python` crate. Shared FFI runtime, module registration, and type definitions in `src/runtime.rs` and `src/types.rs`.
+- **`auths-python`: `Auths` client class** — Stripe-style client with `repo_path` and `passphrase` constructor, resource services (`auths.identities`, `auths.devices`), and typed error hierarchy (`AuthsError`, `CryptoError`, `KeychainError`, `StorageError`, `NetworkError`, `IdentityError`, `VerificationError`).
+- **`auths-python`: Identity lifecycle FFI** — `create_identity`, `provision_agent`, `link_device_to_identity`, `revoke_device_from_identity` Rust FFI functions with PyO3 bindings. `IdentityService` and `DeviceService` resource classes expose these as `auths.identities.create()`, `auths.identities.provision_agent()`, `auths.devices.link()`, `auths.devices.revoke()`.
+- **`auths-python`: Keychain-backed signing** — `sign_as_identity` and `sign_action_as_identity` FFI functions resolve DID-or-alias to a keychain key and sign bytes or action envelopes. Exposed as `auths.sign_as()` and `auths.sign_action_as()`.
+- **`auths-python`: Capability-scoped verification** — `verify_attestation_with_capability` and `verify_chain_with_capability` FFI functions. Python wrappers on the `Auths` client.
+- **`auths-python`: Getting Started README** — quickstart example covering identity creation, device linking, signing, and verification.
+
+### Added (fn-25: Python SDK Advanced Lifecycle)
+
+- **`auths-python`: Time-pinned verification** — `verify_at_time` and `verify_at_time_with_capability` FFI functions accept an ISO 8601 timestamp string, enabling "was this valid at time T?" queries for audit and compliance.
+- **`auths-python`: Witness chain verification** — `verify_chain_with_witnesses` FFI function accepts witness receipts, threshold, and public keys for k-of-n quorum verification.
+- **`auths-python`: Key rotation** — `rotate_identity_ffi` FFI function and `auths.identities.rotate()` Python method. `IdentityRotationResult` dataclass with `controller_did`, `new_key_fingerprint`, `previous_key_fingerprint`, `sequence`.
+- **`auths-python`: Device authorization extension** — `extend_device_authorization_ffi` FFI function and `auths.devices.extend()` Python method. `DeviceExtension` dataclass.
+- **`auths-python`: Attestation query service** — `list_attestations`, `list_attestations_by_device`, `get_latest_attestation` FFI functions. `AttestationService` resource class with `auths.attestations.list()`, `auths.attestations.by_device()`, `auths.attestations.latest()`.
+- **`auths-python`: Artifact attestation signing** — `sign_artifact` and `sign_artifact_bytes` FFI functions. `auths.sign_artifact()` and `auths.sign_artifact_bytes()` Python methods. `ArtifactSigningResult` dataclass.
+- **`auths-python`: Git commit signing** — `sign_commit` FFI function and `auths.sign_commit()` Python method. `CommitSigningResult` dataclass.
+- **`auths-python`: Policy engine** — `compile_policy` FFI function, `PyCompiledPolicy` and `PyEvalContext` classes. `PolicyBuilder` fluent API for constructing policies in Python.
+- **`auths-python`: JWT validation** — `AuthsClaims` dataclass and JWKS client helper for validating Auths-issued JWTs.
+
+### Changed (fn-25: Semantic Naming Consistency)
+
+- **`auths-sdk`: Identity creation function renames** — `setup_developer()` → `create_developer_identity()`, `quick_setup()` → `create_developer_identity_quick()`, `setup_ci()` → `create_ci_identity()`, `setup_agent()` → `create_agent_identity()`, `build_agent_proposal()` → `build_agent_identity_proposal()`. Naming now conveys identity lifecycle semantics ("create" = inception) rather than generic "setup".
+- **`auths-sdk`: Config type renames** — `DeveloperSetupConfig` → `CreateDeveloperIdentityConfig`, `CiSetupConfig` → `CreateCiIdentityConfig`, `AgentSetupConfig` → `CreateAgentIdentityConfig` (with corresponding builder renames).
+- **`auths-sdk`: Result type renames** — `SetupResult` → `CreateIdentityResult`, `CiSetupResult` → `CreateCiIdentityResult`, `AgentSetupResult` → `CreateAgentIdentityResult`.
+- **`auths-sdk`: Rotation type renames** — `RotationConfig` → `IdentityRotationConfig`, `RotationResult` → `IdentityRotationResult`. Clarifies these operate on KERI identities (`did:keri:`), not device keys.
+- **`auths-python`: Agent operation split** — `provision_agent()` replaced with two distinct operations: `create_agent_identity()` (standalone `did:keri:` identity) and `delegate_agent()` (delegated `did:key:` under a parent). Python API: `auths.identities.create_agent()` and `auths.identities.delegate_agent()`.
+- **`auths-python`: `Agent` dataclass replaced** — split into `AgentIdentity` (standalone, `did:keri:`) and `DelegatedAgent` (delegated, `did:key:`).
+- **`auths-python`: `Identity.public_key` → `Identity.key_alias`** — field name now matches the Rust SDK terminology.
+- **`auths-python`: `RotationResult` → `IdentityRotationResult`** — consistent with Rust SDK rename.
+- **`auths-cli`: Updated call sites** — `init.rs` and `id/identity.rs` updated to use renamed SDK functions and types.
+
 ## [0.0.1-rc.4] - 2026-03-04
 
 ### Changed

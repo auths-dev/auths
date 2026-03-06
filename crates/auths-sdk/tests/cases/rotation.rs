@@ -11,8 +11,8 @@ use auths_id::keri::{KeyState, Prefix, Said};
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
 use auths_sdk::error::RotationError;
-use auths_sdk::setup::setup_developer;
-use auths_sdk::types::{DeveloperSetupConfig, GitSigningScope, RotationConfig};
+use auths_sdk::setup::create_developer_identity;
+use auths_sdk::types::{CreateDeveloperIdentityConfig, GitSigningScope, IdentityRotationConfig};
 use auths_sdk::workflows::rotation::{
     RotationKeyMaterial, apply_rotation, compute_rotation_event, rotate_identity,
 };
@@ -26,11 +26,12 @@ fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
     let keychain = MemoryKeychainHandle;
     let signer = StorageSigner::new(MemoryKeychainHandle);
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
-    let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
-    let result = setup_developer(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+    let result =
+        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
     result.key_alias
 }
 
@@ -84,7 +85,7 @@ fn rotate_identity_updates_fingerprints() {
 
     let key_alias = setup_test_identity(&registry_path);
 
-    let config = RotationConfig {
+    let config = IdentityRotationConfig {
         repo_path: registry_path.clone(),
         identity_key_alias: Some(key_alias),
         next_key_alias: None,
@@ -115,7 +116,7 @@ fn rotate_identity_nonexistent_registry_returns_error() {
     let tmp = tempfile::tempdir().unwrap();
     let missing_path = tmp.path().join(".auths-does-not-exist");
 
-    let config = RotationConfig {
+    let config = IdentityRotationConfig {
         repo_path: missing_path.clone(),
         identity_key_alias: Some(KeyAlias::new_unchecked("any-alias")),
         next_key_alias: None,
@@ -150,7 +151,7 @@ fn rotate_identity_registry_cleared_returns_error() {
         reference.delete().unwrap();
     }
 
-    let config = RotationConfig {
+    let config = IdentityRotationConfig {
         repo_path: registry_path.clone(),
         identity_key_alias: Some(key_alias),
         next_key_alias: None,

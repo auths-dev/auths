@@ -25,8 +25,8 @@ use auths_id::witness_config::WitnessConfig;
 
 use crate::context::AuthsContext;
 use crate::error::RotationError;
-use crate::result::RotationResult;
-use crate::types::RotationConfig;
+use crate::result::IdentityRotationResult;
+use crate::types::IdentityRotationConfig;
 
 /// Computes a KERI rotation event and its canonical serialization.
 ///
@@ -185,7 +185,7 @@ pub fn apply_rotation(
 /// Usage:
 /// ```ignore
 /// let result = rotate_identity(
-///     RotationConfig {
+///     IdentityRotationConfig {
 ///         repo_path: PathBuf::from("/home/user/.auths"),
 ///         identity_key_alias: Some("main".into()),
 ///         next_key_alias: None,
@@ -196,10 +196,10 @@ pub fn apply_rotation(
 /// println!("Rotated to: {}...", result.new_key_fingerprint);
 /// ```
 pub fn rotate_identity(
-    config: RotationConfig,
+    config: IdentityRotationConfig,
     ctx: &AuthsContext,
     clock: &dyn ClockProvider,
-) -> Result<RotationResult, RotationError> {
+) -> Result<IdentityRotationResult, RotationError> {
     let (identity, prefix, current_alias) = resolve_rotation_context(&config, ctx)?;
     let next_alias = config.next_key_alias.unwrap_or_else(|| {
         KeyAlias::new_unchecked(format!(
@@ -238,7 +238,7 @@ pub fn rotate_identity(
     let (_, new_pubkey) = load_seed_and_pubkey(&decrypted_next_pkcs8)
         .map_err(|e| RotationError::RotationFailed(e.to_string()))?;
 
-    Ok(RotationResult {
+    Ok(IdentityRotationResult {
         controller_did: identity.controller_did,
         new_key_fingerprint: hex::encode(&new_pubkey[..8]),
         previous_key_fingerprint,
@@ -248,7 +248,7 @@ pub fn rotate_identity(
 
 /// Resolves the identity and determines which key alias is currently active.
 fn resolve_rotation_context(
-    config: &RotationConfig,
+    config: &IdentityRotationConfig,
     ctx: &AuthsContext,
 ) -> Result<(ManagedIdentity, Prefix, KeyAlias), RotationError> {
     let identity =
@@ -469,8 +469,8 @@ mod tests {
     use auths_id::testing::fakes::FakeRegistryBackend;
     use auths_id::testing::fakes::{FakeAttestationSink, FakeAttestationSource};
 
-    use crate::setup::setup_developer;
-    use crate::types::{DeveloperSetupConfig, GitSigningScope};
+    use crate::setup::create_developer_identity;
+    use crate::types::{CreateDeveloperIdentityConfig, GitSigningScope};
 
     fn fake_ctx(passphrase: &str) -> AuthsContext {
         MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
@@ -502,10 +502,11 @@ mod tests {
         let keychain = MemoryKeychainHandle;
         let signer = StorageSigner::new(MemoryKeychainHandle);
         let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
-        let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+        let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
             .with_git_signing_scope(GitSigningScope::Skip)
             .build();
-        let result = setup_developer(config, ctx, &keychain, &signer, &provider, None).unwrap();
+        let result =
+            create_developer_identity(config, ctx, &keychain, &signer, &provider, None).unwrap();
         result.key_alias
     }
 
@@ -516,7 +517,7 @@ mod tests {
         let ctx = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
-        let config = RotationConfig {
+        let config = IdentityRotationConfig {
             repo_path: std::path::PathBuf::from("/unused"),
             identity_key_alias: Some(key_alias.clone()),
             next_key_alias: None,
@@ -540,7 +541,7 @@ mod tests {
         let ctx = fake_ctx("Test-passphrase1!");
         let _key_alias = provision_identity(&ctx);
 
-        let config = RotationConfig {
+        let config = IdentityRotationConfig {
             repo_path: std::path::PathBuf::from("/unused"),
             identity_key_alias: None,
             next_key_alias: None,
@@ -554,7 +555,7 @@ mod tests {
     fn resolve_rotation_context_missing_identity_returns_error() {
         let ctx = fake_ctx("unused");
 
-        let config = RotationConfig {
+        let config = IdentityRotationConfig {
             repo_path: std::path::PathBuf::from("/unused"),
             identity_key_alias: Some(KeyAlias::new_unchecked("any")),
             next_key_alias: None,
@@ -574,7 +575,7 @@ mod tests {
         let ctx = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
-        let config = RotationConfig {
+        let config = IdentityRotationConfig {
             repo_path: std::path::PathBuf::from("/unused"),
             identity_key_alias: Some(key_alias.clone()),
             next_key_alias: None,
@@ -595,7 +596,7 @@ mod tests {
         let ctx = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
-        let config = RotationConfig {
+        let config = IdentityRotationConfig {
             repo_path: std::path::PathBuf::from("/unused"),
             identity_key_alias: Some(key_alias.clone()),
             next_key_alias: None,
@@ -641,7 +642,7 @@ mod tests {
         let ctx = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
-        let config = RotationConfig {
+        let config = IdentityRotationConfig {
             repo_path: std::path::PathBuf::from("/unused"),
             identity_key_alias: Some(key_alias.clone()),
             next_key_alias: None,
@@ -668,7 +669,7 @@ mod tests {
         let ctx = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
-        let config = RotationConfig {
+        let config = IdentityRotationConfig {
             repo_path: std::path::PathBuf::from("/unused"),
             identity_key_alias: Some(key_alias.clone()),
             next_key_alias: None,

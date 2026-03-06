@@ -449,7 +449,7 @@ pub fn handle_id(
                 println!("   New Witness Threshold: {}", thresh);
             }
 
-            let rotation_config = auths_sdk::types::RotationConfig {
+            let rotation_config = auths_sdk::types::IdentityRotationConfig {
                 repo_path: repo_path.clone(),
                 identity_key_alias: identity_key_alias.map(KeyAlias::new_unchecked),
                 next_key_alias: next_key_alias.map(KeyAlias::new_unchecked),

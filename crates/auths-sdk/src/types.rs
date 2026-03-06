@@ -9,7 +9,7 @@ use std::path::PathBuf;
 ///
 /// Usage:
 /// ```ignore
-/// let config = DeveloperSetupConfig::builder("my-key")
+/// let config = CreateDeveloperIdentityConfig::builder("my-key")
 ///     .with_conflict_policy(IdentityConflictPolicy::ReuseExisting)
 ///     .build();
 /// ```
@@ -94,7 +94,7 @@ pub enum CiEnvironment {
 
 /// Configuration for provisioning a new developer identity.
 ///
-/// Use [`DeveloperSetupConfigBuilder`] to construct this with optional fields.
+/// Use [`CreateDeveloperIdentityConfigBuilder`] to construct this with optional fields.
 /// The registry backend is injected via [`crate::context::AuthsContext`] — this
 /// struct carries only serializable configuration values.
 ///
@@ -103,13 +103,13 @@ pub enum CiEnvironment {
 ///
 /// Usage:
 /// ```ignore
-/// let config = DeveloperSetupConfig::builder("work-laptop")
+/// let config = CreateDeveloperIdentityConfig::builder("work-laptop")
 ///     .with_platform(PlatformVerification::GitHub { access_token: "ghp_abc".into() })
 ///     .with_git_signing_scope(GitSigningScope::Global)
 ///     .build();
 /// ```
 #[derive(Debug)]
-pub struct DeveloperSetupConfig {
+pub struct CreateDeveloperIdentityConfig {
     /// Human-readable name for the key (e.g. "work-laptop").
     pub key_alias: KeyAlias,
     /// Optional platform verification configuration.
@@ -131,7 +131,7 @@ pub struct DeveloperSetupConfig {
     pub sign_binary_path: Option<PathBuf>,
 }
 
-impl DeveloperSetupConfig {
+impl CreateDeveloperIdentityConfig {
     /// Creates a builder with the required key alias.
     ///
     /// Args:
@@ -139,10 +139,10 @@ impl DeveloperSetupConfig {
     ///
     /// Usage:
     /// ```ignore
-    /// let builder = DeveloperSetupConfig::builder("my-key");
+    /// let builder = CreateDeveloperIdentityConfig::builder("my-key");
     /// ```
-    pub fn builder(key_alias: KeyAlias) -> DeveloperSetupConfigBuilder {
-        DeveloperSetupConfigBuilder {
+    pub fn builder(key_alias: KeyAlias) -> CreateDeveloperIdentityConfigBuilder {
+        CreateDeveloperIdentityConfigBuilder {
             key_alias,
             platform: None,
             git_signing_scope: GitSigningScope::Global,
@@ -156,9 +156,9 @@ impl DeveloperSetupConfig {
     }
 }
 
-/// Builder for [`DeveloperSetupConfig`].
+/// Builder for [`CreateDeveloperIdentityConfig`].
 #[derive(Debug)]
-pub struct DeveloperSetupConfigBuilder {
+pub struct CreateDeveloperIdentityConfigBuilder {
     key_alias: KeyAlias,
     platform: Option<PlatformVerification>,
     git_signing_scope: GitSigningScope,
@@ -170,7 +170,7 @@ pub struct DeveloperSetupConfigBuilder {
     sign_binary_path: Option<PathBuf>,
 }
 
-impl DeveloperSetupConfigBuilder {
+impl CreateDeveloperIdentityConfigBuilder {
     /// Configures platform identity verification for the new identity.
     ///
     /// The SDK never opens a browser or runs OAuth flows. The caller must
@@ -181,7 +181,7 @@ impl DeveloperSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = DeveloperSetupConfig::builder("my-key")
+    /// let config = CreateDeveloperIdentityConfig::builder("my-key")
     ///     .with_platform(PlatformVerification::GitHub {
     ///         access_token: "ghp_abc123".into(),
     ///     })
@@ -199,7 +199,7 @@ impl DeveloperSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = DeveloperSetupConfig::builder("my-key")
+    /// let config = CreateDeveloperIdentityConfig::builder("my-key")
     ///     .with_git_signing_scope(GitSigningScope::Local {
     ///         repo_path: PathBuf::from("/path/to/repo"),
     ///     })
@@ -217,7 +217,7 @@ impl DeveloperSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = DeveloperSetupConfig::builder("my-key")
+    /// let config = CreateDeveloperIdentityConfig::builder("my-key")
     ///     .with_registration("https://registry.auths.dev")
     ///     .build();
     /// ```
@@ -234,7 +234,7 @@ impl DeveloperSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = DeveloperSetupConfig::builder("my-key")
+    /// let config = CreateDeveloperIdentityConfig::builder("my-key")
     ///     .with_conflict_policy(IdentityConflictPolicy::ReuseExisting)
     ///     .build();
     /// ```
@@ -250,7 +250,7 @@ impl DeveloperSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = DeveloperSetupConfig::builder("my-key")
+    /// let config = CreateDeveloperIdentityConfig::builder("my-key")
     ///     .with_witness_config(witness_cfg)
     ///     .build();
     /// ```
@@ -266,7 +266,7 @@ impl DeveloperSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = DeveloperSetupConfig::builder("my-key")
+    /// let config = CreateDeveloperIdentityConfig::builder("my-key")
     ///     .with_metadata(serde_json::json!({"team": "platform"}))
     ///     .build();
     /// ```
@@ -285,7 +285,7 @@ impl DeveloperSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = DeveloperSetupConfig::builder("my-key")
+    /// let config = CreateDeveloperIdentityConfig::builder("my-key")
     ///     .with_sign_binary_path(PathBuf::from("/usr/local/bin/auths-sign"))
     ///     .build();
     /// ```
@@ -294,14 +294,14 @@ impl DeveloperSetupConfigBuilder {
         self
     }
 
-    /// Builds the final [`DeveloperSetupConfig`].
+    /// Builds the final [`CreateDeveloperIdentityConfig`].
     ///
     /// Usage:
     /// ```ignore
-    /// let config = DeveloperSetupConfig::builder("my-key").build();
+    /// let config = CreateDeveloperIdentityConfig::builder("my-key").build();
     /// ```
-    pub fn build(self) -> DeveloperSetupConfig {
-        DeveloperSetupConfig {
+    pub fn build(self) -> CreateDeveloperIdentityConfig {
+        CreateDeveloperIdentityConfig {
             key_alias: self.key_alias,
             platform: self.platform,
             git_signing_scope: self.git_signing_scope,
@@ -325,14 +325,14 @@ impl DeveloperSetupConfigBuilder {
 ///
 /// Usage:
 /// ```ignore
-/// let config = CiSetupConfig {
+/// let config = CreateCiIdentityConfig {
 ///     ci_environment: CiEnvironment::GitHubActions,
 ///     passphrase: std::env::var("AUTHS_PASSPHRASE").unwrap(),
 ///     registry_path: PathBuf::from("/tmp/.auths"),
 ///     keychain: Box::new(memory_keychain),
 /// };
 /// ```
-pub struct CiSetupConfig {
+pub struct CreateCiIdentityConfig {
     /// The detected or specified CI platform.
     pub ci_environment: CiEnvironment,
     /// Passphrase for key encryption (typically from an environment variable).
@@ -343,9 +343,9 @@ pub struct CiSetupConfig {
     pub keychain: Box<dyn KeyStorage + Send + Sync>,
 }
 
-impl std::fmt::Debug for CiSetupConfig {
+impl std::fmt::Debug for CreateCiIdentityConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CiSetupConfig")
+        f.debug_struct("CreateCiIdentityConfig")
             .field("ci_environment", &self.ci_environment)
             .field("registry_path", &self.registry_path)
             .field("passphrase", &"[REDACTED]")
@@ -355,7 +355,7 @@ impl std::fmt::Debug for CiSetupConfig {
 
 /// Configuration for agent identity.
 ///
-/// Use [`AgentSetupConfigBuilder`] to construct this with optional fields.
+/// Use [`CreateAgentIdentityConfigBuilder`] to construct this with optional fields.
 ///
 /// Args:
 /// * `alias`: Human-readable name for the agent.
@@ -364,12 +364,12 @@ impl std::fmt::Debug for CiSetupConfig {
 ///
 /// Usage:
 /// ```ignore
-/// let config = AgentSetupConfig::builder("deploy-bot", "did:keri:abc123", path)
+/// let config = CreateAgentIdentityConfig::builder("deploy-bot", "did:keri:abc123", path)
 ///     .with_capabilities(vec!["sign-commit".into()])
 ///     .build();
 /// ```
 #[derive(Debug)]
-pub struct AgentSetupConfig {
+pub struct CreateAgentIdentityConfig {
     /// Human-readable name for the agent.
     pub alias: KeyAlias,
     /// Capabilities granted to the agent.
@@ -384,7 +384,7 @@ pub struct AgentSetupConfig {
     pub dry_run: bool,
 }
 
-impl AgentSetupConfig {
+impl CreateAgentIdentityConfig {
     /// Creates a builder with alias and registry path.
     ///
     /// Args:
@@ -393,10 +393,13 @@ impl AgentSetupConfig {
     ///
     /// Usage:
     /// ```ignore
-    /// let builder = AgentSetupConfig::builder("deploy-bot", path);
+    /// let builder = CreateAgentIdentityConfig::builder("deploy-bot", path);
     /// ```
-    pub fn builder(alias: KeyAlias, registry_path: impl Into<PathBuf>) -> AgentSetupConfigBuilder {
-        AgentSetupConfigBuilder {
+    pub fn builder(
+        alias: KeyAlias,
+        registry_path: impl Into<PathBuf>,
+    ) -> CreateAgentIdentityConfigBuilder {
+        CreateAgentIdentityConfigBuilder {
             alias,
             capabilities: Vec::new(),
             parent_identity_did: None,
@@ -407,9 +410,9 @@ impl AgentSetupConfig {
     }
 }
 
-/// Builder for [`AgentSetupConfig`].
+/// Builder for [`CreateAgentIdentityConfig`].
 #[derive(Debug)]
-pub struct AgentSetupConfigBuilder {
+pub struct CreateAgentIdentityConfigBuilder {
     alias: KeyAlias,
     capabilities: Vec<Capability>,
     parent_identity_did: Option<String>,
@@ -418,7 +421,7 @@ pub struct AgentSetupConfigBuilder {
     dry_run: bool,
 }
 
-impl AgentSetupConfigBuilder {
+impl CreateAgentIdentityConfigBuilder {
     /// Sets the parent identity DID that delegates authority to this agent.
     ///
     /// Args:
@@ -426,7 +429,7 @@ impl AgentSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = AgentSetupConfig::builder("bot", path)
+    /// let config = CreateAgentIdentityConfig::builder("bot", path)
     ///     .with_parent_did("did:keri:abc123")
     ///     .build();
     /// ```
@@ -442,7 +445,7 @@ impl AgentSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = AgentSetupConfig::builder("bot", path)
+    /// let config = CreateAgentIdentityConfig::builder("bot", path)
     ///     .with_capabilities(vec![Capability::sign_commit()])
     ///     .build();
     /// ```
@@ -458,7 +461,7 @@ impl AgentSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = AgentSetupConfig::builder("bot", path)
+    /// let config = CreateAgentIdentityConfig::builder("bot", path)
     ///     .with_expiry(86400) // 24 hours
     ///     .build();
     /// ```
@@ -471,7 +474,7 @@ impl AgentSetupConfigBuilder {
     ///
     /// Usage:
     /// ```ignore
-    /// let config = AgentSetupConfig::builder("bot", path)
+    /// let config = CreateAgentIdentityConfig::builder("bot", path)
     ///     .dry_run(true)
     ///     .build();
     /// ```
@@ -480,14 +483,14 @@ impl AgentSetupConfigBuilder {
         self
     }
 
-    /// Builds the final [`AgentSetupConfig`].
+    /// Builds the final [`CreateAgentIdentityConfig`].
     ///
     /// Usage:
     /// ```ignore
-    /// let config = AgentSetupConfig::builder("bot", path).build();
+    /// let config = CreateAgentIdentityConfig::builder("bot", path).build();
     /// ```
-    pub fn build(self) -> AgentSetupConfig {
-        AgentSetupConfig {
+    pub fn build(self) -> CreateAgentIdentityConfig {
+        CreateAgentIdentityConfig {
             alias: self.alias,
             capabilities: self.capabilities,
             parent_identity_did: self.parent_identity_did,
@@ -542,14 +545,14 @@ pub struct DeviceExtensionConfig {
 ///
 /// Usage:
 /// ```ignore
-/// let config = RotationConfig {
+/// let config = IdentityRotationConfig {
 ///     repo_path: PathBuf::from("/home/user/.auths"),
 ///     identity_key_alias: Some("main".into()),
 ///     next_key_alias: None,
 /// };
 /// ```
 #[derive(Debug)]
-pub struct RotationConfig {
+pub struct IdentityRotationConfig {
     /// Path to the auths registry (typically `~/.auths`).
     pub repo_path: PathBuf,
     /// Keychain alias of the current signing key (auto-detected if `None`).

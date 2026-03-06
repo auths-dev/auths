@@ -7,9 +7,9 @@ use auths_core::storage::keychain::KeyAlias;
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
 use auths_sdk::device::{extend_device_authorization, link_device};
 use auths_sdk::error::DeviceExtensionError;
-use auths_sdk::setup::setup_developer;
+use auths_sdk::setup::create_developer_identity;
 use auths_sdk::types::{
-    DeveloperSetupConfig, DeviceExtensionConfig, DeviceLinkConfig, GitSigningScope,
+    CreateDeveloperIdentityConfig, DeviceExtensionConfig, DeviceLinkConfig, GitSigningScope,
 };
 
 use crate::cases::helpers::{build_test_context, build_test_context_with_provider};
@@ -19,11 +19,12 @@ fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
     let keychain = MemoryKeychainHandle;
     let signer = StorageSigner::new(MemoryKeychainHandle);
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
-    let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
-    let result = setup_developer(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+    let result =
+        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
     result.key_alias
 }
 
@@ -36,13 +37,13 @@ fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> St
     let keychain = MemoryKeychainHandle;
     let signer = StorageSigner::new(MemoryKeychainHandle);
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
-    let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("device-key"))
+    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("device-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .with_conflict_policy(auths_sdk::types::IdentityConflictPolicy::ForceNew)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
     let _device_result =
-        setup_developer(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: key_alias.clone(),

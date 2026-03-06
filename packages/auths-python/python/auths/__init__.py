@@ -34,8 +34,8 @@ from auths.commit import CommitSigningResult
 from auths.jwt import AuthsClaims
 from auths.policy import PolicyBuilder
 from auths.devices import Device, DeviceExtension, DeviceService
-from auths.identity import Agent, Identity, IdentityService
-from auths.rotation import RotationResult
+from auths.identity import AgentIdentity, DelegatedAgent, Identity, IdentityService
+from auths.rotation import IdentityRotationResult
 from auths.verify import WitnessConfig, WitnessKey
 from auths.git import (
     CommitResult,
@@ -87,12 +87,13 @@ __all__ = [
     "discover_layout",
     "verify_commit_range",
     "Identity",
-    "Agent",
+    "AgentIdentity",
+    "DelegatedAgent",
     "IdentityService",
     "Device",
     "DeviceExtension",
     "DeviceService",
-    "RotationResult",
+    "IdentityRotationResult",
     "WitnessConfig",
     "WitnessKey",
 ]

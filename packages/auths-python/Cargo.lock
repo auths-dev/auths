@@ -247,6 +247,7 @@ dependencies = [
  "auths-core",
  "auths-crypto",
  "auths-id",
+ "auths-policy",
  "auths-sdk",
  "auths-storage",
  "auths-verifier",
@@ -258,6 +259,7 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "sha2",
  "shellexpand",
  "tokio",
 ]

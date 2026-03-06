@@ -42,16 +42,18 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(token::get_token, m)?)?;
 
-    m.add_class::<identity::AgentBundle>()?;
+    m.add_class::<identity::DelegatedAgentBundle>()?;
+    m.add_class::<identity::AgentIdentityBundle>()?;
     m.add_function(wrap_pyfunction!(identity::create_identity, m)?)?;
-    m.add_function(wrap_pyfunction!(identity::provision_agent, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::create_agent_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::delegate_agent, m)?)?;
     m.add_function(wrap_pyfunction!(identity::link_device_to_identity, m)?)?;
     m.add_function(wrap_pyfunction!(identity::revoke_device_from_identity, m)?)?;
 
     m.add_function(wrap_pyfunction!(identity_sign::sign_as_identity, m)?)?;
     m.add_function(wrap_pyfunction!(identity_sign::sign_action_as_identity, m)?)?;
 
-    m.add_class::<rotation::PyRotationResult>()?;
+    m.add_class::<rotation::PyIdentityRotationResult>()?;
     m.add_function(wrap_pyfunction!(rotation::rotate_identity_ffi, m)?)?;
 
     m.add_class::<device_ext::PyDeviceExtension>()?;

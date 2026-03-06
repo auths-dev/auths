@@ -14,11 +14,12 @@ use crate::context::AuthsContext;
 use crate::error::{SdkStorageError, SetupError};
 use crate::ports::git_config::GitConfigProvider;
 use crate::result::{
-    AgentSetupResult, CiSetupResult, PlatformClaimResult, RegistrationOutcome, SetupResult,
+    CreateAgentIdentityResult, CreateCiIdentityResult, CreateIdentityResult, PlatformClaimResult,
+    RegistrationOutcome,
 };
 use crate::types::{
-    AgentSetupConfig, CiEnvironment, CiSetupConfig, DeveloperSetupConfig, GitSigningScope,
-    IdentityConflictPolicy, PlatformVerification,
+    CiEnvironment, CreateAgentIdentityConfig, CreateCiIdentityConfig,
+    CreateDeveloperIdentityConfig, GitSigningScope, IdentityConflictPolicy, PlatformVerification,
 };
 
 /// Provisions a new developer identity with device linking, optional platform
@@ -36,16 +37,16 @@ use crate::types::{
 ///
 /// Usage:
 /// ```ignore
-/// let result = setup_developer(config, &ctx, keychain.as_ref(), &signer, &provider, git_cfg)?;
+/// let result = create_developer_identity(config, &ctx, keychain.as_ref(), &signer, &provider, git_cfg)?;
 /// ```
-pub fn setup_developer(
-    config: DeveloperSetupConfig,
+pub fn create_developer_identity(
+    config: CreateDeveloperIdentityConfig,
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
     git_config: Option<&dyn GitConfigProvider>,
-) -> Result<SetupResult, SetupError> {
+) -> Result<CreateIdentityResult, SetupError> {
     let now = ctx.clock.now();
     let (controller_did, key_alias, reused) =
         resolve_or_create_identity(&config, ctx, keychain, passphrase_provider, now)?;
@@ -63,7 +64,7 @@ pub fn setup_developer(
     )?;
     let registered = submit_registration(&config);
 
-    Ok(SetupResult {
+    Ok(CreateIdentityResult {
         identity_did: IdentityDID::new(controller_did),
         device_did,
         key_alias,
@@ -85,22 +86,22 @@ pub fn setup_developer(
 ///
 /// Usage:
 /// ```ignore
-/// let result = quick_setup("main", &ctx, keychain.as_ref(), &signer, &provider)?;
+/// let result = create_developer_identity_quick("main", &ctx, keychain.as_ref(), &signer, &provider)?;
 /// ```
-pub fn quick_setup(
+pub fn create_developer_identity_quick(
     alias: &KeyAlias,
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
-) -> Result<SetupResult, SetupError> {
-    let config = DeveloperSetupConfig::builder(alias.clone()).build();
-    setup_developer(config, ctx, keychain, signer, passphrase_provider, None)
+) -> Result<CreateIdentityResult, SetupError> {
+    let config = CreateDeveloperIdentityConfig::builder(alias.clone()).build();
+    create_developer_identity(config, ctx, keychain, signer, passphrase_provider, None)
 }
 
 /// Returns (controller_did, key_alias, reused).
 fn resolve_or_create_identity(
-    config: &DeveloperSetupConfig,
+    config: &CreateDeveloperIdentityConfig,
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
@@ -129,7 +130,7 @@ fn resolve_or_create_identity(
 }
 
 fn derive_keys(
-    config: &DeveloperSetupConfig,
+    config: &CreateDeveloperIdentityConfig,
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
@@ -296,7 +297,7 @@ fn set_git_signing_config(
     Ok(())
 }
 
-fn submit_registration(config: &DeveloperSetupConfig) -> Option<RegistrationOutcome> {
+fn submit_registration(config: &CreateDeveloperIdentityConfig) -> Option<RegistrationOutcome> {
     if !config.register_on_registry {
         return None;
     }
@@ -307,8 +308,8 @@ fn submit_registration(config: &DeveloperSetupConfig) -> Option<RegistrationOutc
 
 /// Provisions an ephemeral CI identity for use in automated pipelines.
 ///
-/// Unlike `setup_developer`, this function takes the keychain from
-/// `CiSetupConfig` so callers can inject a memory keychain without mutating
+/// Unlike `create_developer_identity`, this function takes the keychain from
+/// `CreateCiIdentityConfig` so callers can inject a memory keychain without mutating
 /// environment variables.
 ///
 /// Args:
@@ -317,26 +318,29 @@ fn submit_registration(config: &DeveloperSetupConfig) -> Option<RegistrationOutc
 ///
 /// Usage:
 /// ```ignore
-/// let result = setup_ci(config, &ctx)?;
+/// let result = create_ci_identity(config, &ctx)?;
 /// ```
-pub fn setup_ci(config: CiSetupConfig, ctx: &AuthsContext) -> Result<CiSetupResult, SetupError> {
+pub fn create_ci_identity(
+    config: CreateCiIdentityConfig,
+    ctx: &AuthsContext,
+) -> Result<CreateCiIdentityResult, SetupError> {
     let now = ctx.clock.now();
     let provider = auths_core::PrefilledPassphraseProvider::new(&config.passphrase);
     let keychain = config.keychain;
-    let (controller_did, key_alias) = create_ci_identity(ctx, keychain.as_ref(), &provider, now)?;
+    let (controller_did, key_alias) = initialize_ci_keys(ctx, keychain.as_ref(), &provider, now)?;
     let signer = StorageSigner::new(keychain);
     let device_did = bind_device(&key_alias, ctx, signer.inner(), &signer, &provider, now)?;
     let env_block =
         generate_ci_env_block(&key_alias, &config.registry_path, &config.ci_environment);
 
-    Ok(CiSetupResult {
+    Ok(CreateCiIdentityResult {
         identity_did: IdentityDID::new(controller_did),
         device_did,
         env_block,
     })
 }
 
-fn create_ci_identity(
+fn initialize_ci_keys(
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
@@ -432,14 +436,14 @@ fn base_env_lines(key_alias: &KeyAlias, repo_path: &Path) -> Vec<String> {
 ///
 /// Usage:
 /// ```ignore
-/// let result = setup_agent(config, &ctx, keychain, &provider)?;
+/// let result = create_agent_identity(config, &ctx, keychain, &provider)?;
 /// ```
-pub fn setup_agent(
-    config: AgentSetupConfig,
+pub fn create_agent_identity(
+    config: CreateAgentIdentityConfig,
     ctx: &AuthsContext,
     keychain: Box<dyn KeyStorage + Send + Sync>,
     passphrase_provider: &dyn PassphraseProvider,
-) -> Result<AgentSetupResult, SetupError> {
+) -> Result<CreateAgentIdentityResult, SetupError> {
     use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode};
 
     let cap_strings: Vec<String> = config.capabilities.iter().map(|c| c.to_string()).collect();
@@ -453,7 +457,7 @@ pub fn setup_agent(
         },
     };
 
-    let proposed = build_agent_proposal(&provisioning_config, &config)?;
+    let proposed = build_agent_identity_proposal(&provisioning_config, &config)?;
 
     if !config.dry_run {
         let bundle = auths_id::agent_identity::provision_agent_identity(
@@ -469,7 +473,7 @@ pub fn setup_agent(
             )))
         })?;
 
-        return Ok(AgentSetupResult {
+        return Ok(CreateAgentIdentityResult {
             agent_did: bundle.agent_did,
             parent_did: IdentityDID::new(config.parent_identity_did.unwrap_or_default()),
             capabilities: config.capabilities,
@@ -479,11 +483,11 @@ pub fn setup_agent(
     Ok(proposed)
 }
 
-fn build_agent_proposal(
+fn build_agent_identity_proposal(
     _provisioning_config: &auths_id::agent_identity::AgentProvisioningConfig,
-    config: &AgentSetupConfig,
-) -> Result<AgentSetupResult, SetupError> {
-    Ok(AgentSetupResult {
+    config: &CreateAgentIdentityConfig,
+) -> Result<CreateAgentIdentityResult, SetupError> {
+    Ok(CreateAgentIdentityResult {
         agent_did: IdentityDID::new(format!("did:keri:E<pending:{}>", config.alias)),
         parent_did: IdentityDID::new(config.parent_identity_did.clone().unwrap_or_default()),
         capabilities: config.capabilities.clone(),

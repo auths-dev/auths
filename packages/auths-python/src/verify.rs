@@ -50,8 +50,15 @@ pub fn verify_attestation(
         )));
     }
 
-    let att: Attestation = serde_json::from_str(attestation_json)
-        .map_err(|e| PyValueError::new_err(format!("Failed to parse attestation JSON: {e}")))?;
+    let att: Attestation = match serde_json::from_str(attestation_json) {
+        Ok(att) => att,
+        Err(e) => {
+            return Ok(VerificationResult {
+                valid: false,
+                error: Some(format!("Failed to parse attestation JSON: {e}")),
+            })
+        }
+    };
 
     py.allow_threads(|| match runtime().block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
         Ok(_) => Ok(VerificationResult {
@@ -216,8 +223,15 @@ pub fn verify_attestation_with_capability(
         )));
     }
 
-    let att: Attestation = serde_json::from_str(attestation_json)
-        .map_err(|e| PyValueError::new_err(format!("Failed to parse attestation JSON: {e}")))?;
+    let att: Attestation = match serde_json::from_str(attestation_json) {
+        Ok(att) => att,
+        Err(e) => {
+            return Ok(VerificationResult {
+                valid: false,
+                error: Some(format!("Failed to parse attestation JSON: {e}")),
+            })
+        }
+    };
 
     let cap = Capability::parse(required_capability)
         .map_err(|e| PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}")))?;
@@ -319,10 +333,10 @@ fn parse_rfc3339_timestamp(at_rfc3339: &str) -> PyResult<DateTime<Utc>> {
     Ok(at)
 }
 
-fn parse_and_validate_attestation(
+fn validate_attestation_key(
     attestation_json: &str,
     issuer_pk_hex: &str,
-) -> PyResult<(Attestation, Vec<u8>)> {
+) -> PyResult<Vec<u8>> {
     if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
         return Err(PyValueError::new_err(format!(
             "Attestation JSON too large: {} bytes, max {}",
@@ -341,10 +355,7 @@ fn parse_and_validate_attestation(
         )));
     }
 
-    let att: Attestation = serde_json::from_str(attestation_json)
-        .map_err(|e| PyValueError::new_err(format!("Failed to parse attestation JSON: {e}")))?;
-
-    Ok((att, issuer_pk_bytes))
+    Ok(issuer_pk_bytes)
 }
 
 /// Verify an attestation at a specific historical timestamp.
@@ -366,7 +377,17 @@ pub fn verify_at_time(
     at_rfc3339: &str,
 ) -> PyResult<VerificationResult> {
     let at = parse_rfc3339_timestamp(at_rfc3339)?;
-    let (att, issuer_pk_bytes) = parse_and_validate_attestation(attestation_json, issuer_pk_hex)?;
+    let issuer_pk_bytes = validate_attestation_key(attestation_json, issuer_pk_hex)?;
+
+    let att: Attestation = match serde_json::from_str(attestation_json) {
+        Ok(att) => att,
+        Err(e) => {
+            return Ok(VerificationResult {
+                valid: false,
+                error: Some(format!("Failed to parse attestation JSON: {e}")),
+            })
+        }
+    };
 
     py.allow_threads(|| match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
         Ok(_) => Ok(VerificationResult {
@@ -401,7 +422,17 @@ pub fn verify_at_time_with_capability(
     required_capability: &str,
 ) -> PyResult<VerificationResult> {
     let at = parse_rfc3339_timestamp(at_rfc3339)?;
-    let (att, issuer_pk_bytes) = parse_and_validate_attestation(attestation_json, issuer_pk_hex)?;
+    let issuer_pk_bytes = validate_attestation_key(attestation_json, issuer_pk_hex)?;
+
+    let att: Attestation = match serde_json::from_str(attestation_json) {
+        Ok(att) => att,
+        Err(e) => {
+            return Ok(VerificationResult {
+                valid: false,
+                error: Some(format!("Failed to parse attestation JSON: {e}")),
+            })
+        }
+    };
 
     let cap = Capability::parse(required_capability)
         .map_err(|e| PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}")))?;

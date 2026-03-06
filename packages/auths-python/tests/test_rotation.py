@@ -8,8 +8,8 @@ import tempfile
 
 import pytest
 
-from auths import Auths, RotationResult
-from auths.rotation import RotationResult as RotationResultFromModule
+from auths import Auths, IdentityRotationResult
+from auths.rotation import IdentityRotationResult as IdentityRotationResultFromModule
 
 
 @pytest.fixture
@@ -30,10 +30,10 @@ def auths_repo():
             os.environ.pop("AUTHS_PASSPHRASE", None)
 
 
-class TestRotationResult:
+class TestIdentityRotationResult:
 
     def test_rotation_result_fields(self):
-        result = RotationResult(
+        result = IdentityRotationResult(
             controller_did="did:keri:ETest123",
             new_key_fingerprint="abcdef0123456789",
             previous_key_fingerprint="9876543210fedcba",
@@ -45,26 +45,26 @@ class TestRotationResult:
         assert result.sequence == 1
 
     def test_rotation_result_repr(self):
-        result = RotationResult(
+        result = IdentityRotationResult(
             controller_did="did:keri:ETest123456789012345678901234567890",
             new_key_fingerprint="abcdef01234567890123456789",
             previous_key_fingerprint="9876543210fedcba",
             sequence=2,
         )
         r = repr(result)
-        assert "RotationResult" in r
+        assert "IdentityRotationResult" in r
         assert "seq=2" in r
 
 
 class TestImports:
 
     def test_rotation_result_importable_from_top_level(self):
-        from auths import RotationResult
-        assert RotationResult is not None
+        from auths import IdentityRotationResult
+        assert IdentityRotationResult is not None
 
     def test_rotation_result_importable_from_module(self):
-        from auths.rotation import RotationResult
-        assert RotationResult is not None
+        from auths.rotation import IdentityRotationResult
+        assert IdentityRotationResult is not None
 
     def test_rotate_identity_ffi_importable(self):
         from auths._native import rotate_identity_ffi
