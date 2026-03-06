@@ -1,7 +1,8 @@
 use std::convert::TryInto;
 use std::path::Path;
+use std::sync::Arc;
 
-use auths_core::signing::{PassphraseProvider, SecureSigner, StorageSigner};
+use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::identity::initialize::initialize_registry_identity;
@@ -14,39 +15,78 @@ use crate::context::AuthsContext;
 use crate::error::SetupError;
 use crate::ports::git_config::GitConfigProvider;
 use crate::result::{
-    CreateAgentIdentityResult, CreateCiIdentityResult, CreateIdentityResult, PlatformClaimResult,
-    RegistrationOutcome,
+    AgentIdentityResult, CiIdentityResult, DeveloperIdentityResult, InitializeResult,
+    PlatformClaimResult, RegistrationOutcome,
 };
 use crate::types::{
-    CiEnvironment, CreateAgentIdentityConfig, CreateCiIdentityConfig,
-    CreateDeveloperIdentityConfig, GitSigningScope, IdentityConflictPolicy, PlatformVerification,
+    CiEnvironment, CiIdentityConfig, CreateAgentIdentityConfig, CreateDeveloperIdentityConfig,
+    GitSigningScope, IdentityConfig, IdentityConflictPolicy, PlatformVerification,
 };
 
-/// Provisions a new developer identity with device linking, optional platform
-/// verification, git signing, and registry publication.
+/// Provisions a new identity for the requested persona.
 ///
-/// This function is a pure orchestrator — it delegates every step to a small,
-/// named helper and never performs I/O itself.
+/// Dispatches to the appropriate setup path based on the `config` variant.
+/// No deprecated shims — callers migrate directly to this function.
 ///
 /// Args:
-/// * `config`: All setup parameters (key alias, platform, etc.).
+/// * `config`: Identity persona and all setup parameters.
 /// * `ctx`: Injected infrastructure adapters (registry, identity storage, attestation sink, clock).
 /// * `keychain`: Platform keychain for key storage and retrieval.
 /// * `signer`: Secure signer for creating attestation signatures.
 /// * `passphrase_provider`: Provides passphrases for key encryption/decryption.
+/// * `git_config`: Git configuration provider; required when git signing is configured.
 ///
 /// Usage:
 /// ```ignore
-/// let result = create_developer_identity(config, &ctx, keychain.as_ref(), &signer, &provider, git_cfg)?;
+/// let keychain: Arc<dyn KeyStorage + Send + Sync> = Arc::new(platform_keychain);
+/// let result = initialize(IdentityConfig::developer(alias), &ctx, keychain, &signer, &provider, git_cfg)?;
+/// match result {
+///     InitializeResult::Developer(r) => println!("Identity: {}", r.identity_did),
+///     InitializeResult::Ci(r) => println!("CI env block: {} lines", r.env_block.len()),
+///     InitializeResult::Agent(r) => println!("Agent: {}", r.agent_did),
+/// }
 /// ```
-pub fn create_developer_identity(
+pub fn initialize(
+    config: IdentityConfig,
+    ctx: &AuthsContext,
+    keychain: Arc<dyn KeyStorage + Send + Sync>,
+    signer: &dyn SecureSigner,
+    passphrase_provider: &dyn PassphraseProvider,
+    git_config: Option<&dyn GitConfigProvider>,
+) -> Result<InitializeResult, SetupError> {
+    match config {
+        IdentityConfig::Developer(dev_config) => initialize_developer(
+            dev_config,
+            ctx,
+            keychain.as_ref(),
+            signer,
+            passphrase_provider,
+            git_config,
+        )
+        .map(InitializeResult::Developer),
+        IdentityConfig::Ci(ci_config) => initialize_ci(
+            ci_config,
+            ctx,
+            keychain.as_ref(),
+            signer,
+            passphrase_provider,
+        )
+        .map(InitializeResult::Ci),
+        IdentityConfig::Agent(agent_config) => {
+            initialize_agent(agent_config, ctx, Box::new(keychain), passphrase_provider)
+                .map(InitializeResult::Agent)
+        }
+    }
+}
+
+fn initialize_developer(
     config: CreateDeveloperIdentityConfig,
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
     git_config: Option<&dyn GitConfigProvider>,
-) -> Result<CreateIdentityResult, SetupError> {
+) -> Result<DeveloperIdentityResult, SetupError> {
     let now = ctx.clock.now();
     let (controller_did, key_alias, reused) =
         resolve_or_create_identity(&config, ctx, keychain, passphrase_provider, now)?;
@@ -64,7 +104,7 @@ pub fn create_developer_identity(
     )?;
     let registered = submit_registration(&config);
 
-    Ok(CreateIdentityResult {
+    Ok(DeveloperIdentityResult {
         identity_did: IdentityDID::new(controller_did),
         device_did,
         key_alias,
@@ -74,30 +114,84 @@ pub fn create_developer_identity(
     })
 }
 
-/// One-shot convenience wrapper that creates a developer identity with sensible
-/// defaults: global git signing, no platform verification, no registry.
-///
-/// Args:
-/// * `alias`: Human-readable name for the key (e.g. "main").
-/// * `ctx`: Injected infrastructure adapters.
-/// * `keychain`: Platform keychain backend.
-/// * `signer`: Secure signer for attestation creation.
-/// * `passphrase_provider`: Provides the passphrase for key encryption.
-///
-/// Usage:
-/// ```ignore
-/// let result = create_developer_identity_quick("main", &ctx, keychain.as_ref(), &signer, &provider)?;
-/// ```
-pub fn create_developer_identity_quick(
-    alias: &KeyAlias,
+fn initialize_ci(
+    config: CiIdentityConfig,
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
-) -> Result<CreateIdentityResult, SetupError> {
-    let config = CreateDeveloperIdentityConfig::builder(alias.clone()).build();
-    create_developer_identity(config, ctx, keychain, signer, passphrase_provider, None)
+) -> Result<CiIdentityResult, SetupError> {
+    let now = ctx.clock.now();
+    let (controller_did, key_alias) = initialize_ci_keys(ctx, keychain, passphrase_provider, now)?;
+    let device_did = bind_device(&key_alias, ctx, keychain, signer, passphrase_provider, now)?;
+    let env_block =
+        generate_ci_env_block(&key_alias, &config.registry_path, &config.ci_environment);
+
+    Ok(CiIdentityResult {
+        identity_did: IdentityDID::new(controller_did),
+        device_did,
+        env_block,
+    })
 }
+
+fn initialize_agent(
+    config: CreateAgentIdentityConfig,
+    ctx: &AuthsContext,
+    keychain: Box<dyn KeyStorage + Send + Sync>,
+    passphrase_provider: &dyn PassphraseProvider,
+) -> Result<AgentIdentityResult, SetupError> {
+    use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode};
+
+    let cap_strings: Vec<String> = config.capabilities.iter().map(|c| c.to_string()).collect();
+    let provisioning_config = AgentProvisioningConfig {
+        agent_name: config.alias.to_string(),
+        capabilities: cap_strings,
+        expires_in_secs: config.expires_in_secs,
+        delegated_by: config.parent_identity_did.clone().map(IdentityDID::new),
+        storage_mode: AgentStorageMode::Persistent {
+            repo_path: Some(config.registry_path.clone()),
+        },
+    };
+
+    let proposed = build_agent_identity_proposal(&provisioning_config, &config)?;
+
+    if !config.dry_run {
+        let bundle = auths_id::agent_identity::provision_agent_identity(
+            ctx.clock.now(),
+            std::sync::Arc::clone(&ctx.registry),
+            provisioning_config,
+            passphrase_provider,
+            keychain,
+        )
+        .map_err(|e| SetupError::StorageError(e.into()))?;
+
+        return Ok(AgentIdentityResult {
+            agent_did: bundle.agent_did,
+            parent_did: IdentityDID::new(config.parent_identity_did.unwrap_or_default()),
+            capabilities: config.capabilities,
+        });
+    }
+
+    Ok(proposed)
+}
+
+/// Install the linearity hook in a registry directory.
+///
+/// This is called by the CLI after initializing the git repository to prevent
+/// non-linear KEL history.
+///
+/// Args:
+/// * `registry_path`: Path to the initialized git repository.
+///
+/// Usage:
+/// ```ignore
+/// auths_sdk::setup::install_registry_hook(&registry_path);
+/// ```
+pub fn install_registry_hook(registry_path: &Path) {
+    let _ = install_linearity_hook(registry_path);
+}
+
+// ── Private helpers ──────────────────────────────────────────────────────
 
 /// Returns (controller_did, key_alias, reused).
 fn resolve_or_create_identity(
@@ -287,42 +381,6 @@ fn submit_registration(config: &CreateDeveloperIdentityConfig) -> Option<Registr
     None
 }
 
-// ── CI setup ────────────────────────────────────────────────────────────
-
-/// Provisions an ephemeral CI identity for use in automated pipelines.
-///
-/// Unlike `create_developer_identity`, this function takes the keychain from
-/// `CreateCiIdentityConfig` so callers can inject a memory keychain without mutating
-/// environment variables.
-///
-/// Args:
-/// * `config`: CI setup parameters including keychain, passphrase, and CI environment.
-/// * `ctx`: Injected infrastructure adapters (registry, identity storage, attestation sink, clock).
-///
-/// Usage:
-/// ```ignore
-/// let result = create_ci_identity(config, &ctx)?;
-/// ```
-pub fn create_ci_identity(
-    config: CreateCiIdentityConfig,
-    ctx: &AuthsContext,
-) -> Result<CreateCiIdentityResult, SetupError> {
-    let now = ctx.clock.now();
-    let provider = auths_core::PrefilledPassphraseProvider::new(&config.passphrase);
-    let keychain = config.keychain;
-    let (controller_did, key_alias) = initialize_ci_keys(ctx, keychain.as_ref(), &provider, now)?;
-    let signer = StorageSigner::new(keychain);
-    let device_did = bind_device(&key_alias, ctx, signer.inner(), &signer, &provider, now)?;
-    let env_block =
-        generate_ci_env_block(&key_alias, &config.registry_path, &config.ci_environment);
-
-    Ok(CreateCiIdentityResult {
-        identity_did: IdentityDID::new(controller_did),
-        device_did,
-        env_block,
-    })
-}
-
 fn initialize_ci_keys(
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
@@ -401,86 +459,13 @@ fn base_env_lines(key_alias: &KeyAlias, repo_path: &Path) -> Vec<String> {
     ]
 }
 
-// ── Agent setup ─────────────────────────────────────────────────────────
-
-/// Provisions an agent identity delegated from a parent identity.
-///
-/// Constructs all proposed state first, then persists only if `dry_run` is false.
-///
-/// Args:
-/// * `config`: Agent setup parameters (alias, parent DID, capabilities, etc.).
-/// * `ctx`: Injected infrastructure adapters (registry, clock).
-/// * `keychain`: Platform keychain for key storage.
-/// * `passphrase_provider`: Provides passphrases for key operations.
-///
-/// Usage:
-/// ```ignore
-/// let result = create_agent_identity(config, &ctx, keychain, &provider)?;
-/// ```
-pub fn create_agent_identity(
-    config: CreateAgentIdentityConfig,
-    ctx: &AuthsContext,
-    keychain: Box<dyn KeyStorage + Send + Sync>,
-    passphrase_provider: &dyn PassphraseProvider,
-) -> Result<CreateAgentIdentityResult, SetupError> {
-    use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode};
-
-    let cap_strings: Vec<String> = config.capabilities.iter().map(|c| c.to_string()).collect();
-    let provisioning_config = AgentProvisioningConfig {
-        agent_name: config.alias.to_string(),
-        capabilities: cap_strings,
-        expires_in_secs: config.expires_in_secs,
-        delegated_by: config.parent_identity_did.clone().map(IdentityDID::new),
-        storage_mode: AgentStorageMode::Persistent {
-            repo_path: Some(config.registry_path.clone()),
-        },
-    };
-
-    let proposed = build_agent_identity_proposal(&provisioning_config, &config)?;
-
-    if !config.dry_run {
-        let bundle = auths_id::agent_identity::provision_agent_identity(
-            ctx.clock.now(),
-            std::sync::Arc::clone(&ctx.registry),
-            provisioning_config,
-            passphrase_provider,
-            keychain,
-        )
-        .map_err(|e| SetupError::StorageError(e.into()))?;
-
-        return Ok(CreateAgentIdentityResult {
-            agent_did: bundle.agent_did,
-            parent_did: IdentityDID::new(config.parent_identity_did.unwrap_or_default()),
-            capabilities: config.capabilities,
-        });
-    }
-
-    Ok(proposed)
-}
-
 fn build_agent_identity_proposal(
     _provisioning_config: &auths_id::agent_identity::AgentProvisioningConfig,
     config: &CreateAgentIdentityConfig,
-) -> Result<CreateAgentIdentityResult, SetupError> {
-    Ok(CreateAgentIdentityResult {
+) -> Result<AgentIdentityResult, SetupError> {
+    Ok(AgentIdentityResult {
         agent_did: IdentityDID::new(format!("did:keri:E<pending:{}>", config.alias)),
         parent_did: IdentityDID::new(config.parent_identity_did.clone().unwrap_or_default()),
         capabilities: config.capabilities.clone(),
     })
-}
-
-/// Install the linearity hook in a registry directory.
-///
-/// This is called by the CLI after initializing the git repository to prevent
-/// non-linear KEL history.
-///
-/// Args:
-/// * `registry_path`: Path to the initialized git repository.
-///
-/// Usage:
-/// ```ignore
-/// auths_sdk::setup::install_registry_hook(&registry_path);
-/// ```
-pub fn install_registry_hook(registry_path: &Path) {
-    let _ = install_linearity_hook(registry_path);
 }

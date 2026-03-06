@@ -164,9 +164,9 @@ pub fn revoke_device(
 ///
 /// Usage:
 /// ```ignore
-/// let result = extend_device_authorization(config, &ctx, &SystemClock)?;
+/// let result = extend_device(config, &ctx, &SystemClock)?;
 /// ```
-pub fn extend_device_authorization(
+pub fn extend_device(
     config: DeviceExtensionConfig,
     ctx: &AuthsContext,
     clock: &dyn ClockProvider,

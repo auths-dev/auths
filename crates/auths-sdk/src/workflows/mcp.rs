@@ -1,7 +1,8 @@
 //! MCP token exchange workflow.
 //!
-//! Acquires an OAuth Bearer token for MCP tool server access by exchanging
-//! the agent's attestation chain for a scoped JWT via the OIDC bridge.
+//! Exchanges an agent's attestation chain for a scoped OAuth Bearer token via
+//! the OIDC bridge. The `reqwest::Client` is injected so callers can configure
+//! timeouts, certificate pinning, and test-time mocking.
 
 use auths_verifier::core::Attestation;
 use serde::{Deserialize, Serialize};
@@ -29,27 +30,34 @@ struct McpTokenResponse {
     subject: String,
 }
 
-/// Acquires an OAuth Bearer token for MCP tool server access.
+/// Exchanges an agent's attestation chain for an OAuth Bearer token.
 ///
-/// Exchanges the agent's attestation chain for a scoped JWT via the OIDC bridge,
-/// then returns the JWT string for use as a Bearer token.
+/// Sends the chain to the OIDC bridge and returns the scoped JWT string.
+/// The caller is responsible for constructing and configuring the HTTP client,
+/// which allows timeout tuning, certificate pinning, and test-time injection.
 ///
 /// Args:
-/// * `bridge_url`: The OIDC bridge base URL (e.g., "http://localhost:3300").
+/// * `client`: Pre-configured `reqwest::Client` for the HTTP POST.
+/// * `bridge_url`: The OIDC bridge base URL (e.g., `"http://localhost:3300"`).
 /// * `chain`: The agent's attestation chain (root to leaf).
 /// * `root_public_key_hex`: Hex-encoded Ed25519 public key of the root identity.
 /// * `requested_capabilities`: Capabilities needed for this MCP session.
 ///
 /// Usage:
 /// ```ignore
-/// let token = acquire_mcp_token(
+/// let client = reqwest::Client::builder()
+///     .timeout(Duration::from_secs(30))
+///     .build()?;
+/// let token = exchange_token(
+///     &client,
 ///     "http://localhost:3300",
 ///     &attestation_chain,
 ///     "abcdef1234...",
 ///     &["fs:read", "fs:write"],
 /// ).await?;
 /// ```
-pub async fn acquire_mcp_token(
+pub async fn exchange_token(
+    client: &reqwest::Client,
     bridge_url: &str,
     chain: &[Attestation],
     root_public_key_hex: &str,
@@ -71,13 +79,6 @@ pub async fn acquire_mcp_token(
             )
         },
     };
-
-    // INVARIANT: reqwest Client::new() cannot fail
-    #[allow(clippy::expect_used)]
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .expect("failed to build HTTP client");
 
     let response = client
         .post(&url)

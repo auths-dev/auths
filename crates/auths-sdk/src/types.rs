@@ -1,4 +1,4 @@
-use auths_core::storage::keychain::{KeyAlias, KeyStorage};
+use auths_core::storage::keychain::KeyAlias;
 use auths_verifier::Capability;
 use std::path::PathBuf;
 
@@ -317,39 +317,100 @@ impl CreateDeveloperIdentityConfigBuilder {
 
 /// Configuration for CI/ephemeral identity.
 ///
+/// The keychain and passphrase are passed separately to [`crate::setup::initialize`] —
+/// this struct carries only the CI-specific configuration values.
+///
 /// Args:
 /// * `ci_environment`: The detected or specified CI platform.
-/// * `passphrase`: Passphrase for key encryption (typically from env var).
 /// * `registry_path`: Path to the ephemeral auths registry.
-/// * `keychain`: The key storage backend (use `MemoryKeyStorage` for CI).
 ///
 /// Usage:
 /// ```ignore
-/// let config = CreateCiIdentityConfig {
+/// let config = CiIdentityConfig {
 ///     ci_environment: CiEnvironment::GitHubActions,
-///     passphrase: std::env::var("AUTHS_PASSPHRASE").unwrap(),
 ///     registry_path: PathBuf::from("/tmp/.auths"),
-///     keychain: Box::new(memory_keychain),
 /// };
 /// ```
-pub struct CreateCiIdentityConfig {
+#[derive(Debug, Clone)]
+pub struct CiIdentityConfig {
     /// The detected or specified CI platform.
     pub ci_environment: CiEnvironment,
-    /// Passphrase for key encryption (typically from an environment variable).
-    pub passphrase: String,
     /// Path to the ephemeral auths registry directory.
     pub registry_path: PathBuf,
-    /// Key storage backend (typically `MemoryKeyStorage` for CI).
-    pub keychain: Box<dyn KeyStorage + Send + Sync>,
 }
 
-impl std::fmt::Debug for CreateCiIdentityConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CreateCiIdentityConfig")
-            .field("ci_environment", &self.ci_environment)
-            .field("registry_path", &self.registry_path)
-            .field("passphrase", &"[REDACTED]")
-            .finish()
+/// Selects which identity persona to provision via [`crate::setup::initialize`].
+///
+/// Usage:
+/// ```ignore
+/// // Developer preset (platform keychain, git signing):
+/// let config = IdentityConfig::developer(KeyAlias::new_unchecked("work-laptop"));
+///
+/// // CI preset (memory keychain, ephemeral):
+/// let config = IdentityConfig::ci(PathBuf::from("/tmp/.auths-ci"));
+///
+/// // Agent preset (minimal capabilities, long-lived):
+/// let config = IdentityConfig::agent(KeyAlias::new_unchecked("deploy-bot"), registry_path);
+///
+/// // Custom configuration:
+/// let config = IdentityConfig::Developer(
+///     CreateDeveloperIdentityConfig::builder(alias)
+///         .with_platform(PlatformVerification::GitHub { access_token: token })
+///         .build()
+/// );
+/// ```
+#[derive(Debug)]
+pub enum IdentityConfig {
+    /// Full local developer setup: platform keychain, git signing, passphrase.
+    Developer(CreateDeveloperIdentityConfig),
+    /// Ephemeral CI setup: memory keychain, no git signing.
+    Ci(CiIdentityConfig),
+    /// Agent setup: file keychain, scoped capabilities, long-lived.
+    Agent(CreateAgentIdentityConfig),
+}
+
+impl IdentityConfig {
+    /// Create a developer identity config with sensible defaults.
+    ///
+    /// Args:
+    /// * `alias`: Human-readable key alias (e.g. `"work-laptop"`).
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let config = IdentityConfig::developer(KeyAlias::new_unchecked("work-laptop"));
+    /// ```
+    pub fn developer(alias: KeyAlias) -> Self {
+        Self::Developer(CreateDeveloperIdentityConfig::builder(alias).build())
+    }
+
+    /// Create a CI/ephemeral identity config.
+    ///
+    /// Args:
+    /// * `registry_path`: Path to the ephemeral auths registry directory.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let config = IdentityConfig::ci(PathBuf::from("/tmp/.auths-ci"));
+    /// ```
+    pub fn ci(registry_path: impl Into<PathBuf>) -> Self {
+        Self::Ci(CiIdentityConfig {
+            ci_environment: CiEnvironment::Unknown,
+            registry_path: registry_path.into(),
+        })
+    }
+
+    /// Create an agent identity config with sensible defaults.
+    ///
+    /// Args:
+    /// * `alias`: Human-readable agent name.
+    /// * `registry_path`: Path to the auths registry directory.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let config = IdentityConfig::agent(KeyAlias::new_unchecked("deploy-bot"), registry_path);
+    /// ```
+    pub fn agent(alias: KeyAlias, registry_path: impl Into<PathBuf>) -> Self {
+        Self::Agent(CreateAgentIdentityConfig::builder(alias, registry_path).build())
     }
 }
 

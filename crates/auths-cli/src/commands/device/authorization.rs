@@ -400,12 +400,11 @@ fn handle_extend(
     };
     let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))?;
 
-    let result = auths_sdk::device::extend_device_authorization(
-        config,
-        &ctx,
-        &auths_core::ports::clock::SystemClock,
-    )
-    .with_context(|| format!("Failed to extend device authorization for '{}'", device_did))?;
+    let result =
+        auths_sdk::device::extend_device(config, &ctx, &auths_core::ports::clock::SystemClock)
+            .with_context(|| {
+                format!("Failed to extend device authorization for '{}'", device_did)
+            })?;
 
     println!(
         "Successfully extended expiration for {} to {}",

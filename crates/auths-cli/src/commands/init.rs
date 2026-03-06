@@ -10,6 +10,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::sync::Arc;
 
+use auths_core::PrefilledPassphraseProvider;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::{KeyAlias, KeyStorage, get_platform_keychain};
 use auths_id::storage::attestation::AttestationSource;
@@ -17,9 +18,11 @@ use auths_id::storage::identity::IdentityStorage;
 use auths_infra_http::HttpRegistryClient;
 use auths_sdk::ports::git_config::GitConfigProvider;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
+use auths_sdk::result::InitializeResult;
+use auths_sdk::setup::initialize;
 use auths_sdk::types::{
-    CiEnvironment, CreateCiIdentityConfig, CreateDeveloperIdentityConfig, GitSigningScope,
-    IdentityConflictPolicy,
+    CiEnvironment, CiIdentityConfig, CreateDeveloperIdentityConfig, GitSigningScope,
+    IdentityConfig, IdentityConflictPolicy,
 };
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
@@ -29,8 +32,8 @@ use crate::adapters::git_config::SystemGitConfigProvider;
 use crate::factories::storage::build_auths_context;
 
 use super::init_helpers::{
-    check_git_version, detect_ci_environment, generate_allowed_signers, get_auths_repo_path,
-    offer_shell_completions, select_agent_capabilities, short_did,
+    check_git_version, detect_ci_environment, get_auths_repo_path, offer_shell_completions,
+    select_agent_capabilities, short_did, write_allowed_signers,
 };
 use crate::config::CliConfig;
 use crate::ux::format::Output;
@@ -161,15 +164,20 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
             let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
 
             // EXECUTE
-            let signer = StorageSigner::new(keychain);
-            let result = auths_sdk::setup::create_developer_identity(
-                config,
+            let keychain_arc: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
+            let signer = StorageSigner::new(Arc::clone(&keychain_arc));
+            let result = initialize(
+                IdentityConfig::Developer(config),
                 &sdk_ctx,
-                signer.inner(),
+                keychain_arc,
                 &signer,
                 ctx.passphrase_provider.as_ref(),
                 git_config_provider.as_deref(),
             )?;
+            let result = match result {
+                InitializeResult::Developer(r) => r,
+                _ => unreachable!(),
+            };
 
             out.print_success(&format!(
                 "Identity ready: {}",
@@ -205,7 +213,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
             out.newline();
 
             offer_shell_completions(interactive, &out)?;
-            generate_allowed_signers(&result.key_alias, &out)?;
+            write_allowed_signers(&result.key_alias, &out)?;
 
             // Post-execute: registration (best-effort, via SDK)
             let registered = submit_registration(
@@ -221,7 +229,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
         }
         InitProfile::Ci => {
             // GATHER
-            let (ci_env, config) = gather_ci_config(&out)?;
+            let (ci_env, config, keychain, passphrase_str) = gather_ci_config(&out)?;
             let registry_path = config.registry_path.clone();
 
             // Bootstrap: ensure registry dir and git repo exist (CLI responsibility)
@@ -231,7 +239,21 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
             let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
 
             // EXECUTE
-            let result = auths_sdk::setup::create_ci_identity(config, &sdk_ctx)?;
+            let keychain_arc: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
+            let signer = StorageSigner::new(Arc::clone(&keychain_arc));
+            let provider = PrefilledPassphraseProvider::new(&passphrase_str);
+            let result = initialize(
+                IdentityConfig::Ci(config),
+                &sdk_ctx,
+                keychain_arc,
+                &signer,
+                &provider,
+                None,
+            )?;
+            let result = match result {
+                InitializeResult::Ci(r) => r,
+                _ => unreachable!(),
+            };
 
             // DISPLAY
             display_ci_result(&out, &result, ci_env.as_deref());
@@ -251,12 +273,20 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
                 let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
 
                 // EXECUTE
-                let result = auths_sdk::setup::create_agent_identity(
-                    config,
+                let keychain_arc: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
+                let signer = StorageSigner::new(Arc::clone(&keychain_arc));
+                let result = initialize(
+                    IdentityConfig::Agent(config),
                     &sdk_ctx,
-                    keychain,
+                    keychain_arc,
+                    &signer,
                     ctx.passphrase_provider.as_ref(),
+                    None,
                 )?;
+                let result = match result {
+                    InitializeResult::Agent(r) => r,
+                    _ => unreachable!(),
+                };
 
                 // DISPLAY
                 display_agent_result(&out, &result);
@@ -299,7 +329,15 @@ fn gather_developer_config(
     Ok((keychain, builder.build()))
 }
 
-fn gather_ci_config(out: &Output) -> Result<(Option<String>, CreateCiIdentityConfig)> {
+#[allow(clippy::type_complexity)]
+fn gather_ci_config(
+    out: &Output,
+) -> Result<(
+    Option<String>,
+    CiIdentityConfig,
+    Box<dyn KeyStorage + Send + Sync>,
+    String,
+)> {
     out.print_info("Detecting CI environment...");
     let ci_env = detect_ci_environment();
     if let Some(ref vendor) = ci_env {
@@ -322,14 +360,12 @@ fn gather_ci_config(out: &Output) -> Result<(Option<String>, CreateCiIdentityCon
 
     out.println(&format!("  Using keychain: {}", keychain.backend_name()));
 
-    let config = CreateCiIdentityConfig {
+    let config = CiIdentityConfig {
         ci_environment: map_ci_environment(&ci_env),
-        passphrase,
         registry_path,
-        keychain,
     };
 
-    Ok((ci_env, config))
+    Ok((ci_env, config, keychain, passphrase))
 }
 
 fn gather_agent_config(
@@ -585,7 +621,7 @@ fn prompt_platform_verification(
 
 fn display_developer_result(
     out: &Output,
-    result: &auths_sdk::result::CreateIdentityResult,
+    result: &auths_sdk::result::DeveloperIdentityResult,
     registered: Option<&str>,
 ) {
     out.newline();
@@ -614,7 +650,7 @@ fn display_developer_result(
 
 fn display_ci_result(
     out: &Output,
-    result: &auths_sdk::result::CreateCiIdentityResult,
+    result: &auths_sdk::result::CiIdentityResult,
     ci_vendor: Option<&str>,
 ) {
     out.print_success(&format!("CI identity: {}", short_did(&result.identity_did)));
@@ -637,7 +673,7 @@ fn display_ci_result(
     out.println("  Commits made in CI will be signed with the ephemeral identity");
 }
 
-fn display_agent_result(out: &Output, result: &auths_sdk::result::CreateAgentIdentityResult) {
+fn display_agent_result(out: &Output, result: &auths_sdk::result::AgentIdentityResult) {
     out.print_heading("Agent Setup Complete!");
     out.newline();
     out.println(&format!(

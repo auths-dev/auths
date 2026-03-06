@@ -4,7 +4,9 @@
 //! Auths device authorizations.
 
 use anyhow::{Context, Result, bail};
-use auths_sdk::workflows::git_integration::{compute_allowed_signers, format_allowed_signers_file};
+use auths_sdk::workflows::git_integration::{
+    format_allowed_signers_file, generate_allowed_signers,
+};
 use auths_storage::git::RegistryAttestationStorage;
 use clap::{Parser, Subcommand};
 #[cfg(unix)]
@@ -165,7 +167,7 @@ fn handle_install_hooks(
     println!("\nGenerating initial allowed_signers file...");
     let storage = RegistryAttestationStorage::new(&auths_repo);
 
-    match compute_allowed_signers(&storage) {
+    match generate_allowed_signers(&storage) {
         Ok(entries) => {
             let output = format_allowed_signers_file(&entries);
             fs::write(&cmd.allowed_signers_path, &output)
@@ -253,8 +255,8 @@ fn handle_allowed_signers(
     // The registry uses a fixed path structure under refs/auths/registry.
 
     let storage = RegistryAttestationStorage::new(&repo_path);
-    let entries =
-        compute_allowed_signers(&storage).context("Failed to load attestations from repository")?;
+    let entries = generate_allowed_signers(&storage)
+        .context("Failed to load attestations from repository")?;
 
     let output = format_allowed_signers_file(&entries);
 

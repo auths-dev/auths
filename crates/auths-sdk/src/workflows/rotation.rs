@@ -469,8 +469,9 @@ mod tests {
     use auths_id::testing::fakes::FakeRegistryBackend;
     use auths_id::testing::fakes::{FakeAttestationSink, FakeAttestationSource};
 
-    use crate::setup::create_developer_identity;
-    use crate::types::{CreateDeveloperIdentityConfig, GitSigningScope};
+    use crate::result::InitializeResult;
+    use crate::setup::initialize;
+    use crate::types::{CreateDeveloperIdentityConfig, GitSigningScope, IdentityConfig};
 
     fn fake_ctx(passphrase: &str) -> AuthsContext {
         MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
@@ -498,14 +499,24 @@ mod tests {
     }
 
     fn provision_identity(ctx: &AuthsContext) -> KeyAlias {
-        let keychain = MemoryKeychainHandle;
         let signer = StorageSigner::new(MemoryKeychainHandle);
         let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
         let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
             .with_git_signing_scope(GitSigningScope::Skip)
             .build();
-        let result =
-            create_developer_identity(config, ctx, &keychain, &signer, &provider, None).unwrap();
+        let result = match initialize(
+            IdentityConfig::Developer(config),
+            ctx,
+            Arc::new(MemoryKeychainHandle),
+            &signer,
+            &provider,
+            None,
+        )
+        .unwrap()
+        {
+            InitializeResult::Developer(r) => r,
+            _ => unreachable!(),
+        };
         result.key_alias
     }
 

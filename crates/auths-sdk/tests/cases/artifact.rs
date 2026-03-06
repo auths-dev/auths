@@ -1,7 +1,7 @@
 use auths_core::crypto::ssh::SecureSeed;
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
 use auths_sdk::signing::{
-    ArtifactSigningError, ArtifactSigningParams, SigningKeyMaterial, sign_artifact_attestation,
+    ArtifactSigningError, ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
 };
 use auths_sdk::workflows::artifact::compute_digest;
 use std::sync::Arc;
@@ -156,11 +156,11 @@ fn artifact_metadata_serialization_roundtrip() {
 }
 
 // ---------------------------------------------------------------------------
-// sign_artifact_attestation integration tests
+// sign_artifact integration tests
 // ---------------------------------------------------------------------------
 
 #[test]
-fn sign_artifact_attestation_with_alias_keys_produces_valid_json() {
+fn sign_artifact_with_alias_keys_produces_valid_json() {
     let (_tmp, key_alias, ctx) = setup_signed_artifact_context();
 
     let artifact = Arc::new(InMemoryArtifact {
@@ -176,7 +176,7 @@ fn sign_artifact_attestation_with_alias_keys_produces_valid_json() {
         note: Some("integration test".into()),
     };
 
-    let result = sign_artifact_attestation(params, &ctx).unwrap();
+    let result = sign_artifact(params, &ctx).unwrap();
 
     assert!(!result.attestation_json.is_empty());
     assert!(result.rid.starts_with("sha256:"));
@@ -189,7 +189,7 @@ fn sign_artifact_attestation_with_alias_keys_produces_valid_json() {
 }
 
 #[test]
-fn sign_artifact_attestation_with_direct_device_key_produces_valid_json() {
+fn sign_artifact_with_direct_device_key_produces_valid_json() {
     let (_tmp, key_alias, ctx) = setup_signed_artifact_context();
 
     let device_seed = SecureSeed::new([42u8; 32]);
@@ -206,7 +206,7 @@ fn sign_artifact_attestation_with_direct_device_key_produces_valid_json() {
         note: None,
     };
 
-    let result = sign_artifact_attestation(params, &ctx).unwrap();
+    let result = sign_artifact(params, &ctx).unwrap();
 
     assert!(result.rid.starts_with("sha256:"));
     let parsed: serde_json::Value = serde_json::from_str(&result.attestation_json).unwrap();
@@ -214,7 +214,7 @@ fn sign_artifact_attestation_with_direct_device_key_produces_valid_json() {
 }
 
 #[test]
-fn sign_artifact_attestation_identity_not_found_returns_error() {
+fn sign_artifact_identity_not_found_returns_error() {
     let (_tmp, empty_ctx) = build_empty_test_context();
 
     let device_seed = SecureSeed::new([1u8; 32]);
@@ -231,7 +231,7 @@ fn sign_artifact_attestation_identity_not_found_returns_error() {
         note: None,
     };
 
-    let result = sign_artifact_attestation(params, &empty_ctx);
+    let result = sign_artifact(params, &empty_ctx);
     assert!(
         matches!(result, Err(ArtifactSigningError::IdentityNotFound)),
         "Expected IdentityNotFound, got: {:?}",

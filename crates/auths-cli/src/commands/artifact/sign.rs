@@ -5,7 +5,7 @@ use std::sync::Arc;
 use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::KeyAlias;
-use auths_sdk::signing::{ArtifactSigningParams, SigningKeyMaterial, sign_artifact_attestation};
+use auths_sdk::signing::{ArtifactSigningParams, SigningKeyMaterial, sign_artifact};
 
 use super::file::FileArtifact;
 use crate::factories::storage::build_auths_context;
@@ -36,7 +36,7 @@ pub fn handle_sign(
         note,
     };
 
-    let result = sign_artifact_attestation(params, &ctx)
+    let result = sign_artifact(params, &ctx)
         .with_context(|| format!("Failed to sign artifact {:?}", file))?;
 
     let output_path = output.unwrap_or_else(|| {
