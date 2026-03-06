@@ -11,8 +11,8 @@ use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 use auths_sdk::context::AuthsContext;
-use auths_sdk::setup::setup_developer;
-use auths_sdk::types::{DeveloperSetupConfig, GitSigningScope};
+use auths_sdk::setup::create_developer_identity;
+use auths_sdk::types::{CreateDeveloperIdentityConfig, GitSigningScope};
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
@@ -93,12 +93,12 @@ pub fn setup_signed_artifact_context() -> (tempfile::TempDir, KeyAlias, AuthsCon
     let keychain = MemoryKeychainHandle;
     let signer = StorageSigner::new(MemoryKeychainHandle);
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
-    let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
     let setup_ctx = build_test_context(&registry_path, Arc::new(MemoryKeychainHandle));
-    let result = setup_developer(config, &setup_ctx, &keychain, &signer, &provider, None)
-        .expect("setup_developer failed");
+    let result = create_developer_identity(config, &setup_ctx, &keychain, &signer, &provider, None)
+        .expect("create_developer_identity failed");
 
     let ctx = build_test_context_with_provider(
         &registry_path,

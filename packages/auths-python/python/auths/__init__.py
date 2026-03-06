@@ -19,6 +19,8 @@ from auths._native import (
     sign_action,
     sign_bytes,
     verify_action_envelope,
+    verify_at_time,
+    verify_at_time_with_capability,
     verify_attestation,
     verify_attestation_with_capability,
     verify_chain,
@@ -26,8 +28,15 @@ from auths._native import (
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
-from auths.devices import Device, DeviceService
-from auths.identity import Agent, Identity, IdentityService
+from auths.artifact import ArtifactSigningResult
+from auths.attestation_query import Attestation, AttestationService
+from auths.commit import CommitSigningResult
+from auths.jwt import AuthsClaims
+from auths.policy import PolicyBuilder
+from auths.devices import Device, DeviceExtension, DeviceService
+from auths.identity import AgentIdentity, DelegatedAgent, Identity, IdentityService
+from auths.rotation import IdentityRotationResult
+from auths.verify import WitnessConfig, WitnessKey
 from auths.git import (
     CommitResult,
     ErrorCode,
@@ -51,6 +60,8 @@ __all__ = [
     "VerificationStatus",
     "ChainLink",
     "VerificationReport",
+    "verify_at_time",
+    "verify_at_time_with_capability",
     "verify_attestation",
     "verify_chain",
     "verify_attestation_with_capability",
@@ -61,6 +72,13 @@ __all__ = [
     "verify_action_envelope",
     "get_token",
     "AgentAuth",
+    "ArtifactSigningResult",
+    "Attestation",
+    "AttestationService",
+    "CommitSigningResult",
+    "AuthsClaims",
+    "PolicyBuilder",
+    "compile_policy",
     "CommitResult",
     "ErrorCode",
     "VerifyResult",
@@ -69,8 +87,13 @@ __all__ = [
     "discover_layout",
     "verify_commit_range",
     "Identity",
-    "Agent",
+    "AgentIdentity",
+    "DelegatedAgent",
     "IdentityService",
     "Device",
+    "DeviceExtension",
     "DeviceService",
+    "IdentityRotationResult",
+    "WitnessConfig",
+    "WitnessKey",
 ]

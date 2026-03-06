@@ -22,7 +22,8 @@ use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::git_config::GitConfigProvider;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::types::{
-    CiEnvironment, CiSetupConfig, DeveloperSetupConfig, GitSigningScope, IdentityConflictPolicy,
+    CiEnvironment, CreateCiIdentityConfig, CreateDeveloperIdentityConfig, GitSigningScope,
+    IdentityConflictPolicy,
 };
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
@@ -164,7 +165,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
 
             // EXECUTE
             let signer = StorageSigner::new(keychain);
-            let result = auths_sdk::setup::setup_developer(
+            let result = auths_sdk::setup::create_developer_identity(
                 config,
                 &sdk_ctx,
                 signer.inner(),
@@ -235,7 +236,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
             let sdk_ctx = build_sdk_context(&registry_path)?;
 
             // EXECUTE
-            let result = auths_sdk::setup::setup_ci(config, &sdk_ctx)?;
+            let result = auths_sdk::setup::create_ci_identity(config, &sdk_ctx)?;
 
             // DISPLAY
             display_ci_result(&out, &result, ci_env.as_deref());
@@ -255,7 +256,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
                 let sdk_ctx = build_sdk_context(&registry_path)?;
 
                 // EXECUTE
-                let result = auths_sdk::setup::setup_agent(
+                let result = auths_sdk::setup::create_agent_identity(
                     config,
                     &sdk_ctx,
                     keychain,
@@ -277,7 +278,10 @@ fn gather_developer_config(
     interactive: bool,
     out: &Output,
     cmd: &InitCommand,
-) -> Result<(Box<dyn KeyStorage + Send + Sync>, DeveloperSetupConfig)> {
+) -> Result<(
+    Box<dyn KeyStorage + Send + Sync>,
+    CreateDeveloperIdentityConfig,
+)> {
     out.print_info("Checking prerequisites...");
     let keychain = check_keychain_access(out)?;
     check_git_version(out)?;
@@ -289,7 +293,7 @@ fn gather_developer_config(
     let conflict_policy = prompt_for_conflict_policy(interactive, cmd, &registry_path, out)?;
     let git_scope = prompt_for_git_scope(interactive)?;
 
-    let mut builder = DeveloperSetupConfig::builder(KeyAlias::new_unchecked(&alias))
+    let mut builder = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked(&alias))
         .with_conflict_policy(conflict_policy)
         .with_git_signing_scope(git_scope);
 
@@ -300,7 +304,7 @@ fn gather_developer_config(
     Ok((keychain, builder.build()))
 }
 
-fn gather_ci_config(out: &Output) -> Result<(Option<String>, CiSetupConfig)> {
+fn gather_ci_config(out: &Output) -> Result<(Option<String>, CreateCiIdentityConfig)> {
     out.print_info("Detecting CI environment...");
     let ci_env = detect_ci_environment();
     if let Some(ref vendor) = ci_env {
@@ -323,7 +327,7 @@ fn gather_ci_config(out: &Output) -> Result<(Option<String>, CiSetupConfig)> {
 
     out.println(&format!("  Using keychain: {}", keychain.backend_name()));
 
-    let config = CiSetupConfig {
+    let config = CreateCiIdentityConfig {
         ci_environment: map_ci_environment(&ci_env),
         passphrase,
         registry_path,
@@ -339,7 +343,7 @@ fn gather_agent_config(
     cmd: &InitCommand,
 ) -> Result<(
     Box<dyn KeyStorage + Send + Sync>,
-    auths_sdk::types::AgentSetupConfig,
+    auths_sdk::types::CreateAgentIdentityConfig,
 )> {
     out.print_info("Setting capability scope...");
     let capabilities = select_agent_capabilities(interactive, out)?;
@@ -355,7 +359,7 @@ fn gather_agent_config(
     let keychain = check_keychain_access(out)?;
     let registry_path = get_auths_repo_path()?;
 
-    let config = auths_sdk::types::AgentSetupConfig::builder(
+    let config = auths_sdk::types::CreateAgentIdentityConfig::builder(
         KeyAlias::new_unchecked("agent"),
         &registry_path,
     )
@@ -513,7 +517,7 @@ fn prompt_platform_verification(
 
 fn display_developer_result(
     out: &Output,
-    result: &auths_sdk::result::SetupResult,
+    result: &auths_sdk::result::CreateIdentityResult,
     registered: Option<&str>,
 ) {
     out.newline();
@@ -542,7 +546,7 @@ fn display_developer_result(
 
 fn display_ci_result(
     out: &Output,
-    result: &auths_sdk::result::CiSetupResult,
+    result: &auths_sdk::result::CreateCiIdentityResult,
     ci_vendor: Option<&str>,
 ) {
     out.print_success(&format!("CI identity: {}", short_did(&result.identity_did)));
@@ -565,7 +569,7 @@ fn display_ci_result(
     out.println("  Commits made in CI will be signed with the ephemeral identity");
 }
 
-fn display_agent_result(out: &Output, result: &auths_sdk::result::AgentSetupResult) {
+fn display_agent_result(out: &Output, result: &auths_sdk::result::CreateAgentIdentityResult) {
     out.print_heading("Agent Setup Complete!");
     out.newline();
     out.println(&format!(
@@ -580,7 +584,7 @@ fn display_agent_result(out: &Output, result: &auths_sdk::result::AgentSetupResu
     out.println("  Check status: auths agent status");
 }
 
-fn display_agent_dry_run(out: &Output, config: &auths_sdk::types::AgentSetupConfig) {
+fn display_agent_dry_run(out: &Output, config: &auths_sdk::types::CreateAgentIdentityConfig) {
     out.print_heading("Dry Run — no files or identities will be created");
     out.newline();
     out.println(&format!("  Storage: {}", config.registry_path.display()));

@@ -1,28 +1,16 @@
-"""Tests for identity and device resource services (Phase 2).
-
-These tests require a real git registry and keychain setup.
-Run with: AUTHS_KEYCHAIN_BACKEND=file AUTHS_PASSPHRASE=test uv run pytest tests/test_identity.py -v
-"""
-
-import subprocess
+"""Tests for identity and device resource services (Phase 2)."""
 
 import pytest
 
-from auths import Agent, Auths, Device, Identity
+from auths import AgentIdentity, Auths, DelegatedAgent, Device, Identity
 
 
 @pytest.fixture
 def auths(tmp_path):
-    """Create an Auths client with a temp git repo initialized as an auths registry."""
+    """Create an Auths client with a temp directory (registry auto-inits on first use)."""
     repo = tmp_path / "test-repo"
     repo.mkdir()
-    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
-        check=True,
-        capture_output=True,
-    )
-    return Auths(repo_path=str(repo), passphrase="test")
+    return Auths(repo_path=str(repo), passphrase="Test-pass-123")
 
 
 def test_create_identity(auths):
@@ -33,16 +21,24 @@ def test_create_identity(auths):
     assert identity.label == "test-key"
 
 
-def test_provision_agent(auths):
-    """identity.provision_agent() should return an Agent with valid fields."""
+def test_delegate_agent(auths):
+    """identities.delegate_agent() should return a DelegatedAgent with did:key: prefix."""
     identity = auths.identities.create(label="test-key")
-    agent = auths.identities.provision_agent(
+    agent = auths.identities.delegate_agent(
         identity.did, name="ci-bot", capabilities=["sign"]
     )
-    assert isinstance(agent, Agent)
+    assert isinstance(agent, DelegatedAgent)
     assert agent.did.startswith("did:key:")
-    assert agent.label == "ci-bot"
+    assert agent.key_alias == "ci-bot-agent"
     assert agent.attestation
+
+
+def test_create_agent_identity(auths):
+    """identities.create_agent() should return an AgentIdentity with did:keri: prefix."""
+    agent = auths.identities.create_agent(name="standalone-bot", capabilities=["sign"])
+    assert isinstance(agent, AgentIdentity)
+    assert agent.did.startswith("did:keri:")
+    assert agent.key_alias == "standalone-bot-agent"
 
 
 def test_device_lifecycle(auths):
@@ -65,7 +61,7 @@ def test_device_lifecycle(auths):
 def test_stripe_style_chaining(auths):
     """The full 'Stripe for identity' flow should work end-to-end."""
     identity = auths.identities.create(label="laptop")
-    agent = auths.identities.provision_agent(
+    agent = auths.identities.delegate_agent(
         identity.did, name="deploy-bot", capabilities=["sign", "verify"]
     )
     device = auths.devices.link(

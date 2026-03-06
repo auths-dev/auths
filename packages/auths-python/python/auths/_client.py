@@ -2,27 +2,39 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import json
+
 from auths._native import (
     get_token as _get_token,
     sign_action as _sign_action,
     sign_bytes as _sign_bytes,
     verify_action_envelope as _verify_action_envelope,
+    verify_at_time as _verify_at_time,
+    verify_at_time_with_capability as _verify_at_time_with_capability,
     verify_attestation as _verify_attestation,
     verify_attestation_with_capability as _verify_attestation_with_capability,
     verify_chain as _verify_chain,
     verify_chain_with_capability as _verify_chain_with_capability,
+    verify_chain_with_witnesses as _verify_chain_with_witnesses,
     verify_device_authorization as _verify_device_authorization,
 )
 from auths._errors import CryptoError, NetworkError, VerificationError
 
 if TYPE_CHECKING:
     from auths._native import VerificationReport, VerificationResult
+    from auths.artifact import ArtifactSigningResult
+    from auths.commit import CommitSigningResult
+    from auths.verify import WitnessConfig
 
 
 def _map_verify_error(exc: Exception) -> Exception:
     msg = str(exc)
     if "public key" in msg.lower() or "hex" in msg.lower():
         return CryptoError(msg, code="invalid_key")
+    if "rfc 3339" in msg.lower():
+        return VerificationError(msg, code="invalid_timestamp")
+    if "future" in msg.lower() and "timestamp" in msg.lower():
+        return VerificationError(msg, code="future_timestamp")
     if "parse" in msg.lower() or "json" in msg.lower():
         return VerificationError(msg, code="invalid_signature")
     return VerificationError(msg, code="invalid_signature")
@@ -57,30 +69,41 @@ class Auths:
         self.repo_path = repo_path
         self._passphrase = passphrase
 
+        from auths.attestation_query import AttestationService
         from auths.devices import DeviceService
         from auths.identity import IdentityService
 
         self.identities = IdentityService(self)
         self.devices = DeviceService(self)
+        self.attestations = AttestationService(self)
 
     def verify(
         self,
         attestation_json: str,
         issuer_key: str,
         required_capability: str | None = None,
+        at: str | None = None,
     ) -> VerificationResult:
-        """Verify a single attestation, optionally checking a required capability.
+        """Verify a single attestation, optionally at a specific historical timestamp.
 
         Args:
             attestation_json: The attestation JSON string.
             issuer_key: Issuer's public key hex.
             required_capability: If set, also verify the attestation grants this capability.
+            at: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
+                When set, checks validity at that point in time instead of now.
 
         Usage:
-            result = auths.verify(attestation, key)
-            result = auths.verify(attestation, key, required_capability="sign")
+            result = auths.verify(att_json, key, at="2024-06-15T00:00:00Z",
+                                  required_capability="deploy:staging")
         """
         try:
+            if at and required_capability:
+                return _verify_at_time_with_capability(
+                    attestation_json, issuer_key, at, required_capability
+                )
+            if at:
+                return _verify_at_time(attestation_json, issuer_key, at)
             if required_capability:
                 return _verify_attestation_with_capability(
                     attestation_json, issuer_key, required_capability
@@ -94,18 +117,29 @@ class Auths:
         attestations: list[str],
         root_key: str,
         required_capability: str | None = None,
+        witnesses: WitnessConfig | None = None,
     ) -> VerificationReport:
-        """Verify an attestation chain, optionally checking a required capability.
+        """Verify an attestation chain, optionally with witness quorum.
 
         Args:
-            attestations: List of attestation JSON strings.
+            attestations: List of attestation JSON strings, ordered root-to-leaf.
             root_key: Root identity's public key hex.
             required_capability: If set, verify the chain grants this capability.
+            witnesses: If set, enforces witness receipt quorum.
 
         Usage:
-            result = auths.verify_chain(chain, root_key, required_capability="deploy")
+            report = auths.verify_chain(chain, root_key, witnesses=config)
         """
         try:
+            if witnesses:
+                keys_json = [
+                    json.dumps({"did": k.did, "public_key_hex": k.public_key_hex})
+                    for k in witnesses.keys
+                ]
+                return _verify_chain_with_witnesses(
+                    attestations, root_key,
+                    witnesses.receipts, keys_json, witnesses.threshold,
+                )
             if required_capability:
                 return _verify_chain_with_capability(
                     attestations, root_key, required_capability
@@ -205,6 +239,122 @@ class Auths:
         try:
             return sign_action_as_identity(
                 action_type, payload, identity, self.repo_path, pp
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise _map_sign_error(exc) from exc
+
+    def sign_commit(
+        self,
+        data: bytes,
+        *,
+        identity_did: str,
+        passphrase: str | None = None,
+    ) -> CommitSigningResult:
+        """Sign git commit/tag data, producing an SSHSIG PEM signature.
+
+        Uses a 3-tier fallback:
+        1. ssh-agent (fastest, works on dev machines with agent running)
+        2. auto-start agent (starts a transient agent process)
+        3. direct signing (works everywhere, including headless CI)
+
+        Args:
+            data: The raw commit or tag bytes to sign.
+            identity_did: The KERI DID of the identity to sign with.
+            passphrase: Optional passphrase (for headless envs without ssh-agent).
+
+        Usage:
+            result = auths.sign_commit(commit_bytes, identity_did=identity.did)
+        """
+        from auths._native import sign_commit as _sign_commit
+        from auths.commit import CommitSigningResult
+
+        pp = passphrase or self._passphrase
+        try:
+            raw = _sign_commit(data, identity_did, self.repo_path, pp)
+            return CommitSigningResult(
+                signature_pem=raw.signature_pem,
+                method=raw.method,
+                namespace=raw.namespace,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise _map_sign_error(exc) from exc
+
+    def sign_artifact(
+        self,
+        path: str,
+        *,
+        identity_did: str,
+        expires_in_days: int | None = None,
+        note: str | None = None,
+    ) -> ArtifactSigningResult:
+        """Sign a file artifact, producing a dual-signed attestation.
+
+        Computes SHA-256 digest of the file and creates an attestation binding
+        the digest to your identity.
+
+        Args:
+            path: Path to the file to sign.
+            identity_did: The identity DID to sign with (used as key alias).
+            expires_in_days: Optional expiry for the attestation.
+            note: Optional human-readable note.
+
+        Usage:
+            result = auths.sign_artifact("release.tar.gz", identity_did=identity.did)
+        """
+        from auths._native import sign_artifact as _sign_artifact
+        from auths.artifact import ArtifactSigningResult
+
+        pp = self._passphrase
+        try:
+            raw = _sign_artifact(
+                path, identity_did, self.repo_path, pp, expires_in_days, note,
+            )
+            return ArtifactSigningResult(
+                attestation_json=raw.attestation_json,
+                rid=raw.rid,
+                digest=raw.digest,
+                file_size=raw.file_size,
+            )
+        except FileNotFoundError:
+            raise
+        except (ValueError, RuntimeError) as exc:
+            raise _map_sign_error(exc) from exc
+
+    def sign_artifact_bytes(
+        self,
+        data: bytes,
+        *,
+        identity_did: str,
+        expires_in_days: int | None = None,
+        note: str | None = None,
+    ) -> ArtifactSigningResult:
+        """Sign raw bytes, producing a dual-signed attestation.
+
+        Use this for non-file artifacts: container manifest digests,
+        git tree hashes, API response bodies.
+
+        Args:
+            data: The raw bytes to sign.
+            identity_did: The identity DID to sign with (used as key alias).
+            expires_in_days: Optional expiry for the attestation.
+            note: Optional human-readable note.
+
+        Usage:
+            result = auths.sign_artifact_bytes(manifest_bytes, identity_did=did)
+        """
+        from auths._native import sign_artifact_bytes as _sign_artifact_bytes
+        from auths.artifact import ArtifactSigningResult
+
+        pp = self._passphrase
+        try:
+            raw = _sign_artifact_bytes(
+                data, identity_did, self.repo_path, pp, expires_in_days, note,
+            )
+            return ArtifactSigningResult(
+                attestation_json=raw.attestation_json,
+                rid=raw.rid,
+                digest=raw.digest,
+                file_size=raw.file_size,
             )
         except (ValueError, RuntimeError) as exc:
             raise _map_sign_error(exc) from exc

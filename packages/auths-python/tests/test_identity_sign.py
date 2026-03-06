@@ -1,11 +1,6 @@
-"""Tests for keychain-backed identity signing (Phase 2).
-
-These tests require a real git registry and keychain setup.
-Run with: AUTHS_KEYCHAIN_BACKEND=file AUTHS_PASSPHRASE=test uv run pytest tests/test_identity_sign.py -v
-"""
+"""Tests for keychain-backed identity signing (Phase 2)."""
 
 import json
-import subprocess
 
 import pytest
 
@@ -14,16 +9,10 @@ from auths import Auths
 
 @pytest.fixture
 def auths(tmp_path):
-    """Create an Auths client with a temp git repo initialized as an auths registry."""
+    """Create an Auths client with a temp directory (registry auto-inits on first use)."""
     repo = tmp_path / "test-repo"
     repo.mkdir()
-    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "init"],
-        check=True,
-        capture_output=True,
-    )
-    return Auths(repo_path=str(repo), passphrase="test")
+    return Auths(repo_path=str(repo), passphrase="Test-pass-123")
 
 
 def test_sign_as_identity(auths):

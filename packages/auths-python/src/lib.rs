@@ -4,8 +4,14 @@
 
 use pyo3::prelude::*;
 
+pub mod artifact_sign;
+pub mod attestation_query;
+pub mod commit_sign;
+pub mod device_ext;
 pub mod identity;
+pub mod policy;
 pub mod identity_sign;
+pub mod rotation;
 pub mod runtime;
 pub mod sign;
 pub mod token;
@@ -26,6 +32,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(verify::verify_device_authorization, m)?)?;
     m.add_function(wrap_pyfunction!(verify::verify_attestation_with_capability, m)?)?;
     m.add_function(wrap_pyfunction!(verify::verify_chain_with_capability, m)?)?;
+    m.add_function(wrap_pyfunction!(verify::verify_at_time, m)?)?;
+    m.add_function(wrap_pyfunction!(verify::verify_at_time_with_capability, m)?)?;
+    m.add_function(wrap_pyfunction!(verify::verify_chain_with_witnesses, m)?)?;
 
     m.add_function(wrap_pyfunction!(sign::sign_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(sign::sign_action, m)?)?;
@@ -33,14 +42,39 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(token::get_token, m)?)?;
 
-    m.add_class::<identity::AgentBundle>()?;
+    m.add_class::<identity::DelegatedAgentBundle>()?;
+    m.add_class::<identity::AgentIdentityBundle>()?;
     m.add_function(wrap_pyfunction!(identity::create_identity, m)?)?;
-    m.add_function(wrap_pyfunction!(identity::provision_agent, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::create_agent_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::delegate_agent, m)?)?;
     m.add_function(wrap_pyfunction!(identity::link_device_to_identity, m)?)?;
     m.add_function(wrap_pyfunction!(identity::revoke_device_from_identity, m)?)?;
 
     m.add_function(wrap_pyfunction!(identity_sign::sign_as_identity, m)?)?;
     m.add_function(wrap_pyfunction!(identity_sign::sign_action_as_identity, m)?)?;
+
+    m.add_class::<rotation::PyIdentityRotationResult>()?;
+    m.add_function(wrap_pyfunction!(rotation::rotate_identity_ffi, m)?)?;
+
+    m.add_class::<device_ext::PyDeviceExtension>()?;
+    m.add_function(wrap_pyfunction!(device_ext::extend_device_authorization_ffi, m)?)?;
+
+    m.add_class::<policy::PyCompiledPolicy>()?;
+    m.add_class::<policy::PyEvalContext>()?;
+    m.add_class::<policy::PyDecision>()?;
+    m.add_function(wrap_pyfunction!(policy::compile_policy, m)?)?;
+
+    m.add_class::<artifact_sign::PyArtifactResult>()?;
+    m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact, m)?)?;
+    m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes, m)?)?;
+
+    m.add_class::<commit_sign::PyCommitSignResult>()?;
+    m.add_function(wrap_pyfunction!(commit_sign::sign_commit, m)?)?;
+
+    m.add_class::<attestation_query::PyAttestation>()?;
+    m.add_function(wrap_pyfunction!(attestation_query::list_attestations, m)?)?;
+    m.add_function(wrap_pyfunction!(attestation_query::list_attestations_by_device, m)?)?;
+    m.add_function(wrap_pyfunction!(attestation_query::get_latest_attestation, m)?)?;
 
     Ok(())
 }

@@ -7,11 +7,11 @@ use auths_verifier::types::DeviceDID;
 ///
 /// Usage:
 /// ```ignore
-/// let result: SetupResult = sdk.setup_developer(config).await?;
+/// let result: CreateIdentityResult = sdk.create_developer_identity(config).await?;
 /// println!("Created identity: {}", result.identity_did);
 /// ```
 #[derive(Debug, Clone)]
-pub struct SetupResult {
+pub struct CreateIdentityResult {
     /// The controller DID of the created identity.
     pub identity_did: IdentityDID,
     /// The device DID bound to this identity.
@@ -30,13 +30,13 @@ pub struct SetupResult {
 ///
 /// Usage:
 /// ```ignore
-/// let result: CiSetupResult = sdk.setup_ci(config).await?;
+/// let result: CreateCiIdentityResult = sdk.create_ci_identity(config).await?;
 /// for line in &result.env_block {
 ///     println!("{line}");
 /// }
 /// ```
 #[derive(Debug, Clone)]
-pub struct CiSetupResult {
+pub struct CreateCiIdentityResult {
     /// The controller DID of the CI identity.
     pub identity_did: IdentityDID,
     /// The device DID bound to this CI identity.
@@ -49,11 +49,11 @@ pub struct CiSetupResult {
 ///
 /// Usage:
 /// ```ignore
-/// let result: AgentSetupResult = sdk.setup_agent(config).await?;
+/// let result: CreateAgentIdentityResult = sdk.create_agent_identity(config).await?;
 /// println!("Agent {} delegated by {}", result.agent_did, result.parent_did);
 /// ```
 #[derive(Debug, Clone)]
-pub struct AgentSetupResult {
+pub struct CreateAgentIdentityResult {
     /// The DID of the newly created agent identity.
     pub agent_did: IdentityDID,
     /// The DID of the parent identity that delegated authority.
@@ -81,19 +81,21 @@ pub struct DeviceLinkResult {
 ///
 /// Usage:
 /// ```ignore
-/// let result: RotationResult = rotate_identity(config, provider)?;
+/// let result: IdentityRotationResult = rotate_identity(config, provider)?;
 /// println!("Rotated DID: {}", result.controller_did);
 /// println!("New key:  {}...", result.new_key_fingerprint);
 /// println!("Old key:  {}...", result.previous_key_fingerprint);
 /// ```
 #[derive(Debug, Clone)]
-pub struct RotationResult {
+pub struct IdentityRotationResult {
     /// The controller DID of the rotated identity.
     pub controller_did: IdentityDID,
     /// Hex-encoded fingerprint of the new signing key.
     pub new_key_fingerprint: String,
     /// Hex-encoded fingerprint of the previous signing key.
     pub previous_key_fingerprint: String,
+    /// KERI sequence number after this rotation event.
+    pub sequence: u64,
 }
 
 /// Outcome of a successful device authorization extension.
@@ -109,6 +111,8 @@ pub struct DeviceExtensionResult {
     pub device_did: DeviceDID,
     /// The new expiration timestamp for the device authorization.
     pub new_expires_at: chrono::DateTime<chrono::Utc>,
+    /// The previous expiration timestamp (None if the device had no expiry set).
+    pub previous_expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Outcome of a successful platform claim verification.

@@ -1,7 +1,7 @@
 //! Runtime dependency container for auths-sdk operations.
 //!
 //! [`AuthsContext`] carries all injected infrastructure adapters. Config structs
-//! (e.g. [`crate::types::DeveloperSetupConfig`]) remain Plain Old Data with no
+//! (e.g. [`crate::types::CreateDeveloperIdentityConfig`]) remain Plain Old Data with no
 //! trait objects.
 
 use std::fmt;
@@ -89,7 +89,7 @@ impl PassphraseProvider for NoopPassphraseProvider {
 ///     .key_storage(Arc::new(my_keychain))
 ///     .clock(Arc::new(SystemClock))
 ///     .build();
-/// sdk::setup_developer(config, &ctx)?;
+/// sdk::create_developer_identity(config, &ctx)?;
 /// ```
 pub struct AuthsContext {
     /// Pre-initialized registry storage backend.

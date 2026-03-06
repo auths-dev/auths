@@ -4,8 +4,8 @@ use auths_core::PrefilledPassphraseProvider;
 use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::KeyAlias;
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
-use auths_sdk::setup::setup_developer;
-use auths_sdk::types::{DeveloperSetupConfig, GitSigningScope, IdentityConflictPolicy};
+use auths_sdk::setup::create_developer_identity;
+use auths_sdk::types::{CreateDeveloperIdentityConfig, GitSigningScope, IdentityConflictPolicy};
 
 use crate::cases::helpers::build_test_context;
 
@@ -20,7 +20,7 @@ fn quick_setup_creates_identity_in_temp_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let registry_path = tmp.path().join(".auths");
 
-    let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
 
@@ -29,7 +29,8 @@ fn quick_setup_creates_identity_in_temp_dir() {
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let ctx = build_test_context(&registry_path, Arc::new(keychain_handle()));
 
-    let result = setup_developer(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+    let result =
+        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
 
     assert!(result.identity_did.starts_with("did:keri:"));
     assert!(result.device_did.starts_with("did:key:z"));
@@ -39,7 +40,7 @@ fn quick_setup_creates_identity_in_temp_dir() {
 }
 
 #[test]
-fn setup_developer_reuse_existing_identity() {
+fn create_developer_identity_reuse_existing_identity() {
     MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
 
     let tmp = tempfile::tempdir().unwrap();
@@ -49,26 +50,28 @@ fn setup_developer_reuse_existing_identity() {
     let signer = StorageSigner::new(keychain_handle());
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
 
-    let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
 
     let ctx = build_test_context(&registry_path, Arc::new(keychain_handle()));
-    let first = setup_developer(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+    let first =
+        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
 
-    let config2 = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+    let config2 = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_conflict_policy(IdentityConflictPolicy::ReuseExisting)
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
 
     let ctx2 = build_test_context(&registry_path, Arc::new(keychain_handle()));
-    let second = setup_developer(config2, &ctx2, &keychain, &signer, &provider, None).unwrap();
+    let second =
+        create_developer_identity(config2, &ctx2, &keychain, &signer, &provider, None).unwrap();
 
     assert_eq!(first.identity_did, second.identity_did);
 }
 
 #[test]
-fn setup_developer_errors_on_existing_identity_by_default() {
+fn create_developer_identity_errors_on_existing_identity_by_default() {
     MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
 
     let tmp = tempfile::tempdir().unwrap();
@@ -78,18 +81,19 @@ fn setup_developer_errors_on_existing_identity_by_default() {
     let signer = StorageSigner::new(keychain_handle());
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
 
-    let config = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
 
     let ctx = build_test_context(&registry_path, Arc::new(keychain_handle()));
-    let _first = setup_developer(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+    let _first =
+        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
 
-    let config2 = DeveloperSetupConfig::builder(KeyAlias::new_unchecked("test-key"))
+    let config2 = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
 
     let ctx2 = build_test_context(&registry_path, Arc::new(keychain_handle()));
-    let result = setup_developer(config2, &ctx2, &keychain, &signer, &provider, None);
+    let result = create_developer_identity(config2, &ctx2, &keychain, &signer, &provider, None);
     assert!(result.is_err());
 }
