@@ -128,3 +128,6 @@ CLAUDE.md
 
 # Git worktrees
 .worktrees/
+
+# Stale E2E test artifacts (nested git repos created by test runs)
+tests/e2e/.auths-ci/
