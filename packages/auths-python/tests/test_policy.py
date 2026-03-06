@@ -166,6 +166,100 @@ class TestToJson:
         assert policy2.check(ctx).allowed
 
 
+class TestPolicyBuilder:
+
+    def test_standard_factory(self):
+        from auths.policy import PolicyBuilder
+        policy = PolicyBuilder.standard("sign_commit").build()
+        ctx = PyEvalContext(
+            issuer="did:keri:ETest", subject="did:key:zTest",
+            capabilities=["sign_commit"],
+        )
+        assert policy.check(ctx).allowed
+
+    def test_standard_missing_capability(self):
+        from auths.policy import PolicyBuilder
+        policy = PolicyBuilder.standard("admin").build()
+        ctx = PyEvalContext(
+            issuer="did:keri:ETest", subject="did:key:zTest",
+            capabilities=["sign"],
+        )
+        assert not policy.check(ctx).allowed
+
+    def test_builder_chaining(self):
+        from auths.policy import PolicyBuilder
+        policy = (
+            PolicyBuilder()
+            .not_revoked()
+            .require_capability("sign_commit")
+            .require_issuer("did:keri:EOrg")
+            .require_human()
+            .max_chain_depth(3)
+            .build()
+        )
+        assert policy is not None
+
+    def test_builder_to_json_roundtrip(self):
+        from auths.policy import PolicyBuilder
+        builder = PolicyBuilder().not_revoked().require_capability("sign")
+        json_str = builder.to_json()
+        policy = compile_policy(json_str)
+        ctx = PyEvalContext(
+            issuer="did:keri:ETest", subject="did:key:zTest",
+            capabilities=["sign"],
+        )
+        assert policy.check(ctx).allowed
+
+    def test_any_of_combinator(self):
+        from auths.policy import PolicyBuilder
+        admin = PolicyBuilder.standard("admin")
+        deployer = PolicyBuilder.standard("sign").require_issuer("did:keri:EOrg")
+        policy = PolicyBuilder.any_of(admin, deployer).build()
+        ctx_admin = PyEvalContext(
+            issuer="did:keri:ETest", subject="did:key:zTest",
+            capabilities=["admin"],
+        )
+        assert policy.check(ctx_admin).allowed
+
+    def test_empty_builder_raises(self):
+        from auths.policy import PolicyBuilder
+        with pytest.raises(ValueError, match="empty policy"):
+            PolicyBuilder().build()
+
+    def test_repr(self):
+        from auths.policy import PolicyBuilder
+        builder = PolicyBuilder().not_revoked().require_capability("sign")
+        r = repr(builder)
+        assert "NotRevoked" in r
+        assert "HasCapability" in r
+
+    def test_len(self):
+        from auths.policy import PolicyBuilder
+        builder = PolicyBuilder().not_revoked().not_expired()
+        assert len(builder) == 2
+
+    def test_negate(self):
+        from auths.policy import PolicyBuilder
+        builder = PolicyBuilder().not_revoked()
+        negated = builder.negate()
+        policy = negated.build()
+        ctx = PyEvalContext(
+            issuer="did:keri:ETest", subject="did:key:zTest", revoked=False,
+        )
+        assert policy.check(ctx).denied
+
+    def test_or_policy(self):
+        from auths.policy import PolicyBuilder
+        a = PolicyBuilder().require_capability("admin")
+        b = PolicyBuilder().require_capability("superadmin")
+        policy = a.or_policy(b).build()
+        ctx = PyEvalContext(
+            issuer="did:keri:ETest", subject="did:key:zTest",
+            capabilities=["superadmin"],
+        )
+        assert policy.check(ctx).allowed
+
+
 class TestImports:
 
     def test_compile_policy_importable(self):
@@ -179,3 +273,11 @@ class TestImports:
     def test_decision_importable(self):
         from auths.policy import Decision
         assert Decision is not None
+
+    def test_policy_builder_importable(self):
+        from auths.policy import PolicyBuilder
+        assert PolicyBuilder is not None
+
+    def test_policy_builder_from_top_level(self):
+        from auths import PolicyBuilder
+        assert PolicyBuilder is not None
