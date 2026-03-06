@@ -43,17 +43,37 @@ use tokio::net::UnixListener;
 use zeroize::Zeroizing;
 
 #[cfg(target_os = "macos")]
-use anyhow::Context;
-#[cfg(target_os = "macos")]
 use std::io::Write;
 
 #[cfg(target_os = "macos")]
 use {
-    anyhow::Result as AnyhowResult,
     std::fs::{self, Permissions},
     std::os::unix::fs::PermissionsExt,
     tempfile::Builder as TempFileBuilder,
 };
+
+#[cfg(target_os = "macos")]
+#[derive(Debug)]
+enum SshRegError {
+    Agent(crate::ports::ssh_agent::SshAgentError),
+    Io(std::io::Error),
+    Conversion(String),
+    BadSeedLength(usize),
+}
+
+#[cfg(target_os = "macos")]
+impl std::fmt::Display for SshRegError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Agent(e) => write!(f, "ssh agent error: {e}"),
+            Self::Io(e) => write!(f, "I/O error: {e}"),
+            Self::Conversion(s) => write!(f, "key conversion failed: {s}"),
+            Self::BadSeedLength(n) => {
+                write!(f, "invalid PKCS#8 seed length: expected 32 bytes, got {n}")
+            }
+        }
+    }
+}
 
 // --- Public Structs ---
 
@@ -587,28 +607,26 @@ fn register_keys_with_macos_agent_internal(
             message: None,
         };
 
-        let result: AnyhowResult<()> = (|| {
+        let result: Result<(), SshRegError> = (|| {
             let pkcs8_bytes = pkcs8_bytes_zeroizing.as_ref();
             let private_key_info = PrivateKeyInfo::from_der(pkcs8_bytes)
-                .context("Failed to parse PKCS#8 DER for ssh-add")?;
+                .map_err(|e| SshRegError::Conversion(e.to_string()))?;
             let seed_octet_string = OctetString::from_der(private_key_info.private_key)
-                .context("Failed to parse PKCS#8 seed OctetString for ssh-add")?;
+                .map_err(|e| SshRegError::Conversion(e.to_string()))?;
             let seed_bytes = seed_octet_string.as_bytes();
             if seed_bytes.len() != 32 {
-                anyhow::bail!(
-                    "Invalid seed length {} in PKCS#8 for ssh-add",
-                    seed_bytes.len()
-                );
+                return Err(SshRegError::BadSeedLength(seed_bytes.len()));
             }
-            #[allow(clippy::expect_used)] // length validated by the 32-byte check above
+            // SAFETY: length validated by the 32-byte check above
+            #[allow(clippy::expect_used)]
             let seed_array: [u8; 32] = seed_bytes.try_into().expect("Length checked");
             let ssh_ed_keypair = SshEdKeypair::from_seed(&seed_array);
             let keypair_data = KeypairData::Ed25519(ssh_ed_keypair);
             let ssh_private_key = SshPrivateKey::new(keypair_data, "")
-                .context("Failed to create ssh_key::PrivateKey for ssh-add")?;
+                .map_err(|e| SshRegError::Conversion(e.to_string()))?;
             let pem_zeroizing = ssh_private_key
                 .to_openssh(LineEnding::LF)
-                .context("Failed to encode OpenSSH PEM for ssh-add")?;
+                .map_err(|e| SshRegError::Conversion(e.to_string()))?;
             let pem_string = pem_zeroizing.to_string();
 
             let mut temp_file_guard = TempFileBuilder::new()
@@ -616,7 +634,7 @@ fn register_keys_with_macos_agent_internal(
                 .suffix(".pem")
                 .rand_bytes(5)
                 .tempfile()
-                .context("Failed to create temporary file for ssh-add")?;
+                .map_err(SshRegError::Io)?;
             if let Err(e) =
                 fs::set_permissions(temp_file_guard.path(), Permissions::from_mode(0o600))
             {
@@ -628,10 +646,8 @@ fn register_keys_with_macos_agent_internal(
             }
             temp_file_guard
                 .write_all(pem_string.as_bytes())
-                .context("Failed to write PEM to temporary file")?;
-            temp_file_guard
-                .flush()
-                .context("Failed to flush temporary PEM file")?;
+                .map_err(SshRegError::Io)?;
+            temp_file_guard.flush().map_err(SshRegError::Io)?;
             let temp_file_path = temp_file_guard.path().to_path_buf();
 
             debug!(
@@ -640,7 +656,7 @@ fn register_keys_with_macos_agent_internal(
             );
             ssh_agent
                 .register_key(&temp_file_path)
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+                .map_err(SshRegError::Agent)?;
             debug!("ssh-add finished for {:?}", temp_file_path);
             Ok(())
         })();
@@ -655,28 +671,19 @@ fn register_keys_with_macos_agent_internal(
                 status.message = Some("Identity added via ssh-agent port".to_string());
             }
             Err(e) => {
-                // Map SshAgentError variants to RegistrationOutcome
-                if let Some(agent_err) = e.downcast_ref::<SshAgentError>() {
-                    match agent_err {
-                        SshAgentError::NotAvailable(_) => {
-                            status.status = RegistrationOutcome::AgentNotFound;
-                        }
-                        SshAgentError::CommandFailed(_) => {
-                            status.status = RegistrationOutcome::CommandFailed;
-                        }
-                        SshAgentError::IoError(_) => {
-                            status.status = RegistrationOutcome::IoError;
-                        }
+                match &e {
+                    SshRegError::Agent(SshAgentError::NotAvailable(_)) => {
+                        status.status = RegistrationOutcome::AgentNotFound;
                     }
-                } else if e.downcast_ref::<std::io::Error>().is_some() {
-                    status.status = RegistrationOutcome::IoError;
-                } else if e.downcast_ref::<ssh_key::Error>().is_some()
-                    || e.downcast_ref::<pkcs8::Error>().is_some()
-                    || e.downcast_ref::<pkcs8::der::Error>().is_some()
-                {
-                    status.status = RegistrationOutcome::ConversionFailed;
-                } else {
-                    status.status = RegistrationOutcome::InternalError;
+                    SshRegError::Agent(SshAgentError::CommandFailed(_)) => {
+                        status.status = RegistrationOutcome::CommandFailed;
+                    }
+                    SshRegError::Agent(SshAgentError::IoError(_)) | SshRegError::Io(_) => {
+                        status.status = RegistrationOutcome::IoError;
+                    }
+                    SshRegError::Conversion(_) | SshRegError::BadSeedLength(_) => {
+                        status.status = RegistrationOutcome::ConversionFailed;
+                    }
                 }
                 error!(
                     "Error during registration process for {}: {:?}",
