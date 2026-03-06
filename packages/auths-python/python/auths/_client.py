@@ -55,6 +55,12 @@ class Auths:
         self.repo_path = repo_path
         self._passphrase = passphrase
 
+        from auths.devices import DeviceService
+        from auths.identity import IdentityService
+
+        self.identities = IdentityService(self)
+        self.devices = DeviceService(self)
+
     def verify(self, attestation_json: str, issuer_key: str) -> VerificationResult:
         """Verify a single attestation. Returns a VerificationResult."""
         try:

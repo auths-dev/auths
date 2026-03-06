@@ -24,6 +24,8 @@ from auths._native import (
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
+from auths.devices import Device, DeviceService
+from auths.identity import Agent, Identity, IdentityService
 from auths.git import (
     CommitResult,
     ErrorCode,
@@ -62,4 +64,9 @@ __all__ = [
     "LayoutError",
     "discover_layout",
     "verify_commit_range",
+    "Identity",
+    "Agent",
+    "IdentityService",
+    "Device",
+    "DeviceService",
 ]

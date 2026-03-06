@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 class Auths:
     repo_path: str
+    identities: IdentityService
+    devices: DeviceService
     def __init__(self, repo_path: str = "~/.auths", passphrase: Optional[str] = None) -> None: ...
     def verify(self, attestation_json: str, issuer_key: str) -> VerificationResult: ...
     def verify_chain(self, attestations: List[str], root_key: str) -> VerificationReport: ...
@@ -76,6 +78,36 @@ def verify_action_envelope(envelope_json: str, public_key_hex: str) -> Verificat
 # -- Token --
 
 def get_token(bridge_url: str, chain_json: str, root_public_key: str, capabilities: List[str]) -> str: ...
+
+# -- Identity resources --
+
+@dataclass
+class Identity:
+    did: str
+    public_key: str
+    label: str
+    repo_path: str
+
+@dataclass
+class Agent:
+    did: str
+    label: str
+    attestation: str
+
+class IdentityService:
+    def create(self, label: str = "main", repo_path: Optional[str] = None, passphrase: Optional[str] = None) -> Identity: ...
+    def provision_agent(self, identity_did: str, name: str, capabilities: List[str], expires_in_secs: Optional[int] = None, passphrase: Optional[str] = None) -> Agent: ...
+
+# -- Device resources --
+
+@dataclass
+class Device:
+    did: str
+    attestation_id: str
+
+class DeviceService:
+    def link(self, identity_did: str, capabilities: Optional[List[str]] = None, expires_in_days: Optional[int] = None, passphrase: Optional[str] = None) -> Device: ...
+    def revoke(self, device_did: str, identity_did: str, note: Optional[str] = None, passphrase: Optional[str] = None) -> None: ...
 
 # -- Agent --
 
