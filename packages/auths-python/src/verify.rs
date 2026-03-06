@@ -1,8 +1,10 @@
-use auths_verifier::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
+use auths_verifier::core::{Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use auths_verifier::types::DeviceDID;
 use auths_verifier::verify::{
     verify_chain as rust_verify_chain,
-    verify_device_authorization as rust_verify_device_authorization, verify_with_keys,
+    verify_chain_with_capability as rust_verify_chain_with_capability,
+    verify_device_authorization as rust_verify_device_authorization,
+    verify_with_capability as rust_verify_with_capability, verify_with_keys,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -172,4 +174,115 @@ pub fn verify_device_authorization(
             ))),
         }
     })
+}
+
+/// Verify a single attestation and check that it grants a required capability.
+///
+/// Args:
+/// * `attestation_json`: The attestation as a JSON string.
+/// * `issuer_pk_hex`: The issuer's Ed25519 public key in hex format (64 chars).
+/// * `required_capability`: The capability string that must be present.
+///
+/// Usage:
+/// ```ignore
+/// let result = verify_attestation_with_capability(py, "...", "abcd...", "sign")?;
+/// ```
+#[pyfunction]
+pub fn verify_attestation_with_capability(
+    py: Python<'_>,
+    attestation_json: &str,
+    issuer_pk_hex: &str,
+    required_capability: &str,
+) -> PyResult<VerificationResult> {
+    if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
+        return Err(PyValueError::new_err(format!(
+            "Attestation JSON too large: {} bytes, max {}",
+            attestation_json.len(),
+            MAX_ATTESTATION_JSON_SIZE
+        )));
+    }
+
+    let issuer_pk_bytes = hex::decode(issuer_pk_hex)
+        .map_err(|e| PyValueError::new_err(format!("Invalid issuer public key hex: {e}")))?;
+
+    if issuer_pk_bytes.len() != 32 {
+        return Err(PyValueError::new_err(format!(
+            "Invalid issuer public key length: expected 32 bytes (64 hex chars), got {}",
+            issuer_pk_bytes.len()
+        )));
+    }
+
+    let att: Attestation = serde_json::from_str(attestation_json)
+        .map_err(|e| PyValueError::new_err(format!("Failed to parse attestation JSON: {e}")))?;
+
+    let cap = Capability::parse(required_capability)
+        .map_err(|e| PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}")))?;
+
+    py.allow_threads(|| match runtime().block_on(rust_verify_with_capability(&att, &cap, &issuer_pk_bytes)) {
+        Ok(_) => Ok(VerificationResult {
+            valid: true,
+            error: None,
+        }),
+        Err(e) => Ok(VerificationResult {
+            valid: false,
+            error: Some(e.to_string()),
+        }),
+    })
+}
+
+/// Verify a chain of attestations and check that all grant a required capability.
+///
+/// Args:
+/// * `attestations_json`: List of attestation JSON strings.
+/// * `root_pk_hex`: The root identity's Ed25519 public key in hex format.
+/// * `required_capability`: The capability string that must be present in every link.
+///
+/// Usage:
+/// ```ignore
+/// let report = verify_chain_with_capability(py, vec!["...".into()], "ab12...", "sign")?;
+/// ```
+#[pyfunction]
+pub fn verify_chain_with_capability(
+    py: Python<'_>,
+    attestations_json: Vec<String>,
+    root_pk_hex: &str,
+    required_capability: &str,
+) -> PyResult<VerificationReport> {
+    let total: usize = attestations_json.iter().map(|s| s.len()).sum();
+    if total > MAX_JSON_BATCH_SIZE {
+        return Err(PyValueError::new_err(format!(
+            "Total attestation JSON too large: {total} bytes, max {MAX_JSON_BATCH_SIZE}",
+        )));
+    }
+
+    let root_pk_bytes = hex::decode(root_pk_hex)
+        .map_err(|e| PyValueError::new_err(format!("Invalid root public key hex: {e}")))?;
+
+    if root_pk_bytes.len() != 32 {
+        return Err(PyValueError::new_err(format!(
+            "Invalid root public key length: expected 32 bytes (64 hex chars), got {}",
+            root_pk_bytes.len()
+        )));
+    }
+
+    let attestations: Vec<Attestation> = attestations_json
+        .iter()
+        .enumerate()
+        .map(|(i, json)| {
+            serde_json::from_str(json)
+                .map_err(|e| PyValueError::new_err(format!("Failed to parse attestation {i}: {e}")))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let cap = Capability::parse(required_capability)
+        .map_err(|e| PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}")))?;
+
+    py.allow_threads(
+        || match runtime().block_on(rust_verify_chain_with_capability(&attestations, &cap, &root_pk_bytes)) {
+            Ok(report) => Ok(report.into()),
+            Err(e) => Err(PyRuntimeError::new_err(format!(
+                "Chain verification with capability failed: {e}"
+            ))),
+        },
+    )
 }

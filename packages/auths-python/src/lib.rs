@@ -24,6 +24,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(verify::verify_attestation, m)?)?;
     m.add_function(wrap_pyfunction!(verify::verify_chain, m)?)?;
     m.add_function(wrap_pyfunction!(verify::verify_device_authorization, m)?)?;
+    m.add_function(wrap_pyfunction!(verify::verify_attestation_with_capability, m)?)?;
+    m.add_function(wrap_pyfunction!(verify::verify_chain_with_capability, m)?)?;
 
     m.add_function(wrap_pyfunction!(sign::sign_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(sign::sign_action, m)?)?;

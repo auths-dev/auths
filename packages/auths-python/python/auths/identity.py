@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from auths._native import (
     create_identity as _create_identity,
@@ -48,8 +48,8 @@ class IdentityService:
     def create(
         self,
         label: str = "main",
-        repo_path: Optional[str] = None,
-        passphrase: Optional[str] = None,
+        repo_path: str | None = None,
+        passphrase: str | None = None,
     ) -> Identity:
         """Create a new identity.
 
@@ -70,9 +70,9 @@ class IdentityService:
         self,
         identity_did: str,
         name: str,
-        capabilities: List[str],
-        expires_in_secs: Optional[int] = None,
-        passphrase: Optional[str] = None,
+        capabilities: list[str],
+        expires_in_secs: int | None = None,
+        passphrase: str | None = None,
     ) -> Agent:
         """Provision an agent under an identity.
 

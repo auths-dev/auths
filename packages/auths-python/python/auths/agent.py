@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Optional
 
 from auths._native import get_token as _native_get_token
 
@@ -24,12 +23,12 @@ class AgentAuth:
         self,
         bridge_url: str,
         attestation_chain_path: str,
-        root_public_key: Optional[str] = None,
+        root_public_key: str | None = None,
     ):
         self.bridge_url = bridge_url
         self.chain_path = Path(attestation_chain_path).expanduser()
         self._root_public_key = root_public_key
-        self._chain_json: Optional[str] = None
+        self._chain_json: str | None = None
 
     def _load_chain(self) -> str:
         if self._chain_json is None:
@@ -38,7 +37,7 @@ class AgentAuth:
             self._chain_json = data
         return self._chain_json
 
-    def get_token(self, capabilities: Optional[List[str]] = None) -> str:
+    def get_token(self, capabilities: list[str] | None = None) -> str:
         """Get a Bearer token for MCP tool access.
 
         Args:

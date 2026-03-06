@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from auths._native import (
     link_device_to_identity as _link_device,
@@ -36,9 +36,9 @@ class DeviceService:
     def link(
         self,
         identity_did: str,
-        capabilities: Optional[List[str]] = None,
-        expires_in_days: Optional[int] = None,
-        passphrase: Optional[str] = None,
+        capabilities: list[str] | None = None,
+        expires_in_days: int | None = None,
+        passphrase: str | None = None,
     ) -> Device:
         """Link a new device to an identity.
 
@@ -65,8 +65,8 @@ class DeviceService:
         self,
         device_did: str,
         identity_did: str,
-        note: Optional[str] = None,
-        passphrase: Optional[str] = None,
+        note: str | None = None,
+        passphrase: str | None = None,
     ) -> None:
         """Revoke a device.
 

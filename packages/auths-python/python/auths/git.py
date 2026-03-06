@@ -15,7 +15,6 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
 
 
 class ErrorCode:
@@ -37,16 +36,16 @@ class CommitResult:
 
     commit_sha: str
     is_valid: bool
-    signer: Optional[str] = None
-    error: Optional[str] = None
-    error_code: Optional[str] = None
+    signer: str | None = None
+    error: str | None = None
+    error_code: str | None = None
 
 
 @dataclass
 class VerifyResult:
     """Wrapper around commit verification results."""
 
-    commits: List[CommitResult]
+    commits: list[CommitResult]
     passed: bool
     mode: str
     summary: str
@@ -56,8 +55,8 @@ class VerifyResult:
 class LayoutInfo:
     """Resolved location of Auths identity data in a repository."""
 
-    bundle: Optional[str] = None
-    refs: Optional[List[str]] = None
+    bundle: str | None = None
+    refs: list[str] | None = None
     source: str = ""
 
 
@@ -97,7 +96,7 @@ def discover_layout(repo_root: str = ".") -> LayoutInfo:
 
 def verify_commit_range(
     commit_range: str,
-    identity_bundle: Optional[str] = None,
+    identity_bundle: str | None = None,
     allowed_signers: str = ".auths/allowed_signers",
     mode: str = "enforce",
 ) -> VerifyResult:
@@ -117,7 +116,7 @@ def verify_commit_range(
 
     signers_path = allowed_signers
     tmp_signers = None
-    attestation_lookup: Optional[Dict[str, dict]] = None
+    attestation_lookup: dict[str, dict] | None = None
 
     try:
         if identity_bundle is not None:
@@ -169,7 +168,7 @@ def verify_commit_range(
                 commits=[], passed=True, mode=mode, summary="No commits to verify"
             )
 
-        results: List[CommitResult] = []
+        results: list[CommitResult] = []
         for sha in shas:
             results.append(_verify_one(sha, signers_path, attestation_lookup))
 
@@ -194,7 +193,7 @@ def verify_commit_range(
                 pass
 
 
-def _rev_list(commit_range: str) -> List[str]:
+def _rev_list(commit_range: str) -> list[str]:
     proc = subprocess.run(
         ["git", "rev-list", commit_range], capture_output=True, text=True
     )
@@ -206,7 +205,7 @@ def _rev_list(commit_range: str) -> List[str]:
 def _verify_one(
     sha: str,
     signers_path: str,
-    attestation_lookup: Optional[Dict[str, dict]] = None,
+    attestation_lookup: dict[str, dict] | None = None,
 ) -> CommitResult:
     sig_info = _get_commit_signature(sha)
     if sig_info is None:
@@ -292,9 +291,9 @@ def _verify_one(
 
 
 def _check_attestation_status(
-    principal: Optional[str],
-    attestation_lookup: Dict[str, dict],
-) -> Optional[tuple]:
+    principal: str | None,
+    attestation_lookup: dict[str, dict],
+) -> tuple | None:
     if principal is None or principal == "allowed signer":
         return None
 
@@ -334,7 +333,7 @@ def _parse_datetime(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
-def _find_principal(signers_path: str, sig_path: str) -> Optional[str]:
+def _find_principal(signers_path: str, sig_path: str) -> str | None:
     proc = subprocess.run(
         ["ssh-keygen", "-Y", "find-principals", "-f", signers_path, "-s", sig_path],
         capture_output=True,
@@ -365,8 +364,8 @@ def _get_commit_signature(sha: str):
 
 def _extract_ssh_signature(content: str):
     in_signature = False
-    sig_lines: List[str] = []
-    payload_lines: List[str] = []
+    sig_lines: list[str] = []
+    payload_lines: list[str] = []
     header_done = False
 
     for line in content.splitlines():
@@ -412,8 +411,8 @@ def _allowed_signers_from_bundle(bundle_path: str):
             f"Invalid Ed25519 public key length: expected 32 bytes, got {len(pk_bytes)}"
         )
 
-    lines: List[str] = []
-    attestation_lookup: Dict[str, dict] = {}
+    lines: list[str] = []
+    attestation_lookup: dict[str, dict] = {}
 
     chain = bundle.get("attestation_chain", [])
     for att in chain:

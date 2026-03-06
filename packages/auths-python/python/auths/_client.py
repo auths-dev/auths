@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from auths._native import (
     get_token as _get_token,
@@ -8,7 +8,9 @@ from auths._native import (
     sign_bytes as _sign_bytes,
     verify_action_envelope as _verify_action_envelope,
     verify_attestation as _verify_attestation,
+    verify_attestation_with_capability as _verify_attestation_with_capability,
     verify_chain as _verify_chain,
+    verify_chain_with_capability as _verify_chain_with_capability,
     verify_device_authorization as _verify_device_authorization,
 )
 from auths._errors import CryptoError, NetworkError, VerificationError
@@ -51,7 +53,7 @@ class Auths:
         sig = auths.sign(b"hello", private_key=key_hex)
     """
 
-    def __init__(self, repo_path: str = "~/.auths", passphrase: Optional[str] = None):
+    def __init__(self, repo_path: str = "~/.auths", passphrase: str | None = None):
         self.repo_path = repo_path
         self._passphrase = passphrase
 
@@ -61,16 +63,53 @@ class Auths:
         self.identities = IdentityService(self)
         self.devices = DeviceService(self)
 
-    def verify(self, attestation_json: str, issuer_key: str) -> VerificationResult:
-        """Verify a single attestation. Returns a VerificationResult."""
+    def verify(
+        self,
+        attestation_json: str,
+        issuer_key: str,
+        required_capability: str | None = None,
+    ) -> VerificationResult:
+        """Verify a single attestation, optionally checking a required capability.
+
+        Args:
+            attestation_json: The attestation JSON string.
+            issuer_key: Issuer's public key hex.
+            required_capability: If set, also verify the attestation grants this capability.
+
+        Usage:
+            result = auths.verify(attestation, key)
+            result = auths.verify(attestation, key, required_capability="sign")
+        """
         try:
+            if required_capability:
+                return _verify_attestation_with_capability(
+                    attestation_json, issuer_key, required_capability
+                )
             return _verify_attestation(attestation_json, issuer_key)
         except (ValueError, RuntimeError) as exc:
             raise _map_verify_error(exc) from exc
 
-    def verify_chain(self, attestations: List[str], root_key: str) -> VerificationReport:
-        """Verify an attestation chain. Returns a VerificationReport."""
+    def verify_chain(
+        self,
+        attestations: list[str],
+        root_key: str,
+        required_capability: str | None = None,
+    ) -> VerificationReport:
+        """Verify an attestation chain, optionally checking a required capability.
+
+        Args:
+            attestations: List of attestation JSON strings.
+            root_key: Root identity's public key hex.
+            required_capability: If set, verify the chain grants this capability.
+
+        Usage:
+            result = auths.verify_chain(chain, root_key, required_capability="deploy")
+        """
         try:
+            if required_capability:
+                return _verify_chain_with_capability(
+                    attestations, root_key, required_capability
+                )
             return _verify_chain(attestations, root_key)
         except (ValueError, RuntimeError) as exc:
             raise _map_verify_error(exc) from exc
@@ -79,7 +118,7 @@ class Auths:
         self,
         identity_did: str,
         device_did: str,
-        attestations: List[str],
+        attestations: list[str],
         identity_key: str,
     ) -> VerificationReport:
         """Verify device authorization against an identity."""
@@ -121,7 +160,7 @@ class Auths:
         self,
         message: bytes,
         identity: str,
-        passphrase: Optional[str] = None,
+        passphrase: str | None = None,
     ) -> str:
         """Sign bytes using a keychain-stored identity key.
 
@@ -147,7 +186,7 @@ class Auths:
         action_type: str,
         payload: str,
         identity: str,
-        passphrase: Optional[str] = None,
+        passphrase: str | None = None,
     ) -> str:
         """Sign an action envelope using a keychain-stored identity key.
 
@@ -175,7 +214,7 @@ class Auths:
         bridge_url: str,
         chain_json: str,
         root_key: str,
-        capabilities: Optional[List[str]] = None,
+        capabilities: list[str] | None = None,
     ) -> str:
         """Exchange an attestation chain for a bearer token."""
         try:

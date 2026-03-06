@@ -20,7 +20,9 @@ from auths._native import (
     sign_bytes,
     verify_action_envelope,
     verify_attestation,
+    verify_attestation_with_capability,
     verify_chain,
+    verify_chain_with_capability,
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
@@ -51,6 +53,8 @@ __all__ = [
     "VerificationReport",
     "verify_attestation",
     "verify_chain",
+    "verify_attestation_with_capability",
+    "verify_chain_with_capability",
     "verify_device_authorization",
     "sign_bytes",
     "sign_action",
