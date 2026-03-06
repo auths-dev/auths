@@ -4,10 +4,12 @@
 
 use pyo3::prelude::*;
 
+pub mod artifact_publish;
 pub mod artifact_sign;
 pub mod attestation_query;
 pub mod commit_sign;
 pub mod device_ext;
+pub mod git_integration;
 pub mod identity;
 pub mod policy;
 pub mod identity_sign;
@@ -64,12 +66,17 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<policy::PyDecision>()?;
     m.add_function(wrap_pyfunction!(policy::compile_policy, m)?)?;
 
+    m.add_class::<artifact_publish::PyArtifactPublishResult>()?;
+    m.add_function(wrap_pyfunction!(artifact_publish::publish_artifact, m)?)?;
+
     m.add_class::<artifact_sign::PyArtifactResult>()?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact, m)?)?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes, m)?)?;
 
     m.add_class::<commit_sign::PyCommitSignResult>()?;
     m.add_function(wrap_pyfunction!(commit_sign::sign_commit, m)?)?;
+
+    m.add_function(wrap_pyfunction!(git_integration::generate_allowed_signers_file, m)?)?;
 
     m.add_class::<attestation_query::PyAttestation>()?;
     m.add_function(wrap_pyfunction!(attestation_query::list_attestations, m)?)?;
