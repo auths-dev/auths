@@ -17,6 +17,7 @@ use std::env;
 
 use auths_mcp_server::{McpServerConfig, McpServerState};
 use auths_telemetry::init_tracing;
+use auths_telemetry::sinks::stdout::new_stdout_sink;
 
 fn main() -> anyhow::Result<()> {
     let mut config = McpServerConfig::default();
@@ -59,6 +60,9 @@ fn main() -> anyhow::Result<()> {
 
     init_tracing(&config.log_level, false);
 
+    let telemetry =
+        auths_telemetry::init_telemetry_with_sink(std::sync::Arc::new(new_stdout_sink()));
+
     tracing::info!("Auths MCP Server v{}", env!("CARGO_PKG_VERSION"));
     tracing::info!("JWKS URL: {}", config.jwks_url);
     tracing::info!("Expected issuer: {}", config.expected_issuer);
@@ -77,6 +81,8 @@ fn main() -> anyhow::Result<()> {
             axum::serve(listener, app).await?;
             Ok::<(), anyhow::Error>(())
         })?;
+
+    telemetry.shutdown();
 
     Ok(())
 }

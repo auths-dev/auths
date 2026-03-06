@@ -13,6 +13,7 @@ categories = ["cryptography", "authentication"]
 [dependencies]
 auths-core.workspace = true
 auths-id.workspace = true
+auths-telemetry.workspace = true
 auths-policy.workspace = true
 auths-crypto.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }

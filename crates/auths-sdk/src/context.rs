@@ -30,26 +30,8 @@ impl fmt::Display for BuilderError {
 
 impl std::error::Error for BuilderError {}
 
-/// Fire-and-forget sink for structured telemetry payloads emitted by SDK operations.
-///
-/// Implement this trait to route SDK audit events to a logging backend, SIEM, or
-/// stdout. The default implementation ([`NoopSink`]) discards all events.
-///
-/// Usage:
-/// ```ignore
-/// struct StderrSink;
-/// impl auths_sdk::context::EventSink for StderrSink {
-///     fn emit(&self, payload: &str) { eprintln!("{payload}"); }
-///     fn flush(&self) {}
-/// }
-/// ```
-pub trait EventSink: Send + Sync + 'static {
-    /// Emit a JSON-serialized event payload. Must not block.
-    fn emit(&self, payload: &str);
-
-    /// Block until all previously emitted payloads have been written.
-    fn flush(&self);
-}
+/// Re-export the canonical `EventSink` trait from `auths-telemetry`.
+pub use auths_telemetry::EventSink;
 
 struct NoopSink;
 

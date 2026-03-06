@@ -379,15 +379,24 @@ impl GitRegistryBackend {
         parent: Option<&git2::Commit>,
         message: &str,
     ) -> Result<Oid, RegistryError> {
-        // Acquire advisory lock for defense-in-depth (on top of git2's internal locking)
         let _lock = AdvisoryLock::acquire(&self.repo_path)?;
+        self.create_commit_unlocked(repo, tree_oid, parent, message)
+    }
 
+    /// Commit without acquiring the advisory lock.
+    /// Caller MUST already hold the `AdvisoryLock`.
+    fn create_commit_unlocked(
+        &self,
+        repo: &Repository,
+        tree_oid: Oid,
+        parent: Option<&git2::Commit>,
+        message: &str,
+    ) -> Result<Oid, RegistryError> {
         let sig = self.get_signature(repo)?;
         let tree = repo.find_tree(tree_oid).map_err(from_git2)?;
 
         let parents: Vec<&git2::Commit> = parent.into_iter().collect();
 
-        // Create the commit object (not yet referenced)
         let commit_oid = repo
             .commit(None, &sig, &sig, message, &tree, &parents)
             .map_err(from_git2)?;
@@ -615,7 +624,7 @@ impl GitRegistryBackend {
         self.update_metadata(&mut mutator, &navigator, identity_delta, 0, 0)?;
 
         let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
-        self.create_commit(
+        self.create_commit_unlocked(
             &repo,
             new_tree_oid,
             Some(&parent),

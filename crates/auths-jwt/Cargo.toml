@@ -1,0 +1,19 @@
+[package]
+name = "auths-jwt"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "Shared JWT claim types for the Auths identity system"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["identity", "jwt", "claims", "oidc"]
+categories = ["authentication"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

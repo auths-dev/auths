@@ -1,0 +1,23 @@
+[package]
+name = "auths-scim"
+version.workspace = true
+edition = "2024"
+description = "SCIM 2.0 resource types and protocol logic for Auths agent provisioning"
+publish = false
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["scim", "provisioning", "identity", "enterprise"]
+categories = ["authentication"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = { workspace = true }
+nom = "8"
+
+[dev-dependencies]
+
+[lints]
+workspace = true

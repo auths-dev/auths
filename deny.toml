@@ -29,7 +29,6 @@ deny = [
   { crate = "reqwest", wrappers = [
     "auths-infra-http",
     "auths-cli",
-    "auths-oidc-bridge",
     "auths-mcp-server",
     "auths-id",
     "xtask",
@@ -44,7 +43,6 @@ deny = [
     "auths-infra-http",
     "auths-cli",
     "auths-core",
-    "auths-oidc-bridge",
     "auths-mcp-server",
   ], reason = "HTTP framework confined to adapter crates" },
 

@@ -9,6 +9,7 @@ use crate::error::AgentError;
 use crate::signing::{PassphraseProvider, SecureSigner};
 use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use cryptoki::context::{CInitializeArgs, CInitializeFlags, Pkcs11};
+use cryptoki::error::{Error as Pkcs11Error, RvError};
 use cryptoki::mechanism::Mechanism;
 use cryptoki::mechanism::eddsa::{EddsaParams, EddsaSignatureScheme};
 use cryptoki::object::{Attribute, AttributeType, ObjectClass, ObjectHandle};
@@ -100,11 +101,7 @@ impl Pkcs11KeyRef {
             ),
         })?;
 
-        ctx.initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))
-            .map_err(|e| AgentError::BackendInitFailed {
-                backend: "pkcs11",
-                error: format!("C_Initialize failed: {e}"),
-            })?;
+        pkcs11_initialize(&ctx)?;
 
         let slot = resolve_slot(&ctx, config)?;
 
@@ -373,11 +370,7 @@ impl Pkcs11Signer {
             error: format!("failed to load PKCS#11 library: {e}"),
         })?;
 
-        ctx.initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))
-            .map_err(|e| AgentError::BackendInitFailed {
-                backend: "pkcs11",
-                error: format!("C_Initialize failed: {e}"),
-            })?;
+        pkcs11_initialize(&ctx)?;
 
         let slot = resolve_slot(&ctx, config)?;
         let pin_str = config.pin.as_deref().unwrap_or("");
@@ -445,6 +438,18 @@ impl SecureSigner for Pkcs11Signer {
             .map_err(|e| AgentError::SigningFailed(format!("PKCS#11 sign failed: {e}")))?;
 
         Ok(signature)
+    }
+}
+
+/// CKR_CRYPTOKI_ALREADY_INITIALIZED is safe to ignore — the library is usable.
+fn pkcs11_initialize(ctx: &Pkcs11) -> Result<(), AgentError> {
+    match ctx.initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK)) {
+        Ok(()) => Ok(()),
+        Err(Pkcs11Error::Pkcs11(RvError::CryptokiAlreadyInitialized, _)) => Ok(()),
+        Err(e) => Err(AgentError::BackendInitFailed {
+            backend: "pkcs11",
+            error: format!("C_Initialize failed: {e}"),
+        }),
     }
 }
 

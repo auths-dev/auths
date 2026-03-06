@@ -4,6 +4,7 @@ use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::{Parser, Subcommand};
 
 use crate::commands::agent::AgentCommand;
+use crate::commands::approval::ApprovalCommand;
 use crate::commands::artifact::ArtifactCommand;
 use crate::commands::audit::AuditCommand;
 use crate::commands::commit::CommitCmd;
@@ -20,6 +21,7 @@ use crate::commands::key::KeyCommand;
 use crate::commands::learn::LearnCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
+use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::trust::TrustCommand;
@@ -103,6 +105,7 @@ pub enum RootCommand {
     Id(IdCommand),
     Device(DeviceCommand),
     Key(KeyCommand),
+    Approval(ApprovalCommand),
     Artifact(ArtifactCommand),
     Policy(PolicyCommand),
     Git(GitCommand),
@@ -111,6 +114,7 @@ pub enum RootCommand {
     Audit(AuditCommand),
     Agent(AgentCommand),
     Witness(WitnessCommand),
+    Scim(ScimCommand),
     Config(ConfigCommand),
 
     #[command(hide = true)]

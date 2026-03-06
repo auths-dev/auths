@@ -3,6 +3,8 @@
 //! This is what `evaluate` actually runs against. Every string has been validated
 //! and canonicalized. Constructed only via [`compile`](crate::compile::compile).
 
+use serde::{Deserialize, Serialize};
+
 use crate::types::{CanonicalCapability, CanonicalDid, ValidatedGlob};
 
 /// Compiled policy expression — validated, canonical, ready to evaluate.
@@ -99,6 +101,31 @@ pub enum CompiledExpr {
         /// Allowed values.
         values: Vec<String>,
     },
+
+    /// Approval gate: if inner evaluates to Allow, return RequiresApproval.
+    ApprovalGate {
+        /// The compiled inner expression.
+        inner: Box<CompiledExpr>,
+        /// Validated DIDs of allowed approvers.
+        approvers: Vec<CanonicalDid>,
+        /// Approval request TTL in seconds.
+        ttl_seconds: u64,
+        /// Approval scope controlling hash binding.
+        scope: ApprovalScope,
+    },
+}
+
+/// Controls which EvalContext fields are included in the approval request hash.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalScope {
+    /// Hash: issuer + subject + capabilities (approve the agent for the action).
+    #[default]
+    Identity,
+    /// Hash: issuer + subject + capabilities + repo + environment.
+    Scoped,
+    /// Hash: all context fields (approve the exact request).
+    Full,
 }
 
 /// A compiled policy — validated, immutable, ready for repeated evaluation.

@@ -95,6 +95,7 @@ fn collect_predicates(expr: &Expr) -> HashSet<String> {
     predicates
 }
 
+#[allow(clippy::too_many_lines)]
 fn collect_predicates_rec(expr: &Expr, predicates: &mut HashSet<String>) {
     match expr {
         Expr::True => {
@@ -191,6 +192,12 @@ fn collect_predicates_rec(expr: &Expr, predicates: &mut HashSet<String>) {
         }
         Expr::IsWorkload => {
             predicates.insert("IsWorkload".into());
+        }
+        Expr::ApprovalGate {
+            inner, approvers, ..
+        } => {
+            predicates.insert(format!("ApprovalGate(approvers={:?})", approvers));
+            collect_predicates_rec(inner, predicates);
         }
     }
 }

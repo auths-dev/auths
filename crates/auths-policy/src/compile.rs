@@ -225,6 +225,12 @@ fn compile_inner(
         }
 
         Expr::Not(inner) => {
+            if matches!(inner.as_ref(), Expr::ApprovalGate { .. }) {
+                errors.push(CompileError {
+                    path: path.into(),
+                    message: "Not cannot wrap an ApprovalGate expression".into(),
+                });
+            }
             let compiled = compile_inner(
                 inner,
                 &format!("{}.not", path),
@@ -425,6 +431,62 @@ fn compile_inner(
         Expr::IsWorkload => CompiledExpr::IsWorkload,
 
         Expr::MaxChainDepth(d) => CompiledExpr::MaxChainDepth(*d),
+
+        Expr::ApprovalGate {
+            inner,
+            approvers,
+            ttl_seconds,
+            scope,
+        } => {
+            if matches!(inner.as_ref(), Expr::Not(_)) {
+                errors.push(CompileError {
+                    path: path.into(),
+                    message: "ApprovalGate cannot wrap a Not expression".into(),
+                });
+            }
+            let compiled_inner = compile_inner(
+                inner,
+                &format!("{}.approval_gate", path),
+                depth + 1,
+                limits,
+                node_count,
+                errors,
+            );
+            let compiled_approvers: Vec<_> = approvers
+                .iter()
+                .filter_map(|s| match CanonicalDid::parse(s) {
+                    Ok(d) => Some(d),
+                    Err(e) => {
+                        errors.push(CompileError {
+                            path: path.into(),
+                            message: e.0,
+                        });
+                        None
+                    }
+                })
+                .collect();
+            let compiled_scope = match scope.as_deref() {
+                Some("identity") | None => crate::compiled::ApprovalScope::Identity,
+                Some("scoped") => crate::compiled::ApprovalScope::Scoped,
+                Some("full") => crate::compiled::ApprovalScope::Full,
+                Some(other) => {
+                    errors.push(CompileError {
+                        path: path.into(),
+                        message: format!(
+                            "invalid approval scope '{}', expected 'identity', 'scoped', or 'full'",
+                            other
+                        ),
+                    });
+                    crate::compiled::ApprovalScope::Identity
+                }
+            };
+            CompiledExpr::ApprovalGate {
+                inner: Box::new(compiled_inner),
+                approvers: compiled_approvers,
+                ttl_seconds: *ttl_seconds,
+                scope: compiled_scope,
+            }
+        }
     }
 }
 

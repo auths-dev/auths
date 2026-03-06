@@ -73,6 +73,7 @@ async fn handle_tool_call(
         .ok_or_else(|| McpServerError::UnknownTool(tool_name.clone()))?;
 
     if !agent.capabilities.contains(&required_cap.to_string()) {
+        emit_mcp_audit(&agent.did, &format!("mcp:{tool_name}"), "Denied");
         return Err(McpServerError::InsufficientCapabilities {
             tool: tool_name,
             required: required_cap.to_string(),
@@ -86,28 +87,36 @@ async fn handle_tool_call(
         "auths.mcp.tool_call.authorized"
     );
 
-    let response = match tool_name.as_str() {
+    let action = format!("mcp:{tool_name}");
+
+    let result = match tool_name.as_str() {
         "read_file" => {
             let request: ReadFileRequest = serde_json::from_slice(&body)
                 .map_err(|e| McpServerError::ToolError(format!("invalid request body: {e}")))?;
-            execute_read_file(request)?
+            execute_read_file(request)
         }
         "write_file" => {
             let request: WriteFileRequest = serde_json::from_slice(&body)
                 .map_err(|e| McpServerError::ToolError(format!("invalid request body: {e}")))?;
-            execute_write_file(request)?
+            execute_write_file(request)
         }
         "deploy" => {
             let request: DeployRequest = serde_json::from_slice(&body)
                 .map_err(|e| McpServerError::ToolError(format!("invalid request body: {e}")))?;
-            execute_deploy(request)?
+            execute_deploy(request)
         }
         _ => {
+            emit_mcp_audit(&agent.did, &action, "Denied");
             return Err(McpServerError::UnknownTool(tool_name));
         }
     };
 
-    Ok(Json(response))
+    match &result {
+        Ok(_) => emit_mcp_audit(&agent.did, &action, "Success"),
+        Err(_) => emit_mcp_audit(&agent.did, &action, "Denied"),
+    }
+
+    Ok(Json(result?))
 }
 
 /// OAuth Protected Resource Metadata.
@@ -159,6 +168,12 @@ async fn list_tools(State(state): State<McpServerState>) -> Json<Vec<ToolInfo>> 
 struct HealthResponse {
     status: String,
     version: String,
+}
+
+fn emit_mcp_audit(actor_did: &str, action: &str, status: &str) {
+    let now = chrono::Utc::now().timestamp();
+    let event = auths_telemetry::build_audit_event(actor_did, action, status, now);
+    auths_telemetry::emit_telemetry(&event);
 }
 
 /// `GET /health`

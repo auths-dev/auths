@@ -20,9 +20,9 @@ Requires:
     - git tag v{version} must exist (run github.py --push first)
 
 Publish order (dependency layers):
-    Batch 1: auths, auths-crypto, auths-index, auths-policy, auths-telemetry
+    Batch 1: auths, auths-crypto, auths-index, auths-jwt, auths-policy, auths-telemetry
     Batch 2: auths-verifier, auths-keri
-    Batch 3: auths-core, auths-oidc-bridge
+    Batch 3: auths-core
     Batch 4: auths-infra-http, auths-mcp-server
     Batch 5: auths-id  (depends on core, crypto, policy, verifier, infra-http)
     Batch 6: auths-storage, auths-sdk  (both depend on auths-id)
@@ -42,9 +42,9 @@ CARGO_TOML = Path(__file__).resolve().parents[2] / "Cargo.toml"
 CRATES_IO_API = "https://crates.io/api/v1/crates"
 
 PUBLISH_BATCHES: list[list[str]] = [
-    ["auths", "auths-crypto", "auths-index", "auths-policy", "auths-telemetry"],
+    ["auths", "auths-crypto", "auths-index", "auths-jwt", "auths-policy", "auths-telemetry"],
     ["auths-verifier", "auths-keri", "auths-pairing-protocol"],
-    ["auths-core", "auths-oidc-bridge"],
+    ["auths-core"],
     ["auths-infra-http", "auths-mcp-server"],
     ["auths-id"],
     ["auths-storage", "auths-sdk"],

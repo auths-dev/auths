@@ -119,6 +119,20 @@ pub enum Expr {
         /// Allowed values.
         values: Vec<String>,
     },
+
+    // ── Approval Gate ─────────────────────────────────────────────
+    /// Approval gate: if inner evaluates to Allow, return RequiresApproval instead.
+    /// Transparent to Deny/Indeterminate — those pass through unchanged.
+    ApprovalGate {
+        /// The inner expression to evaluate.
+        inner: Box<Expr>,
+        /// DIDs of allowed approvers (validated at compile time).
+        approvers: Vec<String>,
+        /// Approval request TTL in seconds (default 300 = 5 minutes).
+        ttl_seconds: u64,
+        /// Approval scope: "identity" (default), "scoped", or "full".
+        scope: Option<String>,
+    },
 }
 
 impl Expr {
@@ -317,6 +331,12 @@ mod tests {
             Expr::AttrIn {
                 key: "k".into(),
                 values: vec!["v1".into(), "v2".into()],
+            },
+            Expr::ApprovalGate {
+                inner: Box::new(Expr::HasCapability("deploy".into())),
+                approvers: vec!["did:keri:EHuman123".into()],
+                ttl_seconds: 300,
+                scope: Some("identity".into()),
             },
         ];
 

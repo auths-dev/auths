@@ -2,6 +2,7 @@ pub mod executable;
 pub mod registry_overrides;
 
 pub mod agent;
+pub mod approval;
 pub mod artifact;
 pub mod audit;
 pub mod cache;
@@ -22,6 +23,7 @@ pub mod learn;
 pub mod org;
 pub mod policy;
 pub mod provision;
+pub mod scim;
 pub mod sign;
 pub mod status;
 pub mod trust;

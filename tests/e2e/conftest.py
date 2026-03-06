@@ -56,15 +56,6 @@ def auths_verify_bin():
     return path
 
 
-@pytest.fixture(scope="session")
-def auths_oidc_bridge_bin():
-    """Path to the `auths-oidc-bridge` binary."""
-    path = _find_binary("AUTHS_OIDC_BRIDGE_BIN", "auths-oidc-bridge")
-    if path is None:
-        pytest.skip("auths-oidc-bridge binary not found")
-    return path
-
-
 @pytest.fixture
 def isolated_env(tmp_path, auths_bin):
     """Fully isolated environment for CLI tests."""

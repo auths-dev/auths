@@ -32,6 +32,9 @@ pub enum Outcome {
     /// The decision could not be made due to missing information.
     /// In strict mode, this is treated as Deny.
     Indeterminate,
+    /// The action requires human approval before proceeding.
+    /// Propagated through `evaluate_strict` (NOT collapsed to Deny).
+    RequiresApproval,
 }
 
 /// Machine-readable reason code for stable logging and alerting.
@@ -86,6 +89,16 @@ pub enum ReasonCode {
     SignerTypeMatch,
     /// Signer type does not match expected value.
     SignerTypeMismatch,
+    /// Policy ApprovalGate determined human approval is needed.
+    ApprovalRequired,
+    /// Approval attestation was valid and matched.
+    ApprovalGranted,
+    /// Approval request TTL expired.
+    ApprovalExpired,
+    /// Approval JTI already used (replay attempt).
+    ApprovalAlreadyUsed,
+    /// Approval scope hash doesn't match the current request.
+    ApprovalRequestMismatch,
 }
 
 impl Decision {
@@ -119,6 +132,16 @@ impl Decision {
         }
     }
 
+    /// Create a RequiresApproval decision with the given reason and message.
+    pub fn requires_approval(reason: ReasonCode, message: impl Into<String>) -> Self {
+        Self {
+            outcome: Outcome::RequiresApproval,
+            reason,
+            message: message.into(),
+            policy_hash: None,
+        }
+    }
+
     /// Attach a policy hash to this decision for audit pinning.
     pub fn with_policy_hash(mut self, hash: [u8; 32]) -> Self {
         self.policy_hash = Some(hash);
@@ -139,6 +162,11 @@ impl Decision {
     pub fn is_indeterminate(&self) -> bool {
         self.outcome == Outcome::Indeterminate
     }
+
+    /// Returns true if the outcome is RequiresApproval.
+    pub fn is_approval_required(&self) -> bool {
+        self.outcome == Outcome::RequiresApproval
+    }
 }
 
 impl std::fmt::Display for Outcome {
@@ -147,6 +175,7 @@ impl std::fmt::Display for Outcome {
             Outcome::Allow => write!(f, "ALLOW"),
             Outcome::Deny => write!(f, "DENY"),
             Outcome::Indeterminate => write!(f, "INDETERMINATE"),
+            Outcome::RequiresApproval => write!(f, "REQUIRES_APPROVAL"),
         }
     }
 }
