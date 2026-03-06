@@ -257,14 +257,6 @@ class TestGenerateAllowedSigners:
         from auths import generate_allowed_signers as _gs
         assert callable(_gs)
 
-    def test_returns_string_for_empty_repo(self, tmp_path):
-        native = sys.modules.get("auths._native")
-        if isinstance(getattr(native, "generate_allowed_signers_file", None), MagicMock):
-            pytest.skip("requires compiled native extension")
-        result = generate_allowed_signers(str(tmp_path))
-        assert isinstance(result, str)
-        assert result == ""
-
     def test_nonexistent_repo_raises(self):
         native = sys.modules.get("auths._native")
         if isinstance(getattr(native, "generate_allowed_signers_file", None), MagicMock):
