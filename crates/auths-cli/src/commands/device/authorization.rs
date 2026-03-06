@@ -182,7 +182,6 @@ pub fn handle_device(
     attestation_prefix_override: Option<String>,
     attestation_blob_name_override: Option<String>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
-    http_client: &reqwest::Client,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
     let repo_path = layout::resolve_repo_path(repo_opt)?;
@@ -206,9 +205,7 @@ pub fn handle_device(
             list_devices(&repo_path, &config, include_revoked)
         }
         DeviceSubcommand::Resolve { device_did } => resolve_device(&repo_path, &device_did),
-        DeviceSubcommand::Pair(pair_cmd) => {
-            super::pair::handle_pair(pair_cmd, http_client, env_config)
-        }
+        DeviceSubcommand::Pair(pair_cmd) => super::pair::handle_pair(pair_cmd, env_config),
         DeviceSubcommand::VerifyAttestation(verify_cmd) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(super::verify_attestation::handle_verify(verify_cmd))

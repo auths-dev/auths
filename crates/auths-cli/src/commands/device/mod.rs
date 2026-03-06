@@ -20,7 +20,6 @@ impl ExecutableCommand for DeviceCommand {
             self.overrides.attestation_prefix.clone(),
             self.overrides.attestation_blob.clone(),
             ctx.passphrase_provider.clone(),
-            &ctx.http_client,
             &ctx.env_config,
         )
     }

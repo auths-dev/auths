@@ -69,11 +69,7 @@ pub struct PairCommand {
 /// | `pair --join CODE`           | LAN join: mDNS discover -> join       |
 /// | `pair --join CODE --registry`| Online join (existing)                |
 /// | `pair --offline`             | Offline mode (no network)             |
-pub fn handle_pair(
-    cmd: PairCommand,
-    http_client: &reqwest::Client,
-    env_config: &EnvironmentConfig,
-) -> Result<()> {
+pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<()> {
     match (&cmd.join, &cmd.registry, cmd.offline) {
         // Offline mode takes priority
         (None, _, true) => {
@@ -104,7 +100,6 @@ pub fn handle_pair(
         (None, Some(registry), _) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(online::handle_initiate_online(
-                http_client,
                 registry,
                 cmd.no_qr,
                 cmd.timeout,
@@ -131,7 +126,6 @@ pub fn handle_pair(
         (None, None, false) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(online::handle_initiate_online(
-                http_client,
                 DEFAULT_REGISTRY,
                 cmd.no_qr,
                 cmd.timeout,
