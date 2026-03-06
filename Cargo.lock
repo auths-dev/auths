@@ -484,6 +484,7 @@ dependencies = [
  "auths-core",
  "auths-verifier",
  "axum",
+ "futures-util",
  "hex",
  "reqwest 0.13.2",
  "ring",
@@ -491,6 +492,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

@@ -8,3 +8,5 @@ pub mod diagnostics;
 pub mod git;
 /// Git configuration port for setting signing-related git config keys.
 pub mod git_config;
+/// Pairing relay client port for communicating with a pairing relay server.
+pub mod pairing;
