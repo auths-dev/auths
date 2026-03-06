@@ -134,7 +134,7 @@ pub fn build_auths_context(
     if let Some(pp) = passphrase_provider {
         builder = builder.passphrase_provider(pp);
     }
-    Ok(builder.build()?)
+    Ok(builder.build())
 }
 
 /// Reads a Git configuration value from the default config.

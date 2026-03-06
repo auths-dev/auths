@@ -65,7 +65,7 @@ pub fn build_test_context_with_provider(
         builder = builder.passphrase_provider(pp);
     }
 
-    builder.build().unwrap()
+    builder.build()
 }
 
 /// Build an [`AuthsContext`] over a fresh empty git repository with no identity stored.
