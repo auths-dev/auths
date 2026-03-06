@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
+use crate::approval::ApprovalAttestation;
 use crate::types::{CanonicalCapability, CanonicalDid, SignerType};
 
 /// Typed evaluation context.
@@ -72,6 +73,10 @@ pub struct EvalContext {
     // ── Escape Hatch (flat string attrs) ─────────────────────────────
     /// Custom attributes for extension points.
     pub attrs: HashMap<String, String>,
+
+    // ── Approval Attestations ────────────────────────────────────────
+    /// Submitted approval attestations for ApprovalGate checking.
+    pub approvals: Vec<ApprovalAttestation>,
 }
 
 impl EvalContext {
@@ -98,6 +103,7 @@ impl EvalContext {
             workload_issuer: None,
             workload_claims: HashMap::new(),
             attrs: HashMap::new(),
+            approvals: Vec::new(),
         }
     }
 
@@ -211,6 +217,12 @@ impl EvalContext {
     /// Add a custom attribute.
     pub fn attr(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.attrs.insert(key.into(), value.into());
+        self
+    }
+
+    /// Add an approval attestation.
+    pub fn approval(mut self, attestation: ApprovalAttestation) -> Self {
+        self.approvals.push(attestation);
         self
     }
 }

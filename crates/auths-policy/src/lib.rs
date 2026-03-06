@@ -32,6 +32,7 @@
 //! - [`context`]: Typed evaluation context
 //! - [`enforce`]: Production enforcement with optional shadow evaluation
 
+pub mod approval;
 pub mod builder;
 pub mod compile;
 pub mod compiled;
@@ -44,12 +45,13 @@ pub mod glob;
 pub mod trust;
 pub mod types;
 
+pub use approval::{ApprovalAttestation, compute_request_hash};
 pub use builder::PolicyBuilder;
 pub use compile::{
     CompileError, PolicyLimits, compile, compile_from_json, compile_from_json_with_limits,
     compile_with_limits,
 };
-pub use compiled::{CompiledExpr, CompiledPolicy};
+pub use compiled::{ApprovalScope, CompiledExpr, CompiledPolicy};
 pub use context::EvalContext;
 pub use decision::{Decision, Outcome, ReasonCode};
 pub use enforce::{Divergence, enforce, enforce_simple};

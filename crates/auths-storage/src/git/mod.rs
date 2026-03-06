@@ -1,4 +1,5 @@
 mod adapter;
+pub mod approval;
 mod attestation_adapter;
 mod config;
 mod identity_adapter;

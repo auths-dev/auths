@@ -13,9 +13,10 @@ use crate::decision::{Decision, Outcome, ReasonCode};
 use crate::glob::glob_match;
 use crate::types::SignerType;
 
-/// Strict evaluation: returns `Allow` or `Deny` only.
+/// Strict evaluation: returns `Allow`, `Deny`, or `RequiresApproval`.
 ///
 /// `Indeterminate` is collapsed to `Deny` with the original reason code.
+/// `RequiresApproval` is propagated (NOT collapsed to Deny).
 /// Use this at enforcement points (CI gates, deploy admission, runtime checks).
 pub fn evaluate_strict(policy: &CompiledPolicy, ctx: &EvalContext) -> Decision {
     let decision = evaluate3(policy, ctx);
@@ -28,7 +29,7 @@ pub fn evaluate_strict(policy: &CompiledPolicy, ctx: &EvalContext) -> Decision {
             ),
         )
         .with_policy_hash(*policy.source_hash()),
-        _ => decision,
+        Outcome::Allow | Outcome::Deny | Outcome::RequiresApproval => decision,
     }
 }
 
@@ -48,38 +49,54 @@ fn eval_expr(expr: &CompiledExpr, ctx: &EvalContext) -> Decision {
         CompiledExpr::False => Decision::deny(ReasonCode::Unconditional, "unconditional deny"),
 
         CompiledExpr::And(children) => {
+            // Priority: Deny > RequiresApproval > Indeterminate > Allow
+            let mut saw_requires_approval: Option<Decision> = None;
             let mut saw_indeterminate: Option<Decision> = None;
             for child in children {
                 let result = eval_expr(child, ctx);
                 match result.outcome {
                     Outcome::Deny => return result,
+                    Outcome::RequiresApproval if saw_requires_approval.is_none() => {
+                        saw_requires_approval = Some(result);
+                    }
                     Outcome::Indeterminate if saw_indeterminate.is_none() => {
                         saw_indeterminate = Some(result);
                     }
                     _ => {}
                 }
             }
-            match saw_indeterminate {
-                Some(d) => d,
-                None => Decision::allow(ReasonCode::CombinatorResult, "all conditions passed"),
+            if let Some(d) = saw_requires_approval {
+                d
+            } else if let Some(d) = saw_indeterminate {
+                d
+            } else {
+                Decision::allow(ReasonCode::CombinatorResult, "all conditions passed")
             }
         }
 
         CompiledExpr::Or(children) => {
+            // Priority: Allow > RequiresApproval > Indeterminate > Deny
+            let mut saw_requires_approval: Option<Decision> = None;
             let mut saw_indeterminate: Option<Decision> = None;
             for child in children {
                 let result = eval_expr(child, ctx);
                 match result.outcome {
                     Outcome::Allow => return result,
+                    Outcome::RequiresApproval if saw_requires_approval.is_none() => {
+                        saw_requires_approval = Some(result);
+                    }
                     Outcome::Indeterminate if saw_indeterminate.is_none() => {
                         saw_indeterminate = Some(result);
                     }
                     _ => {}
                 }
             }
-            match saw_indeterminate {
-                Some(d) => d,
-                None => Decision::deny(ReasonCode::CombinatorResult, "no conditions passed"),
+            if let Some(d) = saw_requires_approval {
+                d
+            } else if let Some(d) = saw_indeterminate {
+                d
+            } else {
+                Decision::deny(ReasonCode::CombinatorResult, "no conditions passed")
             }
         }
 
@@ -94,7 +111,7 @@ fn eval_expr(expr: &CompiledExpr, ctx: &EvalContext) -> Decision {
                     ReasonCode::CombinatorResult,
                     format!("NOT({})", result.message),
                 ),
-                Outcome::Indeterminate => result,
+                Outcome::Indeterminate | Outcome::RequiresApproval => result,
             }
         }
 
@@ -454,6 +471,37 @@ fn eval_expr(expr: &CompiledExpr, ctx: &EvalContext) -> Decision {
                 format!("attr '{}' not present", key),
             ),
         },
+
+        // ── Approval Gate ───────────────────────────────────────────
+        CompiledExpr::ApprovalGate {
+            inner,
+            approvers,
+            ttl_seconds: _,
+            scope,
+        } => {
+            let inner_result = eval_expr(inner, ctx);
+            match inner_result.outcome {
+                Outcome::Allow => {
+                    let expected_hash = crate::approval::compute_request_hash(ctx, *scope);
+                    if let Some(approval) = ctx.approvals.iter().find(|a| {
+                        a.request_hash == expected_hash
+                            && approvers.contains(&a.approver_did)
+                            && a.expires_at > ctx.now
+                    }) {
+                        Decision::allow(
+                            ReasonCode::ApprovalGranted,
+                            format!("approved by {}", approval.approver_did),
+                        )
+                    } else {
+                        Decision::requires_approval(
+                            ReasonCode::ApprovalRequired,
+                            "action requires human approval",
+                        )
+                    }
+                }
+                _ => inner_result,
+            }
+        }
     }
 }
 

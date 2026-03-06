@@ -381,6 +381,7 @@ fn handle_explain(cmd: ExplainCommand) -> Result<()> {
             Outcome::Allow => out.success("ALLOW"),
             Outcome::Deny => out.error("DENY"),
             Outcome::Indeterminate => out.warn("INDETERMINATE"),
+            Outcome::RequiresApproval => out.warn("REQUIRES_APPROVAL"),
         };
         out.println(&format!("Decision: {}", decision_str));
         out.println(&format!("  Reason: {:?}", decision.reason));

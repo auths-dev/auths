@@ -343,3 +343,41 @@ pub enum OrgError {
     #[error("storage error: {0}")]
     Storage(String),
 }
+
+/// Errors from approval workflow operations.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ApprovalError {
+    /// The decision is not RequiresApproval.
+    #[error("decision is not RequiresApproval")]
+    NotApprovalRequired,
+
+    /// Approval request not found.
+    #[error("approval request not found: {hash}")]
+    RequestNotFound {
+        /// The hex-encoded request hash.
+        hash: String,
+    },
+
+    /// Approval request expired.
+    #[error("approval request expired at {expires_at}")]
+    RequestExpired {
+        /// When the request expired.
+        expires_at: chrono::DateTime<chrono::Utc>,
+    },
+
+    /// Approval JTI already used (replay attempt).
+    #[error("approval already used (JTI: {jti})")]
+    ApprovalAlreadyUsed {
+        /// The consumed JTI.
+        jti: String,
+    },
+
+    /// Approval partially applied — attestation stored but nonce/cleanup failed.
+    #[error("approval partially applied — attestation stored but nonce/cleanup failed: {0}")]
+    PartialApproval(String),
+
+    /// A storage operation failed.
+    #[error("storage error: {0}")]
+    ApprovalStorage(String),
+}

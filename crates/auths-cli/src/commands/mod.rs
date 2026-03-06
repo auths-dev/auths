@@ -2,6 +2,7 @@ pub mod executable;
 pub mod registry_overrides;
 
 pub mod agent;
+pub mod approval;
 pub mod artifact;
 pub mod audit;
 pub mod cache;
