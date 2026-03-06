@@ -31,6 +31,7 @@ from auths.agent import AgentAuth
 from auths.artifact import ArtifactSigningResult
 from auths.attestation_query import Attestation, AttestationService
 from auths.commit import CommitSigningResult
+from auths.jwt import AuthsClaims
 from auths.policy import PolicyBuilder
 from auths.devices import Device, DeviceExtension, DeviceService
 from auths.identity import Agent, Identity, IdentityService
@@ -75,6 +76,7 @@ __all__ = [
     "Attestation",
     "AttestationService",
     "CommitSigningResult",
+    "AuthsClaims",
     "PolicyBuilder",
     "compile_policy",
     "CommitResult",
