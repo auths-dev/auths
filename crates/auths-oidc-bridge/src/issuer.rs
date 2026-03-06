@@ -89,6 +89,7 @@ impl OidcIssuer {
         #[cfg(feature = "github-oidc")] github_cross_ref: Option<
             &crate::cross_reference::CrossReferenceResult,
         >,
+        #[cfg(feature = "spiffe")] spiffe_result: Option<&crate::spiffe::SpiffeVerificationResult>,
     ) -> Result<TokenResponse, BridgeError> {
         let root_pk = hex::decode(&request.root_public_key).map_err(|e| {
             BridgeError::InvalidRootKey(format!("failed to decode hex public key: {e}"))
@@ -215,6 +216,9 @@ impl OidcIssuer {
             #[cfg(not(feature = "github-oidc"))]
             github_repository: None,
             act,
+            #[cfg(feature = "spiffe")]
+            spiffe_id: spiffe_result.map(|r| r.spiffe_id.clone()),
+            #[cfg(not(feature = "spiffe"))]
             spiffe_id: None,
         };
 

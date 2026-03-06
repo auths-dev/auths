@@ -79,6 +79,14 @@ pub struct BridgeConfig {
     /// Cache TTL for GitHub JWKS keys in seconds (default: 3600).
     #[cfg(feature = "github-oidc")]
     pub github_jwks_cache_ttl_secs: u64,
+
+    /// Path to a PEM-encoded SPIFFE trust bundle file.
+    #[cfg(feature = "spiffe")]
+    pub spiffe_trust_bundle_path: Option<PathBuf>,
+
+    /// Allowlist of SPIFFE trust domains. If set, only SVIDs from these domains are accepted.
+    #[cfg(feature = "spiffe")]
+    pub spiffe_allowed_trust_domains: Option<Vec<String>>,
 }
 
 impl Default for BridgeConfig {
@@ -112,6 +120,10 @@ impl Default for BridgeConfig {
             github_expected_audience: None,
             #[cfg(feature = "github-oidc")]
             github_jwks_cache_ttl_secs: 3600,
+            #[cfg(feature = "spiffe")]
+            spiffe_trust_bundle_path: None,
+            #[cfg(feature = "spiffe")]
+            spiffe_allowed_trust_domains: None,
         }
     }
 }
@@ -252,6 +264,20 @@ impl BridgeConfig {
     #[cfg(feature = "github-oidc")]
     pub fn with_github_jwks_cache_ttl(mut self, secs: u64) -> Self {
         self.github_jwks_cache_ttl_secs = secs;
+        self
+    }
+
+    /// Set the SPIFFE trust bundle PEM file path.
+    #[cfg(feature = "spiffe")]
+    pub fn with_spiffe_trust_bundle_path(mut self, path: PathBuf) -> Self {
+        self.spiffe_trust_bundle_path = Some(path);
+        self
+    }
+
+    /// Set the allowed SPIFFE trust domains.
+    #[cfg(feature = "spiffe")]
+    pub fn with_spiffe_allowed_trust_domains(mut self, domains: Vec<String>) -> Self {
+        self.spiffe_allowed_trust_domains = Some(domains);
         self
     }
 }

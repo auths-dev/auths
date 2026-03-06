@@ -151,6 +151,34 @@ async fn token_exchange(
         }
     };
 
+    // SPIFFE SVID verification (composable pre-step, like GitHub OIDC)
+    #[cfg(feature = "spiffe")]
+    let spiffe_result = {
+        if let Some(ref svid_pem) = request.svid_pem {
+            let trust_bundle = state.spiffe_trust_bundle().ok_or_else(|| {
+                BridgeError::InvalidRequest(
+                    "SPIFFE verification not configured on this bridge".to_string(),
+                )
+            })?;
+            let allowed_domains = state.config().spiffe_allowed_trust_domains.as_deref();
+            let now = chrono::Utc::now().timestamp();
+            let result = crate::spiffe::verify_svid(
+                svid_pem.as_bytes(),
+                trust_bundle,
+                allowed_domains,
+                now,
+            )?;
+            tracing::info!(
+                spiffe_id = %result.spiffe_id,
+                trust_domain = %result.trust_domain,
+                "auths.exchange.spiffe_verification.success"
+            );
+            Some(result)
+        } else {
+            None
+        }
+    };
+
     let issuer = state.issuer().read().await;
     let response = issuer
         .exchange(
@@ -161,6 +189,8 @@ async fn token_exchange(
             state.workload_policy(),
             #[cfg(feature = "github-oidc")]
             github_cross_ref.as_ref(),
+            #[cfg(feature = "spiffe")]
+            spiffe_result.as_ref(),
         )
         .await?;
 

@@ -25,6 +25,8 @@ pub mod jwks;
 pub mod policy_adapter;
 pub mod rate_limit;
 pub mod routes;
+#[cfg(feature = "spiffe")]
+pub mod spiffe;
 pub mod state;
 pub mod token;
 

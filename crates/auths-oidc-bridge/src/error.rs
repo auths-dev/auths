@@ -114,6 +114,19 @@ pub enum BridgeError {
         allowed: Vec<String>,
     },
 
+    /// SPIFFE SVID verification failed.
+    #[cfg(feature = "spiffe")]
+    #[error("SPIFFE error: {0}")]
+    SpiffeError(String),
+
+    /// SPIFFE trust domain not in allowlist.
+    #[cfg(feature = "spiffe")]
+    #[error("trust domain '{domain}' not allowed (allowed: {allowed:?})")]
+    SpiffeTrustDomainNotAllowed {
+        domain: String,
+        allowed: Vec<String>,
+    },
+
     /// Workload policy denied the token exchange.
     #[cfg(feature = "oidc-policy")]
     #[error("policy denied: {0}")]
@@ -182,6 +195,12 @@ impl IntoResponse for BridgeError {
             #[cfg(feature = "oidc-trust")]
             BridgeError::CapabilityNotAllowed { .. } => {
                 (StatusCode::FORBIDDEN, "CAPABILITY_NOT_ALLOWED")
+            }
+            #[cfg(feature = "spiffe")]
+            BridgeError::SpiffeError(_) => (StatusCode::UNAUTHORIZED, "SPIFFE_ERROR"),
+            #[cfg(feature = "spiffe")]
+            BridgeError::SpiffeTrustDomainNotAllowed { .. } => {
+                (StatusCode::FORBIDDEN, "SPIFFE_TRUST_DOMAIN_NOT_ALLOWED")
             }
             #[cfg(feature = "oidc-policy")]
             BridgeError::PolicyDenied(_) => (StatusCode::FORBIDDEN, "POLICY_DENIED"),

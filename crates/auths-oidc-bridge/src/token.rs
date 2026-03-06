@@ -104,6 +104,10 @@ pub struct ExchangeRequest {
     #[cfg(feature = "github-oidc")]
     #[serde(default)]
     pub github_actor: Option<String>,
+    /// PEM-encoded X.509-SVID for SPIFFE identity verification.
+    #[cfg(feature = "spiffe")]
+    #[serde(default)]
+    pub svid_pem: Option<String>,
 }
 
 /// A witness key entry in the exchange request.

@@ -28,6 +28,8 @@ struct BridgeStateInner {
     trust_registry: Option<auths_policy::TrustRegistry>,
     #[cfg(feature = "github-oidc")]
     github_jwks: Option<crate::github_oidc::JwksClient>,
+    #[cfg(feature = "spiffe")]
+    spiffe_trust_bundle: Option<crate::spiffe::TrustBundle>,
 }
 
 impl BridgeState {
@@ -52,6 +54,9 @@ impl BridgeState {
         #[cfg(feature = "github-oidc")]
         let github_jwks = build_github_jwks_client(&config);
 
+        #[cfg(feature = "spiffe")]
+        let spiffe_trust_bundle = build_spiffe_trust_bundle(&config)?;
+
         Ok(Self {
             inner: Arc::new(BridgeStateInner {
                 issuer: RwLock::new(issuer),
@@ -65,6 +70,8 @@ impl BridgeState {
                 trust_registry,
                 #[cfg(feature = "github-oidc")]
                 github_jwks,
+                #[cfg(feature = "spiffe")]
+                spiffe_trust_bundle,
             }),
         })
     }
@@ -105,6 +112,12 @@ impl BridgeState {
     #[cfg(feature = "github-oidc")]
     pub fn github_jwks(&self) -> Option<&crate::github_oidc::JwksClient> {
         self.inner.github_jwks.as_ref()
+    }
+
+    /// Get a reference to the SPIFFE trust bundle (if configured).
+    #[cfg(feature = "spiffe")]
+    pub fn spiffe_trust_bundle(&self) -> Option<&crate::spiffe::TrustBundle> {
+        self.inner.spiffe_trust_bundle.as_ref()
     }
 
     /// Rotate the signing key. The current key becomes the previous key
@@ -224,6 +237,26 @@ fn build_trust_registry(
 
     tracing::info!(entries = registry.entries().len(), "Loaded trust registry");
     Ok(Some(registry))
+}
+
+#[cfg(feature = "spiffe")]
+fn build_spiffe_trust_bundle(
+    config: &BridgeConfig,
+) -> Result<Option<crate::spiffe::TrustBundle>, BridgeError> {
+    let Some(ref path) = config.spiffe_trust_bundle_path else {
+        return Ok(None);
+    };
+
+    let bytes = std::fs::read(path).map_err(|e| {
+        BridgeError::SpiffeError(format!(
+            "failed to read SPIFFE trust bundle {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let bundle = crate::spiffe::TrustBundle::from_pem(&bytes)?;
+    tracing::info!(path = %path.display(), "Loaded SPIFFE trust bundle");
+    Ok(Some(bundle))
 }
 
 /// Load or generate the RSA signing key based on config.

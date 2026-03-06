@@ -16,6 +16,7 @@ default = []
 github-oidc = ["dep:reqwest"]
 oidc-policy = ["dep:auths-policy"]
 oidc-trust = ["dep:auths-policy"]
+spiffe = ["dep:x509-parser"]
 
 [[bin]]
 name = "auths-oidc-bridge"
@@ -48,6 +49,7 @@ tower-http = { version = "0.6", features = ["trace", "cors"] }
 tracing = "0.1"
 uuid.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
+x509-parser = { version = "0.16", optional = true }
 
 [dev-dependencies]
 auths-crypto.workspace = true
