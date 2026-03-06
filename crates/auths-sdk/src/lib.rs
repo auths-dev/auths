@@ -18,6 +18,8 @@
 //! SDK functions accept typed configs and return structured `Result` types.
 //! They never prompt for input, print to stdout, or call `process::exit()`.
 
+/// Audit event emission convenience for SDK operations.
+pub mod audit;
 /// Runtime dependency container (`AuthsContext`) for injecting infrastructure adapters.
 pub mod context;
 /// Device linking, revocation, and authorization extension operations.

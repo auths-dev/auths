@@ -39,10 +39,23 @@ pub async fn jwt_auth_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, McpServerError> {
-    let token = extract_bearer_token(&headers)
-        .ok_or_else(|| McpServerError::Unauthorized("missing Authorization header".to_string()))?;
+    let token = match extract_bearer_token(&headers) {
+        Some(t) => t,
+        None => {
+            emit_auth_failure("mcp:auth");
+            return Err(McpServerError::Unauthorized(
+                "missing Authorization header".to_string(),
+            ));
+        }
+    };
 
-    let claims = state.auth().validate_jwt(token).await?;
+    let claims = match state.auth().validate_jwt(token).await {
+        Ok(c) => c,
+        Err(e) => {
+            emit_auth_failure("mcp:auth");
+            return Err(e);
+        }
+    };
 
     let agent = VerifiedAgent {
         did: claims.sub,
@@ -52,4 +65,10 @@ pub async fn jwt_auth_middleware(
 
     request.extensions_mut().insert(agent);
     Ok(next.run(request).await)
+}
+
+fn emit_auth_failure(action: &str) {
+    let now = chrono::Utc::now().timestamp();
+    let event = auths_telemetry::build_audit_event("unknown", action, "Denied", now);
+    auths_telemetry::emit_telemetry(&event);
 }

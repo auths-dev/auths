@@ -607,6 +607,7 @@ dependencies = [
  "auths-id",
  "auths-policy",
  "auths-storage",
+ "auths-telemetry",
  "auths-verifier",
  "base64",
  "chrono",

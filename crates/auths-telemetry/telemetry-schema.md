@@ -37,6 +37,11 @@ Consumers should treat each newline-delimited record as one complete event.
 | `assume_role`           | auths-auth-server       | Client requested a capability scoped to a specific role.           |
 | `registry_lookup`       | auths-registry-server   | Resolver queried the identity registry for a DID's public key.     |
 | `chat_message_send`     | auths-chat-server       | Authenticated principal sent an encrypted chat message.            |
+| `mcp:auth`              | auths-mcp-server        | JWT authentication attempt at the MCP server middleware layer.     |
+| `mcp:read_file`         | auths-mcp-server        | Agent invoked the MCP `read_file` tool.                            |
+| `mcp:write_file`        | auths-mcp-server        | Agent invoked the MCP `write_file` tool.                           |
+| `mcp:deploy`            | auths-mcp-server        | Agent invoked the MCP `deploy` tool.                               |
+| `mcp:*`                 | auths-mcp-server        | Wildcard pattern for any MCP tool invocation (`mcp:{tool_name}`).  |
 
 ---
 
