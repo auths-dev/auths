@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
 use log::warn;
+use serde::Serialize;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,20 @@ use chrono::Utc;
 
 use crate::commands::registry_overrides::RegistryOverrides;
 use crate::factories::storage::build_auths_context;
+use crate::ux::format::{JsonResponse, is_json_mode};
+
+#[derive(Serialize)]
+struct DeviceEntry {
+    id: String,
+    status: String,
+    public_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
 
 #[derive(Args, Debug, Clone)]
 #[command(about = "Manage device authorizations within an identity repository.")]
@@ -431,21 +446,15 @@ fn list_devices(
         .load_identity()
         .with_context(|| format!("Failed to load identity from {:?}", repo_path))?;
 
-    println!("Devices for identity: {}", identity.controller_did);
-
     let attestations = attestation_storage
         .load_all_attestations()
         .context("Could not load device attestations")?;
 
     let grouped = AttestationGroup::from_list(attestations);
-    if grouped.device_count() == 0 {
-        println!("  No authorized devices found.");
-        return Ok(());
-    }
 
-    let mut device_count = 0;
-    for (device_did_str, entries) in grouped.by_device.iter() {
-        let latest = entries
+    let mut entries: Vec<DeviceEntry> = Vec::new();
+    for (device_did_str, att_entries) in grouped.by_device.iter() {
+        let latest = att_entries
             .last()
             .expect("Grouped attestations should not be empty");
 
@@ -494,26 +503,46 @@ fn list_devices(
         };
 
         let is_inactive = latest.is_revoked() || latest.expires_at.is_some_and(|e| Utc::now() > e);
-
         if !include_revoked && is_inactive {
             continue;
         }
 
-        device_count += 1;
-        println!(
-            "{:>2}. {}   {}",
-            device_count, device_did_str, status_string
-        );
-        if let Some(note) = &latest.note
-            && !note.is_empty()
-        {
+        entries.push(DeviceEntry {
+            id: device_did_str.clone(),
+            status: status_string,
+            public_key: hex::encode(latest.device_public_key.as_bytes()),
+            created_at: latest.timestamp.map(|ts| ts.to_rfc3339()),
+            expires_at: latest.expires_at.map(|ts| ts.to_rfc3339()),
+            note: latest.note.clone().filter(|n| !n.is_empty()),
+        });
+    }
+
+    if is_json_mode() {
+        return JsonResponse::success(
+            "device list",
+            &serde_json::json!({
+                "identity": identity.controller_did.to_string(),
+                "devices": entries,
+            }),
+        )
+        .print()
+        .map_err(|e| anyhow!("{e}"));
+    }
+
+    println!("Devices for identity: {}", identity.controller_did);
+    if entries.is_empty() {
+        if include_revoked {
+            println!("  No authorized devices found.");
+        } else {
+            println!("  (No active devices. Use --include-revoked to see all.)");
+        }
+        return Ok(());
+    }
+    for (i, entry) in entries.iter().enumerate() {
+        println!("{:>2}. {}   {}", i + 1, entry.id, entry.status);
+        if let Some(note) = &entry.note {
             println!("    Note: {}", note);
         }
     }
-
-    if device_count == 0 && !include_revoked {
-        println!("  (No active devices. Use --include-revoked to see all.)");
-    }
-
     Ok(())
 }
