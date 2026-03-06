@@ -67,11 +67,13 @@ class Auths:
         self.repo_path = repo_path
         self._passphrase = passphrase
 
+        from auths.attestation_query import AttestationService
         from auths.devices import DeviceService
         from auths.identity import IdentityService
 
         self.identities = IdentityService(self)
         self.devices = DeviceService(self)
+        self.attestations = AttestationService(self)
 
     def verify(
         self,
