@@ -1,5 +1,6 @@
 use auths_core::ports::network::{NetworkError, RegistryClient, RegistryResponse};
 use std::future::Future;
+use std::time::Duration;
 
 use crate::error::map_reqwest_error;
 use crate::request::{
@@ -27,6 +28,31 @@ impl HttpRegistryClient {
         Self {
             client: reqwest::Client::new(),
         }
+    }
+
+    /// Create an `HttpRegistryClient` with explicit connect and request timeouts.
+    ///
+    /// Args:
+    /// * `connect_timeout`: Maximum time to establish a TCP connection.
+    /// * `request_timeout`: Maximum total time for the request to complete.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let client = HttpRegistryClient::new_with_timeouts(
+    ///     Duration::from_secs(30),
+    ///     Duration::from_secs(60),
+    /// );
+    /// ```
+    pub fn new_with_timeouts(connect_timeout: Duration, request_timeout: Duration) -> Self {
+        // reqwest::ClientBuilder::build() only fails if TLS initialisation fails,
+        // which cannot happen with the default TLS backend and no certificates loaded.
+        #[allow(clippy::expect_used)]
+        let client = reqwest::Client::builder()
+            .connect_timeout(connect_timeout)
+            .timeout(request_timeout)
+            .build()
+            .expect("failed to build HTTP client");
+        Self { client }
     }
 }
 
