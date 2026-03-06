@@ -5,7 +5,7 @@ use auths_core::crypto::said::compute_next_commitment;
 use auths_id::keri::event::{Event, IcpEvent, KeriSequence};
 use auths_id::keri::types::{Prefix, Said};
 use auths_id::keri::{KERI_VERSION, finalize_icp_event, serialize_for_signing};
-use auths_id::ports::registry::RegistryBackend;
+use auths_id::ports::registry::{RegistryBackend, RegistryError};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -253,24 +253,35 @@ fn batch_cas_failure_returns_clear_error() {
     let barrier2 = Arc::clone(&barrier);
 
     let path2 = path.clone();
-    let writer1 = thread::spawn(move || {
+    let writer1 = thread::spawn(move || -> Result<(), RegistryError> {
         let backend =
             GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&path2));
         let event = seeded_inception_event(230);
         let prefix = event.prefix().clone();
         barrier2.wait();
-        backend.append_event(&prefix, &event).unwrap();
+        backend.append_event(&prefix, &event)
     });
 
-    let writer2 = thread::spawn(move || {
+    let writer2 = thread::spawn(move || -> Result<(), RegistryError> {
         let backend =
             GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&path));
         barrier.wait();
-        let _ = backend.batch_append_events(&batch);
+        backend.batch_append_events(&batch)
     });
 
-    writer1.join().unwrap();
-    writer2.join().unwrap();
+    let r1 = writer1.join().unwrap();
+    let r2 = writer2.join().unwrap();
+
+    // At least one must succeed; the loser gets ConcurrentModification
+    assert!(r1.is_ok() || r2.is_ok(), "at least one writer must succeed");
+    for r in [&r1, &r2] {
+        if let Err(e) = r {
+            assert!(
+                matches!(e, RegistryError::ConcurrentModification(_)),
+                "expected ConcurrentModification, got: {e:?}"
+            );
+        }
+    }
 
     let backend =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(dir.path()));
