@@ -40,10 +40,10 @@ pub enum GitIntegrationError {
 ///
 /// Usage:
 /// ```ignore
-/// let entries = compute_allowed_signers(&storage)?;
+/// let entries = generate_allowed_signers(&storage)?;
 /// let file_content = format_allowed_signers_file(&entries);
 /// ```
-pub fn compute_allowed_signers(
+pub fn generate_allowed_signers(
     source: &dyn AttestationSource,
 ) -> Result<Vec<AllowedSignerEntry>, GitIntegrationError> {
     let attestations = source.load_all_attestations()?;

@@ -11,7 +11,9 @@ use auths_id::keri::{KeyState, Prefix, Said};
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
 use auths_sdk::error::RotationError;
-use auths_sdk::setup::create_developer_identity;
+use auths_sdk::result::InitializeResult;
+use auths_sdk::setup::initialize;
+use auths_sdk::types::IdentityConfig;
 use auths_sdk::types::{CreateDeveloperIdentityConfig, GitSigningScope, IdentityRotationConfig};
 use auths_sdk::workflows::rotation::{
     RotationKeyMaterial, apply_rotation, compute_rotation_event, rotate_identity,
@@ -23,15 +25,25 @@ use crate::cases::helpers::{build_test_context, build_test_context_with_provider
 
 fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
     MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
-    let keychain = MemoryKeychainHandle;
     let signer = StorageSigner::new(MemoryKeychainHandle);
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
-    let result =
-        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+    let result = match initialize(
+        IdentityConfig::Developer(config),
+        &ctx,
+        Arc::new(MemoryKeychainHandle),
+        &signer,
+        &provider,
+        None,
+    )
+    .unwrap()
+    {
+        InitializeResult::Developer(r) => r,
+        _ => unreachable!(),
+    };
     result.key_alias
 }
 

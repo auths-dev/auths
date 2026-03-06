@@ -11,8 +11,9 @@ use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 use auths_sdk::context::AuthsContext;
-use auths_sdk::setup::create_developer_identity;
-use auths_sdk::types::{CreateDeveloperIdentityConfig, GitSigningScope};
+use auths_sdk::result::InitializeResult;
+use auths_sdk::setup::initialize;
+use auths_sdk::types::{CreateDeveloperIdentityConfig, GitSigningScope, IdentityConfig};
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
@@ -65,7 +66,7 @@ pub fn build_test_context_with_provider(
         builder = builder.passphrase_provider(pp);
     }
 
-    builder.build().unwrap()
+    builder.build()
 }
 
 /// Build an [`AuthsContext`] over a fresh empty git repository with no identity stored.
@@ -90,15 +91,25 @@ pub fn setup_signed_artifact_context() -> (tempfile::TempDir, KeyAlias, AuthsCon
     let tmp = tempfile::TempDir::new().expect("create temp dir");
     let registry_path = tmp.path().join(".auths");
 
-    let keychain = MemoryKeychainHandle;
     let signer = StorageSigner::new(MemoryKeychainHandle);
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
     let setup_ctx = build_test_context(&registry_path, Arc::new(MemoryKeychainHandle));
-    let result = create_developer_identity(config, &setup_ctx, &keychain, &signer, &provider, None)
-        .expect("create_developer_identity failed");
+    let result = match initialize(
+        IdentityConfig::Developer(config),
+        &setup_ctx,
+        Arc::new(MemoryKeychainHandle),
+        &signer,
+        &provider,
+        None,
+    )
+    .expect("initialize failed")
+    {
+        InitializeResult::Developer(r) => r,
+        _ => unreachable!(),
+    };
 
     let ctx = build_test_context_with_provider(
         &registry_path,

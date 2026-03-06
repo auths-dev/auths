@@ -4,7 +4,9 @@ use dialoguer::MultiSelect;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use auths_sdk::workflows::git_integration::{compute_allowed_signers, format_allowed_signers_file};
+use auths_sdk::workflows::git_integration::{
+    format_allowed_signers_file, generate_allowed_signers,
+};
 use auths_storage::git::RegistryAttestationStorage;
 
 use crate::ux::format::Output;
@@ -102,12 +104,12 @@ pub(crate) fn detect_ci_environment() -> Option<String> {
     }
 }
 
-pub(crate) fn generate_allowed_signers(key_alias: &str, out: &Output) -> Result<()> {
+pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()> {
     let _ = key_alias;
 
     let repo_path = get_auths_repo_path()?;
     let storage = RegistryAttestationStorage::new(&repo_path);
-    let entries = compute_allowed_signers(&storage).unwrap_or_default();
+    let entries = generate_allowed_signers(&storage).unwrap_or_default();
     let content = format_allowed_signers_file(&entries);
 
     let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;

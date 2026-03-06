@@ -140,7 +140,7 @@ pub fn sign_with_seed(
 // Artifact attestation signing
 // ---------------------------------------------------------------------------
 
-/// Selects how a signing key is supplied to `sign_artifact_attestation`.
+/// Selects how a signing key is supplied to `sign_artifact`.
 ///
 /// `Alias` resolves the key from the platform keychain at call time.
 /// `Direct` injects a raw seed, bypassing the keychain — intended for headless
@@ -181,7 +181,7 @@ pub struct ArtifactSigningParams {
 ///
 /// Usage:
 /// ```ignore
-/// let result = sign_artifact_attestation(params, &ctx)?;
+/// let result = sign_artifact(params, &ctx)?;
 /// std::fs::write(&output_path, &result.attestation_json)?;
 /// println!("Signed {} (sha256:{})", result.rid, result.digest);
 /// ```
@@ -341,9 +341,9 @@ fn resolve_required_key(
 ///     expires_in_days: Some(365),
 ///     note: None,
 /// };
-/// let result = sign_artifact_attestation(params, &ctx)?;
+/// let result = sign_artifact(params, &ctx)?;
 /// ```
-pub fn sign_artifact_attestation(
+pub fn sign_artifact(
     params: ArtifactSigningParams,
     ctx: &AuthsContext,
 ) -> Result<ArtifactSigningResult, ArtifactSigningError> {

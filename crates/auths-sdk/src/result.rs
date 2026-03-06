@@ -7,11 +7,13 @@ use auths_verifier::types::DeviceDID;
 ///
 /// Usage:
 /// ```ignore
-/// let result: CreateIdentityResult = sdk.create_developer_identity(config).await?;
-/// println!("Created identity: {}", result.identity_did);
+/// let result = initialize(IdentityConfig::developer(alias), &ctx, keychain, &signer, &provider, git_cfg)?;
+/// if let InitializeResult::Developer(r) = result {
+///     println!("Created identity: {}", r.identity_did);
+/// }
 /// ```
 #[derive(Debug, Clone)]
-pub struct CreateIdentityResult {
+pub struct DeveloperIdentityResult {
     /// The controller DID of the created identity.
     pub identity_did: IdentityDID,
     /// The device DID bound to this identity.
@@ -30,13 +32,13 @@ pub struct CreateIdentityResult {
 ///
 /// Usage:
 /// ```ignore
-/// let result: CreateCiIdentityResult = sdk.create_ci_identity(config).await?;
-/// for line in &result.env_block {
-///     println!("{line}");
+/// let result = initialize(IdentityConfig::ci(registry_path), &ctx, keychain, &signer, &provider, None)?;
+/// if let InitializeResult::Ci(r) = result {
+///     for line in &r.env_block { println!("{line}"); }
 /// }
 /// ```
 #[derive(Debug, Clone)]
-pub struct CreateCiIdentityResult {
+pub struct CiIdentityResult {
     /// The controller DID of the CI identity.
     pub identity_did: IdentityDID,
     /// The device DID bound to this CI identity.
@@ -49,17 +51,39 @@ pub struct CreateCiIdentityResult {
 ///
 /// Usage:
 /// ```ignore
-/// let result: CreateAgentIdentityResult = sdk.create_agent_identity(config).await?;
-/// println!("Agent {} delegated by {}", result.agent_did, result.parent_did);
+/// let result = initialize(IdentityConfig::agent(alias, path), &ctx, keychain, &signer, &provider, None)?;
+/// if let InitializeResult::Agent(r) = result {
+///     println!("Agent {} delegated by {}", r.agent_did, r.parent_did);
+/// }
 /// ```
 #[derive(Debug, Clone)]
-pub struct CreateAgentIdentityResult {
+pub struct AgentIdentityResult {
     /// The DID of the newly created agent identity.
     pub agent_did: IdentityDID,
     /// The DID of the parent identity that delegated authority.
     pub parent_did: IdentityDID,
     /// The capabilities granted to the agent.
     pub capabilities: Vec<Capability>,
+}
+
+/// Outcome of [`crate::setup::initialize`] — one variant per identity persona.
+///
+/// Usage:
+/// ```ignore
+/// match initialize(config, &ctx, keychain, &signer, &provider, git_cfg)? {
+///     InitializeResult::Developer(r) => display_developer_result(r),
+///     InitializeResult::Ci(r) => display_ci_result(r),
+///     InitializeResult::Agent(r) => display_agent_result(r),
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub enum InitializeResult {
+    /// Developer identity result.
+    Developer(DeveloperIdentityResult),
+    /// CI/ephemeral identity result.
+    Ci(CiIdentityResult),
+    /// Agent identity result.
+    Agent(AgentIdentityResult),
 }
 
 /// Outcome of a successful device link operation.
@@ -102,7 +126,7 @@ pub struct IdentityRotationResult {
 ///
 /// Usage:
 /// ```ignore
-/// let result: DeviceExtensionResult = extend_device_authorization(config, provider)?;
+/// let result: DeviceExtensionResult = extend_device(config, &ctx, &SystemClock)?;
 /// println!("Extended {} until {}", result.device_did, result.new_expires_at.date_naive());
 /// ```
 #[derive(Debug, Clone)]

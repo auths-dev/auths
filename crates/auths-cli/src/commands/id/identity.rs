@@ -487,7 +487,7 @@ pub fn handle_id(
                     .attestation_sink(attestation_sink)
                     .attestation_source(attestation_source)
                     .passphrase_provider(Arc::clone(&passphrase_provider))
-                    .build()?
+                    .build()
             };
             let result = auths_sdk::workflows::rotation::rotate_identity(
                 rotation_config,

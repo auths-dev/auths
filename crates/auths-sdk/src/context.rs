@@ -4,7 +4,6 @@
 //! (e.g. [`crate::types::CreateDeveloperIdentityConfig`]) remain Plain Old Data with no
 //! trait objects.
 
-use std::fmt;
 use std::sync::Arc;
 
 use auths_core::ports::clock::ClockProvider;
@@ -17,18 +16,6 @@ use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 
 use crate::ports::agent::{AgentSigningPort, NoopAgentProvider};
-
-/// A required builder field was not set before calling `build()`.
-#[derive(Debug, Clone)]
-pub struct BuilderError(pub &'static str);
-
-impl fmt::Display for BuilderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "missing required builder field: {}", self.0)
-    }
-}
-
-impl std::error::Error for BuilderError {}
 
 /// Re-export the canonical `EventSink` trait from `auths-telemetry`.
 pub use auths_telemetry::EventSink;
@@ -70,8 +57,11 @@ impl PassphraseProvider for NoopPassphraseProvider {
 ///     .registry(Arc::new(my_registry))
 ///     .key_storage(Arc::new(my_keychain))
 ///     .clock(Arc::new(SystemClock))
+///     .identity_storage(Arc::new(my_identity_storage))
+///     .attestation_sink(Arc::new(my_store.clone()))
+///     .attestation_source(Arc::new(my_store))
 ///     .build();
-/// sdk::create_developer_identity(config, &ctx)?;
+/// sdk::initialize(config, &ctx)?;
 /// ```
 pub struct AuthsContext {
     /// Pre-initialized registry storage backend.
@@ -96,17 +86,18 @@ pub struct AuthsContext {
     /// Override with a deterministic stub in tests.
     pub uuid_provider: Arc<dyn UuidProvider + Send + Sync>,
     /// Agent-based signing port for delegating operations to a running agent process.
-    /// Defaults to [`NoopAgentProvider`] — set via `.agent_signing(...)` when the
-    /// platform supports agent-based signing (Unix with auths-agent).
+    /// Defaults to [`NoopAgentProvider`] (all operations return `Unavailable`)
+    /// when not called. Set this on Unix platforms where the auths-agent daemon
+    /// is available.
     pub agent_signing: Arc<dyn AgentSigningPort + Send + Sync>,
 }
 
 impl AuthsContext {
     /// Creates a builder for [`AuthsContext`].
     ///
-    /// Required fields are `registry`, `key_storage`, and `clock`. Omitting any
-    /// of these produces a compile-time error — the `build()` method is only
-    /// available once all three are set.
+    /// All six required fields (`registry`, `key_storage`, `clock`,
+    /// `identity_storage`, `attestation_sink`, `attestation_source`) are enforced
+    /// at compile time — the `build()` method is only available once all six are set.
     ///
     /// Usage:
     /// ```ignore
@@ -114,17 +105,20 @@ impl AuthsContext {
     ///     .registry(Arc::new(my_registry))
     ///     .key_storage(Arc::new(my_keychain))
     ///     .clock(Arc::new(SystemClock))
+    ///     .identity_storage(Arc::new(my_identity_storage))
+    ///     .attestation_sink(Arc::new(my_store.clone()))
+    ///     .attestation_source(Arc::new(my_store))
     ///     .build();
     /// ```
-    pub fn builder() -> AuthsContextBuilder<Missing, Missing, Missing> {
+    pub fn builder() -> AuthsContextBuilder<Missing, Missing, Missing, Missing, Missing, Missing> {
         AuthsContextBuilder {
             registry: Missing,
             key_storage: Missing,
             clock: Missing,
+            identity_storage: Missing,
+            attestation_sink: Missing,
+            attestation_source: Missing,
             event_sink: None,
-            identity_storage: None,
-            attestation_sink: None,
-            attestation_source: None,
             passphrase_provider: None,
             uuid_provider: None,
             agent_signing: None,
@@ -141,22 +135,24 @@ pub struct Set<T>(T);
 /// Typestate builder for [`AuthsContext`].
 ///
 /// Call [`AuthsContext::builder()`] to obtain an instance. The `build()` method
-/// is only available once `registry`, `key_storage`, and `clock` have all been
-/// supplied.
-pub struct AuthsContextBuilder<R, K, C> {
+/// is only available once all six required fields have been supplied — omitting any
+/// produces a compile-time error.
+pub struct AuthsContextBuilder<R, K, C, IS, AS, ASrc> {
     registry: R,
     key_storage: K,
     clock: C,
+    identity_storage: IS,
+    attestation_sink: AS,
+    attestation_source: ASrc,
     event_sink: Option<Arc<dyn EventSink>>,
-    identity_storage: Option<Arc<dyn IdentityStorage + Send + Sync>>,
-    attestation_sink: Option<Arc<dyn AttestationSink + Send + Sync>>,
-    attestation_source: Option<Arc<dyn AttestationSource + Send + Sync>>,
     passphrase_provider: Option<Arc<dyn PassphraseProvider + Send + Sync>>,
     uuid_provider: Option<Arc<dyn UuidProvider + Send + Sync>>,
     agent_signing: Option<Arc<dyn AgentSigningPort + Send + Sync>>,
 }
 
-impl<K, C> AuthsContextBuilder<Missing, K, C> {
+// ── Required field setters (each transitions one typestate slot) ──────────────
+
+impl<K, C, IS, AS, ASrc> AuthsContextBuilder<Missing, K, C, IS, AS, ASrc> {
     /// Set the registry storage backend.
     ///
     /// Args:
@@ -169,15 +165,15 @@ impl<K, C> AuthsContextBuilder<Missing, K, C> {
     pub fn registry(
         self,
         registry: Arc<dyn RegistryBackend + Send + Sync>,
-    ) -> AuthsContextBuilder<Set<Arc<dyn RegistryBackend + Send + Sync>>, K, C> {
+    ) -> AuthsContextBuilder<Set<Arc<dyn RegistryBackend + Send + Sync>>, K, C, IS, AS, ASrc> {
         AuthsContextBuilder {
             registry: Set(registry),
             key_storage: self.key_storage,
             clock: self.clock,
-            event_sink: self.event_sink,
             identity_storage: self.identity_storage,
             attestation_sink: self.attestation_sink,
             attestation_source: self.attestation_source,
+            event_sink: self.event_sink,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
@@ -185,7 +181,7 @@ impl<K, C> AuthsContextBuilder<Missing, K, C> {
     }
 }
 
-impl<R, C> AuthsContextBuilder<R, Missing, C> {
+impl<R, C, IS, AS, ASrc> AuthsContextBuilder<R, Missing, C, IS, AS, ASrc> {
     /// Set the key storage backend.
     ///
     /// Args:
@@ -198,15 +194,15 @@ impl<R, C> AuthsContextBuilder<R, Missing, C> {
     pub fn key_storage(
         self,
         key_storage: Arc<dyn KeyStorage + Send + Sync>,
-    ) -> AuthsContextBuilder<R, Set<Arc<dyn KeyStorage + Send + Sync>>, C> {
+    ) -> AuthsContextBuilder<R, Set<Arc<dyn KeyStorage + Send + Sync>>, C, IS, AS, ASrc> {
         AuthsContextBuilder {
             registry: self.registry,
             key_storage: Set(key_storage),
             clock: self.clock,
-            event_sink: self.event_sink,
             identity_storage: self.identity_storage,
             attestation_sink: self.attestation_sink,
             attestation_source: self.attestation_source,
+            event_sink: self.event_sink,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
@@ -214,7 +210,7 @@ impl<R, C> AuthsContextBuilder<R, Missing, C> {
     }
 }
 
-impl<R, K> AuthsContextBuilder<R, K, Missing> {
+impl<R, K, IS, AS, ASrc> AuthsContextBuilder<R, K, Missing, IS, AS, ASrc> {
     /// Set the clock provider.
     ///
     /// Args:
@@ -228,15 +224,15 @@ impl<R, K> AuthsContextBuilder<R, K, Missing> {
     pub fn clock(
         self,
         clock: Arc<dyn ClockProvider + Send + Sync>,
-    ) -> AuthsContextBuilder<R, K, Set<Arc<dyn ClockProvider + Send + Sync>>> {
+    ) -> AuthsContextBuilder<R, K, Set<Arc<dyn ClockProvider + Send + Sync>>, IS, AS, ASrc> {
         AuthsContextBuilder {
             registry: self.registry,
             key_storage: self.key_storage,
             clock: Set(clock),
-            event_sink: self.event_sink,
             identity_storage: self.identity_storage,
             attestation_sink: self.attestation_sink,
             attestation_source: self.attestation_source,
+            event_sink: self.event_sink,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
@@ -244,33 +240,7 @@ impl<R, K> AuthsContextBuilder<R, K, Missing> {
     }
 }
 
-impl<R, K, C> AuthsContextBuilder<R, K, C> {
-    /// Set an optional event sink.
-    ///
-    /// Defaults to [`NoopSink`] (all events discarded) when not called.
-    ///
-    /// Args:
-    /// * `sink`: Any type implementing [`EventSink`].
-    ///
-    /// Usage:
-    /// ```ignore
-    /// builder.event_sink(Arc::new(my_sink))
-    /// ```
-    pub fn event_sink(self, sink: Arc<dyn EventSink>) -> AuthsContextBuilder<R, K, C> {
-        AuthsContextBuilder {
-            registry: self.registry,
-            key_storage: self.key_storage,
-            clock: self.clock,
-            event_sink: Some(sink),
-            identity_storage: self.identity_storage,
-            attestation_sink: self.attestation_sink,
-            attestation_source: self.attestation_source,
-            passphrase_provider: self.passphrase_provider,
-            uuid_provider: self.uuid_provider,
-            agent_signing: self.agent_signing,
-        }
-    }
-
+impl<R, K, C, AS, ASrc> AuthsContextBuilder<R, K, C, Missing, AS, ASrc> {
     /// Set the identity storage adapter.
     ///
     /// Args:
@@ -283,21 +253,23 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
     pub fn identity_storage(
         self,
         storage: Arc<dyn IdentityStorage + Send + Sync>,
-    ) -> AuthsContextBuilder<R, K, C> {
+    ) -> AuthsContextBuilder<R, K, C, Set<Arc<dyn IdentityStorage + Send + Sync>>, AS, ASrc> {
         AuthsContextBuilder {
             registry: self.registry,
             key_storage: self.key_storage,
             clock: self.clock,
-            event_sink: self.event_sink,
-            identity_storage: Some(storage),
+            identity_storage: Set(storage),
             attestation_sink: self.attestation_sink,
             attestation_source: self.attestation_source,
+            event_sink: self.event_sink,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
         }
     }
+}
 
+impl<R, K, C, IS, ASrc> AuthsContextBuilder<R, K, C, IS, Missing, ASrc> {
     /// Set the attestation sink adapter.
     ///
     /// Args:
@@ -310,21 +282,23 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
     pub fn attestation_sink(
         self,
         sink: Arc<dyn AttestationSink + Send + Sync>,
-    ) -> AuthsContextBuilder<R, K, C> {
+    ) -> AuthsContextBuilder<R, K, C, IS, Set<Arc<dyn AttestationSink + Send + Sync>>, ASrc> {
         AuthsContextBuilder {
             registry: self.registry,
             key_storage: self.key_storage,
             clock: self.clock,
-            event_sink: self.event_sink,
             identity_storage: self.identity_storage,
-            attestation_sink: Some(sink),
+            attestation_sink: Set(sink),
             attestation_source: self.attestation_source,
+            event_sink: self.event_sink,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
         }
     }
+}
 
+impl<R, K, C, IS, AS> AuthsContextBuilder<R, K, C, IS, AS, Missing> {
     /// Set the attestation source adapter.
     ///
     /// Args:
@@ -337,19 +311,39 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
     pub fn attestation_source(
         self,
         source: Arc<dyn AttestationSource + Send + Sync>,
-    ) -> AuthsContextBuilder<R, K, C> {
+    ) -> AuthsContextBuilder<R, K, C, IS, AS, Set<Arc<dyn AttestationSource + Send + Sync>>> {
         AuthsContextBuilder {
             registry: self.registry,
             key_storage: self.key_storage,
             clock: self.clock,
-            event_sink: self.event_sink,
             identity_storage: self.identity_storage,
             attestation_sink: self.attestation_sink,
-            attestation_source: Some(source),
+            attestation_source: Set(source),
+            event_sink: self.event_sink,
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
         }
+    }
+}
+
+// ── Optional field setters (available at any typestate, return Self) ──────────
+
+impl<R, K, C, IS, AS, ASrc> AuthsContextBuilder<R, K, C, IS, AS, ASrc> {
+    /// Set an optional event sink.
+    ///
+    /// Defaults to a no-op sink (all events discarded) when not called.
+    ///
+    /// Args:
+    /// * `sink`: Any type implementing [`EventSink`].
+    ///
+    /// Usage:
+    /// ```ignore
+    /// builder.event_sink(Arc::new(my_sink))
+    /// ```
+    pub fn event_sink(mut self, sink: Arc<dyn EventSink>) -> Self {
+        self.event_sink = Some(sink);
+        self
     }
 
     /// Set the passphrase provider for key decryption during signing operations.
@@ -365,21 +359,11 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
     /// builder.passphrase_provider(Arc::new(PrefilledPassphraseProvider::new(passphrase)))
     /// ```
     pub fn passphrase_provider(
-        self,
+        mut self,
         provider: Arc<dyn PassphraseProvider + Send + Sync>,
-    ) -> AuthsContextBuilder<R, K, C> {
-        AuthsContextBuilder {
-            registry: self.registry,
-            key_storage: self.key_storage,
-            clock: self.clock,
-            event_sink: self.event_sink,
-            identity_storage: self.identity_storage,
-            attestation_sink: self.attestation_sink,
-            attestation_source: self.attestation_source,
-            passphrase_provider: Some(provider),
-            uuid_provider: self.uuid_provider,
-            agent_signing: self.agent_signing,
-        }
+    ) -> Self {
+        self.passphrase_provider = Some(provider);
+        self
     }
 
     /// Set the UUID provider.
@@ -394,27 +378,14 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
     /// ```ignore
     /// builder.uuid_provider(Arc::new(my_uuid_stub))
     /// ```
-    pub fn uuid_provider(
-        self,
-        provider: Arc<dyn UuidProvider + Send + Sync>,
-    ) -> AuthsContextBuilder<R, K, C> {
-        AuthsContextBuilder {
-            registry: self.registry,
-            key_storage: self.key_storage,
-            clock: self.clock,
-            event_sink: self.event_sink,
-            identity_storage: self.identity_storage,
-            attestation_sink: self.attestation_sink,
-            attestation_source: self.attestation_source,
-            passphrase_provider: self.passphrase_provider,
-            uuid_provider: Some(provider),
-            agent_signing: self.agent_signing,
-        }
+    pub fn uuid_provider(mut self, provider: Arc<dyn UuidProvider + Send + Sync>) -> Self {
+        self.uuid_provider = Some(provider);
+        self
     }
 
     /// Set the agent signing port for delegating signing to a running agent process.
     ///
-    /// Defaults to [`NoopAgentProvider`] (all operations return `Unavailable`)
+    /// Defaults to a noop provider (all operations return `Unavailable`)
     /// when not called. Set this on Unix platforms where the auths-agent daemon
     /// is available.
     ///
@@ -425,36 +396,28 @@ impl<R, K, C> AuthsContextBuilder<R, K, C> {
     /// ```ignore
     /// builder.agent_signing(Arc::new(CliAgentAdapter::new(socket_path)))
     /// ```
-    pub fn agent_signing(
-        self,
-        provider: Arc<dyn AgentSigningPort + Send + Sync>,
-    ) -> AuthsContextBuilder<R, K, C> {
-        AuthsContextBuilder {
-            registry: self.registry,
-            key_storage: self.key_storage,
-            clock: self.clock,
-            event_sink: self.event_sink,
-            identity_storage: self.identity_storage,
-            attestation_sink: self.attestation_sink,
-            attestation_source: self.attestation_source,
-            passphrase_provider: self.passphrase_provider,
-            uuid_provider: self.uuid_provider,
-            agent_signing: Some(provider),
-        }
+    pub fn agent_signing(mut self, provider: Arc<dyn AgentSigningPort + Send + Sync>) -> Self {
+        self.agent_signing = Some(provider);
+        self
     }
 }
+
+// ── Infallible build — only available when all six required fields are set ────
 
 impl
     AuthsContextBuilder<
         Set<Arc<dyn RegistryBackend + Send + Sync>>,
         Set<Arc<dyn KeyStorage + Send + Sync>>,
         Set<Arc<dyn ClockProvider + Send + Sync>>,
+        Set<Arc<dyn IdentityStorage + Send + Sync>>,
+        Set<Arc<dyn AttestationSink + Send + Sync>>,
+        Set<Arc<dyn AttestationSource + Send + Sync>>,
     >
 {
     /// Build the [`AuthsContext`].
     ///
-    /// Only callable once `registry`, `key_storage`, and `clock` have been set.
-    /// Omitting any of these fields produces a compile-time error.
+    /// Infallible — only callable once all six required fields are set.
+    /// Omitting any required field is a compile-time error.
     ///
     /// Usage:
     /// ```ignore
@@ -462,23 +425,20 @@ impl
     ///     .registry(Arc::new(my_registry))
     ///     .key_storage(Arc::new(my_keychain))
     ///     .clock(Arc::new(SystemClock))
+    ///     .identity_storage(Arc::new(my_identity_storage))
+    ///     .attestation_sink(Arc::new(my_store.clone()))
+    ///     .attestation_source(Arc::new(my_store))
     ///     .build();
     /// ```
-    pub fn build(self) -> Result<AuthsContext, BuilderError> {
-        Ok(AuthsContext {
+    pub fn build(self) -> AuthsContext {
+        AuthsContext {
             registry: self.registry.0,
             key_storage: self.key_storage.0,
             clock: self.clock.0,
+            identity_storage: self.identity_storage.0,
+            attestation_sink: self.attestation_sink.0,
+            attestation_source: self.attestation_source.0,
             event_sink: self.event_sink.unwrap_or_else(|| Arc::new(NoopSink)),
-            identity_storage: self
-                .identity_storage
-                .ok_or(BuilderError("identity_storage"))?,
-            attestation_sink: self
-                .attestation_sink
-                .ok_or(BuilderError("attestation_sink"))?,
-            attestation_source: self
-                .attestation_source
-                .ok_or(BuilderError("attestation_source"))?,
             passphrase_provider: self
                 .passphrase_provider
                 .unwrap_or_else(|| Arc::new(NoopPassphraseProvider)),
@@ -488,6 +448,6 @@ impl
             agent_signing: self
                 .agent_signing
                 .unwrap_or_else(|| Arc::new(NoopAgentProvider)),
-        })
+        }
     }
 }

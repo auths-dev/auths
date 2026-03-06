@@ -5,36 +5,42 @@ use auths_core::ports::clock::SystemClock;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::KeyAlias;
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
-use auths_sdk::device::{extend_device_authorization, link_device};
+use auths_sdk::device::{extend_device, link_device};
 use auths_sdk::error::DeviceExtensionError;
-use auths_sdk::setup::create_developer_identity;
+use auths_sdk::result::InitializeResult;
+use auths_sdk::setup::initialize;
 use auths_sdk::types::{
     CreateDeveloperIdentityConfig, DeviceExtensionConfig, DeviceLinkConfig, GitSigningScope,
+    IdentityConfig,
 };
 
 use crate::cases::helpers::{build_test_context, build_test_context_with_provider};
 
 fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
     MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
-    let keychain = MemoryKeychainHandle;
     let signer = StorageSigner::new(MemoryKeychainHandle);
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
-    let result =
-        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+    let result = match initialize(
+        IdentityConfig::Developer(config),
+        &ctx,
+        Arc::new(MemoryKeychainHandle),
+        &signer,
+        &provider,
+        None,
+    )
+    .unwrap()
+    {
+        InitializeResult::Developer(r) => r,
+        _ => unreachable!(),
+    };
     result.key_alias
 }
 
 fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> String {
-    // Use a separate registry dir so device keypair generation does not
-    // conflict with the existing identity already stored in registry_path.
-    let device_tmp = tempfile::tempdir().unwrap();
-    let _device_registry = device_tmp.path().join(".auths-device");
-
-    let keychain = MemoryKeychainHandle;
     let signer = StorageSigner::new(MemoryKeychainHandle);
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("device-key"))
@@ -42,8 +48,15 @@ fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> St
         .with_conflict_policy(auths_sdk::types::IdentityConflictPolicy::ForceNew)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
-    let _device_result =
-        create_developer_identity(config, &ctx, &keychain, &signer, &provider, None).unwrap();
+    initialize(
+        IdentityConfig::Developer(config),
+        &ctx,
+        Arc::new(MemoryKeychainHandle),
+        &signer,
+        &provider,
+        None,
+    )
+    .unwrap();
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: key_alias.clone(),
@@ -68,7 +81,7 @@ fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> St
 }
 
 #[test]
-fn extend_device_authorization_updates_expiry() {
+fn extend_device_updates_expiry() {
     let tmp = tempfile::tempdir().unwrap();
     let registry_path = tmp.path().join(".auths");
 
@@ -91,7 +104,7 @@ fn extend_device_authorization_updates_expiry() {
         device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
     };
 
-    let result = extend_device_authorization(config, &ctx, &SystemClock).unwrap();
+    let result = extend_device(config, &ctx, &SystemClock).unwrap();
 
     assert_eq!(result.device_did.to_string(), device_did);
     let now = chrono::Utc::now();
@@ -104,7 +117,7 @@ fn extend_device_authorization_updates_expiry() {
 }
 
 #[test]
-fn extend_device_authorization_nonexistent_device_returns_error() {
+fn extend_device_nonexistent_device_returns_error() {
     let tmp = tempfile::tempdir().unwrap();
     let registry_path = tmp.path().join(".auths");
 
@@ -126,7 +139,7 @@ fn extend_device_authorization_nonexistent_device_returns_error() {
         device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
     };
 
-    let result = extend_device_authorization(config, &ctx, &SystemClock);
+    let result = extend_device(config, &ctx, &SystemClock);
 
     assert!(
         matches!(result, Err(DeviceExtensionError::NoAttestationFound { .. })),
