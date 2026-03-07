@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use auths_core::api::ffi;
 use auths_core::error::AgentError;
 use auths_core::storage::encrypted_file::EncryptedFileStorage;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage, get_platform_keychain};
+use auths_core::storage::keychain::{
+    IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain,
+};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::core::types::ExportFormat;
@@ -396,7 +398,12 @@ fn key_copy_backend(
     eprintln!("Destination backend: {}", dst_storage.backend_name());
 
     let result = dst_storage
-        .store_key(&key_alias, &identity_did, &encrypted_key_data)
+        .store_key(
+            &key_alias,
+            &identity_did,
+            KeyRole::Primary,
+            &encrypted_key_data,
+        )
         .with_context(|| format!("Failed to store key '{}' in destination backend", alias));
 
     // Zeroize the encrypted key bytes regardless of whether store succeeded.

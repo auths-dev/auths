@@ -14,7 +14,7 @@ use crate::crypto::signer::extract_seed_from_key_bytes;
 use crate::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use crate::error::AgentError;
 use crate::signing::PassphraseProvider;
-use crate::storage::keychain::{KeyAlias, KeyStorage};
+use crate::storage::keychain::{KeyAlias, KeyRole, KeyStorage};
 use log::{debug, error, info, warn};
 #[cfg(target_os = "macos")]
 use pkcs8::PrivateKeyInfo;
@@ -320,7 +320,12 @@ pub fn rotate_key(
 
     // 4. Overwrite the existing entry in secure storage with the new encrypted key,
     //    keeping the original Controller DID association.
-    keychain.store_key(&key_alias, &existing_did, &encrypted_new_key)?;
+    keychain.store_key(
+        &key_alias,
+        &existing_did,
+        KeyRole::Primary,
+        &encrypted_new_key,
+    )?;
     info!(
         "Successfully overwrote secure storage for alias '{}' with new encrypted key.",
         alias

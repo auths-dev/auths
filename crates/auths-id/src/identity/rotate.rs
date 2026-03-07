@@ -29,7 +29,7 @@ use crate::witness_config::WitnessConfig;
 use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use auths_core::signing::PassphraseProvider;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 
 /// Result of a rotation operation with keychain-specific info.
 pub struct RotationKeyInfo {
@@ -119,14 +119,19 @@ pub fn rotate_keri_identity(
     }
 
     let encrypted_new_current = encrypt_keypair(&decrypted_next_pkcs8, &new_pass)?;
-    keychain.store_key(next_alias, &did, &encrypted_new_current)?;
+    keychain.store_key(next_alias, &did, KeyRole::Primary, &encrypted_new_current)?;
 
     let new_next_seed = extract_seed_bytes(&rotation_result.new_next_keypair_pkcs8)?;
     let encrypted_future = encrypt_keypair(&encode_seed_as_pkcs8(new_next_seed)?, &new_pass)?;
 
     let future_key_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", next_alias, rotation_result.sequence));
-    keychain.store_key(&future_key_alias, &did, &encrypted_future)?;
+    keychain.store_key(
+        &future_key_alias,
+        &did,
+        KeyRole::NextRotation,
+        &encrypted_future,
+    )?;
 
     let _ = keychain.delete_key(&derived_next_alias);
     log::debug!("Cleaned up pre-committed key: {}", derived_next_alias);
@@ -306,14 +311,19 @@ fn store_rotated_keys(
     }
 
     let encrypted_new_current = encrypt_keypair(current_pkcs8, &new_pass)?;
-    keychain.store_key(next_alias, did, &encrypted_new_current)?;
+    keychain.store_key(next_alias, did, KeyRole::Primary, &encrypted_new_current)?;
 
     let new_next_seed = extract_seed_bytes(new_next_pkcs8)?;
     let encrypted_future = encrypt_keypair(&encode_seed_as_pkcs8(new_next_seed)?, &new_pass)?;
 
     let future_key_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", next_alias, new_sequence));
-    keychain.store_key(&future_key_alias, did, &encrypted_future)?;
+    keychain.store_key(
+        &future_key_alias,
+        did,
+        KeyRole::NextRotation,
+        &encrypted_future,
+    )?;
 
     let _ = keychain.delete_key(old_next_alias);
 

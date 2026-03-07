@@ -4,7 +4,7 @@
 //! if the library is not found.
 
 use auths_core::config::Pkcs11Config;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use auths_core::storage::pkcs11::Pkcs11KeyRef;
 use std::path::PathBuf;
 use std::process::Command;
@@ -112,7 +112,9 @@ fn test_pkcs11_key_generate_and_load() {
     let alias = KeyAlias::new("test-key-1").unwrap();
     let did = IdentityDID::new("did:keri:ETEST123");
 
-    keyref.store_key(&alias, &did, &[]).unwrap();
+    keyref
+        .store_key(&alias, &did, KeyRole::Primary, &[])
+        .unwrap();
 
     let (loaded_did, ref_bytes) = keyref.load_key(&alias).unwrap();
     assert_eq!(loaded_did.as_str(), "did:keri:ETEST123");
@@ -127,7 +129,9 @@ fn test_pkcs11_list_aliases() {
     let did = IdentityDID::new("did:keri:ELIST");
     for i in 0..3 {
         let alias = KeyAlias::new(format!("list-key-{i}")).unwrap();
-        keyref.store_key(&alias, &did, &[]).unwrap();
+        keyref
+            .store_key(&alias, &did, KeyRole::Primary, &[])
+            .unwrap();
     }
 
     let aliases = keyref.list_aliases().unwrap();
@@ -148,7 +152,9 @@ fn test_pkcs11_delete_key() {
 
     let alias = KeyAlias::new("delete-me").unwrap();
     let did = IdentityDID::new("did:keri:EDELETE");
-    keyref.store_key(&alias, &did, &[]).unwrap();
+    keyref
+        .store_key(&alias, &did, KeyRole::Primary, &[])
+        .unwrap();
 
     keyref.delete_key(&alias).unwrap();
 
@@ -166,7 +172,9 @@ fn test_pkcs11_sign_and_verify() {
 
     let alias = KeyAlias::new("sign-key").unwrap();
     let did = IdentityDID::new("did:keri:ESIGN");
-    keyref.store_key(&alias, &did, &[]).unwrap();
+    keyref
+        .store_key(&alias, &did, KeyRole::Primary, &[])
+        .unwrap();
 
     let signer = Pkcs11Signer::new(&fixture.config).unwrap();
     let provider = PrefilledPassphraseProvider::new("");
@@ -188,7 +196,7 @@ fn test_pkcs11_wrong_pin() {
     if let Ok(keyref) = result {
         let alias = KeyAlias::new("should-fail").unwrap();
         let did = IdentityDID::new("did:keri:EFAIL");
-        let store_result = keyref.store_key(&alias, &did, &[]);
+        let store_result = keyref.store_key(&alias, &did, KeyRole::Primary, &[]);
         assert!(store_result.is_err());
     }
 }
@@ -221,13 +229,28 @@ fn test_pkcs11_list_aliases_for_identity() {
     let did_b = IdentityDID::new("did:keri:EBOB");
 
     keyref
-        .store_key(&KeyAlias::new("alice-1").unwrap(), &did_a, &[])
+        .store_key(
+            &KeyAlias::new("alice-1").unwrap(),
+            &did_a,
+            KeyRole::Primary,
+            &[],
+        )
         .unwrap();
     keyref
-        .store_key(&KeyAlias::new("alice-2").unwrap(), &did_a, &[])
+        .store_key(
+            &KeyAlias::new("alice-2").unwrap(),
+            &did_a,
+            KeyRole::Primary,
+            &[],
+        )
         .unwrap();
     keyref
-        .store_key(&KeyAlias::new("bob-1").unwrap(), &did_b, &[])
+        .store_key(
+            &KeyAlias::new("bob-1").unwrap(),
+            &did_b,
+            KeyRole::Primary,
+            &[],
+        )
         .unwrap();
 
     let alice_aliases = keyref.list_aliases_for_identity(&did_a).unwrap();

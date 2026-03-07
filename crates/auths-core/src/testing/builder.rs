@@ -6,7 +6,7 @@
 use crate::crypto::signer::encrypt_keypair;
 use crate::error::AgentError;
 use crate::signing::{PassphraseProvider, SecureSigner, StorageSigner};
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use crate::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
 
 use crate::crypto::provider_bridge;
@@ -220,10 +220,12 @@ impl TestIdentityBuilder {
                 AgentError::CryptoError(format!("Failed to encrypt identity key: {}", e))
             })?;
 
-        MEMORY_KEYCHAIN
-            .lock()
-            .unwrap()
-            .store_key(&self.alias, &did, &encrypted_identity)?;
+        MEMORY_KEYCHAIN.lock().unwrap().store_key(
+            &self.alias,
+            &did,
+            KeyRole::Primary,
+            &encrypted_identity,
+        )?;
 
         // Generate and store device keys
         let mut device_public_keys = Vec::new();
@@ -243,6 +245,7 @@ impl TestIdentityBuilder {
             MEMORY_KEYCHAIN.lock().unwrap().store_key(
                 &KeyAlias::new_unchecked(device_alias),
                 &did,
+                KeyRole::DelegatedAgent,
                 &encrypted_device,
             )?;
 

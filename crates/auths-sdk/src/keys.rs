@@ -6,7 +6,7 @@
 
 use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::crypto::ssh::build_ed25519_pkcs8_v2_from_seed;
-use auths_core::storage::keychain::{KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{KeyAlias, KeyRole, KeyStorage};
 use auths_crypto::SecureSeed;
 use auths_verifier::IdentityDID;
 use thiserror::Error;
@@ -87,7 +87,12 @@ pub fn import_seed(
         .map_err(|e| KeyImportError::Encryption(e.to_string()))?;
 
     keychain
-        .store_key(&KeyAlias::new_unchecked(alias), controller_did, &encrypted)
+        .store_key(
+            &KeyAlias::new_unchecked(alias),
+            controller_did,
+            KeyRole::Primary,
+            &encrypted,
+        )
         .map_err(|e| KeyImportError::KeychainStore(e.to_string()))?;
 
     let public_key =

@@ -13,7 +13,9 @@ use zeroize::Zeroizing;
 use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair, load_seed_and_pubkey};
 use auths_core::ports::clock::ClockProvider;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage, extract_public_key_bytes};
+use auths_core::storage::keychain::{
+    IdentityDID, KeyAlias, KeyRole, KeyStorage, extract_public_key_bytes,
+};
 use auths_id::identity::helpers::{
     ManagedIdentity, encode_seed_as_pkcs8, extract_seed_bytes, load_keypair_from_der_or_seed,
 };
@@ -155,6 +157,7 @@ pub fn apply_rotation(
             .store_key(
                 &key_material.next_alias,
                 &key_material.did,
+                KeyRole::Primary,
                 &key_material.new_current_encrypted,
             )
             .map_err(|e| e.to_string())?;
@@ -163,6 +166,7 @@ pub fn apply_rotation(
             .store_key(
                 &key_material.new_next_alias,
                 &key_material.did,
+                KeyRole::NextRotation,
                 &key_material.new_next_encrypted,
             )
             .map_err(|e| e.to_string())?;

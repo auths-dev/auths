@@ -26,7 +26,7 @@ use auths_core::{
     crypto::said::compute_next_commitment,
     crypto::signer::encrypt_keypair,
     signing::PassphraseProvider,
-    storage::keychain::{IdentityDID, KeyAlias, KeyStorage},
+    storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage},
 };
 
 /// Initializes a new KERI identity and stores the keypairs with committed rotation support.
@@ -64,9 +64,19 @@ pub fn initialize_keri_identity(
     let encrypted_current = encrypt_keypair(&encode_seed_as_pkcs8(current_seed)?, &passphrase)?;
     let encrypted_next = encrypt_keypair(&encode_seed_as_pkcs8(next_seed)?, &passphrase)?;
 
-    keychain.store_key(local_key_alias, &controller_did, &encrypted_current)?;
+    keychain.store_key(
+        local_key_alias,
+        &controller_did,
+        KeyRole::Primary,
+        &encrypted_current,
+    )?;
     let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-    keychain.store_key(&next_alias, &controller_did, &encrypted_next)?;
+    keychain.store_key(
+        &next_alias,
+        &controller_did,
+        KeyRole::NextRotation,
+        &encrypted_next,
+    )?;
 
     identity_storage.create_identity(controller_did.as_str(), metadata)?;
 
@@ -162,9 +172,19 @@ pub fn initialize_registry_identity(
     let encrypted_current = encrypt_keypair(&encode_seed_as_pkcs8(current_seed)?, &passphrase)?;
     let encrypted_next = encrypt_keypair(&encode_seed_as_pkcs8(next_seed)?, &passphrase)?;
 
-    keychain.store_key(local_key_alias, &controller_did, &encrypted_current)?;
+    keychain.store_key(
+        local_key_alias,
+        &controller_did,
+        KeyRole::Primary,
+        &encrypted_current,
+    )?;
     let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-    keychain.store_key(&next_alias, &controller_did, &encrypted_next)?;
+    keychain.store_key(
+        &next_alias,
+        &controller_did,
+        KeyRole::NextRotation,
+        &encrypted_next,
+    )?;
 
     Ok((controller_did, local_key_alias.clone()))
 }

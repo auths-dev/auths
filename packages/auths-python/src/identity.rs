@@ -5,7 +5,7 @@ use auths_core::config::{EnvironmentConfig, KeychainConfig};
 use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{
-    IdentityDID, KeyAlias, KeyStorage, get_platform_keychain_with_config,
+    IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
 };
 use auths_id::identity::helpers::encode_seed_as_pkcs8;
 use auths_id::identity::helpers::extract_seed_bytes;
@@ -337,7 +337,7 @@ pub fn delegate_agent(
     let encrypted = encrypt_keypair(&seed_pkcs8, &passphrase_str)
         .map_err(|e| PyRuntimeError::new_err(format!("Key encryption failed: {e}")))?;
     keychain
-        .store_key(&agent_alias, &parent_did, &encrypted)
+        .store_key(&agent_alias, &parent_did, KeyRole::DelegatedAgent, &encrypted)
         .map_err(|e| PyRuntimeError::new_err(format!("Key storage failed: {e}")))?;
 
     // Parse capabilities

@@ -1,6 +1,6 @@
 use auths_core::api::runtime::export_key_openssh_pub;
 use auths_core::crypto::signer::encrypt_keypair;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
 use pkcs8::der::Encode;
 use pkcs8::der::asn1::ObjectIdentifier;
@@ -80,7 +80,12 @@ fn test_export_ring_compatible_key() {
     let (pkcs8_bytes, _expected_pubkey) = create_ring_compatible_pkcs8();
     let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase).expect("Failed to encrypt");
     keychain
-        .store_key(&KeyAlias::new_unchecked(alias), &identity_did, &encrypted)
+        .store_key(
+            &KeyAlias::new_unchecked(alias),
+            &identity_did,
+            KeyRole::Primary,
+            &encrypted,
+        )
         .expect("Failed to store key");
 
     // Export should succeed
@@ -113,7 +118,12 @@ fn test_export_non_ring_compatible_key() {
     let (pkcs8_bytes, _) = create_non_ring_pkcs8();
     let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase).expect("Failed to encrypt");
     keychain
-        .store_key(&KeyAlias::new_unchecked(alias), &identity_did, &encrypted)
+        .store_key(
+            &KeyAlias::new_unchecked(alias),
+            &identity_did,
+            KeyRole::Primary,
+            &encrypted,
+        )
         .expect("Failed to store key");
 
     // Export should succeed via the fallback path
@@ -146,7 +156,12 @@ fn test_export_with_wrong_passphrase() {
     let (pkcs8_bytes, _) = create_ring_compatible_pkcs8();
     let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase).expect("Failed to encrypt");
     keychain
-        .store_key(&KeyAlias::new_unchecked(alias), &identity_did, &encrypted)
+        .store_key(
+            &KeyAlias::new_unchecked(alias),
+            &identity_did,
+            KeyRole::Primary,
+            &encrypted,
+        )
         .expect("Failed to store key");
 
     // Export should fail with wrong passphrase

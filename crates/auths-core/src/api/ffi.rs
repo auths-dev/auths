@@ -24,7 +24,7 @@ use crate::crypto::signer::extract_seed_from_key_bytes;
 use crate::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use crate::error::AgentError;
 use crate::storage::keychain::{
-    IdentityDID, KeyAlias, KeyStorage, get_platform_keychain_with_config,
+    IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
 };
 use log::{debug, error, info, warn};
 use once_cell::sync::Lazy;
@@ -405,7 +405,8 @@ pub unsafe extern "C" fn ffi_import_key(
                 return 5; // Keychain initialization error
             }
         };
-        let store_result = keychain.store_key(&alias, &did_string, &encrypted_key);
+        let store_result =
+            keychain.store_key(&alias, &did_string, KeyRole::Primary, &encrypted_key);
 
         #[allow(deprecated)]
         unsafe {

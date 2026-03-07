@@ -1,5 +1,5 @@
 use auths_core::signing::StorageSigner;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use auths_core::testing::{IsolatedKeychainHandle, TestPassphraseProvider};
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::identity::initialize::initialize_keri_identity;
@@ -73,6 +73,7 @@ fn generate_device_keypair(
         .store_key(
             &KeyAlias::new_unchecked(device_alias),
             &identity_did_typed,
+            KeyRole::Primary,
             &encrypted,
         )
         .expect("Failed to store device key");
