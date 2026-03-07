@@ -27,24 +27,41 @@ if TYPE_CHECKING:
     from auths.verify import WitnessConfig
 
 
-def _map_verify_error(exc: Exception) -> Exception:
-    msg = str(exc)
-    if "public key" in msg.lower() or "hex" in msg.lower():
-        return CryptoError(msg, code="invalid_key")
-    if "rfc 3339" in msg.lower():
-        return VerificationError(msg, code="invalid_timestamp")
-    if "future" in msg.lower() and "timestamp" in msg.lower():
-        return VerificationError(msg, code="future_timestamp")
-    if "parse" in msg.lower() or "json" in msg.lower():
-        return VerificationError(msg, code="invalid_signature")
-    return VerificationError(msg, code="invalid_signature")
+_ERROR_CODE_MAP = {
+    "AUTHS_ISSUER_SIG_FAILED": ("invalid_signature", VerificationError),
+    "AUTHS_DEVICE_SIG_FAILED": ("invalid_signature", VerificationError),
+    "AUTHS_ATTESTATION_EXPIRED": ("expired_attestation", VerificationError),
+    "AUTHS_ATTESTATION_REVOKED": ("revoked_device", VerificationError),
+    "AUTHS_TIMESTAMP_IN_FUTURE": ("future_timestamp", VerificationError),
+    "AUTHS_VERIFICATION_ERROR": ("invalid_signature", VerificationError),
+    "AUTHS_MISSING_CAPABILITY": ("missing_capability", VerificationError),
+    "AUTHS_CRYPTO_ERROR": ("invalid_key", CryptoError),
+    "AUTHS_DID_RESOLUTION_ERROR": ("invalid_key", CryptoError),
+    "AUTHS_INVALID_INPUT": ("invalid_signature", VerificationError),
+    "AUTHS_SERIALIZATION_ERROR": ("invalid_signature", VerificationError),
+    "AUTHS_BUNDLE_EXPIRED": ("expired_attestation", VerificationError),
+    "AUTHS_KEY_NOT_FOUND": ("key_not_found", CryptoError),
+    "AUTHS_INCORRECT_PASSPHRASE": ("signing_failed", CryptoError),
+    "AUTHS_SIGNING_FAILED": ("signing_failed", CryptoError),
+    "AUTHS_SIGNING_ERROR": ("signing_failed", CryptoError),
+    "AUTHS_INPUT_TOO_LARGE": ("invalid_signature", VerificationError),
+    "AUTHS_INTERNAL_ERROR": ("unknown", VerificationError),
+    "AUTHS_ORG_VERIFICATION_FAILED": ("invalid_signature", VerificationError),
+    "AUTHS_ORG_ATTESTATION_EXPIRED": ("expired_attestation", VerificationError),
+    "AUTHS_ORG_DID_RESOLUTION_FAILED": ("invalid_key", CryptoError),
+}
 
 
-def _map_sign_error(exc: Exception) -> Exception:
+def _map_error(exc: Exception) -> Exception:
     msg = str(exc)
-    if "key" in msg.lower():
-        return CryptoError(msg, code="invalid_key")
-    return CryptoError(msg, code="signing_failed")
+    code = None
+    if msg.startswith("[AUTHS_") and "] " in msg:
+        code = msg[1:msg.index("]")]
+        msg = msg[msg.index("] ") + 2:]
+    if code and code in _ERROR_CODE_MAP:
+        py_code, cls = _ERROR_CODE_MAP[code]
+        return cls(msg, code=py_code)
+    return VerificationError(msg, code="unknown")
 
 
 def _map_network_error(exc: Exception) -> Exception:
@@ -110,7 +127,7 @@ class Auths:
                 )
             return _verify_attestation(attestation_json, issuer_key)
         except (ValueError, RuntimeError) as exc:
-            raise _map_verify_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def verify_chain(
         self,
@@ -146,7 +163,7 @@ class Auths:
                 )
             return _verify_chain(attestations, root_key)
         except (ValueError, RuntimeError) as exc:
-            raise _map_verify_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def verify_device(
         self,
@@ -161,14 +178,14 @@ class Auths:
                 identity_did, device_did, attestations, identity_key
             )
         except (ValueError, RuntimeError) as exc:
-            raise _map_verify_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def sign(self, message: bytes, private_key: str) -> str:
         """Sign raw bytes. Returns hex-encoded signature."""
         try:
             return _sign_bytes(private_key, message)
         except (ValueError, RuntimeError) as exc:
-            raise _map_sign_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def sign_action(
         self,
@@ -181,14 +198,14 @@ class Auths:
         try:
             return _sign_action(private_key, action_type, payload, identity_did)
         except (ValueError, RuntimeError) as exc:
-            raise _map_sign_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def verify_action(self, envelope_json: str, public_key: str) -> VerificationResult:
         """Verify an action envelope signature."""
         try:
             return _verify_action_envelope(envelope_json, public_key)
         except (ValueError, RuntimeError) as exc:
-            raise _map_verify_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def sign_as(
         self,
@@ -213,7 +230,7 @@ class Auths:
         try:
             return sign_as_identity(message, identity, self.repo_path, pp)
         except (ValueError, RuntimeError) as exc:
-            raise _map_sign_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def sign_action_as(
         self,
@@ -241,7 +258,7 @@ class Auths:
                 action_type, payload, identity, self.repo_path, pp
             )
         except (ValueError, RuntimeError) as exc:
-            raise _map_sign_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def sign_commit(
         self,
@@ -277,7 +294,7 @@ class Auths:
                 namespace=raw.namespace,
             )
         except (ValueError, RuntimeError) as exc:
-            raise _map_sign_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def sign_artifact(
         self,
@@ -318,7 +335,7 @@ class Auths:
         except FileNotFoundError:
             raise
         except (ValueError, RuntimeError) as exc:
-            raise _map_sign_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def sign_artifact_bytes(
         self,
@@ -357,7 +374,7 @@ class Auths:
                 file_size=raw.file_size,
             )
         except (ValueError, RuntimeError) as exc:
-            raise _map_sign_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def publish_artifact(
         self,
@@ -396,7 +413,7 @@ class Auths:
                 raise StorageError(msg, code="duplicate_attestation") from exc
             if "verification_failed" in msg:
                 raise VerificationError(msg, code="verification_failed") from exc
-            raise _map_network_error(exc) from exc
+            raise _map_error(exc) from exc
 
     def get_token(
         self,
