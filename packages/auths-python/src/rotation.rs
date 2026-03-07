@@ -13,7 +13,7 @@ use auths_verifier::clock::SystemClock;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
-use crate::identity::{make_keychain_config, resolve_passphrase};
+use crate::identity::{make_keychain_config, resolve_key_alias, resolve_passphrase};
 
 #[pyclass]
 #[derive(Clone)]
@@ -91,10 +91,7 @@ pub fn rotate_identity_ffi(
         .build();
 
     let alias = identity_key_alias
-        .map(|a| {
-            auths_core::storage::keychain::KeyAlias::new(a)
-                .map_err(|e| PyRuntimeError::new_err(format!("Invalid key alias: {e}")))
-        })
+        .map(|a| resolve_key_alias(a, keychain.as_ref()))
         .transpose()?;
 
     let next_alias = next_key_alias

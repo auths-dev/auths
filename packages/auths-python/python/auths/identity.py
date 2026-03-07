@@ -106,7 +106,7 @@ class IdentityService:
             print(f"Rotated to sequence {result.sequence}")
         """
         pp = passphrase or self._client._passphrase
-        native_result = _rotate_identity(self._client.repo_path, None, None, pp)
+        native_result = _rotate_identity(self._client.repo_path, identity_did, None, pp)
         return IdentityRotationResult(
             controller_did=native_result.controller_did,
             new_key_fingerprint=native_result.new_key_fingerprint,
