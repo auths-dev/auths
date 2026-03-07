@@ -2,8 +2,8 @@ use std::future::Future;
 use std::time::Duration;
 
 use auths_core::pairing::{
-    CreateSessionRequest, CreateSessionResponse, GetSessionResponse, SessionStatus,
-    SubmitResponseRequest,
+    CreateSessionRequest, CreateSessionResponse, GetConfirmationResponse, GetSessionResponse,
+    SessionStatus, SubmitConfirmationRequest, SubmitResponseRequest,
 };
 use auths_core::ports::network::NetworkError;
 use auths_core::ports::pairing::PairingRelayClient;
@@ -152,6 +152,61 @@ impl PairingRelayClient for HttpPairingRelayClient {
                 return Err(map_status_error(resp.status().as_u16(), &url));
             }
             Ok(())
+        }
+    }
+
+    fn submit_confirmation(
+        &self,
+        registry_url: &str,
+        session_id: &str,
+        request: &SubmitConfirmationRequest,
+    ) -> impl Future<Output = Result<(), NetworkError>> + Send {
+        let url = format!(
+            "{}/v1/pairing/sessions/{}/confirm",
+            registry_url.trim_end_matches('/'),
+            session_id
+        );
+        let endpoint = registry_url.to_string();
+        let req = self.client.post(&url).json(request);
+
+        async move {
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| map_reqwest_error(e, &endpoint))?;
+            if !resp.status().is_success() {
+                return Err(map_status_error(resp.status().as_u16(), &url));
+            }
+            Ok(())
+        }
+    }
+
+    fn get_confirmation(
+        &self,
+        registry_url: &str,
+        session_id: &str,
+    ) -> impl Future<Output = Result<GetConfirmationResponse, NetworkError>> + Send {
+        let url = format!(
+            "{}/v1/pairing/sessions/{}/confirmation",
+            registry_url.trim_end_matches('/'),
+            session_id
+        );
+        let endpoint = registry_url.to_string();
+        let req = self.client.get(&url);
+
+        async move {
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| map_reqwest_error(e, &endpoint))?;
+            if !resp.status().is_success() {
+                return Err(map_status_error(resp.status().as_u16(), &url));
+            }
+            resp.json::<GetConfirmationResponse>().await.map_err(|e| {
+                NetworkError::InvalidResponse {
+                    detail: e.to_string(),
+                }
+            })
         }
     }
 

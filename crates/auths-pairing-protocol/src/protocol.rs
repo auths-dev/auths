@@ -5,9 +5,10 @@ use auths_crypto::SecureSeed;
 
 use crate::error::ProtocolError;
 use crate::response::PairingResponse;
+use crate::sas::{self, TransportKey};
 use crate::token::{PairingSession, PairingToken};
 
-/// Result of a successfully completed pairing exchange.
+/// Result of a successfully completed pairing exchange (initiator side).
 pub struct CompletedPairing {
     /// The 32-byte X25519 shared secret (zeroized on drop).
     pub shared_secret: Zeroizing<[u8; 32]>,
@@ -17,6 +18,20 @@ pub struct CompletedPairing {
     pub peer_did: String,
     /// The pairing response for downstream processing.
     pub response: PairingResponse,
+    /// The 8-byte SAS for human verification.
+    pub sas: [u8; 8],
+    /// Single-use transport encryption key.
+    pub transport_key: TransportKey,
+    /// The initiator's X25519 ephemeral public key.
+    pub initiator_x25519_pub: [u8; 32],
+}
+
+/// Result of a successful pairing response (responder side).
+pub struct ResponderResult {
+    pub response: PairingResponse,
+    pub shared_secret: Zeroizing<[u8; 32]>,
+    pub sas: [u8; 8],
+    pub transport_key: TransportKey,
 }
 
 /// Transport-agnostic pairing protocol state machine.
@@ -82,20 +97,8 @@ impl PairingProtocol {
         response_bytes: &[u8],
     ) -> Result<CompletedPairing, ProtocolError> {
         let response: PairingResponse = serde_json::from_slice(response_bytes)?;
-
         response.verify(now, &self.session.token)?;
-
-        let device_x25519_bytes = response.device_x25519_pubkey_bytes()?;
-        let shared_secret = self.session.complete_exchange(&device_x25519_bytes)?;
-        let peer_signing_pubkey = response.device_signing_pubkey_bytes()?;
-        let peer_did = response.device_did.clone();
-
-        Ok(CompletedPairing {
-            shared_secret,
-            peer_signing_pubkey,
-            peer_did,
-            response,
-        })
+        self.complete_inner(now, response)
     }
 
     /// Complete the pairing exchange with a structured response.
@@ -109,17 +112,42 @@ impl PairingProtocol {
         response: PairingResponse,
     ) -> Result<CompletedPairing, ProtocolError> {
         response.verify(now, &self.session.token)?;
+        self.complete_inner(now, response)
+    }
 
-        let device_x25519_bytes = response.device_x25519_pubkey_bytes()?;
-        let shared_secret = self.session.complete_exchange(&device_x25519_bytes)?;
+    fn complete_inner(
+        &mut self,
+        _now: DateTime<Utc>,
+        response: PairingResponse,
+    ) -> Result<CompletedPairing, ProtocolError> {
+        let initiator_x25519_pub = self.session.ephemeral_pubkey_bytes()?;
+        let responder_x25519_pub = response.device_x25519_pubkey_bytes()?;
+        let shared_secret = self.session.complete_exchange(&responder_x25519_pub)?;
         let peer_signing_pubkey = response.device_signing_pubkey_bytes()?;
         let peer_did = response.device_did.clone();
+        let short_code = &self.session.token.short_code;
+
+        let sas_bytes = sas::derive_sas(
+            &shared_secret,
+            &initiator_x25519_pub,
+            &responder_x25519_pub,
+            short_code,
+        );
+        let transport_key = sas::derive_transport_key(
+            &shared_secret,
+            &initiator_x25519_pub,
+            &responder_x25519_pub,
+            short_code,
+        );
 
         Ok(CompletedPairing {
             shared_secret,
             peer_signing_pubkey,
             peer_did,
             response,
+            sas: sas_bytes,
+            transport_key,
+            initiator_x25519_pub,
         })
     }
 
@@ -141,9 +169,9 @@ impl PairingProtocol {
 ///
 /// Usage:
 /// ```ignore
-/// let (response, shared_secret) = respond_to_pairing(now, &token_bytes, &seed, &pk, did, name)?;
-/// let response_bytes = serde_json::to_vec(&response)?;
-/// // Send response_bytes back to initiator
+/// let result = respond_to_pairing(now, &token_bytes, &seed, &pk, did, name)?;
+/// let response_bytes = serde_json::to_vec(&result.response)?;
+/// // Send response_bytes back to initiator, then display result.sas
 /// ```
 pub fn respond_to_pairing(
     now: DateTime<Utc>,
@@ -152,16 +180,40 @@ pub fn respond_to_pairing(
     device_pubkey: &[u8; 32],
     device_did: String,
     device_name: Option<String>,
-) -> Result<(PairingResponse, Zeroizing<[u8; 32]>), ProtocolError> {
+) -> Result<ResponderResult, ProtocolError> {
     let token: PairingToken = serde_json::from_slice(token_bytes)?;
-    PairingResponse::create(
+    let (response, shared_secret) = PairingResponse::create(
         now,
         &token,
         device_seed,
         device_pubkey,
         device_did,
         device_name,
-    )
+    )?;
+
+    let initiator_x25519_pub = token.ephemeral_pubkey_bytes()?;
+    let responder_x25519_pub = response.device_x25519_pubkey_bytes()?;
+    let short_code = &token.short_code;
+
+    let sas_bytes = sas::derive_sas(
+        &shared_secret,
+        &initiator_x25519_pub,
+        &responder_x25519_pub,
+        short_code,
+    );
+    let transport_key = sas::derive_transport_key(
+        &shared_secret,
+        &initiator_x25519_pub,
+        &responder_x25519_pub,
+        short_code,
+    );
+
+    Ok(ResponderResult {
+        response,
+        shared_secret,
+        sas: sas_bytes,
+        transport_key,
+    })
 }
 
 #[cfg(test)]
@@ -193,7 +245,7 @@ mod tests {
 
         let (seed, pubkey) = generate_test_keypair();
         let token_bytes = serde_json::to_vec(&token).unwrap();
-        let (response, responder_secret) = respond_to_pairing(
+        let responder_result = respond_to_pairing(
             now,
             &token_bytes,
             &seed,
@@ -203,11 +255,13 @@ mod tests {
         )
         .unwrap();
 
-        let response_bytes = serde_json::to_vec(&response).unwrap();
+        let response_bytes = serde_json::to_vec(&responder_result.response).unwrap();
         let completed = protocol.complete(now, &response_bytes).unwrap();
 
-        assert_eq!(*completed.shared_secret, *responder_secret);
+        assert_eq!(*completed.shared_secret, *responder_result.shared_secret);
         assert_eq!(completed.peer_did, "did:key:z6MkTest");
+        // Both sides derive the same SAS
+        assert_eq!(completed.sas, responder_result.sas);
     }
 
     #[test]

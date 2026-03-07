@@ -277,6 +277,7 @@ dependencies = [
  "auths-index",
  "auths-infra-git",
  "auths-infra-http",
+ "auths-pairing-protocol",
  "auths-policy",
  "auths-sdk",
  "auths-storage",
@@ -552,11 +553,15 @@ version = "0.0.1-rc.7"
 dependencies = [
  "auths-crypto",
  "base64",
+ "chacha20poly1305",
  "chrono",
+ "hkdf",
  "rand 0.8.5",
+ "regex-lite",
  "ring",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.18",
  "x25519-dalek",
  "zeroize",
@@ -4265,6 +4270,12 @@ dependencies = [
  "memchr",
  "regex-syntax",
 ]
+
+[[package]]
+name = "regex-lite"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 
 [[package]]
 name = "regex-syntax"
