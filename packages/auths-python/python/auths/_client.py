@@ -18,7 +18,14 @@ from auths._native import (
     verify_chain_with_witnesses as _verify_chain_with_witnesses,
     verify_device_authorization as _verify_device_authorization,
 )
-from auths._errors import CryptoError, NetworkError, StorageError, VerificationError
+from auths._errors import (
+    CryptoError,
+    IdentityError,
+    KeychainError,
+    NetworkError,
+    StorageError,
+    VerificationError,
+)
 
 if TYPE_CHECKING:
     from auths._native import VerificationReport, VerificationResult
@@ -48,6 +55,13 @@ _ERROR_CODE_MAP = {
     "AUTHS_ORG_VERIFICATION_FAILED": ("invalid_signature", VerificationError),
     "AUTHS_ORG_ATTESTATION_EXPIRED": ("expired_attestation", VerificationError),
     "AUTHS_ORG_DID_RESOLUTION_FAILED": ("invalid_key", CryptoError),
+    "AUTHS_REGISTRY_ERROR": ("repo_not_found", StorageError),
+    "AUTHS_KEYCHAIN_ERROR": ("keychain_locked", KeychainError),
+    "AUTHS_IDENTITY_ERROR": ("identity_not_found", IdentityError),
+    "AUTHS_DEVICE_ERROR": ("unknown", IdentityError),
+    "AUTHS_ROTATION_ERROR": ("unknown", IdentityError),
+    "AUTHS_NETWORK_ERROR": ("server_error", NetworkError),
+    "AUTHS_VERIFICATION_FAILED": ("invalid_signature", VerificationError),
 }
 
 
@@ -299,7 +313,7 @@ class Auths:
 
         Usage:
             agent = auths.identities.delegate_agent(identity.did, "bot", ["sign"])
-            sig = auths.sign_as_agent(b"hello", key_alias=agent.key_alias)
+            sig = auths.sign_as_agent(b"hello", key_alias=agent._key_alias)
         """
         from auths._native import sign_as_agent as _sign_as_agent
 
@@ -328,7 +342,7 @@ class Auths:
 
         Usage:
             agent = auths.identities.delegate_agent(identity.did, "bot", ["deploy"])
-            envelope = auths.sign_action_as_agent("deploy", payload, agent.key_alias, agent.did)
+            envelope = auths.sign_action_as_agent("deploy", payload, agent._key_alias, agent.did)
         """
         from auths._native import sign_action_as_agent as _sign_action_as_agent
 

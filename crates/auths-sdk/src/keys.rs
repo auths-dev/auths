@@ -80,10 +80,10 @@ pub fn import_seed(
 
     let secure_seed = SecureSeed::new(**seed);
 
-    let pkcs8_bytes = build_ed25519_pkcs8_v2_from_seed(&secure_seed)
+    let pkcs8 = build_ed25519_pkcs8_v2_from_seed(&secure_seed)
         .map_err(|e| KeyImportError::Pkcs8Generation(e.to_string()))?;
 
-    let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase)
+    let encrypted = encrypt_keypair(pkcs8.as_ref(), passphrase)
         .map_err(|e| KeyImportError::Encryption(e.to_string()))?;
 
     keychain

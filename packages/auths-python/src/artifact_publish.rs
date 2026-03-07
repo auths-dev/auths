@@ -100,7 +100,7 @@ pub fn publish_artifact(
                         signer_did: String,
                     }
                     let resp: PublishResponse = response.json().await.map_err(|e| {
-                        PyRuntimeError::new_err(format!("invalid registry response: {e}"))
+                        PyRuntimeError::new_err(format!("[AUTHS_NETWORK_ERROR] Invalid registry response: {e}"))
                     })?;
                     Ok(PyArtifactPublishResult {
                         attestation_rid: resp.attestation_rid,
@@ -109,18 +109,18 @@ pub fn publish_artifact(
                     })
                 }
                 409 => Err(PyRuntimeError::new_err(
-                    "duplicate_attestation: artifact attestation already published (duplicate RID)",
+                    "[AUTHS_REGISTRY_ERROR] Duplicate attestation: artifact attestation already published (duplicate RID)",
                 )),
                 422 => {
                     let body = response.text().await.unwrap_or_default();
                     Err(PyRuntimeError::new_err(format!(
-                        "verification_failed: {body}"
+                        "[AUTHS_VERIFICATION_FAILED] Verification failed: {body}"
                     )))
                 }
                 status => {
                     let body = response.text().await.unwrap_or_default();
                     Err(PyRuntimeError::new_err(format!(
-                        "registry_error ({status}): {body}"
+                        "[AUTHS_NETWORK_ERROR] Registry error ({status}): {body}"
                     )))
                 }
             }

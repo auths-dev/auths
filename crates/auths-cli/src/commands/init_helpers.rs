@@ -17,14 +17,6 @@ pub(crate) fn get_auths_repo_path() -> Result<PathBuf> {
     auths_core::paths::auths_home().map_err(|e| anyhow!(e))
 }
 
-pub(crate) fn short_did(did: &str) -> String {
-    if did.len() <= 24 {
-        did.to_string()
-    } else {
-        format!("{}...{}", &did[..16], &did[did.len() - 8..])
-    }
-}
-
 pub(crate) fn check_git_version(out: &Output) -> Result<()> {
     let output = Command::new("git")
         .arg("--version")
@@ -338,15 +330,6 @@ mod tests {
             (2, 39, 0)
         );
         assert_eq!(parse_git_version("git version 2.30").unwrap(), (2, 30, 0));
-    }
-
-    #[test]
-    fn test_short_did() {
-        assert_eq!(short_did("did:key:z123"), "did:key:z123");
-        assert_eq!(
-            short_did("did:keri:EAbcdefghijklmnopqrstuvwxyz123456789"),
-            "did:keri:EAbcdef...23456789"
-        );
     }
 
     #[test]

@@ -155,6 +155,10 @@ pub enum OrgSubcommand {
         /// Alias of the signing key in keychain
         #[arg(long)]
         signer_alias: Option<String>,
+
+        /// Preview actions without making changes.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// List members of an organization
@@ -797,6 +801,7 @@ pub fn handle_org(
             member_did: member,
             note,
             signer_alias,
+            dry_run,
         } => {
             println!("🛑 Revoking member from organization...");
             println!("   Org:    {}", org);
@@ -863,6 +868,10 @@ pub fn handle_org(
                     ));
                 }
                 Some(_) => {} // Member exists and is active, proceed
+            }
+
+            if dry_run {
+                return display_dry_run_revoke_member(&org, &member, invoker_did.as_ref());
             }
 
             // Load signer key and verify passphrase
@@ -1033,6 +1042,44 @@ pub fn handle_org(
 
             Ok(())
         }
+    }
+}
+
+fn display_dry_run_revoke_member(org: &str, member: &str, invoker_did: &str) -> Result<()> {
+    use crate::ux::format::{JsonResponse, is_json_mode};
+
+    if is_json_mode() {
+        JsonResponse::success(
+            "org revoke-member",
+            &serde_json::json!({
+                "dry_run": true,
+                "org": org,
+                "member_did": member,
+                "invoker_did": invoker_did,
+                "actions": [
+                    "Create signed revocation for member",
+                    "Store revocation in Git repository",
+                    "Member will lose all org capabilities"
+                ]
+            }),
+        )
+        .print()
+        .map_err(|e| anyhow!("{e}"))
+    } else {
+        let out = crate::ux::format::Output::new();
+        out.print_info("Dry run mode — no changes will be made");
+        out.newline();
+        out.println(&format!("   Org:    {}", org));
+        out.println(&format!("   Member: {}", member));
+        out.newline();
+        out.println("Would perform the following actions:");
+        out.println(&format!(
+            "  1. Create signed revocation for member {}",
+            member
+        ));
+        out.println("  2. Store revocation in Git repository");
+        out.println("  3. Member will lose all org capabilities");
+        Ok(())
     }
 }
 

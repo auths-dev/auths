@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from auths._native import (
@@ -22,7 +22,7 @@ class Identity:
     """An Auths identity (represents a did:keri: identifier)."""
 
     did: str
-    key_alias: str
+    _key_alias: str = field(repr=False)
     label: str
     repo_path: str
     public_key: str
@@ -33,7 +33,7 @@ class AgentIdentity:
     """Standalone agent identity (did:keri:). Created via identities.create_agent()."""
 
     did: str
-    key_alias: str
+    _key_alias: str = field(repr=False)
     attestation: str
     public_key: str
 
@@ -43,7 +43,7 @@ class DelegatedAgent:
     """Agent delegated under a parent identity (did:key:). Created via identities.delegate_agent()."""
 
     did: str
-    key_alias: str
+    _key_alias: str = field(repr=False)
     attestation: str
     public_key: str
 
@@ -79,7 +79,7 @@ class IdentityService:
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
         did, key_alias, public_key_hex = _create_identity(label, rp, pp)
-        return Identity(did=did, key_alias=key_alias, label=label, repo_path=rp, public_key=public_key_hex)
+        return Identity(did=did, _key_alias=key_alias, label=label, repo_path=rp, public_key=public_key_hex)
 
     def rotate(
         self,
@@ -135,7 +135,7 @@ class IdentityService:
             name, capabilities, self._client.repo_path, pp,
         )
         return AgentIdentity(
-            did=bundle.agent_did, key_alias=bundle.key_alias,
+            did=bundle.agent_did, _key_alias=bundle.key_alias,
             attestation=bundle.attestation_json, public_key=bundle.public_key_hex,
         )
 
@@ -165,6 +165,6 @@ class IdentityService:
             identity_did,
         )
         return DelegatedAgent(
-            did=bundle.agent_did, key_alias=bundle.key_alias,
+            did=bundle.agent_did, _key_alias=bundle.key_alias,
             attestation=bundle.attestation_json, public_key=bundle.public_key_hex,
         )

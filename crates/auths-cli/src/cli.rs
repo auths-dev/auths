@@ -26,6 +26,7 @@ use crate::commands::sign::SignCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
+use crate::commands::whoami::WhoamiCommand;
 use crate::commands::witness::WitnessCommand;
 use crate::config::OutputFormat;
 
@@ -44,7 +45,7 @@ fn cli_styles() -> Styles {
 #[command(
     name = "auths",
     about = "auths \u{2014} cryptographic identity for developers",
-    long_about = "Commands:\n  init     Set up your cryptographic identity and Git signing\n  sign     Sign a Git commit or artifact\n  verify   Verify a signed commit or attestation\n  status   Show identity and signing status\n\nMore commands (run with --help for details):\n  auths device, auths id, auths key, auths policy, auths emergency, ...",
+    long_about = "auths \u{2014} cryptographic identity for developers\n\nCore commands:\n  init     Set up your cryptographic identity and Git signing\n  sign     Sign a Git commit or artifact\n  verify   Verify a signed commit or attestation\n  status   Show identity and signing status\n\nMore commands:\n  id, device, key, approval, artifact, policy, git, trust, org,\n  audit, agent, witness, scim, config, emergency\n\nRun `auths <command> --help` for details on any command.",
     version,
     styles = cli_styles()
 )]
@@ -97,24 +98,40 @@ pub enum RootCommand {
     Sign(SignCommand),
     Verify(UnifiedVerifyCommand),
     Status(StatusCommand),
+    Whoami(WhoamiCommand),
     Tutorial(LearnCommand),
     Doctor(DoctorCommand),
     Completions(CompletionsCommand),
+    #[command(hide = true)]
     Emergency(EmergencyCommand),
 
+    #[command(hide = true)]
     Id(IdCommand),
+    #[command(hide = true)]
     Device(DeviceCommand),
+    #[command(hide = true)]
     Key(KeyCommand),
+    #[command(hide = true)]
     Approval(ApprovalCommand),
+    #[command(hide = true)]
     Artifact(ArtifactCommand),
+    #[command(hide = true)]
     Policy(PolicyCommand),
+    #[command(hide = true)]
     Git(GitCommand),
+    #[command(hide = true)]
     Trust(TrustCommand),
+    #[command(hide = true)]
     Org(OrgCommand),
+    #[command(hide = true)]
     Audit(AuditCommand),
+    #[command(hide = true)]
     Agent(AgentCommand),
+    #[command(hide = true)]
     Witness(WitnessCommand),
+    #[command(hide = true)]
     Scim(ScimCommand),
+    #[command(hide = true)]
     Config(ConfigCommand),
 
     #[command(hide = true)]

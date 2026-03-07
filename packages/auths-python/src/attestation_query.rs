@@ -77,7 +77,7 @@ fn open_attestation_storage(repo_path: &str) -> PyResult<Arc<RegistryAttestation
     let repo = PathBuf::from(shellexpand::tilde(repo_path).as_ref());
     let config = RegistryConfig::single_tenant(&repo);
     let _backend = GitRegistryBackend::open_existing(config)
-        .map_err(|e| PyRuntimeError::new_err(format!("Failed to open registry: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}")))?;
     Ok(Arc::new(RegistryAttestationStorage::new(&repo)))
 }
 
@@ -96,7 +96,7 @@ pub fn list_attestations(py: Python<'_>, repo_path: &str) -> PyResult<Vec<PyAtte
     py.allow_threads(|| {
         let all = storage
             .load_all_attestations()
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load attestations: {e}")))?;
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to load attestations: {e}")))?;
         Ok(all.iter().map(attestation_to_py).collect())
     })
 }
@@ -121,7 +121,7 @@ pub fn list_attestations_by_device(
     py.allow_threads(|| {
         let all = storage
             .load_all_attestations()
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load attestations: {e}")))?;
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to load attestations: {e}")))?;
         let group = AttestationGroup::from_list(all);
         Ok(group
             .get(device_did)
@@ -150,7 +150,7 @@ pub fn get_latest_attestation(
     py.allow_threads(|| {
         let all = storage
             .load_all_attestations()
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load attestations: {e}")))?;
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to load attestations: {e}")))?;
         let group = AttestationGroup::from_list(all);
         let did = DeviceDID(device_did.to_string());
         Ok(group.latest(&did).map(attestation_to_py))

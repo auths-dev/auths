@@ -136,6 +136,9 @@ pub enum DeviceSubcommand {
 
         #[arg(long, help = "Optional note explaining the revocation.")]
         note: Option<String>,
+
+        #[arg(long, help = "Preview actions without making changes.")]
+        dry_run: bool,
     },
 
     /// Resolve a device DID to its controller identity DID.
@@ -276,7 +279,12 @@ pub fn handle_device(
             device_did,
             identity_key_alias,
             note,
+            dry_run,
         } => {
+            if dry_run {
+                return display_dry_run_revoke(&device_did, &identity_key_alias);
+            }
+
             let ctx = build_auths_context(
                 &repo_path,
                 env_config,
@@ -323,6 +331,38 @@ fn display_link_result(
         device_did, result.attestation_id
     );
     Ok(())
+}
+
+fn display_dry_run_revoke(device_did: &str, identity_key_alias: &str) -> Result<()> {
+    if is_json_mode() {
+        JsonResponse::success(
+            "device revoke",
+            &serde_json::json!({
+                "dry_run": true,
+                "device_did": device_did,
+                "identity_key_alias": identity_key_alias,
+                "actions": [
+                    "Revoke device authorization",
+                    "Create signed revocation attestation",
+                    "Store revocation in Git repository"
+                ]
+            }),
+        )
+        .print()
+        .map_err(|e| anyhow!("{e}"))
+    } else {
+        let out = crate::ux::format::Output::new();
+        out.print_info("Dry run mode — no changes will be made");
+        out.newline();
+        out.println("Would perform the following actions:");
+        out.println(&format!(
+            "  1. Revoke device authorization for {}",
+            device_did
+        ));
+        out.println("  2. Create signed revocation attestation");
+        out.println("  3. Store revocation in Git repository");
+        Ok(())
+    }
 }
 
 fn display_revoke_result(device_did: &str, repo_path: &Path) -> Result<()> {

@@ -281,7 +281,7 @@ fn run_sign(args: &Args) -> Result<()> {
 mod tests {
     use super::*;
     use auths_core::crypto::ssh::construct_sshsig_signed_data;
-    use zeroize::Zeroizing;
+    use auths_crypto::Pkcs8Der;
 
     #[test]
     fn test_args_accepts_o_flag() {
@@ -458,9 +458,9 @@ mod tests {
         let rng = SystemRandom::new();
         let pkcs8_doc = Ed25519KeyPair::generate_pkcs8(&rng)
             .expect("ring must generate a valid PKCS#8 document");
-        let pkcs8_bytes = Zeroizing::new(pkcs8_doc.as_ref().to_vec());
+        let pkcs8 = Pkcs8Der::new(pkcs8_doc.as_ref());
 
-        let result = extract_seed_from_pkcs8(&pkcs8_bytes);
+        let result = extract_seed_from_pkcs8(&pkcs8);
         assert!(
             result.is_ok(),
             "extract_seed_from_pkcs8 must succeed on a ring-generated key, got: {:?}",
@@ -472,8 +472,7 @@ mod tests {
 
         let derived = Ed25519KeyPair::from_seed_unchecked(seed.as_bytes())
             .expect("extracted seed must be valid");
-        let original =
-            Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).expect("original key must parse");
+        let original = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).expect("original key must parse");
         assert_eq!(
             derived.public_key().as_ref(),
             original.public_key().as_ref(),
@@ -485,7 +484,7 @@ mod tests {
     fn test_extract_seed_from_pkcs8_rejects_invalid_input() {
         use auths_core::crypto::ssh::extract_seed_from_pkcs8;
 
-        let bad_input = Zeroizing::new(vec![0u8; 50]);
+        let bad_input = Pkcs8Der::new(vec![0u8; 50]);
         let result = extract_seed_from_pkcs8(&bad_input);
         assert!(result.is_err(), "must reject non-PKCS#8 input");
     }

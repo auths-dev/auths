@@ -396,7 +396,8 @@ pub fn export_key_openssh_pem(
     let pkcs8_bytes = decrypt_keypair(&encrypted_pkcs8, passphrase)?;
 
     // 3. Extract seed via the consolidated SSH crypto module
-    let secure_seed = crate::crypto::ssh::extract_seed_from_pkcs8(&pkcs8_bytes).map_err(|e| {
+    let pkcs8 = auths_crypto::Pkcs8Der::new(&pkcs8_bytes[..]);
+    let secure_seed = crate::crypto::ssh::extract_seed_from_pkcs8(&pkcs8).map_err(|e| {
         AgentError::KeyDeserializationError(format!(
             "Failed to extract Ed25519 seed for alias '{}': {}",
             alias, e

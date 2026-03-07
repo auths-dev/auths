@@ -29,7 +29,7 @@ def test_delegate_agent(auths):
     )
     assert isinstance(agent, DelegatedAgent)
     assert agent.did.startswith("did:key:")
-    assert agent.key_alias == "ci-bot-agent"
+    assert agent._key_alias == "ci-bot-agent"
     assert agent.attestation
 
 
@@ -38,7 +38,7 @@ def test_create_agent_identity(auths):
     agent = auths.identities.create_agent(name="standalone-bot", capabilities=["sign"])
     assert isinstance(agent, AgentIdentity)
     assert agent.did.startswith("did:keri:")
-    assert agent.key_alias == "standalone-bot-agent"
+    assert agent._key_alias == "standalone-bot-agent"
 
 
 def test_device_lifecycle(auths):

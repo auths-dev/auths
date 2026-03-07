@@ -73,18 +73,18 @@ pub fn extend_device_authorization_ffi(
     let config = RegistryConfig::single_tenant(&repo);
     let backend = Arc::new(
         GitRegistryBackend::open_existing(config)
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to open registry: {e}")))?,
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}")))?,
     );
 
     let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("Keychain error: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
     let keychain = Arc::from(keychain);
 
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
 
     let alias = KeyAlias::new(identity_key_alias)
-        .map_err(|e| PyRuntimeError::new_err(format!("Invalid key alias: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}")))?;
 
     let ext_config = DeviceExtensionConfig {
         repo_path: repo,
@@ -106,7 +106,7 @@ pub fn extend_device_authorization_ffi(
 
     py.allow_threads(|| {
         let result = extend_device(ext_config, &ctx, clock.as_ref())
-            .map_err(|e| PyRuntimeError::new_err(format!("Device extension failed: {e}")))?;
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_DEVICE_ERROR] Device extension failed: {e}")))?;
 
         Ok(PyDeviceExtension {
             device_did: result.device_did.to_string(),

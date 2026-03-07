@@ -34,7 +34,7 @@ pub struct PairCommand {
     pub registry: Option<String>,
 
     /// Don't display QR code (only show short code)
-    #[clap(long)]
+    #[clap(long, hide_short_help = true)]
     pub no_qr: bool,
 
     /// Custom timeout in seconds for the pairing session (default: 300 = 5 minutes)
@@ -47,16 +47,21 @@ pub struct PairCommand {
     pub timeout: u64,
 
     /// Skip registry server (offline mode, for testing)
-    #[clap(long)]
+    #[clap(long, hide_short_help = true)]
     pub offline: bool,
 
     /// Capabilities to grant the paired device (comma-separated)
-    #[clap(long, value_delimiter = ',', default_value = "sign_commit")]
+    #[clap(
+        long,
+        value_delimiter = ',',
+        default_value = "sign_commit",
+        hide_short_help = true
+    )]
     pub capabilities: Vec<String>,
 
     /// Disable mDNS advertisement/discovery in LAN mode
     #[cfg(feature = "lan-pairing")]
-    #[clap(long)]
+    #[clap(long, hide_short_help = true)]
     pub no_mdns: bool,
 }
 
