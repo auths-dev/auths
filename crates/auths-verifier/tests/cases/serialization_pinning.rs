@@ -158,3 +158,21 @@ fn ixn_serialization_roundtrip() {
     let deserialized: KeriEvent = serde_json::from_str(&json).unwrap();
     assert_eq!(event, deserialized);
 }
+
+#[test]
+fn json_canon_golden_output() {
+    let input = serde_json::json!({
+        "z": "last",
+        "a": "first",
+        "m": [3, 1, 2],
+        "nested": {"b": 2, "a": 1}
+    });
+
+    let canonical = json_canon::to_string(&input).unwrap();
+
+    // RFC 8785 (JCS): keys sorted lexicographically, no whitespace, arrays preserve order
+    assert_eq!(
+        canonical,
+        r#"{"a":"first","m":[3,1,2],"nested":{"a":1,"b":2},"z":"last"}"#
+    );
+}

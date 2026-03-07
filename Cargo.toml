@@ -44,6 +44,8 @@ parking_lot = "0.12"
 schemars = "0.8"
 subtle = "2.6"
 zeroize = { version = "1.8.1", features = ["serde", "derive"] }
+# Exact pin: canonicalization changes silently break all existing attestation signatures.
+json-canon = "=0.1.3"
 
 auths-core = { path = "crates/auths-core", version = "0.0.1-rc.4" }
 auths-id = { path = "crates/auths-id", version = "0.0.1-rc.4" }

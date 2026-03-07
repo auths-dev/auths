@@ -21,7 +21,7 @@ blake3 = "1.5"
 bs58 = "0.5.1"
 chrono = { version = "0.4", features = ["serde"] }
 hex = { version = "0.4.3", features = ["serde"] }
-json-canon = "0.1"
+json-canon.workspace = true
 async-trait = "0.1"
 log = "0.4"
 ring = { workspace = true, optional = true }
