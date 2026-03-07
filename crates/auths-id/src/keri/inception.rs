@@ -12,6 +12,7 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
 use crate::storage::registry::backend::{RegistryBackend, RegistryError};
+use auths_crypto::Pkcs8Der;
 
 use auths_core::crypto::said::compute_next_commitment;
 
@@ -22,6 +23,7 @@ use crate::witness_config::WitnessConfig;
 
 /// Error type for inception operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum InceptionError {
     #[error("Key generation failed: {0}")]
     KeyGeneration(String),
@@ -40,22 +42,33 @@ pub enum InceptionError {
 }
 
 /// Result of a KERI identity inception.
-#[derive(Debug)]
 pub struct InceptionResult {
     /// The KERI prefix (use with did:keri:<prefix>)
     pub prefix: Prefix,
 
-    /// The current signing keypair (PKCS8 DER encoded)
-    pub current_keypair_pkcs8: Vec<u8>,
+    /// The current signing keypair (PKCS8 DER encoded, zeroed on drop)
+    pub current_keypair_pkcs8: Pkcs8Der,
 
-    /// The next rotation keypair (PKCS8 DER encoded)
-    pub next_keypair_pkcs8: Vec<u8>,
+    /// The next rotation keypair (PKCS8 DER encoded, zeroed on drop)
+    pub next_keypair_pkcs8: Pkcs8Der,
 
     /// The current public key (raw 32 bytes)
     pub current_public_key: Vec<u8>,
 
     /// The next public key (raw 32 bytes)
     pub next_public_key: Vec<u8>,
+}
+
+impl std::fmt::Debug for InceptionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InceptionResult")
+            .field("prefix", &self.prefix)
+            .field("current_keypair_pkcs8", &self.current_keypair_pkcs8)
+            .field("next_keypair_pkcs8", &self.next_keypair_pkcs8)
+            .field("current_public_key", &self.current_public_key)
+            .field("next_public_key", &self.next_public_key)
+            .finish()
+    }
 }
 
 impl InceptionResult {
@@ -84,6 +97,7 @@ impl InceptionResult {
 pub fn create_keri_identity(
     repo: &Repository,
     witness_config: Option<&WitnessConfig>,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<InceptionResult, InceptionError> {
     let rng = SystemRandom::new();
 
@@ -145,7 +159,7 @@ pub fn create_keri_identity(
 
     // Store in Git KEL
     let kel = GitKel::new(repo, prefix.as_str());
-    kel.create(&finalized)?;
+    kel.create(&finalized, now)?;
 
     // Collect witness receipts if configured
     #[cfg(feature = "witness-client")]
@@ -159,14 +173,15 @@ pub fn create_keri_identity(
             &finalized.d,
             &canonical_for_witness,
             config,
+            now,
         )
         .map_err(|e| InceptionError::Serialization(e.to_string()))?;
     }
 
     Ok(InceptionResult {
         prefix,
-        current_keypair_pkcs8: current_pkcs8.as_ref().to_vec(),
-        next_keypair_pkcs8: next_pkcs8.as_ref().to_vec(),
+        current_keypair_pkcs8: Pkcs8Der::new(current_pkcs8.as_ref()),
+        next_keypair_pkcs8: Pkcs8Der::new(next_pkcs8.as_ref()),
         current_public_key: current_keypair.public_key().as_ref().to_vec(),
         next_public_key: next_keypair.public_key().as_ref().to_vec(),
     })
@@ -233,8 +248,8 @@ pub fn create_keri_identity_with_backend(
 
     Ok(InceptionResult {
         prefix,
-        current_keypair_pkcs8: current_pkcs8.as_ref().to_vec(),
-        next_keypair_pkcs8: next_pkcs8.as_ref().to_vec(),
+        current_keypair_pkcs8: Pkcs8Der::new(current_pkcs8.as_ref()),
+        next_keypair_pkcs8: Pkcs8Der::new(next_pkcs8.as_ref()),
         current_public_key: current_keypair.public_key().as_ref().to_vec(),
         next_public_key: next_keypair.public_key().as_ref().to_vec(),
     })
@@ -253,6 +268,7 @@ pub fn did_to_prefix(did: &str) -> Option<&str> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::keri::{Event, validate_kel};
@@ -274,7 +290,7 @@ mod tests {
     fn create_identity_returns_valid_result() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None).unwrap();
+        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         // Prefix should start with 'E' (Blake3 SAID prefix)
         assert!(result.prefix.as_str().starts_with('E'));
@@ -293,7 +309,7 @@ mod tests {
     fn create_identity_stores_kel() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None).unwrap();
+        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         // Verify KEL exists and has one event
         let kel = GitKel::new(&repo, result.prefix.as_str());
@@ -308,7 +324,7 @@ mod tests {
     fn inception_event_is_valid() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None).unwrap();
+        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, result.prefix.as_str());
         let events = kel.get_events().unwrap();
 
@@ -323,7 +339,7 @@ mod tests {
     fn inception_event_has_correct_structure() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None).unwrap();
+        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, result.prefix.as_str());
         let events = kel.get_events().unwrap();
 
@@ -358,7 +374,7 @@ mod tests {
     fn next_key_commitment_is_correct() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None).unwrap();
+        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, result.prefix.as_str());
         let events = kel.get_events().unwrap();
 
@@ -386,11 +402,11 @@ mod tests {
     fn multiple_identities_have_different_prefixes() {
         let (_dir, repo) = setup_repo();
 
-        let result1 = create_keri_identity(&repo, None).unwrap();
+        let result1 = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         // Create second repo for second identity
         let (_dir2, repo2) = setup_repo();
-        let result2 = create_keri_identity(&repo2, None).unwrap();
+        let result2 = create_keri_identity(&repo2, None, chrono::Utc::now()).unwrap();
 
         // Prefixes should be different
         assert_ne!(result1.prefix, result2.prefix);

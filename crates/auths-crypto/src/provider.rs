@@ -18,6 +18,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 /// }
 /// ```
 #[derive(Debug, Clone, thiserror::Error)]
+#[non_exhaustive]
 pub enum CryptoError {
     #[error("Invalid signature")]
     InvalidSignature,

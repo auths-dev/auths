@@ -6,8 +6,7 @@ use aes_gcm::{
 };
 use argon2::{Algorithm as Argon2Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{ChaCha20Poly1305, Nonce as ChaChaNonce};
-use hkdf::Hkdf;
-use sha2::Sha256;
+use zeroize::Zeroizing;
 
 use crate::crypto::EncryptionAlgorithm;
 use crate::error::AgentError;
@@ -16,7 +15,7 @@ use crate::error::AgentError;
 pub const TAG_LEN: usize = 1;
 /// Byte size of the nonce used in both AES-GCM and ChaCha20Poly1305.
 pub const NONCE_LEN: usize = 12; // we're using 12-byte nonces for both
-/// Byte size of the salt used in HKDF key derivation.
+/// Byte size of the salt used in key derivation.
 pub const SALT_LEN: usize = 16;
 /// Length in bytes of a symmetric encryption key (256-bit).
 pub const SYMMETRIC_KEY_LEN: usize = 32;
@@ -48,53 +47,6 @@ pub fn get_kdf_params() -> Result<Params, AgentError> {
     #[cfg(any(test, feature = "test-utils"))]
     let params = Params::new(8, 1, 1, Some(SYMMETRIC_KEY_LEN));
     params.map_err(|e| AgentError::CryptoError(format!("Invalid Argon2 params: {}", e)))
-}
-
-/// Encrypt data, prepending a tag to identify algorithm during decryption.
-pub fn encrypt_bytes(
-    data: &[u8],
-    passphrase: &str,
-    algo: EncryptionAlgorithm,
-) -> Result<Vec<u8>, AgentError> {
-    let salt: [u8; SALT_LEN] = rand::random();
-    let hk = Hkdf::<Sha256>::new(Some(&salt), passphrase.as_bytes());
-    let mut key = [0u8; SYMMETRIC_KEY_LEN];
-    hk.expand(&[], &mut key)
-        .map_err(|_| AgentError::CryptoError("HKDF expand failed".into()))?;
-
-    let nonce: [u8; NONCE_LEN] = rand::random();
-
-    match algo {
-        EncryptionAlgorithm::AesGcm256 => {
-            let cipher = Aes256Gcm::new_from_slice(&key)
-                .map_err(|_| AgentError::CryptoError("Invalid AES key".into()))?;
-
-            let ciphertext = cipher
-                .encrypt(AesNonce::from_slice(&nonce), data)
-                .map_err(|_| AgentError::CryptoError("AES encryption failed".into()))?;
-
-            let mut out = vec![algo.tag()];
-            out.extend_from_slice(&salt);
-            out.extend_from_slice(&nonce);
-            out.extend_from_slice(&ciphertext);
-            Ok(out)
-        }
-
-        EncryptionAlgorithm::ChaCha20Poly1305 => {
-            let cipher = ChaCha20Poly1305::new_from_slice(&key)
-                .map_err(|_| AgentError::CryptoError("Invalid ChaCha key".into()))?;
-
-            let ciphertext = cipher
-                .encrypt(ChaChaNonce::from_slice(&nonce), data)
-                .map_err(|_| AgentError::CryptoError("ChaCha encryption failed".into()))?;
-
-            let mut out = vec![algo.tag()];
-            out.extend_from_slice(&salt);
-            out.extend_from_slice(&nonce);
-            out.extend_from_slice(&ciphertext);
-            Ok(out)
-        }
-    }
 }
 
 /// Validates that a passphrase meets minimum strength requirements.
@@ -132,7 +84,7 @@ pub fn validate_passphrase(passphrase: &str) -> Result<(), AgentError> {
 /// Encrypt data using Argon2id for key derivation, prepending tag 0x03.
 ///
 /// Output format: `[0x03][salt:16][m_cost:4 LE][t_cost:4 LE][p_cost:4 LE][algo_tag:1][nonce:12][ciphertext]`
-pub fn encrypt_bytes_argon2(
+pub fn encrypt_bytes(
     data: &[u8],
     passphrase: &str,
     algo: EncryptionAlgorithm,
@@ -141,29 +93,28 @@ pub fn encrypt_bytes_argon2(
 
     let salt: [u8; SALT_LEN] = rand::random();
 
-    // Derive key with Argon2id
     let params = get_kdf_params()?;
     let m_cost = params.m_cost();
     let t_cost = params.t_cost();
     let p_cost = params.p_cost();
     let argon2 = Argon2::new(Argon2Algorithm::Argon2id, Version::V0x13, params);
-    let mut key = [0u8; SYMMETRIC_KEY_LEN];
+    let mut key = Zeroizing::new([0u8; SYMMETRIC_KEY_LEN]);
     argon2
-        .hash_password_into(passphrase.as_bytes(), &salt, &mut key)
+        .hash_password_into(passphrase.as_bytes(), &salt, &mut *key)
         .map_err(|e| AgentError::CryptoError(format!("Argon2 key derivation failed: {}", e)))?;
 
     let nonce: [u8; NONCE_LEN] = rand::random();
 
     let ciphertext = match algo {
         EncryptionAlgorithm::AesGcm256 => {
-            let cipher = Aes256Gcm::new_from_slice(&key)
+            let cipher = Aes256Gcm::new_from_slice(&*key)
                 .map_err(|_| AgentError::CryptoError("Invalid AES key".into()))?;
             cipher
                 .encrypt(AesNonce::from_slice(&nonce), data)
                 .map_err(|_| AgentError::CryptoError("AES encryption failed".into()))?
         }
         EncryptionAlgorithm::ChaCha20Poly1305 => {
-            let cipher = ChaCha20Poly1305::new_from_slice(&key)
+            let cipher = ChaCha20Poly1305::new_from_slice(&*key)
                 .map_err(|_| AgentError::CryptoError("Invalid ChaCha key".into()))?;
             cipher
                 .encrypt(ChaChaNonce::from_slice(&nonce), data)
@@ -171,7 +122,6 @@ pub fn encrypt_bytes_argon2(
         }
     };
 
-    // Build output: [tag][salt][m_cost LE][t_cost LE][p_cost LE][algo_tag][nonce][ciphertext]
     let mut out = Vec::with_capacity(
         TAG_LEN + SALT_LEN + ARGON2_PARAMS_LEN + TAG_LEN + NONCE_LEN + ciphertext.len(),
     );
@@ -188,9 +138,7 @@ pub fn encrypt_bytes_argon2(
 
 /// Decrypts data using a tagged encryption format and a user-provided passphrase.
 ///
-/// Supports three tag formats:
-/// - Tag 1 (AES-GCM) / Tag 2 (ChaCha20): Legacy HKDF path `[tag][salt:16][nonce:12][ciphertext]`
-/// - Tag 3 (Argon2id): `[0x03][salt:16][m_cost:4 LE][t_cost:4 LE][p_cost:4 LE][algo_tag:1][nonce:12][ciphertext]`
+/// Only supports tag 3 (Argon2id): `[0x03][salt:16][m_cost:4 LE][t_cost:4 LE][p_cost:4 LE][algo_tag:1][nonce:12][ciphertext]`
 ///
 /// If decryption fails (e.g. due to wrong passphrase), returns
 /// `AgentError::IncorrectPassphrase`.
@@ -205,37 +153,19 @@ pub fn decrypt_bytes(encrypted: &[u8], passphrase: &str) -> Result<Vec<u8>, Agen
         return decrypt_bytes_argon2(encrypted, passphrase);
     }
 
-    // Legacy HKDF path (tags 1, 2)
-    if encrypted.len() < TAG_LEN + SALT_LEN + NONCE_LEN {
-        return Err(AgentError::CryptoError("Encrypted data too short".into()));
+    // Legacy HKDF tags 1 (AES) and 2 (ChaCha) are no longer supported
+    if tag == 1 || tag == 2 {
+        return Err(AgentError::CryptoError(
+            "This key was encrypted with a legacy format (HKDF). \
+             Re-encrypt it with: auths key migrate"
+                .into(),
+        ));
     }
 
-    let algo = EncryptionAlgorithm::from_tag(tag)
-        .ok_or_else(|| AgentError::CryptoError(format!("Unknown encryption tag: {}", tag)))?;
-
-    let rest = &encrypted[TAG_LEN..];
-    let (salt, remaining) = rest.split_at(SALT_LEN);
-    let (nonce, ciphertext) = remaining.split_at(NONCE_LEN);
-
-    let hkdf = Hkdf::<Sha256>::new(Some(salt), passphrase.as_bytes());
-    let mut key = [0u8; SYMMETRIC_KEY_LEN];
-    hkdf.expand(&[], &mut key)
-        .map_err(|_| AgentError::CryptoError("HKDF expand failed".into()))?;
-
-    let result = match algo {
-        EncryptionAlgorithm::AesGcm256 => Aes256Gcm::new_from_slice(&key)
-            .map_err(|_| AgentError::CryptoError("Invalid AES key".into()))?
-            .decrypt(AesNonce::from_slice(nonce), ciphertext),
-
-        EncryptionAlgorithm::ChaCha20Poly1305 => ChaCha20Poly1305::new_from_slice(&key)
-            .map_err(|_| AgentError::CryptoError("Invalid ChaCha key".into()))?
-            .decrypt(ChaChaNonce::from_slice(nonce), ciphertext),
-    };
-
-    match result {
-        Ok(plaintext) => Ok(plaintext),
-        Err(_) => Err(AgentError::IncorrectPassphrase),
-    }
+    Err(AgentError::CryptoError(format!(
+        "Unknown encryption tag: {}",
+        tag
+    )))
 }
 
 /// Decrypts an Argon2id-tagged blob.
@@ -283,21 +213,20 @@ fn decrypt_bytes_argon2(encrypted: &[u8], passphrase: &str) -> Result<Vec<u8>, A
 
     let ciphertext = &encrypted[offset..];
 
-    // Derive key with Argon2id using embedded params
     let params = Params::new(m_cost, t_cost, p_cost, Some(SYMMETRIC_KEY_LEN))
         .map_err(|e| AgentError::CryptoError(format!("Invalid Argon2 params: {}", e)))?;
     let argon2 = Argon2::new(Argon2Algorithm::Argon2id, Version::V0x13, params);
-    let mut key = [0u8; SYMMETRIC_KEY_LEN];
+    let mut key = Zeroizing::new([0u8; SYMMETRIC_KEY_LEN]);
     argon2
-        .hash_password_into(passphrase.as_bytes(), salt, &mut key)
+        .hash_password_into(passphrase.as_bytes(), salt, &mut *key)
         .map_err(|e| AgentError::CryptoError(format!("Argon2 key derivation failed: {}", e)))?;
 
     let result = match algo {
-        EncryptionAlgorithm::AesGcm256 => Aes256Gcm::new_from_slice(&key)
+        EncryptionAlgorithm::AesGcm256 => Aes256Gcm::new_from_slice(&*key)
             .map_err(|_| AgentError::CryptoError("Invalid AES key".into()))?
             .decrypt(AesNonce::from_slice(nonce), ciphertext),
 
-        EncryptionAlgorithm::ChaCha20Poly1305 => ChaCha20Poly1305::new_from_slice(&key)
+        EncryptionAlgorithm::ChaCha20Poly1305 => ChaCha20Poly1305::new_from_slice(&*key)
             .map_err(|_| AgentError::CryptoError("Invalid ChaCha key".into()))?
             .decrypt(ChaChaNonce::from_slice(nonce), ciphertext),
     };
@@ -318,8 +247,7 @@ mod tests {
     #[test]
     fn test_argon2_roundtrip_aes() {
         let data = b"hello argon2 aes";
-        let encrypted =
-            encrypt_bytes_argon2(data, STRONG_PASS, EncryptionAlgorithm::AesGcm256).unwrap();
+        let encrypted = encrypt_bytes(data, STRONG_PASS, EncryptionAlgorithm::AesGcm256).unwrap();
         let decrypted = decrypt_bytes(&encrypted, STRONG_PASS).unwrap();
         assert_eq!(data.as_slice(), decrypted.as_slice());
     }
@@ -328,25 +256,42 @@ mod tests {
     fn test_argon2_roundtrip_chacha() {
         let data = b"hello argon2 chacha";
         let encrypted =
-            encrypt_bytes_argon2(data, STRONG_PASS, EncryptionAlgorithm::ChaCha20Poly1305).unwrap();
+            encrypt_bytes(data, STRONG_PASS, EncryptionAlgorithm::ChaCha20Poly1305).unwrap();
         let decrypted = decrypt_bytes(&encrypted, STRONG_PASS).unwrap();
         assert_eq!(data.as_slice(), decrypted.as_slice());
     }
 
     #[test]
-    fn test_legacy_hkdf_decrypt_still_works() {
-        let data = b"legacy data";
-        let encrypted =
-            encrypt_bytes(data, "any-passphrase", EncryptionAlgorithm::AesGcm256).unwrap();
-        let decrypted = decrypt_bytes(&encrypted, "any-passphrase").unwrap();
-        assert_eq!(data.as_slice(), decrypted.as_slice());
+    fn test_legacy_hkdf_tag_returns_migration_error() {
+        // Tag 1 = legacy AES-GCM via HKDF
+        let mut blob = vec![1u8];
+        blob.extend_from_slice(&[0u8; 64]);
+        let result = decrypt_bytes(&blob, "any-passphrase");
+        match result {
+            Err(AgentError::CryptoError(msg)) => {
+                assert!(msg.contains("legacy format"), "got: {}", msg);
+                assert!(msg.contains("auths key migrate"), "got: {}", msg);
+            }
+            other => panic!(
+                "expected CryptoError with migration message, got: {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn test_legacy_hkdf_tag2_returns_migration_error() {
+        // Tag 2 = legacy ChaCha via HKDF
+        let mut blob = vec![2u8];
+        blob.extend_from_slice(&[0u8; 64]);
+        let result = decrypt_bytes(&blob, "any-passphrase");
+        assert!(matches!(result, Err(AgentError::CryptoError(_))));
     }
 
     #[test]
     fn test_argon2_wrong_passphrase() {
         let data = b"secret";
-        let encrypted =
-            encrypt_bytes_argon2(data, STRONG_PASS, EncryptionAlgorithm::AesGcm256).unwrap();
+        let encrypted = encrypt_bytes(data, STRONG_PASS, EncryptionAlgorithm::AesGcm256).unwrap();
         let result = decrypt_bytes(&encrypted, "Wr0ng!Passphrase");
         assert!(matches!(result, Err(AgentError::IncorrectPassphrase)));
     }
@@ -354,8 +299,7 @@ mod tests {
     #[test]
     fn test_argon2_blob_starts_with_tag_3() {
         let data = b"tag check";
-        let encrypted =
-            encrypt_bytes_argon2(data, STRONG_PASS, EncryptionAlgorithm::AesGcm256).unwrap();
+        let encrypted = encrypt_bytes(data, STRONG_PASS, EncryptionAlgorithm::AesGcm256).unwrap();
         assert_eq!(encrypted[0], ARGON2_TAG);
     }
 
@@ -386,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_argon2_encrypt_rejects_weak() {
-        let result = encrypt_bytes_argon2(b"data", "weak", EncryptionAlgorithm::AesGcm256);
+        let result = encrypt_bytes(b"data", "weak", EncryptionAlgorithm::AesGcm256);
         assert!(matches!(result, Err(AgentError::WeakPassphrase(_))));
     }
 }

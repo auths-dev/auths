@@ -4,6 +4,7 @@ use ssh_key::PublicKey;
 
 /// Errors from parsing an OpenSSH Ed25519 public key.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SshKeyError {
     #[error("Malformed or invalid OpenSSH public key: {0}")]
     InvalidFormat(String),

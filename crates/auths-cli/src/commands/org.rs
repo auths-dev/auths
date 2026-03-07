@@ -578,7 +578,7 @@ pub fn handle_org(
                         continue;
                     }
 
-                    let status = match verify_with_resolver(Utc::now(), &resolver, att) {
+                    let status = match verify_with_resolver(Utc::now(), &resolver, att, None) {
                         Ok(_) => "✅ valid",
                         Err(e) if e.to_string().contains("revoked") => "🛑 revoked",
                         Err(e) if e.to_string().contains("expired") => "⌛ expired",
@@ -617,7 +617,7 @@ pub fn handle_org(
                     continue;
                 }
 
-                let status = match verify_with_resolver(Utc::now(), &resolver, latest) {
+                let status = match verify_with_resolver(Utc::now(), &resolver, latest, None) {
                     Ok(_) => "✅ valid",
                     Err(e) if e.to_string().contains("revoked") => "🛑 revoked",
                     Err(e) if e.to_string().contains("expired") => "⌛ expired",

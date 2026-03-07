@@ -11,12 +11,14 @@ use git2::{Commit, ErrorCode, Repository, Signature};
 use super::cache;
 use super::incremental::{self, IncrementalResult};
 use super::types::Prefix;
+use super::validate::validate_for_append;
 use super::{Event, IcpEvent, KeyState};
 use crate::domain::EventHash;
 use crate::witness::{event_hash_to_oid, oid_to_event_hash};
 
 /// Errors that can occur during KEL operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum KelError {
     #[error("Git error: {0}")]
     Git(#[from] git2::Error),
@@ -35,6 +37,9 @@ pub enum KelError {
 
     #[error("Chain integrity error: {0}")]
     ChainIntegrity(String),
+
+    #[error("Validation failed: {0}")]
+    ValidationFailed(#[from] super::ValidationError),
 }
 
 /// Standard filename for storing KERI events in commits.
@@ -121,7 +126,11 @@ impl<'a> GitKel<'a> {
     /// ```rust,ignore
     /// let hash = kel.create(&icp_event)?;
     /// ```
-    pub fn create(&self, event: &IcpEvent) -> Result<EventHash, KelError> {
+    pub fn create(
+        &self,
+        event: &IcpEvent,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<EventHash, KelError> {
         if self.exists() {
             return Err(KelError::InvalidOperation(format!(
                 "KEL already exists for prefix: {}",
@@ -139,7 +148,7 @@ impl<'a> GitKel<'a> {
         let tree_oid = tree_builder.write()?;
         let tree = self.repo.find_tree(tree_oid)?;
 
-        let sig = self.signature()?;
+        let sig = self.signature(now)?;
         let commit_oid = self.repo.commit(
             Some(&self.ref_path),
             &sig,
@@ -165,7 +174,11 @@ impl<'a> GitKel<'a> {
     /// ```rust,ignore
     /// let hash = kel.append(&rot_event)?;
     /// ```
-    pub fn append(&self, event: &Event) -> Result<EventHash, KelError> {
+    pub fn append(
+        &self,
+        event: &Event,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<EventHash, KelError> {
         let ref_name = &self.ref_path;
 
         let reference = self.repo.find_reference(ref_name).map_err(|e| {
@@ -177,11 +190,9 @@ impl<'a> GitKel<'a> {
         })?;
         let parent_commit = reference.peel_to_commit()?;
 
-        if matches!(event, Event::Icp(_)) {
-            return Err(KelError::InvalidOperation(
-                "Use create() for inception events".into(),
-            ));
-        }
+        // Validate event cryptographically before persisting
+        let state = self.build_current_state()?;
+        validate_for_append(event, &state)?;
 
         let json =
             serde_json::to_vec_pretty(event).map_err(|e| KelError::Serialization(e.to_string()))?;
@@ -198,7 +209,7 @@ impl<'a> GitKel<'a> {
             Event::Icp(_) => unreachable!(),
         };
 
-        let sig = self.signature()?;
+        let sig = self.signature(now)?;
         let commit_oid =
             self.repo
                 .commit(Some(ref_name), &sig, &sig, &msg, &tree, &[&parent_commit])?;
@@ -391,6 +402,66 @@ impl<'a> GitKel<'a> {
         self.read_event_from_commit(&commit)
     }
 
+    /// Build the current key state from events without caching.
+    ///
+    /// Used internally by `append()` to validate new events without
+    /// requiring a `now` parameter for cache writes.
+    fn build_current_state(&self) -> Result<KeyState, KelError> {
+        let events = self.get_events()?;
+        if events.is_empty() {
+            return Err(KelError::NotFound(self.prefix.as_str().to_string()));
+        }
+
+        let Event::Icp(icp) = &events[0] else {
+            return Err(KelError::InvalidData(
+                "First event in KEL must be inception".into(),
+            ));
+        };
+
+        let threshold = icp
+            .kt
+            .parse::<u64>()
+            .map_err(|_| KelError::InvalidData(format!("Malformed threshold: {:?}", icp.kt)))?;
+        let next_threshold = icp
+            .nt
+            .parse::<u64>()
+            .map_err(|_| KelError::InvalidData(format!("Malformed threshold: {:?}", icp.nt)))?;
+
+        let mut state = KeyState::from_inception(
+            icp.i.clone(),
+            icp.k.clone(),
+            icp.n.clone(),
+            threshold,
+            next_threshold,
+            icp.d.clone(),
+        );
+
+        for event in events.iter().skip(1) {
+            match event {
+                Event::Rot(rot) => {
+                    let seq = rot.s.value();
+                    let t = rot.kt.parse::<u64>().map_err(|_| {
+                        KelError::InvalidData(format!("Malformed threshold: {:?}", rot.kt))
+                    })?;
+                    let nt = rot.nt.parse::<u64>().map_err(|_| {
+                        KelError::InvalidData(format!("Malformed threshold: {:?}", rot.nt))
+                    })?;
+                    state.apply_rotation(rot.k.clone(), rot.n.clone(), t, nt, seq, rot.d.clone());
+                }
+                Event::Ixn(ixn) => {
+                    state.apply_interaction(ixn.s.value(), ixn.d.clone());
+                }
+                Event::Icp(_) => {
+                    return Err(KelError::InvalidData(
+                        "Multiple inception events in KEL".into(),
+                    ));
+                }
+            }
+        }
+
+        Ok(state)
+    }
+
     /// Read an event from a commit.
     fn read_event_from_commit(&self, commit: &Commit) -> Result<Event, KelError> {
         let tree = commit.tree()?;
@@ -403,11 +474,16 @@ impl<'a> GitKel<'a> {
         Ok(event)
     }
 
-    /// Create a Git signature for commits.
-    fn signature(&self) -> Result<Signature<'static>, KelError> {
+    /// Create a Git signature for commits using an injected timestamp.
+    fn signature(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Signature<'static>, KelError> {
         self.repo
             .signature()
-            .or_else(|_| Signature::now("auths", "auths@local"))
+            .or_else(|_| {
+                Signature::new("auths", "auths@local", &git2::Time::new(now.timestamp(), 0))
+            })
             .map_err(KelError::Git)
     }
 
@@ -470,14 +546,15 @@ impl<'a> GitKel<'a> {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::{IxnEvent, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, Seal};
+    use crate::keri::inception::create_keri_identity;
+    use crate::keri::rotation::rotate_keys;
+    use crate::keri::{KERI_VERSION, KeriSequence, Prefix, RotEvent, Said};
     use tempfile::TempDir;
 
     fn setup_repo() -> (TempDir, Repository) {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
 
-        // Set git config for CI environments
         let mut config = repo.config().unwrap();
         config.set_str("user.name", "Test User").unwrap();
         config.set_str("user.email", "test@example.com").unwrap();
@@ -516,7 +593,7 @@ mod tests {
         let kel = GitKel::new(&repo, "ETest123");
 
         let icp = make_icp_event("ETest123");
-        kel.create(&icp).unwrap();
+        kel.create(&icp, chrono::Utc::now()).unwrap();
 
         assert!(kel.exists());
 
@@ -531,39 +608,26 @@ mod tests {
         let kel = GitKel::new(&repo, "ETest123");
 
         let icp = make_icp_event("ETest123");
-        kel.create(&icp).unwrap();
+        kel.create(&icp, chrono::Utc::now()).unwrap();
 
-        // Try to create again
-        let result = kel.create(&icp);
+        let result = kel.create(&icp, chrono::Utc::now());
         assert!(result.is_err());
     }
 
     #[test]
     fn append_rotation_event() {
         let (_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "ERotate");
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let _rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
-        let icp = make_icp_event("ERotate");
-        kel.create(&icp).unwrap();
-
-        let rot = Event::Rot(RotEvent {
-            v: KERI_VERSION.to_string(),
-            d: Said::new_unchecked("ERotSaid".to_string()),
-            i: Prefix::new_unchecked("ERotate".to_string()),
-            s: KeriSequence::new(1),
-            p: Said::new_unchecked("ERotate".to_string()),
-            kt: "1".to_string(),
-            k: vec!["DKey2".to_string()],
-            nt: "1".to_string(),
-            n: vec!["ENext2".to_string()],
-            bt: "0".to_string(),
-            b: vec![],
-            a: vec![],
-            x: String::new(),
-        });
-
-        kel.append(&rot).unwrap();
-
+        let kel = GitKel::new(&repo, init.prefix.as_str());
         let events = kel.get_events().unwrap();
         assert_eq!(events.len(), 2);
         assert!(events[0].is_inception());
@@ -571,104 +635,81 @@ mod tests {
     }
 
     #[test]
-    fn append_interaction_event() {
+    fn append_rejects_invalid_signature() {
         let (_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "EInteract");
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        let icp = make_icp_event("EInteract");
-        kel.create(&icp).unwrap();
-
-        let ixn = Event::Ixn(IxnEvent {
+        // Build a fake rotation event with invalid SAID
+        let rot = Event::Rot(RotEvent {
             v: KERI_VERSION.to_string(),
-            d: Said::new_unchecked("EIxnSaid".to_string()),
-            i: Prefix::new_unchecked("EInteract".to_string()),
+            d: Said::new_unchecked("EFakeSaid".to_string()),
+            i: init.prefix.clone(),
             s: KeriSequence::new(1),
-            p: Said::new_unchecked("EInteract".to_string()),
-            a: vec![Seal::device_attestation("EAttest")],
+            p: Said::new_unchecked(init.prefix.as_str().to_string()),
+            kt: "1".to_string(),
+            k: vec!["DFakeKey".to_string()],
+            nt: "1".to_string(),
+            n: vec!["EFakeNext".to_string()],
+            bt: "0".to_string(),
+            b: vec![],
+            a: vec![],
             x: String::new(),
         });
 
-        kel.append(&ixn).unwrap();
-
-        let events = kel.get_events().unwrap();
-        assert_eq!(events.len(), 2);
-        assert!(events[1].is_interaction());
-        assert_eq!(events[1].anchors().len(), 1);
+        let result = kel.append(&rot, chrono::Utc::now());
+        assert!(result.is_err());
+        assert!(matches!(result, Err(KelError::ValidationFailed(_))));
     }
 
     #[test]
     fn get_state_after_inception() {
         let (_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "EState");
-
-        let icp = make_icp_event("EState");
-        kel.create(&icp).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let state = kel.get_state(chrono::Utc::now()).unwrap();
-        assert_eq!(state.prefix, "EState");
+        assert_eq!(state.prefix.as_str(), init.prefix.as_str());
         assert_eq!(state.sequence, 0);
-        assert_eq!(state.current_keys, vec!["DKey1"]);
         assert!(state.can_rotate());
     }
 
     #[test]
     fn get_state_after_rotation() {
         let (_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "ERotState");
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
-        let icp = make_icp_event("ERotState");
-        kel.create(&icp).unwrap();
-
-        let rot = Event::Rot(RotEvent {
-            v: KERI_VERSION.to_string(),
-            d: Said::new_unchecked("ERotSaid".to_string()),
-            i: Prefix::new_unchecked("ERotState".to_string()),
-            s: KeriSequence::new(1),
-            p: Said::new_unchecked("ERotState".to_string()),
-            kt: "1".to_string(),
-            k: vec!["DKey2".to_string()],
-            nt: "1".to_string(),
-            n: vec!["ENext2".to_string()],
-            bt: "0".to_string(),
-            b: vec![],
-            a: vec![],
-            x: String::new(),
-        });
-        kel.append(&rot).unwrap();
-
+        let kel = GitKel::new(&repo, init.prefix.as_str());
         let state = kel.get_state(chrono::Utc::now()).unwrap();
         assert_eq!(state.sequence, 1);
-        assert_eq!(state.current_keys, vec!["DKey2"]);
-        assert_eq!(state.last_event_said, "ERotSaid");
+        assert_eq!(rot.sequence, 1);
     }
 
     #[test]
     fn get_latest_event() {
         let (_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "ELatest");
-
-        let icp = make_icp_event("ELatest");
-        kel.create(&icp).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let latest = kel.get_latest_event().unwrap();
         assert!(latest.is_inception());
 
-        let rot = Event::Rot(RotEvent {
-            v: KERI_VERSION.to_string(),
-            d: Said::new_unchecked("ERotSaid".to_string()),
-            i: Prefix::new_unchecked("ELatest".to_string()),
-            s: KeriSequence::new(1),
-            p: Said::new_unchecked("ELatest".to_string()),
-            kt: "1".to_string(),
-            k: vec!["DKey2".to_string()],
-            nt: "1".to_string(),
-            n: vec!["ENext2".to_string()],
-            bt: "0".to_string(),
-            b: vec![],
-            a: vec![],
-            x: String::new(),
-        });
-        kel.append(&rot).unwrap();
+        let _rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let latest = kel.get_latest_event().unwrap();
         assert!(latest.is_rotation());
@@ -686,15 +727,12 @@ mod tests {
     #[test]
     fn cannot_append_icp_event() {
         let (_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "ENoAppendIcp");
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        let icp = make_icp_event("ENoAppendIcp");
-        kel.create(&icp).unwrap();
-
-        // Try to append an ICP event
-        let icp2 = Event::Icp(make_icp_event("ENoAppendIcp"));
-        let result = kel.append(&icp2);
-        assert!(matches!(result, Err(KelError::InvalidOperation(_))));
+        let icp2 = Event::Icp(make_icp_event("EFake"));
+        let result = kel.append(&icp2, chrono::Utc::now());
+        assert!(matches!(result, Err(KelError::ValidationFailed(_))));
     }
 
     // --- Incremental validation tests ---
@@ -719,34 +757,27 @@ mod tests {
 
     #[test]
     fn test_cold_cache_full_replay() {
-        let (repo_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "EColdCache");
-        let icp = make_icp_event("EColdCache");
-        kel.create(&icp).unwrap();
+        let (_dir, repo) = setup_repo();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        // First call should do full replay and write cache
         let state = kel.get_state(chrono::Utc::now()).unwrap();
-        assert_eq!(state.prefix, "EColdCache");
+        assert_eq!(state.prefix.as_str(), init.prefix.as_str());
         assert_eq!(state.sequence, 0);
 
-        // Verify cache was written
-        let did = "did:keri:EColdCache";
+        let did = format!("did:keri:{}", init.prefix.as_str());
         let tip_said = kel.get_latest_event().unwrap().said().to_string();
-        let cached = cache::try_load_cached_state(repo_dir.path(), did, &tip_said);
+        let cached = cache::try_load_cached_state(_dir.path(), &did, &tip_said);
         assert!(cached.is_some());
     }
 
     #[test]
     fn test_warm_cache_hit() {
-        let (_repo_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "EWarmCache");
-        let icp = make_icp_event("EWarmCache");
-        kel.create(&icp).unwrap();
+        let (_dir, repo) = setup_repo();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        // First call writes cache
         let state1 = kel.get_state(chrono::Utc::now()).unwrap();
-
-        // Second call should be a cache hit
         let state2 = kel.get_state(chrono::Utc::now()).unwrap();
 
         assert_eq!(state1, state2);
@@ -754,80 +785,90 @@ mod tests {
     }
 
     #[test]
-    fn test_incremental_validation_behind_by_k() {
-        let (_repo_dir, repo) = setup_repo();
-        let prefix = "EIncremental";
-        let kel = GitKel::new(&repo, prefix);
-        let icp = make_icp_event(prefix);
-        kel.create(&icp).unwrap();
+    fn test_incremental_validation_after_rotation() {
+        let (_dir, repo) = setup_repo();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        // Write cache after inception
+        // Prime cache
         let _ = kel.get_state(chrono::Utc::now()).unwrap();
 
-        // Add k=3 new events
-        let mut prev_said = prefix.to_string();
-        for seq in 1..=3 {
-            let rot = Event::Rot(make_rot_event(prefix, seq, &prev_said));
-            prev_said = rot.said().to_string();
-            kel.append(&rot).unwrap();
-        }
+        // Rotate keys (appends validated event)
+        let rot1 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
-        // This should use incremental validation (k=3 events)
         let state = kel.get_state(chrono::Utc::now()).unwrap();
-        assert_eq!(state.sequence, 3);
-        assert_eq!(state.current_keys, vec!["DKey4"]);
+        assert_eq!(state.sequence, 1);
+
+        // Rotate again
+        let _rot2 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &rot1.new_next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
+
+        let state = kel.get_state(chrono::Utc::now()).unwrap();
+        assert_eq!(state.sequence, 2);
     }
 
     #[test]
     fn test_cache_divergence_fallback() {
-        let (repo_dir, repo) = setup_repo();
-        let prefix = "EDivergent";
-        let kel = GitKel::new(&repo, prefix);
-        let icp = make_icp_event(prefix);
-        kel.create(&icp).unwrap();
+        let (_dir, repo) = setup_repo();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        // Write cache
         let _ = kel.get_state(chrono::Utc::now()).unwrap();
 
-        // Manually corrupt the cache with a fake commit OID
-        let did = format!("did:keri:{}", prefix);
-        let cached_full = cache::try_load_cached_state_full(repo_dir.path(), &did).unwrap();
+        let did = format!("did:keri:{}", init.prefix.as_str());
+        let cached_full = cache::try_load_cached_state_full(_dir.path(), &did).unwrap();
         let _ = cache::write_kel_cache(
-            repo_dir.path(),
+            _dir.path(),
             &did,
             &cached_full.state,
             cached_full.validated_against_tip_said.as_str(),
-            "0000000000000000000000000000000000000000", // Fake OID
+            "0000000000000000000000000000000000000000",
             chrono::Utc::now(),
         );
 
-        // Should fall back to full replay and still succeed
         let state = kel.get_state(chrono::Utc::now()).unwrap();
-        assert_eq!(state.prefix, prefix);
+        assert_eq!(state.prefix.as_str(), init.prefix.as_str());
     }
 
     #[test]
     fn test_get_state_matches_full_replay() {
-        let (repo_dir, repo) = setup_repo();
-        let prefix = "ECompare";
-        let kel = GitKel::new(&repo, prefix);
-        let icp = make_icp_event(prefix);
-        kel.create(&icp).unwrap();
+        let (_dir, repo) = setup_repo();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let rot1 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
+        let _rot2 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &rot1.new_next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
-        // Add some events
-        let mut prev_said = prefix.to_string();
-        for seq in 1..=5 {
-            let rot = Event::Rot(make_rot_event(prefix, seq, &prev_said));
-            prev_said = rot.said().to_string();
-            kel.append(&rot).unwrap();
-        }
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        // get_state() uses incremental validation
         let state_incremental = kel.get_state(chrono::Utc::now()).unwrap();
-        // Clear cache to force full replay
-        let did = format!("did:keri:{}", prefix);
-        let _ = cache::invalidate_cache(repo_dir.path(), &did);
-        // get_state_full_replay() bypasses cache
+        let did = format!("did:keri:{}", init.prefix.as_str());
+        let _ = cache::invalidate_cache(_dir.path(), &did);
         let state_full = kel.get_state_full_replay(chrono::Utc::now()).unwrap();
 
         assert_eq!(state_incremental.prefix, state_full.prefix);
@@ -841,36 +882,29 @@ mod tests {
 
     #[test]
     fn test_cache_said_mismatch_forces_replay() {
-        let (repo_dir, repo) = setup_repo();
-        let prefix = "ESaidMismatch";
-        let kel = GitKel::new(&repo, prefix);
-        let icp = make_icp_event(prefix);
-        kel.create(&icp).unwrap();
+        let (_dir, repo) = setup_repo();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        // Write cache after inception
         let _ = kel.get_state(chrono::Utc::now()).unwrap();
 
-        // Get the cached state and corrupt the SAID
-        let did = format!("did:keri:{}", prefix);
-        let cached_full = cache::try_load_cached_state_full(repo_dir.path(), &did).unwrap();
+        let did = format!("did:keri:{}", init.prefix.as_str());
+        let cached_full = cache::try_load_cached_state_full(_dir.path(), &did).unwrap();
 
-        // Write cache with wrong SAID but correct OID
         let _ = cache::write_kel_cache(
-            repo_dir.path(),
+            _dir.path(),
             &did,
             &cached_full.state,
-            "EFakeSaidThatDoesNotMatchCommit", // Wrong SAID
-            &cached_full.last_commit_oid,      // Correct OID
+            "EFakeSaidThatDoesNotMatchCommit",
+            &cached_full.last_commit_oid,
             chrono::Utc::now(),
         );
 
-        // get_state() should detect mismatch and do full replay
         let state = kel.get_state(chrono::Utc::now()).unwrap();
-        assert_eq!(state.prefix, prefix);
+        assert_eq!(state.prefix.as_str(), init.prefix.as_str());
         assert_eq!(state.sequence, 0);
 
-        // Verify cache was rewritten with correct SAID
-        let new_cached = cache::try_load_cached_state_full(repo_dir.path(), &did).unwrap();
+        let new_cached = cache::try_load_cached_state_full(_dir.path(), &did).unwrap();
         let tip_said = kel.get_latest_event().unwrap().said().to_string();
         assert_eq!(
             new_cached.validated_against_tip_said.as_str(),
@@ -881,30 +915,30 @@ mod tests {
     #[test]
     fn test_commit_hash_helpers() {
         let (_dir, repo) = setup_repo();
-        let kel = GitKel::new(&repo, "EOidTest");
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let kel = GitKel::new(&repo, init.prefix.as_str());
 
-        let icp = make_icp_event("EOidTest");
-        kel.create(&icp).unwrap();
-
-        // Get tip hash
         let tip_hash = kel.tip_commit_hash().unwrap();
         assert!(kel.commit_exists(tip_hash));
 
-        // Read event from hash
         let event = kel.read_event_from_commit_hash(tip_hash).unwrap();
         assert!(event.is_inception());
 
-        // Inception has no parent
         assert!(kel.parent_hash(tip_hash).unwrap().is_none());
 
-        // Add a rotation
-        let rot = Event::Rot(make_rot_event("EOidTest", 1, "EOidTest"));
-        kel.append(&rot).unwrap();
+        // Rotate to add another event
+        let _rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let new_tip = kel.tip_commit_hash().unwrap();
         assert_ne!(tip_hash, new_tip);
 
-        // Rotation should have parent
         let parent = kel.parent_hash(new_tip).unwrap();
         assert!(parent.is_some());
         assert_eq!(parent.unwrap(), tip_hash);
@@ -916,16 +950,13 @@ mod tests {
             let prefix = "EMergeReject";
             let kel = GitKel::new(repo, prefix);
             let icp = make_icp_event(prefix);
-            kel.create(&icp).unwrap();
+            kel.create(&icp, chrono::Utc::now()).unwrap();
 
-            // Prime the cache so incremental validation will be attempted
             let _ = kel.get_state(chrono::Utc::now()).unwrap();
 
-            // Get inception commit hash
             let inception_hash = kel.tip_commit_hash().unwrap();
             let inception_oid = crate::witness::event_hash_to_oid(inception_hash);
 
-            // Create first branch: a rotation at s=1
             let rot1 = Event::Rot(make_rot_event(prefix, 1, prefix));
             let rot1_json = serde_json::to_vec_pretty(&rot1).unwrap();
             let blob1_oid = repo.blob(&rot1_json).unwrap();

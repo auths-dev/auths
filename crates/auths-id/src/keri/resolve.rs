@@ -13,6 +13,7 @@ use super::{GitKel, KelError, ValidationError, validate_kel};
 
 /// Error type for did:keri resolution.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ResolveError {
     #[error("Invalid DID format: {0}")]
     InvalidFormat(String),
@@ -178,6 +179,7 @@ pub fn parse_did_keri(did: &str) -> Result<Prefix, ResolveError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::keri::{create_keri_identity, rotate_keys};
@@ -222,7 +224,7 @@ mod tests {
     fn resolves_after_inception() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let did = format!("did:keri:{}", init.prefix);
 
         let resolution = resolve_did_keri(&repo, &did).unwrap();
@@ -238,8 +240,15 @@ mod tests {
     fn resolves_after_rotation() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
-        let rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let did = format!("did:keri:{}", init.prefix);
         let resolution = resolve_did_keri(&repo, &did).unwrap();
@@ -253,8 +262,15 @@ mod tests {
     fn resolves_at_historical_sequence() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
-        let _rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let _rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let did = format!("did:keri:{}", init.prefix);
 

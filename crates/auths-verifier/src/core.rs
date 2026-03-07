@@ -18,6 +18,13 @@ pub const MAX_ATTESTATION_JSON_SIZE: usize = 64 * 1024;
 /// Maximum allowed size for JSON array inputs — chains, receipts, witness keys (1 MiB).
 pub const MAX_JSON_BATCH_SIZE: usize = 1024 * 1024;
 
+/// Maximum hex string length for Ed25519 public key (32 bytes × 2).
+pub const MAX_PUBLIC_KEY_HEX_LEN: usize = 64;
+/// Maximum hex string length for Ed25519 signature (64 bytes × 2).
+pub const MAX_SIGNATURE_HEX_LEN: usize = 128;
+/// Maximum hex string length for SHA-256 file hash (32 bytes × 2).
+pub const MAX_FILE_HASH_HEX_LEN: usize = 64;
+
 // Well-known capability strings (without auths: prefix for backward compat)
 const SIGN_COMMIT: &str = "sign_commit";
 const SIGN_RELEASE: &str = "sign_release";

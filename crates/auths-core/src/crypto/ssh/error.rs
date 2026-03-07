@@ -11,6 +11,7 @@
 /// }
 /// ```
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CryptoError {
     /// SSH key construction failed.
     #[error("SSH key construction failed: {0}")]

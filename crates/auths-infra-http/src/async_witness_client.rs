@@ -3,6 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde::Deserialize;
 
+use crate::default_client_builder;
 use auths_core::witness::{
     AsyncWitnessProvider, DuplicityEvidence, EventHash, Receipt, WitnessError,
 };
@@ -57,13 +58,13 @@ impl HttpAsyncWitnessClient {
     /// ```ignore
     /// let client = HttpAsyncWitnessClient::new("http://witness:3000", 1);
     /// ```
-    // INVARIANT: reqwest Client::builder with only timeout cannot fail
+    // INVARIANT: reqwest builder with these settings cannot fail
     #[allow(clippy::expect_used)]
     pub fn new(base_url: impl Into<String>, quorum_size: usize) -> Self {
         let timeout = Duration::from_secs(5);
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            client: reqwest::Client::builder()
+            client: default_client_builder()
                 .timeout(timeout)
                 .build()
                 .expect("failed to build reqwest client"),
@@ -82,11 +83,11 @@ impl HttpAsyncWitnessClient {
     /// let client = HttpAsyncWitnessClient::new("http://witness:3000", 1)
     ///     .with_timeout(Duration::from_secs(30));
     /// ```
-    // INVARIANT: reqwest Client::builder with only timeout cannot fail
+    // INVARIANT: reqwest builder with these settings cannot fail
     #[allow(clippy::expect_used)]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
-        self.client = reqwest::Client::builder()
+        self.client = default_client_builder()
             .timeout(timeout)
             .build()
             .expect("failed to build reqwest client");

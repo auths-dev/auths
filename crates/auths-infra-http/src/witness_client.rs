@@ -3,6 +3,7 @@ use auths_verifier::keri::Prefix;
 use std::future::Future;
 use std::time::Duration;
 
+use crate::default_client_builder;
 use crate::request::{
     build_get_request, build_post_request, execute_request, parse_response_bytes,
 };
@@ -24,11 +25,11 @@ pub struct HttpWitnessClient {
 }
 
 impl HttpWitnessClient {
-    // INVARIANT: reqwest Client::builder with only timeout cannot fail
+    // INVARIANT: reqwest builder with these settings cannot fail
     #[allow(clippy::expect_used)]
     pub fn new(timeout: Duration) -> Self {
         Self {
-            client: reqwest::Client::builder()
+            client: default_client_builder()
                 .timeout(timeout)
                 .build()
                 .expect("failed to build reqwest client"),

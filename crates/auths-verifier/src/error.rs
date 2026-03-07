@@ -102,6 +102,15 @@ pub enum AttestationError {
         /// Maximum permitted age in seconds.
         max_secs: u64,
     },
+
+    /// The attestation timestamp is older than the caller-specified maximum age.
+    #[error("Attestation is {age_secs}s old (max {max_secs}s)")]
+    AttestationTooOld {
+        /// Actual attestation age in seconds.
+        age_secs: u64,
+        /// Maximum permitted age in seconds.
+        max_secs: u64,
+    },
 }
 
 impl AuthsErrorInfo for AttestationError {
@@ -124,6 +133,7 @@ impl AuthsErrorInfo for AttestationError {
             Self::OrgAttestationExpired => "AUTHS_ORG_ATTESTATION_EXPIRED",
             Self::OrgDidResolutionFailed(_) => "AUTHS_ORG_DID_RESOLUTION_FAILED",
             Self::BundleExpired { .. } => "AUTHS_BUNDLE_EXPIRED",
+            Self::AttestationTooOld { .. } => "AUTHS_ATTESTATION_TOO_OLD",
         }
     }
 
@@ -158,6 +168,9 @@ impl AuthsErrorInfo for AttestationError {
             Self::BundleExpired { .. } => Some(
                 "Re-export the bundle: auths id export-bundle --alias <ALIAS> --output bundle.json --max-age-secs <SECS>",
             ),
+            Self::AttestationTooOld { .. } => {
+                Some("Request a fresh attestation or increase the max_age threshold")
+            }
             Self::SigningError(_)
             | Self::SerializationError(_)
             | Self::InvalidInput(_)

@@ -486,6 +486,7 @@ fn handle_rotate_now(cmd: RotateNowCommand) -> Result<()> {
         &config,
         keychain.as_ref(),
         None,
+        chrono::Utc::now(),
     )
     .context("Key rotation failed")?;
 

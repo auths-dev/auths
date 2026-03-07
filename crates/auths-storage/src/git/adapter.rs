@@ -385,6 +385,7 @@ impl GitRegistryBackend {
 
     /// Commit without acquiring the advisory lock.
     /// Caller MUST already hold the `AdvisoryLock`.
+    #[allow(clippy::disallowed_methods)]
     fn create_commit_unlocked(
         &self,
         repo: &Repository,
@@ -392,7 +393,7 @@ impl GitRegistryBackend {
         parent: Option<&git2::Commit>,
         message: &str,
     ) -> Result<Oid, RegistryError> {
-        let sig = self.get_signature(repo)?;
+        let sig = self.get_signature(repo, chrono::Utc::now())?;
         let tree = repo.find_tree(tree_oid).map_err(from_git2)?;
 
         let parents: Vec<&git2::Commit> = parent.into_iter().collect();
@@ -439,10 +440,20 @@ impl GitRegistryBackend {
         Ok(commit_oid)
     }
 
-    /// Get a Git signature for commits.
-    fn get_signature(&self, repo: &Repository) -> Result<Signature<'static>, RegistryError> {
+    /// Get a Git signature for commits using an injected timestamp.
+    fn get_signature(
+        &self,
+        repo: &Repository,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Signature<'static>, RegistryError> {
         repo.signature()
-            .or_else(|_| Signature::now("authly", "authly@localhost"))
+            .or_else(|_| {
+                Signature::new(
+                    "authly",
+                    "authly@localhost",
+                    &git2::Time::new(now.timestamp(), 0),
+                )
+            })
             .map_err(from_git2)
     }
 

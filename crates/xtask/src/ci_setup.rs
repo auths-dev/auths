@@ -1,3 +1,6 @@
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 use anyhow::{bail, Context, Result};
 use base64::Engine as _;
 use flate2::write::GzEncoder;
@@ -73,7 +76,22 @@ pub fn run() -> Result<()> {
         let seed: [u8; 32] = rand::random();
         let tmp = TempDir::new()?;
         let seed_path = tmp.path().join("ci-device-seed.bin");
-        fs::write(&seed_path, seed)?;
+        {
+            #[cfg(unix)]
+            {
+                let mut f = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .mode(0o600)
+                    .open(&seed_path)?;
+                f.write_all(&seed)?;
+            }
+            #[cfg(not(unix))]
+            {
+                fs::write(&seed_path, seed)?;
+            }
+        }
 
         // Import the seed into platform keychain
         println!("\x1b[2mImporting key into platform keychain:\x1b[0m");

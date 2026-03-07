@@ -131,9 +131,15 @@ impl AttestationSink for GitRefSink {
         };
         debug!("Commit message determined: '{}'", message);
 
-        let author = repo
-            .signature()
-            .or_else(|_| Signature::now("auths", "auths@localhost"))?;
+        #[allow(clippy::disallowed_methods)]
+        let now = chrono::Utc::now();
+        let author = repo.signature().or_else(|_| {
+            Signature::new(
+                "auths",
+                "auths@localhost",
+                &git2::Time::new(now.timestamp(), 0),
+            )
+        })?;
         debug!("Using Git author/committer: {}", author);
 
         let commit_oid = repo.commit(None, &author, &author, message, &tree, &parents)?;

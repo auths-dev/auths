@@ -9,6 +9,7 @@ const ED25519_MULTICODEC: [u8; 2] = [0xED, 0x01];
 
 /// Errors from parsing or encoding `did:key` strings.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DidKeyError {
     #[error("DID must start with 'did:key:z', got: {0}")]
     InvalidPrefix(String),

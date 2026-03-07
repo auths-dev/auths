@@ -38,6 +38,7 @@ use super::{Event, IcpEvent, IxnEvent, KeyState, RotEvent};
 /// - **Self-addressing**: Each event's SAID must match its content hash
 /// - **Chain integrity**: Each event must reference the previous event's SAID
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ValidationError {
     /// SAID (Self-Addressing Identifier) doesn't match content hash.
     ///
@@ -343,6 +344,28 @@ pub fn verify_event_said(event: &Event) -> Result<(), ValidationError> {
             actual: actual.clone(),
         });
     }
+
+    Ok(())
+}
+
+/// Validate a single event for appending to a KEL with known state.
+///
+/// Checks all invariants that `validate_kel` checks per-event:
+/// SAID integrity, sequence continuity, chain linkage, and cryptographic
+/// validity (signature + pre-rotation commitment).
+///
+/// Args:
+/// * `event` - The event to validate for append.
+/// * `state` - The current KeyState (tip of the existing KEL).
+pub fn validate_for_append(event: &Event, state: &KeyState) -> Result<(), ValidationError> {
+    if matches!(event, Event::Icp(_)) {
+        return Err(ValidationError::MultipleInceptions);
+    }
+
+    verify_event_said(event)?;
+    verify_sequence(event, state.sequence + 1)?;
+    verify_chain_linkage(event, state)?;
+    verify_event_crypto(event, Some(state))?;
 
     Ok(())
 }

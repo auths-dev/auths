@@ -52,6 +52,7 @@ impl Identity {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum IdentityError {
     #[error("KERI error: {0}")]
     Keri(String),

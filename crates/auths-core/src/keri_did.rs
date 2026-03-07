@@ -112,6 +112,7 @@ impl TryFrom<&str> for KeriDid {
 
 /// Error from parsing an invalid `did:keri:` string.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum KeriDidError {
     /// The `did:keri:` prefix is absent.
     #[error("not a did:keri: identifier")]

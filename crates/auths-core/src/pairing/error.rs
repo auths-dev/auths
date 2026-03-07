@@ -5,6 +5,7 @@ use thiserror::Error;
 /// Wraps protocol-level errors from `auths-pairing-protocol` and adds
 /// transport-specific variants used by the CLI.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PairingError {
     /// A protocol-level error (expired token, bad signature, etc.).
     #[error(transparent)]

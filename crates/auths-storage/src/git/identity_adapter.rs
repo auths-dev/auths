@@ -27,6 +27,8 @@
 
 use std::path::PathBuf;
 
+use auths_crypto::Pkcs8Der;
+
 use auths_id::error::{InitError, StorageError};
 use git2::Repository;
 use serde::{Deserialize, Serialize};
@@ -193,8 +195,8 @@ impl RegistryIdentityStorage {
             controller_did,
             InceptionResult {
                 prefix,
-                current_keypair_pkcs8: current_pkcs8.as_ref().to_vec(),
-                next_keypair_pkcs8: next_pkcs8.as_ref().to_vec(),
+                current_keypair_pkcs8: Pkcs8Der::new(current_pkcs8.as_ref()),
+                next_keypair_pkcs8: Pkcs8Der::new(next_pkcs8.as_ref()),
                 current_public_key: current_keypair.public_key().as_ref().to_vec(),
                 next_public_key: next_keypair.public_key().as_ref().to_vec(),
             },
@@ -232,7 +234,10 @@ impl RegistryIdentityStorage {
         let new_tree = repo.find_tree(new_tree_oid)?;
 
         // Create commit
-        let sig = git2::Signature::now("auths", "auths@local")?;
+        #[allow(clippy::disallowed_methods)]
+        let now = chrono::Utc::now();
+        let sig =
+            git2::Signature::new("auths", "auths@local", &git2::Time::new(now.timestamp(), 0))?;
         let parent = &[&commit];
         repo.commit(
             Some(REGISTRY_REF),

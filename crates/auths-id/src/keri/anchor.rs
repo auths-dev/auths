@@ -19,6 +19,7 @@ use super::{
 
 /// Error type for anchoring operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum AnchorError {
     #[error("KEL error: {0}")]
     Kel(#[from] KelError),
@@ -71,6 +72,7 @@ pub fn anchor_data<T: serde::Serialize>(
     data: &T,
     seal_type: SealType,
     current_keypair: &Ed25519KeyPair,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Said, AnchorError> {
     let kel = GitKel::new(repo, prefix.as_str());
     if !kel.exists() {
@@ -111,7 +113,7 @@ pub fn anchor_data<T: serde::Serialize>(
     ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
     // Append to KEL
-    kel.append(&Event::Ixn(ixn.clone()))?;
+    kel.append(&Event::Ixn(ixn.clone()), now)?;
 
     Ok(ixn.d)
 }
@@ -124,6 +126,7 @@ pub fn anchor_attestation<T: serde::Serialize>(
     prefix: &Prefix,
     attestation: &T,
     current_keypair: &Ed25519KeyPair,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Said, AnchorError> {
     anchor_data(
         repo,
@@ -131,6 +134,7 @@ pub fn anchor_attestation<T: serde::Serialize>(
         attestation,
         SealType::DeviceAttestation,
         current_keypair,
+        now,
     )
 }
 
@@ -249,6 +253,7 @@ pub fn verify_attestation_anchor_by_issuer<T: serde::Serialize>(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::keri::{Prefix, create_keri_identity};
@@ -286,13 +291,19 @@ mod tests {
     fn anchor_creates_ixn_event() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
-        let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+        let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         let attestation = make_test_attestation(&issuer_did, "did:key:device123");
-        let anchor_said =
-            anchor_attestation(&repo, &init.prefix, &attestation, &current_keypair).unwrap();
+        let anchor_said = anchor_attestation(
+            &repo,
+            &init.prefix,
+            &attestation,
+            &current_keypair,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         // Verify IXN was created
         let kel = GitKel::new(&repo, init.prefix.as_str());
@@ -315,8 +326,8 @@ mod tests {
     fn anchor_with_delegation_seal_type() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
-        let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         let data = serde_json::json!({"delegation": "data"});
         let anchor_said = anchor_data(
@@ -325,6 +336,7 @@ mod tests {
             &data,
             SealType::Delegation,
             &current_keypair,
+            chrono::Utc::now(),
         )
         .unwrap();
 
@@ -343,12 +355,19 @@ mod tests {
     fn find_anchor_locates_attestation() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
-        let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+        let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         let attestation = make_test_attestation(&issuer_did, "did:key:device123");
-        anchor_attestation(&repo, &init.prefix, &attestation, &current_keypair).unwrap();
+        anchor_attestation(
+            &repo,
+            &init.prefix,
+            &attestation,
+            &current_keypair,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         // Compute the digest we're looking for
         let att_json = serde_json::to_vec(&attestation).unwrap();
@@ -363,12 +382,19 @@ mod tests {
     fn verify_anchor_works() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
-        let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+        let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         let attestation = make_test_attestation(&issuer_did, "did:key:device123");
-        anchor_attestation(&repo, &init.prefix, &attestation, &current_keypair).unwrap();
+        anchor_attestation(
+            &repo,
+            &init.prefix,
+            &attestation,
+            &current_keypair,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let verification = verify_anchor(&repo, &init.prefix, &attestation).unwrap();
         assert!(verification.anchored);
@@ -381,7 +407,7 @@ mod tests {
     fn unanchored_attestation_not_found() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
 
         let attestation = make_test_attestation(&issuer_did, "did:key:device123");
@@ -396,15 +422,29 @@ mod tests {
     fn multiple_anchors_work() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
-        let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+        let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         let att1 = make_test_attestation(&issuer_did, "did:key:device1");
         let att2 = make_test_attestation(&issuer_did, "did:key:device2");
 
-        let said1 = anchor_attestation(&repo, &init.prefix, &att1, &current_keypair).unwrap();
-        let said2 = anchor_attestation(&repo, &init.prefix, &att2, &current_keypair).unwrap();
+        let said1 = anchor_attestation(
+            &repo,
+            &init.prefix,
+            &att1,
+            &current_keypair,
+            chrono::Utc::now(),
+        )
+        .unwrap();
+        let said2 = anchor_attestation(
+            &repo,
+            &init.prefix,
+            &att2,
+            &current_keypair,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         assert_ne!(said1, said2);
 
@@ -422,12 +462,19 @@ mod tests {
     fn verify_by_issuer_did() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
-        let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+        let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         let attestation = make_test_attestation(&issuer_did, "did:key:device123");
-        anchor_attestation(&repo, &init.prefix, &attestation, &current_keypair).unwrap();
+        anchor_attestation(
+            &repo,
+            &init.prefix,
+            &attestation,
+            &current_keypair,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let verification =
             verify_attestation_anchor_by_issuer(&repo, &issuer_did, &attestation).unwrap();
@@ -439,13 +486,19 @@ mod tests {
         let (_dir, repo) = setup_repo();
 
         // Create an identity to get a valid keypair (for the signature requirement)
-        let init = create_keri_identity(&repo, None).unwrap();
-        let current_keypair = TestKeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         // Try to anchor to a non-existent KEL
         let attestation = make_test_attestation("did:keri:ENotExist", "did:key:device");
         let fake_prefix = Prefix::new_unchecked("ENotExist".to_string());
-        let result = anchor_attestation(&repo, &fake_prefix, &attestation, &current_keypair);
+        let result = anchor_attestation(
+            &repo,
+            &fake_prefix,
+            &attestation,
+            &current_keypair,
+            chrono::Utc::now(),
+        );
         assert!(matches!(result, Err(AnchorError::NotFound(_))));
     }
 }

@@ -36,12 +36,24 @@ fn double_rotation_with_consumed_next_key_fails() {
     let init = create_keri_identity_with_backend(&backend, None).unwrap();
 
     // First rotation succeeds using the pre-committed next key
-    let rot1 =
-        rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let rot1 = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
     assert_eq!(rot1.sequence, 1);
 
     // Second rotation with the SAME consumed key must fail
-    let result = rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None);
+    let result = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    );
     assert!(
         matches!(result, Err(RotationError::CommitmentMismatch)),
         "Replaying a consumed next-key must fail with CommitmentMismatch, got: {:?}",
@@ -49,8 +61,14 @@ fn double_rotation_with_consumed_next_key_fails() {
     );
 
     // But rotating with the NEW next key from rot1 succeeds
-    let rot2 = rotate_keys_with_backend(&backend, &init.prefix, &rot1.new_next_keypair_pkcs8, None)
-        .unwrap();
+    let rot2 = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &rot1.new_next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
     assert_eq!(rot2.sequence, 2);
 }
 
@@ -60,11 +78,23 @@ fn double_rotation_does_not_corrupt_kel() {
 
     let init = create_keri_identity_with_backend(&backend, None).unwrap();
 
-    let rot1 =
-        rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let rot1 = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
 
     // Failed double-rotation attempt
-    let _ = rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None);
+    let _ = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    );
 
     // KEL should still be valid with exactly 2 events (ICP + ROT)
     let mut events = Vec::new();
@@ -81,8 +111,14 @@ fn double_rotation_does_not_corrupt_kel() {
     assert!(!state.is_abandoned);
 
     // Legitimate next rotation still works
-    let rot2 = rotate_keys_with_backend(&backend, &init.prefix, &rot1.new_next_keypair_pkcs8, None)
-        .unwrap();
+    let rot2 = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &rot1.new_next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
     assert_eq!(rot2.sequence, 2);
 }
 
@@ -94,20 +130,27 @@ fn double_rotation_does_not_corrupt_kel() {
 fn rotation_after_interaction_events_preserves_kel_integrity() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_kp = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let current_kp = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN at seq 1
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
-    anchor_attestation(&repo, &init.prefix, &att1, &current_kp).unwrap();
+    anchor_attestation(&repo, &init.prefix, &att1, &current_kp, chrono::Utc::now()).unwrap();
 
     // IXN at seq 2
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
-    anchor_attestation(&repo, &init.prefix, &att2, &current_kp).unwrap();
+    anchor_attestation(&repo, &init.prefix, &att2, &current_kp, chrono::Utc::now()).unwrap();
 
     // ROT at seq 3 (using pre-committed next key)
-    let rot1 = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let rot1 = rotate_keys(
+        &repo,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
     assert_eq!(rot1.sequence, 3);
 
     // Verify KEL: ICP(0) + IXN(1) + IXN(2) + ROT(3)
@@ -129,21 +172,28 @@ fn rotation_after_interaction_events_preserves_kel_integrity() {
 fn anchoring_works_with_rotated_key_after_ixn() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_kp = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let current_kp = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN with inception key
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
-    anchor_attestation(&repo, &init.prefix, &att1, &current_kp).unwrap();
+    anchor_attestation(&repo, &init.prefix, &att1, &current_kp, chrono::Utc::now()).unwrap();
 
     // Rotate key
-    let rot1 = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
-    let rotated_kp = Ed25519KeyPair::from_pkcs8(&rot1.new_current_keypair_pkcs8).unwrap();
+    let rot1 = rotate_keys(
+        &repo,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
+    let rotated_kp = Ed25519KeyPair::from_pkcs8(rot1.new_current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN with rotated key
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
-    anchor_attestation(&repo, &init.prefix, &att2, &rotated_kp).unwrap();
+    anchor_attestation(&repo, &init.prefix, &att2, &rotated_kp, chrono::Utc::now()).unwrap();
 
     // KEL: ICP(0) + IXN(1) + ROT(2) + IXN(3)
     let kel = GitKel::new(&repo, init.prefix.as_str());
@@ -162,31 +212,45 @@ fn anchoring_works_with_rotated_key_after_ixn() {
 fn multiple_rotations_interleaved_with_ixn() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let kp0 = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let kp0 = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN(1) with inception key
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
-    anchor_attestation(&repo, &init.prefix, &att1, &kp0).unwrap();
+    anchor_attestation(&repo, &init.prefix, &att1, &kp0, chrono::Utc::now()).unwrap();
 
     // ROT(2)
-    let rot1 = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let rot1 = rotate_keys(
+        &repo,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
     assert_eq!(rot1.sequence, 2);
-    let kp1 = Ed25519KeyPair::from_pkcs8(&rot1.new_current_keypair_pkcs8).unwrap();
+    let kp1 = Ed25519KeyPair::from_pkcs8(rot1.new_current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN(3) with rotated key
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
-    anchor_attestation(&repo, &init.prefix, &att2, &kp1).unwrap();
+    anchor_attestation(&repo, &init.prefix, &att2, &kp1, chrono::Utc::now()).unwrap();
 
     // ROT(4)
-    let rot2 = rotate_keys(&repo, &init.prefix, &rot1.new_next_keypair_pkcs8, None).unwrap();
+    let rot2 = rotate_keys(
+        &repo,
+        &init.prefix,
+        &rot1.new_next_keypair_pkcs8,
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
     assert_eq!(rot2.sequence, 4);
-    let kp2 = Ed25519KeyPair::from_pkcs8(&rot2.new_current_keypair_pkcs8).unwrap();
+    let kp2 = Ed25519KeyPair::from_pkcs8(rot2.new_current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN(5) with second-rotated key
     let att3 = make_test_attestation(&identity_did, "did:key:device3");
-    anchor_attestation(&repo, &init.prefix, &att3, &kp2).unwrap();
+    anchor_attestation(&repo, &init.prefix, &att3, &kp2, chrono::Utc::now()).unwrap();
 
     // KEL: ICP(0) IXN(1) ROT(2) IXN(3) ROT(4) IXN(5)
     let kel = GitKel::new(&repo, init.prefix.as_str());

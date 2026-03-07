@@ -31,6 +31,7 @@ use super::receipt::Receipt;
 
 /// Error during receipt collection.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CollectionError {
     /// Duplicity detected during collection.
     #[error("duplicity detected: {0}")]

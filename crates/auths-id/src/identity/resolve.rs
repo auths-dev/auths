@@ -158,6 +158,7 @@ pub fn ed25519_to_did_key(public_key: &[u8; 32]) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::keri::create_keri_identity;
@@ -198,7 +199,7 @@ mod tests {
     fn resolves_did_keri_with_repo() {
         let (dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let did = format!("did:keri:{}", init.prefix);
 
         let resolver = DefaultDidResolver::with_repo(dir.path());

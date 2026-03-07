@@ -25,6 +25,7 @@ pub trait AuthsErrorInfo {
 
 /// Errors from the Auths agent and core operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum AgentError {
     /// The requested key was not found.
     #[error("Key not found")]
@@ -217,6 +218,7 @@ impl AuthsErrorInfo for AgentError {
 
 /// Errors from trust resolution and identity pinning.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum TrustError {
     /// An I/O error occurred.
     #[error("I/O error: {0}")]

@@ -47,6 +47,7 @@ impl KeriGitStorage {
         did_prefix: &Prefix,
         event_bytes: &[u8],
         commit_message: &str,
+        now: chrono::DateTime<chrono::Utc>,
     ) -> Result<Oid, StorageError> {
         debug!(
             "Storing KERI event for prefix '{}' in repo {:?}. Message: '{}'",
@@ -113,9 +114,13 @@ impl KeriGitStorage {
         debug!("Created tree {} containing event blob", tree_oid);
 
         // 5. Create the Git signature (use repo default or fallback)
-        let sig = repo
-            .signature()
-            .or_else(|_| Signature::now("auths-keri", "auths-keri@localhost"))?;
+        let sig = repo.signature().or_else(|_| {
+            Signature::new(
+                "auths-keri",
+                "auths-keri@localhost",
+                &git2::Time::new(now.timestamp(), 0),
+            )
+        })?;
         debug!("Using Git signature: {}", sig);
 
         // 6. Create the Git commit object
@@ -282,6 +287,7 @@ impl KeriGitStorage {
         &self,
         did_prefix: &Prefix,
         event: &KeyRotationEvent,
+        now: chrono::DateTime<chrono::Utc>,
     ) -> Result<Oid, StorageError> {
         debug!(
             "Appending rotation event (seq {}) for prefix '{}' in repo {:?}",
@@ -352,7 +358,7 @@ impl KeriGitStorage {
 
         // 4. Store the event using the existing store_event method
         let commit_message = format!("Key rotation: sequence {}", event.sequence);
-        self.store_event(did_prefix, &event_json, &commit_message)
+        self.store_event(did_prefix, &event_json, &commit_message, now)
     }
 }
 
@@ -360,6 +366,7 @@ impl KeriGitStorage {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use git2::RepositoryInitOptions;
     use tempfile::tempdir;
 
@@ -399,7 +406,7 @@ mod tests {
         let msg1 = "Inception";
 
         // Store the first event
-        let commit1_oid = storage.store_event(&did_prefix, &event1_bytes, msg1)?;
+        let commit1_oid = storage.store_event(&did_prefix, &event1_bytes, msg1, Utc::now())?;
         assert!(!commit1_oid.is_zero());
 
         // Read the history
@@ -425,9 +432,9 @@ mod tests {
         let msg3 = "Interaction";
 
         // Store events sequentially
-        let _commit1_oid = storage.store_event(&did_prefix, &event1_bytes, msg1)?;
-        let _commit2_oid = storage.store_event(&did_prefix, &event2_bytes, msg2)?;
-        let _commit3_oid = storage.store_event(&did_prefix, &event3_bytes, msg3)?;
+        let _commit1_oid = storage.store_event(&did_prefix, &event1_bytes, msg1, Utc::now())?;
+        let _commit2_oid = storage.store_event(&did_prefix, &event2_bytes, msg2, Utc::now())?;
+        let _commit3_oid = storage.store_event(&did_prefix, &event3_bytes, msg3, Utc::now())?;
 
         // Read the history
         let history = storage.read_kel_history(&did_prefix)?;
@@ -467,13 +474,13 @@ mod tests {
         let msg2 = "Event 2";
 
         // Store first event
-        let commit1_oid = storage.store_event(&did_prefix, &event1_bytes, msg1)?;
+        let commit1_oid = storage.store_event(&did_prefix, &event1_bytes, msg1, Utc::now())?;
         let kel_ref_name = layout::keri_kel_ref(&did_prefix);
         let ref1 = repo.find_reference(&kel_ref_name)?;
         assert_eq!(ref1.target(), Some(commit1_oid));
 
         // Store second event
-        let commit2_oid = storage.store_event(&did_prefix, &event2_bytes, msg2)?;
+        let commit2_oid = storage.store_event(&did_prefix, &event2_bytes, msg2, Utc::now())?;
         let ref2 = repo.find_reference(&kel_ref_name)?; // Find ref again
         assert_eq!(ref2.target(), Some(commit2_oid)); // Ref should now point to commit2
         assert_ne!(commit1_oid, commit2_oid);
@@ -497,7 +504,7 @@ mod tests {
         let msg3 = "Good Event 3";
 
         // Store event 1
-        let commit1_oid = storage.store_event(&did_prefix, &event1_bytes, msg1)?;
+        let commit1_oid = storage.store_event(&did_prefix, &event1_bytes, msg1, Utc::now())?;
 
         // Manually create a commit without the event blob
         let sig = repo.signature()?;
@@ -515,7 +522,7 @@ mod tests {
         repo.reference(&kel_ref_name, commit2_oid_bad, true, "ref update bad")?;
 
         // Store event 3 (parent should be the bad commit now)
-        let _commit3_oid = storage.store_event(&did_prefix, &event3_bytes, msg3)?;
+        let _commit3_oid = storage.store_event(&did_prefix, &event3_bytes, msg3, Utc::now())?;
 
         // Read history
         let history = storage.read_kel_history(&did_prefix)?;
@@ -547,7 +554,7 @@ mod tests {
             vec![2u8; 64], // signature
         );
 
-        let commit_oid = storage.append_rotation_event(&did_prefix, &event)?;
+        let commit_oid = storage.append_rotation_event(&did_prefix, &event, Utc::now())?;
         assert!(!commit_oid.is_zero());
 
         // Verify event was stored
@@ -575,7 +582,7 @@ mod tests {
             Utc::now(),
             vec![2u8; 64],
         );
-        let commit1_oid = storage.append_rotation_event(&did_prefix, &event1)?;
+        let commit1_oid = storage.append_rotation_event(&did_prefix, &event1, Utc::now())?;
 
         // Compute the expected previous_hash
         let commit1_id = commit1_oid.to_string();
@@ -592,7 +599,7 @@ mod tests {
             Utc::now(),
             vec![3u8; 64],
         );
-        let commit2_oid = storage.append_rotation_event(&did_prefix, &event2)?;
+        let commit2_oid = storage.append_rotation_event(&did_prefix, &event2, Utc::now())?;
         assert!(!commit2_oid.is_zero());
 
         // Verify both events were stored
@@ -621,7 +628,7 @@ mod tests {
             Utc::now(),
             vec![2u8; 64],
         );
-        storage.append_rotation_event(&did_prefix, &event1)?;
+        storage.append_rotation_event(&did_prefix, &event1, Utc::now())?;
 
         // Try to store second event with WRONG previous_hash
         let event2 = KeyRotationEvent::new(
@@ -632,7 +639,7 @@ mod tests {
             Utc::now(),
             vec![3u8; 64],
         );
-        let result = storage.append_rotation_event(&did_prefix, &event2);
+        let result = storage.append_rotation_event(&did_prefix, &event2, Utc::now());
 
         // Should fail with chain integrity error
         assert!(result.is_err());

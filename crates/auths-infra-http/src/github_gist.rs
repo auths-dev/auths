@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use auths_core::ports::platform::{PlatformError, PlatformProofPublisher};
 
+use crate::default_http_client;
 use crate::error::map_reqwest_error;
 
 #[derive(Deserialize)]
@@ -31,7 +32,7 @@ impl HttpGistPublisher {
     /// Create a new publisher with a default HTTP client.
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: default_http_client(),
         }
     }
 }

@@ -113,3 +113,28 @@ let repo = self.repo.lock()
 ```
 
 Every `Mutex`-wrapping type must include a `LockPoisoned` variant in its error enum.
+
+## Accepted Risks
+
+### No mlock/mprotect for AgentCore key storage
+
+`AgentCore.keys` (`HashMap<Vec<u8>, SecureSeed>`) stores key material in regular heap memory without `mlock`. This means keys could theoretically be paged to swap. The risk is accepted because:
+
+1. **ZeroizeOnDrop**: `SecureSeed` derives `Zeroize` and `ZeroizeOnDrop`, so keys are zeroed when the agent shuts down or the struct is dropped.
+2. **Encrypted swap**: macOS enables encrypted swap by default; many Linux distros do as well.
+3. **mlock limitations**: `mlock` requires `unsafe`, has per-process limits (typically 64 KB on Linux), and does not work reliably with `HashMap`'s internal reallocation — locked pages become unlocked when the allocator moves data.
+4. **Attack model**: An attacker who can read raw swap pages already has root or physical access, making `mlock` alone insufficient.
+
+**HashMap key sensitivity**: The `Vec<u8>` keys in the map are *public key bytes* — opaque identifiers used to look up the corresponding `SecureSeed`. They are not derived from private key material and do not require zeroization.
+
+**Scope note**: This decision assumes the current deployment model (developer workstations with encrypted swap). If the project adds HSM-less server deployments where swap encryption is not guaranteed (e.g., bare-metal CI runners), `mlock` should be reconsidered.
+
+## Pairing Protocol Replay Protection
+
+The device pairing protocol (`auths-pairing-protocol`) has three layers of replay protection:
+
+1. **Ephemeral secret consumption**: `PairingSession::complete_exchange()` uses `Option::take()` to consume the X25519 ephemeral secret exactly once. A second call returns `ProtocolError::SessionConsumed`. This prevents reuse of a session even within the same process. Verified by tests in `crates/auths-pairing-protocol/src/token.rs` and `response.rs`.
+
+2. **Cryptographic binding**: `PairingResponse::verify()` checks an Ed25519 signature over `short_code || initiator_x25519_pubkey || device_x25519_pubkey || device_signing_key`. Replaying a response from session A into session B fails because the ephemeral X25519 public keys differ between sessions — the signature will not verify.
+
+3. **Non-clonability**: `x25519_dalek::EphemeralSecret` is `!Clone` and `!Serialize`, preventing extraction or duplication of the secret outside the session struct.

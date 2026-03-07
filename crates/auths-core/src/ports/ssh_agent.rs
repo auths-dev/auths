@@ -22,6 +22,7 @@ use std::path::Path;
 /// }
 /// ```
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SshAgentError {
     /// The ssh-add command ran but returned a failure status.
     #[error("ssh-add command failed: {0}")]

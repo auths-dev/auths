@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::core::fs::{create_restricted_dir, write_sensitive_file};
 use crate::ux::format::{JsonResponse, is_json_mode};
 
 #[cfg(unix)]
@@ -136,10 +137,10 @@ pub struct AgentStatus {
 pub fn ensure_agent_running(quiet: bool) -> Result<bool> {
     let socket_path = get_default_socket_path()?;
 
-    // Check if already running
+    // Check if already running via connection attempt (avoids TOCTOU on socket path)
     if let Some(pid) = read_pid()?
         && is_process_running(pid)
-        && socket_path.exists()
+        && socket_is_connectable(&socket_path)
     {
         return Ok(true); // Already running
     }
@@ -152,13 +153,13 @@ pub fn ensure_agent_running(quiet: bool) -> Result<bool> {
     // Use default timeout of 30m
     start_agent(None, false, "30m", quiet)?;
 
-    // Poll for socket with 2s timeout
+    // Poll for socket connectivity with 2s timeout
     let timeout = std::time::Duration::from_secs(2);
     let start = std::time::Instant::now();
     while start.elapsed() < timeout {
-        if socket_path.exists()
-            && let Some(pid) = read_pid()?
+        if let Some(pid) = read_pid()?
             && is_process_running(pid)
+            && socket_is_connectable(&socket_path)
         {
             if !quiet {
                 eprintln!("Agent started (PID {})", pid);
@@ -279,7 +280,17 @@ fn is_process_running(pid: u32) -> bool {
 
 #[cfg(not(unix))]
 fn is_process_running(_pid: u32) -> bool {
-    // Windows would need different implementation
+    false
+}
+
+/// Test if the agent socket is connectable (avoids TOCTOU vs exists() check).
+#[cfg(unix)]
+fn socket_is_connectable(path: &std::path::Path) -> bool {
+    std::os::unix::net::UnixStream::connect(path).is_ok()
+}
+
+#[cfg(not(unix))]
+fn socket_is_connectable(_path: &std::path::Path) -> bool {
     false
 }
 
@@ -291,7 +302,7 @@ fn start_agent(
     quiet: bool,
 ) -> Result<()> {
     let auths_dir = get_auths_dir()?;
-    fs::create_dir_all(&auths_dir)
+    create_restricted_dir(&auths_dir)
         .with_context(|| format!("Failed to create auths directory: {:?}", auths_dir))?;
 
     let socket = socket_path.unwrap_or_else(|| get_default_socket_path().unwrap());
@@ -311,10 +322,13 @@ fn start_agent(
         let _ = fs::remove_file(&pid_path);
     }
 
-    // Clean up stale socket file
-    if socket.exists() {
-        fs::remove_file(&socket)
-            .with_context(|| format!("Failed to remove stale socket: {:?}", socket))?;
+    // Remove stale socket atomically (no TOCTOU exists-then-remove)
+    match fs::remove_file(&socket) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(anyhow!("Failed to remove stale socket {:?}: {}", socket, e));
+        }
     }
 
     if foreground {
@@ -355,7 +369,7 @@ fn run_agent_foreground(
 
     // Write PID file
     let pid = std::process::id();
-    fs::write(pid_path, pid.to_string())
+    write_sensitive_file(pid_path, pid.to_string())
         .with_context(|| format!("Failed to write PID file: {:?}", pid_path))?;
 
     // Write environment file
@@ -363,7 +377,7 @@ fn run_agent_foreground(
         .to_str()
         .ok_or_else(|| anyhow!("Socket path is not valid UTF-8"))?;
     let env_content = format!("export SSH_AUTH_SOCK=\"{}\"\n", socket_str);
-    fs::write(env_path, &env_content)
+    write_sensitive_file(env_path, &env_content)
         .with_context(|| format!("Failed to write env file: {:?}", env_path))?;
 
     eprintln!("Starting SSH agent (foreground)...");
@@ -479,7 +493,7 @@ fn daemonize_agent(
 
     // Write environment file for the parent to report
     let env_content = format!("export SSH_AUTH_SOCK=\"{}\"\n", socket_str);
-    fs::write(env_path, &env_content)
+    write_sensitive_file(env_path, &env_content)
         .with_context(|| format!("Failed to write env file: {:?}", env_path))?;
 
     Ok(())

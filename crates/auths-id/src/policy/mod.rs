@@ -284,11 +284,12 @@ pub fn verify_receipts(
     threshold: usize,
     key_resolver: Option<&dyn WitnessKeyResolver>,
 ) -> ReceiptVerificationResult {
-    // 1. Check threshold met
-    if receipts.count() < threshold {
+    // 1. Check threshold met (using unique witness count, not raw receipt count)
+    let unique = receipts.unique_witness_count();
+    if unique < threshold {
         return ReceiptVerificationResult::InsufficientReceipts {
             required: threshold,
-            got: receipts.count(),
+            got: unique,
         };
     }
 

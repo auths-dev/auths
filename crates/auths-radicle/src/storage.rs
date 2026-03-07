@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn load_key_state_from_kel() {
         let (_dir, repo) = create_bare_repo();
-        let init = auths_id::keri::create_keri_identity(&repo, None).unwrap();
+        let init = auths_id::keri::create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let layout = Layout::radicle();
 
         let src_ref = format!("refs/did/keri/{}/kel", init.prefix.as_str());
@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn find_identity_with_attestation() {
         let (_dir, repo) = create_bare_repo();
-        let init = auths_id::keri::create_keri_identity(&repo, None).unwrap();
+        let init = auths_id::keri::create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let layout = Layout::radicle();
 
         let src_ref = format!("refs/did/keri/{}/kel", init.prefix.as_str());

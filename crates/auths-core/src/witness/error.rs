@@ -59,6 +59,7 @@ pub struct WitnessReport {
 /// These errors cover the full range of failure modes for async witness
 /// interactions, from network issues to security violations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum WitnessError {
     /// Network error communicating with witness.
     #[error("network error: {0}")]

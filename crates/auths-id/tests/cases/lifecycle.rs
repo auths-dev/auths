@@ -40,6 +40,7 @@ fn init_identity(
         &provider,
         &identity_storage,
         keychain,
+        chrono::Utc::now(),
     )
     .expect("Failed to initialize identity");
     (did.to_string(), alias.into_inner())
@@ -160,6 +161,7 @@ fn rotate_identity(
         &config,
         keychain,
         None,
+        chrono::Utc::now(),
     )
     .expect("Failed to rotate identity");
 }

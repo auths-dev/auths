@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Protocol encoding and decoding errors.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ProtoError {
     /// Unknown message type byte.
     #[error("Invalid message type: {0}")]

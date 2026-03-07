@@ -57,6 +57,7 @@ use super::schemas::{RegistryMetadata, TipInfo};
 /// If the allowed charset expands (e.g. to include `.`), reintroduce
 /// an explicit traversal check before adding it to the allowlist.
 #[derive(Debug, Error, PartialEq)]
+#[non_exhaustive]
 pub enum TenantIdError {
     /// ID is empty or exceeds 64 characters.
     #[error("must be 1–64 characters (got {0})")]
@@ -155,6 +156,7 @@ fn validate_tenant_id_inner(tenant_id: &str) -> Result<(), RegistryError> {
 
 /// Errors that can occur during registry operations.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum RegistryError {
     /// Storage backend operation failed
     #[error("Storage error: {0}")]

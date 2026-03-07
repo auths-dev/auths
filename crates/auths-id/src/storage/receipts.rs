@@ -22,8 +22,12 @@ const RECEIPTS_BLOB_NAME: &str = "receipts.json";
 /// Implementations can be backed by Git (local) or other storage systems.
 pub trait ReceiptStorage: Send + Sync {
     /// Store receipts for an event.
-    fn store_receipts(&self, prefix: &Prefix, receipts: &EventReceipts)
-    -> Result<(), StorageError>;
+    fn store_receipts(
+        &self,
+        prefix: &Prefix,
+        receipts: &EventReceipts,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StorageError>;
 
     /// Get receipts for an event by SAID.
     fn get_receipts(
@@ -32,12 +36,13 @@ pub trait ReceiptStorage: Send + Sync {
         event_said: &Said,
     ) -> Result<Option<EventReceipts>, StorageError>;
 
-    /// Check if event has sufficient receipts (meets threshold).
+    /// Check if event has sufficient receipts (meets threshold) without exceeding the witness set.
     fn has_quorum(
         &self,
         prefix: &Prefix,
         event_said: &Said,
         threshold: usize,
+        witness_count: usize,
     ) -> Result<bool, StorageError>;
 
     /// List all event SAIDs that have receipts for a prefix.
@@ -70,6 +75,7 @@ impl ReceiptStorage for GitReceiptStorage {
         &self,
         prefix: &Prefix,
         receipts: &EventReceipts,
+        now: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StorageError> {
         debug!(
             "Storing {} receipts for event {} (prefix {})",
@@ -90,9 +96,13 @@ impl ReceiptStorage for GitReceiptStorage {
         let tree_oid = tree_builder.write()?;
         let tree = repo.find_tree(tree_oid)?;
 
-        let sig = repo
-            .signature()
-            .or_else(|_| Signature::now("auths-witness", "auths-witness@localhost"))?;
+        let sig = repo.signature().or_else(|_| {
+            Signature::new(
+                "auths-witness",
+                "auths-witness@localhost",
+                &git2::Time::new(now.timestamp(), 0),
+            )
+        })?;
 
         let parent_commit = match repo.find_reference(&ref_path) {
             Ok(reference) => reference.peel_to_commit().ok(),
@@ -154,9 +164,10 @@ impl ReceiptStorage for GitReceiptStorage {
         prefix: &Prefix,
         event_said: &Said,
         threshold: usize,
+        witness_count: usize,
     ) -> Result<bool, StorageError> {
         match self.get_receipts(prefix, event_said)? {
-            Some(receipts) => Ok(receipts.meets_threshold(threshold)),
+            Some(receipts) => Ok(receipts.meets_threshold(threshold, witness_count)),
             None => Ok(false),
         }
     }
@@ -240,6 +251,7 @@ pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageErro
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use auths_core::witness::{KERI_VERSION, RECEIPT_TYPE, Receipt};
@@ -289,7 +301,9 @@ mod tests {
         );
 
         let prefix = Prefix::new_unchecked("EPrefix".to_string());
-        storage.store_receipts(&prefix, &receipts).unwrap();
+        storage
+            .store_receipts(&prefix, &receipts, chrono::Utc::now())
+            .unwrap();
 
         let said = Said::new_unchecked("ESAID123".to_string());
         let retrieved = storage.get_receipts(&prefix, &said).unwrap();
@@ -324,14 +338,16 @@ mod tests {
         );
 
         let prefix = Prefix::new_unchecked("EPrefix".to_string());
-        storage.store_receipts(&prefix, &receipts).unwrap();
+        storage
+            .store_receipts(&prefix, &receipts, chrono::Utc::now())
+            .unwrap();
 
         let said = Said::new_unchecked("ESAID456".to_string());
-        // 2 receipts, threshold 2 - should meet
-        assert!(storage.has_quorum(&prefix, &said, 2).unwrap());
+        // 2 receipts, threshold 2, witness_count 3 - should meet
+        assert!(storage.has_quorum(&prefix, &said, 2, 3).unwrap());
 
-        // 2 receipts, threshold 3 - should not meet
-        assert!(!storage.has_quorum(&prefix, &said, 3).unwrap());
+        // 2 receipts, threshold 3, witness_count 3 - should not meet
+        assert!(!storage.has_quorum(&prefix, &said, 3, 3).unwrap());
     }
 
     #[test]
@@ -345,12 +361,14 @@ mod tests {
             .store_receipts(
                 &prefix,
                 &EventReceipts::new("ESAID1", vec![make_test_receipt("ESAID1", "did:key:w", 0)]),
+                chrono::Utc::now(),
             )
             .unwrap();
         storage
             .store_receipts(
                 &prefix,
                 &EventReceipts::new("ESAID2", vec![make_test_receipt("ESAID2", "did:key:w", 1)]),
+                chrono::Utc::now(),
             )
             .unwrap();
 
@@ -370,9 +388,9 @@ mod tests {
             ],
         );
 
-        assert!(receipts.meets_threshold(1));
-        assert!(receipts.meets_threshold(2));
-        assert!(!receipts.meets_threshold(3));
+        assert!(receipts.meets_threshold(1, 3));
+        assert!(receipts.meets_threshold(2, 3));
+        assert!(!receipts.meets_threshold(3, 3));
     }
 
     #[test]

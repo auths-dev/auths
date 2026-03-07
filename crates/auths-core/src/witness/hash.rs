@@ -155,6 +155,7 @@ impl fmt::Display for EventHash {
 /// assert!(EventHash::from_str("not-hex").is_err());
 /// ```
 #[derive(Debug, thiserror::Error, PartialEq)]
+#[non_exhaustive]
 pub enum EventHashParseError {
     /// The input string was not exactly 40 hex characters.
     #[error("expected 40 hex characters, got {0}")]

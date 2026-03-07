@@ -10,11 +10,15 @@ use crate::types::{CanonicalCapability, CanonicalDid, ValidatedGlob};
 /// Maximum length for attribute keys.
 const MAX_ATTR_KEY_LEN: usize = 64;
 
+/// Maximum allowed value for `MaxChainDepth` expressions.
+pub const MAX_CHAIN_DEPTH_LIMIT: u32 = 16;
+
 /// Hard limits enforced at compile time.
 ///
 /// These are not configurable — they're safety bounds.
 /// Any policy exceeding them is rejected. The numbers are
 /// generous for legitimate use and tight for abuse.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PolicyLimits {
     /// Maximum recursion depth for nested expressions.
@@ -25,6 +29,8 @@ pub struct PolicyLimits {
     pub max_list_items: usize,
     /// Maximum size of policy JSON before deserialization.
     pub max_json_bytes: usize,
+    /// Maximum allowed value for `MaxChainDepth` expressions.
+    pub max_chain_depth_value: u32,
 }
 
 impl Default for PolicyLimits {
@@ -34,6 +40,7 @@ impl Default for PolicyLimits {
             max_total_nodes: 1024,
             max_list_items: 256,
             max_json_bytes: 64 * 1024, // 64 KB
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         }
     }
 }
@@ -430,7 +437,18 @@ fn compile_inner(
         Expr::IsHuman => CompiledExpr::IsHuman,
         Expr::IsWorkload => CompiledExpr::IsWorkload,
 
-        Expr::MaxChainDepth(d) => CompiledExpr::MaxChainDepth(*d),
+        Expr::MaxChainDepth(d) => {
+            if *d > limits.max_chain_depth_value {
+                errors.push(CompileError {
+                    path: path.into(),
+                    message: format!(
+                        "MaxChainDepth({}) exceeds limit of {}",
+                        d, limits.max_chain_depth_value
+                    ),
+                });
+            }
+            CompiledExpr::MaxChainDepth(*d)
+        }
 
         Expr::ApprovalGate {
             inner,
@@ -733,6 +751,32 @@ mod tests {
         assert_eq!(limits.max_total_nodes, 1024);
         assert_eq!(limits.max_list_items, 256);
         assert_eq!(limits.max_json_bytes, 64 * 1024);
+        assert_eq!(limits.max_chain_depth_value, MAX_CHAIN_DEPTH_LIMIT);
+    }
+
+    #[test]
+    fn compile_max_chain_depth_zero() {
+        let expr = Expr::MaxChainDepth(0);
+        let policy = compile(&expr).unwrap();
+        assert!(matches!(policy.expr(), CompiledExpr::MaxChainDepth(0)));
+    }
+
+    #[test]
+    fn compile_max_chain_depth_at_limit() {
+        let expr = Expr::MaxChainDepth(16);
+        let policy = compile(&expr).unwrap();
+        assert!(matches!(policy.expr(), CompiledExpr::MaxChainDepth(16)));
+    }
+
+    #[test]
+    fn compile_max_chain_depth_exceeds_limit() {
+        let expr = Expr::MaxChainDepth(17);
+        let errors = compile(&expr).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("MaxChainDepth(17) exceeds limit"))
+        );
     }
 
     #[test]
@@ -742,6 +786,7 @@ mod tests {
             max_total_nodes: 10,
             max_list_items: 5,
             max_json_bytes: 1024,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         let expr = Expr::And(vec![Expr::NotRevoked, Expr::NotExpired]);
         let policy = compile_with_limits(&expr, &limits).unwrap();
@@ -755,6 +800,7 @@ mod tests {
             max_total_nodes: 3,
             max_list_items: 256,
             max_json_bytes: 64 * 1024,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         // 5 nodes: And + 4 children
         let expr = Expr::And(vec![
@@ -774,6 +820,7 @@ mod tests {
             max_total_nodes: 1024,
             max_list_items: 2,
             max_json_bytes: 64 * 1024,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         let expr = Expr::And(vec![Expr::NotRevoked, Expr::NotExpired, Expr::True]);
         let errors = compile_with_limits(&expr, &limits).unwrap_err();
@@ -794,6 +841,7 @@ mod tests {
             max_total_nodes: 1024,
             max_list_items: 256,
             max_json_bytes: 10,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         let json = r#"{"op": "true"}"#;
         let errors = compile_from_json_with_limits(json.as_bytes(), &limits).unwrap_err();
@@ -814,6 +862,7 @@ mod tests {
             max_total_nodes: 1024,
             max_list_items: 2,
             max_json_bytes: 64 * 1024,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         let expr = Expr::IssuerIn(vec![
             "did:keri:E1".into(),
@@ -831,6 +880,7 @@ mod tests {
             max_total_nodes: 1024,
             max_list_items: 2,
             max_json_bytes: 64 * 1024,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         let expr = Expr::RoleIn(vec!["admin".into(), "user".into(), "guest".into()]);
         let errors = compile_with_limits(&expr, &limits).unwrap_err();
@@ -844,6 +894,7 @@ mod tests {
             max_total_nodes: 1024,
             max_list_items: 2,
             max_json_bytes: 64 * 1024,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         let expr = Expr::PathAllowed(vec!["src/*".into(), "docs/*".into(), "tests/*".into()]);
         let errors = compile_with_limits(&expr, &limits).unwrap_err();
@@ -857,6 +908,7 @@ mod tests {
             max_total_nodes: 1024,
             max_list_items: 2,
             max_json_bytes: 64 * 1024,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         let expr = Expr::HasAllCapabilities(vec!["read".into(), "write".into(), "execute".into()]);
         let errors = compile_with_limits(&expr, &limits).unwrap_err();
@@ -870,6 +922,7 @@ mod tests {
             max_total_nodes: 1024,
             max_list_items: 2,
             max_json_bytes: 64 * 1024,
+            max_chain_depth_value: MAX_CHAIN_DEPTH_LIMIT,
         };
         let expr = Expr::AttrIn {
             key: "team".into(),

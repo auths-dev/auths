@@ -256,7 +256,14 @@ fn handle_test_connection(cmd: ScimTestConnectionCommand) -> Result<()> {
 
 #[allow(clippy::disallowed_methods)] // CLI boundary: Utc::now() for test user naming
 async fn run_test_connection(base_url: &str, token: &str) -> Result<()> {
-    let client = reqwest::Client::new();
+    #[allow(clippy::expect_used)]
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .user_agent(concat!("auths/", env!("CARGO_PKG_VERSION")))
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
+        .build()
+        .expect("failed to build HTTP client");
     let auth = format!("Bearer {}", token);
 
     // POST /Users — create test agent

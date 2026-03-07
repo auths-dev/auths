@@ -6,6 +6,7 @@
 use auths_core::witness::Receipt;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
+use std::collections::HashSet;
 use std::fmt;
 
 use super::seal::Seal;
@@ -59,17 +60,43 @@ pub struct EventReceipts {
 }
 
 impl EventReceipts {
-    /// Create a new EventReceipts collection.
+    /// Create a new EventReceipts collection, deduplicating by witness identifier.
     pub fn new(event_said: impl Into<String>, receipts: Vec<Receipt>) -> Self {
+        let mut seen = HashSet::new();
+        let deduped: Vec<Receipt> = receipts
+            .into_iter()
+            .filter(|r| seen.insert(r.i.clone()))
+            .collect();
         Self {
             event_said: Said::new_unchecked(event_said.into()),
-            receipts,
+            receipts: deduped,
         }
     }
 
-    /// Check if the receipts meet a threshold.
-    pub fn meets_threshold(&self, threshold: usize) -> bool {
-        self.receipts.len() >= threshold
+    /// Check if the unique receipt count meets the threshold without exceeding the witness set.
+    ///
+    /// Args:
+    /// * `threshold`: Minimum number of unique witness receipts required.
+    /// * `witness_count`: Size of the configured witness set. If unique receipts
+    ///   exceed this, the result is `false` (indicates replay/duplication).
+    pub fn meets_threshold(&self, threshold: usize, witness_count: usize) -> bool {
+        let unique = self.unique_witness_count();
+        if unique > witness_count {
+            log::warn!(
+                "Receipt count ({}) exceeds witness set size ({}) for event {} — possible replay",
+                unique,
+                witness_count,
+                self.event_said,
+            );
+            return false;
+        }
+        unique >= threshold
+    }
+
+    /// Number of unique witnesses that provided receipts.
+    pub fn unique_witness_count(&self) -> usize {
+        let seen: HashSet<&str> = self.receipts.iter().map(|r| r.i.as_str()).collect();
+        seen.len()
     }
 
     /// Get the number of receipts.
@@ -570,5 +597,55 @@ mod tests {
         let json = serde_json::to_string(&icp).unwrap();
         let parsed: IcpEvent = serde_json::from_str(&json).unwrap();
         assert_eq!(icp, parsed);
+    }
+
+    fn make_receipt(witness_id: &str) -> Receipt {
+        Receipt {
+            v: "KERI10JSON000000_".into(),
+            t: "rct".into(),
+            d: Said::new_unchecked("EReceipt".into()),
+            i: witness_id.into(),
+            s: 0,
+            a: Said::new_unchecked("EEvent".into()),
+            sig: vec![0; 64],
+        }
+    }
+
+    #[test]
+    fn event_receipts_deduplicates_by_witness_id() {
+        let receipts = EventReceipts::new(
+            "ESAID",
+            vec![
+                make_receipt("did:key:w1"),
+                make_receipt("did:key:w1"),
+                make_receipt("did:key:w2"),
+            ],
+        );
+        assert_eq!(receipts.count(), 2);
+        assert_eq!(receipts.unique_witness_count(), 2);
+    }
+
+    #[test]
+    fn meets_threshold_rejects_excess_receipts() {
+        let receipts = EventReceipts::new(
+            "ESAID",
+            vec![
+                make_receipt("did:key:w1"),
+                make_receipt("did:key:w2"),
+                make_receipt("did:key:w3"),
+            ],
+        );
+        // 3 unique receipts but witness_count is 2 — anomalous
+        assert!(!receipts.meets_threshold(1, 2));
+    }
+
+    #[test]
+    fn meets_threshold_normal_operation() {
+        let receipts = EventReceipts::new(
+            "ESAID",
+            vec![make_receipt("did:key:w1"), make_receipt("did:key:w2")],
+        );
+        assert!(receipts.meets_threshold(2, 3));
+        assert!(!receipts.meets_threshold(3, 3));
     }
 }

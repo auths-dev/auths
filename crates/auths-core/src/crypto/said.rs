@@ -8,6 +8,7 @@
 
 use auths_verifier::keri::Said;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use subtle::ConstantTimeEq;
 
 /// Compute SAID (Self-Addressing Identifier) for a KERI event.
 ///
@@ -58,8 +59,11 @@ pub fn compute_next_commitment(public_key: &[u8]) -> String {
 ///
 /// # Returns
 /// `true` if the public key hashes to the commitment, `false` otherwise
+// Defense-in-depth: both values are derived from public data, but constant-time
+// comparison prevents timing side-channels on commitment verification.
 pub fn verify_commitment(public_key: &[u8], commitment: &str) -> bool {
-    compute_next_commitment(public_key) == commitment
+    let computed = compute_next_commitment(public_key);
+    computed.as_bytes().ct_eq(commitment.as_bytes()).into()
 }
 
 #[cfg(test)]

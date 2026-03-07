@@ -19,7 +19,7 @@ use crate::api::runtime::{
 use crate::config::EnvironmentConfig;
 use crate::config::{current_algorithm, set_encryption_algorithm};
 use crate::crypto::EncryptionAlgorithm;
-use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes_argon2};
+use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes};
 use crate::crypto::signer::extract_seed_from_key_bytes;
 use crate::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use crate::error::AgentError;
@@ -27,14 +27,14 @@ use crate::storage::keychain::{
     IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
 };
 use log::{debug, error, info, warn};
-use once_cell::sync::Lazy;
+use parking_lot::RwLock;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uchar};
 use std::panic;
 use std::path::PathBuf;
 use std::ptr;
 use std::slice;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, LazyLock};
 
 // --- FFI Error Codes ---
 
@@ -53,7 +53,7 @@ pub const FFI_ERR_PANIC: c_int = -127;
 ///
 /// This static holds the `AgentHandle` used by FFI functions. It must be initialized
 /// by calling `ffi_init_agent()` before using functions like `ffi_agent_sign()`.
-static FFI_AGENT: Lazy<RwLock<Option<Arc<AgentHandle>>>> = Lazy::new(|| RwLock::new(None));
+static FFI_AGENT: LazyLock<RwLock<Option<Arc<AgentHandle>>>> = LazyLock::new(|| RwLock::new(None));
 
 /// Initializes the FFI agent with the specified socket path.
 ///
@@ -82,13 +82,10 @@ pub unsafe extern "C" fn ffi_init_agent(socket_path: *const c_char) -> c_int {
                 };
                 let default_path = home.join(".auths").join("agent.sock");
                 let handle = Arc::new(AgentHandle::new(default_path));
-                if let Ok(mut guard) = FFI_AGENT.write() {
-                    *guard = Some(handle);
-                    info!("FFI agent initialized with default socket path");
-                    return 0;
-                }
-                error!("FFI ffi_init_agent: Failed to acquire write lock");
-                return 1;
+                let mut guard = FFI_AGENT.write();
+                *guard = Some(handle);
+                info!("FFI agent initialized with default socket path");
+                return 0;
             }
             Err(code) => return code,
         };
@@ -96,14 +93,10 @@ pub unsafe extern "C" fn ffi_init_agent(socket_path: *const c_char) -> c_int {
         let socket = PathBuf::from(path_str);
         let handle = Arc::new(AgentHandle::new(socket));
 
-        if let Ok(mut guard) = FFI_AGENT.write() {
-            *guard = Some(handle);
-            info!("FFI agent initialized with socket path: {}", path_str);
-            0
-        } else {
-            error!("FFI ffi_init_agent: Failed to acquire write lock");
-            1
-        }
+        let mut guard = FFI_AGENT.write();
+        *guard = Some(handle);
+        info!("FFI agent initialized with socket path: {}", path_str);
+        0
     });
     result.unwrap_or_else(|_| {
         error!("FFI ffi_init_agent: panic occurred");
@@ -125,22 +118,16 @@ pub unsafe extern "C" fn ffi_init_agent(socket_path: *const c_char) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ffi_shutdown_agent() -> c_int {
     let result = panic::catch_unwind(|| {
-        if let Ok(mut guard) = FFI_AGENT.write() {
-            if let Some(handle) = guard.take() {
-                // Shutdown clears keys and marks as not running
-                if let Err(e) = handle.shutdown() {
-                    warn!("FFI ffi_shutdown_agent: Shutdown returned error: {}", e);
-                    // Still consider it a success since we're removing the handle
-                }
-                info!("FFI agent shut down");
-            } else {
-                debug!("FFI ffi_shutdown_agent: Agent was not initialized");
+        let mut guard = FFI_AGENT.write();
+        if let Some(handle) = guard.take() {
+            if let Err(e) = handle.shutdown() {
+                warn!("FFI ffi_shutdown_agent: Shutdown returned error: {}", e);
             }
-            0
+            info!("FFI agent shut down");
         } else {
-            error!("FFI ffi_shutdown_agent: Failed to acquire write lock");
-            1
+            debug!("FFI ffi_shutdown_agent: Agent was not initialized");
         }
+        0
     });
     result.unwrap_or_else(|_| {
         error!("FFI ffi_shutdown_agent: panic occurred");
@@ -152,7 +139,7 @@ pub unsafe extern "C" fn ffi_shutdown_agent() -> c_int {
 ///
 /// Returns `None` if the agent has not been initialized.
 fn get_ffi_agent() -> Option<Arc<AgentHandle>> {
-    FFI_AGENT.read().ok().and_then(|guard| guard.clone())
+    FFI_AGENT.read().clone()
 }
 
 // --- Helper Functions ---
@@ -835,7 +822,7 @@ pub unsafe extern "C" fn ffi_encrypt_data(
         unsafe { *out_len = 0 };
         let algo = current_algorithm();
 
-        match encrypt_bytes_argon2(input, pass, algo) {
+        match encrypt_bytes(input, pass, algo) {
             Ok(encrypted) => unsafe { malloc_and_copy_bytes(&encrypted, out_len) },
             Err(e) => {
                 error!("FFI encrypt_data failed: {}", e);

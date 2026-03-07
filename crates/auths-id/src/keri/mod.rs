@@ -144,7 +144,7 @@ pub use state::KeyState;
 pub use types::{KeriTypeError, Prefix, Said, prefix_from_did};
 pub use validate::{
     ValidationError, compute_event_said, finalize_icp_event, replay_kel, serialize_for_signing,
-    validate_kel, verify_event_crypto, verify_event_said,
+    validate_for_append, validate_kel, verify_event_crypto, verify_event_said,
 };
 
 /// KERI protocol version string
