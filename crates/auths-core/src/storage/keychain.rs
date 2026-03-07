@@ -586,4 +586,76 @@ mod tests {
         let backend = get_backend_by_name("MEMORY", &env).unwrap();
         assert_eq!(backend.backend_name(), "Memory");
     }
+
+    #[test]
+    fn test_key_role_serde_roundtrip() {
+        let roles = [
+            KeyRole::Primary,
+            KeyRole::NextRotation,
+            KeyRole::DelegatedAgent,
+        ];
+        for role in &roles {
+            let json = serde_json::to_string(role).unwrap();
+            let parsed: KeyRole = serde_json::from_str(&json).unwrap();
+            assert_eq!(*role, parsed);
+        }
+    }
+
+    #[test]
+    fn test_key_role_display_and_parse() {
+        assert_eq!(KeyRole::Primary.to_string(), "primary");
+        assert_eq!(KeyRole::NextRotation.to_string(), "next_rotation");
+        assert_eq!(KeyRole::DelegatedAgent.to_string(), "delegated_agent");
+        assert_eq!("primary".parse::<KeyRole>().unwrap(), KeyRole::Primary);
+        assert_eq!(
+            "delegated_agent".parse::<KeyRole>().unwrap(),
+            KeyRole::DelegatedAgent
+        );
+        assert!("unknown".parse::<KeyRole>().is_err());
+    }
+
+    #[test]
+    fn test_list_aliases_with_role_filter() {
+        use super::super::memory::IsolatedKeychainHandle;
+
+        let keychain = IsolatedKeychainHandle::new();
+        let did = IdentityDID::new_unchecked("did:keri:Etest".to_string());
+
+        keychain
+            .store_key(
+                &KeyAlias::new_unchecked("operator"),
+                &did,
+                KeyRole::Primary,
+                b"key1",
+            )
+            .unwrap();
+        keychain
+            .store_key(
+                &KeyAlias::new_unchecked("operator--next-0"),
+                &did,
+                KeyRole::NextRotation,
+                b"key2",
+            )
+            .unwrap();
+        keychain
+            .store_key(
+                &KeyAlias::new_unchecked("deploy-agent"),
+                &did,
+                KeyRole::DelegatedAgent,
+                b"key3",
+            )
+            .unwrap();
+
+        let primary = keychain
+            .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
+            .unwrap();
+        assert_eq!(primary.len(), 1);
+        assert_eq!(primary[0].as_str(), "operator");
+
+        let agents = keychain
+            .list_aliases_for_identity_with_role(&did, KeyRole::DelegatedAgent)
+            .unwrap();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].as_str(), "deploy-agent");
+    }
 }

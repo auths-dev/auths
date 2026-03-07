@@ -596,4 +596,30 @@ mod tests {
         let result = storage.load_key(&KeyAlias::new("nonexistent").unwrap());
         assert!(matches!(result, Err(AgentError::KeyNotFound)));
     }
+
+    #[test]
+    fn test_legacy_key_data_migration() {
+        // Simulate old format: (did, b64_key) without role
+        let old_json = r#"{"keys":{"my-key":["did:keri:Eabc","dGVzdA=="]}}"#;
+        let data: KeyData = serde_json::from_str(old_json).unwrap();
+        let entry = data.keys.get("my-key").unwrap();
+        match entry {
+            KeyEntry::Legacy(did, _b64) => assert_eq!(did, "did:keri:Eabc"),
+            KeyEntry::WithRole(..) => panic!("should deserialize as Legacy"),
+        }
+    }
+
+    #[test]
+    fn test_new_key_data_format() {
+        let new_json = r#"{"keys":{"my-key":["did:keri:Eabc","primary","dGVzdA=="]}}"#;
+        let data: KeyData = serde_json::from_str(new_json).unwrap();
+        let entry = data.keys.get("my-key").unwrap();
+        match entry {
+            KeyEntry::WithRole(did, role, _b64) => {
+                assert_eq!(did, "did:keri:Eabc");
+                assert_eq!(role, "primary");
+            }
+            KeyEntry::Legacy(..) => panic!("should deserialize as WithRole"),
+        }
+    }
 }
