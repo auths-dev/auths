@@ -62,3 +62,26 @@ auths status
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths status -->
+
+---
+
+## auths pair
+
+```bash
+auths pair
+```
+
+<!-- BEGIN GENERATED: auths pair -->
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--join <CODE>` | — |  |
+| `--registry <URL>` | — |  |
+| `--no-qr` | — |  |
+| `--timeout <SECONDS>` | — |  |
+| `--offline` | — |  |
+| `--capabilities <CAPABILITIES>` | — |  |
+| `--no-mdns` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
+| `--repo <REPO>` | — |  |
+<!-- END GENERATED: auths pair -->

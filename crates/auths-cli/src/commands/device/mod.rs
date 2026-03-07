@@ -10,6 +10,12 @@ use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 use anyhow::Result;
 
+impl ExecutableCommand for PairCommand {
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        handle_pair(self.clone(), &ctx.env_config)
+    }
+}
+
 impl ExecutableCommand for DeviceCommand {
     fn execute(&self, ctx: &CliConfig) -> Result<()> {
         handle_device(

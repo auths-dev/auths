@@ -13,6 +13,13 @@ auths verify HEAD
 
 That's it. `auths init` generates keys, creates your identity, and configures Git signing.
 
+### Link another device
+
+```bash
+auths pair                         # On existing device — shows QR/code
+auths pair --join ABC123           # On new device — enter the code
+```
+
 ## The Basics
 
 ### `auths sign` — Sign a commit or artifact

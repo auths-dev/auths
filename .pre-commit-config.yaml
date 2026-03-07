@@ -35,6 +35,13 @@ repos:
         types: [rust]
         pass_filenames: false
 
+      - id: gen-docs-check
+        name: cargo xtask gen-docs --check
+        entry: cargo xtask gen-docs --check
+        language: system
+        files: (crates/auths-cli/src/|crates/xtask/src/gen_docs|docs/cli/commands/)
+        pass_filenames: false
+
       - id: cargo-deny
         name: cargo deny (licenses + bans)
         entry: bash -c 'cargo deny check > .cargo/cargo-deny.log 2>&1; exit $?'

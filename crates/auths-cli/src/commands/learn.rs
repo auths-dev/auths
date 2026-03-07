@@ -476,11 +476,11 @@ fn section_linking_device() -> Result<()> {
     println!("  To link a new device:");
     println!();
     println!("    {} On your existing device:", "1.".cyan());
-    println!("       {}", "$ auths pair start".cyan());
+    println!("       {}", "$ auths pair".cyan());
     println!("       {}", "Scan this QR code or enter: ABC123".dimmed());
     println!();
     println!("    {} On your new device:", "2.".cyan());
-    println!("       {}", "$ auths pair join --code ABC123".cyan());
+    println!("       {}", "$ auths pair --join ABC123".cyan());
     println!();
     println!(
         "  This creates an {} that authorizes the new device",
