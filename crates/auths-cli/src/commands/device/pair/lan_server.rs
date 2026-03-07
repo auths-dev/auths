@@ -19,15 +19,48 @@ use auths_core::pairing::types::{
     CreateSessionRequest, GetSessionResponse, SessionStatus, SubmitResponseRequest, SuccessResponse,
 };
 
-/// Detect the LAN IP address of this machine.
+/// Detect the LAN IP address of this machine via interface enumeration.
 ///
-/// Uses the UDP socket trick: bind `0.0.0.0:0`, connect to `8.8.8.8:80`
-/// (no packet is actually sent), then read the local address.
+/// Enumerates network interfaces and selects the best candidate:
+/// loopback and link-local addresses are excluded, IPv4 is preferred,
+/// and point-to-point interfaces (VPN/Docker tun) are deprioritized.
 pub fn detect_lan_ip() -> std::io::Result<IpAddr> {
-    let socket = std::net::UdpSocket::bind("0.0.0.0:0")?;
-    socket.connect("8.8.8.8:80")?;
-    let local_addr = socket.local_addr()?;
-    Ok(local_addr.ip())
+    let addrs = if_addrs::get_if_addrs().map_err(std::io::Error::other)?;
+
+    let mut candidates: Vec<(IpAddr, bool)> = Vec::new();
+    for iface in &addrs {
+        if iface.is_loopback() {
+            continue;
+        }
+        let ip = iface.ip();
+        if ip.is_loopback() {
+            continue;
+        }
+        match ip {
+            IpAddr::V4(v4) if v4.is_link_local() => continue,
+            IpAddr::V6(v6) if (v6.segments()[0] & 0xffc0) == 0xfe80 => continue,
+            _ => {}
+        }
+
+        // Prefer non-point-to-point interfaces (heuristic: tun/tap names)
+        let is_ptp = iface.name.starts_with("tun")
+            || iface.name.starts_with("tap")
+            || iface.name.starts_with("utun")
+            || iface.name.starts_with("docker")
+            || iface.name.starts_with("veth")
+            || iface.name.starts_with("br-");
+        candidates.push((ip, is_ptp));
+    }
+
+    // Sort: non-ptp before ptp, IPv4 before IPv6 within each group
+    candidates.sort_by_key(|(ip, is_ptp)| (*is_ptp, !ip.is_ipv4()));
+
+    candidates.first().map(|(ip, _)| *ip).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AddrNotAvailable,
+            "no suitable LAN interface found",
+        )
+    })
 }
 
 /// Internal state shared between the server and the caller.
