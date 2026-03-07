@@ -6,6 +6,7 @@ use crate::error::map_reqwest_error;
 use crate::request::{
     build_get_request, build_post_request, execute_request, parse_response_bytes,
 };
+use crate::{default_client_builder, default_http_client};
 
 /// HTTP-backed implementation of `RegistryClient`.
 ///
@@ -26,7 +27,7 @@ pub struct HttpRegistryClient {
 impl HttpRegistryClient {
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: default_http_client(),
         }
     }
 
@@ -43,11 +44,10 @@ impl HttpRegistryClient {
     ///     Duration::from_secs(60),
     /// );
     /// ```
+    // INVARIANT: reqwest builder with these settings cannot fail
+    #[allow(clippy::expect_used)]
     pub fn new_with_timeouts(connect_timeout: Duration, request_timeout: Duration) -> Self {
-        // reqwest::ClientBuilder::build() only fails if TLS initialisation fails,
-        // which cannot happen with the default TLS backend and no certificates loaded.
-        #[allow(clippy::expect_used)]
-        let client = reqwest::Client::builder()
+        let client = default_client_builder()
             .connect_timeout(connect_timeout)
             .timeout(request_timeout)
             .build()

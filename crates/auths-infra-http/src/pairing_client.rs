@@ -8,6 +8,7 @@ use auths_core::pairing::{
 use auths_core::ports::network::NetworkError;
 use auths_core::ports::pairing::PairingRelayClient;
 
+use crate::default_http_client;
 use crate::error::{map_reqwest_error, map_status_error};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -32,7 +33,7 @@ impl HttpPairingRelayClient {
     /// Creates a new client with a default reqwest client.
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: default_http_client(),
         }
     }
 }

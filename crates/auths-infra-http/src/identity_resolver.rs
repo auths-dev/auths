@@ -3,6 +3,7 @@ use auths_verifier::core::Ed25519PublicKey;
 use serde::Deserialize;
 use std::future::Future;
 
+use crate::default_http_client;
 use crate::request::{build_get_request, execute_request, parse_response_json};
 
 #[derive(Debug, Deserialize)]
@@ -37,7 +38,7 @@ impl HttpIdentityResolver {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            client: reqwest::Client::new(),
+            client: default_http_client(),
         }
     }
 }
