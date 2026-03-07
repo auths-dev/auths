@@ -10,7 +10,7 @@ use crate::storage::layout::StorageLayoutConfig;
 use auths_index::{AttestationIndex, IndexedAttestation, rebuild_attestations_from_git};
 use auths_verifier::core::Attestation;
 use auths_verifier::types::DeviceDID;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 
 /// An attestation storage that uses a SQLite index for fast lookups
@@ -79,12 +79,12 @@ impl IndexedAttestationStorage {
     }
 
     /// Updates the index with a new or modified attestation.
-    #[allow(clippy::disallowed_methods)] // Timestamp fallback for missing attestation timestamp
     pub fn update_index(
         &self,
         att: &Attestation,
         git_ref: &str,
         commit_oid: &str,
+        now: DateTime<Utc>,
     ) -> Result<(), StorageError> {
         let indexed = IndexedAttestation {
             rid: att.rid.to_string(),
@@ -94,7 +94,7 @@ impl IndexedAttestationStorage {
             commit_oid: commit_oid.to_string(),
             revoked_at: att.revoked_at,
             expires_at: att.expires_at,
-            updated_at: att.timestamp.unwrap_or_else(Utc::now),
+            updated_at: att.timestamp.unwrap_or(now),
         };
 
         self.index
