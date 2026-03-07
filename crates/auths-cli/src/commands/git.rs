@@ -48,9 +48,6 @@ pub struct AllowedSignersCommand {
     pub repo: PathBuf,
 
     /// Output file path. If not specified, outputs to stdout.
-    // Named `output_file` rather than `output` because the top-level `Cli` struct
-    // has a global `--output` (OutputFormat) argument; clap panics with "Mismatch
-    // between definition and access of `output`" when both use the same field name.
     #[arg(long = "output", short = 'o')]
     pub output_file: Option<PathBuf>,
 }
@@ -307,10 +304,6 @@ mod tests {
 
     #[test]
     fn test_allowed_signers_output_flag_parses() {
-        // Regression: `AllowedSignersCommand.output` used to collide with the global
-        // `Cli.output: OutputFormat` argument, causing clap to panic with
-        // "Mismatch between definition and access of `output`".
-        // The field is now named `output_file` with `long = "output"`.
         let cmd = AllowedSignersCommand::try_parse_from([
             "allowed-signers",
             "--output",

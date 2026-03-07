@@ -28,7 +28,7 @@ fn run() -> Result<()> {
 
     let cli = AuthsCli::parse();
 
-    let is_json = cli.json || matches!(cli.output, OutputFormat::Json);
+    let is_json = cli.json || matches!(cli.format, OutputFormat::Json);
     if is_json {
         set_json_mode(true);
     }
