@@ -158,6 +158,10 @@ pub enum IdSubcommand {
             help = "New simple verification threshold count (e.g., 1 for 1-of-N)."
         )]
         witness_threshold: Option<u64>,
+
+        /// Preview actions without making changes.
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Export an identity bundle for stateless CI/CD verification.
@@ -194,6 +198,50 @@ pub enum IdSubcommand {
 
     /// Import existing GPG or SSH keys into Auths.
     Migrate(super::migrate::MigrateCommand),
+}
+
+fn display_dry_run_rotate(
+    repo_path: &std::path::Path,
+    current_alias: Option<&str>,
+    next_alias: Option<&str>,
+) -> Result<()> {
+    if is_json_mode() {
+        JsonResponse::success(
+            "id rotate",
+            &serde_json::json!({
+                "dry_run": true,
+                "repo_path": repo_path.display().to_string(),
+                "current_key_alias": current_alias,
+                "next_key_alias": next_alias,
+                "actions": [
+                    "Generate new Ed25519 keypair",
+                    "Create rotation event in KERI event log",
+                    "Update key alias mappings",
+                    "All devices will need to re-authorize"
+                ]
+            }),
+        )
+        .print()
+        .map_err(|e| anyhow!("{e}"))
+    } else {
+        let out = crate::ux::format::Output::new();
+        out.print_info("Dry run mode — no changes will be made");
+        out.newline();
+        out.println(&format!("   Repository: {:?}", repo_path));
+        if let Some(alias) = current_alias {
+            out.println(&format!("   Current Key Alias: {}", alias));
+        }
+        if let Some(alias) = next_alias {
+            out.println(&format!("   New Key Alias: {}", alias));
+        }
+        out.newline();
+        out.println("Would perform the following actions:");
+        out.println("  1. Generate new Ed25519 keypair");
+        out.println("  2. Create rotation event in KERI event log");
+        out.println("  3. Update key alias mappings");
+        out.println("  4. All devices will need to re-authorize");
+        Ok(())
+    }
 }
 
 // --- Command Handler ---
@@ -425,8 +473,17 @@ pub fn handle_id(
             add_witness,
             remove_witness,
             witness_threshold,
+            dry_run,
         } => {
             let identity_key_alias = alias.or(current_key_alias);
+
+            if dry_run {
+                return display_dry_run_rotate(
+                    &repo_path,
+                    identity_key_alias.as_deref(),
+                    next_key_alias.as_deref(),
+                );
+            }
 
             println!("🔄 Rotating KERI identity keys...");
             println!("   Using Repository: {:?}", repo_path);
