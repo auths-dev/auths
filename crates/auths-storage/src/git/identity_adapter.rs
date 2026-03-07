@@ -27,8 +27,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::Context;
-use auths_id::error::StorageError;
+use auths_id::error::{InitError, StorageError};
 use git2::Repository;
 use serde::{Deserialize, Serialize};
 
@@ -106,7 +105,7 @@ impl RegistryIdentityStorage {
         &self,
         metadata: Option<serde_json::Value>,
         witness_config: Option<&auths_id::witness_config::WitnessConfig>,
-    ) -> Result<(String, auths_id::keri::InceptionResult), anyhow::Error> {
+    ) -> Result<(String, auths_id::keri::InceptionResult), InitError> {
         use auths_core::crypto::said::compute_next_commitment;
         use auths_id::keri::{
             Event, IcpEvent, InceptionResult, KERI_VERSION, KeriSequence, Prefix, Said,
@@ -119,19 +118,19 @@ impl RegistryIdentityStorage {
         // Initialize registry if needed
         self.backend
             .init_if_needed()
-            .context("Failed to initialize registry")?;
+            .map_err(|e| InitError::Registry(format!("Failed to initialize registry: {e}")))?;
 
         // Generate keypairs
         let rng = SystemRandom::new();
         let current_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-            .map_err(|e| anyhow::anyhow!("Key generation failed: {}", e))?;
+            .map_err(|e| InitError::Crypto(format!("Key generation failed: {e}")))?;
         let current_keypair = Ed25519KeyPair::from_pkcs8(current_pkcs8.as_ref())
-            .map_err(|e| anyhow::anyhow!("Key generation failed: {}", e))?;
+            .map_err(|e| InitError::Crypto(format!("Key parsing failed: {e}")))?;
 
         let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-            .map_err(|e| anyhow::anyhow!("Key generation failed: {}", e))?;
+            .map_err(|e| InitError::Crypto(format!("Key generation failed: {e}")))?;
         let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
-            .map_err(|e| anyhow::anyhow!("Key generation failed: {}", e))?;
+            .map_err(|e| InitError::Crypto(format!("Key parsing failed: {e}")))?;
 
         // Encode current public key with derivation code prefix
         let current_pub_encoded = format!(
@@ -169,19 +168,19 @@ impl RegistryIdentityStorage {
 
         // Finalize event (computes SAID)
         let mut finalized = finalize_icp_event(icp)
-            .map_err(|e| anyhow::anyhow!("Failed to finalize ICP: {}", e))?;
+            .map_err(|e| InitError::Keri(format!("Failed to finalize ICP: {e}")))?;
         let prefix = finalized.i.clone();
 
         // Sign the event
         let canonical = serialize_for_signing(&Event::Icp(finalized.clone()))
-            .map_err(|e| anyhow::anyhow!("Failed to serialize for signing: {}", e))?;
+            .map_err(|e| InitError::Keri(format!("Failed to serialize for signing: {e}")))?;
         let sig = current_keypair.sign(&canonical);
         finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
         // Store event in packed registry
         self.backend
             .append_event(&prefix, &Event::Icp(finalized))
-            .map_err(|e| anyhow::anyhow!("Failed to store event in registry: {}", e))?;
+            .map_err(|e| InitError::Registry(format!("Failed to store event in registry: {e}")))?;
 
         let controller_did = format!("did:keri:{}", prefix);
 

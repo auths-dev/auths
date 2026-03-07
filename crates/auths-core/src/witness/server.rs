@@ -26,6 +26,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
@@ -48,6 +49,8 @@ struct WitnessServerInner {
     public_key: [u8; 32],
     /// SQLite storage (Mutex for thread safety since Connection is !Sync)
     storage: Mutex<WitnessStorage>,
+    /// Clock function for getting current time
+    clock: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 
 /// Configuration for the witness server.
@@ -136,6 +139,7 @@ pub struct ErrorResponse {
 
 impl WitnessServerState {
     /// Create a new server state.
+    #[allow(clippy::disallowed_methods)] // Server constructor is a clock boundary
     pub fn new(config: WitnessServerConfig) -> Result<Self, WitnessError> {
         let storage = WitnessStorage::open(&config.db_path)?;
 
@@ -145,11 +149,13 @@ impl WitnessServerState {
                 seed: config.keypair_seed,
                 public_key: config.keypair_pubkey,
                 storage: Mutex::new(storage),
+                clock: Box::new(Utc::now),
             }),
         })
     }
 
     /// Create a new server state with in-memory storage (for testing).
+    #[allow(clippy::disallowed_methods)] // Server constructor is a clock boundary
     pub fn in_memory(
         witness_did: String,
         seed: SecureSeed,
@@ -163,11 +169,13 @@ impl WitnessServerState {
                 seed,
                 public_key,
                 storage: Mutex::new(storage),
+                clock: Box::new(Utc::now),
             }),
         })
     }
 
     /// Create a new server state with generated keypair (for testing).
+    #[allow(clippy::disallowed_methods)] // Server constructor is a clock boundary
     pub fn in_memory_generated() -> Result<Self, WitnessError> {
         use crate::crypto::provider_bridge;
 
@@ -184,6 +192,7 @@ impl WitnessServerState {
                 seed,
                 public_key,
                 storage: Mutex::new(storage),
+                clock: Box::new(Utc::now),
             }),
         })
     }
@@ -428,7 +437,6 @@ fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), Stri
 
 /// POST /witness/:prefix/event - Submit an event for witnessing.
 #[allow(clippy::too_many_lines)]
-#[allow(clippy::disallowed_methods)] // Server handler is a clock boundary
 async fn submit_event(
     State(state): State<WitnessServerState>,
     AxumPath(prefix_str): AxumPath<String>,
@@ -489,7 +497,7 @@ async fn submit_event(
     );
     let event_s = event.get("s").and_then(|v| v.as_u64()).unwrap_or(0);
 
-    let now = chrono::Utc::now();
+    let now = (state.inner.clock)();
     let storage = state.inner.storage.lock().map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
