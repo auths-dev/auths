@@ -12,6 +12,7 @@ fn make_signer(
     StorageSigner<Box<dyn auths_core::storage::keychain::KeyStorage + Send + Sync>>,
     PrefilledPassphraseProvider,
 )> {
+    #[allow(clippy::disallowed_methods)] // Presentation boundary: env var read is intentional
     let passphrase_str =
         passphrase.unwrap_or_else(|| std::env::var("AUTHS_PASSPHRASE").unwrap_or_default());
     let env_config = EnvironmentConfig {
@@ -22,8 +23,6 @@ fn make_signer(
             passphrase: Some(passphrase_str.clone()),
         },
         ssh_agent_socket: None,
-        #[cfg(feature = "keychain-pkcs11")]
-        pkcs11: None,
     };
 
     let keychain = get_platform_keychain_with_config(&env_config)
@@ -104,6 +103,7 @@ pub fn sign_action_as_identity(
         pyo3::exceptions::PyValueError::new_err(format!("Invalid payload JSON: {e}"))
     })?;
 
+    #[allow(clippy::disallowed_methods)] // Presentation boundary
     let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 
     let signing_data = serde_json::json!({

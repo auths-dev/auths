@@ -1,6 +1,7 @@
 use auths_verifier::core::{
     Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
 };
+use auths_verifier::error::AuthsErrorInfo;
 use auths_verifier::types::DeviceDID;
 use auths_verifier::verify::{
     verify_at_time as rust_verify_at_time, verify_chain as rust_verify_chain,
@@ -57,6 +58,7 @@ pub fn verify_attestation(
             return Ok(VerificationResult {
                 valid: false,
                 error: Some(format!("Failed to parse attestation JSON: {e}")),
+                error_code: Some("AUTHS_SERIALIZATION_ERROR".to_string()),
             });
         }
     };
@@ -66,9 +68,11 @@ pub fn verify_attestation(
             Ok(_) => Ok(VerificationResult {
                 valid: true,
                 error: None,
+                error_code: None,
             }),
             Err(e) => Ok(VerificationResult {
                 valid: false,
+                error_code: Some(e.error_code().to_string()),
                 error: Some(e.to_string()),
             }),
         },
@@ -121,7 +125,8 @@ pub fn verify_chain(
         match runtime().block_on(rust_verify_chain(&attestations, &root_pk_bytes)) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
-                "Chain verification failed: {e}"
+                "[{}] Chain verification failed: {e}",
+                e.error_code()
             ))),
         }
     })
@@ -184,7 +189,8 @@ pub fn verify_device_authorization(
         )) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
-                "Device authorization verification failed: {e}"
+                "[{}] Device authorization verification failed: {e}",
+                e.error_code()
             ))),
         }
     })
@@ -232,6 +238,7 @@ pub fn verify_attestation_with_capability(
             return Ok(VerificationResult {
                 valid: false,
                 error: Some(format!("Failed to parse attestation JSON: {e}")),
+                error_code: Some("AUTHS_SERIALIZATION_ERROR".to_string()),
             });
         }
     };
@@ -245,9 +252,11 @@ pub fn verify_attestation_with_capability(
             Ok(_) => Ok(VerificationResult {
                 valid: true,
                 error: None,
+                error_code: None,
             }),
             Err(e) => Ok(VerificationResult {
                 valid: false,
+                error_code: Some(e.error_code().to_string()),
                 error: Some(e.to_string()),
             }),
         }
@@ -310,7 +319,8 @@ pub fn verify_chain_with_capability(
         )) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
-                "Chain verification with capability failed: {e}"
+                "[{}] Chain verification with capability failed: {e}",
+                e.error_code()
             ))),
         }
     })
@@ -332,6 +342,7 @@ fn parse_rfc3339_timestamp(at_rfc3339: &str) -> PyResult<DateTime<Utc>> {
         }
     })?;
 
+    #[allow(clippy::disallowed_methods)] // Presentation boundary
     let now = Utc::now();
     let skew_tolerance = chrono::Duration::seconds(60);
     if at > now + skew_tolerance {
@@ -393,6 +404,7 @@ pub fn verify_at_time(
             return Ok(VerificationResult {
                 valid: false,
                 error: Some(format!("Failed to parse attestation JSON: {e}")),
+                error_code: Some("AUTHS_SERIALIZATION_ERROR".to_string()),
             });
         }
     };
@@ -402,9 +414,11 @@ pub fn verify_at_time(
             Ok(_) => Ok(VerificationResult {
                 valid: true,
                 error: None,
+                error_code: None,
             }),
             Err(e) => Ok(VerificationResult {
                 valid: false,
+                error_code: Some(e.error_code().to_string()),
                 error: Some(e.to_string()),
             }),
         },
@@ -440,6 +454,7 @@ pub fn verify_at_time_with_capability(
             return Ok(VerificationResult {
                 valid: false,
                 error: Some(format!("Failed to parse attestation JSON: {e}")),
+                error_code: Some("AUTHS_SERIALIZATION_ERROR".to_string()),
             });
         }
     };
@@ -455,6 +470,7 @@ pub fn verify_at_time_with_capability(
                     Ok(VerificationResult {
                         valid: true,
                         error: None,
+                        error_code: None,
                     })
                 } else {
                     Ok(VerificationResult {
@@ -462,11 +478,13 @@ pub fn verify_at_time_with_capability(
                         error: Some(format!(
                             "Attestation does not grant required capability '{required_capability}'"
                         )),
+                        error_code: Some("AUTHS_MISSING_CAPABILITY".to_string()),
                     })
                 }
             }
             Err(e) => Ok(VerificationResult {
                 valid: false,
+                error_code: Some(e.error_code().to_string()),
                 error: Some(e.to_string()),
             }),
         },
@@ -570,7 +588,8 @@ pub fn verify_chain_with_witnesses(
         )) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
-                "Chain verification with witnesses failed: {e}"
+                "[{}] Chain verification with witnesses failed: {e}",
+                e.error_code()
             ))),
         }
     })

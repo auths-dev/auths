@@ -80,6 +80,7 @@ pub fn sign_commit(
         agent_signing: Arc::new(auths_sdk::ports::agent::NoopAgentProvider),
     };
 
+    #[allow(clippy::disallowed_methods)] // Presentation boundary
     let now = chrono::Utc::now();
 
     py.allow_threads(move || {

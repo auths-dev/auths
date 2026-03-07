@@ -333,19 +333,16 @@ pub(crate) async fn verify_with_keys_at(
     if let Some(revoked_at) = att.revoked_at
         && revoked_at <= reference_time
     {
-        return Err(AttestationError::VerificationError(
-            "Attestation revoked".to_string(),
-        ));
+        return Err(AttestationError::AttestationRevoked);
     }
 
     // --- 2. Check expiration against reference time ---
     if let Some(exp) = att.expires_at
         && reference_time > exp
     {
-        return Err(AttestationError::VerificationError(format!(
-            "Attestation expired on {}",
-            exp.to_rfc3339()
-        )));
+        return Err(AttestationError::AttestationExpired {
+            at: exp.to_rfc3339(),
+        });
     }
 
     // --- 3. Check timestamp skew against reference time ---
@@ -353,15 +350,14 @@ pub(crate) async fn verify_with_keys_at(
         && let Some(ts) = att.timestamp
         && ts > reference_time + Duration::seconds(MAX_SKEW_SECS)
     {
-        return Err(AttestationError::VerificationError(format!(
-            "Attestation timestamp ({}) is in the future",
-            ts.to_rfc3339(),
-        )));
+        return Err(AttestationError::TimestampInFuture {
+            at: ts.to_rfc3339(),
+        });
     }
 
     // --- 4. Check provided issuer public key length ---
     if !att.identity_signature.is_empty() && issuer_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::VerificationError(format!(
+        return Err(AttestationError::InvalidInput(format!(
             "Provided issuer public key has invalid length: {}",
             issuer_pk_bytes.len()
         )));
@@ -404,11 +400,7 @@ pub(crate) async fn verify_with_keys_at(
                 att.identity_signature.as_bytes(),
             )
             .await
-            .map_err(|_| {
-                AttestationError::VerificationError(
-                    "Issuer signature verification failed".to_string(),
-                )
-            })?;
+            .map_err(|e| AttestationError::IssuerSignatureFailed(e.to_string()))?;
         debug!("(Verify) Issuer signature verified successfully.");
     } else {
         debug!(
@@ -424,9 +416,7 @@ pub(crate) async fn verify_with_keys_at(
             att.device_signature.as_bytes(),
         )
         .await
-        .map_err(|_| {
-            AttestationError::VerificationError("Device signature verification failed".to_string())
-        })?;
+        .map_err(|e| AttestationError::DeviceSignatureFailed(e.to_string()))?;
     debug!("(Verify) Device signature verified successfully.");
 
     Ok(())
@@ -1361,8 +1351,8 @@ mod tests {
             .await;
         assert!(result.is_err());
         match result {
-            Err(AttestationError::VerificationError(_)) => {}
-            _ => panic!("Expected VerificationError, got {:?}", result),
+            Err(AttestationError::IssuerSignatureFailed(_)) => {}
+            _ => panic!("Expected IssuerSignatureFailed, got {:?}", result),
         }
     }
 
