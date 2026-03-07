@@ -61,6 +61,7 @@ fn attestation_error_to_code(e: &AttestationError) -> c_int {
         AttestationError::InvalidInput(_) => ERR_VERIFY_INVALID_PK_LEN,
         AttestationError::InputTooLarge(_) => ERR_VERIFY_INPUT_TOO_LARGE,
         AttestationError::BundleExpired { .. } => ERR_VERIFY_EXPIRED,
+        AttestationError::AttestationTooOld { .. } => ERR_VERIFY_EXPIRED,
         _ => ERR_VERIFY_OTHER,
     }
 }

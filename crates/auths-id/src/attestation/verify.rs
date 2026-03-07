@@ -8,13 +8,35 @@ use ring::signature::{ED25519, UnparsedPublicKey};
 /// Maximum allowed time skew for attestation timestamps.
 const MAX_SKEW_SECS: i64 = 5 * 60;
 
+/// Verifies an attestation's signatures, revocation status, expiry, and timestamp validity.
+///
+/// **Timestamp threat model:** Past timestamps are accepted by default because attestations
+/// stored in Git are routinely verified days or months after issuance. Only future timestamps
+/// (beyond `MAX_SKEW_SECS`) are rejected to guard against clock drift. To enforce freshness,
+/// callers can pass `max_age` — or use the `IssuedWithin` policy expression at a higher layer.
+///
+/// **Limitation:** `timestamp` is self-reported by the issuer and can be backdated. For
+/// stronger guarantees, combine with Git commit timestamps or witness receipts.
+///
+/// Args:
+/// * `now`: Current wall-clock time (injected for testability).
+/// * `resolver`: Resolves issuer DIDs to public keys.
+/// * `att`: The attestation to verify.
+/// * `max_age`: If `Some`, rejects attestations older than this duration.
+///
+/// Usage:
+/// ```ignore
+/// // Accept any age:
+/// verify_with_resolver(now, &resolver, &att, None)?;
+/// // Require issued within last hour:
+/// verify_with_resolver(now, &resolver, &att, Some(Duration::hours(1)))?;
+/// ```
 pub fn verify_with_resolver(
     now: DateTime<Utc>,
     resolver: &dyn DidResolver,
     att: &Attestation,
+    max_age: Option<Duration>,
 ) -> Result<(), AttestationError> {
-    // Return specific AttestationError
-    // 1. Check revocation and expiration
     if att.is_revoked() {
         return Err(AttestationError::AttestationRevoked);
     }
@@ -25,14 +47,23 @@ pub fn verify_with_resolver(
             at: exp.to_rfc3339(),
         });
     }
-    // Only reject timestamps in the future (clock drift protection)
-    // Past timestamps are valid - attestations stored in Git are verified days/months later
     if let Some(ts) = att.timestamp
         && ts > now + Duration::seconds(MAX_SKEW_SECS)
     {
         return Err(AttestationError::TimestampInFuture {
             at: ts.to_rfc3339(),
         });
+    }
+    if let Some(max) = max_age
+        && let Some(ts) = att.timestamp
+    {
+        let age = now - ts;
+        if age > max {
+            return Err(AttestationError::AttestationTooOld {
+                age_secs: age.num_seconds().unsigned_abs(),
+                max_secs: max.num_seconds().unsigned_abs(),
+            });
+        }
     }
 
     // 2. Resolve issuer's public key
@@ -94,8 +125,95 @@ pub fn verify_with_resolver(
         att.subject.as_str()
     );
 
-    // Optional: Schema validation could be a separate function or re-added here if needed
-    // if let Some(schema_val) = schema_value { ... }
-
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+mod tests {
+    use super::*;
+    use auths_core::signing::{DidResolverError, ResolvedDid};
+    use auths_verifier::IdentityDID;
+    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
+    use auths_verifier::types::DeviceDID;
+
+    struct StubResolver;
+    impl DidResolver for StubResolver {
+        fn resolve(&self, did: &str) -> Result<ResolvedDid, DidResolverError> {
+            Err(DidResolverError::InvalidDidKey(format!("stub: {}", did)))
+        }
+    }
+
+    fn base_attestation() -> Attestation {
+        Attestation {
+            version: 1,
+            rid: ResourceId::new("test"),
+            issuer: IdentityDID::new("did:key:zStub"),
+            subject: DeviceDID::new("did:key:zDevice"),
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
+            revoked_at: None,
+            expires_at: None,
+            timestamp: None,
+            note: None,
+            payload: None,
+            role: None,
+            capabilities: vec![],
+            delegated_by: None,
+            signer_type: None,
+        }
+    }
+
+    #[test]
+    fn max_age_none_skips_check() {
+        let mut att = base_attestation();
+        att.timestamp = Some(Utc::now() - Duration::days(365));
+        let result = verify_with_resolver(Utc::now(), &StubResolver, &att, None);
+        // Should pass the timestamp checks and fail on DID resolution (not max_age)
+        assert!(matches!(
+            result,
+            Err(AttestationError::DidResolutionError(_))
+        ));
+    }
+
+    #[test]
+    fn max_age_rejects_old_attestation() {
+        let now = Utc::now();
+        let mut att = base_attestation();
+        att.timestamp = Some(now - Duration::hours(2));
+        let result = verify_with_resolver(now, &StubResolver, &att, Some(Duration::hours(1)));
+        match result {
+            Err(AttestationError::AttestationTooOld { age_secs, max_secs }) => {
+                assert!(age_secs >= 7200);
+                assert_eq!(max_secs, 3600);
+            }
+            other => panic!("Expected AttestationTooOld, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn max_age_accepts_fresh_attestation() {
+        let now = Utc::now();
+        let mut att = base_attestation();
+        att.timestamp = Some(now - Duration::minutes(30));
+        let result = verify_with_resolver(now, &StubResolver, &att, Some(Duration::hours(1)));
+        // Should pass max_age and fail on DID resolution
+        assert!(matches!(
+            result,
+            Err(AttestationError::DidResolutionError(_))
+        ));
+    }
+
+    #[test]
+    fn max_age_skips_when_no_timestamp() {
+        let att = base_attestation(); // timestamp is None
+        let result =
+            verify_with_resolver(Utc::now(), &StubResolver, &att, Some(Duration::hours(1)));
+        // No timestamp → max_age check skipped, fails on DID resolution
+        assert!(matches!(
+            result,
+            Err(AttestationError::DidResolutionError(_))
+        ));
+    }
 }

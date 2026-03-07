@@ -461,6 +461,7 @@ fn list_devices(
             chrono::Utc::now(),
             &resolver,
             latest,
+            None,
         );
 
         let status_string = match verification_result {
