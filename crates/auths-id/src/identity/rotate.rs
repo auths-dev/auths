@@ -13,6 +13,8 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::path::Path;
 
+use zeroize::Zeroizing;
+
 use crate::error::InitError;
 use crate::identity::helpers::{
     encode_seed_as_pkcs8, extract_seed_bytes, load_keypair_from_der_or_seed,
@@ -36,9 +38,9 @@ pub struct RotationKeyInfo {
     /// The sequence number after rotation
     pub sequence: u64,
     /// The new current keypair PKCS8
-    pub new_current_pkcs8: Vec<u8>,
+    pub new_current_pkcs8: Zeroizing<Vec<u8>>,
     /// The new next keypair PKCS8
-    pub new_next_pkcs8: Vec<u8>,
+    pub new_next_pkcs8: Zeroizing<Vec<u8>>,
 }
 
 /// Rotates a KERI identity using the GitKel backend.
@@ -281,8 +283,8 @@ pub fn rotate_registry_identity(
 
     Ok(RotationKeyInfo {
         sequence: new_sequence,
-        new_current_pkcs8: decrypted_next_pkcs8.to_vec(),
-        new_next_pkcs8: new_next_pkcs8.as_ref().to_vec(),
+        new_current_pkcs8: Zeroizing::new(decrypted_next_pkcs8.to_vec()),
+        new_next_pkcs8: Zeroizing::new(new_next_pkcs8.as_ref().to_vec()),
     })
 }
 

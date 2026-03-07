@@ -28,7 +28,7 @@ ssh-key = { version = "0.6.7", features = ["ed25519"] }
 thiserror.workspace = true
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
-zeroize = { version = "1.8.1", features = ["serde", "derive"] }
+zeroize.workspace = true
 aes-gcm = "0.10.3"
 sha2 = "0.10.8"
 argon2 = "0.5"

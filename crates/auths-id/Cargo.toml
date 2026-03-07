@@ -47,6 +47,7 @@ tokio = { version = "1", features = ["rt", "sync"], optional = true }
 url = { version = "2", features = ["serde"] }
 uuid = "1.16.0"
 zerocopy = "0.8.24"
+zeroize.workspace = true
 mockall = { version = "0.13", optional = true }
 
 # Optional dependencies

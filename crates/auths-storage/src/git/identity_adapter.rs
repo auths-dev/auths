@@ -27,6 +27,8 @@
 
 use std::path::PathBuf;
 
+use zeroize::Zeroizing;
+
 use auths_id::error::{InitError, StorageError};
 use git2::Repository;
 use serde::{Deserialize, Serialize};
@@ -193,8 +195,8 @@ impl RegistryIdentityStorage {
             controller_did,
             InceptionResult {
                 prefix,
-                current_keypair_pkcs8: current_pkcs8.as_ref().to_vec(),
-                next_keypair_pkcs8: next_pkcs8.as_ref().to_vec(),
+                current_keypair_pkcs8: Zeroizing::new(current_pkcs8.as_ref().to_vec()),
+                next_keypair_pkcs8: Zeroizing::new(next_pkcs8.as_ref().to_vec()),
                 current_public_key: current_keypair.public_key().as_ref().to_vec(),
                 next_public_key: next_keypair.public_key().as_ref().to_vec(),
             },

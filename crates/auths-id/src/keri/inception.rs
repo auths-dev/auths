@@ -12,6 +12,7 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
 use crate::storage::registry::backend::{RegistryBackend, RegistryError};
+use zeroize::Zeroizing;
 
 use auths_core::crypto::said::compute_next_commitment;
 
@@ -40,22 +41,33 @@ pub enum InceptionError {
 }
 
 /// Result of a KERI identity inception.
-#[derive(Debug)]
 pub struct InceptionResult {
     /// The KERI prefix (use with did:keri:<prefix>)
     pub prefix: Prefix,
 
     /// The current signing keypair (PKCS8 DER encoded)
-    pub current_keypair_pkcs8: Vec<u8>,
+    pub current_keypair_pkcs8: Zeroizing<Vec<u8>>,
 
     /// The next rotation keypair (PKCS8 DER encoded)
-    pub next_keypair_pkcs8: Vec<u8>,
+    pub next_keypair_pkcs8: Zeroizing<Vec<u8>>,
 
     /// The current public key (raw 32 bytes)
     pub current_public_key: Vec<u8>,
 
     /// The next public key (raw 32 bytes)
     pub next_public_key: Vec<u8>,
+}
+
+impl std::fmt::Debug for InceptionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InceptionResult")
+            .field("prefix", &self.prefix)
+            .field("current_keypair_pkcs8", &"[REDACTED]")
+            .field("next_keypair_pkcs8", &"[REDACTED]")
+            .field("current_public_key", &self.current_public_key)
+            .field("next_public_key", &self.next_public_key)
+            .finish()
+    }
 }
 
 impl InceptionResult {
@@ -165,8 +177,8 @@ pub fn create_keri_identity(
 
     Ok(InceptionResult {
         prefix,
-        current_keypair_pkcs8: current_pkcs8.as_ref().to_vec(),
-        next_keypair_pkcs8: next_pkcs8.as_ref().to_vec(),
+        current_keypair_pkcs8: Zeroizing::new(current_pkcs8.as_ref().to_vec()),
+        next_keypair_pkcs8: Zeroizing::new(next_pkcs8.as_ref().to_vec()),
         current_public_key: current_keypair.public_key().as_ref().to_vec(),
         next_public_key: next_keypair.public_key().as_ref().to_vec(),
     })
@@ -233,8 +245,8 @@ pub fn create_keri_identity_with_backend(
 
     Ok(InceptionResult {
         prefix,
-        current_keypair_pkcs8: current_pkcs8.as_ref().to_vec(),
-        next_keypair_pkcs8: next_pkcs8.as_ref().to_vec(),
+        current_keypair_pkcs8: Zeroizing::new(current_pkcs8.as_ref().to_vec()),
+        next_keypair_pkcs8: Zeroizing::new(next_pkcs8.as_ref().to_vec()),
         current_public_key: current_keypair.public_key().as_ref().to_vec(),
         next_public_key: next_keypair.public_key().as_ref().to_vec(),
     })

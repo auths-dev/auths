@@ -11,6 +11,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
+use zeroize::Zeroizing;
 
 use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
 
@@ -51,7 +52,6 @@ pub enum RotationError {
 }
 
 /// Result of a KERI key rotation.
-#[derive(Debug)]
 pub struct RotationResult {
     /// The KERI prefix
     pub prefix: Prefix,
@@ -60,16 +60,29 @@ pub struct RotationResult {
     pub sequence: u64,
 
     /// The new current keypair (was the "next" key, PKCS8 DER encoded)
-    pub new_current_keypair_pkcs8: Vec<u8>,
+    pub new_current_keypair_pkcs8: Zeroizing<Vec<u8>>,
 
     /// The new next keypair for future rotation (PKCS8 DER encoded)
-    pub new_next_keypair_pkcs8: Vec<u8>,
+    pub new_next_keypair_pkcs8: Zeroizing<Vec<u8>>,
 
     /// The new current public key (raw 32 bytes)
     pub new_current_public_key: Vec<u8>,
 
     /// The new next public key (raw 32 bytes)
     pub new_next_public_key: Vec<u8>,
+}
+
+impl std::fmt::Debug for RotationResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RotationResult")
+            .field("prefix", &self.prefix)
+            .field("sequence", &self.sequence)
+            .field("new_current_keypair_pkcs8", &"[REDACTED]")
+            .field("new_next_keypair_pkcs8", &"[REDACTED]")
+            .field("new_current_public_key", &self.new_current_public_key)
+            .field("new_next_public_key", &self.new_next_public_key)
+            .finish()
+    }
 }
 
 /// Rotate keys for a KERI identity.
@@ -190,8 +203,8 @@ pub fn rotate_keys(
     Ok(RotationResult {
         prefix: prefix.clone(),
         sequence: new_sequence,
-        new_current_keypair_pkcs8: next_keypair_pkcs8.to_vec(),
-        new_next_keypair_pkcs8: new_next_pkcs8.as_ref().to_vec(),
+        new_current_keypair_pkcs8: Zeroizing::new(next_keypair_pkcs8.to_vec()),
+        new_next_keypair_pkcs8: Zeroizing::new(new_next_pkcs8.as_ref().to_vec()),
         new_current_public_key: next_keypair.public_key().as_ref().to_vec(),
         new_next_public_key: new_next_keypair.public_key().as_ref().to_vec(),
     })
@@ -372,8 +385,8 @@ pub fn rotate_keys_with_backend(
     Ok(RotationResult {
         prefix: prefix.clone(),
         sequence: new_sequence,
-        new_current_keypair_pkcs8: next_keypair_pkcs8.to_vec(),
-        new_next_keypair_pkcs8: new_next_pkcs8.as_ref().to_vec(),
+        new_current_keypair_pkcs8: Zeroizing::new(next_keypair_pkcs8.to_vec()),
+        new_next_keypair_pkcs8: Zeroizing::new(new_next_pkcs8.as_ref().to_vec()),
         new_current_public_key: next_keypair.public_key().as_ref().to_vec(),
         new_next_public_key: new_next_keypair.public_key().as_ref().to_vec(),
     })
