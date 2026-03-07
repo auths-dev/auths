@@ -313,7 +313,7 @@ class Auths:
 
         Usage:
             agent = auths.identities.delegate_agent(identity.did, "bot", ["sign"])
-            sig = auths.sign_as_agent(b"hello", key_alias=agent.key_alias)
+            sig = auths.sign_as_agent(b"hello", key_alias=agent._key_alias)
         """
         from auths._native import sign_as_agent as _sign_as_agent
 
@@ -342,7 +342,7 @@ class Auths:
 
         Usage:
             agent = auths.identities.delegate_agent(identity.did, "bot", ["deploy"])
-            envelope = auths.sign_action_as_agent("deploy", payload, agent.key_alias, agent.did)
+            envelope = auths.sign_action_as_agent("deploy", payload, agent._key_alias, agent.did)
         """
         from auths._native import sign_action_as_agent as _sign_action_as_agent
 
