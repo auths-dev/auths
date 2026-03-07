@@ -33,7 +33,7 @@ use crate::factories::storage::build_auths_context;
 
 use super::init_helpers::{
     check_git_version, detect_ci_environment, get_auths_repo_path, offer_shell_completions,
-    select_agent_capabilities, short_did, write_allowed_signers,
+    select_agent_capabilities, write_allowed_signers,
 };
 use crate::config::CliConfig;
 use crate::ux::format::Output;
@@ -179,14 +179,8 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
                 _ => unreachable!(),
             };
 
-            out.print_success(&format!(
-                "Identity ready: {}",
-                short_did(&result.identity_did)
-            ));
-            out.print_success(&format!(
-                "Device linked: {}",
-                short_did(result.device_did.as_str())
-            ));
+            out.print_success(&format!("Identity ready: {}", &result.identity_did));
+            out.print_success(&format!("Device linked: {}", result.device_did.as_str()));
             out.newline();
 
             // Post-execute: platform verification (interactive CLI concern)
@@ -452,7 +446,7 @@ fn prompt_for_conflict_policy(
     if let Ok(existing) = identity_storage.load_identity() {
         out.println(&format!(
             "  Found existing identity: {}",
-            out.info(&short_did(existing.controller_did.as_str()))
+            out.info(existing.controller_did.as_str())
         ));
 
         if !interactive {
@@ -627,10 +621,7 @@ fn display_developer_result(
     out.newline();
     out.print_heading("You are on the Web of Trust!");
     out.newline();
-    out.println(&format!(
-        "  Identity: {}",
-        out.info(&short_did(&result.identity_did))
-    ));
+    out.println(&format!("  Identity: {}", out.info(&result.identity_did)));
     out.println(&format!("  Key alias: {}", out.info(&result.key_alias)));
     if let Some(registry) = registered {
         out.println(&format!("  Registry: {}", out.info(registry)));
@@ -653,7 +644,7 @@ fn display_ci_result(
     result: &auths_sdk::result::CiIdentityResult,
     ci_vendor: Option<&str>,
 ) {
-    out.print_success(&format!("CI identity: {}", short_did(&result.identity_did)));
+    out.print_success(&format!("CI identity: {}", &result.identity_did));
     out.newline();
 
     out.print_heading("Add these to your CI secrets:");
@@ -676,10 +667,7 @@ fn display_ci_result(
 fn display_agent_result(out: &Output, result: &auths_sdk::result::AgentIdentityResult) {
     out.print_heading("Agent Setup Complete!");
     out.newline();
-    out.println(&format!(
-        "  Identity: {}",
-        out.info(&short_did(&result.agent_did))
-    ));
+    out.println(&format!("  Identity: {}", out.info(&result.agent_did)));
     let cap_display: Vec<String> = result.capabilities.iter().map(|c| c.to_string()).collect();
     out.println(&format!("  Capabilities: {}", cap_display.join(", ")));
     out.newline();

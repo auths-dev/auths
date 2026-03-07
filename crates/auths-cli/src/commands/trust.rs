@@ -151,8 +151,7 @@ fn handle_list(_cmd: TrustListCommand) -> Result<()> {
                     TrustLevel::Manual => out.info("Manual"),
                     TrustLevel::OrgPolicy => out.success("OrgPolicy"),
                 };
-                let did_short = truncate_did(&pin.did, 50);
-                out.println(&format!("  {} [{}]", did_short, level));
+                out.println(&format!("  {} [{}]", pin.did, level));
             }
         }
     }
@@ -207,7 +206,7 @@ fn handle_pin(cmd: TrustPinCommand) -> Result<()> {
         out.println(&format!(
             "{} Pinned identity: {}",
             out.success("OK"),
-            truncate_did(&cmd.did, 50)
+            &cmd.did
         ));
     }
 
@@ -237,7 +236,7 @@ fn handle_remove(cmd: TrustRemoveCommand) -> Result<()> {
         out.println(&format!(
             "{} Removed pin for: {}",
             out.success("OK"),
-            truncate_did(&cmd.did, 50)
+            &cmd.did
         ));
     }
 
@@ -286,39 +285,11 @@ fn handle_show(cmd: TrustShowCommand) -> Result<()> {
     Ok(())
 }
 
-/// Truncate a DID for display.
-fn truncate_did(did: &str, max_len: usize) -> String {
-    if did.len() <= max_len {
-        did.to_string()
-    } else {
-        format!("{}...", &did[..max_len - 3])
-    }
-}
-
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
 impl ExecutableCommand for TrustCommand {
     fn execute(&self, _ctx: &CliConfig) -> Result<()> {
         handle_trust(self.clone())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_truncate_did_short() {
-        let did = "did:keri:E123";
-        assert_eq!(truncate_did(did, 20), did);
-    }
-
-    #[test]
-    fn test_truncate_did_long() {
-        let did = "did:keri:EXq5YqaL6L48pf0fu7IUhL0JRaU2_RxFP0AL43wYn148";
-        let truncated = truncate_did(did, 24);
-        assert!(truncated.ends_with("..."));
-        assert_eq!(truncated.len(), 24);
     }
 }

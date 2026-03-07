@@ -107,8 +107,7 @@ fn print_status(report: &StatusReport) {
 
     // Identity
     if let Some(ref id) = report.identity {
-        let did_display = truncate_did(&id.controller_did, 40);
-        out.println(&format!("Identity:   {}", out.info(&did_display)));
+        out.println(&format!("Identity:   {}", out.info(&id.controller_did)));
         if let Some(ref alias) = id.alias {
             out.println(&format!("Alias:      {}", alias));
         }
@@ -179,8 +178,7 @@ fn print_status(report: &StatusReport) {
             if device.revoked_at.is_some() {
                 continue;
             }
-            let did_display = truncate_did(&device.device_did, 40);
-            out.println(&format!("  {}", out.dim(&did_display)));
+            out.println(&format!("  {}", out.dim(&device.device_did)));
             display_device_expiry(device.expires_at, &out, now);
         }
     }
@@ -375,15 +373,6 @@ fn is_process_running(_pid: u32) -> bool {
     false
 }
 
-/// Truncate a DID for display.
-fn truncate_did(did: &str, max_len: usize) -> String {
-    if did.len() <= max_len {
-        did.to_string()
-    } else {
-        format!("{}...", &did[..max_len - 3])
-    }
-}
-
 impl crate::commands::executable::ExecutableCommand for StatusCommand {
     fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
         handle_status(self.clone(), ctx.repo_path.clone())
@@ -393,20 +382,6 @@ impl crate::commands::executable::ExecutableCommand for StatusCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_truncate_did_short() {
-        let did = "did:key:z6Mk";
-        assert_eq!(truncate_did(did, 20), did);
-    }
-
-    #[test]
-    fn test_truncate_did_long() {
-        let did = "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK";
-        let truncated = truncate_did(did, 24);
-        assert!(truncated.ends_with("..."));
-        assert_eq!(truncated.len(), 24);
-    }
 
     #[test]
     fn test_get_auths_dir() {
