@@ -3,7 +3,7 @@ use auths_core::crypto::ssh::{
     encode_ssh_pubkey, encode_ssh_signature, extract_pubkey_from_key_bytes,
     extract_seed_from_pkcs8,
 };
-use zeroize::Zeroizing;
+use auths_crypto::Pkcs8Der;
 
 #[test]
 fn test_secure_seed_zeroes_on_drop() {
@@ -66,7 +66,7 @@ fn test_extract_pubkey_from_pkcs8_v2() {
 
     let seed = SecureSeed::new([5u8; 32]);
     let pkcs8 = build_ed25519_pkcs8_v2_from_seed(&seed).unwrap();
-    let pubkey = extract_pubkey_from_key_bytes(&pkcs8).unwrap();
+    let pubkey = extract_pubkey_from_key_bytes(pkcs8.as_ref()).unwrap();
     assert_eq!(pubkey.len(), 32);
 }
 
@@ -96,15 +96,15 @@ fn test_construct_sshsig_pem_format() {
 
 #[test]
 fn test_extract_seed_rejects_invalid_length() {
-    let bad = Zeroizing::new(vec![0u8; 50]);
+    let bad = Pkcs8Der::new(vec![0u8; 50]);
     assert!(extract_seed_from_pkcs8(&bad).is_err());
 }
 
 #[test]
-fn test_build_pkcs8_v2_returns_zeroizing() {
+fn test_build_pkcs8_v2_returns_pkcs8der() {
     use auths_core::crypto::ssh::build_ed25519_pkcs8_v2_from_seed;
 
     let seed = SecureSeed::new([7u8; 32]);
     let pkcs8 = build_ed25519_pkcs8_v2_from_seed(&seed).unwrap();
-    assert_eq!(pkcs8.len(), 85);
+    assert_eq!(pkcs8.as_ref().len(), 85);
 }

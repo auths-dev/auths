@@ -8,13 +8,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use zeroize::Zeroizing;
 
 use auths_core::AgentError;
 use auths_core::crypto::signer::decrypt_keypair;
 use auths_core::crypto::ssh::{SecureSeed, extract_seed_from_pkcs8};
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, KeyStorage};
+use auths_crypto::Pkcs8Der;
 
 use crate::ports::agent::{AgentSigningError, AgentSigningPort};
 use crate::signing::{self, SigningError};
@@ -162,14 +162,14 @@ impl CommitSigningWorkflow {
         // Tier 2: auto-start agent + decrypt key + load into agent + direct sign
         let _ = ctx.agent_signing.ensure_running();
 
-        let pkcs8_der = load_key_with_passphrase_retry(ctx, &params)?;
-        let seed = extract_seed_from_pkcs8(&pkcs8_der)
+        let pkcs8 = load_key_with_passphrase_retry(ctx, &params)?;
+        let seed = extract_seed_from_pkcs8(&pkcs8)
             .map_err(|e| SigningError::KeyDecryptionFailed(e.to_string()))?;
 
         // Best-effort: load identity into agent for future Tier 1 hits
         let _ = ctx
             .agent_signing
-            .add_identity(&params.namespace, &pkcs8_der);
+            .add_identity(&params.namespace, pkcs8.as_ref());
 
         // Tier 3: direct sign
         direct_sign(&params, &seed, now)
@@ -193,7 +193,7 @@ fn try_agent_sign(
 fn load_key_with_passphrase_retry(
     ctx: &CommitSigningContext,
     params: &CommitSigningParams,
-) -> Result<Zeroizing<Vec<u8>>, SigningError> {
+) -> Result<Pkcs8Der, SigningError> {
     let alias = KeyAlias::new_unchecked(&params.key_alias);
     let (_identity_did, _role, encrypted_data) = ctx
         .key_storage
@@ -209,7 +209,7 @@ fn load_key_with_passphrase_retry(
             .map_err(|e| SigningError::KeyDecryptionFailed(e.to_string()))?;
 
         match decrypt_keypair(&encrypted_data, &passphrase) {
-            Ok(decrypted) => return Ok(decrypted),
+            Ok(decrypted) => return Ok(Pkcs8Der::new(&decrypted[..])),
             Err(AgentError::IncorrectPassphrase) => {
                 if attempt < params.max_passphrase_attempts {
                     ctx.passphrase_provider.on_incorrect_passphrase(&prompt);
