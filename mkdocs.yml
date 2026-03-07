@@ -119,6 +119,10 @@ nav:
           - Custom Policies: guides/advanced/custom-policies.md
           - WASM Verification: guides/advanced/wasm-verification.md
 
+  - CLI:
+      - Primary Commands: cli/commands/primary.md
+      - Advanced Commands: cli/commands/advanced.md
+
   - SDK & Libraries:
       - Rust SDK:
           - Overview: sdk/rust/overview.md
