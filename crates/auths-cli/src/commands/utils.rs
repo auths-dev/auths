@@ -80,10 +80,16 @@ pub fn handle_util(cmd: UtilCommand) -> Result<()> {
                 .try_into()
                 .context("Failed to convert public key to fixed array")?; // Should not fail
 
-            // Derive the identity ID string
             let did = ed25519_pubkey_to_did_key(&pubkey_fixed);
-            // Print the result clearly
-            println!("✅ Identity ID: {}", did);
+            if crate::ux::format::is_json_mode() {
+                crate::ux::format::JsonResponse::success(
+                    "derive-did",
+                    &serde_json::json!({ "did": did }),
+                )
+                .print()?;
+            } else {
+                println!("✅ Identity ID: {}", did);
+            }
             Ok(())
         }
 
@@ -92,7 +98,15 @@ pub fn handle_util(cmd: UtilCommand) -> Result<()> {
                 .map_err(anyhow::Error::from)
                 .context("Failed to parse OpenSSH public key")?;
             let did = ed25519_pubkey_to_did_key(&raw);
-            println!("{}", did);
+            if crate::ux::format::is_json_mode() {
+                crate::ux::format::JsonResponse::success(
+                    "pubkey-to-did",
+                    &serde_json::json!({ "did": did }),
+                )
+                .print()?;
+            } else {
+                println!("{}", did);
+            }
             Ok(())
         }
 

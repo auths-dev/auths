@@ -78,7 +78,15 @@ fn sign_commit_range(range: &str) -> Result<()> {
             return Err(anyhow!("git commit --amend failed: {}", stderr.trim()));
         }
     }
-    println!("✔ Signed: {}", range);
+    if crate::ux::format::is_json_mode() {
+        crate::ux::format::JsonResponse::success(
+            "sign",
+            &serde_json::json!({ "target": range, "type": "commit" }),
+        )
+        .print()?;
+    } else {
+        println!("✔ Signed: {}", range);
+    }
     Ok(())
 }
 
