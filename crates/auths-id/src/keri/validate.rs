@@ -347,6 +347,28 @@ pub fn verify_event_said(event: &Event) -> Result<(), ValidationError> {
     Ok(())
 }
 
+/// Validate a single event for appending to a KEL with known state.
+///
+/// Checks all invariants that `validate_kel` checks per-event:
+/// SAID integrity, sequence continuity, chain linkage, and cryptographic
+/// validity (signature + pre-rotation commitment).
+///
+/// Args:
+/// * `event` - The event to validate for append.
+/// * `state` - The current KeyState (tip of the existing KEL).
+pub fn validate_for_append(event: &Event, state: &KeyState) -> Result<(), ValidationError> {
+    if matches!(event, Event::Icp(_)) {
+        return Err(ValidationError::MultipleInceptions);
+    }
+
+    verify_event_said(event)?;
+    verify_sequence(event, state.sequence + 1)?;
+    verify_chain_linkage(event, state)?;
+    verify_event_crypto(event, Some(state))?;
+
+    Ok(())
+}
+
 /// Compute the SAID for an event.
 ///
 /// This serializes the event with an empty `d` field and computes the Blake3 hash.
