@@ -1,5 +1,8 @@
 use crate::clock::{ClockProvider, SystemClock};
-use crate::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
+use crate::core::{
+    Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_FILE_HASH_HEX_LEN, MAX_JSON_BATCH_SIZE,
+    MAX_PUBLIC_KEY_HEX_LEN, MAX_SIGNATURE_HEX_LEN,
+};
 use crate::error::{AttestationError, AuthsErrorInfo};
 use crate::keri;
 use crate::types::VerificationReport;
@@ -138,6 +141,13 @@ pub async fn wasm_verify_artifact_signature(
     signature_hex: &str,
     public_key_hex: &str,
 ) -> bool {
+    if file_hash_hex.len() > MAX_FILE_HASH_HEX_LEN
+        || signature_hex.len() > MAX_SIGNATURE_HEX_LEN
+        || public_key_hex.len() > MAX_PUBLIC_KEY_HEX_LEN
+    {
+        return false;
+    }
+
     let Ok(hash_bytes) = hex::decode(file_hash_hex) else {
         return false;
     };
@@ -149,6 +159,10 @@ pub async fn wasm_verify_artifact_signature(
     };
 
     if pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
+        return false;
+    }
+    // Ed25519 signatures are always 64 bytes
+    if sig_bytes.len() != 64 {
         return false;
     }
 
