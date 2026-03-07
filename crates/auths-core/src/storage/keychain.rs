@@ -46,6 +46,40 @@ const SERVICE_NAME: &str = "dev.auths.agent";
 // Re-exported from auths-verifier (the leaf dependency shared by all crates).
 pub use auths_verifier::IdentityDID;
 
+/// The role a stored key serves within its identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyRole {
+    /// The identity's current active signing key.
+    Primary,
+    /// A pre-committed rotation key (not yet active).
+    NextRotation,
+    /// A key delegated to an autonomous agent.
+    DelegatedAgent,
+}
+
+impl std::fmt::Display for KeyRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KeyRole::Primary => write!(f, "primary"),
+            KeyRole::NextRotation => write!(f, "next_rotation"),
+            KeyRole::DelegatedAgent => write!(f, "delegated_agent"),
+        }
+    }
+}
+
+impl std::str::FromStr for KeyRole {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "primary" => Ok(KeyRole::Primary),
+            "next_rotation" => Ok(KeyRole::NextRotation),
+            "delegated_agent" => Ok(KeyRole::DelegatedAgent),
+            other => Err(format!("unknown key role: {other}")),
+        }
+    }
+}
+
 /// Validated alias for a stored key.
 ///
 /// Invariants: non-empty and contains no null bytes.
@@ -155,11 +189,12 @@ pub trait KeyStorage: Send + Sync {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError>;
 
     /// Loads the encrypted key data AND the associated identity DID for a given alias.
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError>;
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError>;
 
     /// Deletes a key by its alias.
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError>;
@@ -172,6 +207,24 @@ pub trait KeyStorage: Send + Sync {
         &self,
         identity_did: &IdentityDID,
     ) -> Result<Vec<KeyAlias>, AgentError>;
+
+    /// List aliases for an identity filtered by role.
+    fn list_aliases_for_identity_with_role(
+        &self,
+        identity_did: &IdentityDID,
+        role: KeyRole,
+    ) -> Result<Vec<KeyAlias>, AgentError> {
+        let all = self.list_aliases_for_identity(identity_did)?;
+        let mut filtered = Vec::new();
+        for alias in all {
+            if let Ok((_, r, _)) = self.load_key(&alias) {
+                if r == role {
+                    filtered.push(alias);
+                }
+            }
+        }
+        Ok(filtered)
+    }
 
     /// Retrieves the identity DID associated with a given alias.
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError>;
@@ -203,7 +256,7 @@ pub fn extract_public_key_bytes(
 ) -> Result<Vec<u8>, AgentError> {
     use crate::crypto::signer::{decrypt_keypair, load_seed_and_pubkey};
 
-    let (_, encrypted) = keychain.load_key(alias)?;
+    let (_, _role, encrypted) = keychain.load_key(alias)?;
     let passphrase = passphrase_provider
         .get_passphrase(&format!("Enter passphrase for key '{alias}':"))
         .map_err(|e| AgentError::SigningFailed(e.to_string()))?;
@@ -432,12 +485,13 @@ impl KeyStorage for Arc<dyn KeyStorage + Send + Sync> {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         self.as_ref()
-            .store_key(alias, identity_did, encrypted_key_data)
+            .store_key(alias, identity_did, role, encrypted_key_data)
     }
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         self.as_ref().load_key(alias)
     }
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
@@ -451,6 +505,14 @@ impl KeyStorage for Arc<dyn KeyStorage + Send + Sync> {
         identity_did: &IdentityDID,
     ) -> Result<Vec<KeyAlias>, AgentError> {
         self.as_ref().list_aliases_for_identity(identity_did)
+    }
+    fn list_aliases_for_identity_with_role(
+        &self,
+        identity_did: &IdentityDID,
+        role: KeyRole,
+    ) -> Result<Vec<KeyAlias>, AgentError> {
+        self.as_ref()
+            .list_aliases_for_identity_with_role(identity_did, role)
     }
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
         self.as_ref().get_identity_for_alias(alias)
@@ -465,12 +527,13 @@ impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         self.as_ref()
-            .store_key(alias, identity_did, encrypted_key_data)
+            .store_key(alias, identity_did, role, encrypted_key_data)
     }
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         self.as_ref().load_key(alias)
     }
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
@@ -484,6 +547,14 @@ impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
         identity_did: &IdentityDID,
     ) -> Result<Vec<KeyAlias>, AgentError> {
         self.as_ref().list_aliases_for_identity(identity_did)
+    }
+    fn list_aliases_for_identity_with_role(
+        &self,
+        identity_did: &IdentityDID,
+        role: KeyRole,
+    ) -> Result<Vec<KeyAlias>, AgentError> {
+        self.as_ref()
+            .list_aliases_for_identity_with_role(identity_did, role)
     }
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
         self.as_ref().get_identity_for_alias(alias)
