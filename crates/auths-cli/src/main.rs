@@ -28,6 +28,22 @@ fn run() -> Result<()> {
 
     let cli = AuthsCli::parse();
 
+    if cli.help_all {
+        use clap::CommandFactory;
+        let mut cmd = AuthsCli::command();
+        let sub_names: Vec<String> = cmd
+            .get_subcommands()
+            .map(|s| s.get_name().to_string())
+            .collect();
+        for name in &sub_names {
+            if let Some(sub) = cmd.find_subcommand_mut(name) {
+                *sub = sub.clone().hide(false);
+            }
+        }
+        cmd.print_help()?;
+        return Ok(());
+    }
+
     let is_json = cli.json || matches!(cli.format, OutputFormat::Json);
     if is_json {
         set_json_mode(true);
@@ -35,7 +51,16 @@ fn run() -> Result<()> {
 
     let ctx = build_config(&cli)?;
 
-    match cli.command {
+    let command = match cli.command {
+        Some(cmd) => cmd,
+        None => {
+            use clap::CommandFactory;
+            AuthsCli::command().print_help()?;
+            return Ok(());
+        }
+    };
+
+    match command {
         RootCommand::Init(cmd) => cmd.execute(&ctx),
         RootCommand::Sign(cmd) => cmd.execute(&ctx),
         RootCommand::Verify(cmd) => cmd.execute(&ctx),

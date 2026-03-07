@@ -19,6 +19,9 @@ auths device link
 | `--expires-in-days <DAYS>` | — |  |
 | `--note <NOTE>` | — |  |
 | `--capabilities <CAPABILITIES>` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
+| `--repo <REPO>` | — |  |
 <!-- END GENERATED: auths device link -->
 
 ---
@@ -35,6 +38,10 @@ auths device revoke
 | `--device-did <DEVICE_DID>` | — |  |
 | `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — |  |
 | `--note <NOTE>` | — |  |
+| `--dry-run` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
+| `--repo <REPO>` | — |  |
 <!-- END GENERATED: auths device revoke -->
 
 ---
@@ -52,6 +59,9 @@ auths device extend
 | `--expires-in-days <DAYS>` | — |  |
 | `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — |  |
 | `--device-key-alias <DEVICE_KEY_ALIAS>` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
+| `--repo <REPO>` | — |  |
 <!-- END GENERATED: auths device extend -->
 
 ---
@@ -85,6 +95,10 @@ auths id rotate
 | `--add-witness <ADD_WITNESS>` | — |  |
 | `--remove-witness <REMOVE_WITNESS>` | — |  |
 | `--witness-threshold <WITNESS_THRESHOLD>` | — |  |
+| `--dry-run` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
+| `--repo <REPO>` | — |  |
 <!-- END GENERATED: auths id rotate -->
 
 ---
@@ -103,6 +117,9 @@ auths key import
 | `--key-alias <KEY_ALIAS>` | — |  |
 | `--seed-file <SEED_FILE>` | — |  |
 | `--controller-did <CONTROLLER_DID>` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
+| `--repo <REPO>` | — |  |
 <!-- END GENERATED: auths key import -->
 
 ---
@@ -116,9 +133,12 @@ auths key export
 <!-- BEGIN GENERATED: auths key export -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--key-alias <KEY_ALIAS>` | — |  |
-| `--passphrase <PASSPHRASE>` | — |  |
-| `--format <FORMAT>` | — |  |
+| `--key-alias <KEY_ALIAS>` | — | Local alias of the key to export. [aliases: --alias] |
+| `--passphrase <PASSPHRASE>` | — | Passphrase to decrypt the key (needed for 'pem'/'pub' formats). |
+| `--format <FORMAT>` | — | Export format: pem (OpenSSH private), pub (OpenSSH public), enc (raw encrypted bytes). |
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths key export -->
 
 ---
@@ -132,7 +152,10 @@ auths key delete
 <!-- BEGIN GENERATED: auths key delete -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--key-alias <KEY_ALIAS>` | — |  |
+| `--key-alias <KEY_ALIAS>` | — | Local alias of the key to remove. [aliases: --alias] |
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths key delete -->
 
 ---
@@ -148,8 +171,11 @@ auths policy explain
 <!-- BEGIN GENERATED: auths policy explain -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `<FILE>` | — |  |
-| `-c, --context <CONTEXT>` | — |  |
+| `<FILE>` | — | Path to the policy file (JSON) |
+| `-c, --context <CONTEXT>` | — | Path to the context file (JSON) |
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths policy explain -->
 
 ---
@@ -163,8 +189,11 @@ auths policy test
 <!-- BEGIN GENERATED: auths policy test -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `<FILE>` | — |  |
-| `-t, --tests <TESTS>` | — |  |
+| `<FILE>` | — | Path to the policy file (JSON) |
+| `-t, --tests <TESTS>` | — | Path to the test suite file (JSON) |
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths policy test -->
 
 ---
@@ -178,8 +207,11 @@ auths policy diff
 <!-- BEGIN GENERATED: auths policy diff -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `<OLD>` | — |  |
-| `<NEW>` | — |  |
+| `<OLD>` | — | Path to the old policy file (JSON) |
+| `<NEW>` | — | Path to the new policy file (JSON) |
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths policy diff -->
 
 ---
@@ -201,6 +233,8 @@ auths emergency revoke-device
 | `-y, --yes` | — |  |
 | `--dry-run` | — |  |
 | `--repo <REPO>` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
 <!-- END GENERATED: auths emergency revoke-device -->
 
 ---
@@ -220,6 +254,8 @@ auths emergency rotate-now
 | `--dry-run` | — | Preview actions without making changes |
 | `--reason <REASON>` | — | Reason for rotation |
 | `--repo <REPO>` | — | Path to the Auths repository |
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
 <!-- END GENERATED: auths emergency rotate-now -->
 
 ---
@@ -237,6 +273,8 @@ auths emergency freeze
 | `-y, --yes` | — | Skip confirmation prompt (requires typing identity name) |
 | `--dry-run` | — | Preview actions without making changes |
 | `--repo <REPO>` | — | Path to the Auths repository |
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
 <!-- END GENERATED: auths emergency freeze -->
 
 ---
@@ -248,5 +286,11 @@ auths emergency report
 ```
 
 <!-- BEGIN GENERATED: auths emergency report -->
-_No options._
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--events <EVENTS>` | `100` | Include last N events in report |
+| `-o, --output <OUTPUT_FILE>` | — | Output file path (defaults to stdout) [aliases: --file] |
+| `--repo <REPO>` | — | Path to the Auths repository |
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
 <!-- END GENERATED: auths emergency report -->

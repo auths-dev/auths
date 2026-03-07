@@ -32,8 +32,8 @@ use crate::config::OutputFormat;
 
 fn cli_styles() -> Styles {
     Styles::styled()
-        .header(AnsiColor::Green.on_default() | Effects::BOLD)
-        .usage(AnsiColor::Green.on_default() | Effects::BOLD)
+        .header(AnsiColor::Blue.on_default() | Effects::BOLD)
+        .usage(AnsiColor::Blue.on_default() | Effects::BOLD)
         .literal(AnsiColor::Cyan.on_default() | Effects::BOLD)
         .placeholder(AnsiColor::Cyan.on_default())
         .error(AnsiColor::Red.on_default() | Effects::BOLD)
@@ -44,48 +44,38 @@ fn cli_styles() -> Styles {
 #[derive(Parser, Debug)]
 #[command(
     name = "auths",
-    about = "auths \u{2014} cryptographic identity for developers",
-    long_about = "auths \u{2014} cryptographic identity for developers\n\nCore commands:\n  init     Set up your cryptographic identity and Git signing\n  sign     Sign a Git commit or artifact\n  verify   Verify a signed commit or attestation\n  status   Show identity and signing status\n\nMore commands:\n  id, device, key, approval, artifact, policy, git, trust, org,\n  audit, agent, witness, scim, config, emergency\n\nRun `auths <command> --help` for details on any command.",
+    about = "\x1b[1;32mauths \u{2014} cryptographic identity for developers and agents\x1b[0m",
     version,
-    styles = cli_styles()
+    styles = cli_styles(),
+    after_help = "Run 'auths <command> --help' for details on any command.\nRun 'auths --help-all' for advanced commands (id, device, key, policy, ...)."
 )]
 pub struct AuthsCli {
     #[command(subcommand)]
-    pub command: RootCommand,
+    pub command: Option<RootCommand>,
+
+    #[clap(long, help = "Show all commands including advanced ones")]
+    pub help_all: bool,
 
     #[clap(
         long,
         value_enum,
         default_value = "text",
         global = true,
-        help_heading = "Display",
+        hide = true,
         help = "Output format (text or json)"
     )]
     pub format: OutputFormat,
 
-    #[clap(
-        long,
-        global = true,
-        help_heading = "Display",
-        help = "Emit machine-readable JSON"
-    )]
+    #[clap(long, global = true, help = "Emit machine-readable JSON")]
     pub json: bool,
 
-    #[clap(
-        short,
-        long,
-        global = true,
-        help_heading = "Display",
-        help = "Suppress non-essential output"
-    )]
+    #[clap(short, long, global = true, help = "Suppress non-essential output")]
     pub quiet: bool,
 
     #[clap(
         long,
         value_parser,
         global = true,
-        help_heading = "Advanced Setup",
-        hide_short_help = true,
         help = "Override the local storage directory (default: ~/.auths)"
     )]
     pub repo: Option<PathBuf>,
@@ -101,6 +91,7 @@ pub enum RootCommand {
     Whoami(WhoamiCommand),
     Tutorial(LearnCommand),
     Doctor(DoctorCommand),
+    #[command(hide = true)]
     Completions(CompletionsCommand),
     #[command(hide = true)]
     Emergency(EmergencyCommand),
