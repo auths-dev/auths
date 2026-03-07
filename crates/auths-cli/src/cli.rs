@@ -12,6 +12,7 @@ use crate::commands::completions::CompletionsCommand;
 use crate::commands::config::ConfigCommand;
 use crate::commands::debug::DebugCmd;
 use crate::commands::device::DeviceCommand;
+use crate::commands::device::pair::PairCommand;
 use crate::commands::doctor::DoctorCommand;
 use crate::commands::emergency::EmergencyCommand;
 use crate::commands::git::GitCommand;
@@ -91,6 +92,7 @@ pub enum RootCommand {
     Whoami(WhoamiCommand),
     Tutorial(LearnCommand),
     Doctor(DoctorCommand),
+    Pair(PairCommand),
     #[command(hide = true)]
     Completions(CompletionsCommand),
     #[command(hide = true)]

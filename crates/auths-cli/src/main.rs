@@ -68,6 +68,7 @@ fn run() -> Result<()> {
         RootCommand::Whoami(cmd) => cmd.execute(&ctx),
         RootCommand::Tutorial(cmd) => cmd.execute(&ctx),
         RootCommand::Doctor(cmd) => cmd.execute(&ctx),
+        RootCommand::Pair(cmd) => cmd.execute(&ctx),
         RootCommand::Completions(cmd) => cmd.execute(&ctx),
         RootCommand::Emergency(cmd) => cmd.execute(&ctx),
         RootCommand::Id(cmd) => cmd.execute(&ctx),
