@@ -1,5 +1,5 @@
 use crate::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
-use crate::error::AttestationError;
+use crate::error::{AttestationError, AuthsErrorInfo};
 use crate::types::DeviceDID;
 use crate::verifier::Verifier;
 use crate::witness::{WitnessReceipt, WitnessVerifyConfig};
@@ -43,10 +43,27 @@ pub const ERR_VERIFY_INSUFFICIENT_WITNESSES: c_int = -9;
 pub const ERR_VERIFY_WITNESS_PARSE: c_int = -10;
 /// Input JSON exceeded size limit.
 pub const ERR_VERIFY_INPUT_TOO_LARGE: c_int = -11;
+/// Attestation timestamp is in the future (clock skew).
+pub const ERR_VERIFY_FUTURE_TIMESTAMP: c_int = -12;
 /// Unclassified verification error.
 pub const ERR_VERIFY_OTHER: c_int = -99;
 /// Internal panic occurred
 pub const ERR_VERIFY_PANIC: c_int = -127;
+
+fn attestation_error_to_code(e: &AttestationError) -> c_int {
+    match e.error_code() {
+        "AUTHS_ISSUER_SIG_FAILED" => ERR_VERIFY_ISSUER_SIG_FAIL,
+        "AUTHS_DEVICE_SIG_FAILED" => ERR_VERIFY_DEVICE_SIG_FAIL,
+        "AUTHS_ATTESTATION_EXPIRED" => ERR_VERIFY_EXPIRED,
+        "AUTHS_ATTESTATION_REVOKED" => ERR_VERIFY_REVOKED,
+        "AUTHS_TIMESTAMP_IN_FUTURE" => ERR_VERIFY_FUTURE_TIMESTAMP,
+        "AUTHS_SERIALIZATION_ERROR" => ERR_VERIFY_SERIALIZATION,
+        "AUTHS_INVALID_INPUT" => ERR_VERIFY_INVALID_PK_LEN,
+        "AUTHS_INPUT_TOO_LARGE" => ERR_VERIFY_INPUT_TOO_LARGE,
+        "AUTHS_BUNDLE_EXPIRED" => ERR_VERIFY_EXPIRED,
+        _ => ERR_VERIFY_OTHER,
+    }
+}
 
 fn check_batch_sizes(sizes: &[usize], caller: &str) -> Option<c_int> {
     for &size in sizes {
@@ -199,30 +216,7 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
             Ok(_) => VERIFY_SUCCESS,
             Err(e) => {
                 error!("FFI verify failed: Verification logic error: {}", e);
-                // TECH-DEBT(fn-33): error code mapping couples to message text —
-                // if AttestationError message strings change, these codes break silently.
-                // Fix: add a structured variant or error_code() method to AttestationError.
-                match e {
-                    AttestationError::VerificationError(msg) => {
-                        let lower_msg = msg.to_lowercase();
-                        if lower_msg.contains("issuer signature") {
-                            ERR_VERIFY_ISSUER_SIG_FAIL
-                        } else if lower_msg.contains("device signature") {
-                            ERR_VERIFY_DEVICE_SIG_FAIL
-                        } else if lower_msg.contains("expired") {
-                            ERR_VERIFY_EXPIRED
-                        } else if lower_msg.contains("revoked") {
-                            ERR_VERIFY_REVOKED
-                        } else if lower_msg.contains("invalid length") {
-                            ERR_VERIFY_INVALID_PK_LEN
-                        } else {
-                            ERR_VERIFY_OTHER
-                        }
-                    }
-                    AttestationError::SerializationError(_) => ERR_VERIFY_SERIALIZATION,
-                    AttestationError::InvalidInput(_) => ERR_VERIFY_INVALID_PK_LEN,
-                    _ => ERR_VERIFY_OTHER,
-                }
+                attestation_error_to_code(&e)
             }
         }
     });
@@ -324,7 +318,7 @@ pub unsafe extern "C" fn ffi_verify_chain_with_witnesses(
             Ok(r) => r,
             Err(e) => {
                 error!("FFI verify_chain_with_witnesses: verification error: {}", e);
-                return ERR_VERIFY_OTHER;
+                return attestation_error_to_code(&e);
             }
         };
 
@@ -406,7 +400,7 @@ pub unsafe extern "C" fn ffi_verify_chain_json(
             Ok(r) => r,
             Err(e) => {
                 error!("FFI verify_chain_json: verification error: {}", e);
-                return ERR_VERIFY_OTHER;
+                return attestation_error_to_code(&e);
             }
         };
 
@@ -528,7 +522,7 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
                     "FFI verify_device_authorization_json: verification error: {}",
                     e
                 );
-                return ERR_VERIFY_OTHER;
+                return attestation_error_to_code(&e);
             }
         };
 

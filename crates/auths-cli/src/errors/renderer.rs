@@ -229,7 +229,11 @@ fn docs_url(code: &str) -> Option<String> {
         | "AUTHS_STORAGE_LOCKED"
         | "AUTHS_BACKEND_INIT_FAILED"
         | "AUTHS_AGENT_LOCKED"
-        | "AUTHS_VERIFICATION_ERROR"
+        | "AUTHS_ISSUER_SIG_FAILED"
+        | "AUTHS_DEVICE_SIG_FAILED"
+        | "AUTHS_ATTESTATION_EXPIRED"
+        | "AUTHS_ATTESTATION_REVOKED"
+        | "AUTHS_TIMESTAMP_IN_FUTURE"
         | "AUTHS_MISSING_CAPABILITY"
         | "AUTHS_DID_RESOLUTION_ERROR"
         | "AUTHS_ORG_VERIFICATION_FAILED"
@@ -304,7 +308,7 @@ mod tests {
 
     #[test]
     fn render_error_attestation_error_text() {
-        let err = Error::new(AttestationError::VerificationError("bad sig".into()));
+        let err = Error::new(AttestationError::IssuerSignatureFailed("bad sig".into()));
         render_error(&err, false);
     }
 

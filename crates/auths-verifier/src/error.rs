@@ -19,9 +19,31 @@ pub trait AuthsErrorInfo {
 /// Errors returned by attestation signing, verification, and related operations.
 #[derive(Error, Debug)]
 pub enum AttestationError {
-    /// Cryptographic signature verification failed.
-    #[error("Signature verification failed: {0}")]
-    VerificationError(String),
+    /// Issuer's Ed25519 signature did not verify.
+    #[error("Issuer signature verification failed: {0}")]
+    IssuerSignatureFailed(String),
+
+    /// Device's Ed25519 signature did not verify.
+    #[error("Device signature verification failed: {0}")]
+    DeviceSignatureFailed(String),
+
+    /// Attestation has passed its expiry timestamp.
+    #[error("Attestation expired on {at}")]
+    AttestationExpired {
+        /// RFC 3339 formatted expiry timestamp.
+        at: String,
+    },
+
+    /// Attestation was explicitly revoked.
+    #[error("Attestation revoked")]
+    AttestationRevoked,
+
+    /// Attestation timestamp is in the future (clock skew).
+    #[error("Attestation timestamp {at} is in the future")]
+    TimestampInFuture {
+        /// RFC 3339 formatted timestamp.
+        at: String,
+    },
 
     /// The attestation does not grant the required capability.
     #[error("Missing required capability: required {required:?}, available {available:?}")]
@@ -85,7 +107,11 @@ pub enum AttestationError {
 impl AuthsErrorInfo for AttestationError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::VerificationError(_) => "AUTHS_VERIFICATION_ERROR",
+            Self::IssuerSignatureFailed(_) => "AUTHS_ISSUER_SIG_FAILED",
+            Self::DeviceSignatureFailed(_) => "AUTHS_DEVICE_SIG_FAILED",
+            Self::AttestationExpired { .. } => "AUTHS_ATTESTATION_EXPIRED",
+            Self::AttestationRevoked => "AUTHS_ATTESTATION_REVOKED",
+            Self::TimestampInFuture { .. } => "AUTHS_TIMESTAMP_IN_FUTURE",
             Self::MissingCapability { .. } => "AUTHS_MISSING_CAPABILITY",
             Self::SigningError(_) => "AUTHS_SIGNING_ERROR",
             Self::DidResolutionError(_) => "AUTHS_DID_RESOLUTION_ERROR",
@@ -103,9 +129,15 @@ impl AuthsErrorInfo for AttestationError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::VerificationError(_) => {
-                Some("Verify the attestation was signed with the correct key")
+            Self::IssuerSignatureFailed(_) => {
+                Some("Verify the attestation was signed with the correct issuer key")
             }
+            Self::DeviceSignatureFailed(_) => Some("Verify the device key matches the attestation"),
+            Self::AttestationExpired { .. } => Some("Request a new attestation from the issuer"),
+            Self::AttestationRevoked => {
+                Some("This device has been revoked; contact the identity admin")
+            }
+            Self::TimestampInFuture { .. } => Some("Check system clock synchronization"),
             Self::MissingCapability { .. } => {
                 Some("Request an attestation with the required capability")
             }

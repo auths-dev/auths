@@ -16,27 +16,23 @@ pub fn verify_with_resolver(
     // Return specific AttestationError
     // 1. Check revocation and expiration
     if att.is_revoked() {
-        return Err(AttestationError::VerificationError(
-            "Attestation revoked".to_string(),
-        ));
+        return Err(AttestationError::AttestationRevoked);
     }
     if let Some(exp) = att.expires_at
         && now > exp
     {
-        return Err(AttestationError::VerificationError(format!(
-            "Attestation expired on {}",
-            exp.to_rfc3339()
-        )));
+        return Err(AttestationError::AttestationExpired {
+            at: exp.to_rfc3339(),
+        });
     }
     // Only reject timestamps in the future (clock drift protection)
     // Past timestamps are valid - attestations stored in Git are verified days/months later
     if let Some(ts) = att.timestamp
         && ts > now + Duration::seconds(MAX_SKEW_SECS)
     {
-        return Err(AttestationError::VerificationError(format!(
-            "Attestation timestamp {} is in the future",
-            ts.to_rfc3339()
-        )));
+        return Err(AttestationError::TimestampInFuture {
+            at: ts.to_rfc3339(),
+        });
     }
 
     // 2. Resolve issuer's public key
@@ -82,12 +78,7 @@ pub fn verify_with_resolver(
     let issuer_public_key_ring = UnparsedPublicKey::new(&ED25519, &issuer_pk_bytes);
     issuer_public_key_ring
         .verify(data_to_verify, att.identity_signature.as_bytes())
-        .map_err(|e| {
-            AttestationError::VerificationError(format!(
-                "Issuer signature verification failed: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| AttestationError::IssuerSignatureFailed(e.to_string()))?;
     debug!(
         "(Verify) Issuer signature verified successfully for {}",
         att.issuer
@@ -97,12 +88,7 @@ pub fn verify_with_resolver(
     let device_public_key_ring = UnparsedPublicKey::new(&ED25519, att.device_public_key.as_bytes());
     device_public_key_ring
         .verify(data_to_verify, att.device_signature.as_bytes())
-        .map_err(|e| {
-            AttestationError::VerificationError(format!(
-                "Device signature verification failed: {}",
-                e
-            ))
-        })?;
+        .map_err(|e| AttestationError::DeviceSignatureFailed(e.to_string()))?;
     debug!(
         "(Verify) Device signature verified successfully for {}",
         att.subject.as_str()
