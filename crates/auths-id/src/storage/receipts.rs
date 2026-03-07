@@ -32,12 +32,13 @@ pub trait ReceiptStorage: Send + Sync {
         event_said: &Said,
     ) -> Result<Option<EventReceipts>, StorageError>;
 
-    /// Check if event has sufficient receipts (meets threshold).
+    /// Check if event has sufficient receipts (meets threshold) without exceeding the witness set.
     fn has_quorum(
         &self,
         prefix: &Prefix,
         event_said: &Said,
         threshold: usize,
+        witness_count: usize,
     ) -> Result<bool, StorageError>;
 
     /// List all event SAIDs that have receipts for a prefix.
@@ -154,9 +155,10 @@ impl ReceiptStorage for GitReceiptStorage {
         prefix: &Prefix,
         event_said: &Said,
         threshold: usize,
+        witness_count: usize,
     ) -> Result<bool, StorageError> {
         match self.get_receipts(prefix, event_said)? {
-            Some(receipts) => Ok(receipts.meets_threshold(threshold)),
+            Some(receipts) => Ok(receipts.meets_threshold(threshold, witness_count)),
             None => Ok(false),
         }
     }
@@ -327,11 +329,11 @@ mod tests {
         storage.store_receipts(&prefix, &receipts).unwrap();
 
         let said = Said::new_unchecked("ESAID456".to_string());
-        // 2 receipts, threshold 2 - should meet
-        assert!(storage.has_quorum(&prefix, &said, 2).unwrap());
+        // 2 receipts, threshold 2, witness_count 3 - should meet
+        assert!(storage.has_quorum(&prefix, &said, 2, 3).unwrap());
 
-        // 2 receipts, threshold 3 - should not meet
-        assert!(!storage.has_quorum(&prefix, &said, 3).unwrap());
+        // 2 receipts, threshold 3, witness_count 3 - should not meet
+        assert!(!storage.has_quorum(&prefix, &said, 3, 3).unwrap());
     }
 
     #[test]
@@ -370,9 +372,9 @@ mod tests {
             ],
         );
 
-        assert!(receipts.meets_threshold(1));
-        assert!(receipts.meets_threshold(2));
-        assert!(!receipts.meets_threshold(3));
+        assert!(receipts.meets_threshold(1, 3));
+        assert!(receipts.meets_threshold(2, 3));
+        assert!(!receipts.meets_threshold(3, 3));
     }
 
     #[test]
