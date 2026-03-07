@@ -60,7 +60,7 @@ pub struct AuthsCli {
         help_heading = "Display",
         help = "Output format (text or json)"
     )]
-    pub output: OutputFormat,
+    pub format: OutputFormat,
 
     #[clap(
         long,

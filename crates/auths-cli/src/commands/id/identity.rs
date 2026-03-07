@@ -171,8 +171,6 @@ pub enum IdSubcommand {
         alias: String,
 
         /// Output file path for the JSON bundle.
-        // Named `output_file` because the top-level `Cli` has a global `--output`
-        // (OutputFormat) arg; clap panics on the field-name collision.
         #[arg(long = "output", short = 'o')]
         output_file: PathBuf,
 

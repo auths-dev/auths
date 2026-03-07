@@ -32,8 +32,8 @@ These flags apply to all commands:
 
 ```
 --repo <PATH>       Override storage directory (default: ~/.auths)
---output <FORMAT>   Output format: text or json
---json              Shorthand for --output json
+--format <FORMAT>   Output format: text or json
+--json              Shorthand for --format json
 -q, --quiet         Suppress non-essential output
 ```
 
