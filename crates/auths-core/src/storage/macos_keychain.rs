@@ -1,7 +1,7 @@
 //! macOS Keychain storage backend.
 
 use crate::error::AgentError;
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 
 use core_foundation::array::{CFArrayGetCount, CFArrayGetValueAtIndex, CFArrayRef};
 use core_foundation::base::{CFRelease, CFTypeRef, OSStatus, TCFType, kCFAllocatorDefault};
@@ -17,8 +17,9 @@ use core_foundation::string::{CFString, CFStringRef};
 use security_framework_sys::access_control::kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
 use security_framework_sys::base::{errSecItemNotFound, errSecSuccess};
 use security_framework_sys::item::{
-    kSecAttrAccount, kSecAttrDescription, kSecAttrService, kSecClass, kSecClassGenericPassword,
-    kSecMatchLimit, kSecMatchLimitAll, kSecReturnAttributes, kSecReturnData, kSecValueData,
+    kSecAttrAccount, kSecAttrComment, kSecAttrDescription, kSecAttrService, kSecClass,
+    kSecClassGenericPassword, kSecMatchLimit, kSecMatchLimitAll, kSecReturnAttributes,
+    kSecReturnData, kSecValueData,
 };
 use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemDelete};
 
@@ -105,12 +106,13 @@ impl KeyStorage for MacOSKeychain {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         let alias = alias.as_str();
         info!(
-            "Storing key for alias '{}' (DID: {}) in macOS Keychain",
-            alias, identity_did
+            "Storing key for alias '{}' (DID: {}, role: {}) in macOS Keychain",
+            alias, identity_did, role
         );
 
         // Create CFString/CFData (must be manually released later or use TCFType wrappers)
@@ -118,6 +120,7 @@ impl KeyStorage for MacOSKeychain {
         let service_cf = CFString::new(&self.service_name);
         let alias_cf = CFString::new(alias);
         let did_cf = CFString::new(identity_did.as_str());
+        let role_cf = CFString::new(&role.to_string());
         let data_cf = CFData::from_buffer(encrypted_key_data);
         // --- MANUALLY CREATE `kSecAttrAccessible` KEY ---
         // The raw string value for kSecAttrAccessible is "pdmn"
@@ -167,19 +170,21 @@ impl KeyStorage for MacOSKeychain {
             }
 
             // --- 2. Add new item ---
-            let add_keys: [*const c_void; 6] = [
+            let add_keys: [*const c_void; 7] = [
                 kSecClass as *const c_void,
                 kSecAttrService as *const c_void,
                 kSecAttrAccount as *const c_void,
                 kSecAttrDescription as *const c_void, // Store DID in description
+                kSecAttrComment as *const c_void,     // Store role in comment
                 kSecValueData as *const c_void,
                 key_accessible_cf.as_CFTypeRef(),
             ];
-            let add_values: [*const c_void; 6] = [
+            let add_values: [*const c_void; 7] = [
                 kSecClassGenericPassword as *const c_void,
                 service_cf.as_CFTypeRef(),
                 alias_cf.as_CFTypeRef(),
                 did_cf.as_CFTypeRef(),
+                role_cf.as_CFTypeRef(),
                 data_cf.as_CFTypeRef(),
                 kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as *const c_void,
             ];
@@ -217,7 +222,7 @@ impl KeyStorage for MacOSKeychain {
         } // end unsafe
     }
 
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         let alias = alias.as_str();
         debug!("Loading key for alias '{}' from macOS Keychain", alias);
 
@@ -288,6 +293,7 @@ impl KeyStorage for MacOSKeychain {
         let result_dict = result_ref as CFDictionaryRef;
         let key_data: Vec<u8>;
         let identity_did_str: String;
+        let role_str: Option<String>;
 
         unsafe {
             key_data = Self::get_data_from_dict_ref(result_dict, kSecValueData as *const c_void)
@@ -305,11 +311,17 @@ impl KeyStorage for MacOSKeychain {
                         alias
                     ))
                 })?;
+            role_str =
+                Self::get_string_from_dict_ref(result_dict, kSecAttrComment as *const c_void);
             CFRelease(result_ref);
         }
 
+        let role = role_str
+            .and_then(|s| s.parse::<KeyRole>().ok())
+            .unwrap_or(KeyRole::Primary);
+
         debug!("Successfully loaded key for alias '{}'", alias);
-        Ok((IdentityDID::new_unchecked(identity_did_str), key_data))
+        Ok((IdentityDID::new_unchecked(identity_did_str), role, key_data))
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {

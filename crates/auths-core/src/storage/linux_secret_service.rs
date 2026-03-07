@@ -6,7 +6,7 @@
 //! Only available on Linux with the `keychain-linux-secretservice` feature.
 
 use crate::error::AgentError;
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use secret_service::{EncryptionType, SecretService};
 use std::collections::HashMap;
@@ -17,6 +17,8 @@ const ATTR_SERVICE: &str = "service";
 const ATTR_ALIAS: &str = "alias";
 /// Attribute key for the identity DID
 const ATTR_IDENTITY: &str = "identity";
+/// Attribute key for the key role
+const ATTR_ROLE: &str = "role";
 
 /// Linux Secret Service storage backend.
 ///
@@ -98,11 +100,13 @@ impl KeyStorage for LinuxSecretServiceStorage {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         let service_name = self.service_name.clone();
         let alias = alias.as_str().to_string();
         let identity_did = identity_did.as_str().to_string();
+        let role_str = role.to_string();
         let data_b64 = BASE64.encode(encrypted_key_data);
 
         tokio::task::block_in_place(|| {
@@ -116,14 +120,15 @@ impl KeyStorage for LinuxSecretServiceStorage {
 
                 let collection = self.get_collection(&ss).await?;
 
-                // Store the identity DID in the secret value, along with the key data
-                // Format: "did|base64_key_data"
-                let secret_value = format!("{}|{}", identity_did, data_b64);
+                // Store the identity DID and role in the secret value, along with the key data
+                // Format: "did|role|base64_key_data" (legacy: "did|base64_key_data")
+                let secret_value = format!("{}|{}|{}", identity_did, role_str, data_b64);
 
                 let mut attrs = HashMap::new();
                 attrs.insert(ATTR_SERVICE, service_name.as_str());
                 attrs.insert(ATTR_ALIAS, alias.as_str());
                 attrs.insert(ATTR_IDENTITY, identity_did.as_str());
+                attrs.insert(ATTR_ROLE, role_str.as_str());
 
                 // Delete any existing item with this alias first
                 let search_attrs: HashMap<&str, &str> = [
@@ -157,7 +162,7 @@ impl KeyStorage for LinuxSecretServiceStorage {
         })
     }
 
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         let service_name = self.service_name.clone();
         let alias = alias.as_str().to_string();
 
@@ -199,20 +204,36 @@ impl KeyStorage for LinuxSecretServiceStorage {
                     AgentError::StorageError(format!("Invalid secret encoding: {}", e))
                 })?;
 
-                // Parse "did|base64_key_data"
-                let parts: Vec<&str> = secret_str.splitn(2, '|').collect();
-                if parts.len() != 2 {
-                    return Err(AgentError::StorageError(
-                        "Invalid secret format".to_string(),
-                    ));
-                }
-
-                let identity_did = IdentityDID::new_unchecked(parts[0].to_string());
-                let key_data = BASE64.decode(parts[1]).map_err(|e| {
+                // Parse "did|role|base64_key_data" (new) or "did|base64_key_data" (legacy)
+                let parts: Vec<&str> = secret_str.splitn(3, '|').collect();
+                let (identity_did, role, key_b64) = match parts.len() {
+                    3 => {
+                        let role = parts[1].parse::<KeyRole>().unwrap_or(KeyRole::Primary);
+                        (
+                            IdentityDID::new_unchecked(parts[0].to_string()),
+                            role,
+                            parts[2],
+                        )
+                    }
+                    2 => {
+                        // Legacy format: did|base64_key_data
+                        (
+                            IdentityDID::new_unchecked(parts[0].to_string()),
+                            KeyRole::Primary,
+                            parts[1],
+                        )
+                    }
+                    _ => {
+                        return Err(AgentError::StorageError(
+                            "Invalid secret format".to_string(),
+                        ));
+                    }
+                };
+                let key_data = BASE64.decode(key_b64).map_err(|e| {
                     AgentError::StorageError(format!("Invalid key encoding: {}", e))
                 })?;
 
-                Ok((identity_did, key_data))
+                Ok((identity_did, role, key_data))
             })
         })
     }
@@ -328,7 +349,7 @@ impl KeyStorage for LinuxSecretServiceStorage {
     }
 
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
-        let (identity_did, _) = self.load_key(alias)?;
+        let (identity_did, _role, _) = self.load_key(alias)?;
         Ok(identity_did)
     }
 

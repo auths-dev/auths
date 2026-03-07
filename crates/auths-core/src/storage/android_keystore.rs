@@ -7,7 +7,7 @@
 //! Only available on Android targets.
 
 use crate::error::AgentError;
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 
 /// Android Keystore storage backend (stub implementation).
 ///
@@ -51,12 +51,13 @@ impl KeyStorage for AndroidKeystoreStorage {
         &self,
         _alias: &KeyAlias,
         _identity_did: &IdentityDID,
+        _role: KeyRole,
         _encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         Err(Self::stub_error())
     }
 
-    fn load_key(&self, _alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, _alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         Err(Self::stub_error())
     }
 
@@ -105,7 +106,7 @@ mod tests {
         let storage = AndroidKeystoreStorage::new("test").unwrap();
         let did = IdentityDID::new("did:keri:test");
         let alias = KeyAlias::new("alias");
-        let result = storage.store_key(&alias, &did, b"data");
+        let result = storage.store_key(&alias, &did, KeyRole::Primary, b"data");
         assert!(matches!(result, Err(AgentError::BackendUnavailable { .. })));
     }
 

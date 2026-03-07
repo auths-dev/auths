@@ -7,7 +7,7 @@
 //! Only available on Windows with the `keychain-windows` feature.
 
 use crate::error::AgentError;
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use std::collections::HashMap;
 use std::fs;
@@ -31,10 +31,37 @@ pub struct WindowsCredentialStorage {
     alias_index_path: PathBuf,
 }
 
-/// Index of stored aliases, mapping alias -> identity_did
+/// Entry in the alias index, supporting backward-compatible migration.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(untagged)]
+enum AliasEntry {
+    /// New format: (identity_did, role)
+    WithRole(String, String),
+    /// Legacy format: just identity_did — treated as Primary
+    Legacy(String),
+}
+
+impl AliasEntry {
+    fn did(&self) -> &str {
+        match self {
+            AliasEntry::WithRole(did, _) | AliasEntry::Legacy(did) => did,
+        }
+    }
+
+    fn role(&self) -> KeyRole {
+        match self {
+            AliasEntry::WithRole(_, role_str) => {
+                role_str.parse::<KeyRole>().unwrap_or(KeyRole::Primary)
+            }
+            AliasEntry::Legacy(_) => KeyRole::Primary,
+        }
+    }
+}
+
+/// Index of stored aliases, mapping alias -> alias entry
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 struct AliasIndex {
-    aliases: HashMap<String, String>,
+    aliases: HashMap<String, AliasEntry>,
 }
 
 impl WindowsCredentialStorage {
@@ -115,6 +142,7 @@ impl KeyStorage for WindowsCredentialStorage {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         let alias = alias.as_str();
@@ -155,28 +183,27 @@ impl KeyStorage for WindowsCredentialStorage {
 
         // Update alias index
         let mut index = self.load_index();
-        index
-            .aliases
-            .insert(alias.to_string(), identity_did.as_str().to_string());
+        index.aliases.insert(
+            alias.to_string(),
+            AliasEntry::WithRole(identity_did.as_str().to_string(), role.to_string()),
+        );
         self.save_index(&index)?;
 
         Ok(())
     }
 
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         let alias = alias.as_str();
         let vault = PasswordVault::new().map_err(|e| AgentError::BackendInitFailed {
             backend: "windows-credential-manager",
             error: format!("Failed to initialize PasswordVault: {}", e),
         })?;
 
-        // Get the identity_did from our index
+        // Get the identity_did and role from our index
         let index = self.load_index();
-        let identity_did = index
-            .aliases
-            .get(alias)
-            .ok_or(AgentError::KeyNotFound)?
-            .clone();
+        let entry = index.aliases.get(alias).ok_or(AgentError::KeyNotFound)?;
+        let identity_did = entry.did().to_string();
+        let role = entry.role();
 
         let resource = self.resource_name(alias);
         let resource_hstring = HSTRING::from(&resource);
@@ -200,7 +227,7 @@ impl KeyStorage for WindowsCredentialStorage {
             .decode(&password)
             .map_err(|e| AgentError::StorageError(format!("Invalid key encoding: {}", e)))?;
 
-        Ok((IdentityDID::new_unchecked(identity_did), key_data))
+        Ok((IdentityDID::new_unchecked(identity_did), role, key_data))
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
@@ -212,7 +239,8 @@ impl KeyStorage for WindowsCredentialStorage {
 
         // Get the identity_did from our index
         let mut index = self.load_index();
-        if let Some(identity_did) = index.aliases.get(alias).cloned() {
+        if let Some(entry) = index.aliases.get(alias).cloned() {
+            let identity_did = entry.did().to_string();
             let resource = self.resource_name(alias);
             let resource_hstring = HSTRING::from(&resource);
             let username_hstring = HSTRING::from(&identity_did);
@@ -247,7 +275,7 @@ impl KeyStorage for WindowsCredentialStorage {
         Ok(index
             .aliases
             .iter()
-            .filter(|(_, did)| did.as_str() == identity_did.as_str())
+            .filter(|(_, entry)| entry.did() == identity_did.as_str())
             .map(|(alias, _)| KeyAlias::new_unchecked(alias.clone()))
             .collect())
     }
@@ -258,7 +286,7 @@ impl KeyStorage for WindowsCredentialStorage {
         index
             .aliases
             .get(alias)
-            .map(|did| IdentityDID::new_unchecked(did.clone()))
+            .map(|entry| IdentityDID::new_unchecked(entry.did().to_string()))
             .ok_or(AgentError::KeyNotFound)
     }
 

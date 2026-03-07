@@ -7,7 +7,7 @@
 use crate::config::Pkcs11Config;
 use crate::error::AgentError;
 use crate::signing::{PassphraseProvider, SecureSigner};
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use cryptoki::context::{CInitializeArgs, CInitializeFlags, Pkcs11};
 use cryptoki::error::{Error as Pkcs11Error, RvError};
 use cryptoki::mechanism::Mechanism;
@@ -175,6 +175,7 @@ impl KeyStorage for Pkcs11KeyRef {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        _role: KeyRole,
         _encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         let session = self.open_rw_session()?;
@@ -210,7 +211,7 @@ impl KeyStorage for Pkcs11KeyRef {
         Ok(())
     }
 
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         let session = self.open_ro_session()?;
         let handle = Self::find_public_key_by_label(&session, alias.as_str())?;
 
@@ -239,7 +240,8 @@ impl KeyStorage for Pkcs11KeyRef {
         let ref_bytes = serde_json::to_vec(&reference)
             .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
 
-        Ok((identity_did, ref_bytes))
+        // HSM keys are always Primary
+        Ok((identity_did, KeyRole::Primary, ref_bytes))
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {

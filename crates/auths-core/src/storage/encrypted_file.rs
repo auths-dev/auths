@@ -4,7 +4,7 @@
 //! Stores keys in `~/.auths/keys.enc` with Unix permissions 0600.
 
 use crate::error::AgentError;
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use argon2::{Argon2, Version};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use chacha20poly1305::{
@@ -38,11 +38,21 @@ struct EncryptedFileFormat {
     ciphertext: String, // base64 encoded
 }
 
+/// Entry in the encrypted key file.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum KeyEntry {
+    /// New format: (did, role, encrypted_key_b64)
+    WithRole(String, String, String),
+    /// Legacy format: (did, encrypted_key_b64) — treated as Primary
+    Legacy(String, String),
+}
+
 /// Internal key data structure (plaintext, stored in ciphertext)
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct KeyData {
-    /// alias -> (identity_did, encrypted_key_bytes as base64)
-    keys: HashMap<String, (String, String)>,
+    /// alias -> key entry
+    keys: HashMap<String, KeyEntry>,
 }
 
 /// Encrypted file storage for headless Linux environments.
@@ -278,29 +288,46 @@ impl KeyStorage for EncryptedFileStorage {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         let mut data = self.read_data()?;
         data.keys.insert(
             alias.as_str().to_string(),
-            (
+            KeyEntry::WithRole(
                 identity_did.as_str().to_string(),
+                role.to_string(),
                 BASE64.encode(encrypted_key_data),
             ),
         );
         self.write_data(&data)
     }
 
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         let data = self.read_data()?;
-        let (did, key_b64) = data
+        let entry = data
             .keys
             .get(alias.as_str())
             .ok_or(AgentError::KeyNotFound)?;
-        let key_bytes = BASE64
-            .decode(key_b64)
-            .map_err(|e| AgentError::StorageError(format!("Invalid key encoding: {}", e)))?;
-        Ok((IdentityDID::new_unchecked(did.clone()), key_bytes))
+        match entry {
+            KeyEntry::WithRole(did, role_str, b64) => {
+                let role = role_str.parse::<KeyRole>().unwrap_or(KeyRole::Primary);
+                let key_bytes = BASE64.decode(b64).map_err(|e| {
+                    AgentError::StorageError(format!("Invalid key encoding: {}", e))
+                })?;
+                Ok((IdentityDID::new_unchecked(did.clone()), role, key_bytes))
+            }
+            KeyEntry::Legacy(did, b64) => {
+                let key_bytes = BASE64.decode(b64).map_err(|e| {
+                    AgentError::StorageError(format!("Invalid key encoding: {}", e))
+                })?;
+                Ok((
+                    IdentityDID::new_unchecked(did.clone()),
+                    KeyRole::Primary,
+                    key_bytes,
+                ))
+            }
+        }
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
@@ -326,8 +353,11 @@ impl KeyStorage for EncryptedFileStorage {
         let aliases = data
             .keys
             .iter()
-            .filter_map(|(alias, (did, _))| {
-                if did == identity_did.as_str() {
+            .filter_map(|(alias, entry)| {
+                let did_str = match entry {
+                    KeyEntry::WithRole(did, _, _) | KeyEntry::Legacy(did, _) => did,
+                };
+                if did_str == identity_did.as_str() {
                     Some(KeyAlias::new_unchecked(alias.clone()))
                 } else {
                     None
@@ -341,7 +371,12 @@ impl KeyStorage for EncryptedFileStorage {
         let data = self.read_data()?;
         data.keys
             .get(alias.as_str())
-            .map(|(did, _)| IdentityDID::new_unchecked(did.clone()))
+            .map(|entry| {
+                let did_str = match entry {
+                    KeyEntry::WithRole(did, _, _) | KeyEntry::Legacy(did, _) => did,
+                };
+                IdentityDID::new_unchecked(did_str.clone())
+            })
             .ok_or(AgentError::KeyNotFound)
     }
 
@@ -397,11 +432,12 @@ mod tests {
         let encrypted_data = b"encrypted_key_bytes";
 
         storage
-            .store_key(&alias, &identity_did, encrypted_data)
+            .store_key(&alias, &identity_did, KeyRole::Primary, encrypted_data)
             .unwrap();
 
-        let (loaded_did, loaded_data) = storage.load_key(&alias).unwrap();
+        let (loaded_did, loaded_role, loaded_data) = storage.load_key(&alias).unwrap();
         assert_eq!(loaded_did, identity_did);
+        assert_eq!(loaded_role, KeyRole::Primary);
         assert_eq!(loaded_data, encrypted_data);
     }
 
@@ -411,10 +447,20 @@ mod tests {
         let did = IdentityDID::new("did:keri:test");
 
         storage
-            .store_key(&KeyAlias::new("alias1").unwrap(), &did, b"data1")
+            .store_key(
+                &KeyAlias::new("alias1").unwrap(),
+                &did,
+                KeyRole::Primary,
+                b"data1",
+            )
             .unwrap();
         storage
-            .store_key(&KeyAlias::new("alias2").unwrap(), &did, b"data2")
+            .store_key(
+                &KeyAlias::new("alias2").unwrap(),
+                &did,
+                KeyRole::Primary,
+                b"data2",
+            )
             .unwrap();
 
         let mut aliases = storage.list_aliases().unwrap();
@@ -435,13 +481,28 @@ mod tests {
         let did2 = IdentityDID::new("did:keri:two");
 
         storage
-            .store_key(&KeyAlias::new("a1").unwrap(), &did1, b"data1")
+            .store_key(
+                &KeyAlias::new("a1").unwrap(),
+                &did1,
+                KeyRole::Primary,
+                b"data1",
+            )
             .unwrap();
         storage
-            .store_key(&KeyAlias::new("a2").unwrap(), &did1, b"data2")
+            .store_key(
+                &KeyAlias::new("a2").unwrap(),
+                &did1,
+                KeyRole::Primary,
+                b"data2",
+            )
             .unwrap();
         storage
-            .store_key(&KeyAlias::new("b1").unwrap(), &did2, b"data3")
+            .store_key(
+                &KeyAlias::new("b1").unwrap(),
+                &did2,
+                KeyRole::Primary,
+                b"data3",
+            )
             .unwrap();
 
         let mut aliases = storage.list_aliases_for_identity(&did1).unwrap();
@@ -458,7 +519,9 @@ mod tests {
         let did = IdentityDID::new("did:keri:test");
         let alias = KeyAlias::new("alias").unwrap();
 
-        storage.store_key(&alias, &did, b"data").unwrap();
+        storage
+            .store_key(&alias, &did, KeyRole::Primary, b"data")
+            .unwrap();
         assert!(storage.load_key(&alias).is_ok());
 
         storage.delete_key(&alias).unwrap();
@@ -474,7 +537,9 @@ mod tests {
         let did = IdentityDID::new("did:keri:test123");
         let alias = KeyAlias::new("alias").unwrap();
 
-        storage.store_key(&alias, &did, b"data").unwrap();
+        storage
+            .store_key(&alias, &did, KeyRole::Primary, b"data")
+            .unwrap();
 
         let loaded_did = storage.get_identity_for_alias(&alias).unwrap();
         assert_eq!(loaded_did, did);
@@ -492,7 +557,12 @@ mod tests {
         let did = IdentityDID::new("did:keri:test");
 
         storage
-            .store_key(&KeyAlias::new("alias").unwrap(), &did, b"data")
+            .store_key(
+                &KeyAlias::new("alias").unwrap(),
+                &did,
+                KeyRole::Primary,
+                b"data",
+            )
             .unwrap();
 
         // Read the raw file and verify format
@@ -510,7 +580,12 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let storage = EncryptedFileStorage::new(temp_dir.path()).unwrap();
         let did = IdentityDID::new_unchecked("did:test".to_string());
-        let result = storage.store_key(&KeyAlias::new("alias").unwrap(), &did, b"data");
+        let result = storage.store_key(
+            &KeyAlias::new("alias").unwrap(),
+            &did,
+            KeyRole::Primary,
+            b"data",
+        );
         assert!(matches!(result, Err(AgentError::MissingPassphrase)));
     }
 

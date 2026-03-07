@@ -2,7 +2,7 @@
 
 // Defauly memory fallback for non-iOS and non-macOS devices
 use crate::error::AgentError;
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 /// An in-memory key storage implementation for fallback or testing.
 #[derive(Default)]
 pub struct MemoryStorage {
-    /// Internal mapping of alias -> (identity_did, encrypted_key_bytes)
-    data: HashMap<String, (IdentityDID, Vec<u8>)>,
+    /// Internal mapping of alias -> (identity_did, role, encrypted_key_bytes)
+    data: HashMap<String, (IdentityDID, KeyRole, Vec<u8>)>,
 }
 
 impl std::fmt::Debug for MemoryStorage {
@@ -37,17 +37,21 @@ impl MemoryStorage {
         &mut self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         self.data.insert(
             alias.as_str().to_string(),
-            (identity_did.clone(), encrypted_key_data.to_vec()),
+            (identity_did.clone(), role, encrypted_key_data.to_vec()),
         );
         Ok(())
     }
 
     /// Loads the key data for the given alias.
-    pub fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    pub fn load_key(
+        &self,
+        alias: &KeyAlias,
+    ) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         self.data
             .get(alias.as_str())
             .cloned()
@@ -77,7 +81,7 @@ impl MemoryStorage {
         let aliases = self
             .data
             .iter()
-            .filter_map(|(alias, (did, _))| {
+            .filter_map(|(alias, (did, _role, _))| {
                 if did == identity_did {
                     Some(KeyAlias::new_unchecked(alias.clone()))
                 } else {
@@ -92,7 +96,7 @@ impl MemoryStorage {
     pub fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
         self.data
             .get(alias.as_str())
-            .map(|(did, _)| did.clone())
+            .map(|(did, _role, _)| did.clone())
             .ok_or(AgentError::KeyNotFound)
     }
 
@@ -113,15 +117,16 @@ impl KeyStorage for MemoryKeychainHandle {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         MEMORY_KEYCHAIN
             .lock()
             .map_err(|_| AgentError::MutexError("global memory keychain".into()))?
-            .store_key(alias, identity_did, encrypted_key_data)
+            .store_key(alias, identity_did, role, encrypted_key_data)
     }
 
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         MEMORY_KEYCHAIN
             .lock()
             .map_err(|_| AgentError::MutexError("global memory keychain".into()))?
@@ -199,15 +204,16 @@ impl KeyStorage for IsolatedKeychainHandle {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         self.store
             .lock()
             .map_err(|_| AgentError::MutexError("isolated memory keychain".into()))?
-            .store_key(alias, identity_did, encrypted_key_data)
+            .store_key(alias, identity_did, role, encrypted_key_data)
     }
 
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         self.store
             .lock()
             .map_err(|_| AgentError::MutexError("isolated memory keychain".into()))?

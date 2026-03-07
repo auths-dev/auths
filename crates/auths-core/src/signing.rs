@@ -259,7 +259,7 @@ impl<S: KeyStorage + Send + Sync + 'static> SecureSigner for StorageSigner<S> {
         passphrase_provider: &dyn PassphraseProvider,
         message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
-        let (_identity_did, encrypted_data) = self.storage.load_key(alias)?;
+        let (_identity_did, _role, encrypted_data) = self.storage.load_key(alias)?;
 
         const MAX_ATTEMPTS: u8 = 3;
         let mut attempt = 0u8;
@@ -630,9 +630,11 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
+    use crate::storage::keychain::KeyRole;
+
     /// Mock KeyStorage implementation for testing
     struct MockKeyStorage {
-        keys: Mutex<HashMap<String, (IdentityDID, Vec<u8>)>>,
+        keys: Mutex<HashMap<String, (IdentityDID, KeyRole, Vec<u8>)>>,
     }
 
     impl MockKeyStorage {
@@ -648,16 +650,20 @@ mod tests {
             &self,
             alias: &KeyAlias,
             identity_did: &IdentityDID,
+            role: KeyRole,
             encrypted_key_data: &[u8],
         ) -> Result<(), AgentError> {
             self.keys.lock().unwrap().insert(
                 alias.as_str().to_string(),
-                (identity_did.clone(), encrypted_key_data.to_vec()),
+                (identity_did.clone(), role, encrypted_key_data.to_vec()),
             );
             Ok(())
         }
 
-        fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+        fn load_key(
+            &self,
+            alias: &KeyAlias,
+        ) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
             self.keys
                 .lock()
                 .unwrap()
@@ -694,7 +700,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .iter()
-                .filter(|(_, (did, _))| did == identity_did)
+                .filter(|(_, (did, _role, _))| did == identity_did)
                 .map(|(alias, _)| KeyAlias::new_unchecked(alias.clone()))
                 .collect())
         }
@@ -704,7 +710,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .get(alias.as_str())
-                .map(|(did, _)| did.clone())
+                .map(|(did, _role, _)| did.clone())
                 .ok_or(AgentError::KeyNotFound)
         }
 
@@ -754,7 +760,7 @@ mod tests {
         // Set up mock storage with the key
         let storage = MockKeyStorage::new();
         storage
-            .store_key(&alias, &identity_did, &encrypted)
+            .store_key(&alias, &identity_did, KeyRole::Primary, &encrypted)
             .expect("Failed to store key");
 
         // Create signer and mocks
@@ -798,7 +804,7 @@ mod tests {
         // Store the same key under multiple aliases (first one should be used)
         let alias = KeyAlias::new_unchecked("primary-alias");
         storage
-            .store_key(&alias, &identity_did, &encrypted)
+            .store_key(&alias, &identity_did, KeyRole::Primary, &encrypted)
             .expect("Failed to store key");
 
         let signer = StorageSigner::new(storage);

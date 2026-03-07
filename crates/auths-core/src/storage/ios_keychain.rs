@@ -1,7 +1,7 @@
 //! iOS Keychain storage backend.
 
 use crate::error::AgentError;
-use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 
 use core_foundation::array::{CFArrayGetCount, CFArrayGetValueAtIndex, CFArrayRef};
 use core_foundation::base::{CFRelease, CFTypeRef, OSStatus, TCFType};
@@ -14,8 +14,9 @@ use core_foundation::string::{CFString, CFStringRef};
 use security_framework_sys::access_control::kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
 use security_framework_sys::base::{errSecItemNotFound, errSecSuccess};
 use security_framework_sys::item::{
-    kSecAttrAccount, kSecAttrDescription, kSecAttrService, kSecClass, kSecClassGenericPassword,
-    kSecMatchLimit, kSecMatchLimitAll, kSecReturnAttributes, kSecReturnData, kSecValueData,
+    kSecAttrAccount, kSecAttrComment, kSecAttrDescription, kSecAttrService, kSecClass,
+    kSecClassGenericPassword, kSecMatchLimit, kSecMatchLimitAll, kSecReturnAttributes,
+    kSecReturnData, kSecValueData,
 };
 use security_framework_sys::keychain_item::{SecItemAdd, SecItemCopyMatching, SecItemDelete};
 
@@ -89,14 +90,19 @@ impl KeyStorage for IOSKeychain {
         &self,
         alias: &KeyAlias,
         identity_did: &IdentityDID,
+        role: KeyRole,
         encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         let alias = alias.as_str();
-        info!("Storing key for alias '{}' (DID: {})", alias, identity_did);
+        info!(
+            "Storing key for alias '{}' (DID: {}, role: {})",
+            alias, identity_did, role
+        );
 
         let service_cf = CFString::new(&self.service_name);
         let alias_cf = CFString::new(alias);
         let did_cf = CFString::new(identity_did.as_str());
+        let role_cf = CFString::new(&role.to_string());
         let data_cf = CFData::from_buffer(encrypted_key_data);
         // The raw string value for kSecAttrAccessible is "pdmn"
         let key_accessible_cf = CFString::new("pdmn");
@@ -130,6 +136,7 @@ impl KeyStorage for IOSKeychain {
                 (kSecAttrService as CFTypeRef, service_cf.as_CFTypeRef()),
                 (kSecAttrAccount as CFTypeRef, alias_cf.as_CFTypeRef()),
                 (kSecAttrDescription as CFTypeRef, did_cf.as_CFTypeRef()),
+                (kSecAttrComment as CFTypeRef, role_cf.as_CFTypeRef()),
                 (kSecValueData as CFTypeRef, data_cf.as_CFTypeRef()),
                 (
                     key_accessible_cf.as_CFTypeRef(),
@@ -151,7 +158,7 @@ impl KeyStorage for IOSKeychain {
         }
     }
 
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         let alias = alias.as_str();
         debug!("Loading key for alias '{}'", alias);
 
@@ -189,12 +196,15 @@ impl KeyStorage for IOSKeychain {
         let result_dict = result as CFDictionaryRef;
         let key_data_opt: Option<Vec<u8>>;
         let identity_did_opt: Option<String>;
+        let role_str_opt: Option<String>;
 
         unsafe {
             key_data_opt =
                 Self::get_data_from_dict_ref(result_dict, kSecValueData as *const c_void);
             identity_did_opt =
                 Self::get_string_from_dict_ref(result_dict, kSecAttrDescription as *const c_void);
+            role_str_opt =
+                Self::get_string_from_dict_ref(result_dict, kSecAttrComment as *const c_void);
             CFRelease(result);
         }
 
@@ -211,8 +221,12 @@ impl KeyStorage for IOSKeychain {
             ))
         })?;
 
+        let role = role_str_opt
+            .and_then(|s| s.parse::<KeyRole>().ok())
+            .unwrap_or(KeyRole::Primary);
+
         debug!("Successfully loaded key for alias '{}'", alias);
-        Ok((IdentityDID::new_unchecked(identity_did_str), key_data))
+        Ok((IdentityDID::new_unchecked(identity_did_str), role, key_data))
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {

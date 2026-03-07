@@ -5,7 +5,7 @@ use auths_core::PrefilledPassphraseProvider;
 use auths_core::ports::clock::SystemClock;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::KeyStorage;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole};
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
 use auths_id::keri::{KeyState, Prefix, Said};
 use auths_id::ports::registry::RegistryBackend;
@@ -55,6 +55,7 @@ impl KeyStorage for FailingKeyStorage {
         &self,
         _alias: &KeyAlias,
         _identity_did: &IdentityDID,
+        _role: KeyRole,
         _encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
         Err(AgentError::SigningFailed(
@@ -62,7 +63,7 @@ impl KeyStorage for FailingKeyStorage {
         ))
     }
 
-    fn load_key(&self, _alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError> {
+    fn load_key(&self, _alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         Err(AgentError::KeyNotFound)
     }
 
