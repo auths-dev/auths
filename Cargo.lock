@@ -353,6 +353,7 @@ dependencies = [
  "mockall",
  "multibase",
  "once_cell",
+ "parking_lot",
  "pkcs8",
  "qrcode",
  "rand 0.8.5",
