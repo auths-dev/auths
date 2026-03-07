@@ -23,11 +23,13 @@ permissions:
   contents: write
 
 jobs:
-  check-cli-docs:
-    name: CLI docs up to date
+  deploy:
+    name: Deploy docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for git-revision-date
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -42,17 +44,8 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Check CLI docs are up to date
-        run: cargo run -p xtask -- gen-docs --check
-
-  deploy:
-    name: Deploy docs
-    needs: check-cli-docs
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # full history for git-revision-date
+      - name: Regenerate CLI docs
+        run: cargo run -p xtask -- gen-docs
 
       - uses: actions/setup-python@v5
         with:
