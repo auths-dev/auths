@@ -617,6 +617,7 @@ version = "0.0.1-rc.7"
 dependencies = [
  "async-trait",
  "auths-core",
+ "auths-crypto",
  "auths-id",
  "auths-index",
  "auths-verifier",

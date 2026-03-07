@@ -13,7 +13,7 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::path::Path;
 
-use zeroize::Zeroizing;
+use auths_crypto::Pkcs8Der;
 
 use crate::error::InitError;
 use crate::identity::helpers::{
@@ -37,10 +37,10 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 pub struct RotationKeyInfo {
     /// The sequence number after rotation
     pub sequence: u64,
-    /// The new current keypair PKCS8
-    pub new_current_pkcs8: Zeroizing<Vec<u8>>,
-    /// The new next keypair PKCS8
-    pub new_next_pkcs8: Zeroizing<Vec<u8>>,
+    /// The new current keypair (PKCS8 DER encoded, zeroed on drop)
+    pub new_current_pkcs8: Pkcs8Der,
+    /// The new next keypair (PKCS8 DER encoded, zeroed on drop)
+    pub new_next_pkcs8: Pkcs8Der,
 }
 
 /// Rotates a KERI identity using the GitKel backend.
@@ -99,7 +99,8 @@ pub fn rotate_keri_identity(
         "Enter passphrase for pre-committed key '{}':",
         derived_next_alias
     ))?;
-    let decrypted_next_pkcs8 = decrypt_keypair(&encrypted_next, &next_pass)?;
+    let decrypted_next_pkcs8 =
+        Pkcs8Der::new(decrypt_keypair(&encrypted_next, &next_pass)?.to_vec());
 
     let rotation_result = rotate_keys(
         &repo,
@@ -123,10 +124,10 @@ pub fn rotate_keri_identity(
         )));
     }
 
-    let encrypted_new_current = encrypt_keypair(&decrypted_next_pkcs8, &new_pass)?;
+    let encrypted_new_current = encrypt_keypair(decrypted_next_pkcs8.as_ref(), &new_pass)?;
     keychain.store_key(next_alias, &did, KeyRole::Primary, &encrypted_new_current)?;
 
-    let new_next_seed = extract_seed_bytes(&rotation_result.new_next_keypair_pkcs8)?;
+    let new_next_seed = extract_seed_bytes(rotation_result.new_next_keypair_pkcs8.as_ref())?;
     let encrypted_future = encrypt_keypair(&encode_seed_as_pkcs8(new_next_seed)?, &new_pass)?;
 
     let future_key_alias =
@@ -205,7 +206,8 @@ pub fn rotate_registry_identity(
         "Enter passphrase for pre-committed key '{}':",
         derived_next_alias
     ))?;
-    let decrypted_next_pkcs8 = decrypt_keypair(&encrypted_next, &next_pass)?;
+    let decrypted_next_pkcs8 =
+        Pkcs8Der::new(decrypt_keypair(&encrypted_next, &next_pass)?.to_vec());
 
     if !state.can_rotate() {
         return Err(InitError::InvalidData(
@@ -213,7 +215,7 @@ pub fn rotate_registry_identity(
         ));
     }
 
-    let next_keypair = load_keypair_from_der_or_seed(&decrypted_next_pkcs8)?;
+    let next_keypair = load_keypair_from_der_or_seed(decrypted_next_pkcs8.as_ref())?;
 
     if !verify_commitment(
         next_keypair.public_key().as_ref(),
@@ -280,14 +282,14 @@ pub fn rotate_registry_identity(
         next_alias,
         &derived_next_alias,
         new_sequence,
-        &decrypted_next_pkcs8,
+        decrypted_next_pkcs8.as_ref(),
         new_next_pkcs8.as_ref(),
     )?;
 
     Ok(RotationKeyInfo {
         sequence: new_sequence,
-        new_current_pkcs8: Zeroizing::new(decrypted_next_pkcs8.to_vec()),
-        new_next_pkcs8: Zeroizing::new(new_next_pkcs8.as_ref().to_vec()),
+        new_current_pkcs8: decrypted_next_pkcs8,
+        new_next_pkcs8: Pkcs8Der::new(new_next_pkcs8.as_ref()),
     })
 }
 

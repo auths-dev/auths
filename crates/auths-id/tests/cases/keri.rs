@@ -115,7 +115,7 @@ fn device_enrollment_with_anchoring() {
     // Create identity
     let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_keypair = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let current_keypair = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     // Create device attestation
     let device_did = "did:key:z6MknSLrJoTcukLrE435hVNQT4JUhbvWLX4kUzqkEStBU8Vi";
@@ -153,7 +153,7 @@ fn multiple_device_attestations() {
 
     let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_keypair = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let current_keypair = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     // Anchor multiple attestations
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
@@ -217,7 +217,7 @@ fn rotation_requires_commitment() {
     let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
     // Try to rotate with a wrong key (not the committed one)
-    let wrong_key = [99u8; 85]; // Some random bytes that aren't the committed next key
+    let wrong_key = auths_crypto::Pkcs8Der::new([99u8; 85].to_vec());
 
     let result = rotate_keys(&repo, &init.prefix, &wrong_key, None, chrono::Utc::now());
     assert!(result.is_err());
@@ -319,7 +319,7 @@ fn verify_anchor_by_digest_works() {
 
     let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_keypair = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let current_keypair = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     let attestation = make_test_attestation(&identity_did, "did:key:device");
     anchor_attestation(

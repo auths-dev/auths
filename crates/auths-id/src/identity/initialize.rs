@@ -60,8 +60,8 @@ pub fn initialize_keri_identity(
     let passphrase = passphrase_provider
         .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
 
-    let current_seed = extract_seed_bytes(&result.current_keypair_pkcs8)?;
-    let next_seed = extract_seed_bytes(&result.next_keypair_pkcs8)?;
+    let current_seed = extract_seed_bytes(result.current_keypair_pkcs8.as_ref())?;
+    let next_seed = extract_seed_bytes(result.next_keypair_pkcs8.as_ref())?;
 
     let encrypted_current = encrypt_keypair(&encode_seed_as_pkcs8(current_seed)?, &passphrase)?;
     let encrypted_next = encrypt_keypair(&encode_seed_as_pkcs8(next_seed)?, &passphrase)?;

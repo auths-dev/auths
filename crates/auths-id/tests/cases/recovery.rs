@@ -20,11 +20,12 @@ fn attacker_cannot_rotate_without_precommitted_key() {
     // Attacker generates their own key and tries to rotate
     let rng = SystemRandom::new();
     let attacker_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+    let attacker_pkcs8 = auths_crypto::Pkcs8Der::new(attacker_pkcs8.as_ref());
 
     let result = rotate_keys_with_backend(
         &backend,
         &init.prefix,
-        attacker_pkcs8.as_ref(),
+        &attacker_pkcs8,
         chrono::Utc::now(),
         None,
     );

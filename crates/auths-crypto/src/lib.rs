@@ -10,6 +10,7 @@
 pub mod did_key;
 pub mod keri;
 pub mod key_material;
+pub mod pkcs8;
 pub mod provider;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod ring_provider;
@@ -22,6 +23,7 @@ pub use did_key::{
 };
 pub use keri::{KeriDecodeError, KeriPublicKey};
 pub use key_material::{build_ed25519_pkcs8_v2, parse_ed25519_key_material, parse_ed25519_seed};
+pub use pkcs8::Pkcs8Der;
 pub use provider::{
     CryptoError, CryptoProvider, ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN, SecureSeed,
 };

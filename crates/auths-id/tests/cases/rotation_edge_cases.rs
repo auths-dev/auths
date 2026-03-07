@@ -132,7 +132,7 @@ fn rotation_after_interaction_events_preserves_kel_integrity() {
 
     let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_kp = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let current_kp = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN at seq 1
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
@@ -174,7 +174,7 @@ fn anchoring_works_with_rotated_key_after_ixn() {
 
     let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_kp = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let current_kp = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN with inception key
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
@@ -189,7 +189,7 @@ fn anchoring_works_with_rotated_key_after_ixn() {
         chrono::Utc::now(),
     )
     .unwrap();
-    let rotated_kp = Ed25519KeyPair::from_pkcs8(&rot1.new_current_keypair_pkcs8).unwrap();
+    let rotated_kp = Ed25519KeyPair::from_pkcs8(rot1.new_current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN with rotated key
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
@@ -214,7 +214,7 @@ fn multiple_rotations_interleaved_with_ixn() {
 
     let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let kp0 = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
+    let kp0 = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN(1) with inception key
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
@@ -230,7 +230,7 @@ fn multiple_rotations_interleaved_with_ixn() {
     )
     .unwrap();
     assert_eq!(rot1.sequence, 2);
-    let kp1 = Ed25519KeyPair::from_pkcs8(&rot1.new_current_keypair_pkcs8).unwrap();
+    let kp1 = Ed25519KeyPair::from_pkcs8(rot1.new_current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN(3) with rotated key
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
@@ -246,7 +246,7 @@ fn multiple_rotations_interleaved_with_ixn() {
     )
     .unwrap();
     assert_eq!(rot2.sequence, 4);
-    let kp2 = Ed25519KeyPair::from_pkcs8(&rot2.new_current_keypair_pkcs8).unwrap();
+    let kp2 = Ed25519KeyPair::from_pkcs8(rot2.new_current_keypair_pkcs8.as_ref()).unwrap();
 
     // IXN(5) with second-rotated key
     let att3 = make_test_attestation(&identity_did, "did:key:device3");

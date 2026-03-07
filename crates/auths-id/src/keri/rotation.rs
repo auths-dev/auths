@@ -7,11 +7,11 @@
 
 use std::ops::ControlFlow;
 
+use auths_crypto::Pkcs8Der;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
-use zeroize::Zeroizing;
 
 use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
 
@@ -60,11 +60,11 @@ pub struct RotationResult {
     /// The new sequence number
     pub sequence: u64,
 
-    /// The new current keypair (was the "next" key, PKCS8 DER encoded)
-    pub new_current_keypair_pkcs8: Zeroizing<Vec<u8>>,
+    /// The new current keypair (was the "next" key, PKCS8 DER encoded, zeroed on drop)
+    pub new_current_keypair_pkcs8: Pkcs8Der,
 
-    /// The new next keypair for future rotation (PKCS8 DER encoded)
-    pub new_next_keypair_pkcs8: Zeroizing<Vec<u8>>,
+    /// The new next keypair for future rotation (PKCS8 DER encoded, zeroed on drop)
+    pub new_next_keypair_pkcs8: Pkcs8Der,
 
     /// The new current public key (raw 32 bytes)
     pub new_current_public_key: Vec<u8>,
@@ -103,7 +103,7 @@ impl std::fmt::Debug for RotationResult {
 pub fn rotate_keys(
     repo: &Repository,
     prefix: &Prefix,
-    next_keypair_pkcs8: &[u8],
+    next_keypair_pkcs8: &Pkcs8Der,
     witness_config: Option<&WitnessConfig>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<RotationResult, RotationError> {
@@ -120,8 +120,9 @@ pub fn rotate_keys(
     }
 
     // Parse the next keypair (supports multiple PKCS#8 formats and raw seeds)
-    let next_keypair = crate::identity::helpers::load_keypair_from_der_or_seed(next_keypair_pkcs8)
-        .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
+    let next_keypair =
+        crate::identity::helpers::load_keypair_from_der_or_seed(next_keypair_pkcs8.as_ref())
+            .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
 
     // Verify the next key matches the commitment
     if !verify_commitment(
@@ -206,8 +207,8 @@ pub fn rotate_keys(
     Ok(RotationResult {
         prefix: prefix.clone(),
         sequence: new_sequence,
-        new_current_keypair_pkcs8: Zeroizing::new(next_keypair_pkcs8.to_vec()),
-        new_next_keypair_pkcs8: Zeroizing::new(new_next_pkcs8.as_ref().to_vec()),
+        new_current_keypair_pkcs8: next_keypair_pkcs8.clone(),
+        new_next_keypair_pkcs8: Pkcs8Der::new(new_next_pkcs8.as_ref()),
         new_current_public_key: next_keypair.public_key().as_ref().to_vec(),
         new_next_public_key: new_next_keypair.public_key().as_ref().to_vec(),
     })
@@ -226,7 +227,7 @@ pub fn rotate_keys(
 pub fn abandon_identity(
     repo: &Repository,
     prefix: &Prefix,
-    next_keypair_pkcs8: &[u8],
+    next_keypair_pkcs8: &Pkcs8Der,
     witness_config: Option<&WitnessConfig>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<u64, RotationError> {
@@ -241,7 +242,7 @@ pub fn abandon_identity(
     }
 
     // Parse the next keypair
-    let next_keypair = Ed25519KeyPair::from_pkcs8(next_keypair_pkcs8)
+    let next_keypair = Ed25519KeyPair::from_pkcs8(next_keypair_pkcs8.as_ref())
         .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
 
     // Verify the next key matches the commitment
@@ -322,7 +323,7 @@ pub fn get_key_state(repo: &Repository, prefix: &Prefix) -> Result<KeyState, Rot
 pub fn rotate_keys_with_backend(
     backend: &impl RegistryBackend,
     prefix: &Prefix,
-    next_keypair_pkcs8: &[u8],
+    next_keypair_pkcs8: &Pkcs8Der,
     _now: chrono::DateTime<chrono::Utc>,
     _witness_config: Option<&WitnessConfig>,
 ) -> Result<RotationResult, RotationError> {
@@ -336,8 +337,9 @@ pub fn rotate_keys_with_backend(
         return Err(RotationError::IdentityAbandoned);
     }
 
-    let next_keypair = crate::identity::helpers::load_keypair_from_der_or_seed(next_keypair_pkcs8)
-        .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
+    let next_keypair =
+        crate::identity::helpers::load_keypair_from_der_or_seed(next_keypair_pkcs8.as_ref())
+            .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
 
     if !verify_commitment(
         next_keypair.public_key().as_ref(),
@@ -390,8 +392,8 @@ pub fn rotate_keys_with_backend(
     Ok(RotationResult {
         prefix: prefix.clone(),
         sequence: new_sequence,
-        new_current_keypair_pkcs8: Zeroizing::new(next_keypair_pkcs8.to_vec()),
-        new_next_keypair_pkcs8: Zeroizing::new(new_next_pkcs8.as_ref().to_vec()),
+        new_current_keypair_pkcs8: next_keypair_pkcs8.clone(),
+        new_next_keypair_pkcs8: Pkcs8Der::new(new_next_pkcs8.as_ref()),
         new_current_public_key: next_keypair.public_key().as_ref().to_vec(),
         new_next_public_key: new_next_keypair.public_key().as_ref().to_vec(),
     })
@@ -480,14 +482,9 @@ mod tests {
         // Try to rotate with a wrong key
         let rng = SystemRandom::new();
         let wrong_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let wrong_pkcs8 = Pkcs8Der::new(wrong_pkcs8.as_ref());
 
-        let result = rotate_keys(
-            &repo,
-            &init.prefix,
-            wrong_pkcs8.as_ref(),
-            None,
-            chrono::Utc::now(),
-        );
+        let result = rotate_keys(&repo, &init.prefix, &wrong_pkcs8, None, chrono::Utc::now());
         assert!(matches!(result, Err(RotationError::CommitmentMismatch)));
     }
 
@@ -572,13 +569,8 @@ mod tests {
         // Generate a new key and try to rotate - should fail because abandoned
         let rng = SystemRandom::new();
         let new_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let result = rotate_keys(
-            &repo,
-            &init.prefix,
-            new_pkcs8.as_ref(),
-            None,
-            chrono::Utc::now(),
-        );
+        let new_pkcs8 = Pkcs8Der::new(new_pkcs8.as_ref());
+        let result = rotate_keys(&repo, &init.prefix, &new_pkcs8, None, chrono::Utc::now());
         assert!(matches!(result, Err(RotationError::IdentityAbandoned)));
     }
 
@@ -600,13 +592,8 @@ mod tests {
         // Generate a new key and try to abandon again
         let rng = SystemRandom::new();
         let new_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let result = abandon_identity(
-            &repo,
-            &init.prefix,
-            new_pkcs8.as_ref(),
-            None,
-            chrono::Utc::now(),
-        );
+        let new_pkcs8 = Pkcs8Der::new(new_pkcs8.as_ref());
+        let result = abandon_identity(&repo, &init.prefix, &new_pkcs8, None, chrono::Utc::now());
         assert!(matches!(result, Err(RotationError::IdentityAbandoned)));
     }
 
