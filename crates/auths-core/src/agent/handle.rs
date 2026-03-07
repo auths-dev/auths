@@ -33,12 +33,12 @@ pub struct AgentHandle {
     pid_file: Option<PathBuf>,
     /// Whether the agent is currently running
     running: Arc<AtomicBool>,
-    /// Timestamp of last activity (for idle timeout)
-    last_activity: Mutex<Instant>,
+    /// Timestamp of last activity (for idle timeout, shared across clones)
+    last_activity: Arc<Mutex<Instant>>,
     /// Idle timeout duration (0 = never timeout)
     idle_timeout: Duration,
-    /// Whether the agent is currently locked
-    locked: AtomicBool,
+    /// Whether the agent is currently locked (shared across clones)
+    locked: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for AgentHandle {
@@ -66,9 +66,9 @@ impl AgentHandle {
             socket_path,
             pid_file: None,
             running: Arc::new(AtomicBool::new(false)),
-            last_activity: Mutex::new(Instant::now()),
+            last_activity: Arc::new(Mutex::new(Instant::now())),
             idle_timeout,
-            locked: AtomicBool::new(false),
+            locked: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -79,9 +79,9 @@ impl AgentHandle {
             socket_path,
             pid_file: Some(pid_file),
             running: Arc::new(AtomicBool::new(false)),
-            last_activity: Mutex::new(Instant::now()),
+            last_activity: Arc::new(Mutex::new(Instant::now())),
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
-            locked: AtomicBool::new(false),
+            locked: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -96,9 +96,9 @@ impl AgentHandle {
             socket_path,
             pid_file: Some(pid_file),
             running: Arc::new(AtomicBool::new(false)),
-            last_activity: Mutex::new(Instant::now()),
+            last_activity: Arc::new(Mutex::new(Instant::now())),
             idle_timeout,
-            locked: AtomicBool::new(false),
+            locked: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -109,9 +109,9 @@ impl AgentHandle {
             socket_path,
             pid_file: None,
             running: Arc::new(AtomicBool::new(false)),
-            last_activity: Mutex::new(Instant::now()),
+            last_activity: Arc::new(Mutex::new(Instant::now())),
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
-            locked: AtomicBool::new(false),
+            locked: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -319,22 +319,14 @@ impl AgentHandle {
 
 impl Clone for AgentHandle {
     fn clone(&self) -> Self {
-        // Clone shares the same core, running state, and locked state
-        // But gets a fresh last_activity copy (not shared)
-        let last_activity = self
-            .last_activity
-            .lock()
-            .map(|t| *t)
-            .unwrap_or_else(|_| Instant::now());
-
         Self {
             core: Arc::clone(&self.core),
             socket_path: self.socket_path.clone(),
             pid_file: self.pid_file.clone(),
             running: Arc::clone(&self.running),
-            last_activity: Mutex::new(last_activity),
+            last_activity: Arc::clone(&self.last_activity),
             idle_timeout: self.idle_timeout,
-            locked: AtomicBool::new(self.locked.load(Ordering::SeqCst)),
+            locked: Arc::clone(&self.locked),
         }
     }
 }
@@ -534,5 +526,50 @@ mod tests {
 
         // Should never be timed out
         assert!(!handle.is_idle_timed_out());
+    }
+
+    #[test]
+    fn test_clone_shares_locked_state() {
+        let handle_a = AgentHandle::new(PathBuf::from("/tmp/test.sock"));
+        let handle_b = handle_a.clone();
+
+        assert!(!handle_b.is_agent_locked());
+        handle_a.lock_agent().unwrap();
+        assert!(handle_b.is_agent_locked());
+
+        handle_a.unlock_agent();
+        assert!(!handle_b.is_agent_locked());
+    }
+
+    #[test]
+    fn test_clone_shares_last_activity() {
+        let handle_a =
+            AgentHandle::with_timeout(PathBuf::from("/tmp/test.sock"), Duration::from_millis(50));
+        let handle_b = handle_a.clone();
+
+        std::thread::sleep(Duration::from_millis(60));
+        assert!(handle_b.is_idle_timed_out());
+
+        // Touch on clone A resets timer visible from clone B
+        handle_a.touch();
+        assert!(!handle_b.is_idle_timed_out());
+    }
+
+    #[test]
+    fn test_clone_sign_returns_locked_after_other_clone_locks() {
+        let handle_a = AgentHandle::new(PathBuf::from("/tmp/test.sock"));
+        let handle_b = handle_a.clone();
+
+        let pkcs8_bytes = generate_test_pkcs8();
+        handle_a.register_key(Zeroizing::new(pkcs8_bytes)).unwrap();
+
+        let pubkeys = handle_a.public_keys().unwrap();
+        let pubkey = &pubkeys[0];
+
+        assert!(handle_b.sign(pubkey, b"test data").is_ok());
+
+        handle_a.lock_agent().unwrap();
+        let result = handle_b.sign(pubkey, b"test data");
+        assert!(matches!(result, Err(AgentError::AgentLocked)));
     }
 }
