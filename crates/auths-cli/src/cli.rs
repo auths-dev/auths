@@ -26,6 +26,7 @@ use crate::commands::sign::SignCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
+use crate::commands::whoami::WhoamiCommand;
 use crate::commands::witness::WitnessCommand;
 use crate::config::OutputFormat;
 
@@ -97,6 +98,7 @@ pub enum RootCommand {
     Sign(SignCommand),
     Verify(UnifiedVerifyCommand),
     Status(StatusCommand),
+    Whoami(WhoamiCommand),
     Tutorial(LearnCommand),
     Doctor(DoctorCommand),
     Completions(CompletionsCommand),

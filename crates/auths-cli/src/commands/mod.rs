@@ -31,4 +31,5 @@ pub mod unified_verify;
 pub mod utils;
 pub mod verify_commit;
 pub mod verify_helpers;
+pub mod whoami;
 pub mod witness;

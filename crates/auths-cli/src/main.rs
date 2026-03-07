@@ -40,6 +40,7 @@ fn run() -> Result<()> {
         RootCommand::Sign(cmd) => cmd.execute(&ctx),
         RootCommand::Verify(cmd) => cmd.execute(&ctx),
         RootCommand::Status(cmd) => cmd.execute(&ctx),
+        RootCommand::Whoami(cmd) => cmd.execute(&ctx),
         RootCommand::Tutorial(cmd) => cmd.execute(&ctx),
         RootCommand::Doctor(cmd) => cmd.execute(&ctx),
         RootCommand::Completions(cmd) => cmd.execute(&ctx),
