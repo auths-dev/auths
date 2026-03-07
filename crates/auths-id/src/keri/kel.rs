@@ -125,7 +125,11 @@ impl<'a> GitKel<'a> {
     /// ```rust,ignore
     /// let hash = kel.create(&icp_event)?;
     /// ```
-    pub fn create(&self, event: &IcpEvent) -> Result<EventHash, KelError> {
+    pub fn create(
+        &self,
+        event: &IcpEvent,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<EventHash, KelError> {
         if self.exists() {
             return Err(KelError::InvalidOperation(format!(
                 "KEL already exists for prefix: {}",
@@ -143,7 +147,7 @@ impl<'a> GitKel<'a> {
         let tree_oid = tree_builder.write()?;
         let tree = self.repo.find_tree(tree_oid)?;
 
-        let sig = self.signature()?;
+        let sig = self.signature(now)?;
         let commit_oid = self.repo.commit(
             Some(&self.ref_path),
             &sig,
@@ -169,7 +173,11 @@ impl<'a> GitKel<'a> {
     /// ```rust,ignore
     /// let hash = kel.append(&rot_event)?;
     /// ```
-    pub fn append(&self, event: &Event) -> Result<EventHash, KelError> {
+    pub fn append(
+        &self,
+        event: &Event,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<EventHash, KelError> {
         let ref_name = &self.ref_path;
 
         let reference = self.repo.find_reference(ref_name).map_err(|e| {
@@ -200,7 +208,7 @@ impl<'a> GitKel<'a> {
             Event::Icp(_) => unreachable!(),
         };
 
-        let sig = self.signature()?;
+        let sig = self.signature(now)?;
         let commit_oid =
             self.repo
                 .commit(Some(ref_name), &sig, &sig, &msg, &tree, &[&parent_commit])?;
@@ -465,11 +473,16 @@ impl<'a> GitKel<'a> {
         Ok(event)
     }
 
-    /// Create a Git signature for commits.
-    fn signature(&self) -> Result<Signature<'static>, KelError> {
+    /// Create a Git signature for commits using an injected timestamp.
+    fn signature(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Signature<'static>, KelError> {
         self.repo
             .signature()
-            .or_else(|_| Signature::now("auths", "auths@local"))
+            .or_else(|_| {
+                Signature::new("auths", "auths@local", &git2::Time::new(now.timestamp(), 0))
+            })
             .map_err(KelError::Git)
     }
 
@@ -579,7 +592,7 @@ mod tests {
         let kel = GitKel::new(&repo, "ETest123");
 
         let icp = make_icp_event("ETest123");
-        kel.create(&icp).unwrap();
+        kel.create(&icp, chrono::Utc::now()).unwrap();
 
         assert!(kel.exists());
 
@@ -594,17 +607,24 @@ mod tests {
         let kel = GitKel::new(&repo, "ETest123");
 
         let icp = make_icp_event("ETest123");
-        kel.create(&icp).unwrap();
+        kel.create(&icp, chrono::Utc::now()).unwrap();
 
-        let result = kel.create(&icp);
+        let result = kel.create(&icp, chrono::Utc::now());
         assert!(result.is_err());
     }
 
     #[test]
     fn append_rotation_event() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
-        let _rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let _rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let kel = GitKel::new(&repo, init.prefix.as_str());
         let events = kel.get_events().unwrap();
@@ -616,7 +636,7 @@ mod tests {
     #[test]
     fn append_rejects_invalid_signature() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         // Build a fake rotation event with invalid SAID
@@ -636,7 +656,7 @@ mod tests {
             x: String::new(),
         });
 
-        let result = kel.append(&rot);
+        let result = kel.append(&rot, chrono::Utc::now());
         assert!(result.is_err());
         assert!(matches!(result, Err(KelError::ValidationFailed(_))));
     }
@@ -644,7 +664,7 @@ mod tests {
     #[test]
     fn get_state_after_inception() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let state = kel.get_state(chrono::Utc::now()).unwrap();
@@ -656,8 +676,15 @@ mod tests {
     #[test]
     fn get_state_after_rotation() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
-        let rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let kel = GitKel::new(&repo, init.prefix.as_str());
         let state = kel.get_state(chrono::Utc::now()).unwrap();
@@ -668,13 +695,20 @@ mod tests {
     #[test]
     fn get_latest_event() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let latest = kel.get_latest_event().unwrap();
         assert!(latest.is_inception());
 
-        let _rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let _rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let latest = kel.get_latest_event().unwrap();
         assert!(latest.is_rotation());
@@ -692,11 +726,11 @@ mod tests {
     #[test]
     fn cannot_append_icp_event() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let icp2 = Event::Icp(make_icp_event("EFake"));
-        let result = kel.append(&icp2);
+        let result = kel.append(&icp2, chrono::Utc::now());
         assert!(matches!(result, Err(KelError::ValidationFailed(_))));
     }
 
@@ -723,7 +757,7 @@ mod tests {
     #[test]
     fn test_cold_cache_full_replay() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let state = kel.get_state(chrono::Utc::now()).unwrap();
@@ -739,7 +773,7 @@ mod tests {
     #[test]
     fn test_warm_cache_hit() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let state1 = kel.get_state(chrono::Utc::now()).unwrap();
@@ -752,20 +786,34 @@ mod tests {
     #[test]
     fn test_incremental_validation_after_rotation() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         // Prime cache
         let _ = kel.get_state(chrono::Utc::now()).unwrap();
 
         // Rotate keys (appends validated event)
-        let rot1 = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let rot1 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let state = kel.get_state(chrono::Utc::now()).unwrap();
         assert_eq!(state.sequence, 1);
 
         // Rotate again
-        let _rot2 = rotate_keys(&repo, &init.prefix, &rot1.new_next_keypair_pkcs8, None).unwrap();
+        let _rot2 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &rot1.new_next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let state = kel.get_state(chrono::Utc::now()).unwrap();
         assert_eq!(state.sequence, 2);
@@ -774,7 +822,7 @@ mod tests {
     #[test]
     fn test_cache_divergence_fallback() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let _ = kel.get_state(chrono::Utc::now()).unwrap();
@@ -797,9 +845,23 @@ mod tests {
     #[test]
     fn test_get_state_matches_full_replay() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
-        let rot1 = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
-        let _rot2 = rotate_keys(&repo, &init.prefix, &rot1.new_next_keypair_pkcs8, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let rot1 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
+        let _rot2 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &rot1.new_next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
@@ -820,7 +882,7 @@ mod tests {
     #[test]
     fn test_cache_said_mismatch_forces_replay() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let _ = kel.get_state(chrono::Utc::now()).unwrap();
@@ -852,7 +914,7 @@ mod tests {
     #[test]
     fn test_commit_hash_helpers() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let tip_hash = kel.tip_commit_hash().unwrap();
@@ -864,7 +926,14 @@ mod tests {
         assert!(kel.parent_hash(tip_hash).unwrap().is_none());
 
         // Rotate to add another event
-        let _rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let _rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let new_tip = kel.tip_commit_hash().unwrap();
         assert_ne!(tip_hash, new_tip);
@@ -880,7 +949,7 @@ mod tests {
             let prefix = "EMergeReject";
             let kel = GitKel::new(repo, prefix);
             let icp = make_icp_event(prefix);
-            kel.create(&icp).unwrap();
+            kel.create(&icp, chrono::Utc::now()).unwrap();
 
             let _ = kel.get_state(chrono::Utc::now()).unwrap();
 

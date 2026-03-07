@@ -46,6 +46,7 @@ pub fn collect_and_store_receipts(
     event_said: &Said,
     event_json: &[u8],
     config: &WitnessConfig,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Vec<Receipt>, WitnessIntegrationError> {
     // Skip policy → return early
     if config.policy == WitnessPolicy::Skip || !config.is_enabled() {
@@ -83,7 +84,7 @@ pub fn collect_and_store_receipts(
                 receipts: receipts.clone(),
             };
             storage
-                .store_receipts(prefix, &event_receipts)
+                .store_receipts(prefix, &event_receipts, now)
                 .map_err(WitnessIntegrationError::Storage)?;
 
             log::info!(

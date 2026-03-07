@@ -104,6 +104,7 @@ pub fn rotate_keys(
     prefix: &Prefix,
     next_keypair_pkcs8: &[u8],
     witness_config: Option<&WitnessConfig>,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<RotationResult, RotationError> {
     let rng = SystemRandom::new();
 
@@ -182,7 +183,7 @@ pub fn rotate_keys(
     rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
     // Append to KEL
-    kel.append(&Event::Rot(rot.clone()))?;
+    kel.append(&Event::Rot(rot.clone()), now)?;
 
     // Collect witness receipts if configured
     #[cfg(feature = "witness-client")]
@@ -196,6 +197,7 @@ pub fn rotate_keys(
             &rot.d,
             &canonical_for_witness,
             config,
+            now,
         )
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
     }
@@ -225,6 +227,7 @@ pub fn abandon_identity(
     prefix: &Prefix,
     next_keypair_pkcs8: &[u8],
     witness_config: Option<&WitnessConfig>,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<u64, RotationError> {
     // Load current state from KEL
     let kel = GitKel::new(repo, prefix.as_str());
@@ -292,7 +295,7 @@ pub fn abandon_identity(
     rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
     // Append to KEL
-    kel.append(&Event::Rot(rot))?;
+    kel.append(&Event::Rot(rot), now)?;
 
     Ok(new_sequence)
 }
@@ -319,6 +322,7 @@ pub fn rotate_keys_with_backend(
     backend: &impl RegistryBackend,
     prefix: &Prefix,
     next_keypair_pkcs8: &[u8],
+    _now: chrono::DateTime<chrono::Utc>,
     _witness_config: Option<&WitnessConfig>,
 ) -> Result<RotationResult, RotationError> {
     let rng = SystemRandom::new();
@@ -421,6 +425,7 @@ fn collect_events_from_backend(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use crate::keri::create_keri_identity;
@@ -442,10 +447,17 @@ mod tests {
         let (_dir, repo) = setup_repo();
 
         // Create identity
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         // Rotate using the next key
-        let rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let rot = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         assert_eq!(rot.prefix, init.prefix);
         assert_eq!(rot.sequence, 1);
@@ -462,13 +474,19 @@ mod tests {
     fn rotation_verifies_commitment() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         // Try to rotate with a wrong key
         let rng = SystemRandom::new();
         let wrong_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
 
-        let result = rotate_keys(&repo, &init.prefix, wrong_pkcs8.as_ref(), None);
+        let result = rotate_keys(
+            &repo,
+            &init.prefix,
+            wrong_pkcs8.as_ref(),
+            None,
+            chrono::Utc::now(),
+        );
         assert!(matches!(result, Err(RotationError::CommitmentMismatch)));
     }
 
@@ -477,14 +495,28 @@ mod tests {
         let (_dir, repo) = setup_repo();
 
         // Create identity
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         // First rotation
-        let rot1 = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let rot1 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
         assert_eq!(rot1.sequence, 1);
 
         // Second rotation
-        let rot2 = rotate_keys(&repo, &init.prefix, &rot1.new_next_keypair_pkcs8, None).unwrap();
+        let rot2 = rotate_keys(
+            &repo,
+            &init.prefix,
+            &rot1.new_next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
         assert_eq!(rot2.sequence, 2);
 
         // Verify KEL has 3 events
@@ -501,10 +533,17 @@ mod tests {
     fn abandonment_works() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         // Abandon the identity (must use next key)
-        let seq = abandon_identity(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let seq = abandon_identity(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
         assert_eq!(seq, 1);
 
         // Verify state
@@ -517,15 +556,28 @@ mod tests {
     fn abandoned_identity_cannot_rotate() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         // Abandon first (uses next key)
-        abandon_identity(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        abandon_identity(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         // Generate a new key and try to rotate - should fail because abandoned
         let rng = SystemRandom::new();
         let new_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let result = rotate_keys(&repo, &init.prefix, new_pkcs8.as_ref(), None);
+        let result = rotate_keys(
+            &repo,
+            &init.prefix,
+            new_pkcs8.as_ref(),
+            None,
+            chrono::Utc::now(),
+        );
         assert!(matches!(result, Err(RotationError::IdentityAbandoned)));
     }
 
@@ -533,14 +585,27 @@ mod tests {
     fn double_abandonment_fails() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
-        abandon_identity(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        abandon_identity(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         // Generate a new key and try to abandon again
         let rng = SystemRandom::new();
         let new_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let result = abandon_identity(&repo, &init.prefix, new_pkcs8.as_ref(), None);
+        let result = abandon_identity(
+            &repo,
+            &init.prefix,
+            new_pkcs8.as_ref(),
+            None,
+            chrono::Utc::now(),
+        );
         assert!(matches!(result, Err(RotationError::IdentityAbandoned)));
     }
 
@@ -548,7 +613,7 @@ mod tests {
     fn get_key_state_works() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
         let state = get_key_state(&repo, &init.prefix).unwrap();
         assert_eq!(state.prefix, init.prefix);
@@ -561,8 +626,15 @@ mod tests {
     fn state_reflects_rotation() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None).unwrap();
-        rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        rotate_keys(
+            &repo,
+            &init.prefix,
+            &init.next_keypair_pkcs8,
+            None,
+            chrono::Utc::now(),
+        )
+        .unwrap();
 
         let state = get_key_state(&repo, &init.prefix).unwrap();
         assert_eq!(state.sequence, 1);

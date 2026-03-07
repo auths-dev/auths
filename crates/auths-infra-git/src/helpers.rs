@@ -59,7 +59,14 @@ pub(crate) fn list_refs_matching(
     Ok(result)
 }
 
+#[allow(clippy::disallowed_methods)] // Infrastructure boundary: Utc::now() acceptable here
 fn default_signature(repo: &Repository) -> Result<Signature<'_>, git2::Error> {
-    repo.signature()
-        .or_else(|_| Signature::now("auths", "auths@localhost"))
+    repo.signature().or_else(|_| {
+        let now = chrono::Utc::now();
+        Signature::new(
+            "auths",
+            "auths@localhost",
+            &git2::Time::new(now.timestamp(), 0),
+        )
+    })
 }

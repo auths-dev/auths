@@ -50,9 +50,11 @@ pub fn initialize_keri_identity(
     passphrase_provider: &dyn PassphraseProvider,
     identity_storage: &dyn IdentityStorage,
     keychain: &(dyn KeyStorage + Send + Sync),
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<(IdentityDID, KeyAlias), InitError> {
     let repo = Repository::open(repo_path)?;
-    let result = create_keri_identity(&repo, None).map_err(|e| InitError::Keri(e.to_string()))?;
+    let result =
+        create_keri_identity(&repo, None, now).map_err(|e| InitError::Keri(e.to_string()))?;
     let controller_did = IdentityDID::new_unchecked(result.did());
 
     let passphrase = passphrase_provider

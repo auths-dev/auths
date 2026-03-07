@@ -32,7 +32,7 @@ fn test_key_rotation_event_chain_integrity() {
     );
 
     let commit1 = keri_storage
-        .append_rotation_event(&prefix, &inception_event)
+        .append_rotation_event(&prefix, &inception_event, chrono::Utc::now())
         .expect("Failed to append inception event");
 
     // Compute hash for next event
@@ -53,7 +53,7 @@ fn test_key_rotation_event_chain_integrity() {
     );
 
     let _commit2 = keri_storage
-        .append_rotation_event(&prefix, &rotation_event)
+        .append_rotation_event(&prefix, &rotation_event, chrono::Utc::now())
         .expect("Failed to append rotation event");
 
     // 3. Verify KEL contains both events
@@ -115,7 +115,7 @@ fn test_key_rotation_chain_integrity_rejection() {
     );
 
     keri_storage
-        .append_rotation_event(&prefix, &inception_event)
+        .append_rotation_event(&prefix, &inception_event, chrono::Utc::now())
         .expect("Failed to append inception");
 
     // 2. Try to create rotation with WRONG previous_hash
@@ -128,7 +128,7 @@ fn test_key_rotation_chain_integrity_rejection() {
         vec![4u8; 64],
     );
 
-    let result = keri_storage.append_rotation_event(&prefix, &bad_rotation);
+    let result = keri_storage.append_rotation_event(&prefix, &bad_rotation, chrono::Utc::now());
 
     // 3. Verify the invalid rotation is rejected
     assert!(
@@ -179,7 +179,7 @@ fn test_multiple_rotations_maintain_history() {
         );
 
         let commit_oid = keri_storage
-            .append_rotation_event(&prefix, &event)
+            .append_rotation_event(&prefix, &event, chrono::Utc::now())
             .unwrap_or_else(|_| panic!("Failed to append event {}", seq));
 
         // Update for next iteration

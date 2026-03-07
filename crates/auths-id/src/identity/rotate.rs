@@ -58,6 +58,7 @@ pub struct RotationKeyInfo {
 ///
 /// # Returns
 /// * `Result<RotationKeyInfo>` - Information about the rotation if successful.
+#[allow(clippy::too_many_arguments)]
 pub fn rotate_keri_identity(
     repo_path: &Path,
     current_alias: &KeyAlias,
@@ -66,6 +67,7 @@ pub fn rotate_keri_identity(
     _config: &StorageLayoutConfig,
     keychain: &(dyn KeyStorage + Send + Sync),
     witness_config: Option<&WitnessConfig>,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<RotationKeyInfo, InitError> {
     let repo = Repository::open(repo_path)?;
 
@@ -104,6 +106,7 @@ pub fn rotate_keri_identity(
         &Prefix::new_unchecked(prefix.to_string()),
         &decrypted_next_pkcs8,
         witness_config,
+        now,
     )
     .map_err(|e| InitError::Keri(e.to_string()))?;
 

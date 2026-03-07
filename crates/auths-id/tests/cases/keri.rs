@@ -32,7 +32,7 @@ fn full_keri_lifecycle() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
     // === Phase 1: Inception ===
-    let init: InceptionResult = create_keri_identity(&repo, None).unwrap();
+    let init: InceptionResult = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
     // Verify KEL has one event
     let kel = GitKel::new(&repo, init.prefix.as_str());
@@ -49,8 +49,14 @@ fn full_keri_lifecycle() {
     assert!(!resolved.is_abandoned);
 
     // === Phase 2: First Rotation ===
-    let rot1: RotationResult =
-        rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let rot1: RotationResult = rotate_keys(
+        &repo,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
     assert_eq!(rot1.sequence, 1);
 
     // Verify KEL now has 2 events
@@ -68,7 +74,14 @@ fn full_keri_lifecycle() {
     assert_eq!(state.sequence, 1);
 
     // === Phase 3: Second Rotation ===
-    let rot2 = rotate_keys(&repo, &init.prefix, &rot1.new_next_keypair_pkcs8, None).unwrap();
+    let rot2 = rotate_keys(
+        &repo,
+        &init.prefix,
+        &rot1.new_next_keypair_pkcs8,
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
     assert_eq!(rot2.sequence, 2);
 
     let events = kel.get_events().unwrap();
@@ -100,7 +113,7 @@ fn device_enrollment_with_anchoring() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
     // Create identity
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let current_keypair = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
 
@@ -109,8 +122,14 @@ fn device_enrollment_with_anchoring() {
     let attestation = make_test_attestation(&identity_did, device_did);
 
     // Anchor attestation in KEL
-    let anchor_said =
-        anchor_attestation(&repo, &init.prefix, &attestation, &current_keypair).unwrap();
+    let anchor_said = anchor_attestation(
+        &repo,
+        &init.prefix,
+        &attestation,
+        &current_keypair,
+        chrono::Utc::now(),
+    )
+    .unwrap();
 
     // Verify KEL has ICP + IXN
     let kel = GitKel::new(&repo, init.prefix.as_str());
@@ -132,7 +151,7 @@ fn device_enrollment_with_anchoring() {
 fn multiple_device_attestations() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let current_keypair = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
 
@@ -141,9 +160,30 @@ fn multiple_device_attestations() {
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
     let att3 = make_test_attestation(&identity_did, "did:key:device3");
 
-    let said1 = anchor_attestation(&repo, &init.prefix, &att1, &current_keypair).unwrap();
-    let said2 = anchor_attestation(&repo, &init.prefix, &att2, &current_keypair).unwrap();
-    let said3 = anchor_attestation(&repo, &init.prefix, &att3, &current_keypair).unwrap();
+    let said1 = anchor_attestation(
+        &repo,
+        &init.prefix,
+        &att1,
+        &current_keypair,
+        chrono::Utc::now(),
+    )
+    .unwrap();
+    let said2 = anchor_attestation(
+        &repo,
+        &init.prefix,
+        &att2,
+        &current_keypair,
+        chrono::Utc::now(),
+    )
+    .unwrap();
+    let said3 = anchor_attestation(
+        &repo,
+        &init.prefix,
+        &att3,
+        &current_keypair,
+        chrono::Utc::now(),
+    )
+    .unwrap();
 
     // All SAIDs should be different
     assert_ne!(said1, said2);
@@ -174,12 +214,12 @@ fn multiple_device_attestations() {
 fn rotation_requires_commitment() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
     // Try to rotate with a wrong key (not the committed one)
     let wrong_key = [99u8; 85]; // Some random bytes that aren't the committed next key
 
-    let result = rotate_keys(&repo, &init.prefix, &wrong_key, None);
+    let result = rotate_keys(&repo, &init.prefix, &wrong_key, None, chrono::Utc::now());
     assert!(result.is_err());
 }
 
@@ -188,8 +228,15 @@ fn rotation_requires_commitment() {
 fn kel_validation_rejects_sequence_tampering() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
-    let _rot = rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let _rot = rotate_keys(
+        &repo,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
 
     // Get events
     let kel = GitKel::new(&repo, init.prefix.as_str());
@@ -210,7 +257,7 @@ fn kel_validation_rejects_sequence_tampering() {
 fn unanchored_attestation_not_found() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
 
     let attestation = make_test_attestation(&identity_did, "did:key:device");
@@ -226,7 +273,7 @@ fn unanchored_attestation_not_found() {
 fn key_state_reflects_operations() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
     // Initial state
     let state = get_key_state(&repo, &init.prefix).unwrap();
@@ -235,7 +282,14 @@ fn key_state_reflects_operations() {
     assert!(!state.is_abandoned);
 
     // After rotation
-    rotate_keys(&repo, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    rotate_keys(
+        &repo,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        None,
+        chrono::Utc::now(),
+    )
+    .unwrap();
     let state = get_key_state(&repo, &init.prefix).unwrap();
     assert_eq!(state.sequence, 1);
     assert!(state.can_rotate());
@@ -246,7 +300,7 @@ fn key_state_reflects_operations() {
 fn did_keri_parsing() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let did = format!("did:keri:{}", init.prefix);
 
     let parsed_prefix = parse_did_keri(&did).unwrap();
@@ -263,12 +317,19 @@ fn did_keri_parsing() {
 fn verify_anchor_by_digest_works() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None).unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let current_keypair = Ed25519KeyPair::from_pkcs8(&init.current_keypair_pkcs8).unwrap();
 
     let attestation = make_test_attestation(&identity_did, "did:key:device");
-    anchor_attestation(&repo, &init.prefix, &attestation, &current_keypair).unwrap();
+    anchor_attestation(
+        &repo,
+        &init.prefix,
+        &attestation,
+        &current_keypair,
+        chrono::Utc::now(),
+    )
+    .unwrap();
 
     // Compute digest
     let att_json = serde_json::to_vec(&attestation).unwrap();

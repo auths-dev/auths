@@ -21,7 +21,13 @@ fn attacker_cannot_rotate_without_precommitted_key() {
     let rng = SystemRandom::new();
     let attacker_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
 
-    let result = rotate_keys_with_backend(&backend, &init.prefix, attacker_pkcs8.as_ref(), None);
+    let result = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        attacker_pkcs8.as_ref(),
+        chrono::Utc::now(),
+        None,
+    );
 
     // Must fail: blake3(attacker_key) != stored commitment
     assert!(
@@ -31,8 +37,14 @@ fn attacker_cannot_rotate_without_precommitted_key() {
     );
 
     // Legitimate holder rotates successfully with the pre-committed key
-    let rot =
-        rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let rot = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
     assert_eq!(rot.sequence, 1);
 
     // Verify KEL integrity after recovery
@@ -62,8 +74,14 @@ fn full_recovery_flow_end_to_end() {
     assert!(state.can_rotate());
 
     // Step 2: First rotation (recovery from compromise)
-    let rot1 =
-        rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let rot1 = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
     assert_eq!(rot1.sequence, 1);
 
     // Verify state after first rotation
@@ -72,8 +90,14 @@ fn full_recovery_flow_end_to_end() {
     assert!(state.can_rotate());
 
     // Step 3: Second rotation (demonstrates continued control)
-    let rot2 = rotate_keys_with_backend(&backend, &init.prefix, &rot1.new_next_keypair_pkcs8, None)
-        .unwrap();
+    let rot2 = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &rot1.new_next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
     assert_eq!(rot2.sequence, 2);
 
     // Step 4: Verify full KEL integrity
@@ -100,12 +124,23 @@ fn compromised_key_cannot_rotate_after_recovery() {
     let init = create_keri_identity_with_backend(&backend, None).unwrap();
 
     // Legitimate rotation (recovery)
-    let _rot =
-        rotate_keys_with_backend(&backend, &init.prefix, &init.next_keypair_pkcs8, None).unwrap();
+    let _rot = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
 
     // Attacker still has the original current key PKCS8 -- try to rotate with it
-    let result =
-        rotate_keys_with_backend(&backend, &init.prefix, &init.current_keypair_pkcs8, None);
+    let result = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.current_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    );
 
     assert!(
         matches!(result, Err(RotationError::CommitmentMismatch)),

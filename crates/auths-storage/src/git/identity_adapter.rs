@@ -234,7 +234,10 @@ impl RegistryIdentityStorage {
         let new_tree = repo.find_tree(new_tree_oid)?;
 
         // Create commit
-        let sig = git2::Signature::now("auths", "auths@local")?;
+        #[allow(clippy::disallowed_methods)]
+        let now = chrono::Utc::now();
+        let sig =
+            git2::Signature::new("auths", "auths@local", &git2::Time::new(now.timestamp(), 0))?;
         let parent = &[&commit];
         repo.commit(
             Some(REGISTRY_REF),

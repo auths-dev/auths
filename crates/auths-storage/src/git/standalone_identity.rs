@@ -76,9 +76,15 @@ impl IdentityStorage for GitIdentityStorage {
         let tree_oid = tree_builder.write()?;
         let tree = repo.find_tree(tree_oid)?;
 
-        let sig = repo
-            .signature()
-            .or_else(|_| Signature::now("auths", "auths@localhost"))?;
+        #[allow(clippy::disallowed_methods)]
+        let now = chrono::Utc::now();
+        let sig = repo.signature().or_else(|_| {
+            Signature::new(
+                "auths",
+                "auths@localhost",
+                &git2::Time::new(now.timestamp(), 0),
+            )
+        })?;
 
         let mut parent_commits = Vec::new();
         match repo.find_reference(identity_ref_name) {
