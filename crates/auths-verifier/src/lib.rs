@@ -49,12 +49,15 @@
 //! - `wasm` — Enable WASM bindings via wasm-bindgen
 
 pub mod clock;
+pub mod commit;
+pub mod commit_error;
 pub mod core;
 pub mod error;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
 pub mod ffi;
 pub mod keri;
+pub mod ssh_sig;
 pub mod types;
 pub mod verifier;
 pub mod verify;
@@ -74,6 +77,7 @@ pub use core::{
 };
 
 // Re-export error types
+pub use commit_error::CommitVerificationError;
 pub use error::{AttestationError, AuthsErrorInfo};
 
 // Re-export Verifier struct
@@ -101,6 +105,10 @@ pub use keri::{
     KeriVerifyError, Prefix, RotEvent as KeriRotEvent, Said, Seal as KeriSeal, compute_said,
     find_seal_in_kel, parse_kel_json, verify_kel,
 };
+
+// Re-export commit verification types
+pub use commit::VerifiedCommit;
+pub use ssh_sig::SshSigEnvelope;
 
 // Re-export crypto provider trait for downstream consumers
 pub use auths_crypto::CryptoProvider;

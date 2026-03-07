@@ -15,9 +15,27 @@ for _name in (
     "VerificationResult", "VerificationStatus", "ChainLink",
     "VerificationReport", "verify_attestation", "verify_chain",
     "verify_device_authorization",
+    "verify_attestation_with_capability", "verify_chain_with_capability",
+    "verify_at_time", "verify_at_time_with_capability",
+    "verify_chain_with_witnesses",
     "sign_bytes", "sign_action", "verify_action_envelope",
+    "sign_as_identity", "sign_action_as_identity",
+    "sign_commit", "sign_artifact", "sign_artifact_bytes",
+    "publish_artifact",
     "get_token",
     "generate_allowed_signers_file",
+    "verify_commit_native",
+    "create_identity", "create_agent_identity", "delegate_agent",
+    "link_device_to_identity", "revoke_device_from_identity",
+    "DelegatedAgentBundle", "AgentIdentityBundle",
+    "PyIdentityRotationResult", "rotate_identity_ffi",
+    "PyDeviceExtension", "extend_device_authorization_ffi",
+    "PyCompiledPolicy", "PyEvalContext", "PyDecision", "compile_policy",
+    "PyArtifactPublishResult", "PyArtifactResult",
+    "PyCommitSignResult",
+    "PyCommitVerificationResult", "verify_commit_native",
+    "PyAttestation", "list_attestations", "list_attestations_by_device",
+    "get_latest_attestation",
 ):
     setattr(_native_stub, _name, MagicMock())
 sys.modules.setdefault("auths._native", _native_stub)
@@ -33,35 +51,55 @@ from auths.git import (  # noqa: E402
     verify_commit_range,
 )
 
-UNSIGNED_COMMIT = "tree abc123\nauthor A <a@b.com> 1700000000 +0000\ncommitter A <a@b.com> 1700000000 +0000\n\nsome message\n"
-GPG_COMMIT = "tree abc123\nauthor A <a@b.com> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n wsBc...\n -----END PGP SIGNATURE-----\ncommitter A <a@b.com> 1700000000 +0000\n\nsome message\n"
+UNSIGNED_COMMIT = b"tree abc123\nauthor A <a@b.com> 1700000000 +0000\ncommitter A <a@b.com> 1700000000 +0000\n\nsome message\n"
+GPG_COMMIT = b"tree abc123\nauthor A <a@b.com> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n wsBc...\n -----END PGP SIGNATURE-----\ncommitter A <a@b.com> 1700000000 +0000\n\nsome message\n"
 SSH_COMMIT = (
-    "tree abc123\n"
-    "author A <a@b.com> 1700000000 +0000\n"
-    "committer A <a@b.com> 1700000000 +0000\n"
-    "gpgsig -----BEGIN SSH SIGNATURE-----\n"
-    " U1NIU0lH...\n"
-    " -----END SSH SIGNATURE-----\n"
-    "\n"
-    "some message\n"
+    b"tree abc123\n"
+    b"author A <a@b.com> 1700000000 +0000\n"
+    b"committer A <a@b.com> 1700000000 +0000\n"
+    b"gpgsig -----BEGIN SSH SIGNATURE-----\n"
+    b" U1NIU0lH...\n"
+    b" -----END SSH SIGNATURE-----\n"
+    b"\n"
+    b"some message\n"
 )
 SHA1 = "a" * 40
 SHA2 = "b" * 40
+SIGNER_HEX = "ab" * 32
 
 
 def _make_proc(returncode=0, stdout="", stderr=""):
     return CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
+def _make_proc_bytes(returncode=0, stdout=b"", stderr=b""):
+    return CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
 def _subprocess_router(calls):
     call_index = [0]
+
     def side_effect(cmd, **kwargs):
         idx = call_index[0]
         call_index[0] += 1
         if idx < len(calls):
             return calls[idx]
         raise RuntimeError(f"Unexpected subprocess call #{idx}: {cmd}")
+
     return side_effect
+
+
+class _FakeNativeResult:
+    """Mimics PyCommitVerificationResult from Rust FFI."""
+
+    def __init__(self, valid=False, signer_hex=None, error=None, error_code=None):
+        self.valid = valid
+        self.signer_hex = signer_hex
+        self.error = error
+        self.error_code = error_code
+
+    def __bool__(self):
+        return self.valid
 
 
 class TestErrorCode:
@@ -100,13 +138,18 @@ class TestCommitResult:
 
 class TestVerifyCommitRangeUnsigned:
 
+    @patch("auths._native.verify_commit_native")
     @patch("auths.git.subprocess.run")
+    @patch("auths.git._hex_keys_from_allowed_signers_file", return_value=[])
     @patch("auths.git.os.path.isfile", return_value=True)
-    def test_unsigned_commit(self, mock_isfile, mock_run):
+    def test_unsigned_commit(self, mock_isfile, mock_hex_keys, mock_run, mock_native):
         mock_run.side_effect = _subprocess_router([
-            _make_proc(stdout=f"{SHA1}\n"),
-            _make_proc(stdout=UNSIGNED_COMMIT),
+            _make_proc(stdout=f"{SHA1}\n"),                 # rev-list
+            _make_proc_bytes(stdout=UNSIGNED_COMMIT),       # cat-file
         ])
+        mock_native.return_value = _FakeNativeResult(
+            valid=False, error="unsigned commit", error_code=ErrorCode.UNSIGNED,
+        )
         result = verify_commit_range("HEAD~1..HEAD")
         assert len(result.commits) == 1
         assert result.commits[0].error_code == ErrorCode.UNSIGNED
@@ -116,57 +159,72 @@ class TestVerifyCommitRangeUnsigned:
 
 class TestVerifyCommitRangeGPG:
 
+    @patch("auths._native.verify_commit_native")
     @patch("auths.git.subprocess.run")
+    @patch("auths.git._hex_keys_from_allowed_signers_file", return_value=[])
     @patch("auths.git.os.path.isfile", return_value=True)
-    def test_gpg_commit(self, mock_isfile, mock_run):
+    def test_gpg_commit(self, mock_isfile, mock_hex_keys, mock_run, mock_native):
         mock_run.side_effect = _subprocess_router([
             _make_proc(stdout=f"{SHA1}\n"),
-            _make_proc(stdout=GPG_COMMIT),
+            _make_proc_bytes(stdout=GPG_COMMIT),
         ])
+        mock_native.return_value = _FakeNativeResult(
+            valid=False, error="GPG not supported", error_code=ErrorCode.GPG_NOT_SUPPORTED,
+        )
         result = verify_commit_range("HEAD~1..HEAD")
         assert result.commits[0].error_code == ErrorCode.GPG_NOT_SUPPORTED
 
 
 class TestVerifyCommitRangeUnknownSigner:
 
+    @patch("auths._native.verify_commit_native")
     @patch("auths.git.subprocess.run")
+    @patch("auths.git._hex_keys_from_allowed_signers_file", return_value=[])
     @patch("auths.git.os.path.isfile", return_value=True)
-    def test_unknown_signer(self, mock_isfile, mock_run):
+    def test_unknown_signer(self, mock_isfile, mock_hex_keys, mock_run, mock_native):
         mock_run.side_effect = _subprocess_router([
             _make_proc(stdout=f"{SHA1}\n"),
-            _make_proc(stdout=SSH_COMMIT),
-            _make_proc(returncode=1, stderr="no principal matched"),
+            _make_proc_bytes(stdout=SSH_COMMIT),
         ])
+        mock_native.return_value = _FakeNativeResult(
+            valid=False, error="unknown signer", error_code=ErrorCode.UNKNOWN_SIGNER,
+        )
         result = verify_commit_range("HEAD~1..HEAD")
         assert result.commits[0].error_code == ErrorCode.UNKNOWN_SIGNER
 
 
 class TestVerifyCommitRangeValid:
 
+    @patch("auths._native.verify_commit_native")
     @patch("auths.git.subprocess.run")
+    @patch("auths.git._hex_keys_from_allowed_signers_file", return_value=[])
     @patch("auths.git.os.path.isfile", return_value=True)
-    def test_valid_commit(self, mock_isfile, mock_run):
+    def test_valid_commit(self, mock_isfile, mock_hex_keys, mock_run, mock_native):
         mock_run.side_effect = _subprocess_router([
             _make_proc(stdout=f"{SHA1}\n"),
-            _make_proc(stdout=SSH_COMMIT),
-            _make_proc(stdout="Good signature"),
-            _make_proc(stdout="alice@example.com"),
+            _make_proc_bytes(stdout=SSH_COMMIT),
         ])
+        mock_native.return_value = _FakeNativeResult(valid=True, signer_hex=SIGNER_HEX)
         result = verify_commit_range("HEAD~1..HEAD")
         assert result.commits[0].is_valid
-        assert result.commits[0].signer == "alice@example.com"
+        assert result.commits[0].signer == SIGNER_HEX
         assert result.passed
 
 
 class TestPolicyModes:
 
+    @patch("auths._native.verify_commit_native")
     @patch("auths.git.subprocess.run")
+    @patch("auths.git._hex_keys_from_allowed_signers_file", return_value=[])
     @patch("auths.git.os.path.isfile", return_value=True)
-    def test_warn_mode_passes_on_unsigned(self, mock_isfile, mock_run):
+    def test_warn_mode_passes_on_unsigned(self, mock_isfile, mock_hex_keys, mock_run, mock_native):
         mock_run.side_effect = _subprocess_router([
             _make_proc(stdout=f"{SHA1}\n"),
-            _make_proc(stdout=UNSIGNED_COMMIT),
+            _make_proc_bytes(stdout=UNSIGNED_COMMIT),
         ])
+        mock_native.return_value = _FakeNativeResult(
+            valid=False, error="unsigned", error_code=ErrorCode.UNSIGNED,
+        )
         result = verify_commit_range("HEAD~1..HEAD", mode="warn")
         assert result.passed
         assert "warn mode" in result.summary
@@ -214,36 +272,36 @@ def _make_bundle(tmp_path, attestations=None, identity_pk_hex=None):
 
 class TestAttestationRevoked:
 
+    @patch("auths._native.verify_commit_native")
     @patch("auths.git.subprocess.run")
-    def test_revoked_device(self, mock_run, tmp_path):
+    def test_revoked_device(self, mock_run, mock_native, tmp_path):
         bundle_path = _make_bundle(tmp_path, attestations=[{
             "subject": DEVICE_DID, "device_public_key": DEVICE_PK_HEX,
             "revoked": True, "timestamp": "2024-01-01T00:00:00Z",
         }])
         mock_run.side_effect = _subprocess_router([
             _make_proc(stdout=f"{SHA1}\n"),
-            _make_proc(stdout=SSH_COMMIT),
-            _make_proc(stdout="Good signature"),
-            _make_proc(stdout=DEVICE_DID),
+            _make_proc_bytes(stdout=SSH_COMMIT),
         ])
+        mock_native.return_value = _FakeNativeResult(valid=True, signer_hex=DEVICE_PK_HEX)
         result = verify_commit_range("HEAD~1..HEAD", identity_bundle=bundle_path)
         assert result.commits[0].error_code == ErrorCode.DEVICE_REVOKED
 
 
 class TestAttestationExpired:
 
+    @patch("auths._native.verify_commit_native")
     @patch("auths.git.subprocess.run")
-    def test_expired_device(self, mock_run, tmp_path):
+    def test_expired_device(self, mock_run, mock_native, tmp_path):
         bundle_path = _make_bundle(tmp_path, attestations=[{
             "subject": DEVICE_DID, "device_public_key": DEVICE_PK_HEX,
             "revoked": False, "expires_at": "2020-01-01T00:00:00Z",
         }])
         mock_run.side_effect = _subprocess_router([
             _make_proc(stdout=f"{SHA1}\n"),
-            _make_proc(stdout=SSH_COMMIT),
-            _make_proc(stdout="Good signature"),
-            _make_proc(stdout=DEVICE_DID),
+            _make_proc_bytes(stdout=SSH_COMMIT),
         ])
+        mock_native.return_value = _FakeNativeResult(valid=True, signer_hex=DEVICE_PK_HEX)
         result = verify_commit_range("HEAD~1..HEAD", identity_bundle=bundle_path)
         assert result.commits[0].error_code == ErrorCode.DEVICE_EXPIRED
 

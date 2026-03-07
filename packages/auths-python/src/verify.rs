@@ -1,8 +1,9 @@
-use auths_verifier::core::{Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
+use auths_verifier::core::{
+    Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
+};
 use auths_verifier::types::DeviceDID;
 use auths_verifier::verify::{
-    verify_at_time as rust_verify_at_time,
-    verify_chain as rust_verify_chain,
+    verify_at_time as rust_verify_at_time, verify_chain as rust_verify_chain,
     verify_chain_with_capability as rust_verify_chain_with_capability,
     verify_chain_with_witnesses as rust_verify_chain_with_witnesses,
     verify_device_authorization as rust_verify_device_authorization,
@@ -56,20 +57,22 @@ pub fn verify_attestation(
             return Ok(VerificationResult {
                 valid: false,
                 error: Some(format!("Failed to parse attestation JSON: {e}")),
-            })
+            });
         }
     };
 
-    py.allow_threads(|| match runtime().block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
-        Ok(_) => Ok(VerificationResult {
-            valid: true,
-            error: None,
-        }),
-        Err(e) => Ok(VerificationResult {
-            valid: false,
-            error: Some(e.to_string()),
-        }),
-    })
+    py.allow_threads(
+        || match runtime().block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
+            Ok(_) => Ok(VerificationResult {
+                valid: true,
+                error: None,
+            }),
+            Err(e) => Ok(VerificationResult {
+                valid: false,
+                error: Some(e.to_string()),
+            }),
+        },
+    )
 }
 
 /// Verify a chain of attestations from a root identity to a leaf device.
@@ -114,14 +117,14 @@ pub fn verify_chain(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
-    py.allow_threads(
-        || match runtime().block_on(rust_verify_chain(&attestations, &root_pk_bytes)) {
+    py.allow_threads(|| {
+        match runtime().block_on(rust_verify_chain(&attestations, &root_pk_bytes)) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
                 "Chain verification failed: {e}"
             ))),
-        },
-    )
+        }
+    })
 }
 
 /// Full cryptographic verification that a device is authorized.
@@ -229,22 +232,25 @@ pub fn verify_attestation_with_capability(
             return Ok(VerificationResult {
                 valid: false,
                 error: Some(format!("Failed to parse attestation JSON: {e}")),
-            })
+            });
         }
     };
 
-    let cap = Capability::parse(required_capability)
-        .map_err(|e| PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}")))?;
+    let cap = Capability::parse(required_capability).map_err(|e| {
+        PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
+    })?;
 
-    py.allow_threads(|| match runtime().block_on(rust_verify_with_capability(&att, &cap, &issuer_pk_bytes)) {
-        Ok(_) => Ok(VerificationResult {
-            valid: true,
-            error: None,
-        }),
-        Err(e) => Ok(VerificationResult {
-            valid: false,
-            error: Some(e.to_string()),
-        }),
+    py.allow_threads(|| {
+        match runtime().block_on(rust_verify_with_capability(&att, &cap, &issuer_pk_bytes)) {
+            Ok(_) => Ok(VerificationResult {
+                valid: true,
+                error: None,
+            }),
+            Err(e) => Ok(VerificationResult {
+                valid: false,
+                error: Some(e.to_string()),
+            }),
+        }
     })
 }
 
@@ -292,17 +298,22 @@ pub fn verify_chain_with_capability(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
-    let cap = Capability::parse(required_capability)
-        .map_err(|e| PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}")))?;
+    let cap = Capability::parse(required_capability).map_err(|e| {
+        PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
+    })?;
 
-    py.allow_threads(
-        || match runtime().block_on(rust_verify_chain_with_capability(&attestations, &cap, &root_pk_bytes)) {
+    py.allow_threads(|| {
+        match runtime().block_on(rust_verify_chain_with_capability(
+            &attestations,
+            &cap,
+            &root_pk_bytes,
+        )) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
                 "Chain verification with capability failed: {e}"
             ))),
-        },
-    )
+        }
+    })
 }
 
 fn parse_rfc3339_timestamp(at_rfc3339: &str) -> PyResult<DateTime<Utc>> {
@@ -333,10 +344,7 @@ fn parse_rfc3339_timestamp(at_rfc3339: &str) -> PyResult<DateTime<Utc>> {
     Ok(at)
 }
 
-fn validate_attestation_key(
-    attestation_json: &str,
-    issuer_pk_hex: &str,
-) -> PyResult<Vec<u8>> {
+fn validate_attestation_key(attestation_json: &str, issuer_pk_hex: &str) -> PyResult<Vec<u8>> {
     if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
         return Err(PyValueError::new_err(format!(
             "Attestation JSON too large: {} bytes, max {}",
@@ -385,20 +393,22 @@ pub fn verify_at_time(
             return Ok(VerificationResult {
                 valid: false,
                 error: Some(format!("Failed to parse attestation JSON: {e}")),
-            })
+            });
         }
     };
 
-    py.allow_threads(|| match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
-        Ok(_) => Ok(VerificationResult {
-            valid: true,
-            error: None,
-        }),
-        Err(e) => Ok(VerificationResult {
-            valid: false,
-            error: Some(e.to_string()),
-        }),
-    })
+    py.allow_threads(
+        || match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+            Ok(_) => Ok(VerificationResult {
+                valid: true,
+                error: None,
+            }),
+            Err(e) => Ok(VerificationResult {
+                valid: false,
+                error: Some(e.to_string()),
+            }),
+        },
+    )
 }
 
 /// Verify an attestation at a specific historical timestamp with capability check.
@@ -430,34 +440,37 @@ pub fn verify_at_time_with_capability(
             return Ok(VerificationResult {
                 valid: false,
                 error: Some(format!("Failed to parse attestation JSON: {e}")),
-            })
+            });
         }
     };
 
-    let cap = Capability::parse(required_capability)
-        .map_err(|e| PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}")))?;
+    let cap = Capability::parse(required_capability).map_err(|e| {
+        PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
+    })?;
 
-    py.allow_threads(|| match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
-        Ok(_) => {
-            if att.capabilities.contains(&cap) {
-                Ok(VerificationResult {
-                    valid: true,
-                    error: None,
-                })
-            } else {
-                Ok(VerificationResult {
-                    valid: false,
-                    error: Some(format!(
-                        "Attestation does not grant required capability '{required_capability}'"
-                    )),
-                })
+    py.allow_threads(
+        || match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+            Ok(_) => {
+                if att.capabilities.contains(&cap) {
+                    Ok(VerificationResult {
+                        valid: true,
+                        error: None,
+                    })
+                } else {
+                    Ok(VerificationResult {
+                        valid: false,
+                        error: Some(format!(
+                            "Attestation does not grant required capability '{required_capability}'"
+                        )),
+                    })
+                }
             }
-        }
-        Err(e) => Ok(VerificationResult {
-            valid: false,
-            error: Some(e.to_string()),
-        }),
-    })
+            Err(e) => Ok(VerificationResult {
+                valid: false,
+                error: Some(e.to_string()),
+            }),
+        },
+    )
 }
 
 /// Verify a chain of attestations with witness receipt quorum enforcement.
@@ -512,8 +525,9 @@ pub fn verify_chain_with_witnesses(
         .iter()
         .enumerate()
         .map(|(i, json)| {
-            serde_json::from_str(json)
-                .map_err(|e| PyValueError::new_err(format!("Failed to parse witness receipt {i}: {e}")))
+            serde_json::from_str(json).map_err(|e| {
+                PyValueError::new_err(format!("Failed to parse witness receipt {i}: {e}"))
+            })
         })
         .collect::<PyResult<Vec<_>>>()?;
 
@@ -527,8 +541,9 @@ pub fn verify_chain_with_witnesses(
         .iter()
         .enumerate()
         .map(|(i, json)| {
-            let input: WitnessKeyInput = serde_json::from_str(json)
-                .map_err(|e| PyValueError::new_err(format!("Failed to parse witness key {i}: {e}")))?;
+            let input: WitnessKeyInput = serde_json::from_str(json).map_err(|e| {
+                PyValueError::new_err(format!("Failed to parse witness key {i}: {e}"))
+            })?;
             let pk_bytes = hex::decode(&input.public_key_hex)
                 .map_err(|e| PyValueError::new_err(format!("Invalid witness key {i} hex: {e}")))?;
             if pk_bytes.len() != 32 {

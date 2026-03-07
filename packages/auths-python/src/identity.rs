@@ -4,7 +4,9 @@ use std::sync::Arc;
 use auths_core::config::{EnvironmentConfig, KeychainConfig};
 use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::signing::PrefilledPassphraseProvider;
-use auths_core::storage::keychain::{get_platform_keychain_with_config, IdentityDID, KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{
+    IdentityDID, KeyAlias, KeyStorage, get_platform_keychain_with_config,
+};
 use auths_id::identity::helpers::encode_seed_as_pkcs8;
 use auths_id::identity::helpers::extract_seed_bytes;
 use auths_id::identity::initialize::initialize_registry_identity;
@@ -59,9 +61,7 @@ pub(crate) fn resolve_key_alias(
             .into_iter()
             .find(|a| !a.as_str().contains("--next-"))
             .ok_or_else(|| {
-                PyRuntimeError::new_err(format!(
-                    "No key found for identity '{identity_ref}'"
-                ))
+                PyRuntimeError::new_err(format!("No key found for identity '{identity_ref}'"))
             })
     } else {
         KeyAlias::new(identity_ref)
@@ -201,7 +201,9 @@ pub fn create_agent_identity(
     py.allow_threads(|| {
         let (identity_did, result_alias) =
             initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None)
-                .map_err(|e| PyRuntimeError::new_err(format!("Agent identity creation failed: {e}")))?;
+                .map_err(|e| {
+                    PyRuntimeError::new_err(format!("Agent identity creation failed: {e}"))
+                })?;
 
         Ok(AgentIdentityBundle {
             agent_did: identity_did.to_string(),
@@ -336,9 +338,9 @@ pub fn delegate_agent(
             .load_attestations_for_device(&device_did)
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to load attestation: {e}")))?;
 
-        let attestation = attestations.last().ok_or_else(|| {
-            PyRuntimeError::new_err("No attestation found after provisioning")
-        })?;
+        let attestation = attestations
+            .last()
+            .ok_or_else(|| PyRuntimeError::new_err("No attestation found after provisioning"))?;
 
         let attestation_json = serde_json::to_string(attestation)
             .map_err(|e| PyRuntimeError::new_err(format!("Serialization failed: {e}")))?;
@@ -398,7 +400,10 @@ pub fn link_device_to_identity(
 
     let parsed_caps: Vec<Capability> = capabilities
         .iter()
-        .map(|c| Capability::parse(c).map_err(|e| PyRuntimeError::new_err(format!("Invalid capability '{c}': {e}"))))
+        .map(|c| {
+            Capability::parse(c)
+                .map_err(|e| PyRuntimeError::new_err(format!("Invalid capability '{c}': {e}")))
+        })
         .collect::<PyResult<Vec<_>>>()?;
 
     let link_config = DeviceLinkConfig {
@@ -424,7 +429,10 @@ pub fn link_device_to_identity(
     py.allow_threads(|| {
         let result = link_device(link_config, &ctx, clock.as_ref())
             .map_err(|e| PyRuntimeError::new_err(format!("Device linking failed: {e}")))?;
-        Ok((result.device_did.to_string(), result.attestation_id.to_string()))
+        Ok((
+            result.device_did.to_string(),
+            result.attestation_id.to_string(),
+        ))
     })
 }
 

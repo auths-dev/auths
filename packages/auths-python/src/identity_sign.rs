@@ -100,8 +100,9 @@ pub fn sign_action_as_identity(
         )));
     }
 
-    let payload: serde_json::Value = serde_json::from_str(payload_json)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid payload JSON: {e}")))?;
+    let payload: serde_json::Value = serde_json::from_str(payload_json).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!("Invalid payload JSON: {e}"))
+    })?;
 
     let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 

@@ -69,12 +69,13 @@ pub fn publish_artifact(
     registry_url: String,
     package_name: Option<String>,
 ) -> PyResult<PyArtifactPublishResult> {
-    let attestation: serde_json::Value =
-        serde_json::from_str(&attestation_json).map_err(|e| {
-            PyValueError::new_err(format!("invalid attestation JSON: {e}"))
-        })?;
+    let attestation: serde_json::Value = serde_json::from_str(&attestation_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid attestation JSON: {e}")))?;
 
-    let url = format!("{}/v1/artifacts/publish", registry_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/artifacts/publish",
+        registry_url.trim_end_matches('/')
+    );
 
     py.allow_threads(move || {
         runtime().block_on(async move {
@@ -88,9 +89,7 @@ pub fn publish_artifact(
                 .json(&body)
                 .send()
                 .await
-                .map_err(|e| {
-                    PyConnectionError::new_err(format!("registry unreachable: {e}"))
-                })?;
+                .map_err(|e| PyConnectionError::new_err(format!("registry unreachable: {e}")))?;
 
             match response.status().as_u16() {
                 201 => {

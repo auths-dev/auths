@@ -1,6 +1,6 @@
 use auths_policy::{
-    CanonicalCapability, CanonicalDid, CompiledPolicy, EvalContext, SignerType,
-    compile_from_json, enforce_simple,
+    CanonicalCapability, CanonicalDid, CompiledPolicy, EvalContext, SignerType, compile_from_json,
+    enforce_simple,
 };
 use chrono::Utc;
 use pyo3::exceptions::PyValueError;
@@ -28,7 +28,10 @@ impl PyCompiledPolicy {
     }
 
     fn __repr__(&self) -> String {
-        format!("CompiledPolicy(hash='{}')", hex::encode(&self.inner.source_hash()[..8]))
+        format!(
+            "CompiledPolicy(hash='{}')",
+            hex::encode(&self.inner.source_hash()[..8])
+        )
     }
 }
 
@@ -63,8 +66,9 @@ impl PyEvalContext {
 
         if let Some(caps) = capabilities {
             for cap_str in &caps {
-                let cap = CanonicalCapability::parse(cap_str)
-                    .map_err(|e| PyValueError::new_err(format!("Invalid capability '{cap_str}': {e}")))?;
+                let cap = CanonicalCapability::parse(cap_str).map_err(|e| {
+                    PyValueError::new_err(format!("Invalid capability '{cap_str}': {e}"))
+                })?;
                 ctx = ctx.capability(cap);
             }
         }
@@ -74,9 +78,9 @@ impl PyEvalContext {
         }
 
         if let Some(exp) = expires_at {
-            let ts: chrono::DateTime<Utc> = exp
-                .parse()
-                .map_err(|_| PyValueError::new_err(format!("Invalid expires_at RFC 3339: {exp}")))?;
+            let ts: chrono::DateTime<Utc> = exp.parse().map_err(|_| {
+                PyValueError::new_err(format!("Invalid expires_at RFC 3339: {exp}"))
+            })?;
             ctx = ctx.expires_at(ts);
         }
 
@@ -152,7 +156,10 @@ impl PyDecision {
     }
 
     fn __repr__(&self) -> String {
-        format!("Decision(outcome='{}', reason='{}')", self.outcome, self.reason)
+        format!(
+            "Decision(outcome='{}', reason='{}')",
+            self.outcome, self.reason
+        )
     }
 }
 

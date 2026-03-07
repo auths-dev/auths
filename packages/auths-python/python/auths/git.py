@@ -1,18 +1,16 @@
-"""Git commit signature verification using SSH signing.
+"""Git commit signature verification using native Rust verification.
 
-Mirrors the logic in auths-cli's verify_commit.rs: enumerates commits via
-``git rev-list``, extracts SSH signatures via ``git cat-file``, and verifies
-using ``ssh-keygen -Y verify`` with an allowed_signers file or identity bundle.
+Enumerates commits via ``git rev-list``, reads raw commit objects via
+``git cat-file``, and verifies SSH signatures natively through the
+``auths._native.verify_commit_native`` FFI bridge — no ``ssh-keygen``
+subprocess required.
 """
 
 from __future__ import annotations
 
-import base64
 import json
 import os
-import struct
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -138,83 +136,132 @@ def verify_commit_range(
     if mode not in ("enforce", "warn"):
         raise ValueError(f"mode must be 'enforce' or 'warn', got {mode!r}")
 
-    signers_path = allowed_signers
-    tmp_signers = None
+    allowed_keys_hex: list[str] = []
     attestation_lookup: dict[str, dict] | None = None
 
-    try:
-        if identity_bundle is not None:
-            signers_path, tmp_signers, attestation_lookup = (
-                _allowed_signers_from_bundle(identity_bundle)
-            )
-        elif not os.path.isfile(allowed_signers):
-            try:
-                layout = discover_layout()
-                if layout.bundle:
-                    signers_path, tmp_signers, attestation_lookup = (
-                        _allowed_signers_from_bundle(layout.bundle)
-                    )
-                elif layout.source == "git-refs":
-                    result = CommitResult(
-                        commit_sha="<layout>",
-                        is_valid=False,
-                        error=(
-                            "Found refs/auths/* but git-ref-based verification "
-                            "is not yet supported. Export a file-based bundle: "
-                            "auths id export-bundle --output "
-                            ".auths/identity-bundle.json"
-                        ),
-                        error_code=ErrorCode.LAYOUT_DISCOVERY_FAILED,
-                    )
-                    return VerifyResult(
-                        commits=[result],
-                        passed=(mode == "warn"),
-                        mode=mode,
-                        summary=f"Layout discovery: git-refs not yet supported ({mode} mode)",
-                    )
-            except LayoutError as exc:
+    if identity_bundle is not None:
+        allowed_keys_hex, attestation_lookup = _allowed_signers_from_bundle(
+            identity_bundle
+        )
+    elif not os.path.isfile(allowed_signers):
+        try:
+            layout = discover_layout()
+            if layout.bundle:
+                allowed_keys_hex, attestation_lookup = _allowed_signers_from_bundle(
+                    layout.bundle
+                )
+            elif layout.source == "git-refs":
                 result = CommitResult(
                     commit_sha="<layout>",
                     is_valid=False,
-                    error=str(exc),
+                    error=(
+                        "Found refs/auths/* but git-ref-based verification "
+                        "is not yet supported. Export a file-based bundle: "
+                        "auths id export-bundle --output "
+                        ".auths/identity-bundle.json"
+                    ),
                     error_code=ErrorCode.LAYOUT_DISCOVERY_FAILED,
                 )
                 return VerifyResult(
                     commits=[result],
                     passed=(mode == "warn"),
                     mode=mode,
-                    summary=f"Layout discovery failed ({mode} mode)",
+                    summary=f"Layout discovery: git-refs not yet supported ({mode} mode)",
                 )
-
-        shas = list(reversed(_rev_list(commit_range)))
-        if not shas:
-            return VerifyResult(
-                commits=[], passed=True, mode=mode, summary="No commits to verify"
+        except LayoutError as exc:
+            result = CommitResult(
+                commit_sha="<layout>",
+                is_valid=False,
+                error=str(exc),
+                error_code=ErrorCode.LAYOUT_DISCOVERY_FAILED,
             )
+            return VerifyResult(
+                commits=[result],
+                passed=(mode == "warn"),
+                mode=mode,
+                summary=f"Layout discovery failed ({mode} mode)",
+            )
+    else:
+        # Legacy path: read allowed_signers file and extract hex keys
+        allowed_keys_hex = _hex_keys_from_allowed_signers_file(allowed_signers)
 
-        results: list[CommitResult] = []
-        for sha in shas:
-            results.append(_verify_one(sha, signers_path, attestation_lookup))
+    shas = list(reversed(_rev_list(commit_range)))
+    if not shas:
+        return VerifyResult(
+            commits=[], passed=True, mode=mode, summary="No commits to verify"
+        )
 
-        total = len(results)
-        failures = sum(1 for r in results if not r.is_valid)
+    results: list[CommitResult] = []
+    for sha in shas:
+        results.append(_verify_one(sha, allowed_keys_hex, attestation_lookup))
 
-        if failures == 0:
-            summary = f"{total}/{total} commits verified"
-        elif mode == "warn":
-            summary = f"{failures}/{total} commits failed (warn mode: not blocking)"
-        else:
-            summary = f"{failures}/{total} commits failed"
+    total = len(results)
+    failures = sum(1 for r in results if not r.is_valid)
 
-        passed = (failures == 0) if mode == "enforce" else True
+    if failures == 0:
+        summary = f"{total}/{total} commits verified"
+    elif mode == "warn":
+        summary = f"{failures}/{total} commits failed (warn mode: not blocking)"
+    else:
+        summary = f"{failures}/{total} commits failed"
 
-        return VerifyResult(commits=results, passed=passed, mode=mode, summary=summary)
-    finally:
-        if tmp_signers is not None:
-            try:
-                os.unlink(tmp_signers)
-            except OSError:
-                pass
+    passed = (failures == 0) if mode == "enforce" else True
+
+    return VerifyResult(commits=results, passed=passed, mode=mode, summary=summary)
+
+
+def verify_commits(
+    shas: list[str],
+    identity_bundle: str | None = None,
+    allowed_signers: str = ".auths/allowed_signers",
+    mode: str = "enforce",
+) -> VerifyResult:
+    """Verify SSH signatures for an explicit list of commit SHAs.
+
+    Args:
+        shas: List of commit SHA strings.
+        identity_bundle: Path to an Auths identity-bundle JSON file.
+        allowed_signers: Path to an ssh-keygen allowed_signers file.
+        mode: ``"enforce"`` or ``"warn"``.
+
+    Returns:
+        VerifyResult with per-commit results and a pass/fail decision.
+    """
+    if mode not in ("enforce", "warn"):
+        raise ValueError(f"mode must be 'enforce' or 'warn', got {mode!r}")
+
+    allowed_keys_hex: list[str] = []
+    attestation_lookup: dict[str, dict] | None = None
+
+    if identity_bundle is not None:
+        allowed_keys_hex, attestation_lookup = _allowed_signers_from_bundle(
+            identity_bundle
+        )
+    elif os.path.isfile(allowed_signers):
+        allowed_keys_hex = _hex_keys_from_allowed_signers_file(allowed_signers)
+
+    if not shas:
+        return VerifyResult(
+            commits=[], passed=True, mode=mode, summary="No commits to verify"
+        )
+
+    results: list[CommitResult] = []
+    for sha in shas:
+        results.append(_verify_one(sha, allowed_keys_hex, attestation_lookup))
+
+    total = len(results)
+    failures = sum(1 for r in results if not r.is_valid)
+
+    if failures == 0:
+        summary = f"{total}/{total} commits verified"
+    elif mode == "warn":
+        summary = f"{failures}/{total} commits failed (warn mode: not blocking)"
+    else:
+        summary = f"{failures}/{total} commits failed"
+
+    passed = (failures == 0) if mode == "enforce" else True
+
+    return VerifyResult(commits=results, passed=passed, mode=mode, summary=summary)
 
 
 def _rev_list(commit_range: str) -> list[str]:
@@ -226,113 +273,78 @@ def _rev_list(commit_range: str) -> list[str]:
     return [line for line in proc.stdout.strip().splitlines() if line]
 
 
+def _get_raw_commit(sha: str) -> bytes | None:
+    """Read raw commit object bytes via git cat-file.
+
+    Args:
+        sha: Git commit SHA.
+
+    Returns:
+        Raw commit bytes, or None on failure.
+    """
+    proc = subprocess.run(
+        ["git", "cat-file", "commit", sha], capture_output=True
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
 def _verify_one(
     sha: str,
-    signers_path: str,
+    allowed_keys_hex: list[str],
     attestation_lookup: dict[str, dict] | None = None,
 ) -> CommitResult:
-    sig_info = _get_commit_signature(sha)
-    if sig_info is None:
+    from auths._native import verify_commit_native
+
+    commit_content = _get_raw_commit(sha)
+    if commit_content is None:
         return CommitResult(
             commit_sha=sha,
             is_valid=False,
-            error="No signature found",
-            error_code=ErrorCode.UNSIGNED,
+            error="Failed to read commit",
+            error_code=ErrorCode.INVALID_SIGNATURE,
         )
-    if sig_info == "gpg":
+
+    result = verify_commit_native(commit_content, allowed_keys_hex)
+
+    if not result.valid:
         return CommitResult(
             commit_sha=sha,
             is_valid=False,
-            error="GPG signatures not supported, use SSH signing",
-            error_code=ErrorCode.GPG_NOT_SUPPORTED,
+            error=result.error or "Verification failed",
+            error_code=result.error_code or ErrorCode.INVALID_SIGNATURE,
         )
 
-    signature, payload = sig_info
+    signer = result.signer_hex
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".sig", delete=False) as sf:
-        sf.write(signature)
-        sig_path = sf.name
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".dat", delete=False) as pf:
-        pf.write(payload)
-        payload_path = pf.name
-
-    try:
-        proc = subprocess.run(
-            [
-                "ssh-keygen",
-                "-Y",
-                "verify",
-                "-f",
-                signers_path,
-                "-I",
-                "*",
-                "-n",
-                "git",
-                "-s",
-                sig_path,
-            ],
-            input=payload,
-            capture_output=True,
-            text=True,
-        )
-
-        if proc.returncode != 0:
-            stderr = proc.stderr.strip()
-            if "no principal matched" in stderr or "NONE_ACCEPTED" in stderr:
-                return CommitResult(
-                    commit_sha=sha,
-                    is_valid=False,
-                    error="Signature from non-allowed signer",
-                    error_code=ErrorCode.UNKNOWN_SIGNER,
-                )
+    if attestation_lookup is not None and signer is not None:
+        status = _check_attestation_status(signer, attestation_lookup)
+        if status is not None:
             return CommitResult(
                 commit_sha=sha,
                 is_valid=False,
-                error=f"Signature verification failed: {stderr}",
-                error_code=ErrorCode.INVALID_SIGNATURE,
+                signer=signer,
+                error=status[0],
+                error_code=status[1],
             )
 
-        signer = _find_principal(signers_path, sig_path)
-
-        if attestation_lookup is not None:
-            status = _check_attestation_status(signer, attestation_lookup)
-            if status is not None:
-                return CommitResult(
-                    commit_sha=sha,
-                    is_valid=False,
-                    signer=signer,
-                    error=status[0],
-                    error_code=status[1],
-                )
-
-        return CommitResult(commit_sha=sha, is_valid=True, signer=signer)
-    finally:
-        for p in (sig_path, payload_path):
-            try:
-                os.unlink(p)
-            except OSError:
-                pass
+    return CommitResult(commit_sha=sha, is_valid=True, signer=signer)
 
 
 def _check_attestation_status(
-    principal: str | None,
+    signer_key_hex: str,
     attestation_lookup: dict[str, dict],
 ) -> tuple | None:
-    if principal is None or principal == "allowed signer":
+    if signer_key_hex not in attestation_lookup:
         return None
 
-    if principal not in attestation_lookup:
-        return (
-            f"No device attestation found for signer {principal}",
-            ErrorCode.NO_ATTESTATION_FOUND,
-        )
-
-    att = attestation_lookup[principal]
+    att = attestation_lookup[signer_key_hex]
 
     if att.get("revoked", False):
         revoked_at = att.get("timestamp", "unknown time")
         return (
-            f"Device {principal} was revoked (attestation timestamp: {revoked_at})",
+            f"Device {signer_key_hex} was revoked (attestation timestamp: {revoked_at})",
             ErrorCode.DEVICE_REVOKED,
         )
 
@@ -342,7 +354,7 @@ def _check_attestation_status(
             exp_dt = _parse_datetime(expires_at)
             if datetime.now(timezone.utc) > exp_dt:
                 return (
-                    f"Device {principal} attestation expired at {expires_at}",
+                    f"Device {signer_key_hex} attestation expired at {expires_at}",
                     ErrorCode.DEVICE_EXPIRED,
                 )
         except (ValueError, TypeError):
@@ -357,71 +369,19 @@ def _parse_datetime(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
-def _find_principal(signers_path: str, sig_path: str) -> str | None:
-    proc = subprocess.run(
-        ["ssh-keygen", "-Y", "find-principals", "-f", signers_path, "-s", sig_path],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode == 0 and proc.stdout.strip():
-        return proc.stdout.strip()
-    return "allowed signer"
+def _allowed_signers_from_bundle(
+    bundle_path: str,
+) -> tuple[list[str], dict[str, dict]]:
+    """Extract allowed Ed25519 public keys (hex) from an identity bundle.
 
+    Args:
+        bundle_path: Path to an Auths identity-bundle JSON file.
 
-def _get_commit_signature(sha: str):
-    proc = subprocess.run(
-        ["git", "cat-file", "commit", sha], capture_output=True, text=True
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"git cat-file failed: {proc.stderr.strip()}")
-
-    content = proc.stdout
-
-    if "-----BEGIN PGP SIGNATURE-----" in content:
-        return "gpg"
-
-    if "-----BEGIN SSH SIGNATURE-----" in content:
-        return _extract_ssh_signature(content)
-
-    return None
-
-
-def _extract_ssh_signature(content: str):
-    in_signature = False
-    sig_lines: list[str] = []
-    payload_lines: list[str] = []
-    header_done = False
-
-    for line in content.splitlines():
-        if line.startswith("gpgsig "):
-            in_signature = True
-            sig_lines.append(line[len("gpgsig "):])
-        elif in_signature:
-            if line.startswith(" "):
-                sig_lines.append(line[1:])
-            else:
-                in_signature = False
-                if line == "":
-                    header_done = True
-                else:
-                    payload_lines.append(line)
-        elif not header_done:
-            if line == "":
-                header_done = True
-            elif not line.startswith("gpgsig"):
-                payload_lines.append(line)
-        else:
-            payload_lines.append(line)
-
-    if not sig_lines:
-        return None
-
-    signature = "\n".join(sig_lines)
-    payload = "\n".join(payload_lines)
-    return (signature, payload)
-
-
-def _allowed_signers_from_bundle(bundle_path: str):
+    Returns:
+        Tuple of (hex_keys, attestation_lookup) where hex_keys is a list
+        of hex-encoded 32-byte Ed25519 public keys and attestation_lookup
+        maps device_public_key hex to the attestation dict.
+    """
     with open(bundle_path) as f:
         bundle = json.load(f)
 
@@ -435,14 +395,13 @@ def _allowed_signers_from_bundle(bundle_path: str):
             f"Invalid Ed25519 public key length: expected 32 bytes, got {len(pk_bytes)}"
         )
 
-    lines: list[str] = []
+    keys: list[str] = []
     attestation_lookup: dict[str, dict] = {}
 
     chain = bundle.get("attestation_chain", [])
     for att in chain:
         dev_pk_hex = att.get("device_public_key")
-        subject = att.get("subject")
-        if not dev_pk_hex or not subject:
+        if not dev_pk_hex:
             continue
         try:
             dev_pk_bytes = bytes.fromhex(dev_pk_hex)
@@ -450,24 +409,51 @@ def _allowed_signers_from_bundle(bundle_path: str):
                 continue
         except (ValueError, TypeError):
             continue
-        ssh_pubkey = _format_ed25519_as_ssh(dev_pk_bytes)
-        lines.append(f"{subject} {ssh_pubkey}")
-        attestation_lookup[subject] = att
+        keys.append(dev_pk_hex)
+        attestation_lookup[dev_pk_hex] = att
 
-    identity_did = bundle.get("identity_did", "*")
-    ssh_pubkey = _format_ed25519_as_ssh(pk_bytes)
-    lines.append(f"{identity_did} {ssh_pubkey}")
+    # Identity key itself is also an allowed signer
+    keys.append(pk_hex)
 
-    fd, path = tempfile.mkstemp(suffix=".allowed_signers")
-    with os.fdopen(fd, "w") as f:
-        f.write("\n".join(lines) + "\n")
-
-    return (path, path, attestation_lookup)
+    return (keys, attestation_lookup)
 
 
-def _format_ed25519_as_ssh(public_key: bytes) -> str:
-    key_type = b"ssh-ed25519"
-    blob = struct.pack(">I", len(key_type)) + key_type
-    blob += struct.pack(">I", len(public_key)) + public_key
-    encoded = base64.b64encode(blob).decode("ascii")
-    return f"ssh-ed25519 {encoded}"
+def _hex_keys_from_allowed_signers_file(path: str) -> list[str]:
+    """Extract Ed25519 public keys as hex from an allowed_signers file.
+
+    Each line has format: ``<principal> ssh-ed25519 <base64-blob>``
+    The base64 blob is SSH wire format: u32-len "ssh-ed25519" + u32-len <32-byte-key>.
+
+    Args:
+        path: Path to an ssh-keygen allowed_signers file.
+
+    Returns:
+        List of hex-encoded 32-byte Ed25519 public keys.
+    """
+    import base64
+    import struct
+
+    keys: list[str] = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            # Format: principal key-type base64-blob [comment]
+            if len(parts) < 3 or parts[1] != "ssh-ed25519":
+                continue
+            try:
+                blob = base64.b64decode(parts[2])
+                # SSH wire format: u32-len + key-type-string + u32-len + key-bytes
+                offset = 0
+                type_len = struct.unpack(">I", blob[offset : offset + 4])[0]
+                offset += 4 + type_len
+                key_len = struct.unpack(">I", blob[offset : offset + 4])[0]
+                offset += 4
+                key_bytes = blob[offset : offset + key_len]
+                if len(key_bytes) == 32:
+                    keys.append(key_bytes.hex())
+            except (ValueError, struct.error, IndexError):
+                continue
+    return keys
