@@ -1,7 +1,7 @@
 //! Signing key types.
 
 use crate::config::current_algorithm;
-use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes_argon2};
+use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes};
 use crate::crypto::provider_bridge;
 use crate::error::AgentError;
 use auths_crypto::SecureSeed;
@@ -85,7 +85,7 @@ pub fn load_seed_and_pubkey(bytes: &[u8]) -> Result<(SecureSeed, [u8; 32]), Agen
 
 /// Encrypts a raw serialized keypair using the configured encryption algorithm and passphrase.
 pub fn encrypt_keypair(raw: &[u8], passphrase: &str) -> Result<Vec<u8>, AgentError> {
-    encrypt_bytes_argon2(raw, passphrase, current_algorithm())
+    encrypt_bytes(raw, passphrase, current_algorithm())
 }
 
 /// Decrypts a previously encrypted keypair using the configured encryption algorithm and passphrase.

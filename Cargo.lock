@@ -347,7 +347,6 @@ dependencies = [
  "cryptoki",
  "dirs",
  "hex",
- "hkdf",
  "k256",
  "libc",
  "log",

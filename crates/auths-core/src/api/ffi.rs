@@ -19,7 +19,7 @@ use crate::api::runtime::{
 use crate::config::EnvironmentConfig;
 use crate::config::{current_algorithm, set_encryption_algorithm};
 use crate::crypto::EncryptionAlgorithm;
-use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes_argon2};
+use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes};
 use crate::crypto::signer::extract_seed_from_key_bytes;
 use crate::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use crate::error::AgentError;
@@ -835,7 +835,7 @@ pub unsafe extern "C" fn ffi_encrypt_data(
         unsafe { *out_len = 0 };
         let algo = current_algorithm();
 
-        match encrypt_bytes_argon2(input, pass, algo) {
+        match encrypt_bytes(input, pass, algo) {
             Ok(encrypted) => unsafe { malloc_and_copy_bytes(&encrypted, out_len) },
             Err(e) => {
                 error!("FFI encrypt_data failed: {}", e);
