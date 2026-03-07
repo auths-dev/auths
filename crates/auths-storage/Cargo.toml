@@ -48,5 +48,9 @@ name = "registry"
 harness = false
 required-features = ["backend-git"]
 
+[[test]]
+name = "integration"
+required-features = ["backend-git"]
+
 [lints]
 workspace = true
