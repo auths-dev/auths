@@ -73,9 +73,7 @@ fn attestation_to_py(att: &Attestation) -> PyAttestation {
     }
 }
 
-fn open_attestation_storage(
-    repo_path: &str,
-) -> PyResult<Arc<RegistryAttestationStorage>> {
+fn open_attestation_storage(repo_path: &str) -> PyResult<Arc<RegistryAttestationStorage>> {
     let repo = PathBuf::from(shellexpand::tilde(repo_path).as_ref());
     let config = RegistryConfig::single_tenant(&repo);
     let _backend = GitRegistryBackend::open_existing(config)

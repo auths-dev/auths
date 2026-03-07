@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use auths_sdk::workflows::git_integration::{generate_allowed_signers, format_allowed_signers_file};
+use auths_sdk::workflows::git_integration::{
+    format_allowed_signers_file, generate_allowed_signers,
+};
 use auths_storage::git::RegistryAttestationStorage;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -26,8 +28,11 @@ pub fn generate_allowed_signers_file(py: Python<'_>, repo_path: &str) -> PyResul
     py.allow_threads(move || {
         let repo = PathBuf::from(shellexpand::tilde(&rp).as_ref());
         let storage = RegistryAttestationStorage::new(&repo);
-        let entries = generate_allowed_signers(&storage)
-            .map_err(|e: auths_sdk::workflows::git_integration::GitIntegrationError| PyRuntimeError::new_err(e.to_string()))?;
+        let entries = generate_allowed_signers(&storage).map_err(
+            |e: auths_sdk::workflows::git_integration::GitIntegrationError| {
+                PyRuntimeError::new_err(e.to_string())
+            },
+        )?;
         Ok(format_allowed_signers_file(&entries))
     })
 }

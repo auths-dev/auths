@@ -85,9 +85,7 @@ pub fn get_token(
             }
 
             let token_resp: TokenResponse = response.json().await.map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                    "invalid response: {e}"
-                ))
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("invalid response: {e}"))
             })?;
 
             Ok(token_resp.access_token)

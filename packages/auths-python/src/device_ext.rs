@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use auths_core::signing::PrefilledPassphraseProvider;
-use auths_core::storage::keychain::{get_platform_keychain_with_config, KeyAlias};
+use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::device::extend_device;
 use auths_sdk::types::DeviceExtensionConfig;
@@ -111,7 +111,9 @@ pub fn extend_device_authorization_ffi(
         Ok(PyDeviceExtension {
             device_did: result.device_did.to_string(),
             new_expires_at: result.new_expires_at.to_rfc3339(),
-            previous_expires_at: result.previous_expires_at.map(|t: chrono::DateTime<chrono::Utc>| t.to_rfc3339()),
+            previous_expires_at: result
+                .previous_expires_at
+                .map(|t: chrono::DateTime<chrono::Utc>| t.to_rfc3339()),
         })
     })
 }

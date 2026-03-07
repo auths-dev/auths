@@ -3,10 +3,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use auths_core::signing::PrefilledPassphraseProvider;
-use auths_core::storage::keychain::{get_platform_keychain_with_config, KeyAlias};
+use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
-use auths_sdk::signing::{sign_artifact as sdk_sign_artifact, ArtifactSigningParams, SigningKeyMaterial};
+use auths_sdk::signing::{
+    ArtifactSigningParams, SigningKeyMaterial, sign_artifact as sdk_sign_artifact,
+};
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
