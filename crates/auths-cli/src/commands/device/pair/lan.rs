@@ -69,13 +69,13 @@ pub async fn handle_initiate_lan(
         expires_at: session.token.expires_at.timestamp(),
     };
 
-    // Start the LAN server
-    let server = LanPairingServer::start(request).await?;
+    // Start the LAN server bound to the detected LAN IP
+    let server = LanPairingServer::start(request, lan_ip).await?;
     let port = server.addr().port();
     let endpoint = format!("http://{}:{}", lan_ip, port);
 
-    // Now update the token's endpoint to reflect the actual address
-    session.token.endpoint = endpoint.clone();
+    // Update the token's endpoint to include the pairing token for auth
+    session.token.endpoint = format!("{}?token={}", endpoint, server.pairing_token());
 
     // Self-test: verify the server is reachable from this machine
     let health_url = format!("{}/health", &endpoint);
