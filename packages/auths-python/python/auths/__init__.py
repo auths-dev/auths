@@ -36,7 +36,8 @@ from auths.policy import PolicyBuilder
 from auths.devices import Device, DeviceExtension, DeviceService
 from auths.identity import AgentIdentity, DelegatedAgent, Identity, IdentityService
 from auths.rotation import IdentityRotationResult
-from auths.verify import WitnessConfig, WitnessKey
+from auths.verify import WitnessConfig, WitnessKey, verify_chain_with_witnesses
+from auths.policy import compile_policy
 from auths.git import (
     CommitResult,
     ErrorCode,
