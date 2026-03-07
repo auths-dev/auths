@@ -116,7 +116,7 @@ fn test_pkcs11_key_generate_and_load() {
         .store_key(&alias, &did, KeyRole::Primary, &[])
         .unwrap();
 
-    let (loaded_did, ref_bytes) = keyref.load_key(&alias).unwrap();
+    let (loaded_did, _role, ref_bytes) = keyref.load_key(&alias).unwrap();
     assert_eq!(loaded_did.as_str(), "did:keri:ETEST123");
     assert!(!ref_bytes.is_empty());
 }

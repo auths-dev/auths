@@ -540,7 +540,7 @@ pub fn handle_id(
 
             // Load the public key from keychain
             let keychain = get_platform_keychain()?;
-            let (_, encrypted_key) = keychain
+            let (_, _role, encrypted_key) = keychain
                 .load_key(&KeyAlias::new_unchecked(&alias))
                 .with_context(|| format!("Key '{}' not found in keychain", alias))?;
 

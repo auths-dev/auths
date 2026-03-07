@@ -677,7 +677,7 @@ fn unlock_agent(key_alias: &str) -> Result<()> {
     // Load encrypted key from platform keychain
     let keychain = auths_core::storage::keychain::get_platform_keychain()
         .map_err(|e| anyhow!("Failed to get platform keychain: {}", e))?;
-    let (_identity_did, encrypted_data) = keychain
+    let (_identity_did, _role, encrypted_data) = keychain
         .load_key(&auths_core::storage::keychain::KeyAlias::new_unchecked(
             key_alias,
         ))

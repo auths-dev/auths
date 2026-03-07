@@ -189,7 +189,7 @@ pub fn load_keys_into_agent_with_handle(
         };
 
         let load_result = || -> Result<Zeroizing<Vec<u8>>, AgentError> {
-            let (_controller_did, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
+            let (_controller_did, _role, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
             let prompt = format!(
                 "Enter passphrase to unlock key '{}' for agent session:",
                 key_alias
@@ -390,7 +390,7 @@ pub fn export_key_openssh_pem(
     }
     // 1. Load encrypted key data
     let key_alias = KeyAlias::new_unchecked(alias);
-    let (_controller_did, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
+    let (_controller_did, _role, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
 
     // 2. Decrypt key data
     let pkcs8_bytes = decrypt_keypair(&encrypted_pkcs8, passphrase)?;
@@ -453,7 +453,7 @@ pub fn export_key_openssh_pub(
     }
     // 1. Load encrypted key data
     let key_alias = KeyAlias::new_unchecked(alias);
-    let (_controller_did, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
+    let (_controller_did, _role, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
 
     // 2. Decrypt key data
     let pkcs8_bytes = decrypt_keypair(&encrypted_pkcs8, passphrase)?;

@@ -320,7 +320,7 @@ fn retrieve_precommitted_key(
     let target_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
 
-    let (did_check, encrypted_next) = ctx.key_storage.load_key(&target_alias).map_err(|e| {
+    let (did_check, _role, encrypted_next) = ctx.key_storage.load_key(&target_alias).map_err(|e| {
         RotationError::KeyNotFound(format!(
             "pre-committed next key '{}' not found: {e}",
             target_alias
@@ -716,7 +716,7 @@ mod tests {
             result
         );
 
-        let (loaded_did, _) = ctx
+        let (loaded_did, _, _) = ctx
             .key_storage
             .load_key(&KeyAlias::new_unchecked("rotated-key"))
             .unwrap();
@@ -724,7 +724,7 @@ mod tests {
 
         let new_sequence = state.sequence + 1;
         let next_key_alias = format!("rotated-key--next-{}", new_sequence);
-        let (loaded_next_did, _) = ctx
+        let (loaded_next_did, _, _) = ctx
             .key_storage
             .load_key(&KeyAlias::new_unchecked(&next_key_alias))
             .unwrap();

@@ -413,7 +413,7 @@ pub fn handle_org(
                 serde_json::from_str(&payload_str).context("Invalid JSON in payload file")?;
 
             let key_storage = get_platform_keychain()?;
-            let (stored_did, encrypted_key) = key_storage
+            let (stored_did, _role, encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
 
@@ -512,7 +512,7 @@ pub fn handle_org(
             let encrypted_key = get_platform_keychain()?
                 .load_key(&signer_alias)
                 .context("Failed to load signer key")?
-                .1;
+                .2;
             let pass = passphrase_provider.get_passphrase(&format!(
                 "Enter passphrase for identity key '{}':",
                 signer_alias
@@ -687,7 +687,7 @@ pub fn handle_org(
 
             // Load signer key and verify passphrase
             let key_storage = get_platform_keychain()?;
-            let (stored_did, encrypted_key) = key_storage
+            let (stored_did, _role, encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
 
@@ -867,7 +867,7 @@ pub fn handle_org(
 
             // Load signer key and verify passphrase
             let key_storage = get_platform_keychain()?;
-            let (stored_did, encrypted_key) = key_storage
+            let (stored_did, _role, encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
 

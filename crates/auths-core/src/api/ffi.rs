@@ -522,7 +522,7 @@ pub unsafe extern "C" fn ffi_export_encrypted_key(
         };
         let alias = KeyAlias::new_unchecked(alias_str);
         match keychain.load_key(&alias) {
-            Ok((_identity_did, encrypted_data)) => {
+            Ok((_identity_did, _role, encrypted_data)) => {
                 debug!(
                     "FFI export encrypted key successful for alias '{}'",
                     alias_str
@@ -592,7 +592,7 @@ pub unsafe extern "C" fn ffi_export_private_key_with_passphrase(
         };
         let alias = KeyAlias::new_unchecked(alias_str);
         let export_result = || -> Result<Vec<u8>, AgentError> {
-            let (_controller_did, encrypted_bytes) = keychain.load_key(&alias)?;
+            let (_controller_did, _role, encrypted_bytes) = keychain.load_key(&alias)?;
             // Attempt decryption only to verify passphrase
             let _decrypted_pkcs8 = decrypt_keypair(&encrypted_bytes, pass_str)?;
             debug!(

@@ -195,7 +195,7 @@ fn load_key_with_passphrase_retry(
     params: &CommitSigningParams,
 ) -> Result<Zeroizing<Vec<u8>>, SigningError> {
     let alias = KeyAlias::new_unchecked(&params.key_alias);
-    let (_identity_did, encrypted_data) = ctx
+    let (_identity_did, _role, encrypted_data) = ctx
         .key_storage
         .load_key(&alias)
         .map_err(|e| SigningError::KeychainUnavailable(e.to_string()))?;

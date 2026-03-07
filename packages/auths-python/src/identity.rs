@@ -325,7 +325,7 @@ pub fn delegate_agent(
     let agent_pubkey = keypair.public_key().as_ref().to_vec();
 
     // Get parent identity DID for key storage association
-    let (parent_did, _) = keychain
+    let (parent_did, _, _) = keychain
         .load_key(&parent_alias)
         .map_err(|e| PyRuntimeError::new_err(format!("Key load failed: {e}")))?;
 

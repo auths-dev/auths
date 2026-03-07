@@ -296,7 +296,7 @@ fn extract_public_key(
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &dyn KeyStorage,
 ) -> Result<[u8; 32], AgentProvisioningError> {
-    let (_did, encrypted) = keychain
+    let (_did, _role, encrypted) = keychain
         .load_key(key_alias)
         .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
 

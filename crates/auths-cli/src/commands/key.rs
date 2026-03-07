@@ -361,7 +361,7 @@ fn key_copy_backend(
     eprintln!("Source backend: {}", src_keychain.backend_name());
 
     let key_alias = KeyAlias::new_unchecked(alias);
-    let (identity_did, mut encrypted_key_data) = src_keychain
+    let (identity_did, _role, mut encrypted_key_data) = src_keychain
         .load_key(&key_alias)
         .with_context(|| format!("Key '{}' not found in source keychain", alias))?;
 

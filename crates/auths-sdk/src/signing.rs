@@ -273,7 +273,7 @@ fn resolve_optional_key(
     match material {
         None => Ok(None),
         Some(SigningKeyMaterial::Alias(alias)) => {
-            let (_, encrypted) = keychain
+            let (_, _role, encrypted) = keychain
                 .load_key(alias)
                 .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
             let passphrase = passphrase_provider

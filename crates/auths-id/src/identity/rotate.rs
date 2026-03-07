@@ -67,7 +67,7 @@ pub fn rotate_keri_identity(
 ) -> Result<RotationKeyInfo, InitError> {
     let repo = Repository::open(repo_path)?;
 
-    let (did, _encrypted_current) = keychain.load_key(current_alias)?;
+    let (did, _role, _encrypted_current) = keychain.load_key(current_alias)?;
 
     let prefix = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
         InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
@@ -82,7 +82,7 @@ pub fn rotate_keri_identity(
     let derived_next_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
 
-    let (did_check, encrypted_next) = keychain.load_key(&derived_next_alias)?;
+    let (did_check, _role, encrypted_next) = keychain.load_key(&derived_next_alias)?;
 
     if did != did_check {
         return Err(InitError::InvalidData(format!(
@@ -173,7 +173,7 @@ pub fn rotate_registry_identity(
 ) -> Result<RotationKeyInfo, InitError> {
     let rng = SystemRandom::new();
 
-    let (did, _encrypted_current) = keychain.load_key(current_alias)?;
+    let (did, _role, _encrypted_current) = keychain.load_key(current_alias)?;
 
     let prefix_str = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
         InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
@@ -187,7 +187,7 @@ pub fn rotate_registry_identity(
     let derived_next_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
 
-    let (did_check, encrypted_next) = keychain.load_key(&derived_next_alias)?;
+    let (did_check, _role, encrypted_next) = keychain.load_key(&derived_next_alias)?;
 
     if did != did_check {
         return Err(InitError::InvalidData(format!(

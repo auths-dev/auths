@@ -536,7 +536,7 @@ pub fn load_device_signing_material(
             ))
         })?;
 
-    let (_did, encrypted_key) = ctx
+    let (_did, _role, encrypted_key) = ctx
         .key_storage
         .load_key(&key_alias)
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
