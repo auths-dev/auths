@@ -137,10 +137,10 @@ pub struct AgentStatus {
 pub fn ensure_agent_running(quiet: bool) -> Result<bool> {
     let socket_path = get_default_socket_path()?;
 
-    // Check if already running
+    // Check if already running via connection attempt (avoids TOCTOU on socket path)
     if let Some(pid) = read_pid()?
         && is_process_running(pid)
-        && socket_path.exists()
+        && socket_is_connectable(&socket_path)
     {
         return Ok(true); // Already running
     }
@@ -153,13 +153,13 @@ pub fn ensure_agent_running(quiet: bool) -> Result<bool> {
     // Use default timeout of 30m
     start_agent(None, false, "30m", quiet)?;
 
-    // Poll for socket with 2s timeout
+    // Poll for socket connectivity with 2s timeout
     let timeout = std::time::Duration::from_secs(2);
     let start = std::time::Instant::now();
     while start.elapsed() < timeout {
-        if socket_path.exists()
-            && let Some(pid) = read_pid()?
+        if let Some(pid) = read_pid()?
             && is_process_running(pid)
+            && socket_is_connectable(&socket_path)
         {
             if !quiet {
                 eprintln!("Agent started (PID {})", pid);
@@ -280,7 +280,17 @@ fn is_process_running(pid: u32) -> bool {
 
 #[cfg(not(unix))]
 fn is_process_running(_pid: u32) -> bool {
-    // Windows would need different implementation
+    false
+}
+
+/// Test if the agent socket is connectable (avoids TOCTOU vs exists() check).
+#[cfg(unix)]
+fn socket_is_connectable(path: &std::path::Path) -> bool {
+    std::os::unix::net::UnixStream::connect(path).is_ok()
+}
+
+#[cfg(not(unix))]
+fn socket_is_connectable(_path: &std::path::Path) -> bool {
     false
 }
 
@@ -312,10 +322,13 @@ fn start_agent(
         let _ = fs::remove_file(&pid_path);
     }
 
-    // Clean up stale socket file
-    if socket.exists() {
-        fs::remove_file(&socket)
-            .with_context(|| format!("Failed to remove stale socket: {:?}", socket))?;
+    // Remove stale socket atomically (no TOCTOU exists-then-remove)
+    match fs::remove_file(&socket) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(anyhow!("Failed to remove stale socket {:?}: {}", socket, e));
+        }
     }
 
     if foreground {
