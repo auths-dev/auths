@@ -29,6 +29,11 @@ const COMMANDS: &[Cmd] = &[
         marker: "auths status",
         doc_file: "docs/cli/commands/primary.md",
     },
+    Cmd {
+        args: &["pair"],
+        marker: "auths pair",
+        doc_file: "docs/cli/commands/primary.md",
+    },
     // --- device ---
     Cmd {
         args: &["device", "link"],
