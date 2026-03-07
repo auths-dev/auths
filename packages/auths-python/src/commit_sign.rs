@@ -66,7 +66,7 @@ pub fn sign_commit(
     let provider = Arc::new(PrefilledPassphraseProvider::new(&passphrase_str));
 
     let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("Keychain error: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
     let keychain = Arc::from(keychain);
 
     let repo = PathBuf::from(shellexpand::tilde(repo_path).as_ref());
@@ -85,7 +85,7 @@ pub fn sign_commit(
 
     py.allow_threads(move || {
         let pem = CommitSigningWorkflow::execute(&signing_ctx, params, now)
-            .map_err(|e| PyRuntimeError::new_err(format!("Commit signing failed: {e}")))?;
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Commit signing failed: {e}")))?;
 
         Ok(PyCommitSignResult {
             signature_pem: pem,

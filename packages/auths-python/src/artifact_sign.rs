@@ -140,18 +140,18 @@ fn build_context_and_sign(
     let config = RegistryConfig::single_tenant(&repo);
     let backend = Arc::new(
         GitRegistryBackend::open_existing(config)
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to open registry: {e}")))?,
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}")))?,
     );
 
     let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("Keychain error: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
     let keychain = Arc::from(keychain);
 
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
 
     let alias = KeyAlias::new(identity_key_alias)
-        .map_err(|e| PyRuntimeError::new_err(format!("Invalid key alias: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}")))?;
 
     let ctx = AuthsContext::builder()
         .registry(backend)
@@ -177,7 +177,7 @@ fn build_context_and_sign(
     };
 
     let result = sdk_sign_artifact(params, &ctx)
-        .map_err(|e| PyRuntimeError::new_err(format!("Artifact signing failed: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Artifact signing failed: {e}")))?;
 
     Ok(PyArtifactResult {
         attestation_json: result.attestation_json,

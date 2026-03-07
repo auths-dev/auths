@@ -30,7 +30,7 @@ pub fn generate_allowed_signers_file(py: Python<'_>, repo_path: &str) -> PyResul
         let storage = RegistryAttestationStorage::new(&repo);
         let entries = generate_allowed_signers(&storage).map_err(
             |e: auths_sdk::workflows::git_integration::GitIntegrationError| {
-                PyRuntimeError::new_err(e.to_string())
+                PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] {e}"))
             },
         )?;
         Ok(format_allowed_signers_file(&entries))

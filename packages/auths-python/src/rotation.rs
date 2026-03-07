@@ -70,11 +70,11 @@ pub fn rotate_identity_ffi(
     let config = RegistryConfig::single_tenant(&repo);
     let backend = Arc::new(
         GitRegistryBackend::open_existing(config)
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to open registry: {e}")))?,
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}")))?,
     );
 
     let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("Keychain error: {e}")))?;
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
     let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
 
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
@@ -97,7 +97,7 @@ pub fn rotate_identity_ffi(
     let next_alias = next_key_alias
         .map(|a| {
             auths_core::storage::keychain::KeyAlias::new(a)
-                .map_err(|e| PyRuntimeError::new_err(format!("Invalid next key alias: {e}")))
+                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid next key alias: {e}")))
         })
         .transpose()?;
 
@@ -109,7 +109,7 @@ pub fn rotate_identity_ffi(
 
     py.allow_threads(|| {
         let result = rotate_identity(rotation_config, &ctx, clock.as_ref())
-            .map_err(|e| PyRuntimeError::new_err(format!("Key rotation failed: {e}")))?;
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ROTATION_ERROR] Key rotation failed: {e}")))?;
 
         Ok(PyIdentityRotationResult {
             controller_did: result.controller_did.to_string(),
