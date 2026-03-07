@@ -259,6 +259,85 @@ class Auths:
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc, default_cls=CryptoError) from exc
 
+    def get_public_key(
+        self,
+        identity: str,
+        passphrase: str | None = None,
+    ) -> str:
+        """Retrieve the Ed25519 public key (hex) for an identity.
+
+        Args:
+            identity: The identity DID (did:keri:...).
+            passphrase: Override passphrase.
+
+        Usage:
+            pub_key = auths.get_public_key(identity.did)
+        """
+        from auths._native import get_identity_public_key
+
+        pp = passphrase or self._passphrase
+        try:
+            return get_identity_public_key(identity, pp)
+        except (ValueError, RuntimeError) as exc:
+            raise _map_error(exc, default_cls=CryptoError) from exc
+
+    def sign_as_agent(
+        self,
+        message: bytes,
+        key_alias: str,
+        passphrase: str | None = None,
+    ) -> str:
+        """Sign bytes using a delegated agent's own key.
+
+        Unlike sign_as() which resolves by identity DID, this uses the agent's
+        key alias directly — enabling delegated agents (did:key:) to sign.
+
+        Args:
+            message: Bytes to sign.
+            key_alias: The agent's key alias (e.g., "deploy-bot-agent").
+            passphrase: Override passphrase.
+
+        Usage:
+            agent = auths.identities.delegate_agent(identity.did, "bot", ["sign"])
+            sig = auths.sign_as_agent(b"hello", key_alias=agent.key_alias)
+        """
+        from auths._native import sign_as_agent as _sign_as_agent
+
+        pp = passphrase or self._passphrase
+        try:
+            return _sign_as_agent(message, key_alias, pp)
+        except (ValueError, RuntimeError) as exc:
+            raise _map_error(exc, default_cls=CryptoError) from exc
+
+    def sign_action_as_agent(
+        self,
+        action_type: str,
+        payload: str,
+        key_alias: str,
+        agent_did: str,
+        passphrase: str | None = None,
+    ) -> str:
+        """Sign an action envelope using a delegated agent's own key.
+
+        Args:
+            action_type: Action type string.
+            payload: JSON payload string.
+            key_alias: The agent's key alias.
+            agent_did: The agent's DID (included in the envelope).
+            passphrase: Override passphrase.
+
+        Usage:
+            agent = auths.identities.delegate_agent(identity.did, "bot", ["deploy"])
+            envelope = auths.sign_action_as_agent("deploy", payload, agent.key_alias, agent.did)
+        """
+        from auths._native import sign_action_as_agent as _sign_action_as_agent
+
+        pp = passphrase or self._passphrase
+        try:
+            return _sign_action_as_agent(action_type, payload, key_alias, agent_did, pp)
+        except (ValueError, RuntimeError) as exc:
+            raise _map_error(exc, default_cls=CryptoError) from exc
+
     def sign_commit(
         self,
         data: bytes,

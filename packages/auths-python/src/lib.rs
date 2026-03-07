@@ -58,6 +58,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(identity_sign::sign_as_identity, m)?)?;
     m.add_function(wrap_pyfunction!(identity_sign::sign_action_as_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(identity_sign::get_identity_public_key, m)?)?;
+    m.add_function(wrap_pyfunction!(identity_sign::sign_as_agent, m)?)?;
+    m.add_function(wrap_pyfunction!(identity_sign::sign_action_as_agent, m)?)?;
 
     m.add_class::<rotation::PyIdentityRotationResult>()?;
     m.add_function(wrap_pyfunction!(rotation::rotate_identity_ffi, m)?)?;

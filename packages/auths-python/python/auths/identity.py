@@ -25,6 +25,7 @@ class Identity:
     key_alias: str
     label: str
     repo_path: str
+    public_key: str
 
 
 @dataclass
@@ -34,6 +35,7 @@ class AgentIdentity:
     did: str
     key_alias: str
     attestation: str
+    public_key: str
 
 
 @dataclass
@@ -43,6 +45,7 @@ class DelegatedAgent:
     did: str
     key_alias: str
     attestation: str
+    public_key: str
 
 
 class IdentityService:
@@ -75,8 +78,8 @@ class IdentityService:
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
-        did, key_alias = _create_identity(label, rp, pp)
-        return Identity(did=did, key_alias=key_alias, label=label, repo_path=rp)
+        did, key_alias, public_key_hex = _create_identity(label, rp, pp)
+        return Identity(did=did, key_alias=key_alias, label=label, repo_path=rp, public_key=public_key_hex)
 
     def rotate(
         self,
@@ -132,7 +135,8 @@ class IdentityService:
             name, capabilities, self._client.repo_path, pp,
         )
         return AgentIdentity(
-            did=bundle.agent_did, key_alias=bundle.key_alias, attestation=bundle.attestation_json
+            did=bundle.agent_did, key_alias=bundle.key_alias,
+            attestation=bundle.attestation_json, public_key=bundle.public_key_hex,
         )
 
     def delegate_agent(
@@ -161,5 +165,6 @@ class IdentityService:
             identity_did,
         )
         return DelegatedAgent(
-            did=bundle.agent_did, key_alias=bundle.key_alias, attestation=bundle.attestation_json
+            did=bundle.agent_did, key_alias=bundle.key_alias,
+            attestation=bundle.attestation_json, public_key=bundle.public_key_hex,
         )

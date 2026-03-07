@@ -78,6 +78,8 @@ pub struct DelegatedAgentBundle {
     #[pyo3(get)]
     pub attestation_json: String,
     #[pyo3(get)]
+    pub public_key_hex: String,
+    #[pyo3(get)]
     pub repo_path: Option<String>,
 }
 
@@ -98,6 +100,8 @@ pub struct AgentIdentityBundle {
     #[pyo3(get)]
     pub attestation_json: String,
     #[pyo3(get)]
+    pub public_key_hex: String,
+    #[pyo3(get)]
     pub repo_path: Option<String>,
 }
 
@@ -117,7 +121,7 @@ impl AgentIdentityBundle {
 ///
 /// Usage:
 /// ```ignore
-/// let (did, alias) = create_identity(py, "my-identity", "~/.auths", None)?;
+/// let (did, alias, pub_key) = create_identity(py, "my-identity", "~/.auths", None)?;
 /// ```
 #[pyfunction]
 pub fn create_identity(
@@ -125,7 +129,7 @@ pub fn create_identity(
     key_alias: &str,
     repo_path: &str,
     passphrase: Option<String>,
-) -> PyResult<(String, String)> {
+) -> PyResult<(String, String, String)> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_keychain_config(&passphrase_str);
     let alias = KeyAlias::new(key_alias)
@@ -147,7 +151,16 @@ pub fn create_identity(
         let (identity_did, result_alias) =
             initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None)
                 .map_err(|e| PyRuntimeError::new_err(format!("Identity creation failed: {e}")))?;
-        Ok((identity_did.to_string(), result_alias.to_string()))
+
+        // Extract public key so callers can verify signatures immediately
+        let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+            keychain.as_ref(),
+            &result_alias,
+            &provider,
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("Public key extraction failed: {e}")))?;
+
+        Ok((identity_did.to_string(), result_alias.to_string(), hex::encode(pub_bytes)))
     })
 }
 
@@ -197,17 +210,49 @@ pub fn create_agent_identity(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
+    let parsed_caps_for_att = _parsed_caps;
+
     py.allow_threads(|| {
         let (identity_did, result_alias) =
-            initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None)
+            initialize_registry_identity(backend.clone(), &alias, &provider, keychain.as_ref(), None)
                 .map_err(|e| {
                     PyRuntimeError::new_err(format!("Agent identity creation failed: {e}"))
                 })?;
 
+        // Extract public key
+        let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+            keychain.as_ref(),
+            &result_alias,
+            &provider,
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("Public key extraction failed: {e}")))?;
+
+        // Build a self-attestation for the standalone agent
+        let attestation_json = {
+            let device_did = DeviceDID::from_ed25519(
+                pub_bytes.as_slice().try_into().map_err(|_| {
+                    PyRuntimeError::new_err("Invalid public key length")
+                })?,
+            );
+            let att = serde_json::json!({
+                "version": 1,
+                "rid": repo.file_name().unwrap_or_default().to_string_lossy(),
+                "issuer": identity_did.to_string(),
+                "subject": device_did.to_string(),
+                "device_public_key": hex::encode(&pub_bytes),
+                "capabilities": parsed_caps_for_att.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "note": format!("Agent: {}", alias),
+            });
+            serde_json::to_string(&att)
+                .map_err(|e| PyRuntimeError::new_err(format!("Serialization failed: {e}")))?
+        };
+
         Ok(AgentIdentityBundle {
             agent_did: identity_did.to_string(),
             key_alias: result_alias.to_string(),
-            attestation_json: String::new(),
+            attestation_json,
+            public_key_hex: hex::encode(pub_bytes),
             repo_path: Some(repo.to_string_lossy().to_string()),
         })
     })
@@ -277,7 +322,7 @@ pub fn delegate_agent(
         .map_err(|e| PyRuntimeError::new_err(format!("Key generation failed: {e}")))?;
     let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())
         .map_err(|e| PyRuntimeError::new_err(format!("Key parsing failed: {e}")))?;
-    let _agent_pubkey = keypair.public_key().as_ref().to_vec();
+    let agent_pubkey = keypair.public_key().as_ref().to_vec();
 
     // Get parent identity DID for key storage association
     let (parent_did, _) = keychain
@@ -348,6 +393,7 @@ pub fn delegate_agent(
             agent_did: result.device_did.to_string(),
             key_alias: agent_alias.to_string(),
             attestation_json,
+            public_key_hex: hex::encode(&agent_pubkey),
             repo_path: Some(repo.to_string_lossy().to_string()),
         })
     })

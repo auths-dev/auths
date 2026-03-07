@@ -1,6 +1,6 @@
 use auths_core::config::{EnvironmentConfig, KeychainConfig};
 use auths_core::signing::{PrefilledPassphraseProvider, SecureSigner, StorageSigner};
-use auths_core::storage::keychain::get_platform_keychain_with_config;
+use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
 use auths_verifier::core::MAX_ATTESTATION_JSON_SIZE;
 use auths_verifier::types::IdentityDID;
 use pyo3::exceptions::PyRuntimeError;
@@ -134,6 +134,151 @@ pub fn sign_action_as_identity(
         "version": "1.0",
         "type": action_type_owned,
         "identity": identity_did_owned,
+        "payload": payload,
+        "timestamp": timestamp,
+        "signature": sig_hex,
+    });
+
+    serde_json::to_string(&envelope)
+        .map_err(|e| PyRuntimeError::new_err(format!("Failed to serialize envelope: {e}")))
+}
+
+/// Retrieve the Ed25519 public key (hex) for an identity DID.
+///
+/// Args:
+/// * `identity_did`: The identity DID (did:keri:...).
+/// * `passphrase`: Optional passphrase for keychain access.
+///
+/// Usage:
+/// ```ignore
+/// let pub_hex = get_identity_public_key(py, "did:keri:E...", None)?;
+/// ```
+#[pyfunction]
+#[pyo3(signature = (identity_did, passphrase=None))]
+pub fn get_identity_public_key(
+    py: Python<'_>,
+    identity_did: &str,
+    passphrase: Option<String>,
+) -> PyResult<String> {
+    let (signer, provider) = make_signer(passphrase)?;
+    let did = IdentityDID::new(identity_did);
+
+    py.allow_threads(move || {
+        let aliases = signer.inner().list_aliases_for_identity(&did)
+            .map_err(|e| PyRuntimeError::new_err(format!("Key lookup failed: {e}")))?;
+        let alias = aliases.first()
+            .ok_or_else(|| PyRuntimeError::new_err(format!("No key found for identity '{identity_did}'")))?;
+        let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+            signer.inner().as_ref(),
+            alias,
+            &provider,
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("Public key extraction failed: {e}")))?;
+        Ok(hex::encode(pub_bytes))
+    })
+}
+
+/// Sign arbitrary bytes using a keychain-stored agent key (by alias).
+///
+/// Unlike `sign_as_identity` which resolves by DID, this signs using a key alias
+/// directly — enabling delegated agents (did:key:) to sign with their own key.
+///
+/// Args:
+/// * `message`: The bytes to sign.
+/// * `key_alias`: The agent's key alias (e.g., "deploy-agent").
+/// * `passphrase`: Optional passphrase for keychain access.
+///
+/// Usage:
+/// ```ignore
+/// let sig = sign_as_agent(py, b"hello", "deploy-bot-agent", None)?;
+/// ```
+#[pyfunction]
+#[pyo3(signature = (message, key_alias, passphrase=None))]
+pub fn sign_as_agent(
+    py: Python<'_>,
+    message: &[u8],
+    key_alias: &str,
+    passphrase: Option<String>,
+) -> PyResult<String> {
+    let (signer, provider) = make_signer(passphrase)?;
+    let alias = KeyAlias::new(key_alias)
+        .map_err(|e| PyRuntimeError::new_err(format!("Invalid key alias: {e}")))?;
+
+    let msg = message.to_vec();
+    py.allow_threads(move || {
+        let sig_bytes = signer
+            .sign_with_alias(&alias, &provider, &msg)
+            .map_err(|e| PyRuntimeError::new_err(format!("Signing failed: {e}")))?;
+        Ok(hex::encode(sig_bytes))
+    })
+}
+
+/// Sign an action envelope using an agent's key alias.
+///
+/// Args:
+/// * `action_type`: Application-defined action type.
+/// * `payload_json`: JSON string for the payload field.
+/// * `key_alias`: The agent's key alias.
+/// * `agent_did`: The agent's DID (included in the envelope).
+/// * `passphrase`: Optional passphrase for keychain access.
+///
+/// Usage:
+/// ```ignore
+/// let envelope = sign_action_as_agent(py, "deploy", "{}", "deploy-bot-agent", "did:key:z6Mk...", None)?;
+/// ```
+#[pyfunction]
+#[pyo3(signature = (action_type, payload_json, key_alias, agent_did, passphrase=None))]
+pub fn sign_action_as_agent(
+    py: Python<'_>,
+    action_type: &str,
+    payload_json: &str,
+    key_alias: &str,
+    agent_did: &str,
+    passphrase: Option<String>,
+) -> PyResult<String> {
+    if payload_json.len() > MAX_ATTESTATION_JSON_SIZE {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Payload JSON too large: {} bytes, max {MAX_ATTESTATION_JSON_SIZE}",
+            payload_json.len()
+        )));
+    }
+
+    let payload: serde_json::Value = serde_json::from_str(payload_json).map_err(|e| {
+        pyo3::exceptions::PyValueError::new_err(format!("Invalid payload JSON: {e}"))
+    })?;
+
+    #[allow(clippy::disallowed_methods)]
+    let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+    let signing_data = serde_json::json!({
+        "version": "1.0",
+        "type": action_type,
+        "identity": agent_did,
+        "payload": payload,
+        "timestamp": &timestamp,
+    });
+
+    let canonical = json_canon::to_string(&signing_data)
+        .map_err(|e| PyRuntimeError::new_err(format!("Canonicalization failed: {e}")))?;
+
+    let (signer, provider) = make_signer(passphrase)?;
+    let alias = KeyAlias::new(key_alias)
+        .map_err(|e| PyRuntimeError::new_err(format!("Invalid key alias: {e}")))?;
+
+    let action_type_owned = action_type.to_string();
+    let agent_did_owned = agent_did.to_string();
+
+    let sig_hex = py.allow_threads(move || {
+        let sig_bytes = signer
+            .sign_with_alias(&alias, &provider, canonical.as_bytes())
+            .map_err(|e| PyRuntimeError::new_err(format!("Signing failed: {e}")))?;
+        Ok::<String, PyErr>(hex::encode(sig_bytes))
+    })?;
+
+    let envelope = serde_json::json!({
+        "version": "1.0",
+        "type": action_type_owned,
+        "identity": agent_did_owned,
         "payload": payload,
         "timestamp": timestamp,
         "signature": sig_hex,
