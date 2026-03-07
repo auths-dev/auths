@@ -11,6 +11,7 @@ use auths_crypto::CryptoProvider;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
+use subtle::ConstantTimeEq;
 
 // ── KERI Identifier Newtypes ────────────────────────────────────────────────
 
@@ -781,9 +782,11 @@ fn compute_commitment(public_key: &[u8]) -> String {
     format!("E{}", URL_SAFE_NO_PAD.encode(hash.as_bytes()))
 }
 
-/// Verify a key matches a commitment.
+// Defense-in-depth: both values are derived from public data, but constant-time
+// comparison prevents timing side-channels on commitment verification.
 fn verify_commitment(public_key: &[u8], commitment: &str) -> bool {
-    compute_commitment(public_key) == commitment
+    let computed = compute_commitment(public_key);
+    computed.as_bytes().ct_eq(commitment.as_bytes()).into()
 }
 
 /// Decode a KERI key (D-prefixed Base64url for Ed25519).

@@ -41,6 +41,7 @@ thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 git2 = "0.20.4"
 schemars = "0.8"
+subtle = "2.6"
 
 auths-core = { path = "crates/auths-core", version = "0.0.1-rc.4" }
 auths-id = { path = "crates/auths-id", version = "0.0.1-rc.4" }

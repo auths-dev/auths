@@ -41,6 +41,7 @@ multibase = "0.9.1"
 auths-crypto = { workspace = true, features = ["native"] }
 auths-pairing-protocol = { workspace = true }
 blake3 = "1.5"
+subtle.workspace = true
 pkcs8 = "0.10.2"
 hex = "0.4.3"
 tempfile = "3.19.1"
