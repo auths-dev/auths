@@ -49,7 +49,7 @@ def run_auths(
     *,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
-    timeout: int = 30,
+    timeout: int = 60,
     stdin_data: str | None = None,
 ) -> CLIResult:
     """Run an auths CLI command and capture output."""
