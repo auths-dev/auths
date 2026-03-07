@@ -75,10 +75,14 @@ pub fn rotate_identity_ffi(
 
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| PyRuntimeError::new_err(format!("Keychain error: {e}")))?;
-    let keychain = Arc::from(keychain);
+    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
 
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
+
+    let alias = identity_key_alias
+        .map(|a| resolve_key_alias(a, keychain.as_ref()))
+        .transpose()?;
 
     let ctx = AuthsContext::builder()
         .registry(backend)
@@ -89,10 +93,6 @@ pub fn rotate_identity_ffi(
         .attestation_source(attestation_storage)
         .passphrase_provider(provider)
         .build();
-
-    let alias = identity_key_alias
-        .map(|a| resolve_key_alias(a, keychain.as_ref()))
-        .transpose()?;
 
     let next_alias = next_key_alias
         .map(|a| {
