@@ -1156,6 +1156,21 @@
 <td>—</td>
 <td></td>
 </tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td></td>
+</tr>
 </tbody>
 </table>
 <!-- END GENERATED: auths device link -->
@@ -1194,6 +1209,21 @@
 <td>—</td>
 <td></td>
 </tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td></td>
+</tr>
 </tbody>
 </table>
 <!-- END GENERATED: auths device revoke -->
@@ -1229,6 +1259,21 @@
 </tr>
 <tr>
 <td><code>--device-key-alias &lt;DEVICE_KEY_ALIAS&gt;</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
 <td>—</td>
 <td></td>
 </tr>
@@ -1294,6 +1339,21 @@
 <td>—</td>
 <td></td>
 </tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td></td>
+</tr>
 </tbody>
 </table>
 <!-- END GENERATED: auths id rotate -->
@@ -1328,6 +1388,21 @@
 <td>—</td>
 <td></td>
 </tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td></td>
+</tr>
 </tbody>
 </table>
 <!-- END GENERATED: auths key import -->
@@ -1349,17 +1424,32 @@
 <tr>
 <td><code>--key-alias &lt;KEY_ALIAS&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Local alias of the key to export. [aliases: --alias]</td>
 </tr>
 <tr>
 <td><code>--passphrase &lt;PASSPHRASE&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Passphrase to decrypt the key (needed for 'pem'/'pub' formats).</td>
 </tr>
 <tr>
 <td><code>--format &lt;FORMAT&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Export format: pem (OpenSSH private), pub (OpenSSH public), enc (raw encrypted bytes).</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
 </tr>
 </tbody>
 </table>
@@ -1382,7 +1472,22 @@
 <tr>
 <td><code>--key-alias &lt;KEY_ALIAS&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Local alias of the key to remove. [aliases: --alias]</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
 </tr>
 </tbody>
 </table>
@@ -1406,12 +1511,27 @@
 <tr>
 <td><code>&lt;FILE&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Path to the policy file (JSON)</td>
 </tr>
 <tr>
 <td><code>-c, --context &lt;CONTEXT&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Path to the context file (JSON)</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
 </tr>
 </tbody>
 </table>
@@ -1434,12 +1554,27 @@
 <tr>
 <td><code>&lt;FILE&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Path to the policy file (JSON)</td>
 </tr>
 <tr>
 <td><code>-t, --tests &lt;TESTS&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Path to the test suite file (JSON)</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
 </tr>
 </tbody>
 </table>
@@ -1462,12 +1597,27 @@
 <tr>
 <td><code>&lt;OLD&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Path to the old policy file (JSON)</td>
 </tr>
 <tr>
 <td><code>&lt;NEW&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Path to the new policy file (JSON)</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
 </tr>
 </tbody>
 </table>
@@ -1515,6 +1665,16 @@
 </tr>
 <tr>
 <td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td></td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
 <td>—</td>
 <td></td>
 </tr>
@@ -1566,6 +1726,16 @@
 <td>—</td>
 <td>Path to the Auths repository</td>
 </tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
 </tbody>
 </table>
 <!-- END GENERATED: auths emergency rotate-now -->
@@ -1604,6 +1774,16 @@
 <td>—</td>
 <td>Path to the Auths repository</td>
 </tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
 </tbody>
 </table>
 <!-- END GENERATED: auths emergency freeze -->
@@ -1636,6 +1816,16 @@
 <td><code>--repo &lt;REPO&gt;</code></td>
 <td>—</td>
 <td>Path to the Auths repository</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
 </tr>
 </tbody>
 </table>
