@@ -148,6 +148,7 @@ pub fn verify_action_envelope(
         return Ok(VerificationResult {
             valid: false,
             error: Some(format!("Unsupported version: {version}")),
+            error_code: Some("AUTHS_INVALID_INPUT".to_string()),
         });
     }
 
@@ -175,10 +176,12 @@ pub fn verify_action_envelope(
         Ok(()) => Ok(VerificationResult {
             valid: true,
             error: None,
+            error_code: None,
         }),
         Err(_) => Ok(VerificationResult {
             valid: false,
             error: Some("Ed25519 signature verification failed".to_string()),
+            error_code: Some("AUTHS_VERIFICATION_ERROR".to_string()),
         }),
     }
 }

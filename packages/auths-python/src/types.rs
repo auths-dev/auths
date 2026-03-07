@@ -11,6 +11,8 @@ pub struct VerificationResult {
     pub valid: bool,
     #[pyo3(get)]
     pub error: Option<String>,
+    #[pyo3(get)]
+    pub error_code: Option<String>,
 }
 
 #[pymethods]
@@ -18,6 +20,12 @@ impl VerificationResult {
     fn __repr__(&self) -> String {
         if self.valid {
             "VerificationResult(valid=True)".to_string()
+        } else if let Some(code) = &self.error_code {
+            format!(
+                "VerificationResult(valid=False, error={:?}, error_code={:?})",
+                self.error.as_deref().unwrap_or("None"),
+                code
+            )
         } else {
             format!(
                 "VerificationResult(valid=False, error={:?})",

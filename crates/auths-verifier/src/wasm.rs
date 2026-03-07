@@ -1,5 +1,6 @@
 use crate::clock::{ClockProvider, SystemClock};
 use crate::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
+use crate::error::{AttestationError, AuthsErrorInfo};
 use crate::keri;
 use crate::types::VerificationReport;
 use crate::verify;
@@ -27,6 +28,9 @@ pub struct WasmVerificationResult {
     /// Human-readable error message if verification failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Structured error code for programmatic handling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
 }
 
 /// Verifies an attestation provided as a JSON string against an explicit issuer public key hex string.
@@ -67,7 +71,7 @@ pub async fn wasm_verify_attestation_json(
         }
         Err(e) => {
             console_log!("WASM: Verification failed: {}", e);
-            Err(JsValue::from_str(&e.to_string()))
+            Err(JsValue::from_str(&format!("[{}] {}", e.error_code(), e)))
         }
     }
 }
@@ -83,10 +87,12 @@ pub async fn wasm_verify_attestation_with_result(
             Ok(()) => WasmVerificationResult {
                 valid: true,
                 error: None,
+                error_code: None,
             },
             Err(e) => WasmVerificationResult {
                 valid: false,
-                error: Some(e),
+                error: Some(e.to_string()),
+                error_code: Some(e.error_code().to_string()),
             },
         };
     serde_json::to_string(&result)
@@ -97,32 +103,32 @@ async fn verify_attestation_internal(
     attestation_json_str: &str,
     issuer_pk_hex: &str,
     provider: &dyn CryptoProvider,
-) -> Result<(), String> {
+) -> Result<(), AttestationError> {
     if attestation_json_str.len() > MAX_ATTESTATION_JSON_SIZE {
-        return Err(format!(
+        return Err(AttestationError::InputTooLarge(format!(
             "Attestation JSON too large: {} bytes, max {}",
             attestation_json_str.len(),
             MAX_ATTESTATION_JSON_SIZE
-        ));
+        )));
     }
 
-    let issuer_pk_bytes =
-        hex::decode(issuer_pk_hex).map_err(|e| format!("Invalid issuer public key hex: {}", e))?;
+    let issuer_pk_bytes = hex::decode(issuer_pk_hex).map_err(|e| {
+        AttestationError::InvalidInput(format!("Invalid issuer public key hex: {}", e))
+    })?;
 
     if issuer_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(format!(
+        return Err(AttestationError::InvalidInput(format!(
             "Invalid issuer public key length: expected {}, got {}",
             ED25519_PUBLIC_KEY_LEN,
             issuer_pk_bytes.len()
-        ));
+        )));
     }
 
-    let att: Attestation = serde_json::from_str(attestation_json_str)
-        .map_err(|e| format!("Failed to parse attestation JSON: {}", e))?;
+    let att: Attestation = serde_json::from_str(attestation_json_str).map_err(|e| {
+        AttestationError::SerializationError(format!("Failed to parse attestation JSON: {}", e))
+    })?;
 
-    verify::verify_with_keys_at(&att, &issuer_pk_bytes, SystemClock.now(), true, provider)
-        .await
-        .map_err(|e| e.to_string())
+    verify::verify_with_keys_at(&att, &issuer_pk_bytes, SystemClock.now(), true, provider).await
 }
 
 /// Verifies a detached Ed25519 signature over a file hash (all inputs hex-encoded).
@@ -159,7 +165,9 @@ pub async fn wasm_verify_chain_json(attestations_json_array: &str, root_pk_hex: 
         Ok(report) => serde_json::to_string(&report)
             .unwrap_or_else(|_| r#"{"status":{"type":"BrokenChain","missingLink":"Serialization failed"},"chain":[],"warnings":[]}"#.to_string()),
         Err(e) => {
-            format!(r#"{{"status":{{"type":"BrokenChain","missing_link":"{}"}},"chain":[],"warnings":[]}}"#, e.replace('"', "\\\""))
+            let msg = e.to_string().replace('"', "\\\"");
+            let code = e.error_code();
+            format!(r#"{{"status":{{"type":"BrokenChain","missing_link":"{msg}"}},"chain":[],"warnings":[],"error_code":"{code}"}}"#)
         }
     }
 }
@@ -168,32 +176,36 @@ async fn verify_chain_internal(
     attestations_json_array: &str,
     root_pk_hex: &str,
     provider: &dyn CryptoProvider,
-) -> Result<VerificationReport, String> {
+) -> Result<VerificationReport, AttestationError> {
     if attestations_json_array.len() > MAX_JSON_BATCH_SIZE {
-        return Err(format!(
+        return Err(AttestationError::InputTooLarge(format!(
             "Attestations JSON too large: {} bytes, max {}",
             attestations_json_array.len(),
             MAX_JSON_BATCH_SIZE
-        ));
+        )));
     }
 
-    let root_pk_bytes =
-        hex::decode(root_pk_hex).map_err(|e| format!("Invalid root public key hex: {}", e))?;
+    let root_pk_bytes = hex::decode(root_pk_hex).map_err(|e| {
+        AttestationError::InvalidInput(format!("Invalid root public key hex: {}", e))
+    })?;
 
     if root_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(format!(
+        return Err(AttestationError::InvalidInput(format!(
             "Invalid root public key length: expected {}, got {}",
             ED25519_PUBLIC_KEY_LEN,
             root_pk_bytes.len()
-        ));
+        )));
     }
 
-    let attestations: Vec<Attestation> = serde_json::from_str(attestations_json_array)
-        .map_err(|e| format!("Failed to parse attestations JSON array: {}", e))?;
+    let attestations: Vec<Attestation> =
+        serde_json::from_str(attestations_json_array).map_err(|e| {
+            AttestationError::SerializationError(format!(
+                "Failed to parse attestations JSON array: {}",
+                e
+            ))
+        })?;
 
-    verify::verify_chain_inner(&attestations, &root_pk_bytes, provider, SystemClock.now())
-        .await
-        .map_err(|e| e.to_string())
+    verify::verify_chain_inner(&attestations, &root_pk_bytes, provider, SystemClock.now()).await
 }
 
 /// Verifies a chain of attestations with witness quorum checking.
@@ -218,7 +230,9 @@ pub async fn wasm_verify_chain_with_witnesses_json(
         Ok(report) => serde_json::to_string(&report)
             .unwrap_or_else(|_| r#"{"status":{"type":"BrokenChain","missing_link":"Serialization failed"},"chain":[],"warnings":[]}"#.to_string()),
         Err(e) => {
-            format!(r#"{{"status":{{"type":"BrokenChain","missing_link":"{}"}},"chain":[],"warnings":[]}}"#, e.replace('"', "\\\""))
+            let msg = e.to_string().replace('"', "\\\"");
+            let code = e.error_code();
+            format!(r#"{{"status":{{"type":"BrokenChain","missing_link":"{msg}"}},"chain":[],"warnings":[],"error_code":"{code}"}}"#)
         }
     }
 }
@@ -230,60 +244,68 @@ async fn verify_chain_with_witnesses_internal(
     witness_keys_json: &str,
     threshold: u32,
     provider: &dyn CryptoProvider,
-) -> Result<VerificationReport, String> {
+) -> Result<VerificationReport, AttestationError> {
     if chain_json.len() > MAX_JSON_BATCH_SIZE {
-        return Err(format!(
+        return Err(AttestationError::InputTooLarge(format!(
             "Chain JSON too large: {} bytes, max {}",
             chain_json.len(),
             MAX_JSON_BATCH_SIZE
-        ));
+        )));
     }
     if receipts_json.len() > MAX_JSON_BATCH_SIZE {
-        return Err(format!(
+        return Err(AttestationError::InputTooLarge(format!(
             "Receipts JSON too large: {} bytes, max {}",
             receipts_json.len(),
             MAX_JSON_BATCH_SIZE
-        ));
+        )));
     }
     if witness_keys_json.len() > MAX_JSON_BATCH_SIZE {
-        return Err(format!(
+        return Err(AttestationError::InputTooLarge(format!(
             "Witness keys JSON too large: {} bytes, max {}",
             witness_keys_json.len(),
             MAX_JSON_BATCH_SIZE
-        ));
+        )));
     }
 
-    let root_pk_bytes =
-        hex::decode(root_pk_hex).map_err(|e| format!("Invalid root public key hex: {}", e))?;
+    let root_pk_bytes = hex::decode(root_pk_hex).map_err(|e| {
+        AttestationError::InvalidInput(format!("Invalid root public key hex: {}", e))
+    })?;
 
     if root_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(format!(
+        return Err(AttestationError::InvalidInput(format!(
             "Invalid root public key length: expected {}, got {}",
             ED25519_PUBLIC_KEY_LEN,
             root_pk_bytes.len()
-        ));
+        )));
     }
 
-    let attestations: Vec<Attestation> = serde_json::from_str(chain_json)
-        .map_err(|e| format!("Failed to parse attestations JSON: {}", e))?;
+    let attestations: Vec<Attestation> = serde_json::from_str(chain_json).map_err(|e| {
+        AttestationError::SerializationError(format!("Failed to parse attestations JSON: {}", e))
+    })?;
 
-    let receipts: Vec<WitnessReceipt> = serde_json::from_str(receipts_json)
-        .map_err(|e| format!("Failed to parse receipts JSON: {}", e))?;
+    let receipts: Vec<WitnessReceipt> = serde_json::from_str(receipts_json).map_err(|e| {
+        AttestationError::SerializationError(format!("Failed to parse receipts JSON: {}", e))
+    })?;
 
     #[derive(Deserialize)]
     struct WitnessKeyEntry {
         did: String,
         pk_hex: String,
     }
-    let key_entries: Vec<WitnessKeyEntry> = serde_json::from_str(witness_keys_json)
-        .map_err(|e| format!("Failed to parse witness keys JSON: {}", e))?;
+    let key_entries: Vec<WitnessKeyEntry> =
+        serde_json::from_str(witness_keys_json).map_err(|e| {
+            AttestationError::SerializationError(format!(
+                "Failed to parse witness keys JSON: {}",
+                e
+            ))
+        })?;
 
     let witness_keys: Vec<(String, Vec<u8>)> = key_entries
         .into_iter()
         .map(|e| {
-            hex::decode(&e.pk_hex)
-                .map(|pk| (e.did, pk))
-                .map_err(|err| format!("Invalid witness key hex: {}", err))
+            hex::decode(&e.pk_hex).map(|pk| (e.did, pk)).map_err(|err| {
+                AttestationError::InvalidInput(format!("Invalid witness key hex: {}", err))
+            })
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -295,8 +317,7 @@ async fn verify_chain_with_witnesses_internal(
 
     let mut report =
         verify::verify_chain_inner(&attestations, &root_pk_bytes, provider, SystemClock.now())
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
 
     if report.is_valid() {
         let quorum = crate::witness::verify_witness_receipts(&config, provider).await;
