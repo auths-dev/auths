@@ -634,6 +634,7 @@ mod tests {
 
     /// Mock KeyStorage implementation for testing
     struct MockKeyStorage {
+        #[allow(clippy::type_complexity)]
         keys: Mutex<HashMap<String, (IdentityDID, KeyRole, Vec<u8>)>>,
     }
 

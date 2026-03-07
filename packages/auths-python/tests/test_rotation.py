@@ -69,3 +69,31 @@ class TestImports:
     def test_rotate_identity_ffi_importable(self):
         from auths._native import rotate_identity_ffi
         assert rotate_identity_ffi is not None
+
+
+class TestRotationWithMultipleAgents:
+
+    def test_rotate_with_two_delegated_agents(self):
+        """Regression: rotation must work when 2+ agents are delegated."""
+        import tempfile
+        import os
+        os.environ["AUTHS_KEYCHAIN_BACKEND"] = "file"
+        os.environ["AUTHS_PASSPHRASE"] = "test"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from auths import Auths
+            auths = Auths(repo_path=tmpdir, passphrase="test")
+            operator = auths.identities.create(label="rotation-test")
+
+            auths.identities.delegate_agent(
+                operator.did, name="agent-a",
+                capabilities=["deploy:staging"], expires_in_days=7,
+            )
+            auths.identities.delegate_agent(
+                operator.did, name="agent-b",
+                capabilities=["audit"], expires_in_days=90,
+            )
+
+            # Must NOT fail with "pre-committed next key '...-agent--next-0' not found"
+            result = auths.identities.rotate(operator.did)
+            assert result.sequence == 1
+            assert result.controller_did == operator.did

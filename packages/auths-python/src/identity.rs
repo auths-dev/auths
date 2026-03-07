@@ -45,7 +45,7 @@ pub(crate) fn make_keychain_config(passphrase: &str) -> EnvironmentConfig {
 
 /// Resolve a DID-or-alias string to a KeyAlias.
 ///
-/// If the input starts with "did:", look up the first non-rotation alias
+/// If the input starts with "did:", look up the primary key alias
 /// for that identity in the keychain. Otherwise treat it as a direct alias.
 pub(crate) fn resolve_key_alias(
     identity_ref: &str,
@@ -54,13 +54,15 @@ pub(crate) fn resolve_key_alias(
     if identity_ref.starts_with("did:") {
         let did = IdentityDID::new_unchecked(identity_ref.to_string());
         let aliases = keychain
-            .list_aliases_for_identity(&did)
+            .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
             .map_err(|e| PyRuntimeError::new_err(format!("Key lookup failed: {e}")))?;
         aliases
             .into_iter()
-            .find(|a| !a.as_str().contains("--next-"))
+            .next()
             .ok_or_else(|| {
-                PyRuntimeError::new_err(format!("No key found for identity '{identity_ref}'"))
+                PyRuntimeError::new_err(format!(
+                    "No primary key found for identity '{identity_ref}'"
+                ))
             })
     } else {
         KeyAlias::new(identity_ref)

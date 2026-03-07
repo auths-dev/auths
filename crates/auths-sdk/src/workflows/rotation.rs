@@ -320,12 +320,13 @@ fn retrieve_precommitted_key(
     let target_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
 
-    let (did_check, _role, encrypted_next) = ctx.key_storage.load_key(&target_alias).map_err(|e| {
-        RotationError::KeyNotFound(format!(
-            "pre-committed next key '{}' not found: {e}",
-            target_alias
-        ))
-    })?;
+    let (did_check, _role, encrypted_next) =
+        ctx.key_storage.load_key(&target_alias).map_err(|e| {
+            RotationError::KeyNotFound(format!(
+                "pre-committed next key '{}' not found: {e}",
+                target_alias
+            ))
+        })?;
 
     if did != &did_check {
         return Err(RotationError::RotationFailed(format!(

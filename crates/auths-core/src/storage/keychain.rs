@@ -217,10 +217,10 @@ pub trait KeyStorage: Send + Sync {
         let all = self.list_aliases_for_identity(identity_did)?;
         let mut filtered = Vec::new();
         for alias in all {
-            if let Ok((_, r, _)) = self.load_key(&alias) {
-                if r == role {
-                    filtered.push(alias);
-                }
+            if let Ok((_, r, _)) = self.load_key(&alias)
+                && r == role
+            {
+                filtered.push(alias);
             }
         }
         Ok(filtered)
