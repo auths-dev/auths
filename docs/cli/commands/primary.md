@@ -19,6 +19,9 @@ auths init
 | `--dry-run` | — |  |
 | `--registry <REGISTRY>` | — |  |
 | `--skip-registration` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
+| `--repo <REPO>` | — |  |
 <!-- END GENERATED: auths init -->
 
 ---
@@ -39,6 +42,9 @@ auths verify
 | `--witness-receipts <WITNESS_RECEIPTS>` | — |  |
 | `--witness-threshold <WITNESS_THRESHOLD>` | — |  |
 | `--witness-keys <WITNESS_KEYS>...` | — |  |
+| `--json` | — |  |
+| `-q, --quiet` | — |  |
+| `--repo <REPO>` | — |  |
 <!-- END GENERATED: auths verify -->
 
 ---
@@ -50,5 +56,9 @@ auths status
 ```
 
 <!-- BEGIN GENERATED: auths status -->
-_No options._
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths status -->
