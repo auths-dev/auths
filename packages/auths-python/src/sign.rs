@@ -72,6 +72,7 @@ pub fn sign_action(
     let payload: serde_json::Value = serde_json::from_str(payload_json)
         .map_err(|e| PyValueError::new_err(format!("Invalid payload JSON: {e}")))?;
 
+    #[allow(clippy::disallowed_methods)] // Presentation boundary
     let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 
     let signing_data = serde_json::json!({
@@ -181,7 +182,7 @@ pub fn verify_action_envelope(
         Err(_) => Ok(VerificationResult {
             valid: false,
             error: Some("Ed25519 signature verification failed".to_string()),
-            error_code: Some("AUTHS_VERIFICATION_ERROR".to_string()),
+            error_code: Some("AUTHS_ISSUER_SIG_FAILED".to_string()),
         }),
     }
 }

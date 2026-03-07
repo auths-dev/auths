@@ -33,7 +33,6 @@ _ERROR_CODE_MAP = {
     "AUTHS_ATTESTATION_EXPIRED": ("expired_attestation", VerificationError),
     "AUTHS_ATTESTATION_REVOKED": ("revoked_device", VerificationError),
     "AUTHS_TIMESTAMP_IN_FUTURE": ("future_timestamp", VerificationError),
-    "AUTHS_VERIFICATION_ERROR": ("invalid_signature", VerificationError),
     "AUTHS_MISSING_CAPABILITY": ("missing_capability", VerificationError),
     "AUTHS_CRYPTO_ERROR": ("invalid_key", CryptoError),
     "AUTHS_DID_RESOLUTION_ERROR": ("invalid_key", CryptoError),
@@ -52,7 +51,7 @@ _ERROR_CODE_MAP = {
 }
 
 
-def _map_error(exc: Exception) -> Exception:
+def _map_error(exc: Exception, *, default_cls: type = VerificationError) -> Exception:
     msg = str(exc)
     code = None
     if msg.startswith("[AUTHS_") and "] " in msg:
@@ -61,7 +60,7 @@ def _map_error(exc: Exception) -> Exception:
     if code and code in _ERROR_CODE_MAP:
         py_code, cls = _ERROR_CODE_MAP[code]
         return cls(msg, code=py_code)
-    return VerificationError(msg, code="unknown")
+    return default_cls(msg, code="unknown")
 
 
 def _map_network_error(exc: Exception) -> Exception:
@@ -185,7 +184,7 @@ class Auths:
         try:
             return _sign_bytes(private_key, message)
         except (ValueError, RuntimeError) as exc:
-            raise _map_error(exc) from exc
+            raise _map_error(exc, default_cls=CryptoError) from exc
 
     def sign_action(
         self,
@@ -198,7 +197,7 @@ class Auths:
         try:
             return _sign_action(private_key, action_type, payload, identity_did)
         except (ValueError, RuntimeError) as exc:
-            raise _map_error(exc) from exc
+            raise _map_error(exc, default_cls=CryptoError) from exc
 
     def verify_action(self, envelope_json: str, public_key: str) -> VerificationResult:
         """Verify an action envelope signature."""
@@ -230,7 +229,7 @@ class Auths:
         try:
             return sign_as_identity(message, identity, self.repo_path, pp)
         except (ValueError, RuntimeError) as exc:
-            raise _map_error(exc) from exc
+            raise _map_error(exc, default_cls=CryptoError) from exc
 
     def sign_action_as(
         self,
@@ -258,7 +257,7 @@ class Auths:
                 action_type, payload, identity, self.repo_path, pp
             )
         except (ValueError, RuntimeError) as exc:
-            raise _map_error(exc) from exc
+            raise _map_error(exc, default_cls=CryptoError) from exc
 
     def sign_commit(
         self,
@@ -294,7 +293,7 @@ class Auths:
                 namespace=raw.namespace,
             )
         except (ValueError, RuntimeError) as exc:
-            raise _map_error(exc) from exc
+            raise _map_error(exc, default_cls=CryptoError) from exc
 
     def sign_artifact(
         self,
@@ -335,7 +334,7 @@ class Auths:
         except FileNotFoundError:
             raise
         except (ValueError, RuntimeError) as exc:
-            raise _map_error(exc) from exc
+            raise _map_error(exc, default_cls=CryptoError) from exc
 
     def sign_artifact_bytes(
         self,
@@ -374,7 +373,7 @@ class Auths:
                 file_size=raw.file_size,
             )
         except (ValueError, RuntimeError) as exc:
-            raise _map_error(exc) from exc
+            raise _map_error(exc, default_cls=CryptoError) from exc
 
     def publish_artifact(
         self,

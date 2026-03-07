@@ -26,6 +26,7 @@ use pyo3::prelude::*;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
+#[allow(clippy::disallowed_methods)] // Presentation boundary: env var read is intentional
 pub(crate) fn resolve_passphrase(passphrase: Option<String>) -> String {
     passphrase.unwrap_or_else(|| std::env::var("AUTHS_PASSPHRASE").unwrap_or_default())
 }
@@ -39,8 +40,6 @@ pub(crate) fn make_keychain_config(passphrase: &str) -> EnvironmentConfig {
             passphrase: Some(passphrase.to_string()),
         },
         ssh_agent_socket: None,
-        #[cfg(feature = "keychain-pkcs11")]
-        pkcs11: None,
     }
 }
 

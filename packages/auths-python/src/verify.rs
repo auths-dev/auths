@@ -342,6 +342,7 @@ fn parse_rfc3339_timestamp(at_rfc3339: &str) -> PyResult<DateTime<Utc>> {
         }
     })?;
 
+    #[allow(clippy::disallowed_methods)] // Presentation boundary
     let now = Utc::now();
     let skew_tolerance = chrono::Duration::seconds(60);
     if at > now + skew_tolerance {

@@ -44,6 +44,7 @@ pub struct PyEvalContext {
 impl PyEvalContext {
     #[new]
     #[pyo3(signature = (issuer, subject, *, capabilities=None, role=None, revoked=false, expires_at=None, repo=None, environment=None, signer_type=None, delegated_by=None, chain_depth=None))]
+    #[allow(clippy::too_many_arguments)] // PyO3 constructor mirrors Python kwargs
     fn new(
         issuer: &str,
         subject: &str,
@@ -62,7 +63,9 @@ impl PyEvalContext {
         let subject_did = CanonicalDid::parse(subject)
             .map_err(|e| PyValueError::new_err(format!("Invalid subject DID: {e}")))?;
 
-        let mut ctx = EvalContext::new(Utc::now(), issuer_did, subject_did).revoked(revoked);
+        #[allow(clippy::disallowed_methods)] // Presentation boundary
+        let now = Utc::now();
+        let mut ctx = EvalContext::new(now, issuer_did, subject_did).revoked(revoked);
 
         if let Some(caps) = capabilities {
             for cap_str in &caps {

@@ -1,5 +1,5 @@
 use crate::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
-use crate::error::{AttestationError, AuthsErrorInfo};
+use crate::error::AttestationError;
 use crate::types::DeviceDID;
 use crate::verifier::Verifier;
 use crate::witness::{WitnessReceipt, WitnessVerifyConfig};
@@ -51,16 +51,16 @@ pub const ERR_VERIFY_OTHER: c_int = -99;
 pub const ERR_VERIFY_PANIC: c_int = -127;
 
 fn attestation_error_to_code(e: &AttestationError) -> c_int {
-    match e.error_code() {
-        "AUTHS_ISSUER_SIG_FAILED" => ERR_VERIFY_ISSUER_SIG_FAIL,
-        "AUTHS_DEVICE_SIG_FAILED" => ERR_VERIFY_DEVICE_SIG_FAIL,
-        "AUTHS_ATTESTATION_EXPIRED" => ERR_VERIFY_EXPIRED,
-        "AUTHS_ATTESTATION_REVOKED" => ERR_VERIFY_REVOKED,
-        "AUTHS_TIMESTAMP_IN_FUTURE" => ERR_VERIFY_FUTURE_TIMESTAMP,
-        "AUTHS_SERIALIZATION_ERROR" => ERR_VERIFY_SERIALIZATION,
-        "AUTHS_INVALID_INPUT" => ERR_VERIFY_INVALID_PK_LEN,
-        "AUTHS_INPUT_TOO_LARGE" => ERR_VERIFY_INPUT_TOO_LARGE,
-        "AUTHS_BUNDLE_EXPIRED" => ERR_VERIFY_EXPIRED,
+    match e {
+        AttestationError::IssuerSignatureFailed(_) => ERR_VERIFY_ISSUER_SIG_FAIL,
+        AttestationError::DeviceSignatureFailed(_) => ERR_VERIFY_DEVICE_SIG_FAIL,
+        AttestationError::AttestationExpired { .. } => ERR_VERIFY_EXPIRED,
+        AttestationError::AttestationRevoked => ERR_VERIFY_REVOKED,
+        AttestationError::TimestampInFuture { .. } => ERR_VERIFY_FUTURE_TIMESTAMP,
+        AttestationError::SerializationError(_) => ERR_VERIFY_SERIALIZATION,
+        AttestationError::InvalidInput(_) => ERR_VERIFY_INVALID_PK_LEN,
+        AttestationError::InputTooLarge(_) => ERR_VERIFY_INPUT_TOO_LARGE,
+        AttestationError::BundleExpired { .. } => ERR_VERIFY_EXPIRED,
         _ => ERR_VERIFY_OTHER,
     }
 }

@@ -165,9 +165,13 @@ pub async fn wasm_verify_chain_json(attestations_json_array: &str, root_pk_hex: 
         Ok(report) => serde_json::to_string(&report)
             .unwrap_or_else(|_| r#"{"status":{"type":"BrokenChain","missingLink":"Serialization failed"},"chain":[],"warnings":[]}"#.to_string()),
         Err(e) => {
-            let msg = e.to_string().replace('"', "\\\"");
-            let code = e.error_code();
-            format!(r#"{{"status":{{"type":"BrokenChain","missing_link":"{msg}"}},"chain":[],"warnings":[],"error_code":"{code}"}}"#)
+            let error_response = serde_json::json!({
+                "status": { "type": "BrokenChain", "missing_link": e.to_string() },
+                "chain": [],
+                "warnings": [],
+                "error_code": e.error_code(),
+            });
+            error_response.to_string()
         }
     }
 }
@@ -230,9 +234,13 @@ pub async fn wasm_verify_chain_with_witnesses_json(
         Ok(report) => serde_json::to_string(&report)
             .unwrap_or_else(|_| r#"{"status":{"type":"BrokenChain","missing_link":"Serialization failed"},"chain":[],"warnings":[]}"#.to_string()),
         Err(e) => {
-            let msg = e.to_string().replace('"', "\\\"");
-            let code = e.error_code();
-            format!(r#"{{"status":{{"type":"BrokenChain","missing_link":"{msg}"}},"chain":[],"warnings":[],"error_code":"{code}"}}"#)
+            let error_response = serde_json::json!({
+                "status": { "type": "BrokenChain", "missing_link": e.to_string() },
+                "chain": [],
+                "warnings": [],
+                "error_code": e.error_code(),
+            });
+            error_response.to_string()
         }
     }
 }
