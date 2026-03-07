@@ -33,6 +33,12 @@ pub enum ProtocolError {
     #[error("short code not found: {0}")]
     ShortCodeNotFound(String),
 
+    #[error("encryption failed: {0}")]
+    EncryptionFailed(String),
+
+    #[error("decryption failed: {0}")]
+    DecryptionFailed(String),
+
     #[error("serialization error: {0}")]
     Serialization(String),
 }

@@ -2,7 +2,8 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::pairing::{
-    CreateSessionRequest, CreateSessionResponse, GetSessionResponse, SubmitResponseRequest,
+    CreateSessionRequest, CreateSessionResponse, GetConfirmationResponse, GetSessionResponse,
+    SubmitConfirmationRequest, SubmitResponseRequest,
 };
 use crate::ports::network::NetworkError;
 
@@ -105,4 +106,28 @@ pub trait PairingRelayClient: Send + Sync {
         session_id: &str,
         timeout: Duration,
     ) -> impl Future<Output = Result<Option<GetSessionResponse>, NetworkError>> + Send;
+
+    /// Submits a SAS confirmation (encrypted attestation or abort signal).
+    ///
+    /// Args:
+    /// * `url`: Base URL of the pairing server.
+    /// * `session_id`: The session to confirm.
+    /// * `request`: The confirmation payload.
+    fn submit_confirmation(
+        &self,
+        url: &str,
+        session_id: &str,
+        request: &SubmitConfirmationRequest,
+    ) -> impl Future<Output = Result<(), NetworkError>> + Send;
+
+    /// Polls for a SAS confirmation from the initiator.
+    ///
+    /// Args:
+    /// * `url`: Base URL of the pairing server.
+    /// * `session_id`: The session to check.
+    fn get_confirmation(
+        &self,
+        url: &str,
+        session_id: &str,
+    ) -> impl Future<Output = Result<GetConfirmationResponse, NetworkError>> + Send;
 }

@@ -43,6 +43,8 @@ impl std::fmt::Display for Base64UrlEncoded {
 pub enum SessionStatus {
     Pending,
     Responded,
+    Confirmed,
+    Aborted,
     Completed,
     Cancelled,
     Expired,
@@ -99,4 +101,22 @@ pub struct GetSessionResponse {
 pub struct SuccessResponse {
     pub success: bool,
     pub message: String,
+}
+
+/// Request to submit a SAS confirmation (or abort).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubmitConfirmationRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted_attestation: Option<String>,
+    #[serde(default)]
+    pub aborted: bool,
+}
+
+/// Response when polling for confirmation.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetConfirmationResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted_attestation: Option<String>,
+    #[serde(default)]
+    pub aborted: bool,
 }

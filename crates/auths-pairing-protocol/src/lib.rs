@@ -8,11 +8,16 @@
 mod error;
 mod protocol;
 mod response;
+pub mod sas;
 mod token;
 pub mod types;
 
 pub use error::ProtocolError;
-pub use protocol::{CompletedPairing, PairingProtocol, respond_to_pairing};
+pub use protocol::{CompletedPairing, PairingProtocol, ResponderResult, respond_to_pairing};
 pub use response::PairingResponse;
+pub use sas::{
+    TransportKey, decrypt_from_transport, derive_sas, derive_transport_key, format_sas_emoji,
+    format_sas_numeric,
+};
 pub use token::{PairingSession, PairingToken, normalize_short_code};
 pub use types::*;

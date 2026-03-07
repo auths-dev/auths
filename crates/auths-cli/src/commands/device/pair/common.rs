@@ -72,6 +72,58 @@ pub(crate) fn print_completion(device_name: Option<&str>, device_did: &str) {
     println!();
 }
 
+/// Display SAS and prompt for explicit Y/N confirmation (no default).
+///
+/// Returns `true` if the user confirms the SAS matches, `false` on rejection.
+pub(crate) fn prompt_sas_confirmation(sas_bytes: &[u8; 8]) -> Result<bool> {
+    use auths_pairing_protocol::sas;
+
+    println!();
+    println!("{}", style(format!("━━━ {LOCK}Verify Pairing ━━━")).bold());
+    println!();
+    println!("  Confirm this code matches your other device:");
+    println!();
+    println!("    {}", style(sas::format_sas_emoji(sas_bytes)).bold());
+    println!(
+        "    {}",
+        style(format!("({})", sas::format_sas_numeric(sas_bytes))).dim()
+    );
+    println!();
+    println!(
+        "  {}",
+        style("If the codes don't match, someone may be intercepting this connection.").dim()
+    );
+    println!();
+
+    let confirmed = dialoguer::Confirm::new()
+        .with_prompt("Do the codes match? [y/N]")
+        .default(false)
+        .interact()
+        .context("Failed to read confirmation")?;
+
+    Ok(confirmed)
+}
+
+/// Display a warning when SAS verification fails.
+pub(crate) fn display_sas_mismatch_warning() {
+    println!();
+    println!(
+        "  {}{}",
+        WARN,
+        style("PAIRING ABORTED — possible interception detected")
+            .red()
+            .bold()
+    );
+    println!();
+    println!("  The verification codes did not match. This could mean:");
+    println!("    • An attacker is intercepting the connection (MITM)");
+    println!("    • A network issue corrupted the key exchange");
+    println!();
+    println!("  Retry on a trusted network. If this persists, do not pair these devices.");
+    println!("  No keys or attestations were created.");
+    println!();
+}
+
 /// Handle a successful pairing response — verify signature, complete ECDH, create attestation.
 pub(crate) fn handle_pairing_response(
     session: &mut PairingSession,
@@ -137,10 +189,36 @@ pub(crate) fn handle_pairing_response(
 
     // Complete ECDH key exchange
     let exchange_spinner = create_wait_spinner(&format!("{GEAR}Completing key exchange..."));
-    let _shared_secret = session
+    let initiator_x25519_pub = session
+        .ephemeral_pubkey_bytes()
+        .context("Failed to get initiator pubkey")?;
+    let shared_secret = session
         .complete_exchange(&device_x25519_bytes)
         .context("ECDH key exchange failed")?;
     exchange_spinner.finish_with_message(format!("{CHECK}Key exchange complete"));
+
+    // Derive SAS with transcript binding
+    let short_code = &session.token.short_code;
+    let sas_bytes = auths_pairing_protocol::sas::derive_sas(
+        &shared_secret,
+        &initiator_x25519_pub,
+        &device_x25519_bytes,
+        short_code,
+    );
+    let transport_key = auths_pairing_protocol::sas::derive_transport_key(
+        &shared_secret,
+        &initiator_x25519_pub,
+        &device_x25519_bytes,
+        short_code,
+    );
+
+    // SAS verification ceremony
+    let confirmed = prompt_sas_confirmation(&sas_bytes)?;
+    if !confirmed {
+        display_sas_mismatch_warning();
+        drop(transport_key);
+        anyhow::bail!("SAS verification failed — pairing aborted");
+    }
 
     if !auths_dir.exists() {
         println!();

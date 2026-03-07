@@ -22,7 +22,8 @@ use tokio::sync::{Mutex, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use auths_core::pairing::types::{
-    CreateSessionRequest, GetSessionResponse, SessionStatus, SubmitResponseRequest, SuccessResponse,
+    CreateSessionRequest, GetConfirmationResponse, GetSessionResponse, SessionStatus,
+    SubmitConfirmationRequest, SubmitResponseRequest, SuccessResponse,
 };
 
 const MAX_REQUESTS_PER_MINUTE: u32 = 5;
@@ -70,10 +71,12 @@ pub fn detect_lan_ip() -> std::io::Result<IpAddr> {
 }
 
 /// Internal state shared between the server and the caller.
-struct LanServerState {
+pub(crate) struct LanServerState {
     session: CreateSessionRequest,
     status: Mutex<SessionStatus>,
     response_tx: Mutex<Option<oneshot::Sender<SubmitResponseRequest>>>,
+    confirmation: Mutex<Option<SubmitConfirmationRequest>>,
+    confirmation_notify: Arc<tokio::sync::Notify>,
     pairing_token: Vec<u8>,
     rate_limits: Mutex<HashMap<IpAddr, (u32, Instant)>>,
 }
@@ -105,10 +108,13 @@ impl LanPairingServer {
             .map_err(|_| anyhow::anyhow!("failed to generate pairing token"))?;
         let pairing_token_b64 = URL_SAFE_NO_PAD.encode(token_bytes);
 
+        let confirmation_notify = Arc::new(tokio::sync::Notify::new());
         let state = Arc::new(LanServerState {
             session,
             status: Mutex::new(SessionStatus::Pending),
             response_tx: Mutex::new(Some(tx)),
+            confirmation: Mutex::new(None),
+            confirmation_notify,
             pairing_token: token_bytes.to_vec(),
             rate_limits: Mutex::new(HashMap::new()),
         });
@@ -123,6 +129,14 @@ impl LanPairingServer {
             .route(
                 "/v1/pairing/sessions/{id}/response",
                 post(handle_submit_response),
+            )
+            .route(
+                "/v1/pairing/sessions/{id}/confirm",
+                post(handle_submit_confirmation),
+            )
+            .route(
+                "/v1/pairing/sessions/{id}/confirmation",
+                get(handle_get_confirmation),
             )
             .layer(middleware::from_fn_with_state(
                 state.clone(),
@@ -171,6 +185,24 @@ impl LanPairingServer {
     /// The base64url-encoded pairing token for QR code inclusion.
     pub fn pairing_token(&self) -> &str {
         &self.pairing_token_b64
+    }
+
+    /// Wait for a SAS confirmation, with a timeout.
+    ///
+    /// Uses `Notify` to avoid polling (which would hit the rate limiter).
+    /// Returns the confirmation request once the initiator submits it, or
+    /// `None` on timeout.
+    #[allow(dead_code)]
+    pub(crate) async fn wait_for_confirmation(
+        &self,
+        state: &Arc<LanServerState>,
+        timeout: std::time::Duration,
+    ) -> Option<SubmitConfirmationRequest> {
+        let result = tokio::time::timeout(timeout, state.confirmation_notify.notified()).await;
+        match result {
+            Ok(()) => state.confirmation.lock().await.clone(),
+            Err(_) => None,
+        }
     }
 
     /// Wait for a pairing response, with a timeout.
@@ -316,4 +348,66 @@ async fn handle_submit_response(
         success: true,
         message: "Response submitted".to_string(),
     }))
+}
+
+async fn handle_submit_confirmation(
+    Path(id): Path<String>,
+    State(state): State<Arc<LanServerState>>,
+    headers: HeaderMap,
+    Json(request): Json<SubmitConfirmationRequest>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    if !validate_pairing_token(&headers, &state.pairing_token) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    if id != state.session.session_id {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let mut confirmation = state.confirmation.lock().await;
+    if confirmation.is_some() {
+        return Err(StatusCode::CONFLICT);
+    }
+
+    let new_status = if request.aborted {
+        SessionStatus::Aborted
+    } else {
+        SessionStatus::Confirmed
+    };
+    *state.status.lock().await = new_status;
+    *confirmation = Some(request);
+    drop(confirmation);
+
+    state.confirmation_notify.notify_waiters();
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Confirmation submitted".to_string(),
+    }))
+}
+
+async fn handle_get_confirmation(
+    Path(id): Path<String>,
+    State(state): State<Arc<LanServerState>>,
+    headers: HeaderMap,
+) -> Result<Json<GetConfirmationResponse>, StatusCode> {
+    if !validate_pairing_token(&headers, &state.pairing_token) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    if id != state.session.session_id {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let confirmation = state.confirmation.lock().await;
+    match &*confirmation {
+        Some(req) => Ok(Json(GetConfirmationResponse {
+            encrypted_attestation: req.encrypted_attestation.clone(),
+            aborted: req.aborted,
+        })),
+        None => Ok(Json(GetConfirmationResponse {
+            encrypted_attestation: None,
+            aborted: false,
+        })),
+    }
 }
