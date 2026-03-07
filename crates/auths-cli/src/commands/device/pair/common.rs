@@ -13,6 +13,8 @@ use auths_core::pairing::PairingSession;
 use auths_core::pairing::types::SubmitResponseRequest;
 use auths_core::signing::PassphraseProvider;
 
+use crate::core::fs::{create_restricted_dir, write_sensitive_file};
+
 use crate::core::provider::{CliPassphraseProvider, PrefilledPassphraseProvider};
 
 // Emoji with plain-text fallbacks for non-emoji terminals.
@@ -252,7 +254,7 @@ pub(crate) fn handle_pairing_response(
 /// Save device info as a JSON file (fallback when attestation creation fails).
 pub(crate) fn save_device_info(auths_dir: &Path, response: &SubmitResponseRequest) -> Result<()> {
     let devices_dir = auths_dir.join("devices");
-    std::fs::create_dir_all(&devices_dir)?;
+    create_restricted_dir(&devices_dir)?;
 
     let device_file = devices_dir.join(format!(
         "{}.json",
@@ -266,7 +268,7 @@ pub(crate) fn save_device_info(auths_dir: &Path, response: &SubmitResponseReques
         "paired_at": chrono::Utc::now().to_rfc3339(),
     });
 
-    std::fs::write(&device_file, serde_json::to_string_pretty(&device_info)?)?;
+    write_sensitive_file(&device_file, serde_json::to_string_pretty(&device_info)?)?;
     println!(
         "  {}{}",
         CHECK,

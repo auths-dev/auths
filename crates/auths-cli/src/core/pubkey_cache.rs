@@ -9,6 +9,8 @@ use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::path::PathBuf;
 
+use super::fs::{create_restricted_dir, write_sensitive_file};
+
 /// Get the pubkey cache directory path (~/.auths/pubkeys), respecting AUTHS_HOME.
 fn get_pubkey_cache_dir() -> Result<PathBuf> {
     Ok(auths_core::paths::auths_home()
@@ -44,13 +46,13 @@ pub fn cache_pubkey(alias: &str, pubkey: &[u8]) -> Result<()> {
     }
 
     let cache_dir = get_pubkey_cache_dir()?;
-    fs::create_dir_all(&cache_dir)
+    create_restricted_dir(&cache_dir)
         .with_context(|| format!("Failed to create pubkey cache directory: {:?}", cache_dir))?;
 
     let cache_path = get_cache_path(alias)?;
     let hex_pubkey = hex::encode(pubkey);
 
-    fs::write(&cache_path, &hex_pubkey)
+    write_sensitive_file(&cache_path, &hex_pubkey)
         .with_context(|| format!("Failed to write pubkey cache file: {:?}", cache_path))?;
 
     Ok(())

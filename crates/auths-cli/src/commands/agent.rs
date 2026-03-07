@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::core::fs::{create_restricted_dir, write_sensitive_file};
 use crate::ux::format::{JsonResponse, is_json_mode};
 
 #[cfg(unix)]
@@ -291,7 +292,7 @@ fn start_agent(
     quiet: bool,
 ) -> Result<()> {
     let auths_dir = get_auths_dir()?;
-    fs::create_dir_all(&auths_dir)
+    create_restricted_dir(&auths_dir)
         .with_context(|| format!("Failed to create auths directory: {:?}", auths_dir))?;
 
     let socket = socket_path.unwrap_or_else(|| get_default_socket_path().unwrap());
@@ -355,7 +356,7 @@ fn run_agent_foreground(
 
     // Write PID file
     let pid = std::process::id();
-    fs::write(pid_path, pid.to_string())
+    write_sensitive_file(pid_path, pid.to_string())
         .with_context(|| format!("Failed to write PID file: {:?}", pid_path))?;
 
     // Write environment file
@@ -363,7 +364,7 @@ fn run_agent_foreground(
         .to_str()
         .ok_or_else(|| anyhow!("Socket path is not valid UTF-8"))?;
     let env_content = format!("export SSH_AUTH_SOCK=\"{}\"\n", socket_str);
-    fs::write(env_path, &env_content)
+    write_sensitive_file(env_path, &env_content)
         .with_context(|| format!("Failed to write env file: {:?}", env_path))?;
 
     eprintln!("Starting SSH agent (foreground)...");
@@ -479,7 +480,7 @@ fn daemonize_agent(
 
     // Write environment file for the parent to report
     let env_content = format!("export SSH_AUTH_SOCK=\"{}\"\n", socket_str);
-    fs::write(env_path, &env_content)
+    write_sensitive_file(env_path, &env_content)
         .with_context(|| format!("Failed to write env file: {:?}", env_path))?;
 
     Ok(())
