@@ -20,6 +20,7 @@ use crate::witness_config::{WitnessConfig, WitnessPolicy};
 
 /// Errors from witness integration.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum WitnessIntegrationError {
     #[error("Receipt collection failed: {0}")]
     Collection(#[from] CollectionError),

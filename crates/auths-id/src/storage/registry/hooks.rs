@@ -14,6 +14,7 @@ use thiserror::Error;
 
 /// Errors that can occur during hook installation.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum HookError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

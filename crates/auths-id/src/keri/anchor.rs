@@ -19,6 +19,7 @@ use super::{
 
 /// Error type for anchoring operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum AnchorError {
     #[error("KEL error: {0}")]
     Kel(#[from] KelError),

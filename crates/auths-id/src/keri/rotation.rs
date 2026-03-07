@@ -25,6 +25,7 @@ use crate::witness_config::WitnessConfig;
 
 /// Error type for rotation operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RotationError {
     #[error("Key generation failed: {0}")]
     KeyGeneration(String),

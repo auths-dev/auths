@@ -93,6 +93,7 @@ pub struct AgentIdentityBundle {
 
 /// Errors that can occur during agent provisioning.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum AgentProvisioningError {
     #[error("repository creation failed: {0}")]
     RepoCreation(#[from] git2::Error),

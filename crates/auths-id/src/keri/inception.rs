@@ -23,6 +23,7 @@ use crate::witness_config::WitnessConfig;
 
 /// Error type for inception operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum InceptionError {
     #[error("Key generation failed: {0}")]
     KeyGeneration(String),

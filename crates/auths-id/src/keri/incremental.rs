@@ -69,6 +69,7 @@ pub enum ReplayReason {
 /// Errors specific to incremental validation.
 /// These are hard errors that indicate KEL corruption, not cache problems.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum IncrementalError {
     #[error("KEL error: {0}")]
     Kel(#[from] KelError),

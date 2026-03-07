@@ -38,6 +38,7 @@ use super::{Event, IcpEvent, IxnEvent, KeyState, RotEvent};
 /// - **Self-addressing**: Each event's SAID must match its content hash
 /// - **Chain integrity**: Each event must reference the previous event's SAID
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ValidationError {
     /// SAID (Self-Addressing Identifier) doesn't match content hash.
     ///

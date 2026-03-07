@@ -46,6 +46,7 @@ pub struct CachedKelState {
 
 /// Errors that can occur during cache operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CacheError {
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),

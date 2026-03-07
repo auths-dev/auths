@@ -13,6 +13,7 @@ use super::{GitKel, KelError, ValidationError, validate_kel};
 
 /// Error type for did:keri resolution.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ResolveError {
     #[error("Invalid DID format: {0}")]
     InvalidFormat(String),

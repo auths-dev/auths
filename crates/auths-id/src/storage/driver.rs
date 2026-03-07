@@ -27,6 +27,7 @@ use std::fmt;
 
 /// Error type for storage operations.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum StorageError {
     /// The requested path was not found.
     NotFound(String),

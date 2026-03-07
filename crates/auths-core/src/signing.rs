@@ -31,6 +31,7 @@ type PassphraseCallback = dyn Fn(&str) -> Result<Zeroizing<String>, AgentError> 
 /// assert!(err.to_string().contains("Unsupported"));
 /// ```
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum DidResolverError {
     /// The DID method is not supported.
     #[error("Unsupported DID method: {0}")]

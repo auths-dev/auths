@@ -26,6 +26,7 @@ use auths_verifier::keri::Prefix;
 /// }
 /// ```
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum NetworkError {
     /// The endpoint could not be reached.
     #[error("endpoint unreachable: {endpoint}")]
@@ -83,6 +84,7 @@ pub enum NetworkError {
 /// }
 /// ```
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ResolutionError {
     /// The DID was not found.
     #[error("DID not found: {did}")]

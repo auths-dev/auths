@@ -21,6 +21,7 @@ use std::fmt;
 /// }
 /// ```
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum StorageError {
     /// The item was not found.
     #[error("not found: {path}")]

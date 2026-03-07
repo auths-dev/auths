@@ -7,6 +7,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
 /// Errors from decoding a KERI-encoded Ed25519 public key.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KeriDecodeError {
     #[error("Invalid KERI prefix: expected 'D' for Ed25519, got '{0}'")]
     InvalidPrefix(char),

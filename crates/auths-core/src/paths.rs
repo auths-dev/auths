@@ -49,6 +49,7 @@ pub fn auths_home() -> Result<PathBuf, AuthsHomeError> {
 
 /// Error returned when the Auths home directory cannot be resolved.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum AuthsHomeError {
     /// The user's home directory could not be determined.
     #[error("Could not determine home directory")]

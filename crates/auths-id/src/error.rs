@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum FreezeError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -13,6 +14,7 @@ pub enum FreezeError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum StorageError {
     #[cfg(feature = "git-storage")]
     #[error(transparent)]
@@ -32,6 +34,7 @@ pub enum StorageError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum InitError {
     #[cfg(feature = "git-storage")]
     #[error(transparent)]

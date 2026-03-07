@@ -18,6 +18,7 @@ use crate::witness::{event_hash_to_oid, oid_to_event_hash};
 
 /// Errors that can occur during KEL operations.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum KelError {
     #[error("Git error: {0}")]
     Git(#[from] git2::Error),
