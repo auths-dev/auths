@@ -769,6 +769,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#auths-sign" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths sign
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#auths-verify" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -784,6 +795,39 @@
     <span class="md-ellipsis">
       
         auths status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auths-whoami" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths whoami
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auths-tutorial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths tutorial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auths-doctor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths doctor
       
     </span>
   </a>
@@ -1082,6 +1126,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#auths-sign" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths sign
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#auths-verify" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1097,6 +1152,39 @@
     <span class="md-ellipsis">
       
         auths status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auths-whoami" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths whoami
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auths-tutorial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths tutorial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auths-doctor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        auths doctor
       
     </span>
   </a>
@@ -1187,6 +1275,7 @@
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>auths<span class="w"> </span>init
 </span></code></pre></div>
 <!-- BEGIN GENERATED: auths init -->
+<p>Set up your cryptographic identity and Git signing</p>
 <table>
 <thead>
 <tr>
@@ -1199,77 +1288,127 @@
 <tr>
 <td><code>--non-interactive</code></td>
 <td>—</td>
-<td></td>
+<td>Skip interactive prompts and use sensible defaults</td>
 </tr>
 <tr>
 <td><code>--profile &lt;PROFILE&gt;</code></td>
 <td>—</td>
-<td></td>
-</tr>
-<tr>
-<td><code>- developer: Full local development setup with keychain, identity, device linking, and git signing</code></td>
-<td>—</td>
-<td></td>
-</tr>
-<tr>
-<td><code>- ci:</code></td>
-<td>—</td>
-<td>Ephemeral identity for CI/CD pipelines</td>
-</tr>
-<tr>
-<td><code>- agent:</code></td>
-<td>—</td>
-<td>Scoped identity for AI agents with capability restrictions</td>
+<td>Preset profile: developer, ci, or agent</td>
 </tr>
 <tr>
 <td><code>--key-alias &lt;KEY_ALIAS&gt;</code></td>
-<td>—</td>
-<td></td>
+<td><code>main</code></td>
+<td>Key alias for the identity key (default: main)</td>
 </tr>
 <tr>
 <td><code>--force</code></td>
 <td>—</td>
-<td></td>
+<td>Force overwrite if identity already exists</td>
 </tr>
 <tr>
 <td><code>--dry-run</code></td>
 <td>—</td>
-<td></td>
+<td>Preview agent configuration without creating files or identities</td>
 </tr>
 <tr>
 <td><code>--registry &lt;REGISTRY&gt;</code></td>
-<td>—</td>
-<td></td>
+<td><code>https://auths-registry.fly.dev</code></td>
+<td>Registry URL for automatic identity registration</td>
 </tr>
 <tr>
 <td><code>--skip-registration</code></td>
 <td>—</td>
-<td></td>
+<td>Skip automatic registry registration during setup</td>
 </tr>
 <tr>
 <td><code>--json</code></td>
 <td>—</td>
-<td></td>
+<td>Emit machine-readable JSON</td>
 </tr>
 <tr>
 <td><code>-q, --quiet</code></td>
 <td>—</td>
-<td></td>
+<td>Suppress non-essential output</td>
 </tr>
 <tr>
 <td><code>--repo &lt;REPO&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Override the local storage directory (default: ~/.auths)</td>
 </tr>
 </tbody>
 </table>
 <!-- END GENERATED: auths init -->
 
 <hr />
+<h2 id="auths-sign">auths sign<a class="headerlink" href="#auths-sign" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>auths<span class="w"> </span>sign<span class="w"> </span>&lt;TARGET&gt;
+</span></code></pre></div>
+<!-- BEGIN GENERATED: auths sign -->
+<p>Sign a Git commit or artifact file.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;TARGET&gt;</code></td>
+<td>—</td>
+<td>Commit ref, range, or artifact file path</td>
+</tr>
+<tr>
+<td><code>--sig-output &lt;PATH&gt;</code></td>
+<td>—</td>
+<td>Output path for the signature file. Defaults to <FILE>.auths.json</td>
+</tr>
+<tr>
+<td><code>--identity-key-alias &lt;IDENTITY_KEY_ALIAS&gt;</code></td>
+<td>—</td>
+<td>Local alias of the identity key (for artifact signing)</td>
+</tr>
+<tr>
+<td><code>--device-key-alias &lt;DEVICE_KEY_ALIAS&gt;</code></td>
+<td>—</td>
+<td>Local alias of the device key (for artifact signing, required for files)</td>
+</tr>
+<tr>
+<td><code>--expires-in-days &lt;N&gt;</code></td>
+<td>—</td>
+<td>Number of days until the signature expires (for artifact signing) [aliases: --days]</td>
+</tr>
+<tr>
+<td><code>--note &lt;NOTE&gt;</code></td>
+<td>—</td>
+<td>Optional note to embed in the attestation (for artifact signing)</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
+</tr>
+</tbody>
+</table>
+<!-- END GENERATED: auths sign -->
+
+<hr />
 <h2 id="auths-verify">auths verify<a class="headerlink" href="#auths-verify" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>auths<span class="w"> </span>verify
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>auths<span class="w"> </span>verify
 </span></code></pre></div>
 <!-- BEGIN GENERATED: auths verify -->
+<p>Verify a signed commit or attestation.</p>
 <table>
 <thead>
 <tr>
@@ -1281,53 +1420,53 @@
 <tbody>
 <tr>
 <td><code>--allowed-signers &lt;ALLOWED_SIGNERS&gt;</code></td>
-<td>—</td>
-<td></td>
+<td><code>.auths/allowed_signers</code></td>
+<td>Path to allowed signers file (commit verification)</td>
 </tr>
 <tr>
 <td><code>--identity-bundle &lt;IDENTITY_BUNDLE&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Path to identity bundle JSON (for CI/CD stateless commit verification)</td>
 </tr>
 <tr>
 <td><code>--issuer-pk &lt;ISSUER_PK&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Issuer public key in hex format (attestation verification)</td>
 </tr>
 <tr>
 <td><code>--issuer-did &lt;ISSUER_DID&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Issuer identity ID for attestation trust-based key resolution [aliases: --issuer]</td>
 </tr>
 <tr>
 <td><code>--witness-receipts &lt;WITNESS_RECEIPTS&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Path to witness receipts JSON file</td>
 </tr>
 <tr>
 <td><code>--witness-threshold &lt;WITNESS_THRESHOLD&gt;</code></td>
-<td>—</td>
-<td></td>
+<td><code>1</code></td>
+<td>Witness quorum threshold</td>
 </tr>
 <tr>
 <td><code>--witness-keys &lt;WITNESS_KEYS&gt;...</code></td>
 <td>—</td>
-<td></td>
+<td>Witness public keys as DID:hex pairs</td>
 </tr>
 <tr>
 <td><code>--json</code></td>
 <td>—</td>
-<td></td>
+<td>Emit machine-readable JSON</td>
 </tr>
 <tr>
 <td><code>-q, --quiet</code></td>
 <td>—</td>
-<td></td>
+<td>Suppress non-essential output</td>
 </tr>
 <tr>
 <td><code>--repo &lt;REPO&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Override the local storage directory (default: ~/.auths)</td>
 </tr>
 </tbody>
 </table>
@@ -1335,9 +1474,10 @@
 
 <hr />
 <h2 id="auths-status">auths status<a class="headerlink" href="#auths-status" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>auths<span class="w"> </span>status
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>auths<span class="w"> </span>status
 </span></code></pre></div>
 <!-- BEGIN GENERATED: auths status -->
+<p>Show identity and agent status overview</p>
 <table>
 <thead>
 <tr>
@@ -1367,10 +1507,128 @@
 <!-- END GENERATED: auths status -->
 
 <hr />
+<h2 id="auths-whoami">auths whoami<a class="headerlink" href="#auths-whoami" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>auths<span class="w"> </span>whoami
+</span></code></pre></div>
+<!-- BEGIN GENERATED: auths whoami -->
+<p>Show the current identity on this machine</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
+</tr>
+</tbody>
+</table>
+<!-- END GENERATED: auths whoami -->
+
+<hr />
+<h2 id="auths-tutorial">auths tutorial<a class="headerlink" href="#auths-tutorial" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>auths<span class="w"> </span>tutorial
+</span></code></pre></div>
+<!-- BEGIN GENERATED: auths tutorial -->
+<p>Interactive tutorial for learning Auths concepts</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-s, --skip &lt;SECTION&gt;</code></td>
+<td>—</td>
+<td>Skip to a specific section (1-6)</td>
+</tr>
+<tr>
+<td><code>--reset</code></td>
+<td>—</td>
+<td>Reset progress and start from the beginning</td>
+</tr>
+<tr>
+<td><code>--list</code></td>
+<td>—</td>
+<td>List all tutorial sections</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
+</tr>
+</tbody>
+</table>
+<!-- END GENERATED: auths tutorial -->
+
+<hr />
+<h2 id="auths-doctor">auths doctor<a class="headerlink" href="#auths-doctor" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>auths<span class="w"> </span>doctor
+</span></code></pre></div>
+<!-- BEGIN GENERATED: auths doctor -->
+<p>Run comprehensive health checks</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--json</code></td>
+<td>—</td>
+<td>Emit machine-readable JSON</td>
+</tr>
+<tr>
+<td><code>-q, --quiet</code></td>
+<td>—</td>
+<td>Suppress non-essential output</td>
+</tr>
+<tr>
+<td><code>--repo &lt;REPO&gt;</code></td>
+<td>—</td>
+<td>Override the local storage directory (default: ~/.auths)</td>
+</tr>
+</tbody>
+</table>
+<!-- END GENERATED: auths doctor -->
+
+<hr />
 <h2 id="auths-pair">auths pair<a class="headerlink" href="#auths-pair" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>auths<span class="w"> </span>pair
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>auths<span class="w"> </span>pair
 </span></code></pre></div>
 <!-- BEGIN GENERATED: auths pair -->
+<p>Link devices to your identity</p>
 <table>
 <thead>
 <tr>
@@ -1383,52 +1641,32 @@
 <tr>
 <td><code>--join &lt;CODE&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Join an existing pairing session using a short code</td>
 </tr>
 <tr>
 <td><code>--registry &lt;URL&gt;</code></td>
 <td>—</td>
-<td></td>
-</tr>
-<tr>
-<td><code>--no-qr</code></td>
-<td>—</td>
-<td></td>
+<td>Registry URL for pairing relay (omit for LAN mode)</td>
 </tr>
 <tr>
 <td><code>--timeout &lt;SECONDS&gt;</code></td>
-<td>—</td>
-<td></td>
-</tr>
-<tr>
-<td><code>--offline</code></td>
-<td>—</td>
-<td></td>
-</tr>
-<tr>
-<td><code>--capabilities &lt;CAPABILITIES&gt;</code></td>
-<td>—</td>
-<td></td>
-</tr>
-<tr>
-<td><code>--no-mdns</code></td>
-<td>—</td>
-<td></td>
+<td><code>300</code></td>
+<td>Custom timeout in seconds for the pairing session (default: 300 = 5 minutes)  [aliases: --expiry]</td>
 </tr>
 <tr>
 <td><code>--json</code></td>
 <td>—</td>
-<td></td>
+<td>Emit machine-readable JSON</td>
 </tr>
 <tr>
 <td><code>-q, --quiet</code></td>
 <td>—</td>
-<td></td>
+<td>Suppress non-essential output</td>
 </tr>
 <tr>
 <td><code>--repo &lt;REPO&gt;</code></td>
 <td>—</td>
-<td></td>
+<td>Override the local storage directory (default: ~/.auths)</td>
 </tr>
 </tbody>
 </table>
