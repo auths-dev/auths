@@ -401,10 +401,7 @@ pub fn run(workspace_root: &Path, check: bool) -> Result<()> {
     Ok(())
 }
 
-/// Run `auths <args> -h` and render a description + HTML flag table.
-///
-/// The first 5 flags are shown immediately. If more exist, an expandable
-/// `<details>` section exposes the rest.
+/// Run `auths <args> -h` and render a description + markdown flag table.
 fn generate_table(binary: &Path, args: &[&str]) -> Result<String> {
     let mut full_args: Vec<&str> = args.to_vec();
     full_args.push("-h");
@@ -421,84 +418,29 @@ fn generate_table(binary: &Path, args: &[&str]) -> Result<String> {
     let description = extract_description(&text);
     let rows = parse_help_rows(&text)?;
 
-    let mut html = String::new();
+    let mut out = String::new();
     if !description.is_empty() {
-        html.push_str(&description);
-        html.push_str("\n\n");
+        out.push_str(&description);
+        out.push_str("\n\n");
     }
 
     if rows.is_empty() {
-        html.push_str("_No options._");
-        return Ok(html);
+        out.push_str("_No options._");
+        return Ok(out);
     }
 
-    const VISIBLE: usize = 5;
-    let has_overflow = rows.len() > VISIBLE;
-
-    // Each expandable section needs a unique id so multiple sections on the
-    // same page don't conflict. We derive it from the first flag name.
-    let section_id = rows
-        .first()
-        .map(|(f, _, _)| {
-            f.chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-                .collect::<String>()
-        })
-        .unwrap_or_default();
-
-    if has_overflow {
-        html.push_str(&format!(
-            "<div class=\"flags-container\">\n\
-             <input type=\"checkbox\" id=\"flags-{section_id}\" class=\"flags-state\">\n"
-        ));
+    out.push_str("| Flag | Default | Description |\n");
+    out.push_str("|------|---------|-------------|\n");
+    for (flag, default, desc) in rows {
+        let d = if default.is_empty() {
+            "—".to_string()
+        } else {
+            format!("`{default}`")
+        };
+        let desc = desc.replace('|', "\\|");
+        out.push_str(&format!("| `{flag}` | {d} | {desc} |\n"));
     }
-
-    html.push_str("<table>\n<thead><tr>");
-    html.push_str("<th>Flag</th><th>Default</th><th>Description</th>");
-    html.push_str("</tr></thead>\n<tbody>\n");
-
-    for (i, (flag, default, desc)) in rows.iter().enumerate() {
-        if i == VISIBLE && has_overflow {
-            html.push_str("</tbody>\n<tbody class=\"flags-overflow\">\n");
-        }
-        write_html_row(&mut html, flag, default, desc);
-    }
-
-    html.push_str("</tbody>\n</table>\n");
-
-    if has_overflow {
-        html.push_str(&format!(
-            "<label for=\"flags-{section_id}\" class=\"flags-toggle\">\
-             <span class=\"flags-show\">Show all flags</span>\
-             <span class=\"flags-hide\">Show less</span>\
-             </label>\n</div>\n"
-        ));
-    }
-
-    Ok(html)
-}
-
-/// Write a single `<tr>` for the flag table.
-fn write_html_row(html: &mut String, flag: &str, default: &str, desc: &str) {
-    let d = if default.is_empty() {
-        "—".to_string()
-    } else {
-        format!("<code>{}</code>", escape_html(default))
-    };
-    html.push_str(&format!(
-        "<tr><td><code>{}</code></td><td>{}</td><td>{}</td></tr>\n",
-        escape_html(flag),
-        d,
-        escape_html(desc),
-    ));
-}
-
-/// Minimal HTML escaping for table cell content.
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+    Ok(out)
 }
 
 /// Extract the command description from clap's help output.
