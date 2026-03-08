@@ -48,6 +48,7 @@
 //!
 //! - `wasm` — Enable WASM bindings via wasm-bindgen
 
+pub mod action;
 pub mod clock;
 pub mod commit;
 pub mod commit_error;
@@ -68,6 +69,9 @@ pub mod witness;
 
 // Re-export verification types for convenience
 pub use types::{ChainLink, DeviceDID, IdentityDID, VerificationReport, VerificationStatus};
+
+// Re-export action envelope
+pub use action::ActionEnvelope;
 
 // Re-export core types
 pub use core::{
