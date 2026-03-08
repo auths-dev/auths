@@ -37,7 +37,7 @@ repos:
 
       - id: gen-docs-check
         name: cargo xtask gen-docs --check
-        entry: cargo xtask gen-docs --check
+        entry: cargo run --package xtask -- gen-docs --check
         language: system
         files: (crates/auths-cli/src/|crates/xtask/src/gen_docs|docs/cli/commands/)
         pass_filenames: false
