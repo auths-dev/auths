@@ -13,10 +13,15 @@ struct Cmd {
 }
 
 const COMMANDS: &[Cmd] = &[
-    // --- Primary ---
+    // ── Primary ─────────────────────────────────────────────────────────
     Cmd {
         args: &["init"],
         marker: "auths init",
+        doc_file: "docs/cli/commands/primary.md",
+    },
+    Cmd {
+        args: &["sign"],
+        marker: "auths sign",
         doc_file: "docs/cli/commands/primary.md",
     },
     Cmd {
@@ -30,11 +35,26 @@ const COMMANDS: &[Cmd] = &[
         doc_file: "docs/cli/commands/primary.md",
     },
     Cmd {
+        args: &["whoami"],
+        marker: "auths whoami",
+        doc_file: "docs/cli/commands/primary.md",
+    },
+    Cmd {
+        args: &["tutorial"],
+        marker: "auths tutorial",
+        doc_file: "docs/cli/commands/primary.md",
+    },
+    Cmd {
+        args: &["doctor"],
+        marker: "auths doctor",
+        doc_file: "docs/cli/commands/primary.md",
+    },
+    Cmd {
         args: &["pair"],
         marker: "auths pair",
         doc_file: "docs/cli/commands/primary.md",
     },
-    // --- device ---
+    // ── device ──────────────────────────────────────────────────────────
     Cmd {
         args: &["device", "link"],
         marker: "auths device link",
@@ -50,7 +70,7 @@ const COMMANDS: &[Cmd] = &[
         marker: "auths device extend",
         doc_file: "docs/cli/commands/advanced.md",
     },
-    // --- id ---
+    // ── id ──────────────────────────────────────────────────────────────
     Cmd {
         args: &["id", "init-did"],
         marker: "auths id init-did",
@@ -61,7 +81,7 @@ const COMMANDS: &[Cmd] = &[
         marker: "auths id rotate",
         doc_file: "docs/cli/commands/advanced.md",
     },
-    // --- key ---
+    // ── key ─────────────────────────────────────────────────────────────
     Cmd {
         args: &["key", "import"],
         marker: "auths key import",
@@ -77,7 +97,7 @@ const COMMANDS: &[Cmd] = &[
         marker: "auths key delete",
         doc_file: "docs/cli/commands/advanced.md",
     },
-    // --- policy ---
+    // ── policy ──────────────────────────────────────────────────────────
     Cmd {
         args: &["policy", "explain"],
         marker: "auths policy explain",
@@ -93,7 +113,7 @@ const COMMANDS: &[Cmd] = &[
         marker: "auths policy diff",
         doc_file: "docs/cli/commands/advanced.md",
     },
-    // --- emergency ---
+    // ── emergency ───────────────────────────────────────────────────────
     Cmd {
         args: &["emergency", "revoke-device"],
         marker: "auths emergency revoke-device",
@@ -112,6 +132,212 @@ const COMMANDS: &[Cmd] = &[
     Cmd {
         args: &["emergency", "report"],
         marker: "auths emergency report",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── git ─────────────────────────────────────────────────────────────
+    Cmd {
+        args: &["git", "allowed-signers"],
+        marker: "auths git allowed-signers",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["git", "install-hooks"],
+        marker: "auths git install-hooks",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── trust ───────────────────────────────────────────────────────────
+    Cmd {
+        args: &["trust", "pin"],
+        marker: "auths trust pin",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["trust", "list"],
+        marker: "auths trust list",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["trust", "remove"],
+        marker: "auths trust remove",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["trust", "show"],
+        marker: "auths trust show",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── org ─────────────────────────────────────────────────────────────
+    Cmd {
+        args: &["org", "create"],
+        marker: "auths org create",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["org", "add-member"],
+        marker: "auths org add-member",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["org", "revoke-member"],
+        marker: "auths org revoke-member",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["org", "list-members"],
+        marker: "auths org list-members",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── audit ───────────────────────────────────────────────────────────
+    Cmd {
+        args: &["audit"],
+        marker: "auths audit",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── agent ───────────────────────────────────────────────────────────
+    Cmd {
+        args: &["agent", "start"],
+        marker: "auths agent start",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["agent", "stop"],
+        marker: "auths agent stop",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["agent", "status"],
+        marker: "auths agent status",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["agent", "env"],
+        marker: "auths agent env",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["agent", "lock"],
+        marker: "auths agent lock",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["agent", "unlock"],
+        marker: "auths agent unlock",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["agent", "install-service"],
+        marker: "auths agent install-service",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["agent", "uninstall-service"],
+        marker: "auths agent uninstall-service",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── witness ─────────────────────────────────────────────────────────
+    Cmd {
+        args: &["witness", "start"],
+        marker: "auths witness start",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["witness", "add"],
+        marker: "auths witness add",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["witness", "remove"],
+        marker: "auths witness remove",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["witness", "list"],
+        marker: "auths witness list",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── scim ────────────────────────────────────────────────────────────
+    Cmd {
+        args: &["scim", "serve"],
+        marker: "auths scim serve",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["scim", "quickstart"],
+        marker: "auths scim quickstart",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["scim", "test-connection"],
+        marker: "auths scim test-connection",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["scim", "tenants"],
+        marker: "auths scim tenants",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["scim", "add-tenant"],
+        marker: "auths scim add-tenant",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["scim", "rotate-token"],
+        marker: "auths scim rotate-token",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["scim", "status"],
+        marker: "auths scim status",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── config ──────────────────────────────────────────────────────────
+    Cmd {
+        args: &["config", "set"],
+        marker: "auths config set",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["config", "get"],
+        marker: "auths config get",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["config", "show"],
+        marker: "auths config show",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── approval ────────────────────────────────────────────────────────
+    Cmd {
+        args: &["approval", "list"],
+        marker: "auths approval list",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["approval", "grant"],
+        marker: "auths approval grant",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── artifact ────────────────────────────────────────────────────────
+    Cmd {
+        args: &["artifact", "sign"],
+        marker: "auths artifact sign",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["artifact", "verify"],
+        marker: "auths artifact verify",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    Cmd {
+        args: &["artifact", "publish"],
+        marker: "auths artifact publish",
+        doc_file: "docs/cli/commands/advanced.md",
+    },
+    // ── completions ─────────────────────────────────────────────────────
+    Cmd {
+        args: &["completions"],
+        marker: "auths completions",
         doc_file: "docs/cli/commands/advanced.md",
     },
 ];
@@ -175,75 +401,189 @@ pub fn run(workspace_root: &Path, check: bool) -> Result<()> {
     Ok(())
 }
 
-/// Run `auths <args> --help` and render a markdown flag table.
+/// Run `auths <args> -h` and render a description + HTML flag table.
+///
+/// The first 5 flags are shown immediately. If more exist, an expandable
+/// `<details>` section exposes the rest.
 fn generate_table(binary: &Path, args: &[&str]) -> Result<String> {
     let mut full_args: Vec<&str> = args.to_vec();
-    full_args.push("--help");
+    full_args.push("-h");
 
     let out = Command::new(binary)
         .args(&full_args)
         .output()
         .with_context(|| format!("failed to run auths {:?}", args))?;
 
-    // clap writes --help to stdout; some versions use stderr on error.
+    // clap writes -h to stdout; some versions use stderr on error.
     let text =
         String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
 
-    parse_help_to_table(&text)
-}
+    let description = extract_description(&text);
+    let rows = parse_help_rows(&text)?;
 
-/// Parse clap's `--help` output into a markdown flag table.
-///
-/// Handles both `Options:` and `Arguments:` sections. Skips `-h/--help` and
-/// `-V/--version`. Returns a table string ending with a newline.
-fn parse_help_to_table(help: &str) -> Result<String> {
-    let mut in_section = false;
-    let mut rows: Vec<(String, String, String)> = Vec::new(); // (flag, default, desc)
-
-    for line in help.lines() {
-        let trimmed = line.trim_start();
-
-        // Enter Options or Arguments section.
-        if trimmed == "Options:" || trimmed == "Arguments:" {
-            in_section = true;
-            continue;
-        }
-        // Leave section on any non-indented non-empty line (next section header).
-        if in_section && !line.is_empty() && !line.starts_with(' ') {
-            in_section = false;
-        }
-        if !in_section || !trimmed.starts_with('-') && !trimmed.starts_with('<') {
-            continue;
-        }
-        // Skip internal flags.
-        if trimmed.contains("--help") || trimmed.contains("--version") {
-            continue;
-        }
-
-        if let Some((flag_str, desc_str)) = split_flag_line(trimmed) {
-            let (desc, default) = extract_default(&desc_str);
-            rows.push((flag_str, default, desc));
-        }
+    let mut html = String::new();
+    if !description.is_empty() {
+        html.push_str(&description);
+        html.push_str("\n\n");
     }
 
     if rows.is_empty() {
-        return Ok("_No options._\n".to_string());
+        html.push_str("_No options._");
+        return Ok(html);
     }
 
-    let mut table = String::new();
-    table.push_str("| Flag | Default | Description |\n");
-    table.push_str("|------|---------|-------------|\n");
-    for (flag, default, desc) in rows {
-        let d = if default.is_empty() {
-            "—".to_string()
-        } else {
-            format!("`{default}`")
-        };
-        // Escape pipe characters inside cells.
-        let desc = desc.replace('|', "\\|");
-        table.push_str(&format!("| `{flag}` | {d} | {desc} |\n"));
+    const VISIBLE: usize = 5;
+    let has_overflow = rows.len() > VISIBLE;
+
+    // Each expandable section needs a unique id so multiple sections on the
+    // same page don't conflict. We derive it from the first flag name.
+    let section_id = rows
+        .first()
+        .map(|(f, _, _)| {
+            f.chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+
+    if has_overflow {
+        html.push_str(&format!(
+            "<div class=\"flags-container\">\n\
+             <input type=\"checkbox\" id=\"flags-{section_id}\" class=\"flags-state\">\n"
+        ));
     }
-    Ok(table)
+
+    html.push_str("<table>\n<thead><tr>");
+    html.push_str("<th>Flag</th><th>Default</th><th>Description</th>");
+    html.push_str("</tr></thead>\n<tbody>\n");
+
+    for (i, (flag, default, desc)) in rows.iter().enumerate() {
+        if i == VISIBLE && has_overflow {
+            html.push_str("</tbody>\n<tbody class=\"flags-overflow\">\n");
+        }
+        write_html_row(&mut html, flag, default, desc);
+    }
+
+    html.push_str("</tbody>\n</table>\n");
+
+    if has_overflow {
+        html.push_str(&format!(
+            "<label for=\"flags-{section_id}\" class=\"flags-toggle\">\
+             <span class=\"flags-show\">Show all flags</span>\
+             <span class=\"flags-hide\">Show less</span>\
+             </label>\n</div>\n"
+        ));
+    }
+
+    Ok(html)
+}
+
+/// Write a single `<tr>` for the flag table.
+fn write_html_row(html: &mut String, flag: &str, default: &str, desc: &str) {
+    let d = if default.is_empty() {
+        "—".to_string()
+    } else {
+        format!("<code>{}</code>", escape_html(default))
+    };
+    html.push_str(&format!(
+        "<tr><td><code>{}</code></td><td>{}</td><td>{}</td></tr>\n",
+        escape_html(flag),
+        d,
+        escape_html(desc),
+    ));
+}
+
+/// Minimal HTML escaping for table cell content.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Extract the command description from clap's help output.
+///
+/// The description is the first non-empty line, before the `Usage:` line.
+fn extract_description(help: &str) -> String {
+    for line in help.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with("Usage:") {
+            break;
+        }
+        return trimmed.to_string();
+    }
+    String::new()
+}
+
+/// Parse clap's `-h` output into structured flag rows.
+///
+/// Returns `Vec<(flag, default, description)>`. Handles both `Options:` and
+/// `Arguments:` sections. Skips `-h/--help` and `-V/--version`. Handles
+/// continuation lines where clap wraps long descriptions onto the next
+/// indented line.
+fn parse_help_rows(help: &str) -> Result<Vec<(String, String, String)>> {
+    let mut in_section = false;
+    let mut raw_rows: Vec<(String, String)> = Vec::new(); // (flag, raw_desc)
+
+    let lines: Vec<&str> = help.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim_start();
+
+        if trimmed == "Options:" || trimmed == "Arguments:" {
+            in_section = true;
+            i += 1;
+            continue;
+        }
+        if in_section && !line.is_empty() && !line.starts_with(' ') {
+            in_section = false;
+        }
+        if !in_section {
+            i += 1;
+            continue;
+        }
+
+        if trimmed.starts_with('-') || trimmed.starts_with('<') {
+            if trimmed.contains("--help") || trimmed.contains("--version") {
+                i += 1;
+                continue;
+            }
+
+            if let Some((flag_str, desc_str)) = split_flag_line(trimmed) {
+                let mut desc = desc_str;
+                // If description is empty, check the next line for a continuation.
+                // Clap wraps long descriptions onto an indented continuation line.
+                if desc.is_empty() && i + 1 < lines.len() {
+                    let next = lines[i + 1];
+                    let next_trimmed = next.trim_start();
+                    let indent = next.len() - next.trim_start().len();
+                    if indent >= 10
+                        && !next_trimmed.starts_with('-')
+                        && !next_trimmed.starts_with('<')
+                        && !next_trimmed.is_empty()
+                    {
+                        desc = next_trimmed.to_string();
+                        i += 1;
+                    }
+                }
+                raw_rows.push((flag_str, desc));
+            }
+        }
+        i += 1;
+    }
+
+    let rows = raw_rows
+        .into_iter()
+        .map(|(flag, raw_desc)| {
+            let (desc, default) = extract_default(&raw_desc);
+            (flag, default, desc)
+        })
+        .collect();
+    Ok(rows)
 }
 
 /// Split a clap help line at the first run of 2+ spaces.
