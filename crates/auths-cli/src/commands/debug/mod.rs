@@ -8,6 +8,7 @@ use crate::commands::utils::UtilCommand;
 use crate::config::CliConfig;
 
 #[derive(Args, Debug, Clone)]
+#[command(about = "Internal debugging utilities")]
 pub struct DebugCmd {
     #[command(subcommand)]
     pub command: DebugSubcommand,

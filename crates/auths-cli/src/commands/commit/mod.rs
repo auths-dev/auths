@@ -7,6 +7,7 @@ use crate::commands::verify_commit::VerifyCommitCommand;
 use crate::config::CliConfig;
 
 #[derive(Args, Debug, Clone)]
+#[command(about = "Low-level commit signing and verification")]
 pub struct CommitCmd {
     #[command(subcommand)]
     pub command: CommitSubcommand,

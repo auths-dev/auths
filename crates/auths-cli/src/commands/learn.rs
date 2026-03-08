@@ -8,6 +8,7 @@ use std::process::Command as ProcessCommand;
 
 /// Interactive tutorial for learning Auths concepts.
 #[derive(Parser, Debug, Clone)]
+#[command(about = "Interactive tutorial for learning Auths concepts")]
 pub struct LearnCommand {
     /// Skip to a specific section (1-6).
     #[clap(long, short, value_name = "SECTION")]
