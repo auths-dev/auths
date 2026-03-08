@@ -12,7 +12,15 @@
 //! Without features, only the core types (`DaemonError`, `DaemonState`) are available.
 
 mod error;
+mod rate_limiter;
 mod state;
+mod token;
 
 pub use error::DaemonError;
+pub use rate_limiter::RateLimiter;
 pub use state::DaemonState;
+
+#[cfg(feature = "server")]
+pub use rate_limiter::middleware::rate_limit_middleware;
+#[cfg(feature = "server")]
+pub use token::validate_pairing_token;
