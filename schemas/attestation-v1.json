@@ -46,6 +46,9 @@
         }
       ]
     },
+    "environment_claim": {
+      "description": "Unsigned environment claim for gateway-level verification via `auths-env`. Excluded from `CanonicalAttestationData` — does not affect signatures."
+    },
     "expires_at": {
       "description": "Expiration timestamp, if set.",
       "type": [
@@ -113,9 +116,6 @@
           "type": "null"
         }
       ]
-    },
-    "environment_claim": {
-      "description": "Unsigned environment claim for gateway-level verification via auths-env. Excluded from canonical attestation data — does not affect signatures."
     },
     "subject": {
       "description": "DID of the device being attested.",
