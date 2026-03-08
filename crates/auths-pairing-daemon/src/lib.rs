@@ -13,8 +13,12 @@
 
 mod discovery;
 mod error;
+#[cfg(feature = "server")]
+mod handlers;
 mod network;
 mod rate_limiter;
+#[cfg(feature = "server")]
+mod router;
 mod state;
 mod token;
 
@@ -22,7 +26,7 @@ pub use discovery::{AdvertiseHandle, MockNetworkDiscovery, NetworkDiscovery, SER
 pub use error::DaemonError;
 pub use network::{MockNetworkInterfaces, NetworkInterfaces};
 pub use rate_limiter::RateLimiter;
-pub use state::DaemonState;
+pub use state::{DaemonState, SessionError};
 
 #[cfg(feature = "mdns")]
 pub use discovery::MdnsDiscovery;
@@ -32,4 +36,6 @@ pub use network::IfAddrsNetworkInterfaces;
 #[cfg(feature = "server")]
 pub use rate_limiter::middleware::rate_limit_middleware;
 #[cfg(feature = "server")]
-pub use token::validate_pairing_token;
+pub use router::build_pairing_router;
+#[cfg(feature = "server")]
+pub use token::{generate_transport_token, validate_pairing_token};
