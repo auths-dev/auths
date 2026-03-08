@@ -4,6 +4,9 @@
 //! and creating device attestations. All presentation concerns
 //! (spinners, passphrase prompts, console output) remain in the CLI.
 
+#[cfg(feature = "lan-pairing")]
+pub mod lan;
+
 use auths_core::pairing::types::{Base64UrlEncoded, SubmitResponseRequest};
 use auths_core::pairing::{PairingResponse, PairingToken, SessionStatus, normalize_short_code};
 use auths_core::ports::clock::ClockProvider;
@@ -53,6 +56,10 @@ pub enum PairingError {
     /// A storage operation failed during pairing.
     #[error("storage error: {0}")]
     StorageError(String),
+    /// The LAN pairing daemon could not be constructed.
+    #[cfg(feature = "lan-pairing")]
+    #[error("pairing daemon error: {0}")]
+    DaemonError(String),
 }
 
 /// Parameters for initiating a new pairing session.

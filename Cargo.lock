@@ -658,6 +658,7 @@ dependencies = [
  "auths-core",
  "auths-crypto",
  "auths-id",
+ "auths-pairing-daemon",
  "auths-policy",
  "auths-storage",
  "auths-telemetry",
