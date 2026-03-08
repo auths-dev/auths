@@ -355,6 +355,11 @@ pub fn decision_to_verify_result(decision: Decision) -> VerifyResult {
                 message: format!("approval required: {}", decision.message),
             },
         },
+        _ => VerifyResult::Rejected {
+            reason: RejectReason::PolicyDenied {
+                message: decision.message,
+            },
+        },
     }
 }
 

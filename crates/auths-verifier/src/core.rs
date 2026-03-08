@@ -746,6 +746,7 @@ pub struct Attestation {
 /// standalone minimal-dependency crate that cannot depend on `auths-policy`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub enum SignerType {
     /// A human user.
     Human,

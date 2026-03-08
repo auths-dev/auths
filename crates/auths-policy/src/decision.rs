@@ -24,6 +24,7 @@ pub struct Decision {
 
 /// The outcome of a policy evaluation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum Outcome {
     /// The action is allowed.
     Allow,
@@ -42,6 +43,7 @@ pub enum Outcome {
 /// These codes are designed to be stable across versions for use in
 /// monitoring dashboards, alerting rules, and audit queries.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ReasonCode {
     /// Unconditional allow/deny (True/False expressions).
     Unconditional,

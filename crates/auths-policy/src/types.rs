@@ -215,6 +215,7 @@ impl fmt::Display for CanonicalCapability {
 /// Used to distinguish human, AI agent, and workload (CI/CD) signers
 /// in policy evaluation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum SignerType {
     /// A human user.
     Human,
