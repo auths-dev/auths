@@ -257,11 +257,19 @@
          <lastmod>2026-03-08</lastmod>
     </url>
     <url>
+         <loc>https://docs.auths.dev/sdk/rust/agent-protocol/</loc>
+         <lastmod>2026-03-08</lastmod>
+    </url>
+    <url>
          <loc>https://docs.auths.dev/sdk/rust/error-handling/</loc>
          <lastmod>2026-03-08</lastmod>
     </url>
     <url>
          <loc>https://docs.auths.dev/sdk/rust/identity-operations/</loc>
+         <lastmod>2026-03-08</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/rust/org-workflows/</loc>
          <lastmod>2026-03-08</lastmod>
     </url>
     <url>
