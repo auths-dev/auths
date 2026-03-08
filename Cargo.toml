@@ -62,11 +62,6 @@ auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.4" }
 # Compile crypto-heavy crates with optimizations even in dev/test builds.
 # Without this, Argon2id key derivation (m=64 MiB, t=3) takes ~5-10s per
 # call in unoptimized builds, causing E2E test timeouts on CI runners.
-# Override git deps with local paths for development.
-# These are ignored in Docker/CI where the git deps are resolved directly.
-[patch."https://github.com/bordumb/heartwood"]
-radicle-core = { path = "/Users/bordumb/workspace/repositories/radicle-base/heartwood/crates/radicle-core" }
-radicle-crypto = { path = "/Users/bordumb/workspace/repositories/radicle-base/heartwood/crates/radicle-crypto" }
 
 [profile.dev.package.argon2]
 opt-level = 3
