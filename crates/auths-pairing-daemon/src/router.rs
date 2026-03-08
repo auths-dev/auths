@@ -53,8 +53,8 @@ pub fn build_pairing_router(state: Arc<DaemonState>, rate_limiter: Arc<RateLimit
             "/v1/pairing/sessions/{id}/confirmation",
             get(handle_get_confirmation),
         )
-        .layer(Extension(rate_limiter))
         .layer(middleware::from_fn(rate_limit_middleware))
+        .layer(Extension(rate_limiter))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state)

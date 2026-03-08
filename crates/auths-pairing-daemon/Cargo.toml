@@ -35,6 +35,9 @@ mdns = ["dep:mdns-sd"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+serde_json = "1"
 
 [lints]
 workspace = true
