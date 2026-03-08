@@ -7,6 +7,6 @@ license.workspace = true
 
 [dependencies]
 auths-crypto = { path = "../auths-crypto", features = ["test-utils"] }
-git2 = "0.20.4"
+git2.workspace = true
 ring = "0.17.14"
 tempfile = "3"

@@ -14,7 +14,7 @@ homepage.workspace = true
 auths-core = { workspace = true }
 auths-sdk = { workspace = true }
 auths-verifier = { workspace = true, features = ["native"] }
-git2 = "0.20.4"
+git2.workspace = true
 thiserror.workspace = true
 chrono = "0.4"
 log = "0.4"

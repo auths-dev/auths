@@ -255,6 +255,83 @@ pub fn create_keri_identity_with_backend(
     })
 }
 
+/// Create a KERI identity from an existing Ed25519 key (PKCS8 DER).
+///
+/// Used for migrating existing `did:key` identities to `did:keri`.
+/// The provided key becomes the current signing key; a new next key
+/// is generated for pre-rotation.
+///
+/// # Arguments
+/// * `repo` - Git repository for KEL storage
+/// * `current_pkcs8_bytes` - Existing Ed25519 key in PKCS8 v2 DER format
+/// * `witness_config` - Optional witness configuration
+/// * `now` - Timestamp for the inception event
+pub fn create_keri_identity_from_key(
+    repo: &Repository,
+    current_pkcs8_bytes: &[u8],
+    witness_config: Option<&WitnessConfig>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<InceptionResult, InceptionError> {
+    let rng = SystemRandom::new();
+
+    // Use the provided key as the current keypair
+    let current_keypair = Ed25519KeyPair::from_pkcs8(current_pkcs8_bytes)
+        .map_err(|e| InceptionError::KeyGeneration(format!("invalid PKCS8 key: {e}")))?;
+
+    // Generate next keypair (for pre-rotation)
+    let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
+        .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
+    let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
+        .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
+
+    let current_pub_encoded = format!(
+        "D{}",
+        URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
+    );
+    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+
+    let (bt, b) = match witness_config {
+        Some(cfg) if cfg.is_enabled() => (
+            cfg.threshold.to_string(),
+            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+        ),
+        _ => ("0".to_string(), vec![]),
+    };
+
+    let icp = IcpEvent {
+        v: KERI_VERSION.to_string(),
+        d: Said::default(),
+        i: Prefix::default(),
+        s: KeriSequence::new(0),
+        kt: "1".to_string(),
+        k: vec![current_pub_encoded],
+        nt: "1".to_string(),
+        n: vec![next_commitment],
+        bt,
+        b,
+        a: vec![],
+        x: String::new(),
+    };
+
+    let mut finalized = finalize_icp_event(icp)?;
+    let prefix = finalized.i.clone();
+
+    let canonical = super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
+    let sig = current_keypair.sign(&canonical);
+    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+
+    let kel = GitKel::new(repo, prefix.as_str());
+    kel.create(&finalized, now)?;
+
+    Ok(InceptionResult {
+        prefix,
+        current_keypair_pkcs8: Pkcs8Der::new(current_pkcs8_bytes),
+        next_keypair_pkcs8: Pkcs8Der::new(next_pkcs8.as_ref()),
+        current_public_key: current_keypair.public_key().as_ref().to_vec(),
+        next_public_key: next_keypair.public_key().as_ref().to_vec(),
+    })
+}
+
 /// Format a KERI prefix as a full DID.
 pub fn prefix_to_did(prefix: &str) -> String {
     format!("did:keri:{}", prefix)
