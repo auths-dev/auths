@@ -17,6 +17,7 @@ members = [
   "crates/auths-keri",
   "crates/auths-jwt",
   "crates/auths-mcp-server",
+  "crates/auths-pairing-daemon",
   "crates/auths-pairing-protocol",
   "crates/auths-radicle",
   "crates/auths-scim",
@@ -56,6 +57,7 @@ auths-sdk = { path = "crates/auths-sdk", version = "0.0.1-rc.4" }
 auths-infra-git = { path = "crates/auths-infra-git", version = "0.0.1-rc.4" }
 auths-infra-http = { path = "crates/auths-infra-http", version = "0.0.1-rc.4" }
 auths-jwt = { path = "crates/auths-jwt", version = "0.0.1-rc.7" }
+auths-pairing-daemon = { path = "crates/auths-pairing-daemon", version = "0.0.1-rc.8" }
 auths-pairing-protocol = { path = "crates/auths-pairing-protocol", version = "0.0.1-rc.7" }
 auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.4" }
 

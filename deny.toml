@@ -44,6 +44,7 @@ deny = [
     "auths-cli",
     "auths-core",
     "auths-mcp-server",
+    "auths-pairing-daemon",
   ], reason = "HTTP framework confined to adapter crates" },
 
   # git2 must not be a production dependency of auths-sdk or auths-core

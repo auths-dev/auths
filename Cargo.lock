@@ -576,6 +576,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-pairing-daemon"
+version = "0.0.1-rc.8"
+dependencies = [
+ "auths-core",
+ "axum",
+ "base64",
+ "if-addrs 0.13.4",
+ "mdns-sd",
+ "ring",
+ "serde",
+ "subtle",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tower-http",
+]
+
+[[package]]
 name = "auths-pairing-protocol"
 version = "0.0.1-rc.8"
 dependencies = [
