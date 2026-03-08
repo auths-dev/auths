@@ -39,7 +39,7 @@ auths-core = { workspace = true, features = ["test-utils"] }
 auths-id = { workspace = true, features = ["test-utils"] }
 auths-verifier = { workspace = true, features = ["test-utils"] }
 auths-storage = { workspace = true, features = ["backend-git"] }
-git2 = "0.20.4"
+git2.workspace = true
 sha2 = "0.10"
 tempfile = "3"
 

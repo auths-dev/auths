@@ -321,9 +321,32 @@ impl RadicleIdentityResolver {
     /// at `v1/devices/{shard}/{sanitized_did}/attestation.json`.
     fn find_controller_for_device(&self, device_did: &Did) -> Option<Did> {
         let id_path = self.identity_repo_path.as_ref().unwrap_or(&self.repo_path);
-        let repo = Repository::open(id_path).ok()?;
-        let att = self.read_device_attestation(&repo, device_did)?;
-        att.issuer.to_string().parse::<Did>().ok()
+        eprintln!(
+            "[auths-debug] find_controller_for_device: id_path={}",
+            id_path.display()
+        );
+        let repo = match Repository::open(id_path) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[auths-debug] Repository::open failed: {e}");
+                return None;
+            }
+        };
+        eprintln!("[auths-debug] Repository opened successfully");
+        let att = match self.read_device_attestation(&repo, device_did) {
+            Some(a) => a,
+            None => {
+                eprintln!("[auths-debug] read_device_attestation returned None");
+                return None;
+            }
+        };
+        eprintln!("[auths-debug] attestation found, issuer={}", att.issuer);
+        let result = att.issuer.to_string().parse::<Did>().ok();
+        eprintln!(
+            "[auths-debug] parsed issuer DID: {:?}",
+            result.as_ref().map(|d| d.to_string())
+        );
+        result
     }
 
     /// Scans the packed registry for all devices with attestations.
@@ -388,28 +411,76 @@ impl RadicleIdentityResolver {
         repo: &Repository,
         device_did: &Did,
     ) -> Option<auths_verifier::core::Attestation> {
-        let registry_tree = self.registry_tree(repo)?;
+        let registry_tree = match self.registry_tree(repo) {
+            Some(t) => t,
+            None => {
+                eprintln!("[auths-debug] registry_tree returned None");
+                return None;
+            }
+        };
         let sanitized = device_did.to_string().replace(':', "_");
-        let key_part = sanitized.strip_prefix("did_key_")?;
+        let key_part = match sanitized.strip_prefix("did_key_") {
+            Some(k) => k,
+            None => {
+                eprintln!("[auths-debug] strip_prefix(did_key_) failed for: {sanitized}");
+                return None;
+            }
+        };
         if key_part.len() < 4 {
+            eprintln!("[auths-debug] key_part too short: {key_part}");
             return None;
         }
         let s1 = &key_part[..2];
         let s2 = &key_part[2..4];
         let att_path = format!("v1/devices/{s1}/{s2}/{sanitized}/attestation.json");
+        eprintln!("[auths-debug] looking up att_path: {att_path}");
 
-        let entry = registry_tree
-            .get_path(std::path::Path::new(&att_path))
-            .ok()?;
-        let blob = repo.find_blob(entry.id()).ok()?;
-        serde_json::from_slice(blob.content()).ok()
+        let entry = match registry_tree.get_path(std::path::Path::new(&att_path)) {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("[auths-debug] tree.get_path failed: {e}");
+                return None;
+            }
+        };
+        let blob = match repo.find_blob(entry.id()) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[auths-debug] find_blob failed: {e}");
+                return None;
+            }
+        };
+        match serde_json::from_slice(blob.content()) {
+            Ok(att) => Some(att),
+            Err(e) => {
+                eprintln!("[auths-debug] serde_json::from_slice failed: {e}");
+                None
+            }
+        }
     }
 
     /// Returns the root tree at `refs/auths/registry`.
     fn registry_tree<'r>(&self, repo: &'r Repository) -> Option<git2::Tree<'r>> {
-        let reference = repo.find_reference(REGISTRY_REF).ok()?;
-        let commit = reference.peel_to_commit().ok()?;
-        commit.tree().ok()
+        let reference = match repo.find_reference(REGISTRY_REF) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[auths-debug] find_reference({REGISTRY_REF}) failed: {e}");
+                return None;
+            }
+        };
+        let commit = match reference.peel_to_commit() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[auths-debug] peel_to_commit failed: {e}");
+                return None;
+            }
+        };
+        match commit.tree() {
+            Ok(t) => Some(t),
+            Err(e) => {
+                eprintln!("[auths-debug] commit.tree() failed: {e}");
+                None
+            }
+        }
     }
 
     /// Reads KEL events by walking the commit chain from the given commit.
