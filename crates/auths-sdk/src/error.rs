@@ -410,6 +410,18 @@ pub enum OrgError {
     #[error("invalid public key: {0}")]
     InvalidPublicKey(String),
 
+    /// A signing operation failed while creating or revoking an attestation.
+    #[error("signing error: {0}")]
+    Signing(String),
+
+    /// The identity could not be loaded from storage.
+    #[error("identity error: {0}")]
+    Identity(String),
+
+    /// A key storage operation failed.
+    #[error("key storage error: {0}")]
+    KeyStorage(String),
+
     // TECH-DEBT(fn-33): migrate Storage(String) to typed SdkStorageError variant
     // (call sites in workflows/org.rs, not in the fn-33.1 scope)
     /// A storage operation failed.
