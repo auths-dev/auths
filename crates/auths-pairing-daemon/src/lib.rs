@@ -19,6 +19,8 @@ mod network;
 mod rate_limiter;
 #[cfg(feature = "server")]
 mod router;
+#[cfg(feature = "server")]
+mod server;
 mod state;
 mod token;
 
@@ -37,5 +39,7 @@ pub use network::IfAddrsNetworkInterfaces;
 pub use rate_limiter::middleware::rate_limit_middleware;
 #[cfg(feature = "server")]
 pub use router::build_pairing_router;
+#[cfg(feature = "server")]
+pub use server::{PairingDaemon, PairingDaemonBuilder, PairingDaemonHandle};
 #[cfg(feature = "server")]
 pub use token::{generate_transport_token, validate_pairing_token};
