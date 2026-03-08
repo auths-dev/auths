@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 
 use crate::approval::ApprovalAttestation;
 use crate::types::{CanonicalCapability, CanonicalDid, SignerType};
@@ -77,6 +78,11 @@ pub struct EvalContext {
     // ── Approval Attestations ────────────────────────────────────────
     /// Submitted approval attestations for ApprovalGate checking.
     pub approvals: Vec<ApprovalAttestation>,
+
+    // ── Audit Metadata ────────────────────────────────────────────────
+    /// Opaque gateway metadata (source IP, request ID) for audit logging.
+    /// Not used in policy evaluation — carried through for audit trail.
+    pub audit_metadata: HashMap<String, Value>,
 }
 
 impl EvalContext {
@@ -104,6 +110,7 @@ impl EvalContext {
             workload_claims: HashMap::new(),
             attrs: HashMap::new(),
             approvals: Vec::new(),
+            audit_metadata: HashMap::new(),
         }
     }
 
@@ -223,6 +230,12 @@ impl EvalContext {
     /// Add an approval attestation.
     pub fn approval(mut self, attestation: ApprovalAttestation) -> Self {
         self.approvals.push(attestation);
+        self
+    }
+
+    /// Add an audit metadata entry.
+    pub fn audit_meta(mut self, key: impl Into<String>, value: Value) -> Self {
+        self.audit_metadata.insert(key.into(), value);
         self
     }
 }
