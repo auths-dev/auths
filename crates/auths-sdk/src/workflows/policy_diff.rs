@@ -199,6 +199,9 @@ fn collect_predicates_rec(expr: &Expr, predicates: &mut HashSet<String>) {
             predicates.insert(format!("ApprovalGate(approvers={:?})", approvers));
             collect_predicates_rec(inner, predicates);
         }
+        _ => {
+            predicates.insert(format!("{:?}", expr));
+        }
     }
 }
 

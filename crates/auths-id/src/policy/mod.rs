@@ -105,6 +105,7 @@ pub fn context_from_attestation(
             auths_verifier::core::SignerType::Human => auths_policy::SignerType::Human,
             auths_verifier::core::SignerType::Agent => auths_policy::SignerType::Agent,
             auths_verifier::core::SignerType::Workload => auths_policy::SignerType::Workload,
+            _ => auths_policy::SignerType::Workload,
         };
         ctx = ctx.signer_type(policy_st);
     }
@@ -454,6 +455,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         }
     }
 

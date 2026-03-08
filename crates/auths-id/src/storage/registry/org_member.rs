@@ -289,6 +289,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         let now = Utc::now();
         assert_eq!(compute_status(&att, now), MemberStatus::Active);
@@ -313,6 +314,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         let now = Utc::now();
         assert_eq!(compute_status(&att, now), MemberStatus::Revoked);
@@ -338,6 +340,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         let now = Utc::now();
         assert!(matches!(
@@ -366,6 +369,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         let now = Utc::now();
         assert_eq!(compute_status(&att, now), MemberStatus::Active);
@@ -391,6 +395,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         // Uses <= for expiry, so exactly at boundary = expired
         assert!(matches!(
@@ -446,6 +451,7 @@ mod tests {
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let vec = attestation_capability_vec(&att);

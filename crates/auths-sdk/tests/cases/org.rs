@@ -46,6 +46,7 @@ fn base_admin_attestation() -> Attestation {
         capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
         delegated_by: None,
         signer_type: None,
+        environment_claim: None,
     }
 }
 
@@ -67,6 +68,7 @@ fn base_member_attestation() -> Attestation {
         capabilities: vec![Capability::sign_commit()],
         delegated_by: Some(IdentityDID::new(ADMIN_DID)),
         signer_type: None,
+        environment_claim: None,
     }
 }
 

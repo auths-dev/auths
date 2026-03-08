@@ -42,6 +42,7 @@ fn create_signed_attestation(
         capabilities: vec![],
         delegated_by: None,
         signer_type: None,
+        environment_claim: None,
     };
 
     // Create canonical data for signing (includes org fields)

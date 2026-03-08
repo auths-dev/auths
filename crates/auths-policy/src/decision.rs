@@ -24,6 +24,7 @@ pub struct Decision {
 
 /// The outcome of a policy evaluation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum Outcome {
     /// The action is allowed.
     Allow,
@@ -35,6 +36,8 @@ pub enum Outcome {
     /// The action requires human approval before proceeding.
     /// Propagated through `evaluate_strict` (NOT collapsed to Deny).
     RequiresApproval,
+    /// No attestation was provided. Distinct from Deny (attestation was invalid).
+    MissingCredential,
 }
 
 /// Machine-readable reason code for stable logging and alerting.
@@ -42,6 +45,7 @@ pub enum Outcome {
 /// These codes are designed to be stable across versions for use in
 /// monitoring dashboards, alerting rules, and audit queries.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ReasonCode {
     /// Unconditional allow/deny (True/False expressions).
     Unconditional,
@@ -176,6 +180,7 @@ impl std::fmt::Display for Outcome {
             Outcome::Deny => write!(f, "DENY"),
             Outcome::Indeterminate => write!(f, "INDETERMINATE"),
             Outcome::RequiresApproval => write!(f, "REQUIRES_APPROVAL"),
+            Outcome::MissingCredential => write!(f, "MISSING_CREDENTIAL"),
         }
     }
 }

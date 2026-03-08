@@ -12,6 +12,7 @@ use crate::types::{CanonicalCapability, CanonicalDid, ValidatedGlob};
 /// Constructed only via [`compile`](crate::compile::compile). Cannot be built directly.
 /// All string fields have been parsed into canonical typed forms.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum CompiledExpr {
     /// Always allow.
     True,

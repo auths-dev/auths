@@ -174,5 +174,6 @@ fn minimal_attestation(issuer: &str, subject: &str) -> auths_verifier::core::Att
         capabilities: vec![],
         delegated_by: None,
         signer_type: None,
+        environment_claim: None,
     }
 }

@@ -94,5 +94,6 @@ pub fn test_attestation(device_did: &DeviceDID, issuer: &str) -> Attestation {
         capabilities: vec![],
         delegated_by: None,
         signer_type: None,
+        environment_claim: None,
     }
 }

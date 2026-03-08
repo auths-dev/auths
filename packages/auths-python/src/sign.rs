@@ -1,3 +1,4 @@
+use auths_verifier::action::ActionEnvelope;
 use auths_verifier::core::MAX_ATTESTATION_JSON_SIZE;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -75,31 +76,26 @@ pub fn sign_action(
     #[allow(clippy::disallowed_methods)] // Presentation boundary
     let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 
-    let signing_data = serde_json::json!({
-        "version": "1.0",
-        "type": action_type,
-        "identity": identity_did,
-        "payload": payload,
-        "timestamp": timestamp,
-    });
+    let mut envelope = ActionEnvelope {
+        version: "1.0".into(),
+        action_type: action_type.into(),
+        identity: identity_did.into(),
+        payload,
+        timestamp,
+        signature: String::new(),
+        attestation_chain: None,
+        environment: None,
+    };
 
-    let canonical = json_canon::to_string(&signing_data)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Canonicalization failed: {e}")))?;
+    let canonical = envelope
+        .canonical_bytes()
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] {e}")))?;
 
     let keypair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed)
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Failed to create keypair: {e}")))?;
 
-    let sig = keypair.sign(canonical.as_bytes());
-    let sig_hex = hex::encode(sig.as_ref());
-
-    let envelope = serde_json::json!({
-        "version": "1.0",
-        "type": action_type,
-        "identity": identity_did,
-        "payload": payload,
-        "timestamp": timestamp,
-        "signature": sig_hex,
-    });
+    let sig = keypair.sign(&canonical);
+    envelope.signature = hex::encode(sig.as_ref());
 
     serde_json::to_string(&envelope)
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Failed to serialize envelope: {e}")))
@@ -137,43 +133,26 @@ pub fn verify_action_envelope(
         )));
     }
 
-    let envelope: serde_json::Value = serde_json::from_str(envelope_json)
+    let envelope: ActionEnvelope = serde_json::from_str(envelope_json)
         .map_err(|e| PyValueError::new_err(format!("Invalid envelope JSON: {e}")))?;
 
-    let version = envelope
-        .get("version")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| PyValueError::new_err("Missing or invalid 'version' field"))?;
-
-    if version != "1.0" {
+    if envelope.version != "1.0" {
         return Ok(VerificationResult {
             valid: false,
-            error: Some(format!("Unsupported version: {version}")),
+            error: Some(format!("Unsupported version: {}", envelope.version)),
             error_code: Some("AUTHS_INVALID_INPUT".to_string()),
         });
     }
 
-    let sig_hex = envelope
-        .get("signature")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| PyValueError::new_err("Missing or invalid 'signature' field"))?;
-
-    let sig_bytes = hex::decode(sig_hex)
+    let sig_bytes = hex::decode(&envelope.signature)
         .map_err(|e| PyValueError::new_err(format!("Invalid signature hex: {e}")))?;
 
-    let signing_data = serde_json::json!({
-        "version": envelope.get("version"),
-        "type": envelope.get("type"),
-        "identity": envelope.get("identity"),
-        "payload": envelope.get("payload"),
-        "timestamp": envelope.get("timestamp"),
-    });
-
-    let canonical = json_canon::to_string(&signing_data)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Canonicalization failed: {e}")))?;
+    let canonical = envelope
+        .canonical_bytes()
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] {e}")))?;
 
     let key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &pk_bytes);
-    match key.verify(canonical.as_bytes(), &sig_bytes) {
+    match key.verify(&canonical, &sig_bytes) {
         Ok(()) => Ok(VerificationResult {
             valid: true,
             error: None,

@@ -96,6 +96,7 @@ impl Action {
 ///     capabilities: vec![Capability::sign_commit()],
 ///     delegated_by: None,
 ///     signer_type: None,
+///     environment_claim: None,
 /// };
 ///
 /// let decision = authorize_device(
@@ -197,6 +198,7 @@ mod tests {
             capabilities,
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         }
     }
 

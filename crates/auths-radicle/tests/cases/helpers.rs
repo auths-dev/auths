@@ -141,6 +141,7 @@ pub fn make_test_attestation(
         capabilities,
         delegated_by: None,
         signer_type: None,
+        environment_claim: None,
     }
 }
 

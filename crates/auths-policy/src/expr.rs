@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 /// Compilation validates and canonicalizes all string fields.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", content = "args")]
+#[non_exhaustive]
 pub enum Expr {
     // ── Combinators ──────────────────────────────────────────────────
     /// Always allow.

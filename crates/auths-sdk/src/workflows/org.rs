@@ -205,6 +205,7 @@ pub fn add_organization_member(
         capabilities: parsed_caps,
         delegated_by: Some(IdentityDID::new(admin_att.subject.to_string())),
         signer_type: None,
+        environment_claim: None,
     };
 
     backend

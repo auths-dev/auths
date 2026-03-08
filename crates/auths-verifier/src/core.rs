@@ -393,6 +393,9 @@ pub enum CapabilityError {
         "reserved namespace 'auths:' — use well-known constructors or choose a different prefix"
     )]
     ReservedNamespace,
+    /// The capability uses a reserved infrastructure namespace prefix.
+    #[error("the '{0}' prefix is reserved for infrastructure capabilities")]
+    ReservedInfraNamespace(String),
 }
 
 /// A validated capability identifier.
@@ -433,6 +436,10 @@ impl Capability {
 
     /// Reserved namespace prefix for Auths well-known capabilities.
     const RESERVED_PREFIX: &'static str = "auths:";
+
+    /// Reserved infrastructure capability namespace prefixes.
+    const RESERVED_INFRA_PREFIXES: &'static [&'static str] =
+        &["compute:", "network:", "storage:", "runtime:", "env:"];
 
     // ========================================================================
     // Well-known capability constructors
@@ -518,6 +525,11 @@ impl Capability {
         }
         if canonical.starts_with(Self::RESERVED_PREFIX) {
             return Err(CapabilityError::ReservedNamespace);
+        }
+        for prefix in Self::RESERVED_INFRA_PREFIXES {
+            if canonical.starts_with(prefix) {
+                return Err(CapabilityError::ReservedInfraNamespace(prefix.to_string()));
+            }
         }
 
         Ok(Self(canonical))
@@ -733,6 +745,11 @@ pub struct Attestation {
     /// Included in the canonical JSON before signing — the signature covers this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signer_type: Option<SignerType>,
+
+    /// Unsigned environment claim for gateway-level verification via `auths-env`.
+    /// Excluded from `CanonicalAttestationData` — does not affect signatures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_claim: Option<Value>,
 }
 
 /// The type of entity that produced a signature.
@@ -741,6 +758,7 @@ pub struct Attestation {
 /// standalone minimal-dependency crate that cannot depend on `auths-policy`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[non_exhaustive]
 pub enum SignerType {
     /// A human user.
     Human,
@@ -1317,6 +1335,7 @@ mod tests {
             capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
             delegated_by: Some(IdentityDID::new("did:key:delegator")),
             signer_type: None,
+            environment_claim: None,
         };
 
         let json = serde_json::to_string(&att).unwrap();
@@ -1349,6 +1368,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let json = serde_json::to_string(&att).unwrap();
@@ -1381,6 +1401,7 @@ mod tests {
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
             delegated_by: Some(IdentityDID::new("did:key:admin")),
             signer_type: None,
+            environment_claim: None,
         };
 
         let json = serde_json::to_string(&original).unwrap();
@@ -1567,6 +1588,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let original = IdentityBundle {
