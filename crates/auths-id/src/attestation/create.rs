@@ -173,6 +173,7 @@ pub fn create_signed_attestation(
         capabilities,
         delegated_by,
         signer_type: None,
+        environment_claim: None,
     })
 }
 

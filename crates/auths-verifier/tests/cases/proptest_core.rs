@@ -152,6 +152,7 @@ fn arb_attestation() -> impl Strategy<Value = Attestation> {
                 capabilities,
                 delegated_by,
                 signer_type: None,
+                environment_claim: None,
             }
         },
     )

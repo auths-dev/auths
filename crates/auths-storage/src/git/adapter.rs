@@ -2438,6 +2438,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_attestation(&attestation).unwrap();
@@ -2482,6 +2483,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_attestation(&original).unwrap();
 
@@ -2508,6 +2510,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_attestation(&updated).unwrap();
 
@@ -2539,6 +2542,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_attestation(&att).unwrap();
@@ -2573,6 +2577,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let older = Attestation {
@@ -2592,6 +2597,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_attestation(&newer).unwrap();
@@ -2621,6 +2627,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let newer = Attestation {
@@ -2640,6 +2647,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_attestation(&older).unwrap();
@@ -2671,6 +2679,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let unrevoked_old = Attestation {
@@ -2690,6 +2699,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_attestation(&revoked).unwrap();
@@ -2719,6 +2729,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         assert!(backend.store_attestation(&att).is_ok());
@@ -2746,6 +2757,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let without_ts = Attestation {
@@ -2765,6 +2777,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_attestation(&with_ts).unwrap();
@@ -2796,6 +2809,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let att2 = Attestation {
@@ -2815,6 +2829,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_attestation(&att1).unwrap();
@@ -2863,6 +2878,7 @@ mod tests {
                 capabilities: vec![],
                 delegated_by: None,
                 signer_type: None,
+                environment_claim: None,
             })
             .unwrap();
 
@@ -2895,6 +2911,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_org_member(org, &member_att).unwrap();
@@ -2980,6 +2997,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         // But store it under a WRONG filename
@@ -3043,6 +3061,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_org_member(org, &att).unwrap();
@@ -3093,6 +3112,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &active_att).unwrap();
 
@@ -3115,6 +3135,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &revoked_att).unwrap();
 
@@ -3160,6 +3181,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &revoked_att).unwrap();
 
@@ -3201,6 +3223,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &expired_att).unwrap();
 
@@ -3245,6 +3268,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &org_att).unwrap();
 
@@ -3267,6 +3291,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &wrong_att).unwrap();
 
@@ -3324,6 +3349,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &admin_att).unwrap();
 
@@ -3346,6 +3372,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &member_att).unwrap();
 
@@ -3390,6 +3417,7 @@ mod tests {
             capabilities: vec![Capability::sign_commit()],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &signer_att).unwrap();
 
@@ -3412,6 +3440,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &nocap_att).unwrap();
 
@@ -3456,6 +3485,7 @@ mod tests {
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &both_att).unwrap();
 
@@ -3478,6 +3508,7 @@ mod tests {
             capabilities: vec![Capability::sign_commit()],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &one_att).unwrap();
 
@@ -3521,6 +3552,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend.store_org_member(org, &valid_att).unwrap();
 
@@ -3606,6 +3638,7 @@ mod tests {
                 capabilities: vec![],
                 delegated_by: None,
                 signer_type: None,
+                environment_claim: None,
             };
             backend.store_org_member(org, &att).unwrap();
         }
@@ -3655,6 +3688,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         backend.store_attestation(&attestation).unwrap();
@@ -3698,6 +3732,7 @@ mod tests {
                 capabilities: vec![],
                 delegated_by: None,
                 signer_type: None,
+                environment_claim: None,
             };
             backend.store_attestation(&attestation).unwrap();
         }
@@ -3733,6 +3768,7 @@ mod tests {
                 capabilities: vec![],
                 delegated_by: None,
                 signer_type: None,
+                environment_claim: None,
             };
             backend.store_attestation(&attestation).unwrap();
         }
@@ -3772,6 +3808,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         // Test AttestationSink trait
@@ -3809,6 +3846,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend
             .export(&VerifiedAttestation::dangerous_from_unchecked(attestation1))
@@ -3832,6 +3870,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
         backend
             .export(&VerifiedAttestation::dangerous_from_unchecked(attestation2))
@@ -4096,6 +4135,7 @@ mod index_consistency_tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         }
     }
 
@@ -4340,6 +4380,7 @@ mod tenant_isolation_tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         }
     }
 

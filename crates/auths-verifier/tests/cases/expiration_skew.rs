@@ -35,6 +35,7 @@ fn create_signed_attestation(
         capabilities: vec![],
         delegated_by: None,
         signer_type: None,
+        environment_claim: None,
     };
 
     let data = CanonicalAttestationData {
@@ -52,6 +53,7 @@ fn create_signed_attestation(
         capabilities: None,
         delegated_by: None,
         signer_type: None,
+        environment_claim: None,
     };
     let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
 

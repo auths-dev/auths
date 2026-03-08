@@ -114,6 +114,9 @@
         }
       ]
     },
+    "environment_claim": {
+      "description": "Unsigned environment claim for gateway-level verification via auths-env. Excluded from canonical attestation data — does not affect signatures."
+    },
     "subject": {
       "description": "DID of the device being attested.",
       "allOf": [

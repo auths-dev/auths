@@ -176,3 +176,122 @@ fn json_canon_golden_output() {
         r#"{"a":"first","m":[3,1,2],"nested":{"a":1,"b":2},"z":"last"}"#
     );
 }
+
+#[test]
+fn environment_claim_excluded_from_canonical_form() {
+    use auths_verifier::core::{
+        Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
+        canonicalize_attestation_data,
+    };
+    use auths_verifier::types::{DeviceDID, IdentityDID};
+
+    let att = Attestation {
+        version: 1,
+        rid: ResourceId::new("test-rid"),
+        issuer: IdentityDID::new("did:keri:ETest"),
+        subject: DeviceDID::new("did:key:z6Mk..."),
+        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
+        revoked_at: None,
+        expires_at: None,
+        timestamp: None,
+        note: None,
+        payload: None,
+        role: None,
+        capabilities: vec![],
+        delegated_by: None,
+        signer_type: None,
+        environment_claim: Some(serde_json::json!({"provider": "aws", "region": "us-east-1"})),
+    };
+
+    let data = CanonicalAttestationData {
+        version: att.version,
+        rid: &att.rid,
+        issuer: &att.issuer,
+        subject: &att.subject,
+        device_public_key: att.device_public_key.as_bytes(),
+        payload: &att.payload,
+        timestamp: &att.timestamp,
+        expires_at: &att.expires_at,
+        revoked_at: &att.revoked_at,
+        note: &att.note,
+        role: None,
+        capabilities: None,
+        delegated_by: None,
+        signer_type: None,
+    };
+
+    let canonical_with_env = canonicalize_attestation_data(&data).unwrap();
+
+    let att_without = Attestation {
+        environment_claim: None,
+        ..att.clone()
+    };
+
+    let data_without = CanonicalAttestationData {
+        version: att_without.version,
+        rid: &att_without.rid,
+        issuer: &att_without.issuer,
+        subject: &att_without.subject,
+        device_public_key: att_without.device_public_key.as_bytes(),
+        payload: &att_without.payload,
+        timestamp: &att_without.timestamp,
+        expires_at: &att_without.expires_at,
+        revoked_at: &att_without.revoked_at,
+        note: &att_without.note,
+        role: None,
+        capabilities: None,
+        delegated_by: None,
+        signer_type: None,
+    };
+
+    let canonical_without_env = canonicalize_attestation_data(&data_without).unwrap();
+
+    assert_eq!(
+        canonical_with_env, canonical_without_env,
+        "environment_claim must not affect canonical form"
+    );
+}
+
+#[test]
+fn environment_claim_roundtrips_through_json() {
+    use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
+    use auths_verifier::types::{DeviceDID, IdentityDID};
+
+    let att = Attestation {
+        version: 1,
+        rid: ResourceId::new("test-rid"),
+        issuer: IdentityDID::new("did:keri:ETest"),
+        subject: DeviceDID::new("did:key:z6Mk..."),
+        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
+        revoked_at: None,
+        expires_at: None,
+        timestamp: None,
+        note: None,
+        payload: None,
+        role: None,
+        capabilities: vec![],
+        delegated_by: None,
+        signer_type: None,
+        environment_claim: Some(serde_json::json!({"provider": "aws"})),
+    };
+
+    let json = serde_json::to_string(&att).unwrap();
+    assert!(json.contains("\"environment_claim\""));
+
+    let parsed: Attestation = serde_json::from_str(&json).unwrap();
+    assert_eq!(att.environment_claim, parsed.environment_claim);
+
+    let att_none = Attestation {
+        environment_claim: None,
+        ..att.clone()
+    };
+    let json_none = serde_json::to_string(&att_none).unwrap();
+    assert!(!json_none.contains("environment_claim"));
+
+    let parsed_none: Attestation = serde_json::from_str(&json_none).unwrap();
+    assert_eq!(parsed_none.environment_claim, None);
+}

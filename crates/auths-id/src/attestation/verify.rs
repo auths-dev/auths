@@ -162,6 +162,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         }
     }
 

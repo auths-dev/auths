@@ -619,6 +619,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let data = CanonicalAttestationData {
@@ -1226,6 +1227,7 @@ mod tests {
             capabilities: capabilities.clone(),
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let caps_ref = if att.capabilities.is_empty() {
@@ -1575,6 +1577,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let data = CanonicalAttestationData {

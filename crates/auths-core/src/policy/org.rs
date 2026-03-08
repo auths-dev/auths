@@ -77,6 +77,7 @@ use super::device::Action;
 ///     capabilities: vec![Capability::manage_members()],
 ///     delegated_by: None,
 ///     signer_type: None,
+///     environment_claim: None,
 /// };
 ///
 /// let decision = authorize_org_action(
@@ -199,6 +200,7 @@ mod tests {
             capabilities,
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         }
     }
 

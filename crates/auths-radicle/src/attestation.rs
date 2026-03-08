@@ -252,6 +252,7 @@ impl TryFrom<RadAttestation> for Attestation {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         })
     }
 }
@@ -507,6 +508,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let rad: RadAttestation = (&core).try_into().unwrap();

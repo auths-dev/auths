@@ -733,6 +733,11 @@ pub struct Attestation {
     /// Included in the canonical JSON before signing — the signature covers this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signer_type: Option<SignerType>,
+
+    /// Unsigned environment claim for gateway-level verification via `auths-env`.
+    /// Excluded from `CanonicalAttestationData` — does not affect signatures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_claim: Option<Value>,
 }
 
 /// The type of entity that produced a signature.
@@ -1317,6 +1322,7 @@ mod tests {
             capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
             delegated_by: Some(IdentityDID::new("did:key:delegator")),
             signer_type: None,
+            environment_claim: None,
         };
 
         let json = serde_json::to_string(&att).unwrap();
@@ -1349,6 +1355,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let json = serde_json::to_string(&att).unwrap();
@@ -1381,6 +1388,7 @@ mod tests {
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
             delegated_by: Some(IdentityDID::new("did:key:admin")),
             signer_type: None,
+            environment_claim: None,
         };
 
         let json = serde_json::to_string(&original).unwrap();
@@ -1567,6 +1575,7 @@ mod tests {
             capabilities: vec![],
             delegated_by: None,
             signer_type: None,
+            environment_claim: None,
         };
 
         let original = IdentityBundle {
