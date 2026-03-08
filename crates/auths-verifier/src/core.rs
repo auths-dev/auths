@@ -393,6 +393,9 @@ pub enum CapabilityError {
         "reserved namespace 'auths:' — use well-known constructors or choose a different prefix"
     )]
     ReservedNamespace,
+    /// The capability uses a reserved infrastructure namespace prefix.
+    #[error("the '{0}' prefix is reserved for infrastructure capabilities")]
+    ReservedInfraNamespace(String),
 }
 
 /// A validated capability identifier.
@@ -433,6 +436,10 @@ impl Capability {
 
     /// Reserved namespace prefix for Auths well-known capabilities.
     const RESERVED_PREFIX: &'static str = "auths:";
+
+    /// Reserved infrastructure capability namespace prefixes.
+    const RESERVED_INFRA_PREFIXES: &'static [&'static str] =
+        &["compute:", "network:", "storage:", "runtime:", "env:"];
 
     // ========================================================================
     // Well-known capability constructors
@@ -518,6 +525,11 @@ impl Capability {
         }
         if canonical.starts_with(Self::RESERVED_PREFIX) {
             return Err(CapabilityError::ReservedNamespace);
+        }
+        for prefix in Self::RESERVED_INFRA_PREFIXES {
+            if canonical.starts_with(prefix) {
+                return Err(CapabilityError::ReservedInfraNamespace(prefix.to_string()));
+            }
         }
 
         Ok(Self(canonical))
