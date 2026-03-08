@@ -29,7 +29,9 @@ pub fn evaluate_strict(policy: &CompiledPolicy, ctx: &EvalContext) -> Decision {
             ),
         )
         .with_policy_hash(*policy.source_hash()),
-        Outcome::Allow | Outcome::Deny | Outcome::RequiresApproval => decision,
+        Outcome::Allow | Outcome::Deny | Outcome::RequiresApproval | Outcome::MissingCredential => {
+            decision
+        }
     }
 }
 
@@ -111,7 +113,9 @@ fn eval_expr(expr: &CompiledExpr, ctx: &EvalContext) -> Decision {
                     ReasonCode::CombinatorResult,
                     format!("NOT({})", result.message),
                 ),
-                Outcome::Indeterminate | Outcome::RequiresApproval => result,
+                Outcome::Indeterminate | Outcome::RequiresApproval | Outcome::MissingCredential => {
+                    result
+                }
             }
         }
 
