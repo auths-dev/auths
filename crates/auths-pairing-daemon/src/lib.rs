@@ -11,15 +11,24 @@
 //!
 //! Without features, only the core types (`DaemonError`, `DaemonState`) are available.
 
+mod discovery;
 mod error;
+mod network;
 mod rate_limiter;
 mod state;
 mod token;
 
+pub use discovery::{AdvertiseHandle, MockNetworkDiscovery, NetworkDiscovery, SERVICE_TYPE};
 pub use error::DaemonError;
+pub use network::{MockNetworkInterfaces, NetworkInterfaces};
 pub use rate_limiter::RateLimiter;
 pub use state::DaemonState;
 
+#[cfg(feature = "mdns")]
+pub use discovery::MdnsDiscovery;
+
+#[cfg(feature = "server")]
+pub use network::IfAddrsNetworkInterfaces;
 #[cfg(feature = "server")]
 pub use rate_limiter::middleware::rate_limit_middleware;
 #[cfg(feature = "server")]
