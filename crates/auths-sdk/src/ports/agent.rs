@@ -74,6 +74,64 @@ pub trait AgentSigningPort: Send + Sync + 'static {
     fn add_identity(&self, namespace: &str, pkcs8_der: &[u8]) -> Result<(), AgentSigningError>;
 }
 
+/// Transport abstraction for the agent listener.
+///
+/// Separates the connection-acceptance mechanism (Unix socket, TCP, in-process
+/// channel) from the signing state machine (`AgentCore` / `AgentHandle`).
+/// The CLI provides a Unix socket implementation; tests can use a direct
+/// in-process adapter that bypasses IPC entirely.
+///
+/// Usage:
+/// ```ignore
+/// struct InProcessTransport { handle: Arc<AgentHandle> }
+///
+/// impl AgentTransport for InProcessTransport {
+///     fn serve(&self) -> Result<(), AgentTransportError> {
+///         // Drive the handle directly without a socket
+///         Ok(())
+///     }
+///     fn is_available(&self) -> bool { true }
+///     fn socket_path(&self) -> Option<&Path> { None }
+/// }
+/// ```
+pub trait AgentTransport: Send + Sync + 'static {
+    /// Start accepting connections and serving agent requests.
+    ///
+    /// This method blocks until the agent is shut down. Implementations
+    /// should delegate to the `AgentHandle` for key operations.
+    ///
+    /// Args: none (connection details are configured at construction time).
+    fn serve(&self) -> Result<(), AgentTransportError>;
+
+    /// Check whether the transport backend is available on this platform.
+    ///
+    /// Returns `false` on platforms that lack Unix domain socket support
+    /// or when the required runtime dependencies are missing.
+    fn is_available(&self) -> bool;
+
+    /// Return the filesystem path of the listener socket, if applicable.
+    ///
+    /// In-process transports return `None`.
+    fn socket_path(&self) -> Option<&std::path::Path>;
+}
+
+/// Errors from agent transport operations.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum AgentTransportError {
+    /// The transport binding failed (e.g. socket already in use).
+    #[error("bind failed: {0}")]
+    BindFailed(String),
+
+    /// An I/O error during connection handling.
+    #[error("transport I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// The agent handle reported an error.
+    #[error("agent error: {0}")]
+    AgentError(String),
+}
+
 /// No-op agent provider for platforms without agent support.
 ///
 /// All methods return [`AgentSigningError::Unavailable`].

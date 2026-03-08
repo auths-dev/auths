@@ -9,9 +9,8 @@ use clap::{ArgAction, Parser, Subcommand};
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use auths_core::signing::{PassphraseProvider, StorageSigner};
+use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
 use auths_id::{
     attestation::{export::AttestationSink, group::AttestationGroup, verify::verify_with_resolver},
@@ -24,7 +23,10 @@ use auths_id::{
     },
 };
 
-use auths_sdk::workflows::org::{Role, member_role_order};
+use auths_sdk::workflows::org::{
+    AddMemberCommand, OrgContext, RevokeMemberCommand, Role, add_organization_member,
+    member_role_order, revoke_organization_member,
+};
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
@@ -174,29 +176,22 @@ pub enum OrgSubcommand {
 }
 
 /// Handles `org` commands for issuing or revoking member authorizations.
-pub fn handle_org(
-    cmd: OrgCommand,
-    repo_opt: Option<PathBuf>,
-    identity_ref_override: Option<String>,
-    identity_blob_name_override: Option<String>,
-    attestation_prefix_override: Option<String>,
-    attestation_blob_name_override: Option<String>,
-    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
-) -> Result<()> {
-    let repo_path = layout::resolve_repo_path(repo_opt)?;
+pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()> {
+    let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
+    let passphrase_provider = ctx.passphrase_provider.clone();
 
     let mut config = StorageLayoutConfig::default();
-    if let Some(r) = identity_ref_override {
-        config.identity_ref = r.into();
+    if let Some(r) = &cmd.overrides.identity_ref {
+        config.identity_ref = r.clone().into();
     }
-    if let Some(b) = identity_blob_name_override {
-        config.identity_blob_name = b.into();
+    if let Some(b) = &cmd.overrides.identity_blob {
+        config.identity_blob_name = b.clone().into();
     }
-    if let Some(p) = attestation_prefix_override {
-        config.device_attestation_prefix = p.into();
+    if let Some(p) = &cmd.overrides.attestation_prefix {
+        config.device_attestation_prefix = p.clone().into();
     }
-    if let Some(b) = attestation_blob_name_override {
-        config.attestation_blob_name = b.into();
+    if let Some(b) = &cmd.overrides.attestation_blob {
+        config.attestation_blob_name = b.clone().into();
     }
 
     let _attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
@@ -648,17 +643,7 @@ pub fn handle_org(
             println!("   Member: {}", member);
             println!("   Role:   {}", role);
 
-            // Load invoker's identity and key
-            let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
-            let managed_identity = identity_storage
-                .load_identity()
-                .context("Failed to load identity. Are you running this from an org repository?")?;
-            let invoker_did = managed_identity.controller_did.clone();
-            let rid = managed_identity.storage_id;
-
-            // Determine signer alias
             let signer_alias = KeyAlias::new_unchecked(signer_alias.unwrap_or_else(|| {
-                // Try to derive alias from org name in identity metadata
                 format!(
                     "org-{}",
                     org.chars()
@@ -669,125 +654,79 @@ pub fn handle_org(
                 )
             }));
 
-            // Verify invoker has ManageMembers capability
-            // First, load the invoker's own org attestation to check capabilities
-            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            let invoker_did_device = DeviceDID::new(invoker_did.to_string());
-            let invoker_attestations = attestation_storage.load_all_attestations()?;
-
-            // Find invoker's attestation for this org
-            let invoker_has_manage_members = invoker_attestations.iter().any(|att| {
-                att.subject.as_str() == invoker_did_device.as_str()
-                    && !att.is_revoked()
-                    && att.capabilities.contains(&Capability::manage_members())
-            });
-
-            if !invoker_has_manage_members {
-                return Err(anyhow!(
-                    "You don't have ManageMembers capability for org '{}'. Only org admins can add members.",
-                    org
-                ));
-            }
-
-            // Load signer key and verify passphrase
             let key_storage = get_platform_keychain()?;
-            let (stored_did, _role, encrypted_key) = key_storage
+            let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
+            let admin_pk_hex = hex::encode(
+                resolver
+                    .resolve(stored_did.as_str())
+                    .with_context(|| {
+                        format!("Failed to resolve public key for admin: {}", stored_did)
+                    })?
+                    .public_key()
+                    .as_bytes(),
+            );
 
-            if stored_did != invoker_did {
-                return Err(anyhow!(
-                    "Signer key alias '{}' belongs to DID '{}', but loaded identity is '{}'",
-                    signer_alias,
-                    stored_did,
-                    invoker_did
-                ));
-            }
-
-            let passphrase = passphrase_provider
-                .get_passphrase(&format!("Enter passphrase for org key '{}':", signer_alias))?;
-            let _pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase)
-                .context("Failed to decrypt signer key (invalid passphrase?)")?;
-
-            // Resolve member's public key
-            let member_did = DeviceDID::new(member.clone());
             let member_resolved = resolver
                 .resolve(&member)
                 .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
-            let member_pk_bytes = *member_resolved.public_key();
+            let member_pk = *member_resolved.public_key();
 
-            // Determine capabilities: use override if provided, otherwise use role defaults
-            let member_capabilities = if let Some(cap_strs) = capabilities {
+            let capability_strings = if let Some(cap_strs) = capabilities {
                 cap_strs
-                    .iter()
-                    .map(|s| {
-                        s.parse::<Capability>().unwrap_or_else(|e| {
-                            eprintln!("error: {e}");
-                            std::process::exit(2);
-                        })
-                    })
-                    .collect()
             } else {
                 role.default_capabilities()
-            };
-
-            println!(
-                "   Capabilities: {:?}",
-                member_capabilities
                     .iter()
                     .map(|c| format!("{:?}", c))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-
-            // Create the attestation
-            let now = Utc::now();
-            let meta = AttestationMetadata {
-                note: note.or_else(|| Some(format!("Added as {} by {}", role, invoker_did))),
-                timestamp: Some(now),
-                expires_at: None, // Member attestations don't expire by default
+                    .collect()
             };
 
-            let signer = StorageSigner::new(key_storage);
-            let attestation = create_signed_attestation(
-                now,
-                &rid,
-                &invoker_did,
-                &member_did,
-                member_pk_bytes.as_bytes(),
-                Some(serde_json::json!({
-                    "org_role": role.to_string(),
-                    "org_did": org
-                })),
-                &meta,
-                &signer,
-                passphrase_provider.as_ref(),
-                Some(&signer_alias),
-                None, // No device signature for org membership attestations
-                member_capabilities.clone(),
-                Some(role),
-                Some(invoker_did.clone()),
-            )
-            .context("Failed to create member attestation")?;
+            let org_prefix = org.strip_prefix("did:keri:").unwrap_or(&org).to_string();
 
-            // Export to Git at the org member ref path
+            let signer = StorageSigner::new(key_storage);
+            let uuid_provider = auths_core::ports::id::SystemUuidProvider;
+
+            let org_ctx = OrgContext {
+                registry: &*std::sync::Arc::new(GitRegistryBackend::from_config_unchecked(
+                    RegistryConfig::single_tenant(&repo_path),
+                )),
+                clock: &auths_core::ports::clock::SystemClock,
+                uuid_provider: &uuid_provider,
+                signer: &signer,
+                passphrase_provider: passphrase_provider.as_ref(),
+            };
+
+            let attestation = add_organization_member(
+                &org_ctx,
+                AddMemberCommand {
+                    org_prefix: org_prefix.clone(),
+                    member_did: member.clone(),
+                    member_public_key: Ed25519PublicKey::try_from_slice(member_pk.as_bytes())
+                        .context("Invalid member public key")?,
+                    role,
+                    capabilities: capability_strings.clone(),
+                    admin_public_key_hex: admin_pk_hex,
+                    signer_alias,
+                    note,
+                },
+            )
+            .context("Failed to add member")?;
+
+            let member_did = DeviceDID::new(member.clone());
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
             attestation_storage
-                .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
+                .export(
+                    &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(
+                        attestation.clone(),
+                    ),
+                )
                 .context("Failed to export member attestation to Git")?;
 
             println!("\n✅ Member added successfully!");
             println!("   Member ID:    {}", member);
             println!("   Role:         {}", role);
-            println!(
-                "   Capabilities: {}",
-                member_capabilities
-                    .iter()
-                    .map(|c| format!("{:?}", c))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            println!("   Delegated by: {}", invoker_did);
+            println!("   Capabilities: {}", capability_strings.join(", "));
             println!(
                 "   Stored at:    {}",
                 config.org_member_ref(&org, &member_did)
@@ -807,15 +746,6 @@ pub fn handle_org(
             println!("   Org:    {}", org);
             println!("   Member: {}", member);
 
-            // Load invoker's identity and key
-            let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
-            let managed_identity = identity_storage
-                .load_identity()
-                .context("Failed to load identity. Are you running this from an org repository?")?;
-            let invoker_did = managed_identity.controller_did.clone();
-            let rid = managed_identity.storage_id;
-
-            // Determine signer alias
             let signer_alias = KeyAlias::new_unchecked(signer_alias.unwrap_or_else(|| {
                 format!(
                     "org-{}",
@@ -827,105 +757,66 @@ pub fn handle_org(
                 )
             }));
 
-            // Verify invoker has ManageMembers capability
-            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            let invoker_did_device = DeviceDID::new(invoker_did.to_string());
-            let all_attestations = attestation_storage.load_all_attestations()?;
-
-            // Find invoker's attestation for this org
-            let invoker_has_manage_members = all_attestations.iter().any(|att| {
-                att.subject.as_str() == invoker_did_device.as_str()
-                    && !att.is_revoked()
-                    && att.capabilities.contains(&Capability::manage_members())
-            });
-
-            if !invoker_has_manage_members {
-                return Err(anyhow!(
-                    "You don't have ManageMembers capability for org '{}'. Only org admins can revoke members.",
-                    org
-                ));
-            }
-
-            // Check if member exists and is not already revoked
-            let member_did = DeviceDID::new(member.clone());
-            let member_attestation = all_attestations
-                .iter()
-                .find(|att| att.subject.as_str() == member_did.as_str());
-
-            match member_attestation {
-                None => {
-                    return Err(anyhow!(
-                        "Member '{}' is not a member of org '{}'. Cannot revoke.",
-                        member,
-                        org
-                    ));
-                }
-                Some(att) if att.is_revoked() => {
-                    return Err(anyhow!(
-                        "Member '{}' is already revoked from org '{}'.",
-                        member,
-                        org
-                    ));
-                }
-                Some(_) => {} // Member exists and is active, proceed
-            }
+            let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
+            let invoker_did = identity_storage
+                .load_identity()
+                .context("Failed to load identity. Are you running this from an org repository?")?
+                .controller_did;
 
             if dry_run {
                 return display_dry_run_revoke_member(&org, &member, invoker_did.as_ref());
             }
 
-            // Load signer key and verify passphrase
             let key_storage = get_platform_keychain()?;
-            let (stored_did, _role, encrypted_key) = key_storage
+            let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
+            let admin_pk_hex = hex::encode(
+                resolver
+                    .resolve(stored_did.as_str())
+                    .with_context(|| {
+                        format!("Failed to resolve public key for admin: {}", stored_did)
+                    })?
+                    .public_key()
+                    .as_bytes(),
+            );
 
-            if stored_did != invoker_did {
-                return Err(anyhow!(
-                    "Signer key alias '{}' belongs to DID '{}', but loaded identity is '{}'",
-                    signer_alias,
-                    stored_did,
-                    invoker_did
-                ));
-            }
+            let member_resolved = resolver
+                .resolve(&member)
+                .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
+            let member_pk = *member_resolved.public_key();
 
-            let passphrase = passphrase_provider
-                .get_passphrase(&format!("Enter passphrase for org key '{}':", signer_alias))?;
-            let _pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase)
-                .context("Failed to decrypt signer key (invalid passphrase?)")?;
+            let org_prefix = org.strip_prefix("did:keri:").unwrap_or(&org).to_string();
 
-            // Look up the member's public key from existing attestations
-            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            let existing = attestation_storage
-                .load_attestations_for_device(&member_did)
-                .context("Failed to load attestations for member")?;
-            let member_public_key = existing
-                .iter()
-                .find(|a| !a.device_public_key.is_zero())
-                .map(|a| a.device_public_key)
-                .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
-
-            // Create revocation
-            let now = Utc::now();
             let signer = StorageSigner::new(key_storage);
+            let uuid_provider = auths_core::ports::id::SystemUuidProvider;
 
-            println!("🔏 Creating signed revocation...");
-            let revocation = create_signed_revocation(
-                &rid,
-                &invoker_did,
-                &member_did,
-                member_public_key.as_bytes(),
-                note.clone(),
-                None, // No expiration for revocations
-                now,
-                &signer,
-                passphrase_provider.as_ref(),
-                &signer_alias,
+            let org_ctx = OrgContext {
+                registry: &*std::sync::Arc::new(GitRegistryBackend::from_config_unchecked(
+                    RegistryConfig::single_tenant(&repo_path),
+                )),
+                clock: &auths_core::ports::clock::SystemClock,
+                uuid_provider: &uuid_provider,
+                signer: &signer,
+                passphrase_provider: passphrase_provider.as_ref(),
+            };
+
+            let member_did = DeviceDID::new(member.clone());
+            let revocation = revoke_organization_member(
+                &org_ctx,
+                RevokeMemberCommand {
+                    org_prefix: org_prefix.clone(),
+                    member_did: member.clone(),
+                    member_public_key: Ed25519PublicKey::try_from_slice(member_pk.as_bytes())
+                        .context("Invalid member public key")?,
+                    admin_public_key_hex: admin_pk_hex,
+                    signer_alias,
+                    note: note.clone(),
+                },
             )
-            .context("Failed to create revocation")?;
+            .context("Failed to revoke member")?;
 
-            // Export to Git
-            println!("💾 Writing revocation to Git...");
+            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
             attestation_storage
                 .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(revocation))
                 .context("Failed to export revocation to Git")?;
@@ -1088,14 +979,6 @@ use crate::config::CliConfig;
 
 impl ExecutableCommand for OrgCommand {
     fn execute(&self, ctx: &CliConfig) -> Result<()> {
-        handle_org(
-            self.clone(),
-            ctx.repo_path.clone(),
-            self.overrides.identity_ref.clone(),
-            self.overrides.identity_blob.clone(),
-            self.overrides.attestation_prefix.clone(),
-            self.overrides.attestation_blob.clone(),
-            ctx.passphrase_provider.clone(),
-        )
+        handle_org(self.clone(), ctx)
     }
 }

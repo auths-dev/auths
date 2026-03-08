@@ -1,17 +1,61 @@
-//! Organization membership workflows: Role definitions and member sorting.
+//! Organization membership workflows: add, revoke, update, and list members.
+//!
+//! All workflows accept an [`OrgContext`] carrying injected infrastructure
+//! adapters (registry, clock, signer, passphrase provider). The CLI constructs
+//! this context at the presentation boundary; tests inject fakes.
 
 use std::ops::ControlFlow;
 
 use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::id::UuidProvider;
+use auths_core::signing::{PassphraseProvider, SecureSigner};
+use auths_core::storage::keychain::KeyAlias;
+use auths_id::attestation::create::create_signed_attestation;
+use auths_id::attestation::revoke::create_signed_revocation;
 use auths_id::ports::registry::RegistryBackend;
+use auths_id::storage::git_refs::AttestationMetadata;
 use auths_verifier::Capability;
-use auths_verifier::core::ResourceId;
 pub use auths_verifier::core::Role;
-use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature};
+use auths_verifier::core::{Attestation, Ed25519PublicKey};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 
 use crate::error::OrgError;
+
+/// Runtime dependency container for organization workflows.
+///
+/// Bundles all injected infrastructure adapters needed by org operations.
+/// The CLI constructs this from real implementations; tests inject fakes.
+///
+/// Args:
+/// * `registry`: Backend for reading/writing org member attestations.
+/// * `clock`: Wall-clock provider (use `SystemClock` in production, `MockClock` in tests).
+/// * `uuid_provider`: UUID generator for attestation resource IDs.
+/// * `signer`: Signing backend for creating cryptographic signatures.
+/// * `passphrase_provider`: Provider for obtaining key decryption passphrases.
+///
+/// Usage:
+/// ```ignore
+/// let ctx = OrgContext {
+///     registry: &backend,
+///     clock: &SystemClock,
+///     uuid_provider: &uuid_provider,
+///     signer: &signer,
+///     passphrase_provider: passphrase_provider.as_ref(),
+/// };
+/// let att = add_organization_member(&ctx, cmd)?;
+/// ```
+pub struct OrgContext<'a> {
+    /// Backend for reading/writing org member attestations.
+    pub registry: &'a dyn RegistryBackend,
+    /// Wall-clock provider (use `SystemClock` in production, `MockClock` in tests).
+    pub clock: &'a dyn ClockProvider,
+    /// UUID generator for attestation resource IDs.
+    pub uuid_provider: &'a dyn UuidProvider,
+    /// Signing backend for creating cryptographic signatures.
+    pub signer: &'a dyn SecureSigner,
+    /// Provider for obtaining key decryption passphrases.
+    pub passphrase_provider: &'a dyn PassphraseProvider,
+}
 
 /// Ordering key for org member display: admin < member < readonly < unknown.
 ///
@@ -34,12 +78,9 @@ pub fn member_role_order(role: &Option<Role>) -> u8 {
 /// Find the first org-member attestation whose device public key matches `public_key_hex`
 /// and which holds the `manage_members` capability.
 ///
-/// O(n) scan — acceptable because `RegistryBackend` is frozen and the visitor
-/// short-circuits on the first match via `ControlFlow::Break`.
-///
 /// Args:
 /// * `backend`: Registry backend to query.
-/// * `org_prefix`: The KERI method-specific ID of the organization (e.g. `EOrg1234567890`).
+/// * `org_prefix`: The KERI method-specific ID of the organization.
 /// * `public_key_hex`: Hex-encoded device public key of the candidate admin.
 ///
 /// Usage:
@@ -77,12 +118,10 @@ pub(crate) fn find_admin(
 
 /// Find a member's current attestation by their DID within an org.
 ///
-/// O(n) scan — short-circuits on first match via `ControlFlow::Break`.
-///
 /// Args:
 /// * `backend`: Registry backend to query.
-/// * `org_prefix`: The KERI method-specific ID of the organization (e.g. `EOrg1234567890`).
-/// * `member_did`: Full DID of the member to look up (e.g. `did:key:z6Mk...`).
+/// * `org_prefix`: The KERI method-specific ID of the organization.
+/// * `member_did`: Full DID of the member to look up.
 ///
 /// Usage:
 /// ```ignore
@@ -126,122 +165,188 @@ fn parse_capabilities(raw: &[String]) -> Result<Vec<Capability>, OrgError> {
 // ── Command structs ───────────────────────────────────────────────────────────
 
 /// Command to add a new member to an organization.
+///
+/// Args:
+/// * `org_prefix`: KERI method-specific ID of the org.
+/// * `member_did`: Full DID of the member being added.
+/// * `member_public_key`: Ed25519 public key of the member.
+/// * `role`: Role to assign.
+/// * `capabilities`: Capability strings to grant.
+/// * `admin_public_key_hex`: Hex-encoded public key of the signing admin.
+/// * `signer_alias`: Keychain alias of the admin's signing key.
+/// * `note`: Optional note for the attestation.
+///
+/// Usage:
+/// ```ignore
+/// let cmd = AddMemberCommand {
+///     org_prefix: "EOrg1234567890".into(),
+///     member_did: "did:key:z6Mk...".into(),
+///     member_public_key: Ed25519PublicKey::from_bytes(pk_bytes),
+///     role: Role::Member,
+///     capabilities: vec!["sign_commit".into()],
+///     admin_public_key_hex: hex::encode(&admin_pk),
+///     signer_alias: KeyAlias::new_unchecked("org-myorg"),
+///     note: Some("Added by admin".into()),
+/// };
+/// ```
 pub struct AddMemberCommand {
-    /// KERI method-specific ID of the org (e.g. `EOrg1234567890`).
+    /// KERI method-specific ID of the org.
     pub org_prefix: String,
-    /// Full DID of the member being added (e.g. `did:key:z6Mk...`).
+    /// Full DID of the member being added.
     pub member_did: String,
+    /// Ed25519 public key of the member.
+    pub member_public_key: Ed25519PublicKey,
     /// Role to assign.
     pub role: Role,
-    /// Capability strings to grant (e.g. `["sign_commit"]`).
+    /// Capability strings to grant.
     pub capabilities: Vec<String>,
-    /// Hex-encoded device public key of the signing admin.
-    pub public_key_hex: String,
+    /// Hex-encoded public key of the signing admin.
+    pub admin_public_key_hex: String,
+    /// Keychain alias of the admin's signing key.
+    pub signer_alias: KeyAlias,
+    /// Optional note for the attestation.
+    pub note: Option<String>,
 }
 
 /// Command to revoke an existing org member.
+///
+/// Args:
+/// * `org_prefix`: KERI method-specific ID of the org.
+/// * `member_did`: Full DID of the member to revoke.
+/// * `member_public_key`: Ed25519 public key of the member (from existing attestation).
+/// * `admin_public_key_hex`: Hex-encoded public key of the signing admin.
+/// * `signer_alias`: Keychain alias of the admin's signing key.
+/// * `note`: Optional reason for revocation.
+///
+/// Usage:
+/// ```ignore
+/// let cmd = RevokeMemberCommand {
+///     org_prefix: "EOrg1234567890".into(),
+///     member_did: "did:key:z6Mk...".into(),
+///     member_public_key: Ed25519PublicKey::from_bytes(pk_bytes),
+///     admin_public_key_hex: hex::encode(&admin_pk),
+///     signer_alias: KeyAlias::new_unchecked("org-myorg"),
+///     note: Some("Policy violation".into()),
+/// };
+/// ```
 pub struct RevokeMemberCommand {
-    /// KERI method-specific ID of the org (e.g. `EOrg1234567890`).
+    /// KERI method-specific ID of the org.
     pub org_prefix: String,
     /// Full DID of the member to revoke.
     pub member_did: String,
-    /// Hex-encoded device public key of the signing admin.
-    pub public_key_hex: String,
+    /// Ed25519 public key of the member (from existing attestation).
+    pub member_public_key: Ed25519PublicKey,
+    /// Hex-encoded public key of the signing admin.
+    pub admin_public_key_hex: String,
+    /// Keychain alias of the admin's signing key.
+    pub signer_alias: KeyAlias,
+    /// Optional reason for revocation.
+    pub note: Option<String>,
 }
 
 /// Command to update the capability set of an org member.
 pub struct UpdateCapabilitiesCommand {
-    /// KERI method-specific ID of the org (e.g. `EOrg1234567890`).
+    /// KERI method-specific ID of the org.
     pub org_prefix: String,
-    /// Full DID of the member whose capabilities will be updated.
+    /// Full DID of the member whose capabilities are being updated.
     pub member_did: String,
-    /// New capability strings (replaces existing set).
+    /// New capability strings to replace the existing set.
     pub capabilities: Vec<String>,
-    /// Hex-encoded device public key of the signing admin.
+    /// Hex-encoded public key of the admin performing the update.
     pub public_key_hex: String,
 }
 
 // ── Workflow functions ────────────────────────────────────────────────────────
 
-/// Add a new member to an organization.
+/// Add a new member to an organization with a cryptographically signed attestation.
 ///
-/// Verifies that the signer holds the `manage_members` capability, then
-/// stores a new org-member attestation. The attestation is intentionally
-/// unsigned (empty `identity_signature`, `device_signature`, `device_public_key`).
+/// Verifies that the signer holds the `manage_members` capability, creates a
+/// signed attestation via `create_signed_attestation` from auths-id, and stores
+/// the result in the registry backend.
 ///
 /// Args:
-/// * `backend`: Registry backend for storage.
-/// * `clock`: Clock provider for the attestation timestamp.
-/// * `id_provider`: UUID provider for the `rid` field.
-/// * `cmd`: Add-member command containing org prefix, member DID, role, and capabilities.
+/// * `ctx`: Organization context with injected infrastructure adapters.
+/// * `cmd`: Add-member command with org prefix, member DID, role, and capabilities.
 ///
 /// Usage:
 /// ```ignore
-/// let att = add_organization_member(backend, clock, uuid_provider, cmd)?;
+/// let att = add_organization_member(&ctx, cmd)?;
+/// println!("Added member: {}", att.subject);
 /// ```
 pub fn add_organization_member(
-    backend: &dyn RegistryBackend,
-    clock: &dyn ClockProvider,
-    id_provider: &dyn UuidProvider,
+    ctx: &OrgContext,
     cmd: AddMemberCommand,
 ) -> Result<Attestation, OrgError> {
-    let admin_att = find_admin(backend, &cmd.org_prefix, &cmd.public_key_hex)?;
+    let admin_att = find_admin(ctx.registry, &cmd.org_prefix, &cmd.admin_public_key_hex)?;
     let parsed_caps = parse_capabilities(&cmd.capabilities)?;
+    let now = ctx.clock.now();
+    let rid = ctx.uuid_provider.new_id().to_string();
 
-    let member = Attestation {
-        version: 1,
-        rid: ResourceId::new(id_provider.new_id().to_string()),
-        issuer: admin_att.issuer.clone(),
-        subject: DeviceDID::new(&cmd.member_did),
-        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-        identity_signature: Ed25519Signature::empty(),
-        device_signature: Ed25519Signature::empty(),
-        revoked_at: None,
+    let member_did = DeviceDID::new(&cmd.member_did);
+    let meta = AttestationMetadata {
+        note: cmd
+            .note
+            .or_else(|| Some(format!("Added as {} by {}", cmd.role, admin_att.subject))),
+        timestamp: Some(now),
         expires_at: None,
-        timestamp: Some(clock.now()),
-        note: None,
-        payload: None,
-        role: Some(cmd.role),
-        capabilities: parsed_caps,
-        delegated_by: Some(IdentityDID::new(admin_att.subject.to_string())),
-        signer_type: None,
-        environment_claim: None,
     };
 
-    backend
-        .store_org_member(&cmd.org_prefix, &member)
+    let attestation = create_signed_attestation(
+        now,
+        &rid,
+        &admin_att.issuer,
+        &member_did,
+        cmd.member_public_key.as_bytes(),
+        Some(serde_json::json!({
+            "org_role": cmd.role.to_string(),
+            "org_did": format!("did:keri:{}", cmd.org_prefix),
+        })),
+        &meta,
+        ctx.signer,
+        ctx.passphrase_provider,
+        Some(&cmd.signer_alias),
+        None,
+        parsed_caps,
+        Some(cmd.role),
+        Some(IdentityDID::new(admin_att.subject.to_string())),
+    )
+    .map_err(|e| OrgError::Signing(e.to_string()))?;
+
+    ctx.registry
+        .store_org_member(&cmd.org_prefix, &attestation)
         .map_err(|e| OrgError::Storage(e.to_string()))?;
 
-    Ok(member)
+    Ok(attestation)
 }
 
-/// Revoke an existing org member.
+/// Revoke an existing org member with a cryptographically signed revocation.
 ///
 /// Verifies that the signer holds `manage_members`, checks the member exists
-/// and is not already revoked, then sets `revoked_at` and re-stores.
+/// and is not already revoked, then creates a signed revocation attestation
+/// via `create_signed_revocation` from auths-id.
 ///
 /// Args:
-/// * `backend`: Registry backend for storage.
-/// * `clock`: Clock provider for the revocation timestamp.
-/// * `cmd`: Revoke-member command containing org prefix and member DID.
+/// * `ctx`: Organization context with injected infrastructure adapters.
+/// * `cmd`: Revoke-member command with org prefix and member DID.
 ///
 /// Usage:
 /// ```ignore
-/// let revoked = revoke_organization_member(backend, clock, cmd)?;
+/// let revoked = revoke_organization_member(&ctx, cmd)?;
+/// assert!(revoked.is_revoked());
 /// ```
 pub fn revoke_organization_member(
-    backend: &dyn RegistryBackend,
-    clock: &dyn ClockProvider,
+    ctx: &OrgContext,
     cmd: RevokeMemberCommand,
 ) -> Result<Attestation, OrgError> {
-    find_admin(backend, &cmd.org_prefix, &cmd.public_key_hex)?;
+    let admin_att = find_admin(ctx.registry, &cmd.org_prefix, &cmd.admin_public_key_hex)?;
 
-    let existing = find_member(backend, &cmd.org_prefix, &cmd.member_did)?.ok_or_else(|| {
-        OrgError::MemberNotFound {
-            org: cmd.org_prefix.clone(),
-            did: cmd.member_did.clone(),
-        }
-    })?;
+    let existing =
+        find_member(ctx.registry, &cmd.org_prefix, &cmd.member_did)?.ok_or_else(|| {
+            OrgError::MemberNotFound {
+                org: cmd.org_prefix.clone(),
+                did: cmd.member_did.clone(),
+            }
+        })?;
 
     if existing.is_revoked() {
         return Err(OrgError::AlreadyRevoked {
@@ -249,17 +354,28 @@ pub fn revoke_organization_member(
         });
     }
 
-    let now = clock.now();
-    let mut revoked = existing;
-    revoked.revoked_at = Some(now);
-    revoked.timestamp = Some(now);
-    revoked.note = Some("Revoked by admin".to_owned());
+    let now = ctx.clock.now();
+    let member_did = DeviceDID::new(&cmd.member_did);
 
-    backend
-        .store_org_member(&cmd.org_prefix, &revoked)
+    let revocation = create_signed_revocation(
+        admin_att.rid.as_str(),
+        &admin_att.issuer,
+        &member_did,
+        cmd.member_public_key.as_bytes(),
+        cmd.note,
+        None,
+        now,
+        ctx.signer,
+        ctx.passphrase_provider,
+        &cmd.signer_alias,
+    )
+    .map_err(|e| OrgError::Signing(e.to_string()))?;
+
+    ctx.registry
+        .store_org_member(&cmd.org_prefix, &revocation)
         .map_err(|e| OrgError::Storage(e.to_string()))?;
 
-    Ok(revoked)
+    Ok(revocation)
 }
 
 /// Update the capability set of an org member.
@@ -270,7 +386,7 @@ pub fn revoke_organization_member(
 /// Args:
 /// * `backend`: Registry backend for storage.
 /// * `clock`: Clock provider for the update timestamp.
-/// * `cmd`: Update-capabilities command containing org prefix, member DID, and new capabilities.
+/// * `cmd`: Update-capabilities command with org prefix, member DID, and new capabilities.
 ///
 /// Usage:
 /// ```ignore
