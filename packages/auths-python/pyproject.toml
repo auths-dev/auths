@@ -9,6 +9,26 @@ description = "Auths Python SDK - decentralized identity for developers and AI a
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Rust",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "License :: OSI Approved :: Apache Software License",
+    "Typing :: Typed",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+keywords = ["identity", "cryptography", "did", "signing", "verification", "git", "keri"]
+
+[project.urls]
+Homepage = "https://auths.dev"
+Repository = "https://github.com/auths-dev/auths"
+Documentation = "https://docs.auths.dev"
+"Bug Tracker" = "https://github.com/auths-dev/auths/issues"
 
 [project.optional-dependencies]
 jwt = ["PyJWT>=2.0", "cryptography>=3.0"]
