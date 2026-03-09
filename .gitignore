@@ -107,7 +107,6 @@ docs/sdk/node/api/
 # === Misc ===
 package-lock.json
 yarn.lock
-pnpm-lock.yaml
 *.code-workspace
 *.iml
 *.sublime-workspace

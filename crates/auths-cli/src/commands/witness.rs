@@ -174,12 +174,28 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
 }
 
 /// Resolve the identity repo path (defaults to ~/.auths).
+///
+/// Expands leading `~/` so paths from clap defaults work correctly.
 fn resolve_repo_path(repo_opt: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(path) = repo_opt {
-        return Ok(path);
+        return expand_tilde(&path);
     }
     let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
     Ok(home.join(".auths"))
+}
+
+fn expand_tilde(path: &std::path::Path) -> Result<PathBuf> {
+    let s = path.to_string_lossy();
+    if s.starts_with("~/") || s == "~" {
+        let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
+        if s == "~" {
+            Ok(home)
+        } else {
+            Ok(home.join(&s[2..]))
+        }
+    } else {
+        Ok(path.to_path_buf())
+    }
 }
 
 /// Load witness config from identity metadata.

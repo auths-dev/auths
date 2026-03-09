@@ -286,10 +286,10 @@ impl NapiPairingHandle {
 
 impl Drop for NapiPairingHandle {
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.server_task.try_lock() {
-            if let Some(task) = guard.take() {
-                task.abort();
-            }
+        if let Ok(mut guard) = self.server_task.try_lock()
+            && let Some(task) = guard.take()
+        {
+            task.abort();
         }
     }
 }
