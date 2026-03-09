@@ -9,6 +9,8 @@ export { AttestationService, type AttestationInfo } from './attestations'
 export { ArtifactService, type ArtifactResult } from './artifacts'
 export { CommitService, type CommitSignResult } from './commits'
 export { AuditService, type AuditReport, type AuditCommit, type AuditSummary } from './audit'
+export { PolicyBuilder, compilePolicy, evaluatePolicy, type PolicyDecision, type EvalContextOpts } from './policy'
+export { PairingService, type PairingSession, type PairingResponse, type PairingResult } from './pairing'
 export {
   verifyAttestation,
   verifyAttestationWithCapability,

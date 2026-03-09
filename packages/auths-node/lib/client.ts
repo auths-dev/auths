@@ -8,6 +8,7 @@ import { AttestationService } from './attestations'
 import { ArtifactService } from './artifacts'
 import { CommitService } from './commits'
 import { AuditService } from './audit'
+import { PairingService } from './pairing'
 import { mapNativeError, CryptoError, VerificationError } from './errors'
 import {
   verifyAttestation,
@@ -42,6 +43,7 @@ export class Auths {
   readonly artifacts: ArtifactService
   readonly commits: CommitService
   readonly audit: AuditService
+  readonly pairing: PairingService
 
   constructor(config: ClientConfig = {}) {
     this.repoPath = config.repoPath ?? '~/.auths'
@@ -57,6 +59,7 @@ export class Auths {
     this.artifacts = new ArtifactService(this)
     this.commits = new CommitService(this)
     this.audit = new AuditService(this)
+    this.pairing = new PairingService(this)
   }
 
   verify(opts: {

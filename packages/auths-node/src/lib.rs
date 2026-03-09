@@ -10,6 +10,8 @@ pub mod error;
 pub mod helpers;
 pub mod identity;
 pub mod org;
+pub mod pairing;
+pub mod policy;
 pub mod sign;
 pub mod trust;
 pub mod types;

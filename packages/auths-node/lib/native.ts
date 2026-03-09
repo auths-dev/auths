@@ -80,6 +80,91 @@ export interface NapiActionEnvelope {
   signerDid: string
 }
 
+export interface NapiCommitSignPemResult {
+  signaturePem: string
+  method: string
+  namespace: string
+}
+
+export interface NapiOrgResult {
+  orgPrefix: string
+  orgDid: string
+  label: string
+  repoPath: string
+}
+
+export interface NapiOrgMember {
+  memberDid: string
+  role: string
+  capabilitiesJson: string
+  issuerDid: string
+  attestationRid: string
+  revoked: boolean
+  expiresAt?: string | null
+}
+
+export interface NapiAttestation {
+  rid: string
+  issuer: string
+  subject: string
+  deviceDid: string
+  capabilities: string[]
+  signerType?: string | null
+  expiresAt?: string | null
+  revokedAt?: string | null
+  createdAt?: string | null
+  delegatedBy?: string | null
+  json: string
+}
+
+export interface NapiPinnedIdentity {
+  did: string
+  label?: string | null
+  trustLevel: string
+  firstSeen: string
+  kelSequence?: number | null
+  pinnedAt: string
+}
+
+export interface NapiWitnessResult {
+  url: string
+  did?: string | null
+  label?: string | null
+}
+
+export interface NapiArtifactResult {
+  attestationJson: string
+  rid: string
+  digest: string
+  fileSize: number
+}
+
+export interface NapiPolicyDecision {
+  outcome: string
+  reason: string
+  message: string
+}
+
+export interface NapiPairingSession {
+  sessionId: string
+  shortCode: string
+  endpoint: string
+  token: string
+  controllerDid: string
+}
+
+export interface NapiPairingResponse {
+  deviceDid: string
+  deviceName?: string | null
+  devicePublicKeyHex: string
+}
+
+export interface NapiPairingResult {
+  deviceDid: string
+  deviceName?: string | null
+  attestationRid: string
+}
+
 export interface NativeBindings {
   version(): string
 
@@ -100,6 +185,52 @@ export interface NativeBindings {
   signActionAsIdentity(actionType: string, payloadJson: string, identityDid: string, repoPath: string, passphrase?: string | null): NapiActionEnvelope
   signAsAgent(message: Buffer, keyAlias: string, passphrase?: string | null): NapiCommitSignResult
   signActionAsAgent(actionType: string, payloadJson: string, keyAlias: string, agentDid: string, passphrase?: string | null): NapiActionEnvelope
+
+  // Commit signing
+  signCommit(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | null): NapiCommitSignPemResult
+
+  // Org
+  createOrg(label: string, repoPath: string, passphrase?: string | null): NapiOrgResult
+  addOrgMember(orgDid: string, memberDid: string, role: string, repoPath: string, capabilitiesJson?: string | null, passphrase?: string | null, note?: string | null, memberPublicKeyHex?: string | null): NapiOrgMember
+  revokeOrgMember(orgDid: string, memberDid: string, repoPath: string, passphrase?: string | null, note?: string | null, memberPublicKeyHex?: string | null): NapiOrgMember
+  listOrgMembers(orgDid: string, includeRevoked: boolean, repoPath: string): string
+
+  // Attestation query
+  listAttestations(repoPath: string): NapiAttestation[]
+  listAttestationsByDevice(repoPath: string, deviceDid: string): NapiAttestation[]
+  getLatestAttestation(repoPath: string, deviceDid: string): NapiAttestation | null
+
+  // Trust
+  pinIdentity(did: string, repoPath: string, label?: string | null, trustLevel?: string | null): NapiPinnedIdentity
+  removePinnedIdentity(did: string, repoPath: string): void
+  listPinnedIdentities(repoPath: string): string
+  getPinnedIdentity(did: string, repoPath: string): NapiPinnedIdentity | null
+
+  // Witness
+  addWitness(urlStr: string, repoPath: string, label?: string | null): NapiWitnessResult
+  removeWitness(urlStr: string, repoPath: string): void
+  listWitnesses(repoPath: string): string
+
+  // Artifact
+  signArtifact(filePath: string, identityKeyAlias: string, repoPath: string, passphrase?: string | null, expiresInDays?: number | null, note?: string | null): NapiArtifactResult
+  signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | null, expiresInDays?: number | null, note?: string | null): NapiArtifactResult
+
+  // Audit
+  generateAuditReport(targetRepoPath: string, authsRepoPath: string, since?: string | null, until?: string | null, author?: string | null, limit?: number | null): string
+
+  // Diagnostics
+  runDiagnostics(repoPath: string): string
+
+  // Policy
+  compilePolicy(policyJson: string): string
+  evaluatePolicy(compiledPolicyJson: string, issuer: string, subject: string, capabilities?: string[] | null, role?: string | null, revoked?: boolean | null, expiresAt?: string | null, repo?: string | null, environment?: string | null, signerType?: string | null, delegatedBy?: string | null, chainDepth?: number | null): NapiPolicyDecision
+
+  // Pairing
+  createPairingSession(repoPath: string, capabilitiesJson?: string | null, timeoutSecs?: number | null, bindAddress?: string | null, enableMdns?: boolean | null, passphrase?: string | null): NapiPairingSession
+  waitForPairingResponse(timeoutSecs?: number | null): NapiPairingResponse
+  stopPairingSession(): void
+  joinPairingSession(shortCode: string, endpoint: string, token: string, repoPath: string, deviceName?: string | null, passphrase?: string | null): NapiPairingResponse
+  completePairing(deviceDid: string, devicePublicKeyHex: string, repoPath: string, capabilitiesJson?: string | null, passphrase?: string | null): NapiPairingResult
 
   // Verification
   verifyAttestation(attestationJson: string, issuerPkHex: string): NapiVerificationResult
