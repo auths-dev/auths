@@ -24,23 +24,29 @@ use ring::signature::{Ed25519KeyPair, KeyPair};
 use crate::error::format_error;
 use crate::helpers::{make_env_config, resolve_key_alias, resolve_passphrase};
 use crate::types::{
-    NapiAgentIdentityBundle, NapiDelegatedAgentBundle, NapiIdentityResult,
-    NapiRotationResult,
+    NapiAgentIdentityBundle, NapiDelegatedAgentBundle, NapiIdentityResult, NapiRotationResult,
 };
 
 fn init_backend(repo: &PathBuf) -> napi::Result<Arc<GitRegistryBackend>> {
     let config = RegistryConfig::single_tenant(repo);
     let backend = GitRegistryBackend::from_config_unchecked(config);
-    backend
-        .init_if_needed()
-        .map_err(|e| format_error("AUTHS_REGISTRY_ERROR", format!("Failed to initialize registry: {e}")))?;
+    backend.init_if_needed().map_err(|e| {
+        format_error(
+            "AUTHS_REGISTRY_ERROR",
+            format!("Failed to initialize registry: {e}"),
+        )
+    })?;
     Ok(Arc::new(backend))
 }
 
 fn open_backend(repo: &PathBuf) -> napi::Result<Arc<GitRegistryBackend>> {
     let config = RegistryConfig::single_tenant(repo);
-    let backend = GitRegistryBackend::open_existing(config)
-        .map_err(|e| format_error("AUTHS_REGISTRY_ERROR", format!("Failed to open registry: {e}")))?;
+    let backend = GitRegistryBackend::open_existing(config).map_err(|e| {
+        format_error(
+            "AUTHS_REGISTRY_ERROR",
+            format!("Failed to open registry: {e}"),
+        )
+    })?;
     Ok(Arc::new(backend))
 }
 
@@ -63,15 +69,26 @@ pub fn create_identity(
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
 
     let (identity_did, result_alias) =
-        initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None)
-            .map_err(|e| format_error("AUTHS_IDENTITY_ERROR", format!("Identity creation failed: {e}")))?;
+        initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None).map_err(
+            |e| {
+                format_error(
+                    "AUTHS_IDENTITY_ERROR",
+                    format!("Identity creation failed: {e}"),
+                )
+            },
+        )?;
 
     let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
         keychain.as_ref(),
         &result_alias,
         &provider,
     )
-    .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Public key extraction failed: {e}")))?;
+    .map_err(|e| {
+        format_error(
+            "AUTHS_CRYPTO_ERROR",
+            format!("Public key extraction failed: {e}"),
+        )
+    })?;
 
     Ok(NapiIdentityResult {
         did: identity_did.to_string(),
@@ -101,42 +118,60 @@ pub fn create_agent_identity(
     let parsed_caps: Vec<Capability> = capabilities
         .iter()
         .map(|c| {
-            Capability::parse(c)
-                .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid capability '{c}': {e}")))
+            Capability::parse(c).map_err(|e| {
+                format_error(
+                    "AUTHS_INVALID_INPUT",
+                    format!("Invalid capability '{c}': {e}"),
+                )
+            })
         })
         .collect::<napi::Result<Vec<_>>>()?;
 
     let (identity_did, result_alias) =
         initialize_registry_identity(backend.clone(), &alias, &provider, keychain.as_ref(), None)
-            .map_err(|e| format_error("AUTHS_IDENTITY_ERROR", format!("Agent identity creation failed: {e}")))?;
+            .map_err(|e| {
+            format_error(
+                "AUTHS_IDENTITY_ERROR",
+                format!("Agent identity creation failed: {e}"),
+            )
+        })?;
 
     let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
         keychain.as_ref(),
         &result_alias,
         &provider,
     )
-    .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Public key extraction failed: {e}")))?;
+    .map_err(|e| {
+        format_error(
+            "AUTHS_CRYPTO_ERROR",
+            format!("Public key extraction failed: {e}"),
+        )
+    })?;
 
     #[allow(clippy::disallowed_methods)]
-    let attestation_json = {
-        let device_did = DeviceDID::from_ed25519(
-            pub_bytes.as_slice().try_into().map_err(|_| {
-                format_error("AUTHS_CRYPTO_ERROR", "Invalid public key length")
-            })?,
-        );
-        let att = serde_json::json!({
-            "version": 1,
-            "rid": repo.file_name().unwrap_or_default().to_string_lossy(),
-            "issuer": identity_did.to_string(),
-            "subject": device_did.to_string(),
-            "device_public_key": hex::encode(&pub_bytes),
-            "capabilities": parsed_caps.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "note": format!("Agent: {}", alias),
-        });
-        serde_json::to_string(&att)
-            .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", format!("Serialization failed: {e}")))?
-    };
+    let attestation_json =
+        {
+            let device_did =
+                DeviceDID::from_ed25519(pub_bytes.as_slice().try_into().map_err(|_| {
+                    format_error("AUTHS_CRYPTO_ERROR", "Invalid public key length")
+                })?);
+            let att = serde_json::json!({
+                "version": 1,
+                "rid": repo.file_name().unwrap_or_default().to_string_lossy(),
+                "issuer": identity_did.to_string(),
+                "subject": device_did.to_string(),
+                "device_public_key": hex::encode(&pub_bytes),
+                "capabilities": parsed_caps.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "note": format!("Agent: {}", alias),
+            });
+            serde_json::to_string(&att).map_err(|e| {
+                format_error(
+                    "AUTHS_SERIALIZATION_ERROR",
+                    format!("Serialization failed: {e}"),
+                )
+            })?
+        };
 
     Ok(NapiAgentIdentityBundle {
         agent_did: identity_did.to_string(),
@@ -176,7 +211,9 @@ pub fn delegate_agent(
         aliases
             .into_iter()
             .find(|a| !a.as_str().contains("--next-"))
-            .ok_or_else(|| format_error("AUTHS_KEY_NOT_FOUND", "No identity key found in keychain"))?
+            .ok_or_else(|| {
+                format_error("AUTHS_KEY_NOT_FOUND", "No identity key found in keychain")
+            })?
     };
 
     let agent_alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
@@ -198,14 +235,23 @@ pub fn delegate_agent(
     let encrypted = encrypt_keypair(&seed_pkcs8, &passphrase_str)
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key encryption failed: {e}")))?;
     keychain
-        .store_key(&agent_alias, &parent_did, KeyRole::DelegatedAgent, &encrypted)
+        .store_key(
+            &agent_alias,
+            &parent_did,
+            KeyRole::DelegatedAgent,
+            &encrypted,
+        )
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Key storage failed: {e}")))?;
 
     let parsed_caps: Vec<Capability> = capabilities
         .iter()
         .map(|c| {
-            Capability::parse(c)
-                .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid capability '{c}': {e}")))
+            Capability::parse(c).map_err(|e| {
+                format_error(
+                    "AUTHS_INVALID_INPUT",
+                    format!("Invalid capability '{c}': {e}"),
+                )
+            })
         })
         .collect::<napi::Result<Vec<_>>>()?;
 
@@ -219,7 +265,8 @@ pub fn delegate_agent(
         payload: None,
     };
 
-    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
+    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
+        Arc::from(keychain);
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
 
@@ -233,20 +280,36 @@ pub fn delegate_agent(
         .passphrase_provider(provider)
         .build();
 
-    let result = link_device(link_config, &ctx, clock.as_ref())
-        .map_err(|e| format_error("AUTHS_IDENTITY_ERROR", format!("Agent provisioning failed: {e}")))?;
+    let result = link_device(link_config, &ctx, clock.as_ref()).map_err(|e| {
+        format_error(
+            "AUTHS_IDENTITY_ERROR",
+            format!("Agent provisioning failed: {e}"),
+        )
+    })?;
 
     let device_did = DeviceDID(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
-        .map_err(|e| format_error("AUTHS_REGISTRY_ERROR", format!("Failed to load attestation: {e}")))?;
+        .map_err(|e| {
+            format_error(
+                "AUTHS_REGISTRY_ERROR",
+                format!("Failed to load attestation: {e}"),
+            )
+        })?;
 
-    let attestation = attestations
-        .last()
-        .ok_or_else(|| format_error("AUTHS_REGISTRY_ERROR", "No attestation found after provisioning"))?;
+    let attestation = attestations.last().ok_or_else(|| {
+        format_error(
+            "AUTHS_REGISTRY_ERROR",
+            "No attestation found after provisioning",
+        )
+    })?;
 
-    let attestation_json = serde_json::to_string(attestation)
-        .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", format!("Serialization failed: {e}")))?;
+    let attestation_json = serde_json::to_string(attestation).map_err(|e| {
+        format_error(
+            "AUTHS_SERIALIZATION_ERROR",
+            format!("Serialization failed: {e}"),
+        )
+    })?;
 
     Ok(NapiDelegatedAgentBundle {
         agent_did: result.device_did.to_string(),
@@ -274,7 +337,8 @@ pub fn rotate_identity_keys(
 
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
-    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
+    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
+        Arc::from(keychain);
 
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
@@ -297,8 +361,12 @@ pub fn rotate_identity_keys(
     let next_alias = next_key_alias
         .as_deref()
         .map(|a| {
-            KeyAlias::new(a)
-                .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Invalid next key alias: {e}")))
+            KeyAlias::new(a).map_err(|e| {
+                format_error(
+                    "AUTHS_KEY_NOT_FOUND",
+                    format!("Invalid next key alias: {e}"),
+                )
+            })
         })
         .transpose()?;
 
@@ -335,13 +403,22 @@ pub fn get_identity_public_key(
     let aliases = keychain
         .list_aliases_for_identity(&did)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key lookup failed: {e}")))?;
-    let alias = aliases.first()
-        .ok_or_else(|| format_error("AUTHS_KEY_NOT_FOUND", format!("No key found for identity '{identity_did}'")))?;
+    let alias = aliases.first().ok_or_else(|| {
+        format_error(
+            "AUTHS_KEY_NOT_FOUND",
+            format!("No key found for identity '{identity_did}'"),
+        )
+    })?;
     let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
         keychain.as_ref(),
         alias,
         &provider,
     )
-    .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Public key extraction failed: {e}")))?;
+    .map_err(|e| {
+        format_error(
+            "AUTHS_CRYPTO_ERROR",
+            format!("Public key extraction failed: {e}"),
+        )
+    })?;
     Ok(hex::encode(pub_bytes))
 }

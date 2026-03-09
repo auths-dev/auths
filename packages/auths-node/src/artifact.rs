@@ -109,10 +109,12 @@ fn build_context_and_sign(
 
     let repo = PathBuf::from(shellexpand::tilde(repo_path).as_ref());
     let config = RegistryConfig::single_tenant(&repo);
-    let backend = Arc::new(
-        GitRegistryBackend::open_existing(config)
-            .map_err(|e| format_error("AUTHS_REGISTRY_ERROR", format!("Failed to open registry: {e}")))?,
-    );
+    let backend = Arc::new(GitRegistryBackend::open_existing(config).map_err(|e| {
+        format_error(
+            "AUTHS_REGISTRY_ERROR",
+            format!("Failed to open registry: {e}"),
+        )
+    })?);
 
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
@@ -147,8 +149,12 @@ fn build_context_and_sign(
         note,
     };
 
-    let result = sdk_sign_artifact(params, &ctx)
-        .map_err(|e| format_error("AUTHS_SIGNING_FAILED", format!("Artifact signing failed: {e}")))?;
+    let result = sdk_sign_artifact(params, &ctx).map_err(|e| {
+        format_error(
+            "AUTHS_SIGNING_FAILED",
+            format!("Artifact signing failed: {e}"),
+        )
+    })?;
 
     Ok(NapiArtifactResult {
         attestation_json: result.attestation_json,
@@ -171,12 +177,21 @@ pub fn sign_artifact(
     if !path.exists() {
         return Err(format_error(
             "AUTHS_INVALID_INPUT",
-            format!("Artifact not found: '{file_path}'. Check the path and ensure the file exists."),
+            format!(
+                "Artifact not found: '{file_path}'. Check the path and ensure the file exists."
+            ),
         ));
     }
 
     let artifact = Arc::new(FileArtifact { path });
-    build_context_and_sign(artifact, &identity_key_alias, &repo_path, passphrase, expires_in_days, note)
+    build_context_and_sign(
+        artifact,
+        &identity_key_alias,
+        &repo_path,
+        passphrase,
+        expires_in_days,
+        note,
+    )
 }
 
 #[napi]
@@ -189,5 +204,12 @@ pub fn sign_artifact_bytes(
     note: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
     let artifact = Arc::new(BytesArtifact { data });
-    build_context_and_sign(artifact, &identity_key_alias, &repo_path, passphrase, expires_in_days, note)
+    build_context_and_sign(
+        artifact,
+        &identity_key_alias,
+        &repo_path,
+        passphrase,
+        expires_in_days,
+        note,
+    )
 }

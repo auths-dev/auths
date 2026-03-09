@@ -150,9 +150,7 @@ pub fn create_pairing_session(
 
     let endpoint = endpoint_rx
         .recv_timeout(Duration::from_secs(5))
-        .map_err(|_| {
-            format_error("AUTHS_PAIRING_ERROR", "Server failed to start within 5s")
-        })?;
+        .map_err(|_| format_error("AUTHS_PAIRING_ERROR", "Server failed to start within 5s"))?;
 
     let mut store = session_store()
         .lock()
@@ -236,8 +234,7 @@ pub fn join_pairing_session(
         .load_identity()
         .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
-    let controller_identity_did =
-        IdentityDID::new_unchecked(managed.controller_did.to_string());
+    let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
 
     let keychain = get_keychain(&env_config)?;
     let aliases = keychain
@@ -252,22 +249,23 @@ pub fn join_pairing_session(
         .load_key(&key_alias_str)
         .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
-    let pkcs8_bytes =
-        auths_core::crypto::signer::decrypt_keypair(&encrypted_key, &passphrase_str)
-            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+    let pkcs8_bytes = auths_core::crypto::signer::decrypt_keypair(&encrypted_key, &passphrase_str)
+        .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
     let (seed, pubkey_32) = auths_crypto::parse_ed25519_key_material(&pkcs8_bytes)
         .ok()
         .and_then(|(seed, maybe_pk)| maybe_pk.map(|pk| (seed, pk)))
         .or_else(|| {
             let seed = auths_crypto::parse_ed25519_seed(&pkcs8_bytes).ok()?;
-            let pk =
-                auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync(&seed)
-                    .ok()?;
+            let pk = auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync(&seed)
+                .ok()?;
             Some((seed, pk))
         })
         .ok_or_else(|| {
-            format_error("AUTHS_PAIRING_ERROR", "Failed to parse Ed25519 key material")
+            format_error(
+                "AUTHS_PAIRING_ERROR",
+                "Failed to parse Ed25519 key material",
+            )
         })?;
 
     let device_did = auths_verifier::types::DeviceDID::from_ed25519(&pubkey_32);
@@ -323,16 +321,15 @@ pub fn join_pairing_session(
     };
 
     let secure_seed = auths_crypto::SecureSeed::new(*seed.as_bytes());
-    let (pairing_response, _shared_secret) =
-        auths_core::pairing::PairingResponse::create(
-            now,
-            &pairing_token,
-            &secure_seed,
-            &pubkey_32,
-            device_did.to_string(),
-            device_name.clone(),
-        )
-        .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+    let (pairing_response, _shared_secret) = auths_core::pairing::PairingResponse::create(
+        now,
+        &pairing_token,
+        &secure_seed,
+        &pubkey_32,
+        device_did.to_string(),
+        device_name.clone(),
+    )
+    .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
     let submit_req = auths_core::pairing::types::SubmitResponseRequest {
         device_x25519_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
@@ -400,7 +397,10 @@ pub fn complete_pairing(
     };
 
     let device_pubkey = hex::decode(&device_public_key_hex).map_err(|e| {
-        format_error("AUTHS_PAIRING_ERROR", format!("Invalid public key hex: {e}"))
+        format_error(
+            "AUTHS_PAIRING_ERROR",
+            format!("Invalid public key hex: {e}"),
+        )
     })?;
 
     let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
@@ -409,8 +409,7 @@ pub fn complete_pairing(
     let managed = identity_storage
         .load_identity()
         .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-    let controller_identity_did =
-        IdentityDID::new_unchecked(managed.controller_did.to_string());
+    let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
 
     let keychain = get_keychain(&env_config)?;
     let aliases = keychain
@@ -423,9 +422,9 @@ pub fn complete_pairing(
     let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
 
     let key_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
-    let provider = Arc::new(
-        auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str),
-    );
+    let provider = Arc::new(auths_core::signing::PrefilledPassphraseProvider::new(
+        &passphrase_str,
+    ));
 
     #[allow(clippy::disallowed_methods)]
     let now = Utc::now();
@@ -445,9 +444,7 @@ pub fn complete_pairing(
     let attestation_storage = RegistryAttestationStorage::new(&repo);
     use auths_id::attestation::AttestationSink;
     attestation_storage
-        .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(
-            attestation.clone(),
-        ))
+        .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation.clone()))
         .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
     Ok(NapiPairingResult {

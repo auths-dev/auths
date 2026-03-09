@@ -1,8 +1,7 @@
 use napi_derive::napi;
 
 use auths_policy::{
-    CanonicalCapability, CanonicalDid, EvalContext, SignerType,
-    compile_from_json, enforce_simple,
+    CanonicalCapability, CanonicalDid, EvalContext, SignerType, compile_from_json, enforce_simple,
 };
 use chrono::Utc;
 
@@ -59,16 +58,21 @@ pub fn evaluate_policy(
     })?;
 
     let issuer_did = CanonicalDid::parse(&issuer).map_err(|e| {
-        format_error("AUTHS_POLICY_INVALID_DID", format!("Invalid issuer DID: {e}"))
+        format_error(
+            "AUTHS_POLICY_INVALID_DID",
+            format!("Invalid issuer DID: {e}"),
+        )
     })?;
     let subject_did = CanonicalDid::parse(&subject).map_err(|e| {
-        format_error("AUTHS_POLICY_INVALID_DID", format!("Invalid subject DID: {e}"))
+        format_error(
+            "AUTHS_POLICY_INVALID_DID",
+            format!("Invalid subject DID: {e}"),
+        )
     })?;
 
     #[allow(clippy::disallowed_methods)]
     let now = Utc::now();
-    let mut ctx = EvalContext::new(now, issuer_did, subject_did)
-        .revoked(revoked.unwrap_or(false));
+    let mut ctx = EvalContext::new(now, issuer_did, subject_did).revoked(revoked.unwrap_or(false));
 
     if let Some(caps) = capabilities {
         for cap_str in &caps {
@@ -121,7 +125,10 @@ pub fn evaluate_policy(
 
     if let Some(d) = delegated_by {
         let did = CanonicalDid::parse(&d).map_err(|e| {
-            format_error("AUTHS_POLICY_INVALID_DID", format!("Invalid delegated_by DID: {e}"))
+            format_error(
+                "AUTHS_POLICY_INVALID_DID",
+                format!("Invalid delegated_by DID: {e}"),
+            )
         })?;
         ctx = ctx.delegated_by(did);
     }

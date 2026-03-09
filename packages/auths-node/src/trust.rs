@@ -21,7 +21,10 @@ fn parse_trust_level(s: &str) -> napi::Result<TrustLevel> {
         "org_policy" => Ok(TrustLevel::OrgPolicy),
         _ => Err(format_error(
             "AUTHS_INVALID_INPUT",
-            format!("Invalid trust_level '{}': must be one of 'tofu', 'manual', 'org_policy'", s),
+            format!(
+                "Invalid trust_level '{}': must be one of 'tofu', 'manual', 'org_policy'",
+                s
+            ),
         )),
     }
 }
@@ -147,8 +150,7 @@ pub fn list_pinned_identities(repo_path: String) -> napi::Result<String> {
         })
         .collect();
 
-    serde_json::to_string(&json_entries)
-        .map_err(|e| format_error("AUTHS_TRUST_ERROR", e))
+    serde_json::to_string(&json_entries).map_err(|e| format_error("AUTHS_TRUST_ERROR", e))
 }
 
 #[napi]

@@ -11,6 +11,10 @@ fn resolve_repo(repo_path: &str) -> PathBuf {
     PathBuf::from(shellexpand::tilde(repo_path).as_ref())
 }
 
+fn parse_timestamp(ts: &str) -> Option<chrono::NaiveDateTime> {
+    chrono::NaiveDateTime::parse_from_str(&ts[..19], "%Y-%m-%dT%H:%M:%S").ok()
+}
+
 #[napi]
 pub fn generate_audit_report(
     target_repo_path: String,
@@ -24,8 +28,8 @@ pub fn generate_audit_report(
     let _auths = resolve_repo(&auths_repo_path);
     let limit = limit.unwrap_or(500) as usize;
 
-    let provider = Git2LogProvider::open(&target)
-        .map_err(|e| format_error("AUTHS_AUDIT_ERROR", e))?;
+    let provider =
+        Git2LogProvider::open(&target).map_err(|e| format_error("AUTHS_AUDIT_ERROR", e))?;
 
     let workflow = AuditWorkflow::new(&provider);
     let report = workflow
@@ -47,28 +51,18 @@ pub fn generate_audit_report(
         .commits
         .iter()
         .filter(|c| {
-            if let Some(ref a) = author {
-                if c.author_email != *a {
-                    return false;
-                }
+            if author.as_ref().is_some_and(|a| c.author_email != *a) {
+                return false;
             }
-            if let Some(since_dt) = since_filter {
-                if let Ok(ct) =
-                    chrono::NaiveDateTime::parse_from_str(&c.timestamp[..19], "%Y-%m-%dT%H:%M:%S")
-                {
-                    if ct < since_dt {
-                        return false;
-                    }
-                }
+            if since_filter.is_some_and(|since_dt| {
+                parse_timestamp(&c.timestamp).is_some_and(|ct| ct < since_dt)
+            }) {
+                return false;
             }
-            if let Some(until_dt) = until_filter {
-                if let Ok(ct) =
-                    chrono::NaiveDateTime::parse_from_str(&c.timestamp[..19], "%Y-%m-%dT%H:%M:%S")
-                {
-                    if ct > until_dt {
-                        return false;
-                    }
-                }
+            if until_filter.is_some_and(|until_dt| {
+                parse_timestamp(&c.timestamp).is_some_and(|ct| ct > until_dt)
+            }) {
+                return false;
             }
             true
         })
@@ -78,12 +72,8 @@ pub fn generate_audit_report(
                     (Some("auths"), Some(signer_did.as_str()), Some(true))
                 }
                 SignatureStatus::SshSigned => (Some("ssh"), None, None),
-                SignatureStatus::GpgSigned { verified } => {
-                    (Some("gpg"), None, Some(*verified))
-                }
-                SignatureStatus::InvalidSignature { .. } => {
-                    (Some("invalid"), None, Some(false))
-                }
+                SignatureStatus::GpgSigned { verified } => (Some("gpg"), None, Some(*verified)),
+                SignatureStatus::InvalidSignature { .. } => (Some("invalid"), None, Some(false)),
                 SignatureStatus::Unsigned => (None, None, None),
             };
             serde_json::json!({
@@ -105,9 +95,18 @@ pub fn generate_audit_report(
         .filter(|c| c["signature_type"] != serde_json::Value::Null)
         .count();
     let unsigned = total - signed;
-    let auths_signed = commits.iter().filter(|c| c["signature_type"] == "auths").count();
-    let gpg_signed = commits.iter().filter(|c| c["signature_type"] == "gpg").count();
-    let ssh_signed = commits.iter().filter(|c| c["signature_type"] == "ssh").count();
+    let auths_signed = commits
+        .iter()
+        .filter(|c| c["signature_type"] == "auths")
+        .count();
+    let gpg_signed = commits
+        .iter()
+        .filter(|c| c["signature_type"] == "gpg")
+        .count();
+    let ssh_signed = commits
+        .iter()
+        .filter(|c| c["signature_type"] == "ssh")
+        .count();
     let verification_passed = commits.iter().filter(|c| c["verified"] == true).count();
     let verification_failed = signed - verification_passed;
 
@@ -125,6 +124,5 @@ pub fn generate_audit_report(
         },
     });
 
-    serde_json::to_string(&result)
-        .map_err(|e| format_error("AUTHS_AUDIT_ERROR", e))
+    serde_json::to_string(&result).map_err(|e| format_error("AUTHS_AUDIT_ERROR", e))
 }

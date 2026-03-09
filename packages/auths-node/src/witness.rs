@@ -17,12 +17,14 @@ fn load_witness_config(repo_path: &PathBuf) -> napi::Result<WitnessConfig> {
         .load_identity()
         .map_err(|e| format_error("AUTHS_WITNESS_ERROR", e))?;
 
-    if let Some(ref metadata) = identity.metadata {
-        if let Some(wc) = metadata.get("witness_config") {
-            let config: WitnessConfig = serde_json::from_value(wc.clone())
-                .map_err(|e| format_error("AUTHS_WITNESS_ERROR", e))?;
-            return Ok(config);
-        }
+    if let Some(wc) = identity
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get("witness_config"))
+    {
+        let config: WitnessConfig = serde_json::from_value(wc.clone())
+            .map_err(|e| format_error("AUTHS_WITNESS_ERROR", e))?;
+        return Ok(config);
     }
     Ok(WitnessConfig::default())
 }
@@ -39,8 +41,7 @@ fn save_witness_config(repo_path: &PathBuf, config: &WitnessConfig) -> napi::Res
     if let Some(obj) = metadata.as_object_mut() {
         obj.insert(
             "witness_config".to_string(),
-            serde_json::to_value(config)
-                .map_err(|e| format_error("AUTHS_WITNESS_ERROR", e))?,
+            serde_json::to_value(config).map_err(|e| format_error("AUTHS_WITNESS_ERROR", e))?,
         );
     }
 
@@ -66,7 +67,10 @@ pub fn add_witness(
 ) -> napi::Result<NapiWitnessResult> {
     let repo = resolve_repo(&repo_path);
     let parsed_url: url::Url = url_str.parse().map_err(|e| {
-        format_error("AUTHS_WITNESS_ERROR", format!("Invalid URL '{}': {}", url_str, e))
+        format_error(
+            "AUTHS_WITNESS_ERROR",
+            format!("Invalid URL '{}': {}", url_str, e),
+        )
     })?;
 
     let mut config = load_witness_config(&repo)?;
@@ -96,7 +100,10 @@ pub fn add_witness(
 pub fn remove_witness(url_str: String, repo_path: String) -> napi::Result<()> {
     let repo = resolve_repo(&repo_path);
     let parsed_url: url::Url = url_str.parse().map_err(|e| {
-        format_error("AUTHS_WITNESS_ERROR", format!("Invalid URL '{}': {}", url_str, e))
+        format_error(
+            "AUTHS_WITNESS_ERROR",
+            format!("Invalid URL '{}': {}", url_str, e),
+        )
     })?;
 
     let mut config = load_witness_config(&repo)?;
@@ -127,6 +134,5 @@ pub fn list_witnesses(repo_path: String) -> napi::Result<String> {
         })
         .collect();
 
-    serde_json::to_string(&entries)
-        .map_err(|e| format_error("AUTHS_WITNESS_ERROR", e))
+    serde_json::to_string(&entries).map_err(|e| format_error("AUTHS_WITNESS_ERROR", e))
 }

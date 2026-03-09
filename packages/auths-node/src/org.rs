@@ -117,7 +117,8 @@ pub fn create_org(
         initialize_registry_identity(backend.clone(), &key_alias, &provider, &*keychain, None)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
 
-    let rid = uuid::Uuid::new_v4().to_string();
+    let uuid_provider = SystemUuidProvider;
+    let rid = auths_core::ports::id::UuidProvider::new_id(&uuid_provider).to_string();
 
     let resolver = RegistryDidResolver::new(backend.clone());
     let org_resolved = resolver
@@ -179,6 +180,7 @@ pub fn create_org(
 }
 
 #[napi]
+#[allow(clippy::too_many_arguments)]
 pub fn add_org_member(
     org_did: String,
     member_did: String,
@@ -197,8 +199,9 @@ pub fn add_org_member(
         .map_err(|e| format_error("AUTHS_ORG_ERROR", format!("Invalid role: {e}")))?;
 
     let capabilities: Vec<String> = if let Some(json) = capabilities_json {
-        serde_json::from_str(&json)
-            .map_err(|e| format_error("AUTHS_ORG_ERROR", format!("Invalid capabilities JSON: {e}")))?
+        serde_json::from_str(&json).map_err(|e| {
+            format_error("AUTHS_ORG_ERROR", format!("Invalid capabilities JSON: {e}"))
+        })?
     } else {
         role_parsed
             .default_capabilities()
@@ -224,8 +227,12 @@ pub fn add_org_member(
     );
 
     let member_pk = if let Some(pk_hex) = member_public_key_hex {
-        let pk_bytes = hex::decode(&pk_hex)
-            .map_err(|e| format_error("AUTHS_ORG_ERROR", format!("Invalid member public key hex: {e}")))?;
+        let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
+            format_error(
+                "AUTHS_ORG_ERROR",
+                format!("Invalid member public key hex: {e}"),
+            )
+        })?;
         Ed25519PublicKey::try_from_slice(&pk_bytes)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?
     } else {
@@ -306,8 +313,12 @@ pub fn revoke_org_member(
     );
 
     let member_pk = if let Some(pk_hex) = member_public_key_hex {
-        let pk_bytes = hex::decode(&pk_hex)
-            .map_err(|e| format_error("AUTHS_ORG_ERROR", format!("Invalid member public key hex: {e}")))?;
+        let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
+            format_error(
+                "AUTHS_ORG_ERROR",
+                format!("Invalid member public key hex: {e}"),
+            )
+        })?;
         Ed25519PublicKey::try_from_slice(&pk_bytes)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?
     } else {
@@ -396,11 +407,7 @@ pub fn list_org_members(
                 .iter()
                 .map(|c| c.as_str().to_string())
                 .collect();
-            let role_str = m
-                .role
-                .as_ref()
-                .map(|r| r.as_str())
-                .unwrap_or("member");
+            let role_str = m.role.as_ref().map(|r| r.as_str()).unwrap_or("member");
 
             Some(serde_json::json!({
                 "member_did": m.did.to_string(),
@@ -414,6 +421,5 @@ pub fn list_org_members(
         })
         .collect();
 
-    serde_json::to_string(&result)
-        .map_err(|e| format_error("AUTHS_ORG_ERROR", e))
+    serde_json::to_string(&result).map_err(|e| format_error("AUTHS_ORG_ERROR", e))
 }
