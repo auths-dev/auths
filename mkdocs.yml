@@ -160,6 +160,11 @@ nav:
               - Signing: sdk/python/api/signing.md
               - Agent Auth: sdk/python/api/agent.md
           - Errors: sdk/python/errors.md
+      - Node SDK:
+          - Overview: sdk/node/overview.md
+          - Quickstart: sdk/node/quickstart.md
+          - API Reference: sdk/node/api/index.md
+          - Error Handling: sdk/node/errors.md
       - Rust SDK:
           - Overview: sdk/rust/overview.md
           - Quickstart: sdk/rust/quickstart.md

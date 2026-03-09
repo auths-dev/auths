@@ -1,0 +1,18 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["lib/index.ts"],
+  "out": "../../docs/sdk/node/api",
+  "plugin": ["typedoc-plugin-markdown"],
+  "tsconfig": "tsconfig.json",
+  "readme": "none",
+  "hideGenerator": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "disableSources": true,
+  "outputFileStrategy": "modules",
+  "hideBreadcrumbs": true,
+  "hidePageHeader": true,
+  "useCodeBlocks": true,
+  "entryFileName": "index",
+  "flattenOutputFiles": true
+}

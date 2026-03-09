@@ -11,6 +11,7 @@ on:
       - 'crates/auths-cli/src/**'
       - 'crates/xtask/src/**'
       - 'packages/auths-python/**'
+      - 'packages/auths-node/**'
   pull_request:
     branches: [main]
     paths:
@@ -20,6 +21,7 @@ on:
       - 'crates/auths-cli/src/**'
       - 'crates/xtask/src/**'
       - 'packages/auths-python/**'
+      - 'packages/auths-node/**'
 
 permissions:
   contents: write
@@ -52,6 +54,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Generate Node SDK API docs
+        working-directory: packages/auths-node
+        run: |
+          pnpm install --frozen-lockfile
+          npx typedoc
 
       - name: Install dependencies
         run: pip install mkdocs-material "mkdocstrings[python]"
