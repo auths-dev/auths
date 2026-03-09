@@ -2,9 +2,7 @@
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::disallowed_methods,
-    clippy::exit,
-    clippy::unwrap_used,
-    clippy::expect_used
+    clippy::exit
 )]
 //! auths-verify: SSH signature verification for Auths identities
 //!
@@ -189,18 +187,10 @@ fn verify_with_ssh_keygen(
 
     // Run ssh-keygen -Y verify
     let output = Command::new("ssh-keygen")
-        .args([
-            "-Y",
-            "verify",
-            "-f",
-            allowed_signers.to_str().unwrap(),
-            "-I",
-            identity,
-            "-n",
-            namespace,
-            "-s",
-            signature_file.to_str().unwrap(),
-        ])
+        .args(["-Y", "verify", "-f"])
+        .arg(allowed_signers)
+        .args(["-I", identity, "-n", namespace, "-s"])
+        .arg(signature_file)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -240,14 +230,10 @@ fn find_signer(
     allowed_signers: &std::path::Path,
 ) -> Result<Option<String>> {
     let output = Command::new("ssh-keygen")
-        .args([
-            "-Y",
-            "find-principals",
-            "-f",
-            allowed_signers.to_str().unwrap(),
-            "-s",
-            signature_file.to_str().unwrap(),
-        ])
+        .args(["-Y", "find-principals", "-f"])
+        .arg(allowed_signers)
+        .arg("-s")
+        .arg(signature_file)
         .output();
 
     if let Ok(out) = output

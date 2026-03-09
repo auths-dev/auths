@@ -2,9 +2,7 @@
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::disallowed_methods,
-    clippy::exit,
-    clippy::unwrap_used,
-    clippy::expect_used
+    clippy::exit
 )]
 //! auths-sign: Git SSH signing program compatible with `gpg.ssh.program`
 //!
@@ -180,18 +178,8 @@ fn run_verify(args: &Args) -> Result<()> {
         .ok_or_else(|| anyhow!("-s <signature_file> required for verify"))?;
 
     let mut cmd = std::process::Command::new("ssh-keygen");
-    cmd.args([
-        "-Y",
-        "verify",
-        "-f",
-        allowed_signers,
-        "-I",
-        identity,
-        "-n",
-        namespace,
-        "-s",
-        sig_file.to_str().unwrap(),
-    ]);
+    cmd.args(["-Y", "verify", "-f", allowed_signers, "-I", identity, "-n", namespace, "-s"]);
+    cmd.arg(sig_file);
     for opt in &args.verify_options {
         cmd.arg("-O").arg(opt);
     }
