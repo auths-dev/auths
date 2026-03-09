@@ -107,7 +107,7 @@ pub fn create_agent_identity(
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_env_config(&passphrase_str, &repo_path);
     let alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
-    let provider = Arc::new(PrefilledPassphraseProvider::new(&passphrase_str));
+    let provider = PrefilledPassphraseProvider::new(&passphrase_str);
     let clock = Arc::new(SystemClock);
 
     let repo = PathBuf::from(shellexpand::tilde(&repo_path).as_ref());
@@ -161,6 +161,7 @@ pub fn create_agent_identity(
         payload: None,
     };
 
+    let provider = Arc::new(provider);
     let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
         Arc::from(keychain);
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
