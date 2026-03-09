@@ -31,6 +31,7 @@ from auths._native import (
 from auths.agent import AgentAuth
 from auths.audit import AuditReport, AuditService, AuditSummary, CommitRecord
 from auths.org import Org, OrgMember, OrgService
+from auths.trust import TrustEntry, TrustService
 from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
 from auths.attestation_query import Attestation, AttestationService
 from auths.commit import CommitSigningResult
@@ -112,4 +113,6 @@ __all__ = [
     "AuditService",
     "AuditSummary",
     "CommitRecord",
+    "TrustEntry",
+    "TrustService",
 ]

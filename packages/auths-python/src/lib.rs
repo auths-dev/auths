@@ -20,6 +20,7 @@ pub mod rotation;
 pub mod runtime;
 pub mod sign;
 pub mod token;
+pub mod trust;
 pub mod types;
 pub mod verify;
 
@@ -113,6 +114,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(org::add_org_member, m)?)?;
     m.add_function(wrap_pyfunction!(org::revoke_org_member, m)?)?;
     m.add_function(wrap_pyfunction!(org::list_org_members, m)?)?;
+
+    m.add_function(wrap_pyfunction!(trust::pin_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(trust::remove_pinned_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(trust::list_pinned_identities, m)?)?;
+    m.add_function(wrap_pyfunction!(trust::get_pinned_identity, m)?)?;
 
     Ok(())
 }
