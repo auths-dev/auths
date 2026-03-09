@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["load_attestation_from_commit","load_attestations_by_prefix"]};

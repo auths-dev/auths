@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["REVOCATION_VERSION"],"fn":["create_signed_revocation"]};

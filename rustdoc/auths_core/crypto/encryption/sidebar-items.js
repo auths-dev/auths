@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ARGON2_TAG","NONCE_LEN","SALT_LEN","SYMMETRIC_KEY_LEN","TAG_LEN"],"fn":["decrypt_bytes","encrypt_bytes","get_kdf_params","validate_passphrase"]};

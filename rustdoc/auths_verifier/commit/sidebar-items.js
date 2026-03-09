@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["extract_ssh_signature","verify_commit_signature"],"struct":["ExtractedSignature","VerifiedCommit"]};

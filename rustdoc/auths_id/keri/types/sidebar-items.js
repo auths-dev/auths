@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["prefix_from_did","prefix_to_did"],"struct":["KeriTypeError","Prefix","Said"]};

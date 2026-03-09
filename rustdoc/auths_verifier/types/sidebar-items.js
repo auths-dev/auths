@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["VerificationStatus"],"struct":["ChainLink","DeviceDID","IdentityDID","VerificationReport"]};

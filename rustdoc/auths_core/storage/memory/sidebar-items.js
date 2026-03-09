@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"static":["MEMORY_KEYCHAIN"],"struct":["IsolatedKeychainHandle","MemoryKeychainHandle","MemoryStorage"]};

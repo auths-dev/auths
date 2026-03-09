@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["build_approval_attestation"],"struct":["GrantApprovalConfig","GrantApprovalResult","ListApprovalsConfig"]};

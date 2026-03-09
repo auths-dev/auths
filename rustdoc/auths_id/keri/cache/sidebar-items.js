@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CACHE_VERSION"],"enum":["CacheError"],"fn":["cache_path_for_did","clear_all_caches","inspect_cache","invalidate_cache","list_cached_entries","try_load_cached_state","try_load_cached_state_full","write_kel_cache"],"struct":["CacheEntry","CachedKelState"]};

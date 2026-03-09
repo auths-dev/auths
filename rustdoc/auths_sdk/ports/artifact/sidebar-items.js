@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ArtifactError"],"struct":["ArtifactDigest","ArtifactMetadata"],"trait":["ArtifactSource"]};

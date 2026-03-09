@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_REGISTRY_URL"],"fn":["register_identity"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["STORAGE_SCHEMA_VERSION"],"fn":["device_path","identity_path","org_path","path_parts","sanitize_did","shard_device_did","shard_prefix","unsanitize_did"]};

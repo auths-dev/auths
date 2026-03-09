@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DidResolverError","ResolvedDid"],"mod":["events","helpers","initialize","managed","resolve","rotate"],"trait":["DidResolver"]};

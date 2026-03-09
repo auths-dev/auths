@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DidResolverError","ResolvedDid"],"struct":["CachedPassphraseProvider","CallbackPassphraseProvider","KeychainPassphraseProvider","PrefilledPassphraseProvider","StorageSigner","UnifiedPassphraseProvider"],"trait":["DidResolver","PassphraseProvider","SecureSigner"]};

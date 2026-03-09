@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["CiEnvironment","GitSigningScope","IdentityConfig","IdentityConflictPolicy","PlatformVerification"],"struct":["CiIdentityConfig","CreateAgentIdentityConfig","CreateAgentIdentityConfigBuilder","CreateDeveloperIdentityConfig","CreateDeveloperIdentityConfigBuilder","DeviceExtensionConfig","DeviceLinkConfig","IdentityRotationConfig"]};

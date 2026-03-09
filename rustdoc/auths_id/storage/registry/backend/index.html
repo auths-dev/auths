@@ -1,0 +1,41 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Registry backend trait and error types."><title>auths_id::storage::registry::backend - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../../../" data-static-root-path="../../../../static.files/" data-current-crate="auths_id" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.1 (01f6ddf75 2026-02-11)" data-channel="1.93.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../../../static.files/storage-e2aeef58.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../../../static.files/main-a410ff4d.js"></script><noscript><link rel="stylesheet" href="../../../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module backend</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../../auths_id/index.html">auths_<wbr>id</a><span class="version">0.0.1-rc.8</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module backend</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#architecture-cacheindex-not-source-of-truth" title="Architecture: Cache/Index, Not Source of Truth">Architecture: Cache/Index, Not Source of Truth</a></li><li><a href="#overwrite-semantics" title="Overwrite Semantics">Overwrite Semantics</a></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#traits" title="Traits">Traits</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="../index.html">In auths_<wbr>id::<wbr>storage::<wbr>registry</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../../index.html">auths_id</a>::<wbr><a href="../../index.html">storage</a>::<wbr><a href="../index.html">registry</a></div><h1>Module <span>backend</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../../src/auths_id/storage/registry/backend.rs.html#1-809">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Registry backend trait and error types.</p>
+<h2 id="architecture-cacheindex-not-source-of-truth"><a class="doc-anchor" href="#architecture-cacheindex-not-source-of-truth">§</a>Architecture: Cache/Index, Not Source of Truth</h2>
+<p>The registry is an <strong>indexed materialized view</strong> for performance:</p>
+<ul>
+<li>
+<p><strong>Identity KEL (Key Event Log)</strong> = source of truth</p>
+<ul>
+<li>Events in <code>v1/identities/&lt;shard&gt;/&lt;prefix&gt;/events/</code> are canonical</li>
+<li>All other state is derived from the KEL</li>
+</ul>
+</li>
+<li>
+<p><strong>Registry</strong> = cached index for O(1) lookups</p>
+<ul>
+<li><code>state.json</code>, <code>tip.json</code> are performance caches</li>
+<li>Can be rebuilt from KEL at any time</li>
+<li>NOT authoritative for trust or authorization decisions</li>
+</ul>
+</li>
+<li>
+<p><strong>Backend validates structure, not trust</strong></p>
+<ul>
+<li>Backends may validate JSON structure, SAID integrity</li>
+<li>Backends may NOT decide trust, authorization, or expiry</li>
+<li>Policy engine (separate layer) handles authorization</li>
+</ul>
+</li>
+</ul>
+<p>This separation ensures backends remain testable, replaceable, and
+free from policy coupling.</p>
+<h2 id="overwrite-semantics"><a class="doc-anchor" href="#overwrite-semantics">§</a>Overwrite Semantics</h2>
+<p>Different data types have different overwrite semantics:</p>
+<div><table><thead><tr><th>Data Type</th><th>Semantic</th><th>Behavior</th></tr></thead><tbody>
+<tr><td>KEL Events</td><td><strong>Append-only</strong></td><td>Once written, immutable. <code>append_event()</code> refuses overwrites.</td></tr>
+<tr><td>Device Attestations</td><td><strong>Latest-view</strong></td><td><code>store_attestation()</code> overwrites existing. History in <code>attestation_history/</code>.</td></tr>
+<tr><td>Org Member Attestations</td><td><strong>Latest-view</strong></td><td><code>store_org_member()</code> overwrites existing for same member DID.</td></tr>
+</tbody></table>
+</div>
+<p>The “latest-view” pattern means the current file represents only the latest state.
+Historical data is preserved separately for audit purposes.</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.ValidatedTenantId.html" title="struct auths_id::storage::registry::backend::ValidatedTenantId">Validated<wbr>Tenant<wbr>Id</a></dt><dd>A tenant identifier that has been normalized (lowercased) and validated.</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.RegistryError.html" title="enum auths_id::storage::registry::backend::RegistryError">Registry<wbr>Error</a></dt><dd>Errors that can occur during registry operations.</dd><dt><a class="enum" href="enum.TenantIdError.html" title="enum auths_id::storage::registry::backend::TenantIdError">Tenant<wbr>IdError</a></dt><dd>Specific reasons a tenant ID is rejected.</dd></dl><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><dl class="item-table"><dt><a class="trait" href="trait.RegistryBackend.html" title="trait auths_id::storage::registry::backend::RegistryBackend">Registry<wbr>Backend</a></dt><dd>Trait for registry storage backends.</dd></dl></section></div></main></body></html>

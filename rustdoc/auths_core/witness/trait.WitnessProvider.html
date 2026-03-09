@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="A provider that observes identity KEL heads for split-view detection."><title>WitnessProvider in auths_core::witness - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="auths_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.1 (01f6ddf75 2026-02-11)" data-channel="1.93.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-a410ff4d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc trait"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">WitnessProvider</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../auths_core/index.html">auths_<wbr>core</a><span class="version">0.0.1-rc.8</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Witness<wbr>Provider</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#thread-safety" title="Thread Safety">Thread Safety</a></li><li><a href="#no-networking-in-trait" title="No Networking in Trait">No Networking in Trait</a></li><li><a href="#example" title="Example">Example</a></li></ul><h3><a href="#required-methods">Required Methods</a></h3><ul class="block"><li><a href="#tymethod.observe_identity_head" title="observe_identity_head">observe_identity_head</a></li></ul><h3><a href="#provided-methods">Provided Methods</a></h3><ul class="block"><li><a href="#method.is_enabled" title="is_enabled">is_enabled</a></li><li><a href="#method.quorum" title="quorum">quorum</a></li></ul><h3><a href="#implementors">Implementors</a></h3></section><div id="rustdoc-modnav"><h2><a href="index.html">In auths_<wbr>core::<wbr>witness</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">auths_core</a>::<wbr><a href="index.html">witness</a></div><h1>Trait <span class="trait">Witness<wbr>Provider</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/auths_core/witness/provider.rs.html#43-85">Source</a> </span></div><pre class="rust item-decl"><code>pub trait WitnessProvider: <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Sync.html" title="trait core::marker::Sync">Sync</a> {
+    // Required method
+    fn <a href="#tymethod.observe_identity_head" class="fn">observe_identity_head</a>(&amp;self, prefix: &amp;Prefix) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.EventHash.html" title="struct auths_core::witness::EventHash">EventHash</a>&gt;;
+
+    // Provided methods
+    fn <a href="#method.quorum" class="fn">quorum</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.usize.html">usize</a> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.is_enabled" class="fn">is_enabled</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.bool.html">bool</a> { ... }
+}</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>A provider that observes identity KEL heads for split-view detection.</p>
+<p>Implementations of this trait act as “witnesses” that can report
+what they believe to be the current head of an identity’s KEL.</p>
+<h2 id="thread-safety"><a class="doc-anchor" href="#thread-safety">§</a>Thread Safety</h2>
+<p>Implementations must be <code>Send + Sync</code> to allow use across threads.
+This is required because policy evaluation may happen in async contexts.</p>
+<h2 id="no-networking-in-trait"><a class="doc-anchor" href="#no-networking-in-trait">§</a>No Networking in Trait</h2>
+<p>Note that this trait definition contains no networking code. Implementations
+may use networking internally (e.g., to query remote witnesses), but the
+trait itself is pure and synchronous.</p>
+<h2 id="example"><a class="doc-anchor" href="#example">§</a>Example</h2>
+<div class="example-wrap ignore"><a href="#" class="tooltip" title="This example is not tested">ⓘ</a><pre class="rust rust-example-rendered"><code><span class="kw">use </span>auths_core::witness::{WitnessProvider, NoOpWitness};
+<span class="kw">use </span>auths_verifier::keri::Prefix;
+
+<span class="comment">// Default: no witness checking
+</span><span class="kw">let </span>witness = NoOpWitness;
+<span class="kw">let </span>prefix = Prefix::new_unchecked(<span class="string">"E123"</span>.into());
+<span class="macro">assert!</span>(witness.observe_identity_head(<span class="kw-2">&amp;</span>prefix).is_none());
+
+<span class="comment">// Custom witness implementation
+</span><span class="kw">struct </span>MyWitness { <span class="comment">/* ... */ </span>}
+<span class="kw">impl </span>WitnessProvider <span class="kw">for </span>MyWitness {
+    <span class="kw">fn </span>observe_identity_head(<span class="kw-2">&amp;</span><span class="self">self</span>, prefix: <span class="kw-2">&amp;</span>Prefix) -&gt; <span class="prelude-ty">Option</span>&lt;EventHash&gt; {
+        <span class="comment">// Query witness infrastructure
+        </span>EventHash::from_hex(<span class="string">"0123456789abcdef0123456789abcdef01234567"</span>)
+    }
+}</code></pre></div></div></details><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="tymethod.observe_identity_head" class="method"><a class="src rightside" href="../../src/auths_core/witness/provider.rs.html#57">Source</a><h4 class="code-header">fn <a href="#tymethod.observe_identity_head" class="fn">observe_identity_head</a>(&amp;self, prefix: &amp;Prefix) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.EventHash.html" title="struct auths_core::witness::EventHash">EventHash</a>&gt;</h4></section></summary><div class="docblock"><p>Observe the current head of an identity’s KEL.</p>
+<p>Returns the hash of the most recent event the witness has seen
+for the given identity prefix.</p>
+<h5 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h5>
+<ul>
+<li><code>Some(hash)</code> - The witness has an opinion on this identity’s head</li>
+<li><code>None</code> - The witness has no opinion (offline, not tracking, or disabled)</li>
+</ul>
+<h5 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h5>
+<ul>
+<li><code>prefix</code> - The KERI prefix of the identity (e.g., “E123abc…”)</li>
+</ul>
+</div></details></div><h2 id="provided-methods" class="section-header">Provided Methods<a href="#provided-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="method.quorum" class="method"><a class="src rightside" href="../../src/auths_core/witness/provider.rs.html#73-75">Source</a><h4 class="code-header">fn <a href="#method.quorum" class="fn">quorum</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.usize.html">usize</a></h4></section></summary><div class="docblock"><p>Get the minimum quorum required for consistency.</p>
+<p>When multiple witnesses are used, this specifies how many must agree
+for the head to be considered consistent.</p>
+<h5 id="default"><a class="doc-anchor" href="#default">§</a>Default</h5>
+<p>Returns <code>1</code> (single witness is sufficient).</p>
+<h5 id="quorum-semantics"><a class="doc-anchor" href="#quorum-semantics">§</a>Quorum Semantics</h5>
+<ul>
+<li><code>quorum = 1</code>: Any single witness disagreement triggers alert</li>
+<li><code>quorum = 2</code>: Requires 2+ witnesses to agree</li>
+<li><code>quorum = n</code>: Requires n witnesses to agree (Byzantine quorum)</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.is_enabled" class="method"><a class="src rightside" href="../../src/auths_core/witness/provider.rs.html#82-84">Source</a><h4 class="code-header">fn <a href="#method.is_enabled" class="fn">is_enabled</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.bool.html">bool</a></h4></section></summary><div class="docblock"><p>Check if this witness is enabled.</p>
+<h5 id="default-1"><a class="doc-anchor" href="#default-1">§</a>Default</h5>
+<p>Returns <code>true</code>. Override to return <code>false</code> for no-op implementations.</p>
+</div></details></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"><section id="impl-WitnessProvider-for-NoOpWitness" class="impl"><a class="src rightside" href="../../src/auths_core/witness/noop.rs.html#44-56">Source</a><a href="#impl-WitnessProvider-for-NoOpWitness" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.WitnessProvider.html" title="trait auths_core::witness::WitnessProvider">WitnessProvider</a> for <a class="struct" href="struct.NoOpWitness.html" title="struct auths_core::witness::NoOpWitness">NoOpWitness</a></h3></section></div><script src="../../trait.impl/auths_core/witness/provider/trait.WitnessProvider.js" async></script></section></div></main></body></html>

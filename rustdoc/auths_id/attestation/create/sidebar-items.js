@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ATTESTATION_VERSION"],"fn":["canonicalize_revocation_data","create_signed_attestation"],"struct":["CanonicalRevocationData"]};

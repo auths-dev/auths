@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["initialize","install_registry_hook"]};

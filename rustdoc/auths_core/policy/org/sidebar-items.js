@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["authorize_org_action","expected_org_issuer"]};

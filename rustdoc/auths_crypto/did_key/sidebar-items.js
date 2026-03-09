@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DidKeyError"],"fn":["did_key_to_ed25519","ed25519_pubkey_to_did_keri","ed25519_pubkey_to_did_key"]};

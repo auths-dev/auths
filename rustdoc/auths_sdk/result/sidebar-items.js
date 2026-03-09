@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["InitializeResult"],"struct":["AgentIdentityResult","CiIdentityResult","DeveloperIdentityResult","DeviceExtensionResult","DeviceLinkResult","IdentityRotationResult","PlatformClaimResult","RegistrationOutcome"]};

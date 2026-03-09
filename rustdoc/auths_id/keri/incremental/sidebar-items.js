@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_INCREMENTAL_EVENTS"],"enum":["IncrementalError","IncrementalResult","ReplayReason"],"fn":["try_incremental_validation"]};

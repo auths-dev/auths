@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["IdentityError"],"fn":["encode_seed_as_pkcs8","extract_seed_bytes","generate_keypair_with_seed","load_keypair_from_der_or_seed"],"struct":["Identity"]};

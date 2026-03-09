@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SessionStatus"],"struct":["Base64UrlEncoded","CreateSessionRequest","CreateSessionResponse","GetConfirmationResponse","GetSessionResponse","SubmitConfirmationRequest","SubmitResponseRequest","SuccessResponse"]};

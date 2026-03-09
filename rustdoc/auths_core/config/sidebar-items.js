@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["PassphraseCachePolicy"],"fn":["current_algorithm","load_config","save_config","set_encryption_algorithm"],"struct":["AuthsConfig","EnvironmentConfig","EnvironmentConfigBuilder","KeychainConfig","PassphraseConfig","Pkcs11Config"]};

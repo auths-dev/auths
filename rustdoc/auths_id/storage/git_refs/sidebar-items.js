@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["aggregate_canonical_refs"],"struct":["AttestationMetadata"]};

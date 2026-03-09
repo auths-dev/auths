@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["approval","artifact","audit","diagnostics","git_integration","org","platform","policy_diff","provision","rotation","signing"]};

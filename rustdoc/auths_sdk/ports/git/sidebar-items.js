@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["GitProviderError","SignatureStatus"],"struct":["CommitRecord"],"trait":["GitLogProvider"]};

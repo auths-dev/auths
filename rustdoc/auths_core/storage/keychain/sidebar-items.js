@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["KeyRole"],"fn":["extract_public_key_bytes","get_platform_keychain","get_platform_keychain_with_config"],"struct":["IdentityDID","KeyAlias"],"trait":["KeyStorage"]};

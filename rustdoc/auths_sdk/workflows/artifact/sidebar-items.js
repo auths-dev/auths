@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ArtifactPublishError"],"fn":["compute_digest","publish_artifact"],"struct":["ArtifactPublishConfig","ArtifactPublishResult"]};

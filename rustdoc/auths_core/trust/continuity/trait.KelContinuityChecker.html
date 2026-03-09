@@ -1,0 +1,51 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Trait for verifying rotation continuity from a pinned state to a presented key."><title>KelContinuityChecker in auths_core::trust::continuity - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="auths_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.1 (01f6ddf75 2026-02-11)" data-channel="1.93.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../../static.files/storage-e2aeef58.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../../static.files/main-a410ff4d.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc trait"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">KelContinuityChecker</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../auths_core/index.html">auths_<wbr>core</a><span class="version">0.0.1-rc.8</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">KelContinuity<wbr>Checker</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#implementation-requirements" title="Implementation Requirements">Implementation Requirements</a></li><li><a href="#return-values" title="Return Values">Return Values</a></li></ul><h3><a href="#required-methods">Required Methods</a></h3><ul class="block"><li><a href="#tymethod.verify_rotation_continuity" title="verify_rotation_continuity">verify_rotation_continuity</a></li></ul><h3><a href="#implementors">Implementors</a></h3></section><div id="rustdoc-modnav"><h2><a href="index.html">In auths_<wbr>core::<wbr>trust::<wbr>continuity</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../index.html">auths_core</a>::<wbr><a href="../index.html">trust</a>::<wbr><a href="index.html">continuity</a></div><h1>Trait <span class="trait">KelContinuity<wbr>Checker</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../src/auths_core/trust/continuity.rs.html#43-64">Source</a> </span></div><pre class="rust item-decl"><code>pub trait KelContinuityChecker {
+    // Required method
+    fn <a href="#tymethod.verify_rotation_continuity" class="fn">verify_rotation_continuity</a>(
+        &amp;self,
+        did: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.str.html">str</a>,
+        pinned_tip_said: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.str.html">str</a>,
+        presented_pk: &amp;[<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.u8.html">u8</a>],
+    ) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.93.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.RotationProof.html" title="struct auths_core::trust::continuity::RotationProof">RotationProof</a>&gt;, <a class="enum" href="../../error/enum.TrustError.html" title="enum auths_core::error::TrustError">TrustError</a>&gt;;
+}</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Trait for verifying rotation continuity from a pinned state to a presented key.</p>
+<p>Implemented by <code>auths-id</code> (which owns KEL types). The trust module in
+<code>auths-core</code> calls this trait without importing <code>auths-id</code>.</p>
+<h2 id="implementation-requirements"><a class="doc-anchor" href="#implementation-requirements">§</a>Implementation Requirements</h2>
+<p>The implementation must:</p>
+<ol>
+<li>Locate the event with SAID == <code>pinned_tip_said</code> in the KEL.</li>
+<li>Replay <strong>forward from that event</strong> (not from inception), verifying:
+<ul>
+<li>Hash chain linkage (each event’s <code>p</code> matches predecessor’s <code>d</code>).</li>
+<li>Sequence ordering (strict monotonic increment).</li>
+<li>Pre-rotation commitment satisfaction for rotation events.</li>
+<li>Event signatures.</li>
+</ul>
+</li>
+<li>Confirm the resulting key state’s current key matches <code>presented_pk</code>.</li>
+</ol>
+<h2 id="return-values"><a class="doc-anchor" href="#return-values">§</a>Return Values</h2>
+<ul>
+<li><code>Ok(Some(proof))</code> if continuity is verified.</li>
+<li><code>Ok(None)</code> if the pinned tip is not found or the chain doesn’t lead to the presented key.</li>
+<li><code>Err</code> on internal errors (corrupt KEL, deserialization failure).</li>
+</ul>
+</div></details><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="tymethod.verify_rotation_continuity" class="method"><a class="src rightside" href="../../../src/auths_core/trust/continuity.rs.html#58-63">Source</a><h4 class="code-header">fn <a href="#tymethod.verify_rotation_continuity" class="fn">verify_rotation_continuity</a>(
+    &amp;self,
+    did: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.str.html">str</a>,
+    pinned_tip_said: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.str.html">str</a>,
+    presented_pk: &amp;[<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.u8.html">u8</a>],
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.93.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.RotationProof.html" title="struct auths_core::trust::continuity::RotationProof">RotationProof</a>&gt;, <a class="enum" href="../../error/enum.TrustError.html" title="enum auths_core::error::TrustError">TrustError</a>&gt;</h4></section></summary><div class="docblock"><p>Verify that there is a valid, unbroken event chain from <code>pinned_tip_said</code>
+to a state whose current key matches <code>presented_pk</code>.</p>
+<h5 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h5>
+<ul>
+<li><code>did</code> - The DID being verified (e.g., “did:keri:EXq5…”)</li>
+<li><code>pinned_tip_said</code> - The SAID of the event at which we last pinned this identity</li>
+<li><code>presented_pk</code> - The raw public key bytes presented for verification</li>
+</ul>
+<h5 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h5>
+<ul>
+<li><code>Ok(Some(proof))</code> - Rotation verified, contains new state to update pin</li>
+<li><code>Ok(None)</code> - Cannot verify continuity (tip not found, chain broken, key mismatch)</li>
+<li><code>Err(...)</code> - Internal error (corrupt data, I/O failure)</li>
+</ul>
+</div></details></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"></div><script src="../../../trait.impl/auths_core/trust/continuity/trait.KelContinuityChecker.js" async></script></section></div></main></body></html>

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["rotate_keri_identity","rotate_registry_identity"],"struct":["RotationKeyInfo"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["HookError"],"fn":["install_cache_hooks","install_linearity_hook","uninstall_cache_hooks","uninstall_linearity_hook"]};

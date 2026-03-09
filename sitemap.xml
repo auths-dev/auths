@@ -257,7 +257,67 @@
          <lastmod>2026-03-09</lastmod>
     </url>
     <url>
+         <loc>https://docs.auths.dev/sdk/python/errors/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/overview/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/quickstart/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/agent/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/attestations/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/client/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/devices/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/git/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/identities/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/jwt/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/orgs/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/policy/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/signing/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/python/api/verification/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
          <loc>https://docs.auths.dev/sdk/rust/agent-protocol/</loc>
+         <lastmod>2026-03-09</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.auths.dev/sdk/rust/api-reference/</loc>
          <lastmod>2026-03-09</lastmod>
     </url>
     <url>

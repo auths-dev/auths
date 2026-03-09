@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["create_platform_claim"],"struct":["PlatformClaim"]};

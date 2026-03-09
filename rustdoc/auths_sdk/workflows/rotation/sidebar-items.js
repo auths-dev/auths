@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["apply_rotation","compute_rotation_event","rotate_identity"],"struct":["RotationKeyMaterial"]};

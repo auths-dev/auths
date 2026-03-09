@@ -1,0 +1,45 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Policy engine for authorization decisions."><title>auths_core::policy - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="auths_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.1 (01f6ddf75 2026-02-11)" data-channel="1.93.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-a410ff4d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module policy</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../auths_core/index.html">auths_<wbr>core</a><span class="version">0.0.1-rc.8</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module policy</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#architecture" title="Architecture">Architecture</a></li><li><a href="#relationship-to-trust-module" title="Relationship to Trust Module">Relationship to Trust Module</a></li><li><a href="#sans-io-design-invariant" title="Sans-IO Design (INVARIANT)">Sans-IO Design (INVARIANT)</a><ul><li><a href="#prohibited-in-production-code" title="Prohibited in Production Code">Prohibited in Production Code</a></li><li><a href="#required-pattern" title="Required Pattern">Required Pattern</a></li><li><a href="#benefits" title="Benefits">Benefits</a></li><li><a href="#ci-verification" title="CI Verification">CI Verification</a></li></ul></li></ul><h3><a href="#modules">Module Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#enums" title="Enums">Enums</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate auths_<wbr>core</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">auths_core</a></div><h1>Module <span>policy</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/auths_core/policy/mod.rs.html#1-70">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Policy engine for authorization decisions.</p>
+<p>This module provides the policy evaluation layer that determines whether
+a device or identity is authorized to perform specific actions.</p>
+<h2 id="architecture"><a class="doc-anchor" href="#architecture">§</a>Architecture</h2>
+<p>The policy engine sits between storage (which provides data) and
+application code (which needs authorization decisions):</p>
+<div class="example-wrap"><pre class="language-text"><code>┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
+│ Storage/Registry │ ──► │ Policy Engine │ ──► │ Decision (Y/N/?) │
+└─────────────────┘     └──────────────┘     └─────────────────┘
+       (data)              (evaluation)           (result)</code></pre></div><h2 id="relationship-to-trust-module"><a class="doc-anchor" href="#relationship-to-trust-module">§</a>Relationship to Trust Module</h2>
+<p>This module handles <strong>authorization</strong> (can X do Y?), while the
+<a href="../trust/index.html" title="mod auths_core::trust"><code>crate::trust</code></a> module handles <strong>identity verification</strong> (is X who they
+claim?). Both are needed for secure operation:</p>
+<ol>
+<li>First, verify identity using <a href="../trust/resolve/fn.check_trust.html" title="fn auths_core::trust::resolve::check_trust"><code>crate::trust::check_trust</code></a></li>
+<li>Then, check authorization using this policy module</li>
+</ol>
+<h2 id="sans-io-design-invariant"><a class="doc-anchor" href="#sans-io-design-invariant">§</a>Sans-IO Design (INVARIANT)</h2>
+<p><strong>This module MUST remain pure/sans-IO.</strong> All policy functions take their
+inputs explicitly and never access storage or system resources directly.</p>
+<h3 id="prohibited-in-production-code"><a class="doc-anchor" href="#prohibited-in-production-code">§</a>Prohibited in Production Code</h3>
+<ul>
+<li><code>RegistryBackend</code> or any storage trait</li>
+<li><code>git2</code> or filesystem access</li>
+<li><code>Utc::now()</code> or other system clock access</li>
+<li>Network I/O</li>
+</ul>
+<h3 id="required-pattern"><a class="doc-anchor" href="#required-pattern">§</a>Required Pattern</h3>
+<p>All external data must be passed as parameters:</p>
+
+<div class="example-wrap ignore"><a href="#" class="tooltip" title="This example is not tested">ⓘ</a><pre class="rust rust-example-rendered"><code><span class="kw">fn </span>evaluate(
+    attestation: <span class="kw-2">&amp;</span>Attestation,  <span class="comment">// Data from storage (caller fetches)
+    </span>action: <span class="kw-2">&amp;</span>Action,            <span class="comment">// What to authorize
+    </span>now: DateTime&lt;Utc&gt;,         <span class="comment">// Time (caller provides)
+</span>) -&gt; Decision</code></pre></div><h3 id="benefits"><a class="doc-anchor" href="#benefits">§</a>Benefits</h3>
+<ul>
+<li><strong>Testable</strong>: No mocks needed, just pass test data</li>
+<li><strong>Deterministic</strong>: Same inputs always produce same outputs</li>
+<li><strong>Portable</strong>: Works in WASM, embedded, anywhere</li>
+<li><strong>Auditable</strong>: All decision factors are explicit</li>
+</ul>
+<h3 id="ci-verification"><a class="doc-anchor" href="#ci-verification">§</a>CI Verification</h3>
+<p>Run to verify invariant is maintained:</p>
+<div class="example-wrap"><pre class="language-bash"><code>grep -rn &quot;RegistryBackend\|git2\|std::fs&quot; crates/auths-core/src/policy/
+# Production code should return nothing (tests/docs excluded)</code></pre></div></div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="device/index.html" title="mod auths_core::policy::device">device</a></dt><dd>Device authorization policy.</dd><dt><a class="mod" href="org/index.html" title="mod auths_core::policy::org">org</a></dt><dd>Organization authorization policy.</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.Decision.html" title="enum auths_core::policy::Decision">Decision</a></dt><dd>Result of an authorization policy evaluation.</dd></dl></section></div></main></body></html>

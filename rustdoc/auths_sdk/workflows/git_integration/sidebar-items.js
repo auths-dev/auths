@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["GitIntegrationError"],"fn":["format_allowed_signers_file","generate_allowed_signers","public_key_to_ssh"],"struct":["AllowedSignerEntry"]};

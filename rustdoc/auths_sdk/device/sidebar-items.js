@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["extend_device","link_device","revoke_device"]};

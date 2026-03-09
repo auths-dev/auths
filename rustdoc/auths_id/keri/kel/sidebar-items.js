@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["KelError"],"struct":["GitKel"]};

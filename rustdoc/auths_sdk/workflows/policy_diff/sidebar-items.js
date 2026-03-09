@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["PolicyDiffError"],"fn":["compute_policy_diff","overall_risk_score"],"struct":["PolicyChange"]};

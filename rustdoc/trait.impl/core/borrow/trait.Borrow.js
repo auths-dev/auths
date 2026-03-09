@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["auths_core",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.93.1/core/borrow/trait.Borrow.html\" title=\"trait core::borrow::Borrow\">Borrow</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.93.1/std/primitive.str.html\">str</a>&gt; for <a class=\"struct\" href=\"auths_core/storage/keychain/struct.KeyAlias.html\" title=\"struct auths_core::storage::keychain::KeyAlias\">KeyAlias</a>"]]],["auths_verifier",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.93.1/core/borrow/trait.Borrow.html\" title=\"trait core::borrow::Borrow\">Borrow</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.93.1/std/primitive.str.html\">str</a>&gt; for <a class=\"struct\" href=\"auths_verifier/keri/struct.Prefix.html\" title=\"struct auths_verifier::keri::Prefix\">Prefix</a>"],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.93.1/core/borrow/trait.Borrow.html\" title=\"trait core::borrow::Borrow\">Borrow</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.93.1/std/primitive.str.html\">str</a>&gt; for <a class=\"struct\" href=\"auths_verifier/keri/struct.Said.html\" title=\"struct auths_verifier::keri::Said\">Said</a>"],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.93.1/core/borrow/trait.Borrow.html\" title=\"trait core::borrow::Borrow\">Borrow</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.93.1/std/primitive.str.html\">str</a>&gt; for <a class=\"struct\" href=\"auths_verifier/types/struct.IdentityDID.html\" title=\"struct auths_verifier::types::IdentityDID\">IdentityDID</a>"]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[419,1172]}

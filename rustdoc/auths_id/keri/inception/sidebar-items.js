@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["InceptionError"],"fn":["create_keri_identity","create_keri_identity_from_key","create_keri_identity_with_backend","did_to_prefix","prefix_to_did"],"struct":["InceptionResult"]};

@@ -1,0 +1,63 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Authorize an org member to perform an action."><title>authorize_org_action in auths_core::policy::org - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="auths_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.1 (01f6ddf75 2026-02-11)" data-channel="1.93.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../../static.files/storage-e2aeef58.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../../static.files/main-a410ff4d.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc fn"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">authorize_org_action</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../../auths_core/index.html">auths_<wbr>core</a><span class="version">0.0.1-rc.8</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">authorize_<wbr>org_<wbr>action</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#sans-io-design" title="Sans-IO Design">Sans-IO Design</a></li><li><a href="#rules-evaluated-in-order" title="Rules (evaluated in order)">Rules (evaluated in order)</a></li><li><a href="#arguments" title="Arguments">Arguments</a></li><li><a href="#returns" title="Returns">Returns</a></li><li><a href="#examples" title="Examples">Examples</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="index.html">In auths_<wbr>core::<wbr>policy::<wbr>org</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../../index.html">auths_core</a>::<wbr><a href="../index.html">policy</a>::<wbr><a href="index.html">org</a></div><h1>Function <span class="fn">authorize_<wbr>org_<wbr>action</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../../src/auths_core/policy/org.rs.html#92-147">Source</a> </span></div><pre class="rust item-decl"><code>pub fn authorize_org_action(
+    member_attestation: &amp;Attestation,
+    expected_org_issuer: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.str.html">str</a>,
+    action: &amp;<a class="enum" href="../device/enum.Action.html" title="enum auths_core::policy::device::Action">Action</a>,
+    now: <a class="struct" href="https://docs.rs/chrono/latest/chrono/datetime/struct.DateTime.html" title="struct chrono::datetime::DateTime">DateTime</a>&lt;<a class="struct" href="https://docs.rs/chrono/latest/chrono/offset/utc/struct.Utc.html" title="struct chrono::offset::utc::Utc">Utc</a>&gt;,
+) -&gt; <a class="enum" href="../enum.Decision.html" title="enum auths_core::policy::Decision">Decision</a></code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Authorize an org member to perform an action.</p>
+<h2 id="sans-io-design"><a class="doc-anchor" href="#sans-io-design">§</a>Sans-IO Design</h2>
+<p>All inputs are passed explicitly:</p>
+<ul>
+<li>No storage access (membership attestation provided by caller)</li>
+<li>No system clock (time injected via <code>now</code>)</li>
+<li>Pure function: same inputs always produce same output</li>
+</ul>
+<h2 id="rules-evaluated-in-order"><a class="doc-anchor" href="#rules-evaluated-in-order">§</a>Rules (evaluated in order)</h2>
+<ol>
+<li><strong>Not revoked</strong>: <code>!att.is_revoked()</code></li>
+<li><strong>Not expired</strong>: <code>att.expires_at &gt; now</code> OR <code>att.expires_at.is_none()</code></li>
+<li><strong>Issuer is org</strong>: <code>att.issuer == expected_org_issuer</code></li>
+<li><strong>Capability allows action</strong>: <code>action.to_capability() in att.capabilities</code></li>
+</ol>
+<h2 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h2>
+<ul>
+<li><code>member_attestation</code> - The member’s org membership attestation</li>
+<li><code>expected_org_issuer</code> - The expected org issuer DID (e.g., <code>did:keri:EOrg...</code>)</li>
+<li><code>action</code> - The action the member wants to perform</li>
+<li><code>now</code> - Current time for expiry checks</li>
+</ul>
+<h2 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h2>
+<p><code>Decision::Allow</code> if all rules pass, <code>Decision::Deny</code> otherwise.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>auths_core::policy::{Decision, device::Action, org::authorize_org_action};
+<span class="kw">use </span>auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature, Role};
+<span class="kw">use </span>auths_verifier::types::DeviceDID;
+<span class="kw">use </span>chrono::Utc;
+
+<span class="kw">let </span>membership = Attestation {
+    version: <span class="number">1</span>,
+    rid: <span class="string">"member"</span>.into(),
+    issuer: <span class="string">"did:keri:EOrg123"</span>.into(),
+    subject: DeviceDID::new(<span class="string">"did:key:z6MkAlice"</span>),
+    device_public_key: Ed25519PublicKey::from_bytes([<span class="number">0u8</span>; <span class="number">32</span>]),
+    identity_signature: Ed25519Signature::empty(),
+    device_signature: Ed25519Signature::empty(),
+    revoked_at: <span class="prelude-val">None</span>,
+    expires_at: <span class="prelude-val">None</span>,
+    timestamp: <span class="prelude-val">None</span>,
+    note: <span class="prelude-val">None</span>,
+    payload: <span class="prelude-val">None</span>,
+    role: <span class="prelude-val">Some</span>(Role::Admin),
+    capabilities: <span class="macro">vec!</span>[Capability::manage_members()],
+    delegated_by: <span class="prelude-val">None</span>,
+    signer_type: <span class="prelude-val">None</span>,
+    environment_claim: <span class="prelude-val">None</span>,
+};
+
+<span class="kw">let </span>decision = authorize_org_action(
+    <span class="kw-2">&amp;</span>membership,
+    <span class="string">"did:keri:EOrg123"</span>,
+    <span class="kw-2">&amp;</span>Action::ManageMembers,
+    Utc::now(),
+);
+
+<span class="macro">assert!</span>(decision.is_allowed());</code></pre></div></div></details></section></div></main></body></html>

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["ed25519_public_key_from_seed_sync","generate_ed25519_keypair_sync","sign_ed25519_sync","verify_ed25519_sync"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["compute_next_commitment","compute_said","verify_commitment"]};

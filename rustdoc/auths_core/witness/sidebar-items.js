@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["KERI_VERSION","RECEIPT_TYPE"],"enum":["CollectionError","EventHashParseError","WitnessError"],"struct":["DuplicityDetector","DuplicityEvidence","EventHash","NoOpAsyncWitness","NoOpWitness","Receipt","ReceiptBuilder","ReceiptCollector","ReceiptCollectorBuilder","WitnessReport"],"trait":["AsyncWitnessProvider","WitnessProvider"]};

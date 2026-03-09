@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ApprovalError","DeviceError","DeviceExtensionError","McpAuthError","OrgError","PlatformError","RegistrationError","RotationError","SdkStorageError","SetupError"]};

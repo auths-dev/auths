@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["claim_github_identity","create_signed_platform_claim"],"struct":["GitHubClaimConfig","PlatformClaim"]};

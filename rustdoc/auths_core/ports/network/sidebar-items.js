@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["NetworkError","ResolutionError","ResolvedIdentity"],"struct":["RegistryResponse"],"trait":["IdentityResolver","RegistryClient","WitnessClient"]};

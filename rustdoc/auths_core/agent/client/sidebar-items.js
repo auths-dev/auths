@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["AgentStatus"],"fn":["add_identity","agent_sign","check_agent_status","list_identities","remove_all_identities"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DidResolverError","ResolvedDid"],"fn":["did_key_to_ed25519","ed25519_to_did_key"],"struct":["DefaultDidResolver","RegistryDidResolver"],"trait":["DidResolver"]};

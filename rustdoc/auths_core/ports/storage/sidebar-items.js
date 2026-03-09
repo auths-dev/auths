@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["StorageError"],"trait":["BlobReader","BlobWriter","EventLogReader","EventLogWriter","RefReader","RefWriter"]};

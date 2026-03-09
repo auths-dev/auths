@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ValidationError"],"fn":["compute_event_said","finalize_icp_event","replay_kel","serialize_for_signing","validate_for_append","validate_kel","verify_event_crypto","verify_event_said"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["check_receipt_consistency","verify_receipt_signature"],"struct":["GitReceiptStorage"],"trait":["ReceiptStorage"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["verify_receipt_signature","verify_witness_receipts"],"struct":["WitnessQuorum","WitnessReceipt","WitnessReceiptResult","WitnessVerifyConfig"]};

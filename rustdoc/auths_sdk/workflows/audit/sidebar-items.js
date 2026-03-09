@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["AuditError"],"fn":["summarize_commits"],"struct":["AuditReport","AuditSummary","AuditWorkflow"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["AnchorError"],"fn":["anchor_attestation","anchor_data","find_anchor_event","verify_anchor","verify_anchor_by_digest","verify_attestation_anchor_by_issuer"],"struct":["AnchorVerification"]};

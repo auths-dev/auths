@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Role"],"fn":["add_organization_member","member_role_order","revoke_organization_member","update_member_capabilities"],"struct":["AddMemberCommand","OrgContext","RevokeMemberCommand","UpdateCapabilitiesCommand"]};

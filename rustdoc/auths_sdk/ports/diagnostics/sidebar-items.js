@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ConfigIssue","DiagnosticError"],"struct":["CheckResult","DiagnosticReport"],"trait":["CryptoDiagnosticProvider","GitDiagnosticProvider"]};

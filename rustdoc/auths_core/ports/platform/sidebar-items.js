@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["PlatformError"],"struct":["ClaimResponse","DeviceCodeResponse","PlatformUserProfile"],"trait":["OAuthDeviceFlowProvider","PlatformProofPublisher","RegistryClaimClient"]};

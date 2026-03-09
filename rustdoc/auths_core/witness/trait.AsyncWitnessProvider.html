@@ -1,0 +1,132 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Async witness provider for network-based witness operations."><title>AsyncWitnessProvider in auths_core::witness - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-ca0dd0c4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="auths_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.93.1 (01f6ddf75 2026-02-11)" data-channel="1.93.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-a3946164.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-a410ff4d.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-263c88ec.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc trait"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">AsyncWitnessProvider</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../auths_core/index.html">auths_<wbr>core</a><span class="version">0.0.1-rc.8</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Async<wbr>Witness<wbr>Provider</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#thread-safety" title="Thread Safety">Thread Safety</a></li><li><a href="#error-handling" title="Error Handling">Error Handling</a></li></ul><h3><a href="#required-methods">Required Methods</a></h3><ul class="block"><li><a href="#tymethod.get_receipt" title="get_receipt">get_receipt</a></li><li><a href="#tymethod.observe_identity_head" title="observe_identity_head">observe_identity_head</a></li><li><a href="#tymethod.submit_event" title="submit_event">submit_event</a></li></ul><h3><a href="#provided-methods">Provided Methods</a></h3><ul class="block"><li><a href="#method.is_available" title="is_available">is_available</a></li><li><a href="#method.quorum" title="quorum">quorum</a></li><li><a href="#method.timeout_ms" title="timeout_ms">timeout_ms</a></li></ul><h3><a href="#implementors">Implementors</a></h3></section><div id="rustdoc-modnav"><h2><a href="index.html">In auths_<wbr>core::<wbr>witness</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">auths_core</a>::<wbr><a href="index.html">witness</a></div><h1>Trait <span class="trait">Async<wbr>Witness<wbr>Provider</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/auths_core/witness/async_provider.rs.html#71-166">Source</a> </span></div><pre class="rust item-decl"><code>pub trait AsyncWitnessProvider: <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Sync.html" title="trait core::marker::Sync">Sync</a> {
+    // Required methods
+    fn <a href="#tymethod.submit_event" class="fn">submit_event</a>&lt;'life0, 'life1, 'life2, 'async_trait&gt;(
+        &amp;'life0 self,
+        prefix: &amp;'life1 Prefix,
+        event_json: &amp;'life2 [<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.u8.html">u8</a>],
+    ) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.93.1/core/pin/struct.Pin.html" title="struct core::pin::Pin">Pin</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.93.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="struct" href="struct.Receipt.html" title="struct auths_core::witness::Receipt">Receipt</a>, <a class="enum" href="enum.WitnessError.html" title="enum auths_core::witness::WitnessError">WitnessError</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'async_trait&gt;&gt;
+       <span class="where">where Self: 'async_trait,
+             'life0: 'async_trait,
+             'life1: 'async_trait,
+             'life2: 'async_trait</span>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.observe_identity_head" class="fn">observe_identity_head</a>&lt;'life0, 'life1, 'async_trait&gt;(
+        &amp;'life0 self,
+        prefix: &amp;'life1 Prefix,
+    ) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.93.1/core/pin/struct.Pin.html" title="struct core::pin::Pin">Pin</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.93.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.93.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.EventHash.html" title="struct auths_core::witness::EventHash">EventHash</a>&gt;, <a class="enum" href="enum.WitnessError.html" title="enum auths_core::witness::WitnessError">WitnessError</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'async_trait&gt;&gt;
+       <span class="where">where Self: 'async_trait,
+             'life0: 'async_trait,
+             'life1: 'async_trait</span>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.get_receipt" class="fn">get_receipt</a>&lt;'life0, 'life1, 'life2, 'async_trait&gt;(
+        &amp;'life0 self,
+        prefix: &amp;'life1 Prefix,
+        event_said: &amp;'life2 Said,
+    ) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.93.1/core/pin/struct.Pin.html" title="struct core::pin::Pin">Pin</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.93.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.93.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.Receipt.html" title="struct auths_core::witness::Receipt">Receipt</a>&gt;, <a class="enum" href="enum.WitnessError.html" title="enum auths_core::witness::WitnessError">WitnessError</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'async_trait&gt;&gt;
+       <span class="where">where Self: 'async_trait,
+             'life0: 'async_trait,
+             'life1: 'async_trait,
+             'life2: 'async_trait</span>;
+
+    // Provided methods
+    fn <a href="#method.quorum" class="fn">quorum</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.usize.html">usize</a> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.timeout_ms" class="fn">timeout_ms</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.u64.html">u64</a> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.is_available" class="fn">is_available</a>&lt;'life0, 'async_trait&gt;(
+        &amp;'life0 self,
+    ) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.93.1/core/pin/struct.Pin.html" title="struct core::pin::Pin">Pin</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.93.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.bool.html">bool</a>, <a class="enum" href="enum.WitnessError.html" title="enum auths_core::witness::WitnessError">WitnessError</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'async_trait&gt;&gt;
+       <span class="where">where Self: 'async_trait,
+             'life0: 'async_trait</span> { ... }
+}</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Async witness provider for network-based witness operations.</p>
+<p>This trait defines the interface for interacting with witness servers
+asynchronously. Implementations typically communicate over HTTP with
+witness infrastructure.</p>
+<h2 id="thread-safety"><a class="doc-anchor" href="#thread-safety">§</a>Thread Safety</h2>
+<p>Implementations must be <code>Send + Sync</code> to allow use in async contexts
+across multiple tasks.</p>
+<h2 id="error-handling"><a class="doc-anchor" href="#error-handling">§</a>Error Handling</h2>
+<p>All methods return <code>Result&lt;T, WitnessError&gt;</code> to enable proper error
+propagation and handling of network failures, timeouts, and security
+violations (like duplicity detection).</p>
+</div></details><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="tymethod.submit_event" class="method"><a class="src rightside" href="../../src/auths_core/witness/async_provider.rs.html#91-95">Source</a><h4 class="code-header">fn <a href="#tymethod.submit_event" class="fn">submit_event</a>&lt;'life0, 'life1, 'life2, 'async_trait&gt;(
+    &amp;'life0 self,
+    prefix: &amp;'life1 Prefix,
+    event_json: &amp;'life2 [<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.u8.html">u8</a>],
+) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.93.1/core/pin/struct.Pin.html" title="struct core::pin::Pin">Pin</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.93.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="struct" href="struct.Receipt.html" title="struct auths_core::witness::Receipt">Receipt</a>, <a class="enum" href="enum.WitnessError.html" title="enum auths_core::witness::WitnessError">WitnessError</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'async_trait&gt;&gt;<div class="where">where
+    Self: 'async_trait,
+    'life0: 'async_trait,
+    'life1: 'async_trait,
+    'life2: 'async_trait,</div></h4></section></summary><div class="docblock"><p>Submit an event to the witness for receipting.</p>
+<p>The witness will:</p>
+<ol>
+<li>Parse and validate the event</li>
+<li>Check for duplicity (same prefix+seq with different SAID)</li>
+<li>If valid and not duplicate, sign and return a receipt</li>
+</ol>
+<h5 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h5>
+<ul>
+<li><code>prefix</code> - The KERI prefix of the identity</li>
+<li><code>event_json</code> - The canonicalized JSON bytes of the event</li>
+</ul>
+<h5 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h5>
+<ul>
+<li><code>Ok(Receipt)</code> - The witness accepted the event and issued a receipt</li>
+<li><code>Err(WitnessError::Duplicity(_))</code> - Duplicity detected (split-view attack)</li>
+<li><code>Err(WitnessError::Rejected { .. })</code> - Event rejected (invalid format, etc.)</li>
+<li><code>Err(WitnessError::Network(_))</code> - Network error</li>
+<li><code>Err(WitnessError::Timeout(_))</code> - Operation timed out</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.observe_identity_head" class="method"><a class="src rightside" href="../../src/auths_core/witness/async_provider.rs.html#111-114">Source</a><h4 class="code-header">fn <a href="#tymethod.observe_identity_head" class="fn">observe_identity_head</a>&lt;'life0, 'life1, 'async_trait&gt;(
+    &amp;'life0 self,
+    prefix: &amp;'life1 Prefix,
+) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.93.1/core/pin/struct.Pin.html" title="struct core::pin::Pin">Pin</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.93.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.93.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.EventHash.html" title="struct auths_core::witness::EventHash">EventHash</a>&gt;, <a class="enum" href="enum.WitnessError.html" title="enum auths_core::witness::WitnessError">WitnessError</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'async_trait&gt;&gt;<div class="where">where
+    Self: 'async_trait,
+    'life0: 'async_trait,
+    'life1: 'async_trait,</div></h4></section></summary><div class="docblock"><p>Query the current observed head for an identity.</p>
+<p>Returns the hash of the most recent event the witness has observed
+for the given identity prefix.</p>
+<h5 id="arguments-1"><a class="doc-anchor" href="#arguments-1">§</a>Arguments</h5>
+<ul>
+<li><code>prefix</code> - The KERI prefix of the identity</li>
+</ul>
+<h5 id="returns-1"><a class="doc-anchor" href="#returns-1">§</a>Returns</h5>
+<ul>
+<li><code>Ok(Some(hash))</code> - The witness has an observed head for this identity</li>
+<li><code>Ok(None)</code> - The witness has not observed any events for this identity</li>
+<li><code>Err(_)</code> - Error during query</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.get_receipt" class="method"><a class="src rightside" href="../../src/auths_core/witness/async_provider.rs.html#128-132">Source</a><h4 class="code-header">fn <a href="#tymethod.get_receipt" class="fn">get_receipt</a>&lt;'life0, 'life1, 'life2, 'async_trait&gt;(
+    &amp;'life0 self,
+    prefix: &amp;'life1 Prefix,
+    event_said: &amp;'life2 Said,
+) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.93.1/core/pin/struct.Pin.html" title="struct core::pin::Pin">Pin</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.93.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.93.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="struct.Receipt.html" title="struct auths_core::witness::Receipt">Receipt</a>&gt;, <a class="enum" href="enum.WitnessError.html" title="enum auths_core::witness::WitnessError">WitnessError</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'async_trait&gt;&gt;<div class="where">where
+    Self: 'async_trait,
+    'life0: 'async_trait,
+    'life1: 'async_trait,
+    'life2: 'async_trait,</div></h4></section></summary><div class="docblock"><p>Retrieve a previously issued receipt.</p>
+<h5 id="arguments-2"><a class="doc-anchor" href="#arguments-2">§</a>Arguments</h5>
+<ul>
+<li><code>prefix</code> - The KERI prefix of the identity</li>
+<li><code>event_said</code> - The SAID of the event to get the receipt for</li>
+</ul>
+<h5 id="returns-2"><a class="doc-anchor" href="#returns-2">§</a>Returns</h5>
+<ul>
+<li><code>Ok(Some(receipt))</code> - Receipt found</li>
+<li><code>Ok(None)</code> - No receipt found for this event</li>
+<li><code>Err(_)</code> - Error during retrieval</li>
+</ul>
+</div></details></div><h2 id="provided-methods" class="section-header">Provided Methods<a href="#provided-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="method.quorum" class="method"><a class="src rightside" href="../../src/auths_core/witness/async_provider.rs.html#142-144">Source</a><h4 class="code-header">fn <a href="#method.quorum" class="fn">quorum</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.usize.html">usize</a></h4></section></summary><div class="docblock"><p>Get the minimum quorum required for consistency.</p>
+<p>When using a multi-witness setup, this specifies how many witnesses
+must agree for the event to be considered properly witnessed.</p>
+<h5 id="default"><a class="doc-anchor" href="#default">§</a>Default</h5>
+<p>Returns <code>1</code> (single witness is sufficient).</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.timeout_ms" class="method"><a class="src rightside" href="../../src/auths_core/witness/async_provider.rs.html#151-153">Source</a><h4 class="code-header">fn <a href="#method.timeout_ms" class="fn">timeout_ms</a>(&amp;self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.u64.html">u64</a></h4></section></summary><div class="docblock"><p>Get the timeout for operations in milliseconds.</p>
+<h5 id="default-1"><a class="doc-anchor" href="#default-1">§</a>Default</h5>
+<p>Returns <code>5000</code> (5 seconds).</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.is_available" class="method"><a class="src rightside" href="../../src/auths_core/witness/async_provider.rs.html#163-165">Source</a><h4 class="code-header">fn <a href="#method.is_available" class="fn">is_available</a>&lt;'life0, 'async_trait&gt;(
+    &amp;'life0 self,
+) -&gt; <a class="struct" href="https://doc.rust-lang.org/1.93.1/core/pin/struct.Pin.html" title="struct core::pin::Pin">Pin</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.93.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/future/future/trait.Future.html" title="trait core::future::future::Future">Future</a>&lt;Output = <a class="enum" href="https://doc.rust-lang.org/1.93.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.93.1/std/primitive.bool.html">bool</a>, <a class="enum" href="enum.WitnessError.html" title="enum auths_core::witness::WitnessError">WitnessError</a>&gt;&gt; + <a class="trait" href="https://doc.rust-lang.org/1.93.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> + 'async_trait&gt;&gt;<div class="where">where
+    Self: 'async_trait,
+    'life0: 'async_trait,</div></h4></section></summary><div class="docblock"><p>Check if this provider is currently available.</p>
+<p>This can be used for health checks before attempting operations.</p>
+<h5 id="default-2"><a class="doc-anchor" href="#default-2">§</a>Default</h5>
+<p>Returns <code>Ok(true)</code>. Implementations may override to perform actual
+health checks.</p>
+</div></details></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"><section id="impl-AsyncWitnessProvider-for-NoOpAsyncWitness" class="impl"><a class="src rightside" href="../../src/auths_core/witness/async_provider.rs.html#175-211">Source</a><a href="#impl-AsyncWitnessProvider-for-NoOpAsyncWitness" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.AsyncWitnessProvider.html" title="trait auths_core::witness::AsyncWitnessProvider">AsyncWitnessProvider</a> for <a class="struct" href="struct.NoOpAsyncWitness.html" title="struct auths_core::witness::NoOpAsyncWitness">NoOpAsyncWitness</a></h3></section></div><script src="../../trait.impl/auths_core/witness/async_provider/trait.AsyncWitnessProvider.js" async></script></section></div></main></body></html>
