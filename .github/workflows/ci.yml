@@ -126,7 +126,7 @@ jobs:
           git config --global user.email "ci@auths.dev"
 
       - name: Run tests
-        run: cargo nextest run --workspace --all-features
+        run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: Run doc tests
         run: cargo test --all --doc
