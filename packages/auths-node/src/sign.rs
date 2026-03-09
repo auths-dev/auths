@@ -52,7 +52,6 @@ pub fn sign_action_as_identity(
     repo_path: String,
     passphrase: Option<String>,
 ) -> napi::Result<NapiActionEnvelope> {
-
     if payload_json.len() > MAX_ATTESTATION_JSON_SIZE {
         return Err(format_error(
             "AUTHS_INVALID_INPUT",

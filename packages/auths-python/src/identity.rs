@@ -55,18 +55,18 @@ pub(crate) fn resolve_key_alias(
         let did = IdentityDID::new_unchecked(identity_ref.to_string());
         let aliases = keychain
             .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key lookup failed: {e}")))?;
-        aliases
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                PyRuntimeError::new_err(format!(
-                    "[AUTHS_KEY_NOT_FOUND] No primary key found for identity '{identity_ref}'"
-                ))
-            })
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key lookup failed: {e}"))
+            })?;
+        aliases.into_iter().next().ok_or_else(|| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_KEY_NOT_FOUND] No primary key found for identity '{identity_ref}'"
+            ))
+        })
     } else {
-        KeyAlias::new(identity_ref)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}")))
+        KeyAlias::new(identity_ref).map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}"))
+        })
     }
 }
 
@@ -134,25 +134,33 @@ pub fn create_identity(
 ) -> PyResult<(String, String, String)> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_keychain_config(&passphrase_str, repo_path);
-    let alias = KeyAlias::new(key_alias)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}")))?;
+    let alias = KeyAlias::new(key_alias).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}"))
+    })?;
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
 
     let repo = PathBuf::from(shellexpand::tilde(repo_path).as_ref());
     let config = RegistryConfig::single_tenant(&repo);
     let backend = GitRegistryBackend::from_config_unchecked(config);
-    backend
-        .init_if_needed()
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to initialize registry: {e}")))?;
+    backend.init_if_needed().map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_REGISTRY_ERROR] Failed to initialize registry: {e}"
+        ))
+    })?;
     let backend = Arc::new(backend);
 
-    let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
+    let keychain = get_platform_keychain_with_config(&env_config).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
+    })?;
 
     py.allow_threads(|| {
         let (identity_did, result_alias) =
             initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None)
-                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_IDENTITY_ERROR] Identity creation failed: {e}")))?;
+                .map_err(|e| {
+                    PyRuntimeError::new_err(format!(
+                        "[AUTHS_IDENTITY_ERROR] Identity creation failed: {e}"
+                    ))
+                })?;
 
         // Extract public key so callers can verify signatures immediately
         let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
@@ -160,9 +168,17 @@ pub fn create_identity(
             &result_alias,
             &provider,
         )
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Public key extraction failed: {e}")))?;
+        .map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_CRYPTO_ERROR] Public key extraction failed: {e}"
+            ))
+        })?;
 
-        Ok((identity_did.to_string(), result_alias.to_string(), hex::encode(pub_bytes)))
+        Ok((
+            identity_did.to_string(),
+            result_alias.to_string(),
+            hex::encode(pub_bytes),
+        ))
     })
 }
 
@@ -195,31 +211,44 @@ pub fn create_agent_identity(
     let repo = PathBuf::from(shellexpand::tilde(repo_path).as_ref());
     let config = RegistryConfig::single_tenant(&repo);
     let backend = GitRegistryBackend::from_config_unchecked(config);
-    backend
-        .init_if_needed()
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to initialize registry: {e}")))?;
+    backend.init_if_needed().map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_REGISTRY_ERROR] Failed to initialize registry: {e}"
+        ))
+    })?;
     let backend = Arc::new(backend);
 
-    let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
+    let keychain = get_platform_keychain_with_config(&env_config).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
+    })?;
 
     // Validate capabilities
     let _parsed_caps: Vec<Capability> = capabilities
         .iter()
         .map(|c| {
-            Capability::parse(c)
-                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}")))
+            Capability::parse(c).map_err(|e| {
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
+                ))
+            })
         })
         .collect::<PyResult<Vec<_>>>()?;
 
     let parsed_caps_for_att = _parsed_caps;
 
     py.allow_threads(|| {
-        let (identity_did, result_alias) =
-            initialize_registry_identity(backend.clone(), &alias, &provider, keychain.as_ref(), None)
-                .map_err(|e| {
-                    PyRuntimeError::new_err(format!("[AUTHS_IDENTITY_ERROR] Agent identity creation failed: {e}"))
-                })?;
+        let (identity_did, result_alias) = initialize_registry_identity(
+            backend.clone(),
+            &alias,
+            &provider,
+            keychain.as_ref(),
+            None,
+        )
+        .map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_IDENTITY_ERROR] Agent identity creation failed: {e}"
+            ))
+        })?;
 
         // Extract public key
         let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
@@ -227,15 +256,18 @@ pub fn create_agent_identity(
             &result_alias,
             &provider,
         )
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Public key extraction failed: {e}")))?;
+        .map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_CRYPTO_ERROR] Public key extraction failed: {e}"
+            ))
+        })?;
 
         // Build a self-attestation for the standalone agent
         let attestation_json = {
-            let device_did = DeviceDID::from_ed25519(
-                pub_bytes.as_slice().try_into().map_err(|_| {
+            let device_did =
+                DeviceDID::from_ed25519(pub_bytes.as_slice().try_into().map_err(|_| {
                     PyRuntimeError::new_err("[AUTHS_CRYPTO_ERROR] Invalid public key length")
-                })?,
-            );
+                })?);
             let att = serde_json::json!({
                 "version": 1,
                 "rid": repo.file_name().unwrap_or_default().to_string_lossy(),
@@ -246,8 +278,11 @@ pub fn create_agent_identity(
                 "timestamp": chrono::Utc::now().to_rfc3339(),
                 "note": format!("Agent: {}", alias),
             });
-            serde_json::to_string(&att)
-                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Serialization failed: {e}")))?
+            serde_json::to_string(&att).map_err(|e| {
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_SERIALIZATION_ERROR] Serialization failed: {e}"
+                ))
+            })?
         };
 
         Ok(AgentIdentityBundle {
@@ -296,58 +331,77 @@ pub fn delegate_agent(
 
     let repo = PathBuf::from(shellexpand::tilde(parent_repo_path).as_ref());
     let config = RegistryConfig::single_tenant(&repo);
-    let backend = Arc::new(
-        GitRegistryBackend::open_existing(config)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}")))?,
-    );
+    let backend = Arc::new(GitRegistryBackend::open_existing(config).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}"
+        ))
+    })?);
 
-    let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
+    let keychain = get_platform_keychain_with_config(&env_config).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
+    })?;
 
     // Resolve parent identity key alias
     let parent_alias = if let Some(ref did) = identity_did {
         resolve_key_alias(did, keychain.as_ref())?
     } else {
-        let aliases = keychain
-            .list_aliases()
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
+        let aliases = keychain.list_aliases().map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
+        })?;
         aliases
             .into_iter()
             .find(|a| !a.as_str().contains("--next-"))
-            .ok_or_else(|| PyRuntimeError::new_err("[AUTHS_KEY_NOT_FOUND] No identity key found in keychain"))?
+            .ok_or_else(|| {
+                PyRuntimeError::new_err("[AUTHS_KEY_NOT_FOUND] No identity key found in keychain")
+            })?
     };
 
     // Generate a new Ed25519 keypair for the agent
     let agent_alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let rng = SystemRandom::new();
-    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}")))?;
-    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key parsing failed: {e}")))?;
+    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}"))
+    })?;
+    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key parsing failed: {e}"))
+    })?;
     let agent_pubkey = keypair.public_key().as_ref().to_vec();
 
     // Get parent identity DID for key storage association
-    let (parent_did, _, _) = keychain
-        .load_key(&parent_alias)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key load failed: {e}")))?;
+    let (parent_did, _, _) = keychain.load_key(&parent_alias).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key load failed: {e}"))
+    })?;
 
     // Encrypt and store the agent key
-    let seed = extract_seed_bytes(pkcs8.as_ref())
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}")))?;
-    let seed_pkcs8 = encode_seed_as_pkcs8(seed)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] PKCS8 encoding failed: {e}")))?;
-    let encrypted = encrypt_keypair(&seed_pkcs8, &passphrase_str)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key encryption failed: {e}")))?;
+    let seed = extract_seed_bytes(pkcs8.as_ref()).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
+    })?;
+    let seed_pkcs8 = encode_seed_as_pkcs8(seed).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] PKCS8 encoding failed: {e}"))
+    })?;
+    let encrypted = encrypt_keypair(&seed_pkcs8, &passphrase_str).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key encryption failed: {e}"))
+    })?;
     keychain
-        .store_key(&agent_alias, &parent_did, KeyRole::DelegatedAgent, &encrypted)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Key storage failed: {e}")))?;
+        .store_key(
+            &agent_alias,
+            &parent_did,
+            KeyRole::DelegatedAgent,
+            &encrypted,
+        )
+        .map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Key storage failed: {e}"))
+        })?;
 
     // Parse capabilities
     let parsed_caps: Vec<Capability> = capabilities
         .iter()
         .map(|c| {
-            Capability::parse(c)
-                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}")))
+            Capability::parse(c).map_err(|e| {
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
+                ))
+            })
         })
         .collect::<PyResult<Vec<_>>>()?;
 
@@ -376,20 +430,32 @@ pub fn delegate_agent(
         .build();
 
     py.allow_threads(|| {
-        let result = link_device(link_config, &ctx, clock.as_ref())
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_IDENTITY_ERROR] Agent provisioning failed: {e}")))?;
+        let result = link_device(link_config, &ctx, clock.as_ref()).map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_IDENTITY_ERROR] Agent provisioning failed: {e}"
+            ))
+        })?;
 
         let device_did = DeviceDID(result.device_did.to_string());
         let attestations = attestation_storage
             .load_attestations_for_device(&device_did)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to load attestation: {e}")))?;
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_REGISTRY_ERROR] Failed to load attestation: {e}"
+                ))
+            })?;
 
-        let attestation = attestations
-            .last()
-            .ok_or_else(|| PyRuntimeError::new_err("[AUTHS_REGISTRY_ERROR] No attestation found after provisioning"))?;
+        let attestation = attestations.last().ok_or_else(|| {
+            PyRuntimeError::new_err(
+                "[AUTHS_REGISTRY_ERROR] No attestation found after provisioning",
+            )
+        })?;
 
-        let attestation_json = serde_json::to_string(attestation)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Serialization failed: {e}")))?;
+        let attestation_json = serde_json::to_string(attestation).map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_SERIALIZATION_ERROR] Serialization failed: {e}"
+            ))
+        })?;
 
         Ok(DelegatedAgentBundle {
             agent_did: result.device_did.to_string(),
@@ -431,13 +497,15 @@ pub fn link_device_to_identity(
 
     let repo = PathBuf::from(shellexpand::tilde(repo_path).as_ref());
     let config = RegistryConfig::single_tenant(&repo);
-    let backend = Arc::new(
-        GitRegistryBackend::open_existing(config)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}")))?,
-    );
+    let backend = Arc::new(GitRegistryBackend::open_existing(config).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}"
+        ))
+    })?);
 
-    let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
+    let keychain = get_platform_keychain_with_config(&env_config).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
+    })?;
 
     let alias = resolve_key_alias(identity_key_alias, keychain.as_ref())?;
 
@@ -448,8 +516,11 @@ pub fn link_device_to_identity(
     let parsed_caps: Vec<Capability> = capabilities
         .iter()
         .map(|c| {
-            Capability::parse(c)
-                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}")))
+            Capability::parse(c).map_err(|e| {
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
+                ))
+            })
         })
         .collect::<PyResult<Vec<_>>>()?;
 
@@ -474,8 +545,9 @@ pub fn link_device_to_identity(
         .build();
 
     py.allow_threads(|| {
-        let result = link_device(link_config, &ctx, clock.as_ref())
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_DEVICE_ERROR] Device linking failed: {e}")))?;
+        let result = link_device(link_config, &ctx, clock.as_ref()).map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_DEVICE_ERROR] Device linking failed: {e}"))
+        })?;
         Ok((
             result.device_did.to_string(),
             result.attestation_id.to_string(),
@@ -513,13 +585,15 @@ pub fn revoke_device_from_identity(
 
     let repo = PathBuf::from(shellexpand::tilde(repo_path).as_ref());
     let config = RegistryConfig::single_tenant(&repo);
-    let backend = Arc::new(
-        GitRegistryBackend::open_existing(config)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}")))?,
-    );
+    let backend = Arc::new(GitRegistryBackend::open_existing(config).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_REGISTRY_ERROR] Failed to open registry: {e}"
+        ))
+    })?);
 
-    let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
+    let keychain = get_platform_keychain_with_config(&env_config).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
+    })?;
 
     let alias = resolve_key_alias(identity_key_alias, keychain.as_ref())?;
 
@@ -538,8 +612,11 @@ pub fn revoke_device_from_identity(
         .build();
 
     py.allow_threads(|| {
-        revoke_device(device_did, &alias, &ctx, note, clock.as_ref())
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_DEVICE_ERROR] Device revocation failed: {e}")))?;
+        revoke_device(device_did, &alias, &ctx, note, clock.as_ref()).map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_DEVICE_ERROR] Device revocation failed: {e}"
+            ))
+        })?;
         Ok(())
     })
 }

@@ -148,8 +148,7 @@ pub fn create_pairing_session_ffi(
         let session_id = session_req.create_request.session_id.clone();
         let short_code = session_req.create_request.short_code.clone();
 
-        let mut builder = PairingDaemonBuilder::new()
-            .with_rate_limiter(RateLimiter::new(100));
+        let mut builder = PairingDaemonBuilder::new().with_rate_limiter(RateLimiter::new(100));
 
         let mock_addr = SocketAddr::new(bind_addr, 0);
         builder = builder.with_network(MockNetworkInterfaces(bind_addr));
@@ -238,12 +237,9 @@ pub fn join_pairing_session_ffi(
         let aliases = keychain
             .list_aliases_for_identity_with_role(&controller_identity_did, KeyRole::Primary)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
-        let key_alias = aliases
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
-            })?;
+        let key_alias = aliases.into_iter().next().ok_or_else(|| {
+            PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
+        })?;
 
         let (_did, _role, encrypted_key) = keychain
             .load_key(&key_alias)
@@ -274,20 +270,17 @@ pub fn join_pairing_session_ffi(
         let rt = runtime();
         let lookup_url = format!("{}/v1/pairing/sessions/by-code/{}", endpoint, short_code);
 
-        let session_data: serde_json::Value = rt
-            .block_on(async {
-                let client = reqwest::Client::new();
-                let resp = client
-                    .get(&lookup_url)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}"))
-                    })?;
-                resp.json::<serde_json::Value>().await.map_err(|e| {
-                    PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}"))
-                })
-            })?;
+        let session_data: serde_json::Value = rt.block_on(async {
+            let client = reqwest::Client::new();
+            let resp = client
+                .get(&lookup_url)
+                .send()
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
+            resp.json::<serde_json::Value>()
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))
+        })?;
 
         let session_id = session_data["session_id"]
             .as_str()
@@ -326,16 +319,15 @@ pub fn join_pairing_session_ffi(
         };
 
         let secure_seed = auths_crypto::SecureSeed::new(*seed.as_bytes());
-        let (pairing_response, _shared_secret) =
-            auths_core::pairing::PairingResponse::create(
-                now,
-                &pairing_token,
-                &secure_seed,
-                &pubkey_32,
-                device_did.to_string(),
-                device_name.clone(),
-            )
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
+        let (pairing_response, _shared_secret) = auths_core::pairing::PairingResponse::create(
+            now,
+            &pairing_token,
+            &secure_seed,
+            &pubkey_32,
+            device_did.to_string(),
+            device_name.clone(),
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
 
         let submit_req = auths_core::pairing::types::SubmitResponseRequest {
             device_x25519_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
@@ -361,9 +353,7 @@ pub fn join_pairing_session_ffi(
                 .json(&submit_req)
                 .send()
                 .await
-                .map_err(|e| {
-                    PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}"))
-                })?;
+                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
@@ -418,19 +408,16 @@ pub fn complete_pairing_ffi(
         let aliases = keychain
             .list_aliases_for_identity_with_role(&controller_identity_did, KeyRole::Primary)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
-        let identity_key_alias_str = aliases
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
-            })?;
+        let identity_key_alias_str = aliases.into_iter().next().ok_or_else(|| {
+            PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
+        })?;
         let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
 
         let key_storage: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
             Arc::from(keychain);
-        let provider = Arc::new(
-            auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str),
-        );
+        let provider = Arc::new(auths_core::signing::PrefilledPassphraseProvider::new(
+            &passphrase_str,
+        ));
 
         let now = Utc::now();
         let params = PairingAttestationParams {
@@ -449,15 +436,11 @@ pub fn complete_pairing_ffi(
         let attestation_storage = RegistryAttestationStorage::new(&repo);
         use auths_id::attestation::AttestationSink;
         attestation_storage
-            .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(
-                attestation.clone(),
-            ))
+            .export(
+                &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation.clone()),
+            )
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
 
-        Ok((
-            device_did,
-            None,
-            attestation.rid.to_string(),
-        ))
+        Ok((device_did, None, attestation.rid.to_string()))
     })
 }

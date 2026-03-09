@@ -96,8 +96,7 @@ pub fn create_org(
 
         let key_alias = KeyAlias::new_unchecked(key_alias_str);
         let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
-        let provider =
-            auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
+        let provider = auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
         let (controller_did, alias) =
             initialize_registry_identity(backend.clone(), &key_alias, &provider, &*keychain, None)
@@ -155,12 +154,7 @@ pub fn create_org(
             .store_org_member(&org_prefix, &attestation)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
-        Ok((
-            org_prefix,
-            controller_did.to_string(),
-            label,
-            repo_path_str,
-        ))
+        Ok((org_prefix, controller_did.to_string(), label, repo_path_str))
     })
 }
 
@@ -219,7 +213,9 @@ pub fn add_org_member(
 
         let member_pk = if let Some(pk_hex) = member_public_key_hex {
             let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
-                PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] Invalid member public key hex: {e}"))
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_ORG_ERROR] Invalid member public key hex: {e}"
+                ))
             })?;
             Ed25519PublicKey::try_from_slice(&pk_bytes)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?
@@ -234,8 +230,7 @@ pub fn add_org_member(
 
         let signer = StorageSigner::new(keychain);
         let uuid_provider = SystemUuidProvider;
-        let provider =
-            auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
+        let provider = auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
         let org_ctx = OrgContext {
             registry: &*backend,
@@ -311,7 +306,9 @@ pub fn revoke_org_member(
 
         let member_pk = if let Some(pk_hex) = member_public_key_hex {
             let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
-                PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] Invalid member public key hex: {e}"))
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_ORG_ERROR] Invalid member public key hex: {e}"
+                ))
             })?;
             Ed25519PublicKey::try_from_slice(&pk_bytes)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?
@@ -326,8 +323,7 @@ pub fn revoke_org_member(
 
         let signer = StorageSigner::new(keychain);
         let uuid_provider = SystemUuidProvider;
-        let provider =
-            auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
+        let provider = auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
         let org_ctx = OrgContext {
             registry: &*backend,
@@ -385,9 +381,8 @@ pub fn list_org_members(
     let org_prefix = extract_org_prefix(org_did);
 
     py.allow_threads(move || {
-        let backend = GitRegistryBackend::from_config_unchecked(
-            RegistryConfig::single_tenant(&repo),
-        );
+        let backend =
+            GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&repo));
 
         let filter = MemberFilter::default();
 
@@ -410,11 +405,7 @@ pub fn list_org_members(
                     .iter()
                     .map(|c| c.as_str().to_string())
                     .collect();
-                let role_str = m
-                    .role
-                    .as_ref()
-                    .map(|r| r.as_str())
-                    .unwrap_or("member");
+                let role_str = m.role.as_ref().map(|r| r.as_str()).unwrap_or("member");
 
                 Some(serde_json::json!({
                     "member_did": m.did.to_string(),

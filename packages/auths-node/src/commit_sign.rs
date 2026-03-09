@@ -36,7 +36,8 @@ pub fn sign_commit(
 
     let repo = PathBuf::from(shellexpand::tilde(&repo_path).as_ref());
 
-    let params = CommitSigningParams::new(&identity_key_alias, "git", data.to_vec()).with_repo_path(repo);
+    let params =
+        CommitSigningParams::new(&identity_key_alias, "git", data.to_vec()).with_repo_path(repo);
 
     let signing_ctx = CommitSigningContext {
         key_storage: keychain,

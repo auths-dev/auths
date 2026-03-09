@@ -47,9 +47,7 @@ impl CryptoDiagnosticProvider for FfiDiagnosticAdapter {
     fn check_ssh_keygen_available(&self) -> Result<CheckResult, DiagnosticError> {
         let output = Command::new("ssh-keygen").arg("-V").output();
         let (passed, message) = match output {
-            Ok(out) if out.status.success() => {
-                (true, Some("ssh-keygen found on PATH".to_string()))
-            }
+            Ok(out) if out.status.success() => (true, Some("ssh-keygen found on PATH".to_string())),
             _ => (
                 false,
                 Some("ssh-keygen command not found on PATH".to_string()),
@@ -66,10 +64,7 @@ impl CryptoDiagnosticProvider for FfiDiagnosticAdapter {
 
 #[pyfunction]
 #[pyo3(signature = (repo_path,))]
-pub fn run_diagnostics(
-    py: Python<'_>,
-    repo_path: &str,
-) -> PyResult<String> {
+pub fn run_diagnostics(py: Python<'_>, repo_path: &str) -> PyResult<String> {
     let _repo = repo_path.to_string();
 
     py.allow_threads(move || {

@@ -27,8 +27,9 @@ fn make_signer(
         ssh_agent_socket: None,
     };
 
-    let keychain = get_platform_keychain_with_config(&env_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}")))?;
+    let keychain = get_platform_keychain_with_config(&env_config).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
+    })?;
 
     let signer = StorageSigner::new(keychain);
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
@@ -63,7 +64,9 @@ pub fn sign_as_identity(
     py.allow_threads(move || {
         let sig_bytes = signer
             .sign_for_identity(&did, &provider, &msg)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}")))?;
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}"))
+            })?;
         Ok(hex::encode(sig_bytes))
     })
 }
@@ -113,8 +116,11 @@ pub fn sign_action_as_identity(
         "timestamp": &timestamp,
     });
 
-    let canonical = json_canon::to_string(&signing_data)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Canonicalization failed: {e}")))?;
+    let canonical = json_canon::to_string(&signing_data).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_SERIALIZATION_ERROR] Canonicalization failed: {e}"
+        ))
+    })?;
 
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
     let did = IdentityDID::new(identity_did);
@@ -125,7 +131,9 @@ pub fn sign_action_as_identity(
     let sig_hex = py.allow_threads(move || {
         let sig_bytes = signer
             .sign_for_identity(&did, &provider, canonical.as_bytes())
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}")))?;
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}"))
+            })?;
         Ok::<String, PyErr>(hex::encode(sig_bytes))
     })?;
 
@@ -138,8 +146,11 @@ pub fn sign_action_as_identity(
         "signature": sig_hex,
     });
 
-    serde_json::to_string(&envelope)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Failed to serialize envelope: {e}")))
+    serde_json::to_string(&envelope).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_SERIALIZATION_ERROR] Failed to serialize envelope: {e}"
+        ))
+    })
 }
 
 /// Retrieve the Ed25519 public key (hex) for an identity DID.
@@ -165,16 +176,27 @@ pub fn get_identity_public_key(
     let did = IdentityDID::new(identity_did);
 
     py.allow_threads(move || {
-        let aliases = signer.inner().list_aliases_for_identity_with_role(&did, KeyRole::Primary)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key lookup failed: {e}")))?;
-        let alias = aliases.first()
-            .ok_or_else(|| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] No primary key found for identity '{identity_did}'")))?;
+        let aliases = signer
+            .inner()
+            .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key lookup failed: {e}"))
+            })?;
+        let alias = aliases.first().ok_or_else(|| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_KEY_NOT_FOUND] No primary key found for identity '{identity_did}'"
+            ))
+        })?;
         let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
             signer.inner().as_ref(),
             alias,
             &provider,
         )
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Public key extraction failed: {e}")))?;
+        .map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_CRYPTO_ERROR] Public key extraction failed: {e}"
+            ))
+        })?;
         Ok(hex::encode(pub_bytes))
     })
 }
@@ -204,14 +226,17 @@ pub fn sign_as_agent(
     passphrase: Option<String>,
 ) -> PyResult<String> {
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
-    let alias = KeyAlias::new(key_alias)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}")))?;
+    let alias = KeyAlias::new(key_alias).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}"))
+    })?;
 
     let msg = message.to_vec();
     py.allow_threads(move || {
         let sig_bytes = signer
             .sign_with_alias(&alias, &provider, &msg)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}")))?;
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}"))
+            })?;
         Ok(hex::encode(sig_bytes))
     })
 }
@@ -263,12 +288,16 @@ pub fn sign_action_as_agent(
         "timestamp": &timestamp,
     });
 
-    let canonical = json_canon::to_string(&signing_data)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Canonicalization failed: {e}")))?;
+    let canonical = json_canon::to_string(&signing_data).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_SERIALIZATION_ERROR] Canonicalization failed: {e}"
+        ))
+    })?;
 
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
-    let alias = KeyAlias::new(key_alias)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}")))?;
+    let alias = KeyAlias::new(key_alias).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}"))
+    })?;
 
     let action_type_owned = action_type.to_string();
     let agent_did_owned = agent_did.to_string();
@@ -276,7 +305,9 @@ pub fn sign_action_as_agent(
     let sig_hex = py.allow_threads(move || {
         let sig_bytes = signer
             .sign_with_alias(&alias, &provider, canonical.as_bytes())
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}")))?;
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}"))
+            })?;
         Ok::<String, PyErr>(hex::encode(sig_bytes))
     })?;
 
@@ -289,6 +320,9 @@ pub fn sign_action_as_agent(
         "signature": sig_hex,
     });
 
-    serde_json::to_string(&envelope)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Failed to serialize envelope: {e}")))
+    serde_json::to_string(&envelope).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_SERIALIZATION_ERROR] Failed to serialize envelope: {e}"
+        ))
+    })
 }

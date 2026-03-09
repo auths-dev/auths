@@ -63,7 +63,10 @@ pub fn add_witness(
 
     py.allow_threads(move || {
         let parsed_url: url::Url = url_str.parse().map_err(|e| {
-            PyRuntimeError::new_err(format!("[AUTHS_WITNESS_ERROR] Invalid URL '{}': {}", url_str, e))
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_WITNESS_ERROR] Invalid URL '{}': {}",
+                url_str, e
+            ))
         })?;
 
         let mut config = load_witness_config(&repo)?;
@@ -84,17 +87,16 @@ pub fn add_witness(
 
 #[pyfunction]
 #[pyo3(signature = (url, repo_path))]
-pub fn remove_witness(
-    py: Python<'_>,
-    url: &str,
-    repo_path: &str,
-) -> PyResult<()> {
+pub fn remove_witness(py: Python<'_>, url: &str, repo_path: &str) -> PyResult<()> {
     let url_str = url.to_string();
     let repo = resolve_repo(repo_path);
 
     py.allow_threads(move || {
         let parsed_url: url::Url = url_str.parse().map_err(|e| {
-            PyRuntimeError::new_err(format!("[AUTHS_WITNESS_ERROR] Invalid URL '{}': {}", url_str, e))
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_WITNESS_ERROR] Invalid URL '{}': {}",
+                url_str, e
+            ))
         })?;
 
         let mut config = load_witness_config(&repo)?;
@@ -111,10 +113,7 @@ pub fn remove_witness(
 
 #[pyfunction]
 #[pyo3(signature = (repo_path,))]
-pub fn list_witnesses(
-    py: Python<'_>,
-    repo_path: &str,
-) -> PyResult<String> {
+pub fn list_witnesses(py: Python<'_>, repo_path: &str) -> PyResult<String> {
     let repo = resolve_repo(repo_path);
 
     py.allow_threads(move || {

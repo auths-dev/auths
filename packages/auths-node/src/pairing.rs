@@ -260,9 +260,7 @@ impl NapiPairingHandle {
         use auths_id::attestation::AttestationSink;
         attestation_storage
             .export(
-                &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(
-                    attestation.clone(),
-                ),
+                &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation.clone()),
             )
             .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
@@ -424,10 +422,7 @@ pub async fn join_pairing_session(
         device_name: pairing_response.device_name,
     };
 
-    let submit_url = format!(
-        "{}/v1/pairing/sessions/{}/response",
-        endpoint, session_id
-    );
+    let submit_url = format!("{}/v1/pairing/sessions/{}/response", endpoint, session_id);
 
     {
         let client = reqwest::Client::new();

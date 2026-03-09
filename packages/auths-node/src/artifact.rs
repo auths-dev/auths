@@ -203,7 +203,9 @@ pub fn sign_artifact_bytes(
     expires_in_days: Option<u32>,
     note: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
-    let artifact = Arc::new(BytesArtifact { data: data.to_vec() });
+    let artifact = Arc::new(BytesArtifact {
+        data: data.to_vec(),
+    });
     build_context_and_sign(
         artifact,
         &identity_key_alias,
