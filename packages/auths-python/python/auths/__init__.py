@@ -29,6 +29,7 @@ from auths._native import (
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
+from auths.doctor import Check, DiagnosticReport, DoctorService
 from auths.audit import AuditReport, AuditService, AuditSummary, CommitRecord
 from auths.org import Org, OrgMember, OrgService
 from auths.trust import TrustEntry, TrustService
@@ -118,4 +119,7 @@ __all__ = [
     "TrustService",
     "Witness",
     "WitnessService",
+    "Check",
+    "DiagnosticReport",
+    "DoctorService",
 ]

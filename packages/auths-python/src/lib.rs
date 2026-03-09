@@ -9,6 +9,7 @@ pub mod artifact_publish;
 pub mod artifact_sign;
 pub mod attestation_query;
 pub mod commit_sign;
+pub mod diagnostics;
 pub mod commit_verify;
 pub mod device_ext;
 pub mod git_integration;
@@ -124,6 +125,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(witness::add_witness, m)?)?;
     m.add_function(wrap_pyfunction!(witness::remove_witness, m)?)?;
     m.add_function(wrap_pyfunction!(witness::list_witnesses, m)?)?;
+
+    m.add_function(wrap_pyfunction!(diagnostics::run_diagnostics, m)?)?;
 
     Ok(())
 }

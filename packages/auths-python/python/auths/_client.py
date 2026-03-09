@@ -113,6 +113,7 @@ class Auths:
         from auths.devices import DeviceService
         from auths.identity import IdentityService
         from auths.org import OrgService
+        from auths.doctor import DoctorService
         from auths.trust import TrustService
         from auths.witness import WitnessService
 
@@ -123,6 +124,7 @@ class Auths:
         self.audit = AuditService(self)
         self.trust = TrustService(self)
         self.witnesses = WitnessService(self)
+        self.doctor = DoctorService(self)
 
     def verify(
         self,
