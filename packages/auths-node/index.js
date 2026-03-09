@@ -576,14 +576,13 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.NapiPairingHandle = nativeBinding.NapiPairingHandle
 module.exports.addOrgMember = nativeBinding.addOrgMember
 module.exports.addWitness = nativeBinding.addWitness
 module.exports.compilePolicy = nativeBinding.compilePolicy
-module.exports.completePairing = nativeBinding.completePairing
 module.exports.createAgentIdentity = nativeBinding.createAgentIdentity
 module.exports.createIdentity = nativeBinding.createIdentity
 module.exports.createOrg = nativeBinding.createOrg
-module.exports.createPairingSession = nativeBinding.createPairingSession
 module.exports.delegateAgent = nativeBinding.delegateAgent
 module.exports.evaluatePolicy = nativeBinding.evaluatePolicy
 module.exports.extendDeviceAuthorization = nativeBinding.extendDeviceAuthorization
@@ -612,7 +611,6 @@ module.exports.signArtifactBytes = nativeBinding.signArtifactBytes
 module.exports.signAsAgent = nativeBinding.signAsAgent
 module.exports.signAsIdentity = nativeBinding.signAsIdentity
 module.exports.signCommit = nativeBinding.signCommit
-module.exports.stopPairingSession = nativeBinding.stopPairingSession
 module.exports.verifyAttestation = nativeBinding.verifyAttestation
 module.exports.verifyAttestationWithCapability = nativeBinding.verifyAttestationWithCapability
 module.exports.verifyAtTime = nativeBinding.verifyAtTime
@@ -622,4 +620,3 @@ module.exports.verifyChainWithCapability = nativeBinding.verifyChainWithCapabili
 module.exports.verifyChainWithWitnesses = nativeBinding.verifyChainWithWitnesses
 module.exports.verifyDeviceAuthorization = nativeBinding.verifyDeviceAuthorization
 module.exports.version = nativeBinding.version
-module.exports.waitForPairingResponse = nativeBinding.waitForPairingResponse

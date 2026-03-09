@@ -322,4 +322,86 @@ describe('pairing', () => {
     await auths.pairing.stop()
     await auths.pairing.stop()
   })
+
+  it('multiple concurrent sessions on separate clients', async () => {
+    const auths1 = makeClient()
+    auths1.identities.create({ label: 'pair-multi-1' })
+
+    const auths2 = makeClient()
+    auths2.identities.create({ label: 'pair-multi-2' })
+
+    const session1 = await auths1.pairing.createSession({
+      bindAddress: '127.0.0.1',
+      enableMdns: false,
+    })
+    const session2 = await auths2.pairing.createSession({
+      bindAddress: '127.0.0.1',
+      enableMdns: false,
+    })
+
+    expect(session1.endpoint).not.toBe(session2.endpoint)
+    expect(session1.shortCode).not.toBe(session2.shortCode)
+
+    await auths1.pairing.stop()
+    await auths2.pairing.stop()
+  })
+
+  it('waitForResponse without session throws', async () => {
+    const auths = makeClient()
+    auths.identities.create({ label: 'pair-no-session' })
+
+    await expect(auths.pairing.waitForResponse()).rejects.toThrow(
+      /No active pairing session/,
+    )
+  })
+
+  it('complete without session throws', async () => {
+    const auths = makeClient()
+    auths.identities.create({ label: 'pair-no-session-complete' })
+
+    await expect(
+      auths.pairing.complete({
+        deviceDid: 'did:key:fake',
+        devicePublicKeyHex: 'a'.repeat(64),
+      }),
+    ).rejects.toThrow(/No active pairing session/)
+  })
+})
+
+describe('verify async', () => {
+  it('verifyAttestation returns a Promise', async () => {
+    const { verifyAttestation } = await import('../lib/verify')
+    const result = verifyAttestation('{}', 'a'.repeat(64))
+    expect(result).toBeInstanceOf(Promise)
+    const resolved = await result
+    expect(resolved.valid).toBe(false)
+  })
+
+  it('verifyChain returns a Promise', async () => {
+    const { verifyChain } = await import('../lib/verify')
+    const result = verifyChain([], 'a'.repeat(64))
+    expect(result).toBeInstanceOf(Promise)
+    const resolved = await result
+    expect(resolved.status).toBeDefined()
+  })
+})
+
+describe('agent attestation', () => {
+  it('createAgent produces a signed attestation with required fields', () => {
+    const auths = makeClient()
+    auths.identities.create({ label: 'agent-att-test' })
+    const agent = auths.identities.createAgent({
+      name: 'test-bot',
+      capabilities: ['sign'],
+    })
+    expect(agent.attestation).toBeDefined()
+    const att = JSON.parse(agent.attestation)
+    expect(att.issuer).toBeDefined()
+    expect(att.subject).toBeDefined()
+    expect(att.device_signature).toBeDefined()
+    expect(att.identity_signature).toBeDefined()
+    expect(att.rid).toBeDefined()
+    expect(att.version).toBeDefined()
+    expect(att.device_public_key).toBeDefined()
+  })
 })
