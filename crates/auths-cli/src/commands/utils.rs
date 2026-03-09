@@ -64,9 +64,8 @@ pub fn handle_util(cmd: UtilCommand) -> Result<()> {
             }
 
             // Convert Vec<u8> to [u8; 32]
-            let seed: [u8; 32] = bytes
-                .try_into()
-                .expect("Length already checked, conversion should succeed"); // Safe due to check above
+            #[allow(clippy::expect_used)] // INVARIANT: length validated to be 32 bytes on line 59
+            let seed: [u8; 32] = bytes.try_into().expect("Length already checked");
 
             // Create keypair from seed by encoding as PKCS#8 first
             let pkcs8_der =

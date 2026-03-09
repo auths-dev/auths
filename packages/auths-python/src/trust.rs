@@ -122,11 +122,7 @@ pub fn pin_identity(
 
 #[pyfunction]
 #[pyo3(signature = (did, repo_path))]
-pub fn remove_pinned_identity(
-    py: Python<'_>,
-    did: &str,
-    repo_path: &str,
-) -> PyResult<()> {
+pub fn remove_pinned_identity(py: Python<'_>, did: &str, repo_path: &str) -> PyResult<()> {
     let did = did.to_string();
     let repo = repo_path.to_string();
 
@@ -141,10 +137,7 @@ pub fn remove_pinned_identity(
 
 #[pyfunction]
 #[pyo3(signature = (repo_path,))]
-pub fn list_pinned_identities(
-    py: Python<'_>,
-    repo_path: &str,
-) -> PyResult<String> {
+pub fn list_pinned_identities(py: Python<'_>, repo_path: &str) -> PyResult<String> {
     let repo = repo_path.to_string();
 
     py.allow_threads(move || {

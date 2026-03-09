@@ -47,11 +47,11 @@ pub(crate) async fn handle_initiate_online(
     let wait_spinner = ProgressBar::new_spinner();
     {
         use indicatif::ProgressStyle;
-        wait_spinner.set_style(
-            ProgressStyle::with_template("{spinner:.cyan} {msg}")
-                .unwrap()
-                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-        );
+        #[allow(clippy::unwrap_used)] // INVARIANT: template is a compile-time constant
+        let style = ProgressStyle::with_template("{spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]);
+        wait_spinner.set_style(style);
     }
     let wait_sp = wait_spinner.clone();
 

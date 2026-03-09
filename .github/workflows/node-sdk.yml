@@ -1,0 +1,102 @@
+name: Node SDK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/auths-node/**'
+      - 'crates/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/auths-node/**'
+      - 'crates/**'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/auths-node/target
+          key: ${{ runner.os }}-node-sdk-${{ hashFiles('packages/auths-node/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-node-sdk-
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        working-directory: packages/auths-node
+        run: pnpm install
+
+      - name: Build native module
+        working-directory: packages/auths-node
+        run: pnpm build
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@auths.dev"
+
+      - name: Run tests
+        working-directory: packages/auths-node
+        run: pnpm test
+
+      - name: Upload native module
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-${{ matrix.target }}
+          path: packages/auths-node/auths.*.node
+
+  lint:
+    name: Lint (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/auths-node/target
+          key: ${{ runner.os }}-node-lint-${{ hashFiles('packages/auths-node/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-node-lint-
+
+      - name: Check formatting
+        working-directory: packages/auths-node
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: packages/auths-node
+        run: cargo clippy --all-features -- -D warnings

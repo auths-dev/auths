@@ -227,6 +227,7 @@ fn handle_test_connection(cmd: ScimTestConnectionCommand) -> Result<()> {
     println!("  Testing SCIM connection to {}...", cmd.url);
     println!();
 
+    #[allow(clippy::expect_used)] // INVARIANT: tokio runtime creation is fatal if it fails
     let rt = tokio::runtime::Handle::try_current()
         .ok()
         .map(|_| None)
@@ -389,6 +390,7 @@ async fn run_test_connection(base_url: &str, token: &str) -> Result<()> {
 fn generate_token_b64() -> String {
     use base64::Engine;
     let mut bytes = [0u8; 32];
+    #[allow(clippy::expect_used)] // INVARIANT: system RNG failure is unrecoverable
     ring::rand::SystemRandom::new()
         .fill(&mut bytes)
         .expect("random bytes");

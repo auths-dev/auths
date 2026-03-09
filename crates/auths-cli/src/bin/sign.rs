@@ -2,9 +2,7 @@
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::disallowed_methods,
-    clippy::exit,
-    clippy::unwrap_used,
-    clippy::expect_used
+    clippy::exit
 )]
 //! auths-sign: Git SSH signing program compatible with `gpg.ssh.program`
 //!
@@ -190,8 +188,8 @@ fn run_verify(args: &Args) -> Result<()> {
         "-n",
         namespace,
         "-s",
-        sig_file.to_str().unwrap(),
     ]);
+    cmd.arg(sig_file);
     for opt in &args.verify_options {
         cmd.arg("-O").arg(opt);
     }

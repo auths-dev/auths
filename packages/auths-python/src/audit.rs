@@ -57,18 +57,20 @@ pub fn generate_audit_report(
                     }
                 }
                 if let Some(since_dt) = since_filter {
-                    if let Ok(ct) =
-                        chrono::NaiveDateTime::parse_from_str(&c.timestamp[..19], "%Y-%m-%dT%H:%M:%S")
-                    {
+                    if let Ok(ct) = chrono::NaiveDateTime::parse_from_str(
+                        &c.timestamp[..19],
+                        "%Y-%m-%dT%H:%M:%S",
+                    ) {
                         if ct < since_dt {
                             return false;
                         }
                     }
                 }
                 if let Some(until_dt) = until_filter {
-                    if let Ok(ct) =
-                        chrono::NaiveDateTime::parse_from_str(&c.timestamp[..19], "%Y-%m-%dT%H:%M:%S")
-                    {
+                    if let Ok(ct) = chrono::NaiveDateTime::parse_from_str(
+                        &c.timestamp[..19],
+                        "%Y-%m-%dT%H:%M:%S",
+                    ) {
                         if ct > until_dt {
                             return false;
                         }
@@ -82,9 +84,7 @@ pub fn generate_audit_report(
                         (Some("auths"), Some(signer_did.as_str()), Some(true))
                     }
                     SignatureStatus::SshSigned => (Some("ssh"), None, None),
-                    SignatureStatus::GpgSigned { verified } => {
-                        (Some("gpg"), None, Some(*verified))
-                    }
+                    SignatureStatus::GpgSigned { verified } => (Some("gpg"), None, Some(*verified)),
                     SignatureStatus::InvalidSignature { .. } => {
                         (Some("invalid"), None, Some(false))
                     }
@@ -122,10 +122,7 @@ pub fn generate_audit_report(
                 .iter()
                 .filter(|c| c["signature_type"] == "ssh")
                 .count();
-            let verification_passed = commits
-                .iter()
-                .filter(|c| c["verified"] == true)
-                .count();
+            let verification_passed = commits.iter().filter(|c| c["verified"] == true).count();
             let verification_failed = signed - verification_passed;
 
             serde_json::json!({

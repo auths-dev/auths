@@ -28,6 +28,7 @@ pub(crate) static WARN: Emoji<'_, '_> = Emoji("⚠️  ", "[!] ");
 /// Create a braille-style wait spinner.
 pub(crate) fn create_wait_spinner(message: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
+    #[allow(clippy::unwrap_used)] // INVARIANT: template is a compile-time constant
     pb.set_style(
         ProgressStyle::with_template("{spinner:.cyan} {msg}")
             .unwrap()

@@ -27,8 +27,11 @@ pub fn sign_bytes(private_key_hex: &str, message: &[u8]) -> PyResult<String> {
         )));
     }
 
-    let keypair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Failed to create keypair: {e}")))?;
+    let keypair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_CRYPTO_ERROR] Failed to create keypair: {e}"
+        ))
+    })?;
 
     let sig = keypair.sign(message);
     Ok(hex::encode(sig.as_ref()))
@@ -91,14 +94,20 @@ pub fn sign_action(
         .canonical_bytes()
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] {e}")))?;
 
-    let keypair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Failed to create keypair: {e}")))?;
+    let keypair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_CRYPTO_ERROR] Failed to create keypair: {e}"
+        ))
+    })?;
 
     let sig = keypair.sign(&canonical);
     envelope.signature = hex::encode(sig.as_ref());
 
-    serde_json::to_string(&envelope)
-        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] Failed to serialize envelope: {e}")))
+    serde_json::to_string(&envelope).map_err(|e| {
+        PyRuntimeError::new_err(format!(
+            "[AUTHS_SERIALIZATION_ERROR] Failed to serialize envelope: {e}"
+        ))
+    })
 }
 
 /// Verify an action envelope's Ed25519 signature.

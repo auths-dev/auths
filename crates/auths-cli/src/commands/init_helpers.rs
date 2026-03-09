@@ -110,11 +110,10 @@ pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()>
     let signers_path = ssh_dir.join("allowed_signers");
     std::fs::write(&signers_path, content)?;
 
-    set_git_config(
-        "gpg.ssh.allowedSignersFile",
-        signers_path.to_str().unwrap(),
-        "--global",
-    )?;
+    let signers_str = signers_path
+        .to_str()
+        .ok_or_else(|| anyhow!("allowed signers path is not valid UTF-8"))?;
+    set_git_config("gpg.ssh.allowedSignersFile", signers_str, "--global")?;
 
     out.println(&format!(
         "  Wrote {} allowed signer(s) to {}",

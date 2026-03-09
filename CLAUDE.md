@@ -146,3 +146,13 @@ When the user is getting errors locally, don't forget to remind them to reinstal
     ```
     The existing SDK error types (`SetupError`, `DeviceError`, `RegistrationError` in `crates/auths-sdk/src/error.rs`) currently wrap `anyhow::Error` in their `StorageError` and `NetworkError` variants (e.g., `StorageError(#[source] anyhow::Error)`). These must be migrated to domain-specific `thiserror` variants during Epic 1/2 execution — the `anyhow` wrapping is a transitional pattern, not a permanent design. The `map_storage_err()` and `map_device_storage_err()` helper functions should be replaced with direct `From` impls on the domain storage errors.
 6. **No reverse dependencies**: Core and SDK must never reference presentation layer crates.
+7. **`unwrap()` / `expect()` Policy**: The workspace denies `clippy::unwrap_used` and `clippy::expect_used` globally. `clippy.toml` sets `allow-unwrap-in-tests = true`, so test code is exempt. For production code:
+   - **Default**: Use `?` (in functions returning `Result`), `.ok_or_else(|| ...)`, `.unwrap_or_default()`, or `match` instead of `.unwrap()` / `.expect()`.
+   - **Provably safe unwraps**: When an unwrap is provably infallible (e.g., `try_into()` after a length check, `ProgressStyle::with_template()` on a compile-time constant, `Regex::new()` on a literal), use an inline `#[allow]` with an `INVARIANT:` comment explaining why it cannot fail:
+     ```rust
+     #[allow(clippy::expect_used)] // INVARIANT: length validated to be 32 bytes on line N
+     let arr: [u8; 32] = vec.try_into().expect("validated above");
+     ```
+   - **FFI boundaries**: `expect()` is acceptable in FFI/WASM `extern "C"` functions where panicking is the only option (no `Result` return). Annotate with `#[allow]`.
+   - **Mutex/RwLock poisoning**: `lock().expect()` / `write().expect()` on stdlib mutexes is acceptable — a poisoned mutex means another thread panicked, which is unrecoverable. Annotate with `#[allow]` and an INVARIANT comment.
+   - **Never** add blanket `#![allow(clippy::unwrap_used, clippy::expect_used)]` to crate roots. Fix each site individually.

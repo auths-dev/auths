@@ -4,14 +4,14 @@
 
 use pyo3::prelude::*;
 
-pub mod audit;
 pub mod artifact_publish;
 pub mod artifact_sign;
 pub mod attestation_query;
+pub mod audit;
 pub mod commit_sign;
-pub mod diagnostics;
 pub mod commit_verify;
 pub mod device_ext;
+pub mod diagnostics;
 pub mod git_integration;
 pub mod identity;
 pub mod identity_sign;

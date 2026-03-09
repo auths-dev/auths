@@ -440,9 +440,9 @@ fn output_results(results: &[VerifyCommitResult]) -> Result<()> {
 
     if is_json_mode() {
         if results.len() == 1 {
-            println!("{}", serde_json::to_string(&results[0]).unwrap());
+            println!("{}", serde_json::to_string(&results[0])?);
         } else {
-            println!("{}", serde_json::to_string(&results).unwrap());
+            println!("{}", serde_json::to_string(&results)?);
         }
     } else if results.len() == 1 {
         let r = &results[0];
@@ -722,14 +722,10 @@ fn verify_ssh_signature(signers_path: &Path, signature: &str, payload: &str) -> 
     // This must come before verify because `-I "*"` is not a valid wildcard for ssh-keygen
     // on all OpenSSH versions; using the actual identity is required for verify to succeed.
     let find_output = Command::new("ssh-keygen")
-        .args([
-            "-Y",
-            "find-principals",
-            "-f",
-            signers_path.to_str().unwrap(),
-            "-s",
-            sig_file.path().to_str().unwrap(),
-        ])
+        .args(["-Y", "find-principals", "-f"])
+        .arg(signers_path)
+        .arg("-s")
+        .arg(sig_file.path())
         .output()
         .context("Failed to run ssh-keygen find-principals")?;
 
@@ -755,18 +751,10 @@ fn verify_ssh_signature(signers_path: &Path, signature: &str, payload: &str) -> 
         std::fs::File::open(payload_file.path()).context("Failed to open payload file as stdin")?;
 
     let output = Command::new("ssh-keygen")
-        .args([
-            "-Y",
-            "verify",
-            "-f",
-            signers_path.to_str().unwrap(),
-            "-I",
-            &identity,
-            "-n",
-            "git",
-            "-s",
-            sig_file.path().to_str().unwrap(),
-        ])
+        .args(["-Y", "verify", "-f"])
+        .arg(signers_path)
+        .args(["-I", &identity, "-n", "git", "-s"])
+        .arg(sig_file.path())
         .stdin(stdin_file)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -810,7 +798,7 @@ fn check_ssh_keygen() -> Result<()> {
 fn handle_error(cmd: &VerifyCommitCommand, exit_code: i32, message: &str) -> Result<()> {
     if is_json_mode() {
         let result = VerifyCommitResult::failure(cmd.commit.clone(), message.to_string());
-        println!("{}", serde_json::to_string(&result).unwrap());
+        println!("{}", serde_json::to_string(&result)?);
     } else {
         eprintln!("Error: {}", message);
     }

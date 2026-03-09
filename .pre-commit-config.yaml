@@ -23,7 +23,7 @@ repos:
 
       - id: cargo-fmt
         name: cargo fmt
-        entry: cargo fmt --all --
+        entry: bash -c 'cargo fmt --all && cargo fmt --all --manifest-path packages/auths-node/Cargo.toml && cargo fmt --all --manifest-path packages/auths-python/Cargo.toml'
         language: system
         types: [rust]
         pass_filenames: false
