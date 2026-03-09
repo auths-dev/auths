@@ -1,5 +1,9 @@
 #![deny(clippy::all)]
 
+pub mod error;
+pub mod helpers;
+pub mod types;
+
 use napi_derive::napi;
 
 #[napi]
