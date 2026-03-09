@@ -128,7 +128,7 @@ fn handle_install_hooks(
     }
 
     let auths_repo = if let Some(override_path) = auths_repo_override {
-        override_path
+        expand_tilde(&override_path)?
     } else {
         expand_tilde(&cmd.auths_repo)?
     };
@@ -243,7 +243,7 @@ fn handle_allowed_signers(
     _attestation_blob_name_override: Option<String>,
 ) -> Result<()> {
     let repo_path = if let Some(override_path) = repo_override {
-        override_path
+        expand_tilde(&override_path)?
     } else {
         expand_tilde(&cmd.repo)?
     };
@@ -348,6 +348,37 @@ mod tests {
         let result = expand_tilde(&path);
         assert!(result.is_ok());
         let expanded = result.unwrap();
+        assert!(!expanded.to_string_lossy().contains("~"));
+        assert!(expanded.ends_with(".auths"));
+    }
+
+    #[test]
+    fn test_expand_tilde_bare() {
+        let path = PathBuf::from("~");
+        let result = expand_tilde(&path).unwrap();
+        assert_eq!(result, dirs::home_dir().unwrap());
+    }
+
+    #[test]
+    fn test_expand_tilde_absolute_path_unchanged() {
+        let path = PathBuf::from("/tmp/auths");
+        let result = expand_tilde(&path).unwrap();
+        assert_eq!(result, PathBuf::from("/tmp/auths"));
+    }
+
+    #[test]
+    fn test_expand_tilde_relative_path_unchanged() {
+        let path = PathBuf::from("relative/path");
+        let result = expand_tilde(&path).unwrap();
+        assert_eq!(result, PathBuf::from("relative/path"));
+    }
+
+    #[test]
+    fn test_allowed_signers_default_repo_contains_tilde() {
+        // Verify the clap default is ~/ and that expand_tilde handles it
+        let cmd = AllowedSignersCommand::try_parse_from(["allowed-signers"]).unwrap();
+        assert_eq!(cmd.repo, PathBuf::from("~/.auths"));
+        let expanded = expand_tilde(&cmd.repo).unwrap();
         assert!(!expanded.to_string_lossy().contains("~"));
     }
 
