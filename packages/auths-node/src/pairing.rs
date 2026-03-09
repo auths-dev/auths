@@ -1,7 +1,7 @@
 use napi_derive::napi;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
@@ -16,30 +16,10 @@ use auths_sdk::pairing::{
 };
 use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
 use chrono::Utc;
+use tokio::sync::Mutex;
 
 use crate::error::format_error;
 use crate::helpers::{get_keychain, make_env_config, resolve_passphrase, resolve_repo_path};
-
-fn pairing_runtime() -> &'static tokio::runtime::Runtime {
-    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-    RT.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .expect("failed to create pairing tokio runtime")
-    })
-}
-
-static ACTIVE_SESSION: OnceLock<Mutex<Option<ActivePairing>>> = OnceLock::new();
-
-struct ActivePairing {
-    handle: PairingDaemonHandle,
-    server_task: tokio::task::JoinHandle<()>,
-}
-
-fn session_store() -> &'static Mutex<Option<ActivePairing>> {
-    ACTIVE_SESSION.get_or_init(|| Mutex::new(None))
-}
 
 #[napi(object)]
 #[derive(Clone)]
@@ -68,156 +48,256 @@ pub struct NapiPairingResult {
 }
 
 #[napi]
-#[allow(clippy::too_many_arguments)]
-pub fn create_pairing_session(
-    repo_path: String,
-    capabilities_json: Option<String>,
-    timeout_secs: Option<u32>,
-    bind_address: Option<String>,
-    enable_mdns: Option<bool>,
-    passphrase: Option<String>,
-) -> napi::Result<NapiPairingSession> {
-    let _pp = resolve_passphrase(passphrase);
-    let repo = resolve_repo_path(Some(repo_path));
-    let bind_addr: IpAddr = bind_address
-        .as_deref()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
-    let timeout = timeout_secs.unwrap_or(300) as u64;
-    let mdns = enable_mdns.unwrap_or(true);
+pub struct NapiPairingHandle {
+    handle: Arc<Mutex<Option<PairingDaemonHandle>>>,
+    server_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    session_info: NapiPairingSession,
+}
 
-    let capabilities: Vec<String> = if let Some(json) = capabilities_json {
-        serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign:commit".to_string()])
-    } else {
-        vec!["sign:commit".to_string()]
-    };
+#[napi]
+impl NapiPairingHandle {
+    #[napi(factory)]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_session(
+        repo_path: String,
+        capabilities_json: Option<String>,
+        timeout_secs: Option<u32>,
+        bind_address: Option<String>,
+        enable_mdns: Option<bool>,
+        passphrase: Option<String>,
+    ) -> napi::Result<NapiPairingHandle> {
+        let _pp = resolve_passphrase(passphrase);
+        let repo = resolve_repo_path(Some(repo_path));
+        let bind_addr: IpAddr = bind_address
+            .as_deref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
+        let timeout = timeout_secs.unwrap_or(300) as u64;
+        let mdns = enable_mdns.unwrap_or(true);
 
-    let identity_storage = RegistryIdentityStorage::new(repo.clone());
-    let managed = identity_storage
-        .load_identity()
-        .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-    let controller_did = managed.controller_did.to_string();
+        let capabilities: Vec<String> = if let Some(json) = capabilities_json {
+            serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign:commit".to_string()])
+        } else {
+            vec!["sign:commit".to_string()]
+        };
 
-    #[allow(clippy::disallowed_methods)]
-    let now = Utc::now();
-    let session_req = build_pairing_session_request(
-        now,
-        PairingSessionParams {
-            controller_did: controller_did.clone(),
-            registry: "local".to_string(),
-            capabilities,
-            expiry_secs: timeout,
-        },
-    )
-    .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+        let identity_storage = RegistryIdentityStorage::new(repo.clone());
+        let managed = identity_storage
+            .load_identity()
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+        let controller_did = managed.controller_did.to_string();
 
-    let session_id = session_req.create_request.session_id.clone();
-    let short_code = session_req.create_request.short_code.clone();
-
-    let mut builder = PairingDaemonBuilder::new().with_rate_limiter(RateLimiter::new(100));
-
-    let mock_addr = SocketAddr::new(bind_addr, 0);
-    builder = builder.with_network(MockNetworkInterfaces(bind_addr));
-
-    if !mdns {
-        builder = builder.with_discovery(MockNetworkDiscovery(mock_addr));
-    }
-
-    let daemon = builder
-        .build(session_req.create_request)
+        #[allow(clippy::disallowed_methods)]
+        let now = Utc::now();
+        let session_req = build_pairing_session_request(
+            now,
+            PairingSessionParams {
+                controller_did: controller_did.clone(),
+                registry: "local".to_string(),
+                capabilities,
+                expiry_secs: timeout,
+            },
+        )
         .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
-    let token = daemon.token().to_string();
-    let (router, handle) = daemon.into_parts();
+        let session_id = session_req.create_request.session_id.clone();
+        let short_code = session_req.create_request.short_code.clone();
 
-    let rt = pairing_runtime();
-    let (endpoint_tx, endpoint_rx) = std::sync::mpsc::channel();
+        let mut builder = PairingDaemonBuilder::new().with_rate_limiter(RateLimiter::new(100));
 
-    let server_task = rt.spawn(async move {
+        let mock_addr = SocketAddr::new(bind_addr, 0);
+        builder = builder.with_network(MockNetworkInterfaces(bind_addr));
+
+        if !mdns {
+            builder = builder.with_discovery(MockNetworkDiscovery(mock_addr));
+        }
+
+        let daemon = builder
+            .build(session_req.create_request)
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+
+        let token = daemon.token().to_string();
+        let (router, handle) = daemon.into_parts();
+
         let listener = tokio::net::TcpListener::bind(SocketAddr::new(bind_addr, 0))
             .await
-            .expect("failed to bind pairing server");
-        let local_addr = listener.local_addr().expect("failed to get local addr");
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", format!("Failed to bind: {e}")))?;
+        let local_addr = listener
+            .local_addr()
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", format!("No local addr: {e}")))?;
         let endpoint = format!("http://{}:{}", local_addr.ip(), local_addr.port());
-        let _ = endpoint_tx.send(endpoint);
-        axum::serve(
-            listener,
-            router.into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .await
-        .ok();
-    });
 
-    let endpoint = endpoint_rx
-        .recv_timeout(Duration::from_secs(5))
-        .map_err(|_| format_error("AUTHS_PAIRING_ERROR", "Server failed to start within 5s"))?;
+        let server_task = tokio::task::spawn(async move {
+            axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            .ok();
+        });
 
-    let mut store = session_store()
-        .lock()
-        .map_err(|_| format_error("AUTHS_PAIRING_ERROR", "Session lock poisoned"))?;
-    *store = Some(ActivePairing {
-        handle,
-        server_task,
-    });
+        let session_info = NapiPairingSession {
+            session_id,
+            short_code,
+            endpoint,
+            token,
+            controller_did,
+        };
 
-    Ok(NapiPairingSession {
-        session_id,
-        short_code,
-        endpoint,
-        token,
-        controller_did,
-    })
-}
+        Ok(NapiPairingHandle {
+            handle: Arc::new(Mutex::new(Some(handle))),
+            server_task: Arc::new(Mutex::new(Some(server_task))),
+            session_info,
+        })
+    }
 
-#[napi]
-pub fn wait_for_pairing_response(timeout_secs: Option<u32>) -> napi::Result<NapiPairingResponse> {
-    let timeout = Duration::from_secs(timeout_secs.unwrap_or(300) as u64);
+    #[napi(getter)]
+    pub fn session(&self) -> NapiPairingSession {
+        self.session_info.clone()
+    }
 
-    let handle = {
-        let mut store = session_store()
-            .lock()
-            .map_err(|_| format_error("AUTHS_PAIRING_ERROR", "Session lock poisoned"))?;
-        let session = store.take().ok_or_else(|| {
+    #[napi]
+    pub async fn wait_for_response(
+        &self,
+        timeout_secs: Option<u32>,
+    ) -> napi::Result<NapiPairingResponse> {
+        let timeout = Duration::from_secs(timeout_secs.unwrap_or(300) as u64);
+
+        let handle = {
+            let mut guard = self.handle.lock().await;
+            guard.take().ok_or_else(|| {
+                format_error(
+                    "AUTHS_PAIRING_ERROR",
+                    "Pairing handle already consumed or session stopped.",
+                )
+            })?
+        };
+
+        let result = handle.wait_for_response(timeout).await;
+
+        match result {
+            Ok(response) => {
+                let device_did = response.device_did.clone();
+                let device_name = response.device_name.clone();
+                let device_pk_hex =
+                    hex::encode(response.device_signing_pubkey.decode().unwrap_or_default());
+                Ok(NapiPairingResponse {
+                    device_did,
+                    device_name,
+                    device_public_key_hex: device_pk_hex,
+                })
+            }
+            Err(e) => Err(format_error("AUTHS_PAIRING_TIMEOUT", e)),
+        }
+    }
+
+    #[napi]
+    pub async fn complete(
+        &self,
+        device_did: String,
+        device_public_key_hex: String,
+        repo_path: String,
+        capabilities_json: Option<String>,
+        passphrase: Option<String>,
+    ) -> napi::Result<NapiPairingResult> {
+        let passphrase_str = resolve_passphrase(passphrase);
+        let repo = resolve_repo_path(Some(repo_path.clone()));
+        let env_config = make_env_config(&passphrase_str, &repo_path);
+
+        let capabilities: Vec<String> = if let Some(json) = capabilities_json {
+            serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign:commit".to_string()])
+        } else {
+            vec!["sign:commit".to_string()]
+        };
+
+        let device_pubkey = hex::decode(&device_public_key_hex).map_err(|e| {
             format_error(
                 "AUTHS_PAIRING_ERROR",
-                "No active pairing session. Call createPairingSession first.",
+                format!("Invalid public key hex: {e}"),
             )
         })?;
-        session.handle
-    };
 
-    let rt = pairing_runtime();
-    let result = rt.block_on(handle.wait_for_response(timeout));
+        let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
+            Arc::new(RegistryIdentityStorage::new(repo.clone()));
 
-    match result {
-        Ok(response) => {
-            let device_did = response.device_did.clone();
-            let device_name = response.device_name.clone();
-            let device_pk_hex =
-                hex::encode(response.device_signing_pubkey.decode().unwrap_or_default());
-            Ok(NapiPairingResponse {
-                device_did,
-                device_name,
-                device_public_key_hex: device_pk_hex,
-            })
+        let managed = identity_storage
+            .load_identity()
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+        let controller_identity_did =
+            IdentityDID::new_unchecked(managed.controller_did.to_string());
+
+        let keychain = get_keychain(&env_config)?;
+        let aliases = keychain
+            .list_aliases_for_identity(&controller_identity_did)
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+        let identity_key_alias_str = aliases
+            .into_iter()
+            .find(|a| !a.contains("--next-"))
+            .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No signing key found"))?;
+        let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
+
+        let key_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
+        let provider = Arc::new(auths_core::signing::PrefilledPassphraseProvider::new(
+            &passphrase_str,
+        ));
+
+        #[allow(clippy::disallowed_methods)]
+        let now = Utc::now();
+        let params = PairingAttestationParams {
+            identity_storage: identity_storage.clone(),
+            key_storage: key_storage.clone(),
+            device_pubkey: &device_pubkey,
+            device_did_str: &device_did,
+            capabilities: &capabilities,
+            identity_key_alias: &identity_key_alias,
+            passphrase_provider: provider,
+        };
+
+        let attestation = create_pairing_attestation(&params, now)
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+
+        let attestation_storage = RegistryAttestationStorage::new(&repo);
+        use auths_id::attestation::AttestationSink;
+        attestation_storage
+            .export(
+                &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(
+                    attestation.clone(),
+                ),
+            )
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+
+        Ok(NapiPairingResult {
+            device_did,
+            device_name: None,
+            attestation_rid: attestation.rid.to_string(),
+        })
+    }
+
+    #[napi]
+    pub async fn stop(&self) -> napi::Result<()> {
+        let mut handle_guard = self.handle.lock().await;
+        *handle_guard = None;
+
+        let mut task_guard = self.server_task.lock().await;
+        if let Some(task) = task_guard.take() {
+            task.abort();
         }
-        Err(e) => Err(format_error("AUTHS_PAIRING_TIMEOUT", e)),
+        Ok(())
+    }
+}
+
+impl Drop for NapiPairingHandle {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.server_task.try_lock() {
+            if let Some(task) = guard.take() {
+                task.abort();
+            }
+        }
     }
 }
 
 #[napi]
-pub fn stop_pairing_session() -> napi::Result<()> {
-    let mut store = session_store()
-        .lock()
-        .map_err(|_| format_error("AUTHS_PAIRING_ERROR", "Session lock poisoned"))?;
-    if let Some(session) = store.take() {
-        session.server_task.abort();
-    }
-    Ok(())
-}
-
-#[napi]
-pub fn join_pairing_session(
+pub async fn join_pairing_session(
     short_code: String,
     endpoint: String,
     token: String,
@@ -270,10 +350,9 @@ pub fn join_pairing_session(
 
     let device_did = auths_verifier::types::DeviceDID::from_ed25519(&pubkey_32);
 
-    let rt = pairing_runtime();
     let lookup_url = format!("{}/v1/pairing/sessions/by-code/{}", endpoint, short_code);
 
-    let session_data: serde_json::Value = rt.block_on(async {
+    let session_data: serde_json::Value = {
         let client = reqwest::Client::new();
         let resp = client
             .get(&lookup_url)
@@ -282,10 +361,10 @@ pub fn join_pairing_session(
             .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
         resp.json::<serde_json::Value>()
             .await
-            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))
-    })?;
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?
+    };
 
-    let _session_id = session_data["session_id"]
+    let session_id = session_data["session_id"]
         .as_str()
         .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No session_id in response"))?
         .to_string();
@@ -345,13 +424,12 @@ pub fn join_pairing_session(
         device_name: pairing_response.device_name,
     };
 
-    let session_id_for_submit = _session_id;
     let submit_url = format!(
         "{}/v1/pairing/sessions/{}/response",
-        endpoint, session_id_for_submit
+        endpoint, session_id
     );
 
-    rt.block_on(async {
+    {
         let client = reqwest::Client::new();
         let resp = client
             .post(&submit_url)
@@ -368,88 +446,11 @@ pub fn join_pairing_session(
                 format!("Submit response failed: {} {}", status, body),
             ));
         }
-        Ok::<(), napi::Error>(())
-    })?;
+    }
 
     Ok(NapiPairingResponse {
         device_did: device_did.to_string(),
         device_name,
         device_public_key_hex: hex::encode(pubkey_32),
-    })
-}
-
-#[napi]
-pub fn complete_pairing(
-    device_did: String,
-    device_public_key_hex: String,
-    repo_path: String,
-    capabilities_json: Option<String>,
-    passphrase: Option<String>,
-) -> napi::Result<NapiPairingResult> {
-    let passphrase_str = resolve_passphrase(passphrase);
-    let repo = resolve_repo_path(Some(repo_path.clone()));
-    let env_config = make_env_config(&passphrase_str, &repo_path);
-
-    let capabilities: Vec<String> = if let Some(json) = capabilities_json {
-        serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign:commit".to_string()])
-    } else {
-        vec!["sign:commit".to_string()]
-    };
-
-    let device_pubkey = hex::decode(&device_public_key_hex).map_err(|e| {
-        format_error(
-            "AUTHS_PAIRING_ERROR",
-            format!("Invalid public key hex: {e}"),
-        )
-    })?;
-
-    let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
-        Arc::new(RegistryIdentityStorage::new(repo.clone()));
-
-    let managed = identity_storage
-        .load_identity()
-        .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-    let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
-
-    let keychain = get_keychain(&env_config)?;
-    let aliases = keychain
-        .list_aliases_for_identity(&controller_identity_did)
-        .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-    let identity_key_alias_str = aliases
-        .into_iter()
-        .find(|a| !a.contains("--next-"))
-        .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No signing key found"))?;
-    let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
-
-    let key_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
-    let provider = Arc::new(auths_core::signing::PrefilledPassphraseProvider::new(
-        &passphrase_str,
-    ));
-
-    #[allow(clippy::disallowed_methods)]
-    let now = Utc::now();
-    let params = PairingAttestationParams {
-        identity_storage: identity_storage.clone(),
-        key_storage: key_storage.clone(),
-        device_pubkey: &device_pubkey,
-        device_did_str: &device_did,
-        capabilities: &capabilities,
-        identity_key_alias: &identity_key_alias,
-        passphrase_provider: provider,
-    };
-
-    let attestation = create_pairing_attestation(&params, now)
-        .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-
-    let attestation_storage = RegistryAttestationStorage::new(&repo);
-    use auths_id::attestation::AttestationSink;
-    attestation_storage
-        .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation.clone()))
-        .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-
-    Ok(NapiPairingResult {
-        device_did,
-        device_name: None,
-        attestation_rid: attestation.rid.to_string(),
     })
 }

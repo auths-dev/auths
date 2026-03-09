@@ -165,6 +165,13 @@ export interface NapiPairingResult {
   attestationRid: string
 }
 
+export interface NapiPairingHandleInstance {
+  session: NapiPairingSession
+  waitForResponse(timeoutSecs?: number | null): Promise<NapiPairingResponse>
+  complete(deviceDid: string, devicePublicKeyHex: string, repoPath: string, capabilitiesJson?: string | null, passphrase?: string | null): Promise<NapiPairingResult>
+  stop(): Promise<void>
+}
+
 export interface NativeBindings {
   version(): string
 
@@ -226,11 +233,10 @@ export interface NativeBindings {
   evaluatePolicy(compiledPolicyJson: string, issuer: string, subject: string, capabilities?: string[] | null, role?: string | null, revoked?: boolean | null, expiresAt?: string | null, repo?: string | null, environment?: string | null, signerType?: string | null, delegatedBy?: string | null, chainDepth?: number | null): NapiPolicyDecision
 
   // Pairing
-  createPairingSession(repoPath: string, capabilitiesJson?: string | null, timeoutSecs?: number | null, bindAddress?: string | null, enableMdns?: boolean | null, passphrase?: string | null): NapiPairingSession
-  waitForPairingResponse(timeoutSecs?: number | null): NapiPairingResponse
-  stopPairingSession(): void
-  joinPairingSession(shortCode: string, endpoint: string, token: string, repoPath: string, deviceName?: string | null, passphrase?: string | null): NapiPairingResponse
-  completePairing(deviceDid: string, devicePublicKeyHex: string, repoPath: string, capabilitiesJson?: string | null, passphrase?: string | null): NapiPairingResult
+  NapiPairingHandle: {
+    createSession(repoPath: string, capabilitiesJson?: string | null, timeoutSecs?: number | null, bindAddress?: string | null, enableMdns?: boolean | null, passphrase?: string | null): Promise<NapiPairingHandleInstance>
+  }
+  joinPairingSession(shortCode: string, endpoint: string, token: string, repoPath: string, deviceName?: string | null, passphrase?: string | null): Promise<NapiPairingResponse>
 
   // Verification
   verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>

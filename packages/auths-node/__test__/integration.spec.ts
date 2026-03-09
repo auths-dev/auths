@@ -295,11 +295,11 @@ describe('version', () => {
 })
 
 describe('pairing', () => {
-  it('creates session and stops cleanly', () => {
+  it('creates session and stops cleanly', async () => {
     const auths = makeClient()
     auths.identities.create({ label: 'pair-test' })
 
-    const session = auths.pairing.createSession({
+    const session = await auths.pairing.createSession({
       bindAddress: '127.0.0.1',
       enableMdns: false,
       capabilities: ['sign:commit'],
@@ -308,18 +308,18 @@ describe('pairing', () => {
     expect(session.endpoint).toMatch(/^http:\/\/127\.0\.0\.1:/)
     expect(session.controllerDid).toMatch(/^did:keri:/)
 
-    auths.pairing.stop()
+    await auths.pairing.stop()
   })
 
-  it('stop is idempotent', () => {
+  it('stop is idempotent', async () => {
     const auths = makeClient()
     auths.identities.create({ label: 'pair-stop' })
 
-    auths.pairing.createSession({
+    await auths.pairing.createSession({
       bindAddress: '127.0.0.1',
       enableMdns: false,
     })
-    auths.pairing.stop()
-    auths.pairing.stop()
+    await auths.pairing.stop()
+    await auths.pairing.stop()
   })
 })

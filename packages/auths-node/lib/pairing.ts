@@ -23,19 +23,21 @@ export interface PairingResult {
 }
 
 export class PairingService {
+  private handle: any | null = null
+
   constructor(private client: Auths) {}
 
-  createSession(opts?: {
+  async createSession(opts?: {
     capabilities?: string[]
     timeoutSecs?: number
     bindAddress?: string
     enableMdns?: boolean
     passphrase?: string
-  }): PairingSession {
+  }): Promise<PairingSession> {
     const pp = opts?.passphrase ?? this.client.passphrase
     const capsJson = opts?.capabilities ? JSON.stringify(opts.capabilities) : null
     try {
-      const result = native.createPairingSession(
+      this.handle = await native.NapiPairingHandle.createSession(
         this.client.repoPath,
         capsJson,
         opts?.timeoutSecs ?? null,
@@ -43,21 +45,25 @@ export class PairingService {
         opts?.enableMdns ?? null,
         pp,
       )
+      const session = this.handle.session
       return {
-        sessionId: result.sessionId,
-        shortCode: result.shortCode,
-        endpoint: result.endpoint,
-        token: result.token,
-        controllerDid: result.controllerDid,
+        sessionId: session.sessionId,
+        shortCode: session.shortCode,
+        endpoint: session.endpoint,
+        token: session.token,
+        controllerDid: session.controllerDid,
       }
     } catch (err) {
       throw mapNativeError(err, PairingError)
     }
   }
 
-  waitForResponse(opts?: { timeoutSecs?: number }): PairingResponse {
+  async waitForResponse(opts?: { timeoutSecs?: number }): Promise<PairingResponse> {
+    if (!this.handle) {
+      throw new PairingError('No active pairing session. Call createSession first.', 'AUTHS_PAIRING_ERROR')
+    }
     try {
-      const result = native.waitForPairingResponse(opts?.timeoutSecs ?? null)
+      const result = await this.handle.waitForResponse(opts?.timeoutSecs ?? null)
       return {
         deviceDid: result.deviceDid,
         deviceName: result.deviceName ?? null,
@@ -68,24 +74,28 @@ export class PairingService {
     }
   }
 
-  stop(): void {
-    try {
-      native.stopPairingSession()
-    } catch (err) {
-      throw mapNativeError(err, PairingError)
+  async stop(): Promise<void> {
+    if (this.handle) {
+      try {
+        await this.handle.stop()
+      } catch (err) {
+        throw mapNativeError(err, PairingError)
+      } finally {
+        this.handle = null
+      }
     }
   }
 
-  join(opts: {
+  async join(opts: {
     shortCode: string
     endpoint: string
     token: string
     deviceName?: string
     passphrase?: string
-  }): PairingResponse {
+  }): Promise<PairingResponse> {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
-      const result = native.joinPairingSession(
+      const result = await native.joinPairingSession(
         opts.shortCode,
         opts.endpoint,
         opts.token,
@@ -103,16 +113,19 @@ export class PairingService {
     }
   }
 
-  complete(opts: {
+  async complete(opts: {
     deviceDid: string
     devicePublicKeyHex: string
     capabilities?: string[]
     passphrase?: string
-  }): PairingResult {
+  }): Promise<PairingResult> {
+    if (!this.handle) {
+      throw new PairingError('No active pairing session. Call createSession first.', 'AUTHS_PAIRING_ERROR')
+    }
     const pp = opts.passphrase ?? this.client.passphrase
     const capsJson = opts.capabilities ? JSON.stringify(opts.capabilities) : null
     try {
-      const result = native.completePairing(
+      const result = await this.handle.complete(
         opts.deviceDid,
         opts.devicePublicKeyHex,
         this.client.repoPath,
@@ -127,5 +140,14 @@ export class PairingService {
     } catch (err) {
       throw mapNativeError(err, PairingError)
     }
+  }
+
+  [Symbol.dispose](): void {
+    // Fire-and-forget stop for sync dispose
+    this.stop().catch(() => {})
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.stop()
   }
 }
