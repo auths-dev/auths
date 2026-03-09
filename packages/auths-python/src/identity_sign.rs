@@ -1,6 +1,6 @@
 use auths_core::config::{EnvironmentConfig, KeychainConfig};
 use auths_core::signing::{PrefilledPassphraseProvider, SecureSigner, StorageSigner};
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
+use auths_core::storage::keychain::{KeyAlias, KeyRole, get_platform_keychain_with_config};
 use auths_verifier::core::MAX_ATTESTATION_JSON_SIZE;
 use auths_verifier::types::IdentityDID;
 use pyo3::exceptions::PyRuntimeError;
@@ -164,10 +164,10 @@ pub fn get_identity_public_key(
     let did = IdentityDID::new(identity_did);
 
     py.allow_threads(move || {
-        let aliases = signer.inner().list_aliases_for_identity(&did)
+        let aliases = signer.inner().list_aliases_for_identity_with_role(&did, KeyRole::Primary)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key lookup failed: {e}")))?;
         let alias = aliases.first()
-            .ok_or_else(|| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] No key found for identity '{identity_did}'")))?;
+            .ok_or_else(|| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] No primary key found for identity '{identity_did}'")))?;
         let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
             signer.inner().as_ref(),
             alias,
