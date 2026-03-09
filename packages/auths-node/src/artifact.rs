@@ -91,7 +91,7 @@ pub struct NapiArtifactResult {
     pub attestation_json: String,
     pub rid: String,
     pub digest: String,
-    pub file_size: u64,
+    pub file_size: i64,
 }
 
 fn build_context_and_sign(
@@ -137,7 +137,7 @@ fn build_context_and_sign(
     let file_size = artifact
         .metadata()
         .map(|m| m.size.unwrap_or(0))
-        .unwrap_or(0);
+        .unwrap_or(0) as i64;
 
     let params = ArtifactSigningParams {
         artifact,

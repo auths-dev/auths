@@ -1,7 +1,7 @@
 use napi_derive::napi;
 
 use auths_policy::{
-    CanonicalCapability, CanonicalDid, CompiledPolicy, EvalContext, SignerType,
+    CanonicalCapability, CanonicalDid, EvalContext, SignerType,
     compile_from_json, enforce_simple,
 };
 use chrono::Utc;
@@ -18,7 +18,7 @@ pub struct NapiPolicyDecision {
 
 #[napi]
 pub fn compile_policy(policy_json: String) -> napi::Result<String> {
-    let compiled = compile_from_json(policy_json.as_bytes()).map_err(|errors| {
+    compile_from_json(policy_json.as_bytes()).map_err(|errors| {
         let msgs: Vec<String> = errors
             .iter()
             .map(|e| format!("{}: {}", e.path, e.message))
@@ -28,10 +28,7 @@ pub fn compile_policy(policy_json: String) -> napi::Result<String> {
             format!("Policy compilation failed: {}", msgs.join("; ")),
         )
     })?;
-
-    serde_json::to_string(&compiled).map_err(|e| {
-        format_error("AUTHS_POLICY_SERIALIZE_ERROR", e)
-    })
+    Ok(policy_json)
 }
 
 #[napi]
@@ -50,10 +47,16 @@ pub fn evaluate_policy(
     delegated_by: Option<String>,
     chain_depth: Option<u32>,
 ) -> napi::Result<NapiPolicyDecision> {
-    let compiled: CompiledPolicy =
-        serde_json::from_str(&policy_json).map_err(|e| {
-            format_error("AUTHS_POLICY_DESERIALIZE_ERROR", e)
-        })?;
+    let compiled = compile_from_json(policy_json.as_bytes()).map_err(|errors| {
+        let msgs: Vec<String> = errors
+            .iter()
+            .map(|e| format!("{}: {}", e.path, e.message))
+            .collect();
+        format_error(
+            "AUTHS_POLICY_COMPILE_ERROR",
+            format!("Policy compilation failed: {}", msgs.join("; ")),
+        )
+    })?;
 
     let issuer_did = CanonicalDid::parse(&issuer).map_err(|e| {
         format_error("AUTHS_POLICY_INVALID_DID", format!("Invalid issuer DID: {e}"))

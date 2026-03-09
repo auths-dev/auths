@@ -122,7 +122,8 @@ pub fn remove_pinned_identity(did: String, repo_path: String) -> napi::Result<()
     let store = PinnedIdentityStore::new(store_path(&repo_path));
     store
         .remove(&did)
-        .map_err(|e| format_error("AUTHS_TRUST_ERROR", e))
+        .map_err(|e| format_error("AUTHS_TRUST_ERROR", e))?;
+    Ok(())
 }
 
 #[napi]

@@ -315,7 +315,7 @@ pub fn rotate_identity_keys(
         controller_did: result.controller_did.to_string(),
         new_key_fingerprint: result.new_key_fingerprint,
         previous_key_fingerprint: result.previous_key_fingerprint,
-        sequence: result.sequence,
+        sequence: result.sequence as i64,
     })
 }
 

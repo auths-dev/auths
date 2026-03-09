@@ -167,7 +167,7 @@ pub struct NapiRotationResult {
     pub controller_did: String,
     pub new_key_fingerprint: String,
     pub previous_key_fingerprint: String,
-    pub sequence: u64,
+    pub sequence: i64,
 }
 
 // Device types

@@ -35,7 +35,6 @@ static ACTIVE_SESSION: OnceLock<Mutex<Option<ActivePairing>>> = OnceLock::new();
 struct ActivePairing {
     handle: PairingDaemonHandle,
     server_task: tokio::task::JoinHandle<()>,
-    endpoint: String,
 }
 
 fn session_store() -> &'static Mutex<Option<ActivePairing>> {
@@ -161,7 +160,6 @@ pub fn create_pairing_session(
     *store = Some(ActivePairing {
         handle,
         server_task,
-        endpoint: endpoint.clone(),
     });
 
     Ok(NapiPairingSession {
