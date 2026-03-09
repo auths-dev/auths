@@ -609,7 +609,9 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let group = AttestationGroup::from_list(attestation_storage.load_all_attestations()?);
 
             for (subject, list) in group.by_device.iter() {
-                let latest = list.last().unwrap();
+                let Some(latest) = list.last() else {
+                    continue;
+                };
                 if !include_revoked
                     && (latest.is_revoked() || latest.expires_at.is_some_and(|e| Utc::now() > e))
                 {

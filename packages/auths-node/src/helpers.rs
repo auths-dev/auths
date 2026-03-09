@@ -14,9 +14,8 @@ pub fn resolve_passphrase(passphrase: Option<String>) -> String {
 
 #[allow(clippy::disallowed_methods)] // Presentation boundary: env var read is intentional
 pub fn resolve_repo_path(path: Option<String>) -> PathBuf {
-    let raw = path.unwrap_or_else(|| {
-        std::env::var("AUTHS_HOME").unwrap_or_else(|_| "~/.auths".to_string())
-    });
+    let raw = path
+        .unwrap_or_else(|| std::env::var("AUTHS_HOME").unwrap_or_else(|_| "~/.auths".to_string()));
     let expanded = shellexpand::tilde(&raw);
     PathBuf::from(expanded.as_ref())
 }
@@ -33,12 +32,8 @@ pub fn make_env_config(passphrase: &str, repo_path: &str) -> EnvironmentConfig {
     }
 }
 
-pub fn get_keychain(
-    config: &EnvironmentConfig,
-) -> napi::Result<Box<dyn KeyStorage + Send + Sync>> {
-    get_platform_keychain_with_config(config).map_err(|e| {
-        format_error("AUTHS_KEYCHAIN_ERROR", e)
-    })
+pub fn get_keychain(config: &EnvironmentConfig) -> napi::Result<Box<dyn KeyStorage + Send + Sync>> {
+    get_platform_keychain_with_config(config).map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", e))
 }
 
 pub fn resolve_key_alias(
@@ -49,9 +44,7 @@ pub fn resolve_key_alias(
         let did = IdentityDID::new_unchecked(identity_ref.to_string());
         let aliases = keychain
             .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
-            .map_err(|e| {
-                format_error("AUTHS_KEY_NOT_FOUND", format!("Key lookup failed: {e}"))
-            })?;
+            .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key lookup failed: {e}")))?;
         aliases.into_iter().next().ok_or_else(|| {
             format_error(
                 "AUTHS_KEY_NOT_FOUND",
@@ -59,8 +52,7 @@ pub fn resolve_key_alias(
             )
         })
     } else {
-        KeyAlias::new(identity_ref).map_err(|e| {
-            format_error("AUTHS_KEY_NOT_FOUND", format!("Invalid key alias: {e}"))
-        })
+        KeyAlias::new(identity_ref)
+            .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Invalid key alias: {e}")))
     }
 }

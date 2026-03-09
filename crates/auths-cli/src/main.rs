@@ -3,9 +3,7 @@
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::disallowed_methods,
-    clippy::exit,
-    clippy::unwrap_used,
-    clippy::expect_used
+    clippy::exit
 )]
 use anyhow::Result;
 use clap::Parser;

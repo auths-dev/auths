@@ -178,7 +178,17 @@ fn run_verify(args: &Args) -> Result<()> {
         .ok_or_else(|| anyhow!("-s <signature_file> required for verify"))?;
 
     let mut cmd = std::process::Command::new("ssh-keygen");
-    cmd.args(["-Y", "verify", "-f", allowed_signers, "-I", identity, "-n", namespace, "-s"]);
+    cmd.args([
+        "-Y",
+        "verify",
+        "-f",
+        allowed_signers,
+        "-I",
+        identity,
+        "-n",
+        namespace,
+        "-s",
+    ]);
     cmd.arg(sig_file);
     for opt in &args.verify_options {
         cmd.arg("-O").arg(opt);

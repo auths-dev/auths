@@ -48,9 +48,7 @@ impl CryptoDiagnosticProvider for FfiDiagnosticAdapter {
     fn check_ssh_keygen_available(&self) -> Result<CheckResult, DiagnosticError> {
         let output = Command::new("ssh-keygen").arg("-V").output();
         let (passed, message) = match output {
-            Ok(out) if out.status.success() => {
-                (true, Some("ssh-keygen found on PATH".to_string()))
-            }
+            Ok(out) if out.status.success() => (true, Some("ssh-keygen found on PATH".to_string())),
             _ => (
                 false,
                 Some("ssh-keygen command not found on PATH".to_string()),
@@ -101,6 +99,5 @@ pub fn run_diagnostics(repo_path: String) -> napi::Result<String> {
         "version": env!("CARGO_PKG_VERSION"),
     });
 
-    serde_json::to_string(&result)
-        .map_err(|e| format_error("AUTHS_DIAGNOSTIC_ERROR", e))
+    serde_json::to_string(&result).map_err(|e| format_error("AUTHS_DIAGNOSTIC_ERROR", e))
 }

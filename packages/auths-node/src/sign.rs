@@ -78,8 +78,12 @@ pub fn sign_action_as_identity(
         "timestamp": &timestamp,
     });
 
-    let canonical = json_canon::to_string(&signing_data)
-        .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", format!("Canonicalization failed: {e}")))?;
+    let canonical = json_canon::to_string(&signing_data).map_err(|e| {
+        format_error(
+            "AUTHS_SERIALIZATION_ERROR",
+            format!("Canonicalization failed: {e}"),
+        )
+    })?;
 
     let passphrase_str = resolve_passphrase(passphrase);
     let (signer, provider) = make_signer(&passphrase_str)?;
@@ -100,8 +104,12 @@ pub fn sign_action_as_identity(
         "signature": sig_hex,
     });
 
-    let envelope_json = serde_json::to_string(&envelope)
-        .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", format!("Failed to serialize envelope: {e}")))?;
+    let envelope_json = serde_json::to_string(&envelope).map_err(|e| {
+        format_error(
+            "AUTHS_SERIALIZATION_ERROR",
+            format!("Failed to serialize envelope: {e}"),
+        )
+    })?;
 
     Ok(NapiActionEnvelope {
         envelope_json,
@@ -163,8 +171,12 @@ pub fn sign_action_as_agent(
         "timestamp": &timestamp,
     });
 
-    let canonical = json_canon::to_string(&signing_data)
-        .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", format!("Canonicalization failed: {e}")))?;
+    let canonical = json_canon::to_string(&signing_data).map_err(|e| {
+        format_error(
+            "AUTHS_SERIALIZATION_ERROR",
+            format!("Canonicalization failed: {e}"),
+        )
+    })?;
 
     let passphrase_str = resolve_passphrase(passphrase);
     let (signer, provider) = make_signer(&passphrase_str)?;
@@ -186,8 +198,12 @@ pub fn sign_action_as_agent(
         "signature": sig_hex,
     });
 
-    let envelope_json = serde_json::to_string(&envelope)
-        .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", format!("Failed to serialize envelope: {e}")))?;
+    let envelope_json = serde_json::to_string(&envelope).map_err(|e| {
+        format_error(
+            "AUTHS_SERIALIZATION_ERROR",
+            format!("Failed to serialize envelope: {e}"),
+        )
+    })?;
 
     Ok(NapiActionEnvelope {
         envelope_json,

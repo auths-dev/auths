@@ -50,8 +50,12 @@ fn parse_attestations(jsons: &[String]) -> napi::Result<Vec<Attestation>> {
         .iter()
         .enumerate()
         .map(|(i, json)| {
-            serde_json::from_str(json)
-                .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", format!("Failed to parse attestation {i}: {e}")))
+            serde_json::from_str(json).map_err(|e| {
+                format_error(
+                    "AUTHS_SERIALIZATION_ERROR",
+                    format!("Failed to parse attestation {i}: {e}"),
+                )
+            })
         })
         .collect()
 }
@@ -248,7 +252,9 @@ fn parse_rfc3339_timestamp(at_rfc3339: &str) -> napi::Result<DateTime<Utc>> {
         } else {
             format_error(
                 "AUTHS_INVALID_INPUT",
-                format!("Expected RFC 3339 format like '2024-06-15T00:00:00Z', got '{at_rfc3339}'."),
+                format!(
+                    "Expected RFC 3339 format like '2024-06-15T00:00:00Z', got '{at_rfc3339}'."
+                ),
             )
         }
     })?;

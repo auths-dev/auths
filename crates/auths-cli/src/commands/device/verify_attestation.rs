@@ -106,7 +106,7 @@ pub async fn handle_verify(cmd: VerifyCommand) -> Result<()> {
     match result {
         Ok(verify_result) => {
             if is_json_mode() {
-                println!("{}", serde_json::to_string(&verify_result).unwrap());
+                println!("{}", serde_json::to_string(&verify_result)?);
             }
 
             if verify_result.valid {
@@ -135,7 +135,7 @@ pub async fn handle_verify(cmd: VerifyCommand) -> Result<()> {
                     available_capabilities: None,
                     witness_quorum: None,
                 };
-                println!("{}", serde_json::to_string(&error_result).unwrap());
+                println!("{}", serde_json::to_string(&error_result)?);
             } else {
                 eprintln!("Error: {}", e);
             }
@@ -361,11 +361,8 @@ async fn run_verify(cmd: &VerifyCommand) -> Result<VerifyResult> {
 
             if !is_json_mode() {
                 println!("Attestation verified successfully.");
-                if required_capability.is_some() {
-                    println!(
-                        "Required capability '{}' is present.",
-                        cmd.require_capability.as_ref().unwrap()
-                    );
+                if let Some(ref cap_str) = cmd.require_capability {
+                    println!("Required capability '{}' is present.", cap_str);
                 }
             }
             Ok(VerifyResult {

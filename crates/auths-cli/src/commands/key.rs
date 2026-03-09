@@ -312,6 +312,7 @@ fn key_import(alias: &str, seed_file_path: &PathBuf, controller_did: &IdentityDI
             seed_bytes.len()
         ));
     }
+    #[allow(clippy::expect_used)] // INVARIANT: length validated to be 32 bytes on line 309
     let seed: [u8; 32] = seed_bytes.try_into().expect("validated 32 bytes above");
     let seed = Zeroizing::new(seed);
 

@@ -300,7 +300,7 @@ fn output_error(file: &str, exit_code: i32, message: &str) -> Result<()> {
             issuer: None,
             error: Some(message.to_string()),
         };
-        println!("{}", serde_json::to_string(&result).unwrap());
+        println!("{}", serde_json::to_string(&result)?);
     } else {
         eprintln!("Error: {}", message);
     }
@@ -310,7 +310,7 @@ fn output_error(file: &str, exit_code: i32, message: &str) -> Result<()> {
 /// Output the verification result.
 fn output_result(exit_code: i32, result: VerifyArtifactResult) -> Result<()> {
     if is_json_mode() {
-        println!("{}", serde_json::to_string(&result).unwrap());
+        println!("{}", serde_json::to_string(&result)?);
     } else if result.valid {
         print!("Artifact verified");
         if let Some(ref issuer) = result.issuer {

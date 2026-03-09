@@ -4,8 +4,8 @@ use std::sync::Arc;
 use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
 use auths_sdk::context::AuthsContext;
-use auths_sdk::device::{link_device, revoke_device};
 use auths_sdk::device::extend_device;
+use auths_sdk::device::{link_device, revoke_device};
 use auths_sdk::types::{DeviceExtensionConfig, DeviceLinkConfig};
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
@@ -20,8 +20,12 @@ use crate::types::{NapiExtensionResult, NapiLinkResult};
 
 fn open_backend(repo: &PathBuf) -> napi::Result<Arc<GitRegistryBackend>> {
     let config = RegistryConfig::single_tenant(repo);
-    let backend = GitRegistryBackend::open_existing(config)
-        .map_err(|e| format_error("AUTHS_REGISTRY_ERROR", format!("Failed to open registry: {e}")))?;
+    let backend = GitRegistryBackend::open_existing(config).map_err(|e| {
+        format_error(
+            "AUTHS_REGISTRY_ERROR",
+            format!("Failed to open registry: {e}"),
+        )
+    })?;
     Ok(Arc::new(backend))
 }
 
@@ -49,8 +53,12 @@ pub fn link_device_to_identity(
     let parsed_caps: Vec<Capability> = capabilities
         .iter()
         .map(|c| {
-            Capability::parse(c)
-                .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid capability '{c}': {e}")))
+            Capability::parse(c).map_err(|e| {
+                format_error(
+                    "AUTHS_INVALID_INPUT",
+                    format!("Invalid capability '{c}': {e}"),
+                )
+            })
         })
         .collect::<napi::Result<Vec<_>>>()?;
 
@@ -64,7 +72,8 @@ pub fn link_device_to_identity(
         payload: None,
     };
 
-    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
+    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
+        Arc::from(keychain);
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
 
@@ -108,7 +117,8 @@ pub fn revoke_device_from_identity(
 
     let alias = resolve_key_alias(&identity_key_alias, keychain.as_ref())?;
 
-    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
+    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
+        Arc::from(keychain);
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
 
@@ -122,8 +132,12 @@ pub fn revoke_device_from_identity(
         .passphrase_provider(provider)
         .build();
 
-    revoke_device(&device_did, &alias, &ctx, note, clock.as_ref())
-        .map_err(|e| format_error("AUTHS_DEVICE_ERROR", format!("Device revocation failed: {e}")))?;
+    revoke_device(&device_did, &alias, &ctx, note, clock.as_ref()).map_err(|e| {
+        format_error(
+            "AUTHS_DEVICE_ERROR",
+            format!("Device revocation failed: {e}"),
+        )
+    })?;
 
     Ok(())
 }
@@ -137,7 +151,10 @@ pub fn extend_device_authorization(
     passphrase: Option<String>,
 ) -> napi::Result<NapiExtensionResult> {
     if days == 0 {
-        return Err(format_error("AUTHS_INVALID_INPUT", "days must be positive (> 0)"));
+        return Err(format_error(
+            "AUTHS_INVALID_INPUT",
+            "days must be positive (> 0)",
+        ));
     }
 
     let passphrase_str = resolve_passphrase(passphrase);
@@ -150,7 +167,8 @@ pub fn extend_device_authorization(
 
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
-    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
+    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
+        Arc::from(keychain);
 
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
@@ -176,8 +194,12 @@ pub fn extend_device_authorization(
         .passphrase_provider(provider)
         .build();
 
-    let result = extend_device(ext_config, &ctx, clock.as_ref())
-        .map_err(|e| format_error("AUTHS_DEVICE_ERROR", format!("Device extension failed: {e}")))?;
+    let result = extend_device(ext_config, &ctx, clock.as_ref()).map_err(|e| {
+        format_error(
+            "AUTHS_DEVICE_ERROR",
+            format!("Device extension failed: {e}"),
+        )
+    })?;
 
     Ok(NapiExtensionResult {
         device_did: result.device_did.to_string(),

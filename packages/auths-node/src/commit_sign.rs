@@ -36,8 +36,7 @@ pub fn sign_commit(
 
     let repo = PathBuf::from(shellexpand::tilde(&repo_path).as_ref());
 
-    let params =
-        CommitSigningParams::new(&identity_key_alias, "git", data).with_repo_path(repo);
+    let params = CommitSigningParams::new(&identity_key_alias, "git", data).with_repo_path(repo);
 
     let signing_ctx = CommitSigningContext {
         key_storage: keychain,
@@ -48,8 +47,12 @@ pub fn sign_commit(
     #[allow(clippy::disallowed_methods)] // Presentation boundary
     let now = chrono::Utc::now();
 
-    let pem = CommitSigningWorkflow::execute(&signing_ctx, params, now)
-        .map_err(|e| format_error("AUTHS_SIGNING_FAILED", format!("Commit signing failed: {e}")))?;
+    let pem = CommitSigningWorkflow::execute(&signing_ctx, params, now).map_err(|e| {
+        format_error(
+            "AUTHS_SIGNING_FAILED",
+            format!("Commit signing failed: {e}"),
+        )
+    })?;
 
     Ok(NapiCommitSignPemResult {
         signature_pem: pem,

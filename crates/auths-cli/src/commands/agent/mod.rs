@@ -246,7 +246,10 @@ fn start_agent(
     create_restricted_dir(&auths_dir)
         .with_context(|| format!("Failed to create auths directory: {:?}", auths_dir))?;
 
-    let socket = socket_path.unwrap_or_else(|| get_default_socket_path().unwrap());
+    let socket = match socket_path {
+        Some(s) => s,
+        None => get_default_socket_path()?,
+    };
     let pid_path = get_pid_file_path()?;
     let env_path = get_env_file_path()?;
     let timeout = parse_timeout(timeout_str)?;

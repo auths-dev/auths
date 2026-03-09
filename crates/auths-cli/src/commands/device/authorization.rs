@@ -493,6 +493,7 @@ fn list_devices(
 
     let mut entries: Vec<DeviceEntry> = Vec::new();
     for (device_did_str, att_entries) in grouped.by_device.iter() {
+        #[allow(clippy::expect_used)] // INVARIANT: BTreeMap groups are never empty by construction
         let latest = att_entries
             .last()
             .expect("Grouped attestations should not be empty");
