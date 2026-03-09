@@ -193,10 +193,14 @@ fn check_allowed_signers_file() -> Check {
                 match AllowedSigners::load(file_path) {
                     Ok(signers) => {
                         let entries = signers.list();
-                        let attestation_count =
-                            entries.iter().filter(|e| e.source == SignerSource::Attestation).count();
-                        let manual_count =
-                            entries.iter().filter(|e| e.source == SignerSource::Manual).count();
+                        let attestation_count = entries
+                            .iter()
+                            .filter(|e| e.source == SignerSource::Attestation)
+                            .count();
+                        let manual_count = entries
+                            .iter()
+                            .filter(|e| e.source == SignerSource::Manual)
+                            .count();
 
                         let has_markers = std::fs::read_to_string(file_path)
                             .map(|c| c.contains("# auths:attestation"))

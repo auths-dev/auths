@@ -28,9 +28,9 @@ pub fn generate_allowed_signers_file(py: Python<'_>, repo_path: &str) -> PyResul
         let repo = PathBuf::from(shellexpand::tilde(&rp).as_ref());
         let storage = RegistryAttestationStorage::new(&repo);
         let mut signers = AllowedSigners::new("/dev/null");
-        signers.sync(&storage).map_err(|e| {
-            PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] {e}"))
-        })?;
+        signers
+            .sync(&storage)
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] {e}")))?;
         let lines: Vec<String> = signers
             .list()
             .iter()

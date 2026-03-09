@@ -47,10 +47,7 @@ pub struct InstallHooksCommand {
 }
 
 /// Handle git subcommand.
-pub fn handle_git(
-    cmd: GitCommand,
-    repo_override: Option<PathBuf>,
-) -> Result<()> {
+pub fn handle_git(cmd: GitCommand, repo_override: Option<PathBuf>) -> Result<()> {
     match cmd.command {
         GitSubcommand::InstallHooks(subcmd) => handle_install_hooks(subcmd, repo_override),
     }

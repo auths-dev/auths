@@ -102,6 +102,7 @@ pub fn create_org(
             initialize_registry_identity(backend.clone(), &key_alias, &provider, &*keychain, None)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
+        #[allow(clippy::disallowed_methods)] // Presentation boundary: UUID generation
         let rid = uuid::Uuid::new_v4().to_string();
 
         let resolver = RegistryDidResolver::new(backend.clone());
@@ -110,6 +111,7 @@ pub fn create_org(
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
         let org_pk_bytes = *org_resolved.public_key();
 
+        #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
         let admin_capabilities = vec![
             Capability::sign_commit(),
@@ -160,6 +162,7 @@ pub fn create_org(
 
 #[pyfunction]
 #[pyo3(signature = (org_did, member_did, role, repo_path, capabilities_json=None, passphrase=None, note=None, member_public_key_hex=None))]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn add_org_member(
     py: Python<'_>,
     org_did: &str,
@@ -177,7 +180,6 @@ pub fn add_org_member(
     let org_did = org_did.to_string();
     let member_did = member_did.to_string();
     let role_str = role.to_string();
-    let note = note;
 
     py.allow_threads(move || {
         let role: Role = role_str
@@ -272,6 +274,7 @@ pub fn add_org_member(
 
 #[pyfunction]
 #[pyo3(signature = (org_did, member_did, repo_path, passphrase=None, note=None, member_public_key_hex=None))]
+#[allow(clippy::type_complexity)]
 pub fn revoke_org_member(
     py: Python<'_>,
     org_did: &str,

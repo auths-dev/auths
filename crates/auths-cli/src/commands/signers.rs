@@ -82,13 +82,13 @@ fn resolve_signers_path() -> Result<PathBuf> {
         .args(["config", "--get", "gpg.ssh.allowedSignersFile"])
         .output();
 
-    if let Ok(out) = output {
-        if out.status.success() {
-            let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !path_str.is_empty() {
-                let path = PathBuf::from(&path_str);
-                return expand_tilde(&path);
-            }
+    if let Ok(out) = output
+        && out.status.success()
+    {
+        let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !path_str.is_empty() {
+            let path = PathBuf::from(&path_str);
+            return expand_tilde(&path);
         }
     }
 
@@ -102,8 +102,8 @@ fn handle_list(args: &SignersListArgs) -> Result<()> {
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
     if args.json {
-        let json = serde_json::to_string_pretty(signers.list())
-            .context("Failed to serialize entries")?;
+        let json =
+            serde_json::to_string_pretty(signers.list()).context("Failed to serialize entries")?;
         println!("{}", json);
         return Ok(());
     }
@@ -114,10 +114,7 @@ fn handle_list(args: &SignersListArgs) -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{:<40} {:<12} {}",
-        "PRINCIPAL", "SOURCE", "KEY FINGERPRINT"
-    );
+    println!("{:<40} {:<12} KEY FINGERPRINT", "PRINCIPAL", "SOURCE");
     for entry in entries {
         let source = match entry.source {
             SignerSource::Attestation => "attestation",
@@ -251,9 +248,8 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
     let email = format!("{}@github.com", args.username);
-    let principal = SignerPrincipal::Email(
-        EmailAddress::new(&email).map_err(|e| anyhow::anyhow!("{}", e))?,
-    );
+    let principal =
+        SignerPrincipal::Email(EmailAddress::new(&email).map_err(|e| anyhow::anyhow!("{}", e))?);
 
     let mut added = 0;
     for key_str in &ed25519_keys {
