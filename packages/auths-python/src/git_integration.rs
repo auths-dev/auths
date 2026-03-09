@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
-use auths_sdk::workflows::git_integration::{
-    format_allowed_signers_file, generate_allowed_signers,
-};
+use auths_sdk::workflows::allowed_signers::AllowedSigners;
+use auths_sdk::workflows::git_integration::public_key_to_ssh;
 use auths_storage::git::RegistryAttestationStorage;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -28,11 +27,25 @@ pub fn generate_allowed_signers_file(py: Python<'_>, repo_path: &str) -> PyResul
     py.allow_threads(move || {
         let repo = PathBuf::from(shellexpand::tilde(&rp).as_ref());
         let storage = RegistryAttestationStorage::new(&repo);
-        let entries = generate_allowed_signers(&storage).map_err(
-            |e: auths_sdk::workflows::git_integration::GitIntegrationError| {
-                PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] {e}"))
-            },
-        )?;
-        Ok(format_allowed_signers_file(&entries))
+        let mut signers = AllowedSigners::new("/dev/null");
+        signers.sync(&storage).map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_REGISTRY_ERROR] {e}"))
+        })?;
+        let lines: Vec<String> = signers
+            .list()
+            .iter()
+            .filter_map(|entry| {
+                let ssh_key = public_key_to_ssh(entry.public_key.as_bytes()).ok()?;
+                Some(format!(
+                    "{} namespaces=\"git\" {}",
+                    entry.principal, ssh_key
+                ))
+            })
+            .collect();
+        if lines.is_empty() {
+            Ok(String::new())
+        } else {
+            Ok(format!("{}\n", lines.join("\n")))
+        }
     })
 }

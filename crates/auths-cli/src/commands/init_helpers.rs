@@ -4,9 +4,7 @@ use dialoguer::MultiSelect;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use auths_sdk::workflows::git_integration::{
-    format_allowed_signers_file, generate_allowed_signers,
-};
+use auths_sdk::workflows::allowed_signers::AllowedSigners;
 use auths_storage::git::RegistryAttestationStorage;
 
 use crate::ux::format::Output;
@@ -101,14 +99,20 @@ pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()>
 
     let repo_path = get_auths_repo_path()?;
     let storage = RegistryAttestationStorage::new(&repo_path);
-    let entries = generate_allowed_signers(&storage).unwrap_or_default();
-    let content = format_allowed_signers_file(&entries);
 
     let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
     let ssh_dir = home.join(".ssh");
     std::fs::create_dir_all(&ssh_dir)?;
     let signers_path = ssh_dir.join("allowed_signers");
-    std::fs::write(&signers_path, content)?;
+
+    let mut signers = AllowedSigners::load(&signers_path)
+        .unwrap_or_else(|_| AllowedSigners::new(&signers_path));
+    let report = signers
+        .sync(&storage)
+        .map_err(|e| anyhow!("Failed to sync allowed signers: {}", e))?;
+    signers
+        .save()
+        .map_err(|e| anyhow!("Failed to write allowed signers: {}", e))?;
 
     let signers_str = signers_path
         .to_str()
@@ -117,7 +121,7 @@ pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()>
 
     out.println(&format!(
         "  Wrote {} allowed signer(s) to {}",
-        entries.len(),
+        report.added,
         signers_path.display()
     ));
     out.println(&format!(

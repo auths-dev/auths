@@ -1,12 +1,7 @@
 //! Git integration commands for Auths.
-//!
-//! Provides commands for managing Git allowed_signers files based on
-//! Auths device authorizations.
 
 use anyhow::{Context, Result, bail};
-use auths_sdk::workflows::git_integration::{
-    format_allowed_signers_file, generate_allowed_signers,
-};
+use auths_sdk::workflows::allowed_signers::AllowedSigners;
 use auths_storage::git::RegistryAttestationStorage;
 use clap::{Parser, Subcommand};
 #[cfg(unix)]
@@ -27,16 +22,10 @@ pub struct GitCommand {
 #[derive(Subcommand, Debug, Clone)]
 pub enum GitSubcommand {
     /// Generate allowed_signers file from Auths device authorizations.
-    ///
-    /// Scans the identity repository for authorized devices and outputs
-    /// an allowed_signers file compatible with Git's ssh.allowedSignersFile.
     #[command(name = "allowed-signers")]
     AllowedSigners(AllowedSignersCommand),
 
     /// Install Git hooks for automatic allowed_signers regeneration.
-    ///
-    /// Installs a post-merge hook that regenerates the allowed_signers file
-    /// when identity refs change after a git pull/merge.
     #[command(name = "install-hooks")]
     InstallHooks(InstallHooksCommand),
 }
@@ -108,7 +97,8 @@ fn handle_install_hooks(
         let existing = fs::read_to_string(&post_merge_path)
             .with_context(|| format!("Failed to read existing hook: {:?}", post_merge_path))?;
 
-        if existing.contains("auths git allowed-signers") {
+        if existing.contains("auths git allowed-signers") || existing.contains("auths signers sync")
+        {
             println!(
                 "Auths post-merge hook already installed at {:?}",
                 post_merge_path
@@ -120,8 +110,9 @@ fn handle_install_hooks(
                 "A post-merge hook already exists at {:?}\n\
                  It was not created by Auths. Use --force to overwrite, or manually \n\
                  add the following to your existing hook:\n\n\
-                 auths git allowed-signers --output {}",
+                 auths signers sync --repo {} --output {}",
                 post_merge_path,
+                cmd.auths_repo.display(),
                 cmd.allowed_signers_path.display()
             );
         }
@@ -164,20 +155,21 @@ fn handle_install_hooks(
     println!("\nGenerating initial allowed_signers file...");
     let storage = RegistryAttestationStorage::new(&auths_repo);
 
-    match generate_allowed_signers(&storage) {
-        Ok(entries) => {
-            let output = format_allowed_signers_file(&entries);
-            fs::write(&cmd.allowed_signers_path, &output)
-                .with_context(|| format!("Failed to write {:?}", cmd.allowed_signers_path))?;
-            println!(
-                "Wrote {} entries to {:?}",
-                entries.len(),
-                cmd.allowed_signers_path
-            );
+    let mut signers = AllowedSigners::new(&cmd.allowed_signers_path);
+    match signers.sync(&storage) {
+        Ok(report) => {
+            if let Err(e) = signers.save() {
+                eprintln!("Warning: Could not write allowed_signers: {}", e);
+            } else {
+                println!(
+                    "Wrote {} entries to {:?}",
+                    report.added, cmd.allowed_signers_path
+                );
+            }
         }
         Err(e) => {
             eprintln!("Warning: Could not generate initial allowed_signers: {}", e);
-            eprintln!("You may need to run 'auths git allowed-signers' manually.");
+            eprintln!("You may need to run 'auths signers sync' manually.");
         }
     }
 
@@ -200,7 +192,6 @@ fn find_git_dir(repo_path: &Path) -> Result<PathBuf> {
         let content = fs::read_to_string(&git_dir)
             .with_context(|| format!("Failed to read {:?}", git_dir))?;
 
-        // Format: "gitdir: <path>"
         if let Some(path) = content.strip_prefix("gitdir: ") {
             let linked_path = PathBuf::from(path.trim());
             if linked_path.is_absolute() {
@@ -229,7 +220,7 @@ fn generate_post_merge_hook(auths_repo: &Path, allowed_signers_path: &Path) -> S
 # Regenerates allowed_signers file after merge/pull
 
 # Run auths to regenerate allowed_signers
-auths git allowed-signers --repo "{}" --output "{}"
+auths signers sync --repo "{}" --output "{}"
 "#,
         auths_repo.display(),
         allowed_signers_path.display()
@@ -248,34 +239,45 @@ fn handle_allowed_signers(
         expand_tilde(&cmd.repo)?
     };
 
-    // Note: Layout config overrides are deprecated with registry backend.
-    // The registry uses a fixed path structure under refs/auths/registry.
-
     let storage = RegistryAttestationStorage::new(&repo_path);
-    let entries = generate_allowed_signers(&storage)
-        .context("Failed to load attestations from repository")?;
-
-    let output = format_allowed_signers_file(&entries);
 
     if let Some(output_path) = cmd.output_file {
-        if let Some(parent) = output_path.parent()
-            && !parent.as_os_str().is_empty()
-            && !parent.exists()
-        {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create directory {:?}", parent))?;
-        }
-        fs::write(&output_path, &output)
+        let mut signers = AllowedSigners::load(&output_path)
+            .with_context(|| format!("Failed to load {:?}", output_path))?;
+        signers
+            .sync(&storage)
+            .context("Failed to load attestations from repository")?;
+        signers
+            .save()
             .with_context(|| format!("Failed to write to {:?}", output_path))?;
-        eprintln!("Wrote {} entries to {:?}", entries.len(), output_path);
+        eprintln!(
+            "Wrote {} entries to {:?}",
+            signers.list().len(),
+            output_path
+        );
     } else {
-        print!("{}", output);
+        let mut signers = AllowedSigners::new("/dev/null");
+        signers
+            .sync(&storage)
+            .context("Failed to load attestations from repository")?;
+        // Print to stdout in legacy format (no section markers)
+        for entry in signers.list() {
+            println!("{}", format_entry_line(entry));
+        }
     }
 
     Ok(())
 }
 
-fn expand_tilde(path: &Path) -> Result<PathBuf> {
+fn format_entry_line(entry: &auths_sdk::workflows::allowed_signers::SignerEntry) -> String {
+    use auths_sdk::workflows::git_integration::public_key_to_ssh;
+    #[allow(clippy::expect_used)] // INVARIANT: Ed25519PublicKey is always 32 valid bytes
+    let ssh_key = public_key_to_ssh(entry.public_key.as_bytes())
+        .expect("Ed25519PublicKey always encodes to valid SSH key");
+    format!("{} namespaces=\"git\" {}", entry.principal, ssh_key)
+}
+
+pub(crate) fn expand_tilde(path: &Path) -> Result<PathBuf> {
     let path_str = path.to_string_lossy();
     if path_str.starts_with("~/") || path_str == "~" {
         let home = dirs::home_dir().context("Failed to determine home directory")?;
@@ -382,7 +384,6 @@ mod tests {
 
     #[test]
     fn test_allowed_signers_default_repo_contains_tilde() {
-        // Verify the clap default is ~/ and that expand_tilde handles it
         let cmd = AllowedSignersCommand::try_parse_from(["allowed-signers"]).unwrap();
         assert_eq!(cmd.repo, PathBuf::from("~/.auths"));
         let expanded = expand_tilde(&cmd.repo).unwrap();
@@ -415,7 +416,7 @@ mod tests {
         let hook = generate_post_merge_hook(&auths_repo, &allowed_signers);
 
         assert!(hook.starts_with("#!/bin/bash"));
-        assert!(hook.contains("auths git allowed-signers"));
+        assert!(hook.contains("auths signers sync"));
         assert!(hook.contains("/home/user/.auths"));
         assert!(hook.contains(".auths/allowed_signers"));
     }
