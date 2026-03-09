@@ -225,7 +225,9 @@ pub fn sanitize_did(did: &str) -> String {
 
 /// Unsanitize a DID path component back to proper DID format.
 ///
-/// Replaces '_' with ':'.
+/// Restores exactly the first two underscores to colons, matching the
+/// `did:<method>:<method-specific-id>` structure. Any remaining underscores
+/// (e.g., Base64url characters in KERI prefixes) are preserved as-is.
 ///
 /// # Example
 ///
@@ -233,9 +235,17 @@ pub fn sanitize_did(did: &str) -> String {
 /// use auths_id::storage::registry::shard::unsanitize_did;
 ///
 /// assert_eq!(unsanitize_did("did_key_z6MkTest"), "did:key:z6MkTest");
+/// assert_eq!(unsanitize_did("did_keri_ERNbk_r7dPglPwh"), "did:keri:ERNbk_r7dPglPwh");
 /// ```
 pub fn unsanitize_did(sanitized: &str) -> String {
-    sanitized.replace('_', ":")
+    let mut result = sanitized.to_string();
+    if let Some(pos) = result.find('_') {
+        result.replace_range(pos..pos + 1, ":");
+        if let Some(pos2) = result[pos + 1..].find('_') {
+            result.replace_range(pos + 1 + pos2..pos + 1 + pos2 + 1, ":");
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -398,8 +408,29 @@ mod tests {
     }
 
     #[test]
+    fn unsanitize_did_preserves_underscores_in_keri_prefix() {
+        // KERI prefixes use Base64url which includes underscores
+        assert_eq!(
+            unsanitize_did("did_keri_ERNbk_r7dPglPwh"),
+            "did:keri:ERNbk_r7dPglPwh"
+        );
+        assert_eq!(
+            unsanitize_did("did_keri_ExR_E7Y0W1A02St"),
+            "did:keri:ExR_E7Y0W1A02St"
+        );
+    }
+
+    #[test]
     fn sanitize_unsanitize_roundtrip() {
         let original = "did:key:z6MkSomeDevice123";
+        let sanitized = sanitize_did(original);
+        let unsanitized = unsanitize_did(&sanitized);
+        assert_eq!(unsanitized, original);
+    }
+
+    #[test]
+    fn sanitize_unsanitize_roundtrip_keri_with_underscores() {
+        let original = "did:keri:ERNbk_r7dPglPwh_ybgW7y1Ld2qXFx7DtTOjRPsJa5eMA";
         let sanitized = sanitize_did(original);
         let unsanitized = unsanitize_did(&sanitized);
         assert_eq!(unsanitized, original);

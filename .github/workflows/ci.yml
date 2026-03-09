@@ -16,6 +16,10 @@ on:
       - 'LICENSE*'
       - '.gitignore'
 
+permissions:
+  contents: read
+  checks: write
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings

@@ -28,3 +28,29 @@ def test_backwards_compat_alias():
     from auths.agent import AuthsAgentAuth
     from auths.agent import AgentAuth
     assert AuthsAgentAuth is AgentAuth
+
+
+def test_new_service_imports():
+    from auths import (
+        Org, OrgMember, OrgService,
+        AuditReport, AuditService, AuditSummary, CommitRecord,
+        TrustEntry, TrustService,
+        Witness, WitnessService,
+        Check, DiagnosticReport, DoctorService,
+        PairingResponse, PairingResult, PairingService, PairingSession,
+    )
+    assert all(cls is not None for cls in [
+        Org, OrgMember, OrgService,
+        AuditReport, AuditService, AuditSummary, CommitRecord,
+        TrustEntry, TrustService,
+        Witness, WitnessService,
+        Check, DiagnosticReport, DoctorService,
+        PairingResponse, PairingResult, PairingService, PairingSession,
+    ])
+
+
+def test_new_error_imports():
+    from auths import OrgError
+    from auths._errors import PairingError
+    assert OrgError is not None
+    assert PairingError is not None

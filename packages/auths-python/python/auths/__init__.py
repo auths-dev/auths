@@ -7,6 +7,7 @@ from auths._errors import (
     IdentityError,
     KeychainError,
     NetworkError,
+    OrgError,
     StorageError,
     VerificationError,
 )
@@ -28,6 +29,12 @@ from auths._native import (
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
+from auths.doctor import Check, DiagnosticReport, DoctorService
+from auths.audit import AuditReport, AuditService, AuditSummary, CommitRecord
+from auths.org import Org, OrgMember, OrgService
+from auths.pairing import PairingResponse, PairingResult, PairingService, PairingSession
+from auths.trust import TrustEntry, TrustService
+from auths.witness import Witness, WitnessService
 from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
 from auths.attestation_query import Attestation, AttestationService
 from auths.commit import CommitSigningResult
@@ -101,4 +108,24 @@ __all__ = [
     "IdentityRotationResult",
     "WitnessConfig",
     "WitnessKey",
+    "Org",
+    "OrgMember",
+    "OrgService",
+    "OrgError",
+    "AuditReport",
+    "AuditService",
+    "AuditSummary",
+    "CommitRecord",
+    "TrustEntry",
+    "TrustService",
+    "Witness",
+    "WitnessService",
+    "Check",
+    "DiagnosticReport",
+    "DoctorService",
+    "PairingResponse",
+    "PairingResult",
+    "PairingService",
+    "PairingSession",
+    "PairingError",
 ]

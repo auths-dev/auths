@@ -4,22 +4,28 @@
 
 use pyo3::prelude::*;
 
+pub mod audit;
 pub mod artifact_publish;
 pub mod artifact_sign;
 pub mod attestation_query;
 pub mod commit_sign;
+pub mod diagnostics;
 pub mod commit_verify;
 pub mod device_ext;
 pub mod git_integration;
 pub mod identity;
 pub mod identity_sign;
+pub mod org;
+pub mod pairing;
 pub mod policy;
 pub mod rotation;
 pub mod runtime;
 pub mod sign;
 pub mod token;
+pub mod trust;
 pub mod types;
 pub mod verify;
+pub mod witness;
 
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -104,6 +110,29 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         attestation_query::get_latest_attestation,
         m
     )?)?;
+
+    m.add_function(wrap_pyfunction!(audit::generate_audit_report, m)?)?;
+
+    m.add_function(wrap_pyfunction!(org::create_org, m)?)?;
+    m.add_function(wrap_pyfunction!(org::add_org_member, m)?)?;
+    m.add_function(wrap_pyfunction!(org::revoke_org_member, m)?)?;
+    m.add_function(wrap_pyfunction!(org::list_org_members, m)?)?;
+
+    m.add_function(wrap_pyfunction!(trust::pin_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(trust::remove_pinned_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(trust::list_pinned_identities, m)?)?;
+    m.add_function(wrap_pyfunction!(trust::get_pinned_identity, m)?)?;
+
+    m.add_function(wrap_pyfunction!(witness::add_witness, m)?)?;
+    m.add_function(wrap_pyfunction!(witness::remove_witness, m)?)?;
+    m.add_function(wrap_pyfunction!(witness::list_witnesses, m)?)?;
+
+    m.add_function(wrap_pyfunction!(diagnostics::run_diagnostics, m)?)?;
+
+    m.add_class::<pairing::PyPairingHandle>()?;
+    m.add_function(wrap_pyfunction!(pairing::create_pairing_session_ffi, m)?)?;
+    m.add_function(wrap_pyfunction!(pairing::join_pairing_session_ffi, m)?)?;
+    m.add_function(wrap_pyfunction!(pairing::complete_pairing_ffi, m)?)?;
 
     Ok(())
 }

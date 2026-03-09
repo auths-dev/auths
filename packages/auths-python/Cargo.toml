@@ -22,7 +22,8 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hex = "0.4"
-tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "time"] }
+axum = "0.8"
 
 # Phase 2: Identity lifecycle
 auths-sdk = { path = "../../crates/auths-sdk" }
@@ -31,5 +32,9 @@ auths-id = { path = "../../crates/auths-id" }
 auths-crypto = { path = "../../crates/auths-crypto" }
 auths-storage = { path = "../../crates/auths-storage", features = ["backend-git"] }
 auths-policy = { path = "../../crates/auths-policy" }
+auths-pairing-daemon = { path = "../../crates/auths-pairing-daemon" }
+auths-infra-git = { path = "../../crates/auths-infra-git" }
 shellexpand = "3"
+url = "2"
 sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }

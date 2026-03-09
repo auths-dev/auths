@@ -56,3 +56,22 @@ class IdentityError(AuthsError):
 
     Codes: identity_exists, identity_not_found, invalid_did.
     """
+
+
+class OrgError(AuthsError):
+    """Organization operation failed.
+
+    Codes: org_error, admin_not_found, member_not_found,
+    already_revoked, invalid_capability, invalid_role.
+    """
+
+
+class PairingError(AuthsError):
+    """Device pairing operation failed.
+
+    Codes: pairing_error, timeout, connection_failed, session_expired.
+    """
+
+    def __init__(self, message: str, code: str, should_retry: bool = False, **context):
+        self.should_retry = should_retry
+        super().__init__(message, code, **context)

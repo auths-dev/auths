@@ -1,7 +1,4 @@
-"""Tests for key rotation (fn-25.3).
-
-These tests require AUTHS_KEYCHAIN_BACKEND=file and AUTHS_PASSPHRASE=test.
-"""
+"""Tests for key rotation (fn-25.3)."""
 
 import os
 import tempfile
@@ -17,17 +14,12 @@ def auths_repo():
     """Create a temporary auths repo with an identity for rotation tests."""
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_path = os.path.join(tmpdir, "test-repo")
-        os.environ["AUTHS_KEYCHAIN_BACKEND"] = "file"
-        os.environ["AUTHS_PASSPHRASE"] = "test"
-        auths = Auths(repo_path=repo_path, passphrase="test")
+        auths = Auths(repo_path=repo_path, passphrase="Test-pass-123")
         try:
             identity = auths.identities.create(label="test-rotate", repo_path=repo_path)
             yield auths, identity
         except Exception:
             pytest.skip("Identity creation requires initialized git repo")
-        finally:
-            os.environ.pop("AUTHS_KEYCHAIN_BACKEND", None)
-            os.environ.pop("AUTHS_PASSPHRASE", None)
 
 
 class TestIdentityRotationResult:
@@ -76,12 +68,8 @@ class TestRotationWithMultipleAgents:
     def test_rotate_with_two_delegated_agents(self):
         """Regression: rotation must work when 2+ agents are delegated."""
         import tempfile
-        import os
-        os.environ["AUTHS_KEYCHAIN_BACKEND"] = "file"
-        os.environ["AUTHS_PASSPHRASE"] = "test"
         with tempfile.TemporaryDirectory() as tmpdir:
-            from auths import Auths
-            auths = Auths(repo_path=tmpdir, passphrase="test")
+            auths = Auths(repo_path=tmpdir, passphrase="Test-pass-123")
             operator = auths.identities.create(label="rotation-test")
 
             auths.identities.delegate_agent(

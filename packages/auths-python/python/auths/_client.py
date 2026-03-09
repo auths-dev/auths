@@ -23,6 +23,8 @@ from auths._errors import (
     IdentityError,
     KeychainError,
     NetworkError,
+    OrgError,
+    PairingError,
     StorageError,
     VerificationError,
 )
@@ -62,6 +64,13 @@ _ERROR_CODE_MAP = {
     "AUTHS_ROTATION_ERROR": ("unknown", IdentityError),
     "AUTHS_NETWORK_ERROR": ("server_error", NetworkError),
     "AUTHS_VERIFICATION_FAILED": ("invalid_signature", VerificationError),
+    "AUTHS_ORG_ERROR": ("org_error", OrgError),
+    "AUTHS_PAIRING_ERROR": ("pairing_error", PairingError),
+    "AUTHS_PAIRING_TIMEOUT": ("timeout", PairingError),
+    "AUTHS_TRUST_ERROR": ("trust_error", StorageError),
+    "AUTHS_WITNESS_ERROR": ("witness_error", StorageError),
+    "AUTHS_AUDIT_ERROR": ("audit_error", VerificationError),
+    "AUTHS_DIAGNOSTIC_ERROR": ("diagnostic_error", VerificationError),
 }
 
 
@@ -74,6 +83,9 @@ def _map_error(exc: Exception, *, default_cls: type = VerificationError) -> Exce
     if code and code in _ERROR_CODE_MAP:
         py_code, cls = _ERROR_CODE_MAP[code]
         return cls(msg, code=py_code)
+    low = msg.lower()
+    if "public key" in low or "private key" in low or "invalid key" in low or "hex" in low:
+        return CryptoError(msg, code="invalid_key")
     return default_cls(msg, code="unknown")
 
 
@@ -100,12 +112,24 @@ class Auths:
         self._passphrase = passphrase
 
         from auths.attestation_query import AttestationService
+        from auths.audit import AuditService
         from auths.devices import DeviceService
         from auths.identity import IdentityService
+        from auths.org import OrgService
+        from auths.doctor import DoctorService
+        from auths.pairing import PairingService
+        from auths.trust import TrustService
+        from auths.witness import WitnessService
 
         self.identities = IdentityService(self)
         self.devices = DeviceService(self)
         self.attestations = AttestationService(self)
+        self.orgs = OrgService(self)
+        self.audit = AuditService(self)
+        self.trust = TrustService(self)
+        self.witnesses = WitnessService(self)
+        self.doctor = DoctorService(self)
+        self.pairing = PairingService(self)
 
     def verify(
         self,
@@ -505,6 +529,8 @@ class Auths:
                 raise StorageError(msg, code="duplicate_attestation") from exc
             if "verification_failed" in msg:
                 raise VerificationError(msg, code="verification_failed") from exc
+            if "unreachable" in msg.lower() or "connection" in msg.lower() or "timeout" in msg.lower():
+                raise _map_network_error(exc) from exc
             raise _map_error(exc) from exc
 
     def get_token(
