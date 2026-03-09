@@ -5,8 +5,8 @@ from auths import Auths
 from auths.audit import AuditReport, AuditSummary, CommitRecord
 
 
-def test_audit_with_unsigned_commits(tmp_path):
-    repo_dir = tmp_path / "git-repo"
+def _init_unsigned_repo(repo_dir):
+    """Initialize a git repo with signing explicitly disabled."""
     repo_dir.mkdir()
     subprocess.run(["git", "init"], cwd=str(repo_dir), check=True, capture_output=True)
     subprocess.run(
@@ -17,6 +17,15 @@ def test_audit_with_unsigned_commits(tmp_path):
         ["git", "config", "user.email", "test@example.com"],
         cwd=str(repo_dir), check=True, capture_output=True,
     )
+    subprocess.run(
+        ["git", "config", "commit.gpgsign", "false"],
+        cwd=str(repo_dir), check=True, capture_output=True,
+    )
+
+
+def test_audit_with_unsigned_commits(tmp_path):
+    repo_dir = tmp_path / "git-repo"
+    _init_unsigned_repo(repo_dir)
     readme = repo_dir / "README.md"
     readme.write_text("# Test Repo\n")
     subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True, capture_output=True)
@@ -35,16 +44,7 @@ def test_audit_with_unsigned_commits(tmp_path):
 
 def test_audit_summary_properties(tmp_path):
     repo_dir = tmp_path / "git-repo"
-    repo_dir.mkdir()
-    subprocess.run(["git", "init"], cwd=str(repo_dir), check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=str(repo_dir), check=True, capture_output=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=str(repo_dir), check=True, capture_output=True,
-    )
+    _init_unsigned_repo(repo_dir)
     readme = repo_dir / "README.md"
     readme.write_text("# Test\n")
     subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True, capture_output=True)
@@ -62,16 +62,7 @@ def test_audit_summary_properties(tmp_path):
 
 def test_audit_is_compliant_false_when_unsigned(tmp_path):
     repo_dir = tmp_path / "git-repo"
-    repo_dir.mkdir()
-    subprocess.run(["git", "init"], cwd=str(repo_dir), check=True, capture_output=True)
-    subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=str(repo_dir), check=True, capture_output=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=str(repo_dir), check=True, capture_output=True,
-    )
+    _init_unsigned_repo(repo_dir)
     readme = repo_dir / "README.md"
     readme.write_text("# Unsigned\n")
     subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True, capture_output=True)
@@ -100,8 +91,8 @@ def test_audit_signing_rate_zero_for_empty(tmp_path):
 
 def test_audit_commit_records(tmp_path):
     repo_dir = tmp_path / "git-repo"
-    repo_dir.mkdir()
-    subprocess.run(["git", "init"], cwd=str(repo_dir), check=True, capture_output=True)
+    _init_unsigned_repo(repo_dir)
+    # Override author for this test
     subprocess.run(
         ["git", "config", "user.name", "Dev"],
         cwd=str(repo_dir), check=True, capture_output=True,

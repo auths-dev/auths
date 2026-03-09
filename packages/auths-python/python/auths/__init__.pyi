@@ -7,6 +7,12 @@ class Auths:
     identities: IdentityService
     devices: DeviceService
     attestations: AttestationService
+    orgs: OrgService
+    audit: AuditService
+    trust: TrustService
+    pairing: PairingService
+    witnesses: WitnessService
+    doctor: DoctorService
     def __init__(self, repo_path: str = "~/.auths", passphrase: str | None = None) -> None: ...
     def verify(self, attestation_json: str, issuer_key: str, required_capability: str | None = None, at: str | None = None) -> VerificationResult: ...
     def verify_chain(self, attestations: list[str], root_key: str, required_capability: str | None = None, witnesses: WitnessConfig | None = None) -> VerificationReport: ...
@@ -39,6 +45,8 @@ class NetworkError(AuthsError):
     def __init__(self, message: str, code: str, should_retry: bool = False, **context: object) -> None: ...
 
 class IdentityError(AuthsError): ...
+class OrgError(AuthsError): ...
+class PairingError(AuthsError): ...
 
 # -- Native types --
 
@@ -313,3 +321,146 @@ class AuthsJWKSClient:
 
 def discover_layout(repo_root: str = ".") -> LayoutInfo: ...
 def verify_commit_range(commit_range: str, identity_bundle: str | None = None, allowed_signers: str = ".auths/allowed_signers", mode: str = "enforce") -> VerifyResult: ...
+
+# -- Organization --
+
+@dataclass
+class Org:
+    prefix: str
+    did: str
+    label: str
+    repo_path: str
+
+@dataclass
+class OrgMember:
+    member_did: str
+    role: str
+    capabilities: list[str]
+    issuer_did: str
+    attestation_rid: str
+    revoked: bool
+    expires_at: str | None
+
+class OrgService:
+    def create(self, label: str, repo_path: str | None = None, passphrase: str | None = None) -> Org: ...
+    def add_member(self, org_did: str, member_did: str, role: str = "member", capabilities: list[str] | None = None, note: str | None = None, repo_path: str | None = None, passphrase: str | None = None) -> OrgMember: ...
+    def revoke_member(self, org_did: str, member_did: str, note: str | None = None, repo_path: str | None = None, passphrase: str | None = None) -> OrgMember: ...
+    def update_member(self, org_did: str, member_did: str, role: str | None = None, capabilities: list[str] | None = None, note: str | None = None, repo_path: str | None = None, passphrase: str | None = None) -> OrgMember: ...
+    def list_members(self, org_did: str, include_revoked: bool = False, repo_path: str | None = None) -> list[OrgMember]: ...
+    def get_member(self, org_did: str, member_did: str, repo_path: str | None = None) -> OrgMember | None: ...
+
+# -- Audit --
+
+@dataclass
+class AuditSummary:
+    total_commits: int
+    signed_commits: int
+    unsigned_commits: int
+    auths_signed: int
+    gpg_signed: int
+    ssh_signed: int
+    verification_passed: int
+    verification_failed: int
+    @property
+    def signing_rate(self) -> float: ...
+
+@dataclass
+class CommitRecord:
+    oid: str
+    author_name: str
+    author_email: str
+    date: str
+    message: str
+    signature_type: str | None
+    signer_did: str | None
+    verified: bool | None
+
+@dataclass
+class AuditReport:
+    commits: list[CommitRecord]
+    summary: AuditSummary
+
+class AuditService:
+    def report(self, repo_path: str | None = None, since: str | None = None, until: str | None = None, author: str | None = None, limit: int = 500) -> AuditReport: ...
+    def is_compliant(self, repo_path: str | None = None, since: str | None = None, until: str | None = None) -> bool: ...
+
+# -- Trust --
+
+@dataclass
+class TrustEntry:
+    did: str
+    label: str | None
+    trust_level: str
+    first_seen: str
+    kel_sequence: int | None
+    pinned_at: str
+
+class TrustService:
+    def pin(self, did: str, label: str | None = None, trust_level: str = "manual", repo_path: str | None = None) -> TrustEntry: ...
+    def remove(self, did: str, repo_path: str | None = None) -> None: ...
+    def list(self, repo_path: str | None = None) -> list[TrustEntry]: ...
+    def get(self, did: str, repo_path: str | None = None) -> TrustEntry | None: ...
+    def is_trusted(self, did: str, repo_path: str | None = None) -> bool: ...
+
+# -- Witness --
+
+@dataclass
+class Witness:
+    url: str
+    did: str | None
+    label: str | None
+
+class WitnessService:
+    def add(self, url: str, label: str | None = None, repo_path: str | None = None) -> Witness: ...
+    def remove(self, url: str, repo_path: str | None = None) -> None: ...
+    def list(self, repo_path: str | None = None) -> list[Witness]: ...
+
+# -- Doctor --
+
+@dataclass
+class Check:
+    name: str
+    passed: bool
+    message: str
+    fix_hint: str | None
+
+@dataclass
+class DiagnosticReport:
+    checks: list[Check]
+    all_passed: bool
+    version: str
+
+class DoctorService:
+    def check(self, repo_path: str | None = None) -> DiagnosticReport: ...
+    def check_one(self, name: str, repo_path: str | None = None) -> Check: ...
+
+# -- Pairing --
+
+@dataclass
+class PairingResponse:
+    device_did: str
+    device_name: str | None
+    device_public_key_hex: str
+    capabilities: list[str]
+
+@dataclass
+class PairingResult:
+    device_did: str
+    device_name: str | None
+    attestation_rid: str | None
+
+class PairingSession:
+    session_id: str
+    short_code: str
+    endpoint: str
+    token: str
+    controller_did: str
+    def wait_for_response(self, timeout_secs: int = 300) -> PairingResponse: ...
+    def stop(self) -> None: ...
+    def __enter__(self) -> PairingSession: ...
+    def __exit__(self, exc_type: type | None, exc_val: BaseException | None, exc_tb: object | None) -> bool: ...
+
+class PairingService:
+    def create_session(self, capabilities: list[str] | None = None, timeout_secs: int = 300, bind_address: str = "0.0.0.0", enable_mdns: bool = True, repo_path: str | None = None, passphrase: str | None = None) -> PairingSession: ...
+    def join(self, short_code: str, endpoint: str, token: str, device_name: str | None = None, repo_path: str | None = None, passphrase: str | None = None) -> PairingResult: ...
+    def complete(self, session: PairingSession, response: PairingResponse, repo_path: str | None = None, passphrase: str | None = None) -> PairingResult: ...

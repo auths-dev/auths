@@ -37,3 +37,4 @@ auths-infra-git = { path = "../../crates/auths-infra-git" }
 shellexpand = "3"
 url = "2"
 sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }

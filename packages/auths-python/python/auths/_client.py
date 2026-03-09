@@ -83,6 +83,9 @@ def _map_error(exc: Exception, *, default_cls: type = VerificationError) -> Exce
     if code and code in _ERROR_CODE_MAP:
         py_code, cls = _ERROR_CODE_MAP[code]
         return cls(msg, code=py_code)
+    low = msg.lower()
+    if "public key" in low or "private key" in low or "invalid key" in low or "hex" in low:
+        return CryptoError(msg, code="invalid_key")
     return default_cls(msg, code="unknown")
 
 
@@ -526,6 +529,8 @@ class Auths:
                 raise StorageError(msg, code="duplicate_attestation") from exc
             if "verification_failed" in msg:
                 raise VerificationError(msg, code="verification_failed") from exc
+            if "unreachable" in msg.lower() or "connection" in msg.lower() or "timeout" in msg.lower():
+                raise _map_network_error(exc) from exc
             raise _map_error(exc) from exc
 
     def get_token(

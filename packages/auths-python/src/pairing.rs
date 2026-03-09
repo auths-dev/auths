@@ -28,8 +28,9 @@ fn resolve_repo(repo_path: &str) -> PathBuf {
 
 fn get_keychain(
     passphrase: &str,
+    repo_path: &str,
 ) -> PyResult<Box<dyn auths_core::storage::keychain::KeyStorage + Send + Sync>> {
-    let env_config = make_keychain_config(passphrase);
+    let env_config = make_keychain_config(passphrase, repo_path);
     auths_core::storage::keychain::get_platform_keychain_with_config(&env_config)
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))
 }
@@ -218,6 +219,7 @@ pub fn join_pairing_session_ffi(
 ) -> PyResult<(String, Option<String>)> {
     let passphrase_str = resolve_passphrase(passphrase);
     let repo = resolve_repo(repo_path);
+    let repo_path_str = repo_path.to_string();
     let short_code = short_code.to_string();
     let endpoint = endpoint.to_string();
     let token = token.to_string();
@@ -232,7 +234,7 @@ pub fn join_pairing_session_ffi(
         let controller_identity_did =
             IdentityDID::new_unchecked(managed.controller_did.to_string());
 
-        let keychain = get_keychain(&passphrase_str)?;
+        let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let aliases = keychain
             .list_aliases_for_identity(&controller_identity_did)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
@@ -294,15 +296,16 @@ pub fn join_pairing_session_ffi(
             })?
             .to_string();
 
-        let controller_did_str = session_data["controller_did"]
+        let token_data = &session_data["token"];
+        let controller_did_str = token_data["controller_did"]
             .as_str()
             .unwrap_or("")
             .to_string();
-        let ephemeral_pubkey_str = session_data["ephemeral_pubkey"]
+        let ephemeral_pubkey_str = token_data["ephemeral_pubkey"]
             .as_str()
             .unwrap_or("")
             .to_string();
-        let capabilities: Vec<String> = session_data["capabilities"]
+        let capabilities: Vec<String> = token_data["capabilities"]
             .as_array()
             .map(|arr| {
                 arr.iter()
@@ -310,7 +313,7 @@ pub fn join_pairing_session_ffi(
                     .collect()
             })
             .unwrap_or_default();
-        let expires_at = session_data["expires_at"].as_i64().unwrap_or(0);
+        let expires_at = token_data["expires_at"].as_i64().unwrap_or(0);
 
         let now = Utc::now();
         let pairing_token = auths_core::pairing::PairingToken {
@@ -388,6 +391,7 @@ pub fn complete_pairing_ffi(
 ) -> PyResult<(String, Option<String>, String)> {
     let passphrase_str = resolve_passphrase(passphrase);
     let repo = resolve_repo(repo_path);
+    let repo_path_str = repo_path.to_string();
     let device_did = device_did.to_string();
     let device_pk_hex = device_public_key_hex.to_string();
     let capabilities: Vec<String> = if let Some(json) = capabilities_json {
@@ -410,7 +414,7 @@ pub fn complete_pairing_ffi(
         let controller_identity_did =
             IdentityDID::new_unchecked(managed.controller_did.to_string());
 
-        let keychain = get_keychain(&passphrase_str)?;
+        let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let aliases = keychain
             .list_aliases_for_identity(&controller_identity_did)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;

@@ -62,7 +62,7 @@ pub fn rotate_identity_ffi(
     passphrase: Option<String>,
 ) -> PyResult<PyIdentityRotationResult> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let env_config = make_keychain_config(&passphrase_str);
+    let env_config = make_keychain_config(&passphrase_str, repo_path);
     let provider = Arc::new(PrefilledPassphraseProvider::new(&passphrase_str));
     let clock = Arc::new(SystemClock);
 

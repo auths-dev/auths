@@ -83,6 +83,7 @@ class OrgService:
         note: str | None = None,
         repo_path: str | None = None,
         passphrase: str | None = None,
+        member_public_key_hex: str | None = None,
     ) -> OrgMember:
         """Add a member to an organization.
 
@@ -92,6 +93,8 @@ class OrgService:
             role: One of "admin", "member", "readonly".
             capabilities: Explicit capability list. If None, uses role defaults.
             note: Optional human-readable note for the attestation.
+            member_public_key_hex: Member's Ed25519 public key hex. Required when
+                the member's identity is in a different registry.
 
         Usage:
             member = client.orgs.add_member(org.did, dev.did, role="member")
@@ -102,6 +105,7 @@ class OrgService:
         try:
             m_did, r, caps_str, issuer, rid, revoked, expires = _add_org_member(
                 org_did, member_did, role, rp, caps_json, pp, note,
+                member_public_key_hex,
             )
             return OrgMember(
                 member_did=m_did,
@@ -122,6 +126,7 @@ class OrgService:
         note: str | None = None,
         repo_path: str | None = None,
         passphrase: str | None = None,
+        member_public_key_hex: str | None = None,
     ) -> OrgMember:
         """Revoke a member's authorization.
 
@@ -129,6 +134,8 @@ class OrgService:
             org_did: The organization's DID.
             member_did: The member's DID to revoke.
             note: Optional human-readable note.
+            member_public_key_hex: Member's Ed25519 public key hex. Required when
+                the member's identity is in a different registry.
 
         Usage:
             revoked = client.orgs.revoke_member(org.did, dev.did)
@@ -137,7 +144,7 @@ class OrgService:
         pp = passphrase or self._client._passphrase
         try:
             m_did, r, caps_str, issuer, rid, revoked, expires = _revoke_org_member(
-                org_did, member_did, rp, pp, note,
+                org_did, member_did, rp, pp, note, member_public_key_hex,
             )
             return OrgMember(
                 member_did=m_did,
@@ -160,6 +167,7 @@ class OrgService:
         note: str | None = None,
         repo_path: str | None = None,
         passphrase: str | None = None,
+        member_public_key_hex: str | None = None,
     ) -> OrgMember:
         """Update a member's role or capabilities.
 
@@ -169,6 +177,8 @@ class OrgService:
             role: New role. If None, keeps current.
             capabilities: New capabilities. If None, uses role defaults.
             note: Optional note.
+            member_public_key_hex: Member's Ed25519 public key hex. Required when
+                the member's identity is in a different registry.
 
         Usage:
             updated = client.orgs.update_member(org.did, dev.did, role="admin")
@@ -176,11 +186,13 @@ class OrgService:
         self.revoke_member(
             org_did, member_did, note="superseded by update",
             repo_path=repo_path, passphrase=passphrase,
+            member_public_key_hex=member_public_key_hex,
         )
         return self.add_member(
             org_did, member_did, role=role or "member",
             capabilities=capabilities, note=note,
             repo_path=repo_path, passphrase=passphrase,
+            member_public_key_hex=member_public_key_hex,
         )
 
     def list_members(

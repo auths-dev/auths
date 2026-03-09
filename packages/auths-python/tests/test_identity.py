@@ -5,25 +5,17 @@ import pytest
 from auths import AgentIdentity, Auths, DelegatedAgent, Device, Identity
 
 
-@pytest.fixture
-def auths(tmp_path):
-    """Create an Auths client with a temp directory (registry auto-inits on first use)."""
-    repo = tmp_path / "test-repo"
-    repo.mkdir()
-    return Auths(repo_path=str(repo), passphrase="Test-pass-123")
-
-
-def test_create_identity(auths):
+def test_create_identity(shared_auths_with_identity):
     """auths.identities.create() should return an Identity with a did:keri: DID."""
-    identity = auths.identities.create(label="test-key")
+    _client, identity = shared_auths_with_identity
     assert isinstance(identity, Identity)
     assert identity.did.startswith("did:keri:")
-    assert identity.label == "test-key"
+    assert identity.label == "shared-test-key"
 
 
-def test_delegate_agent(auths):
+def test_delegate_agent(shared_auths_with_identity):
     """identities.delegate_agent() should return a DelegatedAgent with did:key: prefix."""
-    identity = auths.identities.create(label="test-key")
+    auths, identity = shared_auths_with_identity
     agent = auths.identities.delegate_agent(
         identity.did, name="ci-bot", capabilities=["sign"]
     )
@@ -33,16 +25,18 @@ def test_delegate_agent(auths):
     assert agent.attestation
 
 
-def test_create_agent_identity(auths):
+def test_create_agent_identity(shared_auths_with_identity):
     """identities.create_agent() should return an AgentIdentity with did:keri: prefix."""
+    auths, _identity = shared_auths_with_identity
     agent = auths.identities.create_agent(name="standalone-bot", capabilities=["sign"])
     assert isinstance(agent, AgentIdentity)
     assert agent.did.startswith("did:keri:")
     assert agent._key_alias == "standalone-bot-agent"
 
 
-def test_device_lifecycle(auths):
-    """Full device lifecycle: link -> verify -> revoke."""
+def test_device_lifecycle(tmp_path):
+    """Full device lifecycle: link -> verify -> revoke. Uses fresh client (mutating)."""
+    auths = Auths(repo_path=str(tmp_path / "test-repo"), passphrase="Test-pass-123")
     identity = auths.identities.create(label="test-key")
 
     device = auths.devices.link(
@@ -58,8 +52,9 @@ def test_device_lifecycle(auths):
     )
 
 
-def test_stripe_style_chaining(auths):
-    """The full 'Stripe for identity' flow should work end-to-end."""
+def test_stripe_style_chaining(tmp_path):
+    """The full 'Stripe for identity' flow should work end-to-end. Uses fresh client (mutating)."""
+    auths = Auths(repo_path=str(tmp_path / "test-repo"), passphrase="Test-pass-123")
     identity = auths.identities.create(label="laptop")
     agent = auths.identities.delegate_agent(
         identity.did, name="deploy-bot", capabilities=["sign", "verify"]

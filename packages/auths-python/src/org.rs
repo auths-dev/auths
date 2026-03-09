@@ -5,25 +5,20 @@ use std::sync::Arc;
 
 use auths_core::ports::clock::SystemClock;
 use auths_core::ports::id::SystemUuidProvider;
-use auths_core::signing::StorageSigner;
+use auths_core::signing::{DidResolver, StorageSigner};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias};
+use auths_id::attestation::create::create_signed_attestation;
 use auths_id::identity::initialize::initialize_registry_identity;
-use auths_id::identity::resolve::{DefaultDidResolver, DidResolver};
-use auths_id::attestation::AttestationSink;
-use auths_id::storage::attestation::AttestationSource;
+use auths_id::identity::resolve::RegistryDidResolver;
 use auths_id::storage::git_refs::AttestationMetadata;
-use auths_id::storage::identity::IdentityStorage;
+use auths_id::storage::registry::{MemberFilter, RegistryBackend};
 use auths_sdk::workflows::org::{
     AddMemberCommand, OrgContext, RevokeMemberCommand, add_organization_member,
     revoke_organization_member,
 };
-use auths_core::storage::keychain::KeyAlias;
-use auths_storage::git::GitRegistryBackend;
-use auths_storage::git::RegistryAttestationStorage;
-use auths_storage::git::RegistryIdentityStorage;
-use auths_storage::git::RegistryConfig;
-use auths_verifier::core::{
-    Attestation, Capability, Ed25519PublicKey, Role, VerifiedAttestation,
-};
+use auths_storage::git::{GitRegistryBackend, RegistryConfig};
+use auths_verifier::Capability;
+use auths_verifier::core::{Ed25519PublicKey, Role};
 use auths_verifier::types::DeviceDID;
 use chrono::Utc;
 
@@ -31,8 +26,9 @@ use crate::identity::{make_keychain_config, resolve_passphrase};
 
 fn get_keychain(
     passphrase: &str,
+    repo_path: &str,
 ) -> PyResult<Box<dyn auths_core::storage::keychain::KeyStorage + Send + Sync>> {
-    let env_config = make_keychain_config(passphrase);
+    let env_config = make_keychain_config(passphrase, repo_path);
     auths_core::storage::keychain::get_platform_keychain_with_config(&env_config)
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] {e}")))
 }
@@ -41,16 +37,30 @@ fn resolve_repo(repo_path: &str) -> PathBuf {
     PathBuf::from(shellexpand::tilde(repo_path).as_ref())
 }
 
-fn derive_signer_alias(org_did: &str) -> String {
-    format!(
-        "org-{}",
-        org_did
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .take(20)
-            .collect::<String>()
-            .to_lowercase()
-    )
+fn find_signer_alias(
+    org_did: &str,
+    keychain: &(dyn auths_core::storage::keychain::KeyStorage + Send + Sync),
+) -> PyResult<KeyAlias> {
+    let identity_did = IdentityDID::new_unchecked(org_did.to_string());
+    let aliases = keychain
+        .list_aliases_for_identity(&identity_did)
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
+    let alias = aliases
+        .into_iter()
+        .find(|a| !a.contains("--next-"))
+        .ok_or_else(|| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_ORG_ERROR] No signing key found for org {org_did}"
+            ))
+        })?;
+    Ok(alias)
+}
+
+fn extract_org_prefix(org_did: &str) -> String {
+    org_did
+        .strip_prefix("did:keri:")
+        .unwrap_or(org_did)
+        .to_string()
 }
 
 #[pyfunction]
@@ -77,12 +87,15 @@ pub fn create_org(
                 .to_lowercase()
         );
 
-        let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
-            RegistryConfig::single_tenant(&repo),
-        ));
+        let config = RegistryConfig::single_tenant(&repo);
+        let backend = GitRegistryBackend::from_config_unchecked(config);
+        backend
+            .init_if_needed()
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
+        let backend = Arc::new(backend);
 
         let key_alias = KeyAlias::new_unchecked(key_alias_str);
-        let keychain = get_keychain(&passphrase_str)?;
+        let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let provider =
             auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
@@ -90,14 +103,9 @@ pub fn create_org(
             initialize_registry_identity(backend.clone(), &key_alias, &provider, &*keychain, None)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
-        // Create admin self-attestation
-        let identity_storage = RegistryIdentityStorage::new(&repo);
-        let managed_identity = identity_storage
-            .load_identity()
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
-        let rid = managed_identity.storage_id;
+        let rid = uuid::Uuid::new_v4().to_string();
 
-        let resolver = DefaultDidResolver::with_repo(&repo);
+        let resolver = RegistryDidResolver::new(backend.clone());
         let org_resolved = resolver
             .resolve(controller_did.as_str())
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
@@ -118,13 +126,13 @@ pub fn create_org(
         };
 
         let signer = StorageSigner::new(keychain);
-        let org_did = DeviceDID::new(controller_did.to_string());
+        let org_did_device = DeviceDID::new(controller_did.to_string());
 
-        let attestation = auths_id::attestation::create::create_signed_attestation(
+        let attestation = create_signed_attestation(
             now,
             &rid,
             &controller_did,
-            &org_did,
+            &org_did_device,
             org_pk_bytes.as_bytes(),
             Some(serde_json::json!({
                 "org_role": "admin",
@@ -141,19 +149,14 @@ pub fn create_org(
         )
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
-        let attestation_storage = RegistryAttestationStorage::new(&repo);
-        attestation_storage
-            .export(&VerifiedAttestation::dangerous_from_unchecked(attestation))
+        let org_prefix = extract_org_prefix(controller_did.as_str());
+
+        backend
+            .store_org_member(&org_prefix, &attestation)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
-        let prefix = controller_did
-            .as_str()
-            .strip_prefix("did:keri:")
-            .unwrap_or(controller_did.as_str())
-            .to_string();
-
         Ok((
-            prefix,
+            org_prefix,
             controller_did.to_string(),
             label,
             repo_path_str,
@@ -162,7 +165,7 @@ pub fn create_org(
 }
 
 #[pyfunction]
-#[pyo3(signature = (org_did, member_did, role, repo_path, capabilities_json=None, passphrase=None, note=None))]
+#[pyo3(signature = (org_did, member_did, role, repo_path, capabilities_json=None, passphrase=None, note=None, member_public_key_hex=None))]
 pub fn add_org_member(
     py: Python<'_>,
     org_did: &str,
@@ -172,9 +175,11 @@ pub fn add_org_member(
     capabilities_json: Option<String>,
     passphrase: Option<String>,
     note: Option<String>,
+    member_public_key_hex: Option<String>,
 ) -> PyResult<(String, String, String, String, String, bool, Option<String>)> {
     let passphrase_str = resolve_passphrase(passphrase);
     let repo = resolve_repo(repo_path);
+    let repo_path_str = repo_path.to_string();
     let org_did = org_did.to_string();
     let member_did = member_did.to_string();
     let role_str = role.to_string();
@@ -196,41 +201,41 @@ pub fn add_org_member(
                 .collect()
         };
 
-        let signer_alias_str = derive_signer_alias(&org_did);
-        let signer_alias = KeyAlias::new_unchecked(signer_alias_str);
+        let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
+        let signer_alias = find_signer_alias(&org_did, &*keychain)?;
 
-        let keychain = get_keychain(&passphrase_str)?;
+        let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
+            RegistryConfig::single_tenant(&repo),
+        ));
 
-        let (stored_did, _role, _encrypted_key) = keychain
-            .load_key(&signer_alias)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
-        let resolver = DefaultDidResolver::with_repo(&repo);
+        let resolver = RegistryDidResolver::new(backend.clone());
         let admin_pk_hex = hex::encode(
             resolver
-                .resolve(stored_did.as_str())
+                .resolve(&org_did)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?
                 .public_key()
                 .as_bytes(),
         );
 
-        let member_resolved = resolver
-            .resolve(&member_did)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
-        let member_pk = *member_resolved.public_key();
+        let member_pk = if let Some(pk_hex) = member_public_key_hex {
+            let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] Invalid member public key hex: {e}"))
+            })?;
+            Ed25519PublicKey::try_from_slice(&pk_bytes)
+                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?
+        } else {
+            let member_resolved = resolver
+                .resolve(&member_did)
+                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
+            *member_resolved.public_key()
+        };
 
-        let org_prefix = org_did
-            .strip_prefix("did:keri:")
-            .unwrap_or(&org_did)
-            .to_string();
+        let org_prefix = extract_org_prefix(&org_did);
 
         let signer = StorageSigner::new(keychain);
         let uuid_provider = SystemUuidProvider;
         let provider =
             auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
-
-        let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
-            RegistryConfig::single_tenant(&repo),
-        ));
 
         let org_ctx = OrgContext {
             registry: &*backend,
@@ -245,8 +250,7 @@ pub fn add_org_member(
             AddMemberCommand {
                 org_prefix,
                 member_did: member_did.clone(),
-                member_public_key: Ed25519PublicKey::try_from_slice(member_pk.as_bytes())
-                    .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?,
+                member_public_key: member_pk,
                 role,
                 capabilities: capabilities.clone(),
                 admin_public_key_hex: admin_pk_hex,
@@ -255,13 +259,6 @@ pub fn add_org_member(
             },
         )
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
-
-        let attestation_storage = RegistryAttestationStorage::new(&repo);
-        attestation_storage
-            .export(&VerifiedAttestation::dangerous_from_unchecked(
-                attestation.clone(),
-            ))
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
         let caps_json = serde_json::to_string(&capabilities).unwrap_or_default();
         let expires = attestation.expires_at.map(|e| e.to_rfc3339());
@@ -279,7 +276,7 @@ pub fn add_org_member(
 }
 
 #[pyfunction]
-#[pyo3(signature = (org_did, member_did, repo_path, passphrase=None, note=None))]
+#[pyo3(signature = (org_did, member_did, repo_path, passphrase=None, note=None, member_public_key_hex=None))]
 pub fn revoke_org_member(
     py: Python<'_>,
     org_did: &str,
@@ -287,48 +284,50 @@ pub fn revoke_org_member(
     repo_path: &str,
     passphrase: Option<String>,
     note: Option<String>,
+    member_public_key_hex: Option<String>,
 ) -> PyResult<(String, String, String, String, String, bool, Option<String>)> {
     let passphrase_str = resolve_passphrase(passphrase);
     let repo = resolve_repo(repo_path);
+    let repo_path_str = repo_path.to_string();
     let org_did = org_did.to_string();
     let member_did = member_did.to_string();
 
     py.allow_threads(move || {
-        let signer_alias_str = derive_signer_alias(&org_did);
-        let signer_alias = KeyAlias::new_unchecked(signer_alias_str);
+        let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
+        let signer_alias = find_signer_alias(&org_did, &*keychain)?;
 
-        let keychain = get_keychain(&passphrase_str)?;
+        let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
+            RegistryConfig::single_tenant(&repo),
+        ));
 
-        let (stored_did, _role, _encrypted_key) = keychain
-            .load_key(&signer_alias)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
-        let resolver = DefaultDidResolver::with_repo(&repo);
+        let resolver = RegistryDidResolver::new(backend.clone());
         let admin_pk_hex = hex::encode(
             resolver
-                .resolve(stored_did.as_str())
+                .resolve(&org_did)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?
                 .public_key()
                 .as_bytes(),
         );
 
-        let member_resolved = resolver
-            .resolve(&member_did)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
-        let member_pk = *member_resolved.public_key();
+        let member_pk = if let Some(pk_hex) = member_public_key_hex {
+            let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] Invalid member public key hex: {e}"))
+            })?;
+            Ed25519PublicKey::try_from_slice(&pk_bytes)
+                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?
+        } else {
+            let member_resolved = resolver
+                .resolve(&member_did)
+                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
+            *member_resolved.public_key()
+        };
 
-        let org_prefix = org_did
-            .strip_prefix("did:keri:")
-            .unwrap_or(&org_did)
-            .to_string();
+        let org_prefix = extract_org_prefix(&org_did);
 
         let signer = StorageSigner::new(keychain);
         let uuid_provider = SystemUuidProvider;
         let provider =
             auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
-
-        let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
-            RegistryConfig::single_tenant(&repo),
-        ));
 
         let org_ctx = OrgContext {
             registry: &*backend,
@@ -343,21 +342,13 @@ pub fn revoke_org_member(
             RevokeMemberCommand {
                 org_prefix,
                 member_did: member_did.clone(),
-                member_public_key: Ed25519PublicKey::try_from_slice(member_pk.as_bytes())
-                    .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?,
+                member_public_key: member_pk,
                 admin_public_key_hex: admin_pk_hex,
                 signer_alias,
                 note,
             },
         )
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
-
-        let attestation_storage = RegistryAttestationStorage::new(&repo);
-        attestation_storage
-            .export(&VerifiedAttestation::dangerous_from_unchecked(
-                revocation.clone(),
-            ))
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
         let caps: Vec<String> = revocation
             .capabilities
@@ -391,48 +382,53 @@ pub fn list_org_members(
     repo_path: &str,
 ) -> PyResult<String> {
     let repo = resolve_repo(repo_path);
-    let _org_did = org_did.to_string();
+    let org_prefix = extract_org_prefix(org_did);
 
     py.allow_threads(move || {
-        let attestation_storage = RegistryAttestationStorage::new(&repo);
-        let all_attestations: Vec<Attestation> = attestation_storage
-            .load_all_attestations()
+        let backend = GitRegistryBackend::from_config_unchecked(
+            RegistryConfig::single_tenant(&repo),
+        );
+
+        let filter = MemberFilter::default();
+
+        let members = backend
+            .list_org_members(&org_prefix, &filter)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
-        let now = Utc::now();
-        let mut members = Vec::new();
+        let result: Vec<serde_json::Value> = members
+            .iter()
+            .filter_map(|m| {
+                // Backend does not compute revoked/expired status;
+                // use revoked_at field directly.
+                let is_revoked = m.revoked_at.is_some();
+                if !include_revoked && is_revoked {
+                    return None;
+                }
 
-        for att in &all_attestations {
-            if att.is_revoked() && !include_revoked {
-                continue;
-            }
-            if att.expires_at.is_some_and(|e| now > e) && !include_revoked {
-                continue;
-            }
+                let caps: Vec<String> = m
+                    .capabilities
+                    .iter()
+                    .map(|c| c.as_str().to_string())
+                    .collect();
+                let role_str = m
+                    .role
+                    .as_ref()
+                    .map(|r| r.as_str())
+                    .unwrap_or("member");
 
-            let caps: Vec<String> = att
-                .capabilities
-                .iter()
-                .map(|c| c.as_str().to_string())
-                .collect();
-            let role_str = att
-                .role
-                .as_ref()
-                .map(|r| r.as_str())
-                .unwrap_or("member");
+                Some(serde_json::json!({
+                    "member_did": m.did.to_string(),
+                    "role": role_str,
+                    "capabilities": caps,
+                    "issuer_did": m.issuer.to_string(),
+                    "attestation_rid": m.rid.to_string(),
+                    "revoked": is_revoked,
+                    "expires_at": m.expires_at.map(|e| e.to_rfc3339()),
+                }))
+            })
+            .collect();
 
-            members.push(serde_json::json!({
-                "member_did": att.subject.to_string(),
-                "role": role_str,
-                "capabilities": caps,
-                "issuer_did": att.issuer.to_string(),
-                "attestation_rid": att.rid.to_string(),
-                "revoked": att.is_revoked(),
-                "expires_at": att.expires_at.map(|e| e.to_rfc3339()),
-            }));
-        }
-
-        serde_json::to_string(&members)
+        serde_json::to_string(&result)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))
     })
 }

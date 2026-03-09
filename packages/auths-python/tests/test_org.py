@@ -31,6 +31,7 @@ def test_add_and_list_members(tmp_path):
     member = admin_client.orgs.add_member(
         org.did, dev_id.did, role="member",
         repo_path=str(admin_home / ".auths"),
+        member_public_key_hex=dev_id.public_key,
     )
     assert member.role == "member"
     assert not member.revoked
@@ -58,10 +59,12 @@ def test_revoke_member(tmp_path):
     admin_client.orgs.add_member(
         org.did, dev_id.did,
         repo_path=str(admin_home / ".auths"),
+        member_public_key_hex=dev_id.public_key,
     )
     revoked = admin_client.orgs.revoke_member(
         org.did, dev_id.did, note="offboarded",
         repo_path=str(admin_home / ".auths"),
+        member_public_key_hex=dev_id.public_key,
     )
     assert revoked.revoked
 
@@ -97,6 +100,7 @@ def test_add_member_with_capabilities(tmp_path):
         org.did, ci_id.did, role="member",
         capabilities=["sign:artifact"],
         repo_path=str(admin_home / ".auths"),
+        member_public_key_hex=ci_id.public_key,
     )
     assert "sign:artifact" in member.capabilities
 
@@ -116,6 +120,7 @@ def test_get_member(tmp_path):
     admin_client.orgs.add_member(
         org.did, dev_id.did,
         repo_path=str(admin_home / ".auths"),
+        member_public_key_hex=dev_id.public_key,
     )
 
     found = admin_client.orgs.get_member(
@@ -147,9 +152,11 @@ def test_update_member(tmp_path):
     admin_client.orgs.add_member(
         org.did, dev_id.did, role="member",
         repo_path=str(admin_home / ".auths"),
+        member_public_key_hex=dev_id.public_key,
     )
     updated = admin_client.orgs.update_member(
         org.did, dev_id.did, role="admin",
         repo_path=str(admin_home / ".auths"),
+        member_public_key_hex=dev_id.public_key,
     )
     assert updated.role == "admin"

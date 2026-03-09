@@ -7,25 +7,17 @@ import pytest
 from auths import Auths
 
 
-@pytest.fixture
-def auths(tmp_path):
-    """Create an Auths client with a temp directory (registry auto-inits on first use)."""
-    repo = tmp_path / "test-repo"
-    repo.mkdir()
-    return Auths(repo_path=str(repo), passphrase="Test-pass-123")
-
-
-def test_sign_as_identity(auths):
+def test_sign_as_identity(shared_auths_with_identity):
     """Create identity then sign with it — the core lifecycle."""
-    identity = auths.identities.create(label="test-key")
+    auths, identity = shared_auths_with_identity
     sig = auths.sign_as(b"hello world", identity=identity.did)
     assert isinstance(sig, str)
     bytes.fromhex(sig)
 
 
-def test_sign_action_as_identity(auths):
+def test_sign_action_as_identity(shared_auths_with_identity):
     """Create identity then sign an action envelope with it."""
-    identity = auths.identities.create(label="test-key")
+    auths, identity = shared_auths_with_identity
     envelope = auths.sign_action_as(
         "test-action", '{"key": "value"}', identity=identity.did
     )
@@ -36,17 +28,18 @@ def test_sign_action_as_identity(auths):
     assert parsed["identity"] == identity.did
 
 
-def test_sign_as_unknown_identity_raises(auths):
+def test_sign_as_unknown_identity_raises(shared_auths_with_identity):
     """Signing with a non-existent identity should raise an error."""
+    auths, _identity = shared_auths_with_identity
     from auths import CryptoError
 
     with pytest.raises((CryptoError, RuntimeError)):
         auths.sign_as(b"hello", identity="did:keri:nonexistent")
 
 
-def test_sign_roundtrip(auths):
+def test_sign_roundtrip(shared_auths_with_identity):
     """Sign with identity, verify the signature is valid hex of correct length."""
-    identity = auths.identities.create(label="test-key")
+    auths, identity = shared_auths_with_identity
     sig = auths.sign_as(b"hello world", identity=identity.did)
     sig_bytes = bytes.fromhex(sig)
     assert len(sig_bytes) == 64  # Ed25519 signature is 64 bytes

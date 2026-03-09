@@ -1,8 +1,17 @@
+import os
 import subprocess
+import tempfile
 
 import pytest
 
 from auths import Auths
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _set_test_env():
+    """Set keychain env vars for the entire test session."""
+    os.environ.setdefault("AUTHS_KEYCHAIN_BACKEND", "file")
+    os.environ.setdefault("AUTHS_PASSPHRASE", "Test-pass-123")
 
 
 @pytest.fixture
@@ -18,6 +27,16 @@ def auths_with_identity(auths_client):
     """Create an Auths client with an initialized identity."""
     identity = auths_client.identities.create(label="main")
     return auths_client, identity
+
+
+@pytest.fixture(scope="module")
+def shared_auths_with_identity():
+    """Module-scoped client + identity. Reuse across read-only tests to
+    avoid repeating the expensive registry-init + keygen per test."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = Auths(repo_path=tmpdir, passphrase="Test-pass-123")
+        identity = client.identities.create(label="shared-test-key")
+        yield client, identity
 
 
 @pytest.fixture

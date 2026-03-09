@@ -31,9 +31,9 @@ pub(crate) fn resolve_passphrase(passphrase: Option<String>) -> String {
     passphrase.unwrap_or_else(|| std::env::var("AUTHS_PASSPHRASE").unwrap_or_default())
 }
 
-pub(crate) fn make_keychain_config(passphrase: &str) -> EnvironmentConfig {
+pub(crate) fn make_keychain_config(passphrase: &str, repo_path: &str) -> EnvironmentConfig {
     EnvironmentConfig {
-        auths_home: None,
+        auths_home: Some(repo_path.into()),
         keychain: KeychainConfig {
             backend: Some("file".to_string()),
             file_path: None,
@@ -133,7 +133,7 @@ pub fn create_identity(
     passphrase: Option<String>,
 ) -> PyResult<(String, String, String)> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let env_config = make_keychain_config(&passphrase_str);
+    let env_config = make_keychain_config(&passphrase_str, repo_path);
     let alias = KeyAlias::new(key_alias)
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Invalid key alias: {e}")))?;
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
@@ -188,7 +188,7 @@ pub fn create_agent_identity(
     passphrase: Option<String>,
 ) -> PyResult<AgentIdentityBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let env_config = make_keychain_config(&passphrase_str);
+    let env_config = make_keychain_config(&passphrase_str, repo_path);
     let alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
 
@@ -290,7 +290,7 @@ pub fn delegate_agent(
     identity_did: Option<String>,
 ) -> PyResult<DelegatedAgentBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let env_config = make_keychain_config(&passphrase_str);
+    let env_config = make_keychain_config(&passphrase_str, parent_repo_path);
     let provider = Arc::new(PrefilledPassphraseProvider::new(&passphrase_str));
     let clock = Arc::new(SystemClock);
 
@@ -425,7 +425,7 @@ pub fn link_device_to_identity(
     expires_in_days: Option<u32>,
 ) -> PyResult<(String, String)> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let env_config = make_keychain_config(&passphrase_str);
+    let env_config = make_keychain_config(&passphrase_str, repo_path);
     let provider = Arc::new(PrefilledPassphraseProvider::new(&passphrase_str));
     let clock = Arc::new(SystemClock);
 
@@ -507,7 +507,7 @@ pub fn revoke_device_from_identity(
     note: Option<String>,
 ) -> PyResult<()> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let env_config = make_keychain_config(&passphrase_str);
+    let env_config = make_keychain_config(&passphrase_str, repo_path);
     let provider = Arc::new(PrefilledPassphraseProvider::new(&passphrase_str));
     let clock = Arc::new(SystemClock);
 
