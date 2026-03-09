@@ -9,16 +9,26 @@ export interface ArtifactResult {
   fileSize: number
 }
 
+export interface SignArtifactOptions {
+  filePath: string
+  identityDid: string
+  expiresInDays?: number
+  note?: string
+  passphrase?: string
+}
+
+export interface SignArtifactBytesOptions {
+  data: Buffer
+  identityDid: string
+  expiresInDays?: number
+  note?: string
+  passphrase?: string
+}
+
 export class ArtifactService {
   constructor(private client: Auths) {}
 
-  sign(opts: {
-    filePath: string
-    identityDid: string
-    expiresInDays?: number
-    note?: string
-    passphrase?: string
-  }): ArtifactResult {
+  sign(opts: SignArtifactOptions): ArtifactResult {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       return native.signArtifact(
@@ -34,13 +44,7 @@ export class ArtifactService {
     }
   }
 
-  signBytes(opts: {
-    data: Buffer
-    identityDid: string
-    expiresInDays?: number
-    note?: string
-    passphrase?: string
-  }): ArtifactResult {
+  signBytes(opts: SignArtifactBytesOptions): ArtifactResult {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       return native.signArtifactBytes(

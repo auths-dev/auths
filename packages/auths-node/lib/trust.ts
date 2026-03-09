@@ -11,14 +11,16 @@ export interface PinnedIdentity {
   pinnedAt: string
 }
 
+export interface PinIdentityOptions {
+  did: string
+  label?: string
+  trustLevel?: 'tofu' | 'manual' | 'org_policy'
+}
+
 export class TrustService {
   constructor(private client: Auths) {}
 
-  pin(opts: {
-    did: string
-    label?: string
-    trustLevel?: 'tofu' | 'manual' | 'org_policy'
-  }): PinnedIdentity {
+  pin(opts: PinIdentityOptions): PinnedIdentity {
     try {
       const result = native.pinIdentity(
         opts.did,

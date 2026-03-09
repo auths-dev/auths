@@ -13,15 +13,31 @@ export interface DeviceExtension {
   previousExpiresAt: string | null
 }
 
+export interface LinkDeviceOptions {
+  identityDid: string
+  capabilities?: string[]
+  expiresInDays?: number
+  passphrase?: string
+}
+
+export interface RevokeDeviceOptions {
+  deviceDid: string
+  identityDid: string
+  note?: string
+  passphrase?: string
+}
+
+export interface ExtendDeviceOptions {
+  deviceDid: string
+  identityDid: string
+  days?: number
+  passphrase?: string
+}
+
 export class DeviceService {
   constructor(private client: Auths) {}
 
-  link(opts: {
-    identityDid: string
-    capabilities?: string[]
-    expiresInDays?: number
-    passphrase?: string
-  }): Device {
+  link(opts: LinkDeviceOptions): Device {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const result = native.linkDeviceToIdentity(
@@ -40,12 +56,7 @@ export class DeviceService {
     }
   }
 
-  revoke(opts: {
-    deviceDid: string
-    identityDid: string
-    note?: string
-    passphrase?: string
-  }): void {
+  revoke(opts: RevokeDeviceOptions): void {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       native.revokeDeviceFromIdentity(
@@ -60,12 +71,7 @@ export class DeviceService {
     }
   }
 
-  extend(opts: {
-    deviceDid: string
-    identityDid: string
-    days?: number
-    passphrase?: string
-  }): DeviceExtension {
+  extend(opts: ExtendDeviceOptions): DeviceExtension {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const result = native.extendDeviceAuthorization(

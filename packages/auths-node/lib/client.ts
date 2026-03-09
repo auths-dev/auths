@@ -1,6 +1,14 @@
-import { IdentityService } from './identity'
+import { IdentityService, type GetPublicKeyOptions } from './identity'
 import { DeviceService } from './devices'
-import { SigningService, type SignResult, type ActionEnvelope } from './signing'
+import {
+  SigningService,
+  type SignResult,
+  type ActionEnvelope,
+  type SignAsIdentityOptions,
+  type SignActionAsIdentityOptions,
+  type SignAsAgentOptions,
+  type SignActionAsAgentOptions,
+} from './signing'
 import { OrgService } from './org'
 import { TrustService } from './trust'
 import { WitnessService } from './witness'
@@ -27,6 +35,20 @@ import native from './native'
 export interface ClientConfig {
   repoPath?: string
   passphrase?: string
+}
+
+export interface VerifyOptions {
+  attestationJson: string
+  issuerKey: string
+  requiredCapability?: string
+  at?: string
+}
+
+export interface VerifyChainOptions {
+  attestations: string[]
+  rootKey: string
+  requiredCapability?: string
+  witnesses?: WitnessConfig
 }
 
 export class Auths {
@@ -62,12 +84,7 @@ export class Auths {
     this.pairing = new PairingService(this)
   }
 
-  async verify(opts: {
-    attestationJson: string
-    issuerKey: string
-    requiredCapability?: string
-    at?: string
-  }): Promise<VerificationResult> {
+  async verify(opts: VerifyOptions): Promise<VerificationResult> {
     if (opts.at && opts.requiredCapability) {
       return verifyAtTimeWithCapability(opts.attestationJson, opts.issuerKey, opts.at, opts.requiredCapability)
     }
@@ -80,12 +97,7 @@ export class Auths {
     return verifyAttestation(opts.attestationJson, opts.issuerKey)
   }
 
-  async verifyChain(opts: {
-    attestations: string[]
-    rootKey: string
-    requiredCapability?: string
-    witnesses?: WitnessConfig
-  }): Promise<VerificationReport> {
+  async verifyChain(opts: VerifyChainOptions): Promise<VerificationReport> {
     if (opts.witnesses) {
       return verifyChainWithWitnesses(opts.attestations, opts.rootKey, opts.witnesses)
     }
@@ -95,11 +107,7 @@ export class Auths {
     return verifyChainFn(opts.attestations, opts.rootKey)
   }
 
-  signAs(opts: {
-    message: Buffer
-    identityDid: string
-    passphrase?: string
-  }): SignResult {
+  signAs(opts: SignAsIdentityOptions): SignResult {
     return this.signing.signAsIdentity({
       message: opts.message,
       identityDid: opts.identityDid,
@@ -107,12 +115,7 @@ export class Auths {
     })
   }
 
-  signActionAs(opts: {
-    actionType: string
-    payloadJson: string
-    identityDid: string
-    passphrase?: string
-  }): ActionEnvelope {
+  signActionAs(opts: SignActionAsIdentityOptions): ActionEnvelope {
     return this.signing.signActionAsIdentity({
       actionType: opts.actionType,
       payloadJson: opts.payloadJson,
@@ -121,11 +124,7 @@ export class Auths {
     })
   }
 
-  signAsAgent(opts: {
-    message: Buffer
-    keyAlias: string
-    passphrase?: string
-  }): SignResult {
+  signAsAgent(opts: SignAsAgentOptions): SignResult {
     return this.signing.signAsAgent({
       message: opts.message,
       keyAlias: opts.keyAlias,
@@ -133,20 +132,11 @@ export class Auths {
     })
   }
 
-  signActionAsAgent(opts: {
-    actionType: string
-    payloadJson: string
-    keyAlias: string
-    agentDid: string
-    passphrase?: string
-  }): ActionEnvelope {
+  signActionAsAgent(opts: SignActionAsAgentOptions): ActionEnvelope {
     return this.signing.signActionAsAgent(opts)
   }
 
-  getPublicKey(opts: {
-    identityDid: string
-    passphrase?: string
-  }): string {
+  getPublicKey(opts: GetPublicKeyOptions): string {
     return this.identities.getPublicKey(opts)
   }
 

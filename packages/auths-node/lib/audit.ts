@@ -29,16 +29,25 @@ export interface AuditSummary {
   verification_failed: number
 }
 
+export interface AuditReportOptions {
+  targetRepoPath: string
+  since?: string
+  until?: string
+  author?: string
+  limit?: number
+}
+
+export interface AuditComplianceOptions {
+  targetRepoPath: string
+  since?: string
+  until?: string
+  author?: string
+}
+
 export class AuditService {
   constructor(private client: Auths) {}
 
-  report(opts: {
-    targetRepoPath: string
-    since?: string
-    until?: string
-    author?: string
-    limit?: number
-  }): AuditReport {
+  report(opts: AuditReportOptions): AuditReport {
     try {
       const json = native.generateAuditReport(
         opts.targetRepoPath,
@@ -54,12 +63,7 @@ export class AuditService {
     }
   }
 
-  isCompliant(opts: {
-    targetRepoPath: string
-    since?: string
-    until?: string
-    author?: string
-  }): boolean {
+  isCompliant(opts: AuditComplianceOptions): boolean {
     const report = this.report(opts)
     return report.summary.unsigned_commits === 0
   }

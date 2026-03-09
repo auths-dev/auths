@@ -19,14 +19,39 @@ export interface OrgMember {
   expiresAt: string | null
 }
 
+export interface CreateOrgOptions {
+  label: string
+  repoPath?: string
+  passphrase?: string
+}
+
+export interface AddOrgMemberOptions {
+  orgDid: string
+  memberDid: string
+  role: string
+  capabilities?: string[]
+  passphrase?: string
+  note?: string
+  memberPublicKeyHex?: string
+}
+
+export interface RevokeOrgMemberOptions {
+  orgDid: string
+  memberDid: string
+  passphrase?: string
+  note?: string
+  memberPublicKeyHex?: string
+}
+
+export interface ListOrgMembersOptions {
+  orgDid: string
+  includeRevoked?: boolean
+}
+
 export class OrgService {
   constructor(private client: Auths) {}
 
-  create(opts: {
-    label: string
-    repoPath?: string
-    passphrase?: string
-  }): OrgResult {
+  create(opts: CreateOrgOptions): OrgResult {
     const rp = opts.repoPath ?? this.client.repoPath
     const pp = opts.passphrase ?? this.client.passphrase
     try {
@@ -36,15 +61,7 @@ export class OrgService {
     }
   }
 
-  addMember(opts: {
-    orgDid: string
-    memberDid: string
-    role: string
-    capabilities?: string[]
-    passphrase?: string
-    note?: string
-    memberPublicKeyHex?: string
-  }): OrgMember {
+  addMember(opts: AddOrgMemberOptions): OrgMember {
     const pp = opts.passphrase ?? this.client.passphrase
     const capsJson = opts.capabilities ? JSON.stringify(opts.capabilities) : null
     try {
@@ -72,13 +89,7 @@ export class OrgService {
     }
   }
 
-  revokeMember(opts: {
-    orgDid: string
-    memberDid: string
-    passphrase?: string
-    note?: string
-    memberPublicKeyHex?: string
-  }): OrgMember {
+  revokeMember(opts: RevokeOrgMemberOptions): OrgMember {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const result = native.revokeOrgMember(
@@ -103,10 +114,7 @@ export class OrgService {
     }
   }
 
-  listMembers(opts: {
-    orgDid: string
-    includeRevoked?: boolean
-  }): OrgMember[] {
+  listMembers(opts: ListOrgMembersOptions): OrgMember[] {
     try {
       const json = native.listOrgMembers(opts.orgDid, opts.includeRevoked ?? false, this.client.repoPath)
       return JSON.parse(json)

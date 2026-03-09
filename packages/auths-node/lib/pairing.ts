@@ -22,18 +22,39 @@ export interface PairingResult {
   attestationRid: string
 }
 
+export interface CreatePairingSessionOptions {
+  capabilities?: string[]
+  timeoutSecs?: number
+  bindAddress?: string
+  enableMdns?: boolean
+  passphrase?: string
+}
+
+export interface WaitForPairingResponseOptions {
+  timeoutSecs?: number
+}
+
+export interface JoinPairingOptions {
+  shortCode: string
+  endpoint: string
+  token: string
+  deviceName?: string
+  passphrase?: string
+}
+
+export interface CompletePairingOptions {
+  deviceDid: string
+  devicePublicKeyHex: string
+  capabilities?: string[]
+  passphrase?: string
+}
+
 export class PairingService {
   private handle: any | null = null
 
   constructor(private client: Auths) {}
 
-  async createSession(opts?: {
-    capabilities?: string[]
-    timeoutSecs?: number
-    bindAddress?: string
-    enableMdns?: boolean
-    passphrase?: string
-  }): Promise<PairingSession> {
+  async createSession(opts?: CreatePairingSessionOptions): Promise<PairingSession> {
     const pp = opts?.passphrase ?? this.client.passphrase
     const capsJson = opts?.capabilities ? JSON.stringify(opts.capabilities) : null
     try {
@@ -58,7 +79,7 @@ export class PairingService {
     }
   }
 
-  async waitForResponse(opts?: { timeoutSecs?: number }): Promise<PairingResponse> {
+  async waitForResponse(opts?: WaitForPairingResponseOptions): Promise<PairingResponse> {
     if (!this.handle) {
       throw new PairingError('No active pairing session. Call createSession first.', 'AUTHS_PAIRING_ERROR')
     }
@@ -86,13 +107,7 @@ export class PairingService {
     }
   }
 
-  async join(opts: {
-    shortCode: string
-    endpoint: string
-    token: string
-    deviceName?: string
-    passphrase?: string
-  }): Promise<PairingResponse> {
+  async join(opts: JoinPairingOptions): Promise<PairingResponse> {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const result = await native.joinPairingSession(
@@ -113,12 +128,7 @@ export class PairingService {
     }
   }
 
-  async complete(opts: {
-    deviceDid: string
-    devicePublicKeyHex: string
-    capabilities?: string[]
-    passphrase?: string
-  }): Promise<PairingResult> {
+  async complete(opts: CompletePairingOptions): Promise<PairingResult> {
     if (!this.handle) {
       throw new PairingError('No active pairing session. Call createSession first.', 'AUTHS_PAIRING_ERROR')
     }

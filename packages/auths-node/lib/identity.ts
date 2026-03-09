@@ -31,14 +31,40 @@ export interface RotationResult {
   sequence: number
 }
 
+export interface CreateIdentityOptions {
+  label?: string
+  repoPath?: string
+  passphrase?: string
+}
+
+export interface CreateAgentOptions {
+  name: string
+  capabilities: string[]
+  passphrase?: string
+}
+
+export interface DelegateAgentOptions {
+  identityDid: string
+  name: string
+  capabilities: string[]
+  expiresInDays?: number
+  passphrase?: string
+}
+
+export interface RotateKeysOptions {
+  identityDid?: string
+  passphrase?: string
+}
+
+export interface GetPublicKeyOptions {
+  identityDid: string
+  passphrase?: string
+}
+
 export class IdentityService {
   constructor(private client: Auths) {}
 
-  create(opts: {
-    label?: string
-    repoPath?: string
-    passphrase?: string
-  } = {}): Identity {
+  create(opts: CreateIdentityOptions = {}): Identity {
     const rp = opts.repoPath ?? this.client.repoPath
     const pp = opts.passphrase ?? this.client.passphrase
     try {
@@ -55,11 +81,7 @@ export class IdentityService {
     }
   }
 
-  createAgent(opts: {
-    name: string
-    capabilities: string[]
-    passphrase?: string
-  }): AgentIdentity {
+  createAgent(opts: CreateAgentOptions): AgentIdentity {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const bundle = native.createAgentIdentity(
@@ -79,13 +101,7 @@ export class IdentityService {
     }
   }
 
-  delegateAgent(opts: {
-    identityDid: string
-    name: string
-    capabilities: string[]
-    expiresInDays?: number
-    passphrase?: string
-  }): DelegatedAgent {
+  delegateAgent(opts: DelegateAgentOptions): DelegatedAgent {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const bundle = native.delegateAgent(
@@ -107,10 +123,7 @@ export class IdentityService {
     }
   }
 
-  rotate(opts: {
-    identityDid?: string
-    passphrase?: string
-  } = {}): RotationResult {
+  rotate(opts: RotateKeysOptions = {}): RotationResult {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const result = native.rotateIdentityKeys(
@@ -130,10 +143,7 @@ export class IdentityService {
     }
   }
 
-  getPublicKey(opts: {
-    identityDid: string
-    passphrase?: string
-  }): string {
+  getPublicKey(opts: GetPublicKeyOptions): string {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       return native.getIdentityPublicKey(opts.identityDid, this.client.repoPath, pp)

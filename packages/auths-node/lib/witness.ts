@@ -8,10 +8,15 @@ export interface WitnessEntry {
   label: string | null
 }
 
+export interface AddWitnessOptions {
+  url: string
+  label?: string
+}
+
 export class WitnessService {
   constructor(private client: Auths) {}
 
-  add(opts: { url: string; label?: string }): WitnessEntry {
+  add(opts: AddWitnessOptions): WitnessEntry {
     try {
       const result = native.addWitness(opts.url, this.client.repoPath, opts.label ?? null)
       return {

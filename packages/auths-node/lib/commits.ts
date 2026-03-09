@@ -8,14 +8,16 @@ export interface CommitSignResult {
   namespace: string
 }
 
+export interface SignCommitOptions {
+  data: Buffer
+  identityDid: string
+  passphrase?: string
+}
+
 export class CommitService {
   constructor(private client: Auths) {}
 
-  sign(opts: {
-    data: Buffer
-    identityDid: string
-    passphrase?: string
-  }): CommitSignResult {
+  sign(opts: SignCommitOptions): CommitSignResult {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       return native.signCommit(

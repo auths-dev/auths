@@ -13,14 +13,37 @@ export interface ActionEnvelope {
   signerDid: string
 }
 
+export interface SignAsIdentityOptions {
+  message: Buffer
+  identityDid: string
+  passphrase?: string
+}
+
+export interface SignActionAsIdentityOptions {
+  actionType: string
+  payloadJson: string
+  identityDid: string
+  passphrase?: string
+}
+
+export interface SignAsAgentOptions {
+  message: Buffer
+  keyAlias: string
+  passphrase?: string
+}
+
+export interface SignActionAsAgentOptions {
+  actionType: string
+  payloadJson: string
+  keyAlias: string
+  agentDid: string
+  passphrase?: string
+}
+
 export class SigningService {
   constructor(private client: Auths) {}
 
-  signAsIdentity(opts: {
-    message: Buffer
-    identityDid: string
-    passphrase?: string
-  }): SignResult {
+  signAsIdentity(opts: SignAsIdentityOptions): SignResult {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const result = native.signAsIdentity(
@@ -35,12 +58,7 @@ export class SigningService {
     }
   }
 
-  signActionAsIdentity(opts: {
-    actionType: string
-    payloadJson: string
-    identityDid: string
-    passphrase?: string
-  }): ActionEnvelope {
+  signActionAsIdentity(opts: SignActionAsIdentityOptions): ActionEnvelope {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       return native.signActionAsIdentity(
@@ -55,11 +73,7 @@ export class SigningService {
     }
   }
 
-  signAsAgent(opts: {
-    message: Buffer
-    keyAlias: string
-    passphrase?: string
-  }): SignResult {
+  signAsAgent(opts: SignAsAgentOptions): SignResult {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       const result = native.signAsAgent(opts.message, opts.keyAlias, this.client.repoPath, pp)
@@ -69,13 +83,7 @@ export class SigningService {
     }
   }
 
-  signActionAsAgent(opts: {
-    actionType: string
-    payloadJson: string
-    keyAlias: string
-    agentDid: string
-    passphrase?: string
-  }): ActionEnvelope {
+  signActionAsAgent(opts: SignActionAsAgentOptions): ActionEnvelope {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
       return native.signActionAsAgent(
