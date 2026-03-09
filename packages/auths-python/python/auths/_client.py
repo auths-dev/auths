@@ -111,10 +111,12 @@ class Auths:
         from auths.attestation_query import AttestationService
         from auths.devices import DeviceService
         from auths.identity import IdentityService
+        from auths.org import OrgService
 
         self.identities = IdentityService(self)
         self.devices = DeviceService(self)
         self.attestations = AttestationService(self)
+        self.orgs = OrgService(self)
 
     def verify(
         self,

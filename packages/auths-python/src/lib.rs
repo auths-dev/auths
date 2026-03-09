@@ -13,6 +13,7 @@ pub mod device_ext;
 pub mod git_integration;
 pub mod identity;
 pub mod identity_sign;
+pub mod org;
 pub mod policy;
 pub mod rotation;
 pub mod runtime;
@@ -104,6 +105,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         attestation_query::get_latest_attestation,
         m
     )?)?;
+
+    m.add_function(wrap_pyfunction!(org::create_org, m)?)?;
+    m.add_function(wrap_pyfunction!(org::add_org_member, m)?)?;
+    m.add_function(wrap_pyfunction!(org::revoke_org_member, m)?)?;
+    m.add_function(wrap_pyfunction!(org::list_org_members, m)?)?;
 
     Ok(())
 }
