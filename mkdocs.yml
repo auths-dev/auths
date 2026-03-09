@@ -163,7 +163,8 @@ nav:
       - Node SDK:
           - Overview: sdk/node/overview.md
           - Quickstart: sdk/node/quickstart.md
-          - API Reference: sdk/node/api/index.md
+          - API Reference:
+              - All: sdk/node/api/index.md
           - Error Handling: sdk/node/errors.md
       - Rust SDK:
           - Overview: sdk/rust/overview.md
