@@ -142,6 +142,7 @@ Run comprehensive health checks
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--fix` | — | Auto-fix issues where possible |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |

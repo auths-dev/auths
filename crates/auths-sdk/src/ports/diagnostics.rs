@@ -85,6 +85,39 @@ impl<T: GitDiagnosticProvider> GitDiagnosticProvider for &T {
     }
 }
 
+/// A fix that can be applied to resolve a failed diagnostic check.
+///
+/// Usage:
+/// ```ignore
+/// if fix.can_fix(&check) {
+///     if fix.is_safe() || user_confirmed() {
+///         let message = fix.apply()?;
+///     }
+/// }
+/// ```
+pub trait DiagnosticFix: Send + Sync {
+    /// Human-readable name of this fix.
+    fn name(&self) -> &str;
+
+    /// Whether this fix is safe to apply without user confirmation.
+    fn is_safe(&self) -> bool;
+
+    /// Whether this fix can address the given failed check.
+    fn can_fix(&self, check: &CheckResult) -> bool;
+
+    /// Apply the fix, returning a description of what was done.
+    fn apply(&self) -> Result<String, DiagnosticError>;
+}
+
+/// Record of a fix that was applied.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FixApplied {
+    /// Name of the fix.
+    pub name: String,
+    /// Description of what was done.
+    pub message: String,
+}
+
 impl<T: CryptoDiagnosticProvider> CryptoDiagnosticProvider for &T {
     fn check_ssh_keygen_available(&self) -> Result<CheckResult, DiagnosticError> {
         (**self).check_ssh_keygen_available()
