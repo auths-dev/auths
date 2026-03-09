@@ -30,9 +30,9 @@ def generate_allowed_signers(repo_path: str = "~/.auths") -> str:
         attestations are found. Write this to a file or pass to
         ``verify_commit_range``.
 
-    Usage:
-        content = generate_allowed_signers()
-        Path(".auths/allowed_signers").write_text(content)
+    Examples:
+        >>> content = generate_allowed_signers()
+        >>> Path(".auths/allowed_signers").write_text(content)
     """
     from auths._native import generate_allowed_signers_file
 

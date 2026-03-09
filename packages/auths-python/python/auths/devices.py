@@ -46,9 +46,9 @@ class DeviceExtension:
 class DeviceService:
     """Resource service for device operations.
 
-    Usage:
-        device = auths.devices.link(identity_did="did:keri:...", capabilities=["sign"])
-        auths.devices.revoke(device.did, identity_did="did:keri:...")
+    Examples:
+        >>> device = auths.devices.link(identity_did="did:keri:...", capabilities=["sign"])
+        >>> auths.devices.revoke(device.did, identity_did="did:keri:...")
     """
 
     def __init__(self, client: Auths):
@@ -69,8 +69,15 @@ class DeviceService:
             expires_in_days: Optional expiry in days.
             passphrase: Key passphrase override.
 
-        Usage:
-            device = auths.devices.link(identity.did, capabilities=["sign"], expires_in_days=90)
+        Returns:
+            Device with the device DID and attestation ID.
+
+        Raises:
+            IdentityError: If the identity doesn't exist.
+            StorageError: If writing the attestation fails.
+
+        Examples:
+            >>> device = auths.devices.link(identity.did, capabilities=["sign"], expires_in_days=90)
         """
         pp = passphrase or self._client._passphrase
         device_did, attestation_id = _link_device(
@@ -101,9 +108,16 @@ class DeviceService:
             days: Number of days to extend from now (default: 90).
             passphrase: Optional passphrase for keychain access.
 
-        Usage:
-            ext = auths.devices.extend(device.did, identity.did, days=90)
-            print(f"Extended until: {ext.new_expires_at}")
+        Returns:
+            DeviceExtension with the new and previous expiry timestamps.
+
+        Raises:
+            IdentityError: If the device or identity doesn't exist.
+            VerificationError: If the device has been revoked.
+
+        Examples:
+            >>> ext = auths.devices.extend(device.did, identity.did, days=90)
+            >>> print(f"Extended until: {ext.new_expires_at}")
         """
         pp = passphrase or self._client._passphrase
         result = _extend_device(
@@ -130,8 +144,11 @@ class DeviceService:
             note: Optional revocation note.
             passphrase: Key passphrase override.
 
-        Usage:
-            auths.devices.revoke(device.did, identity_did=identity.did, note="lost laptop")
+        Raises:
+            IdentityError: If the device or identity doesn't exist.
+
+        Examples:
+            >>> auths.devices.revoke(device.did, identity_did=identity.did, note="lost laptop")
         """
         pp = passphrase or self._client._passphrase
         _revoke_device(device_did, identity_did, self._client.repo_path, pp, note)

@@ -32,12 +32,12 @@ class WitnessKey:
 class WitnessConfig:
     """Configuration for witness quorum verification.
 
-    Usage:
-        config = WitnessConfig(
-            receipts=[receipt1_json, receipt2_json],
-            keys=[WitnessKey("did:key:z...", "ab12...")],
-            threshold=2,
-        )
+    Examples:
+        >>> config = WitnessConfig(
+        ...     receipts=[receipt1_json, receipt2_json],
+        ...     keys=[WitnessKey("did:key:z...", "ab12...")],
+        ...     threshold=2,
+        ... )
     """
 
     receipts: list[str]
@@ -69,8 +69,14 @@ def verify_chain_with_witnesses(
         root_pk_hex: Root identity's Ed25519 public key (hex-encoded).
         witnesses: Witness configuration with receipts, keys, and threshold.
 
-    Usage:
-        report = verify_chain_with_witnesses(chain, root_key, config)
+    Returns:
+        VerificationReport with per-link results and witness quorum status.
+
+    Raises:
+        VerificationError: If the chain or witness quorum fails verification.
+
+    Examples:
+        >>> report = verify_chain_with_witnesses(chain, root_key, config)
     """
     keys_json = [
         json.dumps({"did": k.did, "public_key_hex": k.public_key_hex})

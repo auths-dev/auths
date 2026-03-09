@@ -84,9 +84,9 @@ class AuthsJWKSClient:
         jwks_url: The OIDC bridge's JWKS endpoint.
         cache_ttl: How long to cache JWKS keys, in seconds (default: 300).
 
-    Usage:
-        jwks = AuthsJWKSClient("https://bridge.example.com/.well-known/jwks.json")
-        claims = jwks.verify_token(token, audience="my-service")
+    Examples:
+        >>> jwks = AuthsJWKSClient("https://bridge.example.com/.well-known/jwks.json")
+        >>> claims = jwks.verify_token(token, audience="my-service")
     """
 
     def __init__(self, jwks_url: str, *, cache_ttl: int = 300):
@@ -123,10 +123,17 @@ class AuthsJWKSClient:
             issuer: Expected issuer claim (optional, verified if set).
             leeway: Clock skew tolerance in seconds (default: 60).
 
-        Usage:
-            claims = jwks.verify_token(bearer_token, audience="my-service")
-            if claims.has_capability("read"):
-                allow_access()
+        Returns:
+            AuthsClaims with the validated token claims.
+
+        Raises:
+            VerificationError: If the token is expired, has wrong audience/issuer, or invalid signature.
+            NetworkError: If JWKS keys cannot be fetched.
+
+        Examples:
+            >>> claims = jwks.verify_token(bearer_token, audience="my-service")
+            >>> if claims.has_capability("read"):
+            ...     allow_access()
         """
         from auths._errors import VerificationError
 
@@ -225,9 +232,16 @@ def verify_token(
         issuer: Expected issuer claim (optional).
         leeway: Clock skew tolerance in seconds (default: 60).
 
-    Usage:
-        from auths.jwt import verify_token
-        claims = verify_token(token, jwks_url="...", audience="my-service")
+    Returns:
+        AuthsClaims with the validated token claims.
+
+    Raises:
+        VerificationError: If the token is invalid.
+        NetworkError: If JWKS keys cannot be fetched.
+
+    Examples:
+        >>> from auths.jwt import verify_token
+        >>> claims = verify_token(token, jwks_url="...", audience="my-service")
     """
     client = AuthsJWKSClient(jwks_url)
     return client.verify_token(token, audience=audience, issuer=issuer, leeway=leeway)

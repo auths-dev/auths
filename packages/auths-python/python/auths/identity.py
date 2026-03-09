@@ -64,10 +64,10 @@ class DelegatedAgent:
 class IdentityService:
     """Resource service for identity operations.
 
-    Usage:
-        auths = Auths()
-        identity = auths.identities.create(label="laptop")
-        agent = auths.identities.delegate_agent(identity.did, name="ci-bot", capabilities=["sign"])
+    Examples:
+        >>> auths = Auths()
+        >>> identity = auths.identities.create(label="laptop")
+        >>> agent = auths.identities.delegate_agent(identity.did, name="ci-bot", capabilities=["sign"])
     """
 
     def __init__(self, client: Auths):
@@ -86,8 +86,15 @@ class IdentityService:
             repo_path: Git repo path (default: client's repo_path).
             passphrase: Key passphrase (default: client's passphrase or AUTHS_PASSPHRASE env var).
 
-        Usage:
-            identity = auths.identities.create(label="laptop")
+        Returns:
+            Identity with the DID, public key, and key alias.
+
+        Raises:
+            IdentityError: If an identity with this alias already exists.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            >>> identity = auths.identities.create(label="laptop")
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
@@ -114,9 +121,16 @@ class IdentityService:
             identity_did: The KERI DID of the identity to rotate.
             passphrase: Optional passphrase for keychain access.
 
-        Usage:
-            result = auths.identities.rotate(identity.did)
-            print(f"Rotated to sequence {result.sequence}")
+        Returns:
+            IdentityRotationResult with the new key fingerprint and sequence number.
+
+        Raises:
+            IdentityError: If the identity does not exist or rotation fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            >>> result = auths.identities.rotate(identity.did)
+            >>> print(f"Rotated to sequence {result.sequence}")
         """
         pp = passphrase or self._client._passphrase
         native_result = _rotate_identity(self._client.repo_path, identity_did, None, pp)
@@ -140,8 +154,15 @@ class IdentityService:
             capabilities: List of capabilities (e.g., ["sign", "verify"]).
             passphrase: Key passphrase override.
 
-        Usage:
-            agent = auths.identities.create_agent("ci-bot", ["sign"])
+        Returns:
+            AgentIdentity with the agent DID, attestation, and public key.
+
+        Raises:
+            IdentityError: If agent creation fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            >>> agent = auths.identities.create_agent("ci-bot", ["sign"])
         """
         pp = passphrase or self._client._passphrase
         bundle = _create_agent_identity(
@@ -169,8 +190,15 @@ class IdentityService:
             expires_in_days: Optional TTL in days.
             passphrase: Key passphrase override.
 
-        Usage:
-            agent = auths.identities.delegate_agent(identity.did, "ci-bot", ["sign"])
+        Returns:
+            DelegatedAgent with the agent DID, delegation attestation, and public key.
+
+        Raises:
+            IdentityError: If the parent identity doesn't exist or delegation fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            >>> agent = auths.identities.delegate_agent(identity.did, "ci-bot", ["sign"])
         """
         pp = passphrase or self._client._passphrase
         bundle = _delegate_agent(

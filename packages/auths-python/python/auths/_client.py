@@ -101,10 +101,10 @@ def _map_network_error(exc: Exception) -> Exception:
 class Auths:
     """Auths SDK client — decentralized identity for developers.
 
-    Usage:
-        auths = Auths()
-        result = auths.verify(attestation_json=data, issuer_key=key)
-        sig = auths.sign(b"hello", private_key=key_hex)
+    Examples:
+        >>> auths = Auths()
+        >>> result = auths.verify(attestation_json=data, issuer_key=key)
+        >>> sig = auths.sign(b"hello", private_key=key_hex)
     """
 
     def __init__(self, repo_path: str = "~/.auths", passphrase: str | None = None):
@@ -147,9 +147,16 @@ class Auths:
             at: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
                 When set, checks validity at that point in time instead of now.
 
-        Usage:
-            result = auths.verify(att_json, key, at="2024-06-15T00:00:00Z",
-                                  required_capability="deploy:staging")
+        Returns:
+            VerificationResult with validity status and details.
+
+        Raises:
+            VerificationError: If the attestation signature is invalid or expired.
+            CryptoError: If the issuer key is malformed.
+
+        Examples:
+            >>> result = auths.verify(att_json, key, at="2024-06-15T00:00:00Z",
+            ...                       required_capability="deploy:staging")
         """
         try:
             if at and required_capability:
@@ -181,8 +188,14 @@ class Auths:
             required_capability: If set, verify the chain grants this capability.
             witnesses: If set, enforces witness receipt quorum.
 
-        Usage:
-            report = auths.verify_chain(chain, root_key, witnesses=config)
+        Returns:
+            VerificationReport with per-link results and overall validity.
+
+        Raises:
+            VerificationError: If any link in the chain fails verification.
+
+        Examples:
+            >>> report = auths.verify_chain(chain, root_key, witnesses=config)
         """
         try:
             if witnesses:
@@ -209,7 +222,20 @@ class Auths:
         attestations: list[str],
         identity_key: str,
     ) -> VerificationReport:
-        """Verify device authorization against an identity."""
+        """Verify device authorization against an identity.
+
+        Args:
+            identity_did: The parent identity's DID.
+            device_did: The device DID to verify.
+            attestations: Attestation chain JSON strings.
+            identity_key: Identity's public key hex.
+
+        Returns:
+            VerificationReport confirming the device is authorized.
+
+        Raises:
+            VerificationError: If the device authorization is invalid or revoked.
+        """
         try:
             return _verify_device_authorization(
                 identity_did, device_did, attestations, identity_key
@@ -218,7 +244,18 @@ class Auths:
             raise _map_error(exc) from exc
 
     def sign(self, message: bytes, private_key: str) -> str:
-        """Sign raw bytes. Returns hex-encoded signature."""
+        """Sign raw bytes with a private key.
+
+        Args:
+            message: Bytes to sign.
+            private_key: Hex-encoded Ed25519 private key.
+
+        Returns:
+            Hex-encoded Ed25519 signature.
+
+        Raises:
+            CryptoError: If the private key is invalid or signing fails.
+        """
         try:
             return _sign_bytes(private_key, message)
         except (ValueError, RuntimeError) as exc:
@@ -231,14 +268,38 @@ class Auths:
         identity_did: str,
         private_key: str,
     ) -> str:
-        """Sign an action envelope. Returns JSON envelope string."""
+        """Sign an action envelope.
+
+        Args:
+            action_type: Action type string.
+            payload: JSON payload string.
+            identity_did: The signer's DID.
+            private_key: Hex-encoded Ed25519 private key.
+
+        Returns:
+            JSON-serialized signed action envelope.
+
+        Raises:
+            CryptoError: If signing fails.
+        """
         try:
             return _sign_action(private_key, action_type, payload, identity_did)
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc, default_cls=CryptoError) from exc
 
     def verify_action(self, envelope_json: str, public_key: str) -> VerificationResult:
-        """Verify an action envelope signature."""
+        """Verify an action envelope signature.
+
+        Args:
+            envelope_json: JSON-serialized signed action envelope.
+            public_key: Hex-encoded Ed25519 public key of the signer.
+
+        Returns:
+            VerificationResult with validity status.
+
+        Raises:
+            VerificationError: If the envelope signature is invalid.
+        """
         try:
             return _verify_action_envelope(envelope_json, public_key)
         except (ValueError, RuntimeError) as exc:
@@ -257,7 +318,14 @@ class Auths:
             identity: The identity DID (did:keri:...) whose key to use.
             passphrase: Override passphrase (default: client passphrase or AUTHS_PASSPHRASE).
 
-        Usage:
+        Returns:
+            Hex-encoded Ed25519 signature.
+
+        Raises:
+            CryptoError: If the key is not found or signing fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
             identity = auths.identities.create(label="laptop")
             sig = auths.sign_as(b"hello", identity=identity.did)
         """
@@ -284,8 +352,15 @@ class Auths:
             identity: The identity DID whose key to use.
             passphrase: Override passphrase.
 
-        Usage:
-            envelope = auths.sign_action_as("deploy", payload_json, identity=identity.did)
+        Returns:
+            JSON-serialized signed action envelope.
+
+        Raises:
+            CryptoError: If signing fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            >>> envelope = auths.sign_action_as("deploy", payload_json, identity=identity.did)
         """
         from auths._native import sign_action_as_identity
 
@@ -308,8 +383,15 @@ class Auths:
             identity: The identity DID (did:keri:...).
             passphrase: Override passphrase.
 
-        Usage:
-            pub_key = auths.get_public_key(identity.did)
+        Returns:
+            Hex-encoded Ed25519 public key.
+
+        Raises:
+            CryptoError: If the identity key is not found.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            >>> pub_key = auths.get_public_key(identity.did)
         """
         from auths._native import get_identity_public_key
 
@@ -335,7 +417,14 @@ class Auths:
             key_alias: The agent's key alias (e.g., "deploy-bot-agent").
             passphrase: Override passphrase.
 
-        Usage:
+        Returns:
+            Hex-encoded Ed25519 signature.
+
+        Raises:
+            CryptoError: If the agent key is not found or signing fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
             agent = auths.identities.delegate_agent(identity.did, "bot", ["sign"])
             sig = auths.sign_as_agent(b"hello", key_alias=agent._key_alias)
         """
@@ -364,7 +453,14 @@ class Auths:
             agent_did: The agent's DID (included in the envelope).
             passphrase: Override passphrase.
 
-        Usage:
+        Returns:
+            JSON-serialized signed action envelope.
+
+        Raises:
+            CryptoError: If signing fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
             agent = auths.identities.delegate_agent(identity.did, "bot", ["deploy"])
             envelope = auths.sign_action_as_agent("deploy", payload, agent._key_alias, agent.did)
         """
@@ -395,8 +491,15 @@ class Auths:
             identity_did: The KERI DID of the identity to sign with.
             passphrase: Optional passphrase (for headless envs without ssh-agent).
 
-        Usage:
-            result = auths.sign_commit(commit_bytes, identity_did=identity.did)
+        Returns:
+            CommitSigningResult with the SSHSIG PEM block, method, and namespace.
+
+        Raises:
+            CryptoError: If signing fails or the identity key is not found.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            >>> result = auths.sign_commit(commit_bytes, identity_did=identity.did)
         """
         from auths._native import sign_commit as _sign_commit
         from auths.commit import CommitSigningResult
@@ -431,8 +534,15 @@ class Auths:
             expires_in_days: Optional expiry for the attestation.
             note: Optional human-readable note.
 
-        Usage:
-            result = auths.sign_artifact("release.tar.gz", identity_did=identity.did)
+        Returns:
+            ArtifactSigningResult with the attestation JSON, RID, digest, and file size.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            CryptoError: If signing fails.
+
+        Examples:
+            >>> result = auths.sign_artifact("release.tar.gz", identity_did=identity.did)
         """
         from auths._native import sign_artifact as _sign_artifact
         from auths.artifact import ArtifactSigningResult
@@ -472,8 +582,14 @@ class Auths:
             expires_in_days: Optional expiry for the attestation.
             note: Optional human-readable note.
 
-        Usage:
-            result = auths.sign_artifact_bytes(manifest_bytes, identity_did=did)
+        Returns:
+            ArtifactSigningResult with the attestation JSON, RID, digest, and size.
+
+        Raises:
+            CryptoError: If signing fails.
+
+        Examples:
+            >>> result = auths.sign_artifact_bytes(manifest_bytes, identity_did=did)
         """
         from auths._native import sign_artifact_bytes as _sign_artifact_bytes
         from auths.artifact import ArtifactSigningResult
@@ -506,7 +622,15 @@ class Auths:
             registry_url: Base URL of the target registry.
             package_name: Optional ecosystem-prefixed identifier (e.g. "npm:react@18.3.0").
 
-        Usage:
+        Returns:
+            ArtifactPublishResult with the registry RID, package name, and signer DID.
+
+        Raises:
+            StorageError: If the attestation is a duplicate.
+            VerificationError: If the registry rejects the attestation.
+            NetworkError: If the registry is unreachable.
+
+        Examples:
             signed = auths.sign_artifact("release.tar.gz", identity_did=did)
             result = auths.publish_artifact(
                 signed.attestation_json,
@@ -540,7 +664,20 @@ class Auths:
         root_key: str,
         capabilities: list[str] | None = None,
     ) -> str:
-        """Exchange an attestation chain for a bearer token."""
+        """Exchange an attestation chain for a bearer token.
+
+        Args:
+            bridge_url: The OIDC bridge base URL.
+            chain_json: JSON-serialized attestation chain.
+            root_key: Root identity's public key hex.
+            capabilities: Optional list of capabilities to request.
+
+        Returns:
+            JWT bearer token string.
+
+        Raises:
+            NetworkError: If the bridge is unreachable or returns an error.
+        """
         try:
             return _get_token(bridge_url, chain_json, root_key, capabilities or [])
         except ConnectionError as exc:
