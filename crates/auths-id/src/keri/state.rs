@@ -15,7 +15,7 @@ use super::types::{Prefix, Said};
 /// to the latest event.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct KeyState {
-    /// The KERI identifier prefix (used in did:keri:<prefix>)
+    /// The KERI identifier prefix (used in `did:keri:<prefix>`)
     pub prefix: Prefix,
 
     /// Current signing key(s), Base64url encoded with derivation code prefix.

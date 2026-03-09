@@ -57,14 +57,16 @@ class PolicyBuilder:
     """Fluent builder for Auths access policies.
 
     Examples:
-        >>> policy = PolicyBuilder.standard("sign_commit").build()
+        ```python
+        policy = PolicyBuilder.standard("sign_commit").build()
 
-        >>> policy = (PolicyBuilder()
-        ...     .not_revoked()
-        ...     .not_expired()
-        ...     .require_capability("sign_commit")
-        ...     .require_issuer("did:keri:EOrg123")
-        ...     .build())
+        policy = (PolicyBuilder()
+            .not_revoked()
+            .not_expired()
+            .require_capability("sign_commit")
+            .require_issuer("did:keri:EOrg123")
+            .build())
+        ```
     """
 
     def __init__(self):

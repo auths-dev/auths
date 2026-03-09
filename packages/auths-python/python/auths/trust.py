@@ -42,7 +42,7 @@ class TrustService:
         """Pin an identity as trusted.
 
         Args:
-            did: The DID to trust (did:keri:... or did:key:...).
+            did: The DID to trust (`did:keri:...` or `did:key:...`).
             label: Optional human-readable label.
             trust_level: One of "tofu", "manual", "org_policy".
 

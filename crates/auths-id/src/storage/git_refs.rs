@@ -16,7 +16,7 @@ pub struct AttestationMetadata {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-/// Aggregates all refs from refs/namespaces/<nid>/refs/* across known devices.
+/// Aggregates all refs from `refs/namespaces/<nid>/refs/*` across known devices.
 /// Returns a canonical merged view of refname -> commit hash.
 pub fn aggregate_canonical_refs(
     repo: &Repository,

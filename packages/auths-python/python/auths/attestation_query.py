@@ -89,9 +89,11 @@ class AttestationService:
     """Query attestations in the identity graph.
 
     Examples:
-        >>> all_atts = auths.attestations.list()
-        >>> device_atts = auths.attestations.list(device_did="did:key:z...")
-        >>> latest = auths.attestations.latest("did:key:z...")
+        ```python
+        all_atts = auths.attestations.list()
+        device_atts = auths.attestations.list(device_did="did:key:z...")
+        latest = auths.attestations.latest("did:key:z...")
+        ```
     """
 
     def __init__(self, client: Auths):

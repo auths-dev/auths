@@ -47,8 +47,10 @@ class DeviceService:
     """Resource service for device operations.
 
     Examples:
-        >>> device = auths.devices.link(identity_did="did:keri:...", capabilities=["sign"])
-        >>> auths.devices.revoke(device.did, identity_did="did:keri:...")
+        ```python
+        device = auths.devices.link(identity_did="did:keri:...", capabilities=["sign"])
+        auths.devices.revoke(device.did, identity_did="did:keri:...")
+        ```
     """
 
     def __init__(self, client: Auths):
@@ -77,7 +79,9 @@ class DeviceService:
             StorageError: If writing the attestation fails.
 
         Examples:
-            >>> device = auths.devices.link(identity.did, capabilities=["sign"], expires_in_days=90)
+            ```python
+            device = auths.devices.link(identity.did, capabilities=["sign"], expires_in_days=90)
+            ```
         """
         pp = passphrase or self._client._passphrase
         device_did, attestation_id = _link_device(
@@ -103,7 +107,7 @@ class DeviceService:
         Expired devices can be extended (grace period). Revoked devices cannot.
 
         Args:
-            device_did: The device's DID (did:key:z...).
+            device_did: The device's DID (`did:key:z...`).
             identity_did: The identity key alias for signing.
             days: Number of days to extend from now (default: 90).
             passphrase: Optional passphrase for keychain access.
@@ -116,8 +120,10 @@ class DeviceService:
             VerificationError: If the device has been revoked.
 
         Examples:
-            >>> ext = auths.devices.extend(device.did, identity.did, days=90)
-            >>> print(f"Extended until: {ext.new_expires_at}")
+            ```python
+            ext = auths.devices.extend(device.did, identity.did, days=90)
+            print(f"Extended until: {ext.new_expires_at}")
+            ```
         """
         pp = passphrase or self._client._passphrase
         result = _extend_device(
@@ -148,7 +154,9 @@ class DeviceService:
             IdentityError: If the device or identity doesn't exist.
 
         Examples:
-            >>> auths.devices.revoke(device.did, identity_did=identity.did, note="lost laptop")
+            ```python
+            auths.devices.revoke(device.did, identity_did=identity.did, note="lost laptop")
+            ```
         """
         pp = passphrase or self._client._passphrase
         _revoke_device(device_did, identity_did, self._client.repo_path, pp, note)

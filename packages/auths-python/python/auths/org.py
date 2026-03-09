@@ -82,7 +82,9 @@ class OrgService:
             KeychainError: If the keychain is locked or inaccessible.
 
         Examples:
-            >>> org = client.orgs.create("my-team")
+            ```python
+            org = client.orgs.create("my-team")
+            ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
@@ -106,9 +108,9 @@ class OrgService:
         """Add a member to an organization.
 
         Args:
-            org_did: The organization's DID (did:keri:...).
+            org_did: The organization's DID (`did:keri:...`).
             member_did: The member's DID to add.
-            role: One of "admin", "member", "readonly".
+            role: One of `"admin"`, `"member"`, `"readonly"`.
             capabilities: Explicit capability list. If None, uses role defaults.
             note: Optional human-readable note for the attestation.
             member_public_key_hex: Member's Ed25519 public key hex. Required when
@@ -121,7 +123,9 @@ class OrgService:
             OrgError: If the member cannot be added.
 
         Examples:
-            >>> member = client.orgs.add_member(org.did, dev.did, role="member")
+            ```python
+            member = client.orgs.add_member(org.did, dev.did, role="member")
+            ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
@@ -168,7 +172,9 @@ class OrgService:
             OrgError: If the member cannot be revoked.
 
         Examples:
-            >>> revoked = client.orgs.revoke_member(org.did, dev.did)
+            ```python
+            revoked = client.orgs.revoke_member(org.did, dev.did)
+            ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
@@ -217,7 +223,9 @@ class OrgService:
             OrgError: If the member cannot be updated.
 
         Examples:
-            >>> updated = client.orgs.update_member(org.did, dev.did, role="admin")
+            ```python
+            updated = client.orgs.update_member(org.did, dev.did, role="admin")
+            ```
         """
         self.revoke_member(
             org_did, member_did, note="superseded by update",
@@ -250,7 +258,9 @@ class OrgService:
             OrgError: If the organization doesn't exist.
 
         Examples:
-            >>> members = client.orgs.list_members(org.did)
+            ```python
+            members = client.orgs.list_members(org.did)
+            ```
         """
         rp = repo_path or self._client.repo_path
         try:
@@ -287,7 +297,9 @@ class OrgService:
             OrgMember if found, or None.
 
         Examples:
-            >>> member = client.orgs.get_member(org.did, dev.did)
+            ```python
+            member = client.orgs.get_member(org.did, dev.did)
+            ```
         """
         members = self.list_members(org_did, include_revoked=False, repo_path=repo_path)
         return next((m for m in members if m.member_did == member_did), None)

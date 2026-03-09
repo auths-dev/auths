@@ -85,8 +85,10 @@ class AuthsJWKSClient:
         cache_ttl: How long to cache JWKS keys, in seconds (default: 300).
 
     Examples:
-        >>> jwks = AuthsJWKSClient("https://bridge.example.com/.well-known/jwks.json")
-        >>> claims = jwks.verify_token(token, audience="my-service")
+        ```python
+        jwks = AuthsJWKSClient("https://bridge.example.com/.well-known/jwks.json")
+        claims = jwks.verify_token(token, audience="my-service")
+        ```
     """
 
     def __init__(self, jwks_url: str, *, cache_ttl: int = 300):
@@ -131,9 +133,11 @@ class AuthsJWKSClient:
             NetworkError: If JWKS keys cannot be fetched.
 
         Examples:
-            >>> claims = jwks.verify_token(bearer_token, audience="my-service")
-            >>> if claims.has_capability("read"):
-            ...     allow_access()
+            ```python
+            claims = jwks.verify_token(bearer_token, audience="my-service")
+            if claims.has_capability("read"):
+                allow_access()
+            ```
         """
         from auths._errors import VerificationError
 
@@ -240,8 +244,10 @@ def verify_token(
         NetworkError: If JWKS keys cannot be fetched.
 
     Examples:
-        >>> from auths.jwt import verify_token
-        >>> claims = verify_token(token, jwks_url="...", audience="my-service")
+        ```python
+        from auths.jwt import verify_token
+        claims = verify_token(token, jwks_url="...", audience="my-service")
+        ```
     """
     client = AuthsJWKSClient(jwks_url)
     return client.verify_token(token, audience=audience, issuer=issuer, leeway=leeway)

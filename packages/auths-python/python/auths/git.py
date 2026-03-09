@@ -31,8 +31,10 @@ def generate_allowed_signers(repo_path: str = "~/.auths") -> str:
         ``verify_commit_range``.
 
     Examples:
-        >>> content = generate_allowed_signers()
-        >>> Path(".auths/allowed_signers").write_text(content)
+        ```python
+        content = generate_allowed_signers()
+        Path(".auths/allowed_signers").write_text(content)
+        ```
     """
     from auths._native import generate_allowed_signers_file
 

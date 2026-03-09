@@ -75,7 +75,7 @@ pub fn parse_ed25519_seed(bytes: &[u8]) -> Result<SecureSeed, CryptoError> {
 ///
 /// Returns `(seed, Some(pubkey))` for PKCS#8 v2 (which embeds the public key),
 /// or `(seed, None)` for formats that don't include one. Callers can derive the
-/// public key from the seed via [`CryptoProvider::ed25519_public_key_from_seed`].
+/// public key from the seed via `CryptoProvider::ed25519_public_key_from_seed`.
 ///
 /// Args:
 /// * `bytes`: Key material in any supported format.
@@ -112,7 +112,7 @@ pub fn parse_ed25519_key_material(
 
 /// Build a PKCS#8 v2 DER encoding from a raw seed and public key.
 ///
-/// Produces an 85-byte document (explicit [1] tag) compatible with ring's
+/// Produces an 85-byte document (explicit \[1\] tag) compatible with ring's
 /// `Ed25519KeyPair::from_pkcs8` (which accepts both 83 and 85-byte forms).
 ///
 /// Args:

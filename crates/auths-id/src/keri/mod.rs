@@ -37,7 +37,7 @@
 //! |----------|--------|-------------|
 //! | [`validate_kel`] / [`replay_kel`] | `keri::validate` | Replays events to compute `KeyState` (`apply_event_chain`) |
 //! | [`compute_status`](crate::storage::registry::org_member::compute_status) | `storage::registry::org_member` | Computes member status from attestation |
-//! | [`evaluate_policy`](crate::policy::evaluate_policy) | `policy` | Evaluates authorization decision |
+//! | `evaluate_policy` | `policy` | Evaluates authorization decision |
 //!
 //! These functions are suitable for property-based testing and are independent
 //! of storage backends.
@@ -71,7 +71,7 @@
 //! These are **hard errors** (structural corruption), not soft warnings.
 //!
 //! **Tests:** `visit_org_member_attestations_detects_subject_mismatch`,
-//! `visit_org_member_attestations_detects_issuer_mismatch` in [`packed`](crate::storage::registry::packed) module
+//! `visit_org_member_attestations_detects_issuer_mismatch` in `packed` module
 //!
 //! ## Event Types
 //!

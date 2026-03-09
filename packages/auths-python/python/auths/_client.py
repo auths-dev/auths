@@ -104,9 +104,11 @@ class Auths:
     """Auths SDK client — decentralized identity for developers.
 
     Examples:
-        >>> auths = Auths()
-        >>> result = auths.verify(attestation_json=data, issuer_key=key)
-        >>> sig = auths.sign(b"hello", private_key=key_hex)
+        ```python
+        auths = Auths()
+        result = auths.verify(attestation_json=data, issuer_key=key)
+        sig = auths.sign(b"hello", private_key=key_hex)
+        ```
     """
 
     def __init__(self, repo_path: str = "~/.auths", passphrase: str | None = None):
@@ -157,8 +159,10 @@ class Auths:
             CryptoError: If the issuer key is malformed.
 
         Examples:
-            >>> result = auths.verify(att_json, key, at="2024-06-15T00:00:00Z",
-            ...                       required_capability="deploy:staging")
+            ```python
+            result = auths.verify(att_json, key, at="2024-06-15T00:00:00Z",
+                                  required_capability="deploy:staging")
+            ```
         """
         try:
             if at and required_capability:
@@ -197,7 +201,9 @@ class Auths:
             VerificationError: If any link in the chain fails verification.
 
         Examples:
-            >>> report = auths.verify_chain(chain, root_key, witnesses=config)
+            ```python
+            report = auths.verify_chain(chain, root_key, witnesses=config)
+            ```
         """
         try:
             if witnesses:
@@ -317,7 +323,7 @@ class Auths:
 
         Args:
             message: Bytes to sign.
-            identity: The identity DID (did:keri:...) whose key to use.
+            identity: The identity DID (`did:keri:...`) whose key to use.
             passphrase: Override passphrase (default: client passphrase or AUTHS_PASSPHRASE).
 
         Returns:
@@ -328,8 +334,10 @@ class Auths:
             KeychainError: If the keychain is locked or inaccessible.
 
         Examples:
+            ```python
             identity = auths.identities.create(label="laptop")
             sig = auths.sign_as(b"hello", identity=identity.did)
+            ```
         """
         from auths._native import sign_as_identity
 
@@ -362,7 +370,9 @@ class Auths:
             KeychainError: If the keychain is locked or inaccessible.
 
         Examples:
-            >>> envelope = auths.sign_action_as("deploy", payload_json, identity=identity.did)
+            ```python
+            envelope = auths.sign_action_as("deploy", payload_json, identity=identity.did)
+            ```
         """
         from auths._native import sign_action_as_identity
 
@@ -382,7 +392,7 @@ class Auths:
         """Retrieve the Ed25519 public key (hex) for an identity.
 
         Args:
-            identity: The identity DID (did:keri:...).
+            identity: The identity DID (`did:keri:...`).
             passphrase: Override passphrase.
 
         Returns:
@@ -393,7 +403,9 @@ class Auths:
             KeychainError: If the keychain is locked or inaccessible.
 
         Examples:
-            >>> pub_key = auths.get_public_key(identity.did)
+            ```python
+            pub_key = auths.get_public_key(identity.did)
+            ```
         """
         from auths._native import get_identity_public_key
 
@@ -411,8 +423,8 @@ class Auths:
     ) -> str:
         """Sign bytes using a delegated agent's own key.
 
-        Unlike sign_as() which resolves by identity DID, this uses the agent's
-        key alias directly — enabling delegated agents (did:key:) to sign.
+        Unlike `sign_as()` which resolves by identity DID, this uses the agent's
+        key alias directly — enabling delegated agents (`did:key:`) to sign.
 
         Args:
             message: Bytes to sign.
@@ -427,8 +439,10 @@ class Auths:
             KeychainError: If the keychain is locked or inaccessible.
 
         Examples:
+            ```python
             agent = auths.identities.delegate_agent(identity.did, "bot", ["sign"])
             sig = auths.sign_as_agent(b"hello", key_alias=agent._key_alias)
+            ```
         """
         from auths._native import sign_as_agent as _sign_as_agent
 
@@ -463,8 +477,10 @@ class Auths:
             KeychainError: If the keychain is locked or inaccessible.
 
         Examples:
+            ```python
             agent = auths.identities.delegate_agent(identity.did, "bot", ["deploy"])
             envelope = auths.sign_action_as_agent("deploy", payload, agent._key_alias, agent.did)
+            ```
         """
         from auths._native import sign_action_as_agent as _sign_action_as_agent
 
@@ -484,6 +500,7 @@ class Auths:
         """Sign git commit/tag data, producing an SSHSIG PEM signature.
 
         Uses a 3-tier fallback:
+
         1. ssh-agent (fastest, works on dev machines with agent running)
         2. auto-start agent (starts a transient agent process)
         3. direct signing (works everywhere, including headless CI)
@@ -501,7 +518,9 @@ class Auths:
             KeychainError: If the keychain is locked or inaccessible.
 
         Examples:
-            >>> result = auths.sign_commit(commit_bytes, identity_did=identity.did)
+            ```python
+            result = auths.sign_commit(commit_bytes, identity_did=identity.did)
+            ```
         """
         from auths._native import sign_commit as _sign_commit
         from auths.commit import CommitSigningResult
@@ -544,7 +563,9 @@ class Auths:
             CryptoError: If signing fails.
 
         Examples:
-            >>> result = auths.sign_artifact("release.tar.gz", identity_did=identity.did)
+            ```python
+            result = auths.sign_artifact("release.tar.gz", identity_did=identity.did)
+            ```
         """
         from auths._native import sign_artifact as _sign_artifact
         from auths.artifact import ArtifactSigningResult
@@ -591,7 +612,9 @@ class Auths:
             CryptoError: If signing fails.
 
         Examples:
-            >>> result = auths.sign_artifact_bytes(manifest_bytes, identity_did=did)
+            ```python
+            result = auths.sign_artifact_bytes(manifest_bytes, identity_did=did)
+            ```
         """
         from auths._native import sign_artifact_bytes as _sign_artifact_bytes
         from auths.artifact import ArtifactSigningResult
@@ -620,7 +643,7 @@ class Auths:
         """Publish a signed attestation to a registry.
 
         Args:
-            attestation_json: The attestation JSON string from sign_artifact().
+            attestation_json: The attestation JSON string from `sign_artifact()`.
             registry_url: Base URL of the target registry.
             package_name: Optional ecosystem-prefixed identifier (e.g. "npm:react@18.3.0").
 
@@ -633,11 +656,13 @@ class Auths:
             NetworkError: If the registry is unreachable.
 
         Examples:
+            ```python
             signed = auths.sign_artifact("release.tar.gz", identity_did=did)
             result = auths.publish_artifact(
                 signed.attestation_json,
                 registry_url="https://registry.example.com",
             )
+            ```
         """
         from auths._native import publish_artifact as _publish_artifact
         from auths.artifact import ArtifactPublishResult

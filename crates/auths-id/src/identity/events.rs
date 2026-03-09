@@ -73,7 +73,7 @@ impl KeyRotationEvent {
     }
 }
 
-/// Base64 serialization helper for Vec<u8> fields.
+/// Base64 serialization helper for `Vec<u8>` fields.
 mod base64_bytes {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use serde::{Deserialize, Deserializer, Serializer};

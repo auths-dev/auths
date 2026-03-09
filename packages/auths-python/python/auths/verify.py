@@ -35,11 +35,13 @@ class WitnessConfig:
     """Configuration for witness quorum verification.
 
     Examples:
-        >>> config = WitnessConfig(
-        ...     receipts=[receipt1_json, receipt2_json],
-        ...     keys=[WitnessKey("did:key:z...", "ab12...")],
-        ...     threshold=2,
-        ... )
+        ```python
+        config = WitnessConfig(
+            receipts=[receipt1_json, receipt2_json],
+            keys=[WitnessKey("did:key:z...", "ab12...")],
+            threshold=2,
+        )
+        ```
     """
 
     receipts: list[str]
@@ -78,7 +80,9 @@ def verify_chain_with_witnesses(
         VerificationError: If the chain or witness quorum fails verification.
 
     Examples:
-        >>> report = verify_chain_with_witnesses(chain, root_key, config)
+        ```python
+        report = verify_chain_with_witnesses(chain, root_key, config)
+        ```
     """
     keys_json = [
         json.dumps({"did": k.did, "public_key_hex": k.public_key_hex})

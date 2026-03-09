@@ -70,7 +70,7 @@ pub struct AuthsContext {
     pub key_storage: Arc<dyn KeyStorage + Send + Sync>,
     /// Wall-clock provider for deterministic testing.
     pub clock: Arc<dyn ClockProvider + Send + Sync>,
-    /// Telemetry sink (defaults to [`NoopSink`] when not specified).
+    /// Telemetry sink (defaults to `NoopSink` when not specified).
     pub event_sink: Arc<dyn EventSink>,
     /// Identity storage adapter (load/save managed identity).
     pub identity_storage: Arc<dyn IdentityStorage + Send + Sync>,
@@ -79,7 +79,7 @@ pub struct AuthsContext {
     /// Attestation source for reading existing attestations.
     pub attestation_source: Arc<dyn AttestationSource + Send + Sync>,
     /// Passphrase provider for key decryption during signing operations.
-    /// Defaults to [`NoopPassphraseProvider`] — set via `.passphrase_provider(...)` when
+    /// Defaults to `NoopPassphraseProvider` — set via `.passphrase_provider(...)` when
     /// SDK functions need to sign with encrypted key material.
     pub passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     /// UUID generator port. Defaults to [`SystemUuidProvider`] (random v4 UUIDs).
