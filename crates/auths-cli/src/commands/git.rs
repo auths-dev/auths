@@ -258,6 +258,13 @@ fn handle_allowed_signers(
     let output = format_allowed_signers_file(&entries);
 
     if let Some(output_path) = cmd.output_file {
+        if let Some(parent) = output_path.parent()
+            && !parent.as_os_str().is_empty()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory {:?}", parent))?;
+        }
         fs::write(&output_path, &output)
             .with_context(|| format!("Failed to write to {:?}", output_path))?;
         eprintln!("Wrote {} entries to {:?}", entries.len(), output_path);

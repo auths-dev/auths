@@ -30,7 +30,7 @@ repos:
 
       - id: cargo-clippy
         name: cargo clippy
-        entry: bash -c 'SQLX_OFFLINE=true cargo clippy --all-targets --all-features -- -D warnings'
+        entry: bash -c 'SQLX_OFFLINE=true cargo clippy --all-targets --all-features -- -D warnings && CARGO_TARGET_DIR=../../target cargo clippy --manifest-path packages/auths-node/Cargo.toml --all-targets -- -D warnings && CARGO_TARGET_DIR=../../target cargo clippy --manifest-path packages/auths-python/Cargo.toml --all-targets -- -D warnings'
         language: system
         types: [rust]
         pass_filenames: false

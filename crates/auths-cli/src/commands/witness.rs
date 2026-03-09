@@ -3,7 +3,7 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 
 use auths_core::witness::{WitnessServerConfig, WitnessServerState, run_server};
@@ -187,7 +187,7 @@ fn resolve_repo_path(repo_opt: Option<PathBuf>) -> Result<PathBuf> {
 fn expand_tilde(path: &std::path::Path) -> Result<PathBuf> {
     let s = path.to_string_lossy();
     if s.starts_with("~/") || s == "~" {
-        let home = dirs::home_dir().context("Could not determine home directory")?;
+        let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
         if s == "~" {
             Ok(home)
         } else {
