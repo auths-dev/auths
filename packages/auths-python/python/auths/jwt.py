@@ -16,18 +16,31 @@ class AuthsClaims:
     """Validated claims from an Auths OIDC token."""
 
     sub: str
+    """Subject claim — the signer's DID."""
     keri_prefix: str
+    """KERI prefix of the identity."""
     capabilities: list[str]
+    """Capabilities granted by this token."""
     iss: str
+    """Issuer claim — the OIDC bridge URL."""
     aud: str
+    """Audience claim — the service this token is intended for."""
     exp: int
+    """Expiration time as Unix timestamp."""
     iat: int
+    """Issued-at time as Unix timestamp."""
     jti: str
+    """Unique JWT ID for replay prevention."""
     signer_type: str | None = None
+    """Signer classification: `"Human"`, `"Agent"`, or `"Workload"`."""
     delegated_by: str | None = None
+    """DID of the delegating identity, if this is a delegated token."""
     witness_quorum: dict | None = None
+    """Witness quorum metadata, if witness-backed."""
     github_actor: str | None = None
+    """GitHub username, present for GitHub Actions OIDC tokens."""
     github_repository: str | None = None
+    """GitHub repository (owner/repo), present for GitHub Actions OIDC tokens."""
 
     def has_capability(self, cap: str) -> bool:
         """Check if token grants a specific capability."""

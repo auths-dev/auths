@@ -24,9 +24,13 @@ class ArtifactSigningResult:
     """
 
     attestation_json: str
+    """JSON-serialized attestation for the signed artifact."""
     rid: str
+    """Resource identifier for this attestation."""
     digest: str
+    """SHA-256 hex digest of the artifact content."""
     file_size: int
+    """Size of the artifact in bytes."""
 
     def __repr__(self) -> str:
         size = _human_size(self.file_size)
@@ -43,8 +47,11 @@ class ArtifactPublishResult:
     """
 
     attestation_rid: str
+    """Registry identifier for the stored attestation."""
     package_name: str | None
+    """Package name in the registry, or None if not specified."""
     signer_did: str
+    """DID of the identity that signed the artifact."""
 
     def __repr__(self) -> str:
         rid_short = self.attestation_rid[:20] + "..." if len(self.attestation_rid) > 20 else self.attestation_rid

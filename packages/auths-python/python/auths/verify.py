@@ -20,7 +20,9 @@ class WitnessKey:
     """A witness node's identity and public key."""
 
     did: str
+    """The witness node's DID."""
     public_key_hex: str
+    """Hex-encoded Ed25519 public key of the witness."""
 
     def __repr__(self) -> str:
         return f"WitnessKey(did='{self.did[:20]}...')"
@@ -39,8 +41,11 @@ class WitnessConfig:
     """
 
     receipts: list[str]
+    """JSON-serialized witness receipt strings."""
     keys: list[WitnessKey]
+    """Witness public keys to verify receipts against."""
     threshold: int
+    """Minimum number of valid witness receipts required."""
 
     def __post_init__(self):
         if self.threshold < 1:

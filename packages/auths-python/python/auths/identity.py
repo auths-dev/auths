@@ -22,10 +22,15 @@ class Identity:
     """An Auths identity (represents a did:keri: identifier)."""
 
     did: str
+    """The KERI decentralized identifier (e.g. `did:keri:EXq5...`)."""
     _key_alias: str = field(repr=False)
+    """Internal keychain alias for the signing key."""
     label: str
+    """Human-readable label (e.g. `"laptop"`, `"main"`)."""
     repo_path: str
+    """Path to the Git identity repository."""
     public_key: str
+    """Hex-encoded Ed25519 public key."""
 
 
 @dataclass
@@ -33,9 +38,13 @@ class AgentIdentity:
     """Standalone agent identity (did:keri:). Created via identities.create_agent()."""
 
     did: str
+    """The agent's KERI decentralized identifier."""
     _key_alias: str = field(repr=False)
+    """Internal keychain alias for the agent's signing key."""
     attestation: str
+    """JSON-serialized attestation binding the agent to its capabilities."""
     public_key: str
+    """Hex-encoded Ed25519 public key."""
 
 
 @dataclass
@@ -43,9 +52,13 @@ class DelegatedAgent:
     """Agent delegated under a parent identity (did:key:). Created via identities.delegate_agent()."""
 
     did: str
+    """The delegated agent's device-level identifier (`did:key:z...`)."""
     _key_alias: str = field(repr=False)
+    """Internal keychain alias for the delegated key."""
     attestation: str
+    """JSON-serialized delegation attestation signed by the parent identity."""
     public_key: str
+    """Hex-encoded Ed25519 public key."""
 
 
 class IdentityService:

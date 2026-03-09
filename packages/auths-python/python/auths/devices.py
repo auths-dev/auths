@@ -20,7 +20,9 @@ class Device:
     """A linked device."""
 
     did: str
+    """The device's DID (`did:key:z...`)."""
     attestation_id: str
+    """RID of the attestation linking this device to its identity."""
 
 
 @dataclass
@@ -28,8 +30,11 @@ class DeviceExtension:
     """Result of extending a device's authorization period."""
 
     device_did: str
+    """The device's DID (`did:key:z...`)."""
     new_expires_at: str
+    """ISO 8601 timestamp of the new expiry."""
     previous_expires_at: str | None
+    """ISO 8601 timestamp of the previous expiry, or None if none was set."""
 
     def __repr__(self) -> str:
         return (

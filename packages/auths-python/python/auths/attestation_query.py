@@ -24,16 +24,27 @@ class Attestation:
     """
 
     rid: str
+    """Unique attestation resource identifier."""
     issuer: str
+    """DID of the identity that issued this attestation."""
     subject: str
+    """DID of the entity this attestation authorizes."""
     device_did: str
+    """DID of the device key bound by this attestation."""
     capabilities: list[str]
+    """Granted capabilities (e.g. `["sign", "verify"]`)."""
     signer_type: str | None
+    """Signer classification: `"Human"`, `"Agent"`, or `"Workload"`."""
     expires_at: str | None
+    """ISO 8601 expiry timestamp, or None for non-expiring attestations."""
     revoked_at: str | None
+    """ISO 8601 revocation timestamp, or None if still active."""
     created_at: str | None
+    """ISO 8601 creation timestamp."""
     delegated_by: str | None
+    """DID of the delegating identity, if this is a delegation attestation."""
     json: str
+    """Canonical JSON representation of the attestation."""
 
     @property
     def is_active(self) -> bool:

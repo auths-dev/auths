@@ -32,8 +32,11 @@ class Decision:
     """
 
     outcome: str
+    """Policy result: `"allow"` or `"deny"`."""
     reason: str
+    """Short machine-readable reason (e.g. `"revoked"`, `"capability_missing"`)."""
     message: str
+    """Human-readable explanation of the decision."""
 
     @property
     def allowed(self) -> bool:

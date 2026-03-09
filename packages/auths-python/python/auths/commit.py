@@ -14,8 +14,11 @@ class CommitSigningResult:
     """
 
     signature_pem: str
+    """SSHSIG PEM block suitable for `git verify-commit`."""
     method: str
+    """Signing method used (e.g. `"ssh-ed25519"`)."""
     namespace: str
+    """SSH namespace for the signature (e.g. `"git"`)."""
 
     def __repr__(self) -> str:
         pem_preview = self.signature_pem[:40] + "..." if len(self.signature_pem) > 40 else self.signature_pem

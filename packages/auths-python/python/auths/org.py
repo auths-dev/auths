@@ -19,9 +19,13 @@ class Org:
     """An organization identity."""
 
     prefix: str
+    """KERI prefix of the organization identity."""
     did: str
+    """The organization's DID (`did:keri:...`)."""
     label: str
+    """Human-readable organization name."""
     repo_path: str
+    """Path to the identity repository."""
 
     def __repr__(self):
         return f"Org(did={self.did!r}, label={self.label!r})"
@@ -32,12 +36,19 @@ class OrgMember:
     """A member within an organization."""
 
     member_did: str
+    """DID of the member."""
     role: str
+    """Member role: `"admin"`, `"member"`, or `"readonly"`."""
     capabilities: list[str]
+    """Capabilities granted to this member."""
     issuer_did: str
+    """DID of the identity that issued the membership attestation."""
     attestation_rid: str
+    """RID of the membership attestation."""
     revoked: bool
+    """Whether this membership has been revoked."""
     expires_at: Optional[str]
+    """ISO 8601 expiry timestamp, or None for non-expiring memberships."""
 
     def __repr__(self):
         status = " revoked" if self.revoked else ""
