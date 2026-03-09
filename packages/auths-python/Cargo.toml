@@ -31,5 +31,7 @@ auths-id = { path = "../../crates/auths-id" }
 auths-crypto = { path = "../../crates/auths-crypto" }
 auths-storage = { path = "../../crates/auths-storage", features = ["backend-git"] }
 auths-policy = { path = "../../crates/auths-policy" }
+auths-pairing-daemon = { path = "../../crates/auths-pairing-daemon" }
+auths-infra-git = { path = "../../crates/auths-infra-git" }
 shellexpand = "3"
 sha2 = "0.10"

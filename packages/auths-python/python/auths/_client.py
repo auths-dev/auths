@@ -23,6 +23,8 @@ from auths._errors import (
     IdentityError,
     KeychainError,
     NetworkError,
+    OrgError,
+    PairingError,
     StorageError,
     VerificationError,
 )
@@ -62,6 +64,13 @@ _ERROR_CODE_MAP = {
     "AUTHS_ROTATION_ERROR": ("unknown", IdentityError),
     "AUTHS_NETWORK_ERROR": ("server_error", NetworkError),
     "AUTHS_VERIFICATION_FAILED": ("invalid_signature", VerificationError),
+    "AUTHS_ORG_ERROR": ("org_error", OrgError),
+    "AUTHS_PAIRING_ERROR": ("pairing_error", PairingError),
+    "AUTHS_PAIRING_TIMEOUT": ("timeout", PairingError),
+    "AUTHS_TRUST_ERROR": ("trust_error", StorageError),
+    "AUTHS_WITNESS_ERROR": ("witness_error", StorageError),
+    "AUTHS_AUDIT_ERROR": ("audit_error", VerificationError),
+    "AUTHS_DIAGNOSTIC_ERROR": ("diagnostic_error", VerificationError),
 }
 
 
