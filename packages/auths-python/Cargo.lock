@@ -288,6 +288,7 @@ dependencies = [
  "auths-sdk",
  "auths-storage",
  "auths-verifier",
+ "axum",
  "chrono",
  "hex",
  "json-canon",
@@ -299,6 +300,7 @@ dependencies = [
  "sha2",
  "shellexpand",
  "tokio",
+ "url",
 ]
 
 [[package]]

@@ -35,13 +35,13 @@ fn trust_level_str(tl: &TrustLevel) -> &'static str {
 }
 
 #[pyfunction]
-#[pyo3(signature = (did, label=None, trust_level="manual", repo_path))]
+#[pyo3(signature = (did, repo_path, label=None, trust_level="manual"))]
 pub fn pin_identity(
     py: Python<'_>,
     did: &str,
+    repo_path: &str,
     label: Option<String>,
     trust_level: &str,
-    repo_path: &str,
 ) -> PyResult<(String, Option<String>, String, String, Option<u64>, String)> {
     let tl = parse_trust_level(trust_level)?;
     let did = did.to_string();

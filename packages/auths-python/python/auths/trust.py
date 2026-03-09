@@ -52,7 +52,7 @@ class TrustService:
         rp = repo_path or self._client.repo_path
         try:
             did_out, lbl, tl, first_seen, kel_seq, pinned_at = _pin_identity(
-                did, label, trust_level, rp,
+                did, rp, label, trust_level,
             )
             return TrustEntry(
                 did=did_out,

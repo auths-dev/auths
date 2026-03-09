@@ -101,7 +101,7 @@ class OrgService:
         caps_json = json.dumps(capabilities) if capabilities else None
         try:
             m_did, r, caps_str, issuer, rid, revoked, expires = _add_org_member(
-                org_did, member_did, role, caps_json, rp, pp, note,
+                org_did, member_did, role, rp, caps_json, pp, note,
             )
             return OrgMember(
                 member_did=m_did,

@@ -16,6 +16,7 @@ pub mod git_integration;
 pub mod identity;
 pub mod identity_sign;
 pub mod org;
+pub mod pairing;
 pub mod policy;
 pub mod rotation;
 pub mod runtime;
@@ -127,6 +128,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(witness::list_witnesses, m)?)?;
 
     m.add_function(wrap_pyfunction!(diagnostics::run_diagnostics, m)?)?;
+
+    m.add_class::<pairing::PyPairingHandle>()?;
+    m.add_function(wrap_pyfunction!(pairing::create_pairing_session_ffi, m)?)?;
+    m.add_function(wrap_pyfunction!(pairing::join_pairing_session_ffi, m)?)?;
+    m.add_function(wrap_pyfunction!(pairing::complete_pairing_ffi, m)?)?;
 
     Ok(())
 }

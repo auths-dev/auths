@@ -45,7 +45,7 @@ class WitnessService:
         """
         rp = repo_path or self._client.repo_path
         try:
-            url_out, did, lbl = _add_witness(url, label, rp)
+            url_out, did, lbl = _add_witness(url, rp, label)
             return Witness(url=url_out, did=did, label=lbl)
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc, default_cls=AuthsError) from exc

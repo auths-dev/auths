@@ -32,6 +32,7 @@ from auths.agent import AgentAuth
 from auths.doctor import Check, DiagnosticReport, DoctorService
 from auths.audit import AuditReport, AuditService, AuditSummary, CommitRecord
 from auths.org import Org, OrgMember, OrgService
+from auths.pairing import PairingResponse, PairingResult, PairingService, PairingSession
 from auths.trust import TrustEntry, TrustService
 from auths.witness import Witness, WitnessService
 from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
@@ -122,4 +123,9 @@ __all__ = [
     "Check",
     "DiagnosticReport",
     "DoctorService",
+    "PairingResponse",
+    "PairingResult",
+    "PairingService",
+    "PairingSession",
+    "PairingError",
 ]

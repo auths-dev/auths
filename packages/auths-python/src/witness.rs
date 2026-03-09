@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::witness_config::WitnessConfig;
-use auths_storage::git::identity_adapter::RegistryIdentityStorage;
+use auths_storage::git::RegistryIdentityStorage;
 
 fn resolve_repo(repo_path: &str) -> PathBuf {
     PathBuf::from(shellexpand::tilde(repo_path).as_ref())
@@ -50,12 +50,12 @@ fn save_witness_config(repo_path: &PathBuf, config: &WitnessConfig) -> PyResult<
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, label=None, repo_path))]
+#[pyo3(signature = (url, repo_path, label=None))]
 pub fn add_witness(
     py: Python<'_>,
     url: &str,
-    label: Option<String>,
     repo_path: &str,
+    label: Option<String>,
 ) -> PyResult<(String, Option<String>, Option<String>)> {
     let url_str = url.to_string();
     let repo = resolve_repo(repo_path);

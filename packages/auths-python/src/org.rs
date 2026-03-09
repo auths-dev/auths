@@ -8,6 +8,7 @@ use auths_core::ports::id::SystemUuidProvider;
 use auths_core::signing::StorageSigner;
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::identity::resolve::{DefaultDidResolver, DidResolver};
+use auths_id::attestation::AttestationSink;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::identity::IdentityStorage;
@@ -15,22 +16,24 @@ use auths_sdk::workflows::org::{
     AddMemberCommand, OrgContext, RevokeMemberCommand, add_organization_member,
     revoke_organization_member,
 };
-use auths_storage::git::adapter::GitRegistryBackend;
-use auths_storage::git::attestation_adapter::RegistryAttestationStorage;
-use auths_storage::git::identity_adapter::RegistryIdentityStorage;
-use auths_storage::git::registry_config::RegistryConfig;
+use auths_core::storage::keychain::KeyAlias;
+use auths_storage::git::GitRegistryBackend;
+use auths_storage::git::RegistryAttestationStorage;
+use auths_storage::git::RegistryIdentityStorage;
+use auths_storage::git::RegistryConfig;
 use auths_verifier::core::{
-    Attestation, Capability, DeviceDID, Ed25519PublicKey, KeyAlias, Role, VerifiedAttestation,
+    Attestation, Capability, Ed25519PublicKey, Role, VerifiedAttestation,
 };
+use auths_verifier::types::DeviceDID;
 use chrono::Utc;
 
 use crate::identity::{make_keychain_config, resolve_passphrase};
 
 fn get_keychain(
     passphrase: &str,
-) -> PyResult<Box<dyn auths_core::ports::keychain::KeyStorage + Send + Sync>> {
+) -> PyResult<Box<dyn auths_core::storage::keychain::KeyStorage + Send + Sync>> {
     let env_config = make_keychain_config(passphrase);
-    auths_core::keychain::get_platform_keychain_with_config(&env_config)
+    auths_core::storage::keychain::get_platform_keychain_with_config(&env_config)
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] {e}")))
 }
 
@@ -81,7 +84,7 @@ pub fn create_org(
         let key_alias = KeyAlias::new_unchecked(key_alias_str);
         let keychain = get_keychain(&passphrase_str)?;
         let provider =
-            auths_core::ports::passphrase::PrefilledPassphraseProvider::new(&passphrase_str);
+            auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
         let (controller_did, alias) =
             initialize_registry_identity(backend.clone(), &key_alias, &provider, &*keychain, None)
@@ -159,14 +162,14 @@ pub fn create_org(
 }
 
 #[pyfunction]
-#[pyo3(signature = (org_did, member_did, role, capabilities_json=None, repo_path, passphrase=None, note=None))]
+#[pyo3(signature = (org_did, member_did, role, repo_path, capabilities_json=None, passphrase=None, note=None))]
 pub fn add_org_member(
     py: Python<'_>,
     org_did: &str,
     member_did: &str,
     role: &str,
-    capabilities_json: Option<String>,
     repo_path: &str,
+    capabilities_json: Option<String>,
     passphrase: Option<String>,
     note: Option<String>,
 ) -> PyResult<(String, String, String, String, String, bool, Option<String>)> {
@@ -223,7 +226,7 @@ pub fn add_org_member(
         let signer = StorageSigner::new(keychain);
         let uuid_provider = SystemUuidProvider;
         let provider =
-            auths_core::ports::passphrase::PrefilledPassphraseProvider::new(&passphrase_str);
+            auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
         let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
             RegistryConfig::single_tenant(&repo),
@@ -321,7 +324,7 @@ pub fn revoke_org_member(
         let signer = StorageSigner::new(keychain);
         let uuid_provider = SystemUuidProvider;
         let provider =
-            auths_core::ports::passphrase::PrefilledPassphraseProvider::new(&passphrase_str);
+            auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
         let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
             RegistryConfig::single_tenant(&repo),
