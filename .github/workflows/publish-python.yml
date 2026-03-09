@@ -1,0 +1,130 @@
+name: Publish Python SDK
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target"
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
+
+permissions:
+  contents: read
+
+jobs:
+  build-wheels:
+    name: Build wheels (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            args: ""
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            args: "--zig"
+          - os: macos-latest
+            target: universal2-apple-darwin
+            args: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist ${{ matrix.args }}
+          working-directory: packages/auths-python
+          sccache: "true"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target }}
+          path: packages/auths-python/dist/*.whl
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: packages/auths-python
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: packages/auths-python/dist/*.tar.gz
+
+  test-wheel:
+    name: Test wheel (${{ matrix.os }})
+    needs: [build-wheels]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: wheels-x86_64-unknown-linux-gnu
+          - os: macos-latest
+            artifact: wheels-universal2-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+
+      - name: Install wheel and test dependencies
+        run: |
+          pip install dist/*.whl
+          pip install pytest
+
+      - name: Run tests
+        working-directory: packages/auths-python
+        run: pytest tests/ -v
+
+  publish:
+    name: Publish to ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'TestPyPI' || 'PyPI' }}
+    needs: [build-wheels, build-sdist, test-wheel]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'testpypi' || 'pypi' }}
+      url: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'https://test.pypi.org/p/auths-python' || 'https://pypi.org/p/auths-python' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          repository-url: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'https://test.pypi.org/legacy/' || '' }}
