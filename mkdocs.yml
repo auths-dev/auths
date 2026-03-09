@@ -167,6 +167,7 @@ nav:
           - Signing & Verification: sdk/rust/signing-and-verification.md
           - Error Handling: sdk/rust/error-handling.md
           - Storage Backends: sdk/rust/storage-backends.md
+          - API Reference: sdk/rust/api-reference.md
       - Verifier Embedding:
           - FFI (C/C++): sdk/verifier/ffi.md
           - WASM: sdk/verifier/wasm.md
