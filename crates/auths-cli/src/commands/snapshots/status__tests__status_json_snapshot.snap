@@ -1,0 +1,48 @@
+---
+source: crates/auths-cli/src/commands/status.rs
+expression: report
+---
+{
+  "identity": {
+    "controller_did": "did:keri:ETestController123",
+    "alias": "dev-machine"
+  },
+  "agent": {
+    "running": true,
+    "pid": 12345,
+    "socket_path": "/tmp/agent.sock"
+  },
+  "devices": {
+    "linked": 2,
+    "revoked": 1,
+    "expiring_soon": [
+      {
+        "device_did": "did:key:zExpiringSoon",
+        "expires_in_days": 3
+      }
+    ],
+    "devices_detail": [
+      {
+        "device_did": "did:key:zActiveDevice",
+        "status": "active",
+        "revoked_at": null,
+        "expires_at": "2025-09-13T12:00:00Z",
+        "expires_in_days": 90
+      },
+      {
+        "device_did": "did:key:zExpiringSoon",
+        "status": "expiring_soon",
+        "revoked_at": null,
+        "expires_at": "2025-06-18T12:00:00Z",
+        "expires_in_days": 3
+      },
+      {
+        "device_did": "did:key:zRevokedDevice",
+        "status": "revoked",
+        "revoked_at": "2025-06-05T12:00:00Z",
+        "expires_at": "2025-08-04T12:00:00Z",
+        "expires_in_days": null
+      }
+    ]
+  }
+}

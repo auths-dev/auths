@@ -61,8 +61,10 @@ pub struct DevicesSummary {
 #[derive(Debug, Serialize)]
 pub struct DeviceStatus {
     pub device_did: String,
+    pub status: String,
     pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub expires_in_days: Option<i64>,
 }
 
 /// Device that is expiring soon.
@@ -74,17 +76,11 @@ pub struct ExpiringDevice {
 
 /// Handle the status command.
 pub fn handle_status(_cmd: StatusCommand, repo: Option<PathBuf>) -> Result<()> {
-    // Determine repository path
+    let now = Utc::now();
     let repo_path = resolve_repo_path(repo)?;
-
-    // Load identity
     let identity = load_identity_status(&repo_path);
-
-    // Get agent status
     let agent = get_agent_status();
-
-    // Load device attestations summary
-    let devices = load_devices_summary(&repo_path);
+    let devices = load_devices_summary(&repo_path, now);
 
     let report = StatusReport {
         identity,
@@ -95,14 +91,14 @@ pub fn handle_status(_cmd: StatusCommand, repo: Option<PathBuf>) -> Result<()> {
     if is_json_mode() {
         JsonResponse::success("status", report).print()?;
     } else {
-        print_status(&report);
+        print_status(&report, now);
     }
 
     Ok(())
 }
 
 /// Print status in human-readable format.
-fn print_status(report: &StatusReport) {
+fn print_status(report: &StatusReport, now: DateTime<Utc>) {
     let out = Output::new();
 
     // Identity
@@ -173,7 +169,6 @@ fn print_status(report: &StatusReport) {
     // Per-device expiry detail
     if !report.devices.devices_detail.is_empty() {
         out.newline();
-        let now = Utc::now();
         for device in &report.devices.devices_detail {
             if device.revoked_at.is_some() {
                 continue;
@@ -267,30 +262,24 @@ fn get_agent_status() -> AgentStatusInfo {
 }
 
 /// Load devices summary from attestations.
-fn load_devices_summary(repo_path: &PathBuf) -> DevicesSummary {
+fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSummary {
+    let empty = DevicesSummary {
+        linked: 0,
+        revoked: 0,
+        expiring_soon: Vec::new(),
+        devices_detail: Vec::new(),
+    };
+
     if crate::factories::storage::open_git_repo(repo_path).is_err() {
-        return DevicesSummary {
-            linked: 0,
-            revoked: 0,
-            expiring_soon: Vec::new(),
-            devices_detail: Vec::new(),
-        };
+        return empty;
     }
 
     let storage = RegistryAttestationStorage::new(repo_path);
     let attestations = match storage.load_all_attestations() {
         Ok(a) => a,
-        Err(_) => {
-            return DevicesSummary {
-                linked: 0,
-                revoked: 0,
-                expiring_soon: Vec::new(),
-                devices_detail: Vec::new(),
-            };
-        }
+        Err(_) => return empty,
     };
 
-    // Group by device and get latest attestation per device
     let mut latest_by_device: std::collections::HashMap<
         String,
         &auths_verifier::core::Attestation,
@@ -301,7 +290,6 @@ fn load_devices_summary(repo_path: &PathBuf) -> DevicesSummary {
         latest_by_device
             .entry(key)
             .and_modify(|existing| {
-                // Keep the one with later timestamp
                 if att.timestamp > existing.timestamp {
                     *existing = att;
                 }
@@ -309,7 +297,6 @@ fn load_devices_summary(repo_path: &PathBuf) -> DevicesSummary {
             .or_insert(att);
     }
 
-    let now = Utc::now();
     let threshold = now + Duration::days(7);
     let mut linked = 0;
     let mut revoked = 0;
@@ -317,17 +304,20 @@ fn load_devices_summary(repo_path: &PathBuf) -> DevicesSummary {
     let mut devices_detail = Vec::new();
 
     for (device_did, att) in &latest_by_device {
+        let (status, expires_in_days) = compute_device_status(att, now);
+
         devices_detail.push(DeviceStatus {
             device_did: device_did.clone(),
+            status,
             revoked_at: att.revoked_at,
             expires_at: att.expires_at,
+            expires_in_days,
         });
 
         if att.is_revoked() {
             revoked += 1;
         } else {
             linked += 1;
-            // Check if expiring soon
             if let Some(expires_at) = att.expires_at
                 && expires_at <= threshold
                 && expires_at > now
@@ -341,7 +331,6 @@ fn load_devices_summary(repo_path: &PathBuf) -> DevicesSummary {
         }
     }
 
-    // Sort expiring devices by days remaining
     expiring_soon.sort_by_key(|e| e.expires_in_days);
 
     DevicesSummary {
@@ -349,6 +338,29 @@ fn load_devices_summary(repo_path: &PathBuf) -> DevicesSummary {
         revoked,
         expiring_soon,
         devices_detail,
+    }
+}
+
+fn compute_device_status(
+    att: &auths_verifier::core::Attestation,
+    now: DateTime<Utc>,
+) -> (String, Option<i64>) {
+    if att.is_revoked() {
+        return ("revoked".to_string(), None);
+    }
+    match att.expires_at {
+        None => ("active".to_string(), None),
+        Some(expires_at) => {
+            let days = (expires_at - now).num_days();
+            let status = if expires_at < now {
+                "expired"
+            } else if days <= 7 {
+                "expiring_soon"
+            } else {
+                "active"
+            };
+            (status.to_string(), Some(days))
+        }
     }
 }
 
@@ -382,10 +394,61 @@ impl crate::commands::executable::ExecutableCommand for StatusCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
 
     #[test]
     fn test_get_auths_dir() {
         let dir = get_auths_dir().unwrap();
         assert!(dir.ends_with(".auths"));
+    }
+
+    #[test]
+    fn status_json_snapshot() {
+        let now = Utc.with_ymd_and_hms(2025, 6, 15, 12, 0, 0).unwrap();
+
+        let report = StatusReport {
+            identity: Some(IdentityStatus {
+                controller_did: "did:keri:ETestController123".to_string(),
+                alias: Some("dev-machine".to_string()),
+            }),
+            agent: AgentStatusInfo {
+                running: true,
+                pid: Some(12345),
+                socket_path: Some("/tmp/agent.sock".to_string()),
+            },
+            devices: DevicesSummary {
+                linked: 2,
+                revoked: 1,
+                expiring_soon: vec![ExpiringDevice {
+                    device_did: "did:key:zExpiringSoon".to_string(),
+                    expires_in_days: 3,
+                }],
+                devices_detail: vec![
+                    DeviceStatus {
+                        device_did: "did:key:zActiveDevice".to_string(),
+                        status: "active".to_string(),
+                        revoked_at: None,
+                        expires_at: Some(now + Duration::days(90)),
+                        expires_in_days: Some(90),
+                    },
+                    DeviceStatus {
+                        device_did: "did:key:zExpiringSoon".to_string(),
+                        status: "expiring_soon".to_string(),
+                        revoked_at: None,
+                        expires_at: Some(now + Duration::days(3)),
+                        expires_in_days: Some(3),
+                    },
+                    DeviceStatus {
+                        device_did: "did:key:zRevokedDevice".to_string(),
+                        status: "revoked".to_string(),
+                        revoked_at: Some(now - Duration::days(10)),
+                        expires_at: Some(now + Duration::days(50)),
+                        expires_in_days: None,
+                    },
+                ],
+            },
+        };
+
+        insta::assert_json_snapshot!(report);
     }
 }

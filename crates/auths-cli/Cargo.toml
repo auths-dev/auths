@@ -88,6 +88,7 @@ auths-crypto = { workspace = true, features = ["test-utils"] }
 assert_cmd = "2"
 tempfile = "3"
 predicates = "2"
+insta = { workspace = true }
 
 [lints]
 workspace = true
