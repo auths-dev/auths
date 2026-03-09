@@ -10,6 +10,7 @@ on:
       - '.github/workflows/docs.yml'
       - 'crates/auths-cli/src/**'
       - 'crates/xtask/src/**'
+      - 'packages/auths-python/**'
   pull_request:
     branches: [main]
     paths:
@@ -18,6 +19,7 @@ on:
       - 'overrides/**'
       - 'crates/auths-cli/src/**'
       - 'crates/xtask/src/**'
+      - 'packages/auths-python/**'
 
 permissions:
   contents: write
@@ -47,17 +49,37 @@ jobs:
       - name: Regenerate CLI docs
         run: cargo run -p xtask -- gen-docs
 
+      - name: Build rustdoc
+        run: cargo doc --no-deps -p auths-sdk -p auths-core -p auths-crypto -p auths-verifier -p auths-id
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install mkdocs-material
+        run: pip install mkdocs-material "mkdocstrings[python]"
 
       - name: Build docs (PR check)
         if: github.event_name == 'pull_request'
         run: mkdocs build --strict
 
+      - name: Build mkdocs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: mkdocs build --strict
+
+      - name: Merge rustdoc into site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p site/rustdoc
+          cp -r target/doc/* site/rustdoc/
+          echo '<meta http-equiv="refresh" content="0; url=auths_sdk">' > site/rustdoc/index.html
+          touch site/.nojekyll
+
       - name: Deploy to GitHub Pages
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: mkdocs gh-deploy --force
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site

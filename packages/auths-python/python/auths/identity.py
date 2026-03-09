@@ -19,42 +19,57 @@ if TYPE_CHECKING:
 
 @dataclass
 class Identity:
-    """An Auths identity (represents a did:keri: identifier)."""
+    """An Auths identity (represents a `did:keri:` identifier)."""
 
     did: str
+    """The KERI decentralized identifier (e.g. `did:keri:EXq5...`)."""
     _key_alias: str = field(repr=False)
+    """Internal keychain alias for the signing key."""
     label: str
+    """Human-readable label (e.g. `"laptop"`, `"main"`)."""
     repo_path: str
+    """Path to the Git identity repository."""
     public_key: str
+    """Hex-encoded Ed25519 public key."""
 
 
 @dataclass
 class AgentIdentity:
-    """Standalone agent identity (did:keri:). Created via identities.create_agent()."""
+    """Standalone agent identity (`did:keri:`). Created via `identities.create_agent()`."""
 
     did: str
+    """The agent's KERI decentralized identifier."""
     _key_alias: str = field(repr=False)
+    """Internal keychain alias for the agent's signing key."""
     attestation: str
+    """JSON-serialized attestation binding the agent to its capabilities."""
     public_key: str
+    """Hex-encoded Ed25519 public key."""
 
 
 @dataclass
 class DelegatedAgent:
-    """Agent delegated under a parent identity (did:key:). Created via identities.delegate_agent()."""
+    """Agent delegated under a parent identity (`did:key:`). Created via `identities.delegate_agent()`."""
 
     did: str
+    """The delegated agent's device-level identifier (`did:key:z...`)."""
     _key_alias: str = field(repr=False)
+    """Internal keychain alias for the delegated key."""
     attestation: str
+    """JSON-serialized delegation attestation signed by the parent identity."""
     public_key: str
+    """Hex-encoded Ed25519 public key."""
 
 
 class IdentityService:
     """Resource service for identity operations.
 
-    Usage:
+    Examples:
+        ```python
         auths = Auths()
         identity = auths.identities.create(label="laptop")
         agent = auths.identities.delegate_agent(identity.did, name="ci-bot", capabilities=["sign"])
+        ```
     """
 
     def __init__(self, client: Auths):
@@ -73,8 +88,17 @@ class IdentityService:
             repo_path: Git repo path (default: client's repo_path).
             passphrase: Key passphrase (default: client's passphrase or AUTHS_PASSPHRASE env var).
 
-        Usage:
+        Returns:
+            Identity with the DID, public key, and key alias.
+
+        Raises:
+            IdentityError: If an identity with this alias already exists.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            ```python
             identity = auths.identities.create(label="laptop")
+            ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
@@ -101,9 +125,18 @@ class IdentityService:
             identity_did: The KERI DID of the identity to rotate.
             passphrase: Optional passphrase for keychain access.
 
-        Usage:
+        Returns:
+            IdentityRotationResult with the new key fingerprint and sequence number.
+
+        Raises:
+            IdentityError: If the identity does not exist or rotation fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            ```python
             result = auths.identities.rotate(identity.did)
             print(f"Rotated to sequence {result.sequence}")
+            ```
         """
         pp = passphrase or self._client._passphrase
         native_result = _rotate_identity(self._client.repo_path, identity_did, None, pp)
@@ -120,15 +153,24 @@ class IdentityService:
         capabilities: list[str],
         passphrase: str | None = None,
     ) -> AgentIdentity:
-        """Create a standalone agent identity (did:keri:).
+        """Create a standalone agent identity (`did:keri:`).
 
         Args:
             name: Human-readable agent name.
             capabilities: List of capabilities (e.g., ["sign", "verify"]).
             passphrase: Key passphrase override.
 
-        Usage:
+        Returns:
+            AgentIdentity with the agent DID, attestation, and public key.
+
+        Raises:
+            IdentityError: If agent creation fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            ```python
             agent = auths.identities.create_agent("ci-bot", ["sign"])
+            ```
         """
         pp = passphrase or self._client._passphrase
         bundle = _create_agent_identity(
@@ -147,7 +189,7 @@ class IdentityService:
         expires_in_days: int | None = None,
         passphrase: str | None = None,
     ) -> DelegatedAgent:
-        """Delegate an agent under an identity (did:key:).
+        """Delegate an agent under an identity (`did:key:`).
 
         Args:
             identity_did: The parent identity's DID.
@@ -156,8 +198,17 @@ class IdentityService:
             expires_in_days: Optional TTL in days.
             passphrase: Key passphrase override.
 
-        Usage:
+        Returns:
+            DelegatedAgent with the agent DID, delegation attestation, and public key.
+
+        Raises:
+            IdentityError: If the parent identity doesn't exist or delegation fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            ```python
             agent = auths.identities.delegate_agent(identity.did, "ci-bot", ["sign"])
+            ```
         """
         pp = passphrase or self._client._passphrase
         bundle = _delegate_agent(

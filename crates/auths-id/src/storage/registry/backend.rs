@@ -409,7 +409,7 @@ pub trait RegistryBackend: Send + Sync {
     /// for the same device DID.
     ///
     /// Historical attestations are preserved in `attestation_history/` via
-    /// [`visit_attestation_history`].
+    /// `visit_attestation_history`.
     ///
     /// # Arguments
     ///

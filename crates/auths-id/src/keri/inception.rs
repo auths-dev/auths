@@ -43,7 +43,7 @@ pub enum InceptionError {
 
 /// Result of a KERI identity inception.
 pub struct InceptionResult {
-    /// The KERI prefix (use with did:keri:<prefix>)
+    /// The KERI prefix (use with `did:keri:<prefix>`)
     pub prefix: Prefix,
 
     /// The current signing keypair (PKCS8 DER encoded, zeroed on drop)

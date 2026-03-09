@@ -32,8 +32,11 @@ class Decision:
     """
 
     outcome: str
+    """Policy result: `"allow"` or `"deny"`."""
     reason: str
+    """Short machine-readable reason (e.g. `"revoked"`, `"capability_missing"`)."""
     message: str
+    """Human-readable explanation of the decision."""
 
     @property
     def allowed(self) -> bool:
@@ -53,7 +56,8 @@ class Decision:
 class PolicyBuilder:
     """Fluent builder for Auths access policies.
 
-    Usage:
+    Examples:
+        ```python
         policy = PolicyBuilder.standard("sign_commit").build()
 
         policy = (PolicyBuilder()
@@ -62,6 +66,7 @@ class PolicyBuilder:
             .require_capability("sign_commit")
             .require_issuer("did:keri:EOrg123")
             .build())
+        ```
     """
 
     def __init__(self):

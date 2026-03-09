@@ -1,3 +1,5 @@
+"""Witness-based attestation chain verification."""
+
 from __future__ import annotations
 
 import json
@@ -20,7 +22,9 @@ class WitnessKey:
     """A witness node's identity and public key."""
 
     did: str
+    """The witness node's DID."""
     public_key_hex: str
+    """Hex-encoded Ed25519 public key of the witness."""
 
     def __repr__(self) -> str:
         return f"WitnessKey(did='{self.did[:20]}...')"
@@ -30,17 +34,22 @@ class WitnessKey:
 class WitnessConfig:
     """Configuration for witness quorum verification.
 
-    Usage:
+    Examples:
+        ```python
         config = WitnessConfig(
             receipts=[receipt1_json, receipt2_json],
             keys=[WitnessKey("did:key:z...", "ab12...")],
             threshold=2,
         )
+        ```
     """
 
     receipts: list[str]
+    """JSON-serialized witness receipt strings."""
     keys: list[WitnessKey]
+    """Witness public keys to verify receipts against."""
     threshold: int
+    """Minimum number of valid witness receipts required."""
 
     def __post_init__(self):
         if self.threshold < 1:
@@ -64,8 +73,16 @@ def verify_chain_with_witnesses(
         root_pk_hex: Root identity's Ed25519 public key (hex-encoded).
         witnesses: Witness configuration with receipts, keys, and threshold.
 
-    Usage:
+    Returns:
+        VerificationReport with per-link results and witness quorum status.
+
+    Raises:
+        VerificationError: If the chain or witness quorum fails verification.
+
+    Examples:
+        ```python
         report = verify_chain_with_witnesses(chain, root_key, config)
+        ```
     """
     keys_json = [
         json.dumps({"did": k.did, "public_key_hex": k.public_key_hex})

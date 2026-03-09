@@ -24,16 +24,27 @@ class Attestation:
     """
 
     rid: str
+    """Unique attestation resource identifier."""
     issuer: str
+    """DID of the identity that issued this attestation."""
     subject: str
+    """DID of the entity this attestation authorizes."""
     device_did: str
+    """DID of the device key bound by this attestation."""
     capabilities: list[str]
+    """Granted capabilities (e.g. `["sign", "verify"]`)."""
     signer_type: str | None
+    """Signer classification: `"Human"`, `"Agent"`, or `"Workload"`."""
     expires_at: str | None
+    """ISO 8601 expiry timestamp, or None for non-expiring attestations."""
     revoked_at: str | None
+    """ISO 8601 revocation timestamp, or None if still active."""
     created_at: str | None
+    """ISO 8601 creation timestamp."""
     delegated_by: str | None
+    """DID of the delegating identity, if this is a delegation attestation."""
     json: str
+    """Canonical JSON representation of the attestation."""
 
     @property
     def is_active(self) -> bool:
@@ -77,10 +88,12 @@ def _convert(py_att) -> Attestation:
 class AttestationService:
     """Query attestations in the identity graph.
 
-    Usage:
+    Examples:
+        ```python
         all_atts = auths.attestations.list()
         device_atts = auths.attestations.list(device_did="did:key:z...")
         latest = auths.attestations.latest("did:key:z...")
+        ```
     """
 
     def __init__(self, client: Auths):
@@ -98,7 +111,8 @@ class AttestationService:
             identity_did: Filter to attestations issued by this identity.
             device_did: Filter to attestations for this device.
 
-        Returns empty list if no attestations match (never raises for empty results).
+        Returns:
+            List of Attestation objects. Empty list if no matches.
         """
         if device_did is not None:
             raw = _list_by_device(self._client.repo_path, device_did)
@@ -115,7 +129,11 @@ class AttestationService:
     def latest(self, device_did: str) -> Attestation | None:
         """Get the most recent attestation for a device.
 
-        Returns None if the device has no attestations.
+        Args:
+            device_did: The device DID to query.
+
+        Returns:
+            The latest Attestation, or None if the device has no attestations.
         """
         raw = _get_latest(self._client.repo_path, device_did)
         if raw is None:

@@ -19,9 +19,13 @@ class Org:
     """An organization identity."""
 
     prefix: str
+    """KERI prefix of the organization identity."""
     did: str
+    """The organization's DID (`did:keri:...`)."""
     label: str
+    """Human-readable organization name."""
     repo_path: str
+    """Path to the identity repository."""
 
     def __repr__(self):
         return f"Org(did={self.did!r}, label={self.label!r})"
@@ -32,12 +36,19 @@ class OrgMember:
     """A member within an organization."""
 
     member_did: str
+    """DID of the member."""
     role: str
+    """Member role: `"admin"`, `"member"`, or `"readonly"`."""
     capabilities: list[str]
+    """Capabilities granted to this member."""
     issuer_did: str
+    """DID of the identity that issued the membership attestation."""
     attestation_rid: str
+    """RID of the membership attestation."""
     revoked: bool
+    """Whether this membership has been revoked."""
     expires_at: Optional[str]
+    """ISO 8601 expiry timestamp, or None for non-expiring memberships."""
 
     def __repr__(self):
         status = " revoked" if self.revoked else ""
@@ -63,8 +74,17 @@ class OrgService:
             repo_path: Override identity store path.
             passphrase: Override passphrase.
 
-        Usage:
+        Returns:
+            Org with the KERI prefix, DID, and label.
+
+        Raises:
+            OrgError: If organization creation fails.
+            KeychainError: If the keychain is locked or inaccessible.
+
+        Examples:
+            ```python
             org = client.orgs.create("my-team")
+            ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
@@ -88,16 +108,24 @@ class OrgService:
         """Add a member to an organization.
 
         Args:
-            org_did: The organization's DID (did:keri:...).
+            org_did: The organization's DID (`did:keri:...`).
             member_did: The member's DID to add.
-            role: One of "admin", "member", "readonly".
+            role: One of `"admin"`, `"member"`, `"readonly"`.
             capabilities: Explicit capability list. If None, uses role defaults.
             note: Optional human-readable note for the attestation.
             member_public_key_hex: Member's Ed25519 public key hex. Required when
                 the member's identity is in a different registry.
 
-        Usage:
+        Returns:
+            OrgMember with the membership attestation details.
+
+        Raises:
+            OrgError: If the member cannot be added.
+
+        Examples:
+            ```python
             member = client.orgs.add_member(org.did, dev.did, role="member")
+            ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
@@ -137,8 +165,16 @@ class OrgService:
             member_public_key_hex: Member's Ed25519 public key hex. Required when
                 the member's identity is in a different registry.
 
-        Usage:
+        Returns:
+            OrgMember with revoked status.
+
+        Raises:
+            OrgError: If the member cannot be revoked.
+
+        Examples:
+            ```python
             revoked = client.orgs.revoke_member(org.did, dev.did)
+            ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
@@ -180,8 +216,16 @@ class OrgService:
             member_public_key_hex: Member's Ed25519 public key hex. Required when
                 the member's identity is in a different registry.
 
-        Usage:
+        Returns:
+            OrgMember with the updated role and capabilities.
+
+        Raises:
+            OrgError: If the member cannot be updated.
+
+        Examples:
+            ```python
             updated = client.orgs.update_member(org.did, dev.did, role="admin")
+            ```
         """
         self.revoke_member(
             org_did, member_did, note="superseded by update",
@@ -207,8 +251,16 @@ class OrgService:
             org_did: The organization's DID.
             include_revoked: If True, includes revoked members.
 
-        Usage:
+        Returns:
+            List of OrgMember objects.
+
+        Raises:
+            OrgError: If the organization doesn't exist.
+
+        Examples:
+            ```python
             members = client.orgs.list_members(org.did)
+            ```
         """
         rp = repo_path or self._client.repo_path
         try:
@@ -235,14 +287,19 @@ class OrgService:
         member_did: str,
         repo_path: str | None = None,
     ) -> OrgMember | None:
-        """Look up a specific member. Returns None if not found.
+        """Look up a specific member.
 
         Args:
             org_did: The organization's DID.
             member_did: The member's DID to look up.
 
-        Usage:
+        Returns:
+            OrgMember if found, or None.
+
+        Examples:
+            ```python
             member = client.orgs.get_member(org.did, dev.did)
+            ```
         """
         members = self.list_members(org_did, include_revoked=False, repo_path=repo_path)
         return next((m for m in members if m.member_did == member_did), None)

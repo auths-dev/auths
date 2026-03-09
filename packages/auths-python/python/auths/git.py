@@ -30,9 +30,11 @@ def generate_allowed_signers(repo_path: str = "~/.auths") -> str:
         attestations are found. Write this to a file or pass to
         ``verify_commit_range``.
 
-    Usage:
+    Examples:
+        ```python
         content = generate_allowed_signers()
         Path(".auths/allowed_signers").write_text(content)
+        ```
     """
     from auths._native import generate_allowed_signers_file
 
@@ -57,10 +59,15 @@ class CommitResult:
     """Result of verifying a single commit's SSH signature."""
 
     commit_sha: str
+    """Git commit SHA that was verified."""
     is_valid: bool
+    """Whether the commit's signature is valid."""
     signer: str | None = None
+    """Hex-encoded public key of the signer, if identified."""
     error: str | None = None
+    """Human-readable error message on failure."""
     error_code: str | None = None
+    """Machine-readable error code (see `ErrorCode`)."""
 
 
 @dataclass
@@ -68,9 +75,13 @@ class VerifyResult:
     """Wrapper around commit verification results."""
 
     commits: list[CommitResult]
+    """Per-commit verification results."""
     passed: bool
+    """Overall pass/fail for the batch."""
     mode: str
+    """Verification mode: `"enforce"` or `"warn"`."""
     summary: str
+    """Human-readable summary (e.g. `"3/3 commits verified"`)."""
 
 
 @dataclass
@@ -78,8 +89,11 @@ class LayoutInfo:
     """Resolved location of Auths identity data in a repository."""
 
     bundle: str | None = None
+    """Path to identity-bundle JSON file, if found."""
     refs: list[str] | None = None
+    """Git ref names under `refs/auths/`, if found."""
     source: str = ""
+    """How the layout was discovered: `"file"` or `"git-refs"`."""
 
 
 class LayoutError(Exception):

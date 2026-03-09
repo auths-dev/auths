@@ -140,7 +140,7 @@ impl AgentHandle {
             .map_err(|_| AgentError::MutexError("Agent core mutex poisoned".to_string()))
     }
 
-    /// Returns a clone of the inner Arc<Mutex<AgentCore>> for sharing.
+    /// Returns a clone of the inner `Arc<Mutex<AgentCore>>` for sharing.
     pub fn core_arc(&self) -> Arc<Mutex<AgentCore>> {
         Arc::clone(&self.core)
     }

@@ -4,7 +4,7 @@
 //! the SDK workflow layer remains platform-independent. On Unix, the CLI
 //! wires a concrete adapter that speaks the auths-agent wire protocol over
 //! a Unix domain socket. On Windows, WASM, and other targets the
-//! [`NoopAgentProvider`] is used instead.
+//! `NoopAgentProvider` is used instead.
 
 /// Errors from agent signing operations.
 #[derive(Debug, thiserror::Error)]

@@ -11,7 +11,7 @@ use zeroize::Zeroizing;
 /// Note: Clone is intentionally NOT derived to prevent accidental copying of key material.
 #[derive(Default)]
 pub struct AgentCore {
-    /// Maps public key bytes (Vec<u8>) to the corresponding SecureSeed.
+    /// Maps public key bytes (`Vec<u8>`) to the corresponding SecureSeed.
     pub keys: HashMap<Vec<u8>, SecureSeed>,
 }
 
