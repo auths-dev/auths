@@ -411,7 +411,7 @@ class Auths:
 
         pp = passphrase or self._passphrase
         try:
-            return get_identity_public_key(identity, pp)
+            return get_identity_public_key(identity, self.repo_path, pp)
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc, default_cls=CryptoError) from exc
 
@@ -448,7 +448,7 @@ class Auths:
 
         pp = passphrase or self._passphrase
         try:
-            return _sign_as_agent(message, key_alias, pp)
+            return _sign_as_agent(message, key_alias, self.repo_path, pp)
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc, default_cls=CryptoError) from exc
 
@@ -486,7 +486,7 @@ class Auths:
 
         pp = passphrase or self._passphrase
         try:
-            return _sign_action_as_agent(action_type, payload, key_alias, agent_did, pp)
+            return _sign_action_as_agent(action_type, payload, key_alias, agent_did, self.repo_path, pp)
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc, default_cls=CryptoError) from exc
 
