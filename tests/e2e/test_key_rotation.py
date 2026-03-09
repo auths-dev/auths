@@ -16,8 +16,8 @@ def _generate_allowed_signers(auths_bin, git_repo: Path, env: dict) -> Path:
     run_auths(
         auths_bin,
         [
-            "git",
-            "allowed-signers",
+            "signers",
+            "sync",
             "--repo",
             env["AUTHS_HOME"],
             "--output",

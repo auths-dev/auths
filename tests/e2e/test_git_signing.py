@@ -17,8 +17,8 @@ def _generate_allowed_signers(auths_bin, git_repo: Path, env: dict) -> Path:
     run_auths(
         auths_bin,
         [
-            "git",
-            "allowed-signers",
+            "signers",
+            "sync",
             "--repo",
             env["AUTHS_HOME"],
             "--output",
@@ -109,8 +109,8 @@ class TestGitSigning:
         result = run_auths(
             auths_bin,
             [
-                "git",
-                "allowed-signers",
+                "signers",
+                "sync",
                 "--repo",
                 init_identity["AUTHS_HOME"],
                 "--output",
@@ -119,7 +119,7 @@ class TestGitSigning:
             env=init_identity,
         )
         if result.returncode != 0:
-            pytest.skip(f"allowed-signers not available: {result.stderr}")
+            pytest.skip(f"signers sync not available: {result.stderr}")
 
         assert signers_file.exists()
         content = signers_file.read_text()
