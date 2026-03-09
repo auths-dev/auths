@@ -14,7 +14,6 @@ use auths_core::pairing::{PairingToken, QrOptions, render_qr};
 
 use super::common::*;
 use super::lan_server::{LanPairingServer, detect_lan_ip};
-use super::mdns::PairingAdvertiser;
 
 /// Initiate a LAN pairing session.
 ///
@@ -106,10 +105,10 @@ pub async fn handle_initiate_lan(
 
     print_pairing_header("LAN", &endpoint, &controller_did);
 
-    // Optionally start mDNS advertisement
+    // Optionally start mDNS advertisement via the daemon handle
     let _advertiser = if !no_mdns {
-        match PairingAdvertiser::advertise(port, &session.token.short_code, &controller_did) {
-            Ok(adv) => {
+        match server.advertise(port, &session.token.short_code, &controller_did) {
+            Some(Ok(adv)) => {
                 println!(
                     "  {} {}",
                     style("mDNS:").dim(),
@@ -117,8 +116,16 @@ pub async fn handle_initiate_lan(
                 );
                 Some(adv)
             }
-            Err(e) => {
+            Some(Err(e)) => {
                 println!("  {} {} {}", WARN, style("mDNS unavailable:").yellow(), e);
+                None
+            }
+            None => {
+                println!(
+                    "  {} {} not available (mdns feature disabled)",
+                    WARN,
+                    style("mDNS:").yellow()
+                );
                 None
             }
         }
@@ -174,7 +181,6 @@ pub async fn handle_initiate_lan(
         Ok(response_data) => {
             wait_spinner.finish_with_message(format!("{CHECK}Response received!"));
 
-            // Shut down mDNS
             if let Some(adv) = _advertiser {
                 adv.shutdown();
             }
@@ -235,8 +241,13 @@ pub async fn handle_join_lan(code: &str, env_config: &EnvironmentConfig) -> Resu
     let discover_spinner = create_wait_spinner(&format!("{GEAR}Searching for peer via mDNS..."));
 
     // Discover the LAN server via mDNS (30 second timeout)
-    let addr = super::mdns::PairingDiscoverer::discover(&normalized, Duration::from_secs(30))
-        .map_err(|e| anyhow::anyhow!("mDNS discovery failed: {}", e))?;
+    let discovery = auths_pairing_daemon::MdnsDiscovery;
+    let addr = auths_pairing_daemon::NetworkDiscovery::discover(
+        &discovery,
+        &normalized,
+        Duration::from_secs(30),
+    )
+    .map_err(|e| anyhow::anyhow!("mDNS discovery failed: {}", e))?;
 
     discover_spinner.finish_with_message(format!("{CHECK}Found peer at {}", style(addr).cyan()));
 

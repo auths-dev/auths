@@ -46,7 +46,7 @@ impl SecureSigner for FakeSecureSigner {
         _passphrase_provider: &dyn PassphraseProvider,
         _message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
-        Ok(vec![0u8; 64])
+        Ok(vec![1u8; 64])
     }
 
     fn sign_for_identity(
@@ -55,7 +55,7 @@ impl SecureSigner for FakeSecureSigner {
         _passphrase_provider: &dyn PassphraseProvider,
         _message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
-        Ok(vec![0u8; 64])
+        Ok(vec![1u8; 64])
     }
 }
 

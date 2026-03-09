@@ -1,0 +1,43 @@
+[package]
+name = "auths-pairing-daemon"
+description = "Embeddable LAN pairing daemon for Auths - HTTP server, rate limiting, mDNS discovery"
+version.workspace = true
+edition = "2024"
+publish = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["auths", "pairing", "lan", "mdns"]
+categories = ["network-programming", "authentication"]
+
+[dependencies]
+auths-core = { workspace = true }
+thiserror.workspace = true
+serde = { version = "1", features = ["derive"] }
+tokio = { workspace = true, features = ["sync"] }
+
+# Server feature deps
+axum = { version = "0.8", optional = true }
+tower = { version = "0.5", features = ["util"], optional = true }
+tower-http = { version = "0.6", features = ["trace", "cors"], optional = true }
+ring = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+subtle = { workspace = true, optional = true }
+if-addrs = { version = "0.13", optional = true }
+
+# mDNS feature deps
+mdns-sd = { version = "0.18.0", optional = true }
+
+[features]
+default = ["server", "mdns"]
+server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:ring", "dep:base64", "dep:subtle", "dep:if-addrs"]
+mdns = ["dep:mdns-sd"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+serde_json = "1"
+
+[lints]
+workspace = true

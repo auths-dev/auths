@@ -9,8 +9,6 @@ mod join;
 mod lan;
 #[cfg(feature = "lan-pairing")]
 mod lan_server;
-#[cfg(feature = "lan-pairing")]
-mod mdns;
 mod offline;
 mod online;
 

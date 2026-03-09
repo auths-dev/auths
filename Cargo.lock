@@ -305,6 +305,7 @@ dependencies = [
  "auths-index",
  "auths-infra-git",
  "auths-infra-http",
+ "auths-pairing-daemon",
  "auths-pairing-protocol",
  "auths-policy",
  "auths-sdk",
@@ -326,11 +327,9 @@ dependencies = [
  "env_logger",
  "git2",
  "hex",
- "if-addrs 0.13.4",
  "indicatif",
  "jsonschema",
  "log",
- "mdns-sd",
  "nix",
  "open",
  "pkcs8",
@@ -341,14 +340,11 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "subtle",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
  "toml 1.0.6+spec-1.1.0",
- "tower",
- "tower-http",
  "url",
  "which",
  "zeroize",
@@ -576,6 +572,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-pairing-daemon"
+version = "0.0.1-rc.8"
+dependencies = [
+ "auths-core",
+ "axum",
+ "base64",
+ "http-body-util",
+ "if-addrs 0.13.4",
+ "mdns-sd",
+ "ring",
+ "serde",
+ "serde_json",
+ "subtle",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tower-http",
+]
+
+[[package]]
 name = "auths-pairing-protocol"
 version = "0.0.1-rc.8"
 dependencies = [
@@ -644,6 +660,7 @@ dependencies = [
  "auths-core",
  "auths-crypto",
  "auths-id",
+ "auths-pairing-daemon",
  "auths-policy",
  "auths-storage",
  "auths-telemetry",
