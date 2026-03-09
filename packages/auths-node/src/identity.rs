@@ -107,7 +107,8 @@ pub fn create_agent_identity(
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_env_config(&passphrase_str, &repo_path);
     let alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
-    let provider = PrefilledPassphraseProvider::new(&passphrase_str);
+    let provider = Arc::new(PrefilledPassphraseProvider::new(&passphrase_str));
+    let clock = Arc::new(SystemClock);
 
     let repo = PathBuf::from(shellexpand::tilde(&repo_path).as_ref());
     let backend = init_backend(&repo)?;
@@ -148,30 +149,63 @@ pub fn create_agent_identity(
         )
     })?;
 
-    #[allow(clippy::disallowed_methods)]
-    let attestation_json =
-        {
-            let device_did =
-                DeviceDID::from_ed25519(pub_bytes.as_slice().try_into().map_err(|_| {
-                    format_error("AUTHS_CRYPTO_ERROR", "Invalid public key length")
-                })?);
-            let att = serde_json::json!({
-                "version": 1,
-                "rid": repo.file_name().unwrap_or_default().to_string_lossy(),
-                "issuer": identity_did.to_string(),
-                "subject": device_did.to_string(),
-                "device_public_key": hex::encode(&pub_bytes),
-                "capabilities": parsed_caps.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-                "note": format!("Agent: {}", alias),
-            });
-            serde_json::to_string(&att).map_err(|e| {
-                format_error(
-                    "AUTHS_SERIALIZATION_ERROR",
-                    format!("Serialization failed: {e}"),
-                )
-            })?
-        };
+    // Use link_device to produce a proper signed self-attestation,
+    // following the same pattern as delegate_agent.
+    let link_config = DeviceLinkConfig {
+        identity_key_alias: result_alias.clone(),
+        device_key_alias: Some(result_alias.clone()),
+        device_did: None,
+        capabilities: parsed_caps,
+        expires_in_days: None,
+        note: Some(format!("Agent: {}", agent_name)),
+        payload: None,
+    };
+
+    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
+        Arc::from(keychain);
+    let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
+    let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
+
+    let ctx = AuthsContext::builder()
+        .registry(backend)
+        .key_storage(keychain)
+        .clock(clock.clone())
+        .identity_storage(identity_storage)
+        .attestation_sink(attestation_storage.clone())
+        .attestation_source(attestation_storage.clone())
+        .passphrase_provider(provider)
+        .build();
+
+    let result = link_device(link_config, &ctx, clock.as_ref()).map_err(|e| {
+        format_error(
+            "AUTHS_IDENTITY_ERROR",
+            format!("Agent self-attestation failed: {e}"),
+        )
+    })?;
+
+    let device_did = DeviceDID(result.device_did.to_string());
+    let attestations = attestation_storage
+        .load_attestations_for_device(&device_did)
+        .map_err(|e| {
+            format_error(
+                "AUTHS_REGISTRY_ERROR",
+                format!("Failed to load attestation: {e}"),
+            )
+        })?;
+
+    let attestation = attestations.last().ok_or_else(|| {
+        format_error(
+            "AUTHS_REGISTRY_ERROR",
+            "No attestation found after self-attestation",
+        )
+    })?;
+
+    let attestation_json = serde_json::to_string(attestation).map_err(|e| {
+        format_error(
+            "AUTHS_SERIALIZATION_ERROR",
+            format!("Serialization failed: {e}"),
+        )
+    })?;
 
     Ok(NapiAgentIdentityBundle {
         agent_did: identity_did.to_string(),
