@@ -136,7 +136,7 @@ export class IdentityService {
   }): string {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
-      return native.getIdentityPublicKey(opts.identityDid, pp)
+      return native.getIdentityPublicKey(opts.identityDid, this.client.repoPath, pp)
     } catch (err) {
       throw mapNativeError(err, CryptoError)
     }

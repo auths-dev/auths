@@ -390,10 +390,11 @@ pub fn rotate_identity_keys(
 #[napi]
 pub fn get_identity_public_key(
     identity_did: String,
+    repo_path: String,
     passphrase: Option<String>,
 ) -> napi::Result<String> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let env_config = make_env_config(&passphrase_str, "~/.auths");
+    let env_config = make_env_config(&passphrase_str, &repo_path);
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
 
     let keychain = get_platform_keychain_with_config(&env_config)

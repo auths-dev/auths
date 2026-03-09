@@ -173,7 +173,7 @@ export interface NativeBindings {
   createAgentIdentity(agentName: string, capabilities: string[], repoPath: string, passphrase?: string | null): NapiAgentIdentityBundle
   delegateAgent(agentName: string, capabilities: string[], parentRepoPath: string, passphrase?: string | null, expiresInDays?: number | null, identityDid?: string | null): NapiDelegatedAgentBundle
   rotateIdentityKeys(repoPath: string, identityKeyAlias?: string | null, nextKeyAlias?: string | null, passphrase?: string | null): NapiRotationResult
-  getIdentityPublicKey(identityDid: string, passphrase?: string | null): string
+  getIdentityPublicKey(identityDid: string, repoPath: string, passphrase?: string | null): string
 
   // Device
   linkDeviceToIdentity(identityKeyAlias: string, capabilities: string[], repoPath: string, passphrase?: string | null, expiresInDays?: number | null): NapiLinkResult
@@ -244,6 +244,6 @@ export interface NativeBindings {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const native: NativeBindings = require('../../index.js')
+const native: NativeBindings = require('../index.js')
 
 export default native

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use auths_core::signing::PrefilledPassphraseProvider;
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
+use auths_core::storage::keychain::get_platform_keychain_with_config;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::device::extend_device;
 use auths_sdk::device::{link_device, revoke_device};
@@ -173,8 +173,7 @@ pub fn extend_device_authorization(
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
 
-    let alias = KeyAlias::new(&identity_key_alias)
-        .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Invalid key alias: {e}")))?;
+    let alias = resolve_key_alias(&identity_key_alias, keychain.as_ref())?;
 
     let ext_config = DeviceExtensionConfig {
         repo_path: repo,

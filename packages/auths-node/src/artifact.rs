@@ -196,14 +196,14 @@ pub fn sign_artifact(
 
 #[napi]
 pub fn sign_artifact_bytes(
-    data: Vec<u8>,
+    data: napi::bindgen_prelude::Buffer,
     identity_key_alias: String,
     repo_path: String,
     passphrase: Option<String>,
     expires_in_days: Option<u32>,
     note: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
-    let artifact = Arc::new(BytesArtifact { data });
+    let artifact = Arc::new(BytesArtifact { data: data.to_vec() });
     build_context_and_sign(
         artifact,
         &identity_key_alias,

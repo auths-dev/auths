@@ -37,7 +37,7 @@ export class StorageError extends AuthsError {
 
 export class NetworkError extends AuthsError {
   shouldRetry: boolean
-  constructor(message: string, code: string, shouldRetry = false) {
+  constructor(message: string, code: string, shouldRetry = true) {
     super(message, code)
     this.name = 'NetworkError'
     this.shouldRetry = shouldRetry
@@ -60,7 +60,7 @@ export class OrgError extends AuthsError {
 
 export class PairingError extends AuthsError {
   shouldRetry: boolean
-  constructor(message: string, code: string, shouldRetry = false) {
+  constructor(message: string, code: string, shouldRetry = true) {
     super(message, code)
     this.name = 'PairingError'
     this.shouldRetry = shouldRetry

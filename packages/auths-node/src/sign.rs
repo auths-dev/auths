@@ -10,11 +10,12 @@ use crate::types::{NapiActionEnvelope, NapiCommitSignResult};
 
 fn make_signer(
     passphrase: &str,
+    repo_path: &str,
 ) -> napi::Result<(
     StorageSigner<Box<dyn auths_core::storage::keychain::KeyStorage + Send + Sync>>,
     PrefilledPassphraseProvider,
 )> {
-    let env_config = make_env_config(passphrase, "~/.auths");
+    let env_config = make_env_config(passphrase, repo_path);
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
     let signer = StorageSigner::new(keychain);
@@ -24,18 +25,17 @@ fn make_signer(
 
 #[napi]
 pub fn sign_as_identity(
-    message: Vec<u8>,
+    message: napi::bindgen_prelude::Buffer,
     identity_did: String,
     repo_path: String,
     passphrase: Option<String>,
 ) -> napi::Result<NapiCommitSignResult> {
-    let _ = &repo_path;
     let passphrase_str = resolve_passphrase(passphrase);
-    let (signer, provider) = make_signer(&passphrase_str)?;
+    let (signer, provider) = make_signer(&passphrase_str, &repo_path)?;
     let did = IdentityDID::new(&identity_did);
 
     let sig_bytes = signer
-        .sign_for_identity(&did, &provider, &message)
+        .sign_for_identity(&did, &provider, message.as_ref())
         .map_err(|e| format_error("AUTHS_SIGNING_FAILED", format!("Signing failed: {e}")))?;
 
     Ok(NapiCommitSignResult {
@@ -52,7 +52,6 @@ pub fn sign_action_as_identity(
     repo_path: String,
     passphrase: Option<String>,
 ) -> napi::Result<NapiActionEnvelope> {
-    let _ = &repo_path;
 
     if payload_json.len() > MAX_ATTESTATION_JSON_SIZE {
         return Err(format_error(
@@ -86,7 +85,7 @@ pub fn sign_action_as_identity(
     })?;
 
     let passphrase_str = resolve_passphrase(passphrase);
-    let (signer, provider) = make_signer(&passphrase_str)?;
+    let (signer, provider) = make_signer(&passphrase_str, &repo_path)?;
     let did = IdentityDID::new(&identity_did);
 
     let sig_bytes = signer
@@ -120,17 +119,17 @@ pub fn sign_action_as_identity(
 
 #[napi]
 pub fn sign_as_agent(
-    message: Vec<u8>,
+    message: napi::bindgen_prelude::Buffer,
     key_alias: String,
     passphrase: Option<String>,
 ) -> napi::Result<NapiCommitSignResult> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let (signer, provider) = make_signer(&passphrase_str)?;
+    let (signer, provider) = make_signer(&passphrase_str, "~/.auths")?;
     let alias = KeyAlias::new(&key_alias)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Invalid key alias: {e}")))?;
 
     let sig_bytes = signer
-        .sign_with_alias(&alias, &provider, &message)
+        .sign_with_alias(&alias, &provider, message.as_ref())
         .map_err(|e| format_error("AUTHS_SIGNING_FAILED", format!("Signing failed: {e}")))?;
 
     Ok(NapiCommitSignResult {
@@ -179,7 +178,7 @@ pub fn sign_action_as_agent(
     })?;
 
     let passphrase_str = resolve_passphrase(passphrase);
-    let (signer, provider) = make_signer(&passphrase_str)?;
+    let (signer, provider) = make_signer(&passphrase_str, "~/.auths")?;
     let alias = KeyAlias::new(&key_alias)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Invalid key alias: {e}")))?;
 

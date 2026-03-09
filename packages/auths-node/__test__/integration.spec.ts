@@ -32,38 +32,38 @@ describe('identity lifecycle', () => {
 
   beforeAll(() => {
     auths = makeClient()
-    identity = auths.identities.create({ keyAlias: 'test-key' })
+    identity = auths.identities.create({ label: 'test-key' })
   })
 
   it('creates identity with did:keri prefix', () => {
     expect(identity.did).toMatch(/^did:keri:/)
     expect(identity.keyAlias).toBeDefined()
-    expect(identity.publicKeyHex).toBeDefined()
-    expect(identity.publicKeyHex.length).toBe(64)
+    expect(identity.publicKey).toBeDefined()
+    expect(identity.publicKey.length).toBe(64)
   })
 
   it('getPublicKey returns hex string', () => {
     const pk = auths.getPublicKey({ identityDid: identity.did })
-    expect(pk).toBe(identity.publicKeyHex)
+    expect(pk).toBe(identity.publicKey)
   })
 
   it('delegates an agent', () => {
     const agent = auths.identities.delegateAgent({
       identityDid: identity.did,
-      agentName: 'ci-bot',
+      name: 'ci-bot',
       capabilities: ['sign'],
     })
-    expect(agent.agentDid).toMatch(/^did:key:/)
+    expect(agent.did).toMatch(/^did:key:/)
     expect(agent.keyAlias).toBeDefined()
-    expect(agent.attestationJson).toBeDefined()
+    expect(agent.attestation).toBeDefined()
   })
 
   it('creates standalone agent', () => {
     const agent = auths.identities.createAgent({
-      agentName: 'standalone',
+      name: 'standalone',
       capabilities: ['sign'],
     })
-    expect(agent.agentDid).toMatch(/^did:keri:/)
+    expect(agent.did).toMatch(/^did:keri:/)
     expect(agent.keyAlias).toBeDefined()
   })
 })
@@ -71,18 +71,18 @@ describe('identity lifecycle', () => {
 describe('device lifecycle', () => {
   it('link and revoke device', () => {
     const auths = makeClient()
-    const identity = auths.identities.create({ keyAlias: 'dev-test' })
+    const identity = auths.identities.create({ label: 'dev-test' })
 
     const device = auths.devices.link({
       identityDid: identity.did,
       capabilities: ['sign'],
       expiresInDays: 90,
     })
-    expect(device.deviceDid).toMatch(/^did:key:/)
+    expect(device.did).toMatch(/^did:key:/)
     expect(device.attestationId).toBeDefined()
 
     auths.devices.revoke({
-      deviceDid: device.deviceDid,
+      deviceDid: device.did,
       identityDid: identity.did,
       note: 'test revocation',
     })
@@ -90,7 +90,7 @@ describe('device lifecycle', () => {
 
   it('extend device authorization', () => {
     const auths = makeClient()
-    const identity = auths.identities.create({ keyAlias: 'ext-test' })
+    const identity = auths.identities.create({ label: 'ext-test' })
     const device = auths.devices.link({
       identityDid: identity.did,
       capabilities: ['sign'],
@@ -98,11 +98,11 @@ describe('device lifecycle', () => {
     })
 
     const ext = auths.devices.extend({
-      deviceDid: device.deviceDid,
+      deviceDid: device.did,
       identityDid: identity.did,
       days: 60,
     })
-    expect(ext.deviceDid).toBe(device.deviceDid)
+    expect(ext.deviceDid).toBe(device.did)
     expect(ext.newExpiresAt).toBeDefined()
   })
 })
@@ -113,7 +113,7 @@ describe('signing', () => {
 
   beforeAll(() => {
     auths = makeClient()
-    identity = auths.identities.create({ keyAlias: 'sign-test' })
+    identity = auths.identities.create({ label: 'sign-test' })
   })
 
   it('sign as identity returns signature', () => {
@@ -140,7 +140,7 @@ describe('signing', () => {
 describe('trust', () => {
   it('pin and list', () => {
     const auths = makeClient()
-    const identity = auths.identities.create({ keyAlias: 'trust-test' })
+    const identity = auths.identities.create({ label: 'trust-test' })
 
     const entry = auths.trust.pin({ did: identity.did, label: 'my-peer' })
     expect(entry.did).toBe(identity.did)
@@ -154,7 +154,7 @@ describe('trust', () => {
 
   it('remove pinned identity', () => {
     const auths = makeClient()
-    const identity = auths.identities.create({ keyAlias: 'trust-rm' })
+    const identity = auths.identities.create({ label: 'trust-rm' })
     auths.trust.pin({ did: identity.did })
     auths.trust.remove(identity.did)
     const result = auths.trust.get(identity.did)
@@ -171,10 +171,10 @@ describe('trust', () => {
 describe('witness', () => {
   it('add and list witnesses', () => {
     const auths = makeClient()
-    auths.identities.create({ keyAlias: 'witness-test' })
+    auths.identities.create({ label: 'witness-test' })
 
     const w = auths.witnesses.add({ url: 'http://witness.example.com:3333' })
-    expect(w.url).toBe('http://witness.example.com:3333/')
+    expect(w.url).toBe('http://witness.example.com:3333')
 
     const witnesses = auths.witnesses.list()
     expect(witnesses.length).toBe(1)
@@ -182,17 +182,17 @@ describe('witness', () => {
 
   it('remove witness', () => {
     const auths = makeClient()
-    auths.identities.create({ keyAlias: 'witness-rm' })
+    auths.identities.create({ label: 'witness-rm' })
 
     auths.witnesses.add({ url: 'http://witness.example.com:3333' })
-    auths.witnesses.remove('http://witness.example.com:3333/')
+    auths.witnesses.remove('http://witness.example.com:3333')
 
     expect(auths.witnesses.list().length).toBe(0)
   })
 
   it('duplicate add is idempotent', () => {
     const auths = makeClient()
-    auths.identities.create({ keyAlias: 'witness-dup' })
+    auths.identities.create({ label: 'witness-dup' })
 
     auths.witnesses.add({ url: 'http://witness.example.com:3333' })
     auths.witnesses.add({ url: 'http://witness.example.com:3333' })
@@ -204,7 +204,7 @@ describe('witness', () => {
 describe('attestations', () => {
   it('list returns array', () => {
     const auths = makeClient()
-    auths.identities.create({ keyAlias: 'att-test' })
+    auths.identities.create({ label: 'att-test' })
     const atts = auths.attestations.list()
     expect(Array.isArray(atts)).toBe(true)
   })
@@ -234,7 +234,7 @@ describe('audit', () => {
 describe('org', () => {
   it('creates organization', () => {
     const auths = makeClient()
-    auths.identities.create({ keyAlias: 'org-admin' })
+    auths.identities.create({ label: 'org-admin' })
 
     const org = auths.orgs.create({ label: 'my-team' })
     expect(org.orgDid).toMatch(/^did:keri:/)
@@ -244,18 +244,18 @@ describe('org', () => {
   it('add and list members', () => {
     const adminDir = makeTmpDir()
     const admin = makeClient(adminDir)
-    admin.identities.create({ keyAlias: 'admin' })
+    admin.identities.create({ label: 'admin' })
     const org = admin.orgs.create({ label: 'team' })
 
     const devDir = makeTmpDir()
     const devClient = makeClient(devDir)
-    const devId = devClient.identities.create({ keyAlias: 'dev' })
+    const devId = devClient.identities.create({ label: 'dev' })
 
     const member = admin.orgs.addMember({
       orgDid: org.orgDid,
       memberDid: devId.did,
       role: 'member',
-      memberPublicKeyHex: devId.publicKeyHex,
+      memberPublicKeyHex: devId.publicKey,
     })
     expect(member.memberDid).toBe(devId.did)
     expect(member.role).toBe('member')
@@ -277,16 +277,17 @@ describe('doctor', () => {
 
 describe('version', () => {
   it('returns version string', () => {
-    const { version } = require('../lib/index')
-    expect(typeof version()).toBe('string')
-    expect(version()).toMatch(/^\d+\.\d+\.\d+/)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const native = require('../index.js')
+    expect(typeof native.version()).toBe('string')
+    expect(native.version()).toMatch(/^\d+\.\d+\.\d+/)
   })
 })
 
 describe('pairing', () => {
   it('creates session and stops cleanly', () => {
     const auths = makeClient()
-    auths.identities.create({ keyAlias: 'pair-test' })
+    auths.identities.create({ label: 'pair-test' })
 
     const session = auths.pairing.createSession({
       bindAddress: '127.0.0.1',
@@ -302,7 +303,7 @@ describe('pairing', () => {
 
   it('stop is idempotent', () => {
     const auths = makeClient()
-    auths.identities.create({ keyAlias: 'pair-stop' })
+    auths.identities.create({ label: 'pair-stop' })
 
     auths.pairing.createSession({
       bindAddress: '127.0.0.1',
