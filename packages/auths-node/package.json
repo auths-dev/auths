@@ -1,10 +1,17 @@
 {
-  "name": "@auths/node",
+  "name": "@auths-dev/node",
   "version": "0.1.0",
   "description": "Node.js bindings for the Auths decentralized identity SDK",
   "license": "Apache-2.0",
   "main": "index.js",
   "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "engines": {
     "node": ">=20.0.0"
   },

@@ -219,7 +219,7 @@ export interface NativeBindings {
   generateAuditReport(targetRepoPath: string, authsRepoPath: string, since?: string | null, until?: string | null, author?: string | null, limit?: number | null): string
 
   // Diagnostics
-  runDiagnostics(repoPath: string): string
+  runDiagnostics(repoPath: string, passphrase?: string | null): string
 
   // Policy
   compilePolicy(policyJson: string): string

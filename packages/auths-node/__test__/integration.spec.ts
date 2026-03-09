@@ -1,14 +1,24 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execSync } from 'child_process'
-import { mkdtempSync, writeFileSync, mkdirSync } from 'fs'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Auths } from '../lib/client'
 import type { Identity } from '../lib/identity'
 
+const tmpDirs: string[] = []
+
 function makeTmpDir(): string {
-  return mkdtempSync(join(tmpdir(), 'auths-test-'))
+  const dir = mkdtempSync(join(tmpdir(), 'auths-test-'))
+  tmpDirs.push(dir)
+  return dir
 }
+
+afterAll(() => {
+  for (const dir of tmpDirs) {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 function makeClient(dir?: string): Auths {
   const repoPath = dir ?? makeTmpDir()

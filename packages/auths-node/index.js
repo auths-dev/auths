@@ -75,8 +75,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-android-arm64')
-        const bindingPackageVersion = require('@auths/node-android-arm64/package.json').version
+        const binding = require('@auths-dev/node-android-arm64')
+        const bindingPackageVersion = require('@auths-dev/node-android-arm64/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -91,8 +91,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-android-arm-eabi')
-        const bindingPackageVersion = require('@auths/node-android-arm-eabi/package.json').version
+        const binding = require('@auths-dev/node-android-arm-eabi')
+        const bindingPackageVersion = require('@auths-dev/node-android-arm-eabi/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -112,8 +112,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-win32-x64-gnu')
-        const bindingPackageVersion = require('@auths/node-win32-x64-gnu/package.json').version
+        const binding = require('@auths-dev/node-win32-x64-gnu')
+        const bindingPackageVersion = require('@auths-dev/node-win32-x64-gnu/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -128,8 +128,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-win32-x64-msvc')
-        const bindingPackageVersion = require('@auths/node-win32-x64-msvc/package.json').version
+        const binding = require('@auths-dev/node-win32-x64-msvc')
+        const bindingPackageVersion = require('@auths-dev/node-win32-x64-msvc/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -145,8 +145,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-win32-ia32-msvc')
-        const bindingPackageVersion = require('@auths/node-win32-ia32-msvc/package.json').version
+        const binding = require('@auths-dev/node-win32-ia32-msvc')
+        const bindingPackageVersion = require('@auths-dev/node-win32-ia32-msvc/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -161,8 +161,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-win32-arm64-msvc')
-        const bindingPackageVersion = require('@auths/node-win32-arm64-msvc/package.json').version
+        const binding = require('@auths-dev/node-win32-arm64-msvc')
+        const bindingPackageVersion = require('@auths-dev/node-win32-arm64-msvc/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -180,8 +180,8 @@ function requireNative() {
       loadErrors.push(e)
     }
     try {
-      const binding = require('@auths/node-darwin-universal')
-      const bindingPackageVersion = require('@auths/node-darwin-universal/package.json').version
+      const binding = require('@auths-dev/node-darwin-universal')
+      const bindingPackageVersion = require('@auths-dev/node-darwin-universal/package.json').version
       if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
         throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
       }
@@ -196,8 +196,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-darwin-x64')
-        const bindingPackageVersion = require('@auths/node-darwin-x64/package.json').version
+        const binding = require('@auths-dev/node-darwin-x64')
+        const bindingPackageVersion = require('@auths-dev/node-darwin-x64/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -212,8 +212,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-darwin-arm64')
-        const bindingPackageVersion = require('@auths/node-darwin-arm64/package.json').version
+        const binding = require('@auths-dev/node-darwin-arm64')
+        const bindingPackageVersion = require('@auths-dev/node-darwin-arm64/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -232,8 +232,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-freebsd-x64')
-        const bindingPackageVersion = require('@auths/node-freebsd-x64/package.json').version
+        const binding = require('@auths-dev/node-freebsd-x64')
+        const bindingPackageVersion = require('@auths-dev/node-freebsd-x64/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -248,8 +248,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-freebsd-arm64')
-        const bindingPackageVersion = require('@auths/node-freebsd-arm64/package.json').version
+        const binding = require('@auths-dev/node-freebsd-arm64')
+        const bindingPackageVersion = require('@auths-dev/node-freebsd-arm64/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -269,8 +269,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-x64-musl')
-          const bindingPackageVersion = require('@auths/node-linux-x64-musl/package.json').version
+          const binding = require('@auths-dev/node-linux-x64-musl')
+          const bindingPackageVersion = require('@auths-dev/node-linux-x64-musl/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -285,8 +285,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-x64-gnu')
-          const bindingPackageVersion = require('@auths/node-linux-x64-gnu/package.json').version
+          const binding = require('@auths-dev/node-linux-x64-gnu')
+          const bindingPackageVersion = require('@auths-dev/node-linux-x64-gnu/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -303,8 +303,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-arm64-musl')
-          const bindingPackageVersion = require('@auths/node-linux-arm64-musl/package.json').version
+          const binding = require('@auths-dev/node-linux-arm64-musl')
+          const bindingPackageVersion = require('@auths-dev/node-linux-arm64-musl/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -319,8 +319,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-arm64-gnu')
-          const bindingPackageVersion = require('@auths/node-linux-arm64-gnu/package.json').version
+          const binding = require('@auths-dev/node-linux-arm64-gnu')
+          const bindingPackageVersion = require('@auths-dev/node-linux-arm64-gnu/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -337,8 +337,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-arm-musleabihf')
-          const bindingPackageVersion = require('@auths/node-linux-arm-musleabihf/package.json').version
+          const binding = require('@auths-dev/node-linux-arm-musleabihf')
+          const bindingPackageVersion = require('@auths-dev/node-linux-arm-musleabihf/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -353,8 +353,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-arm-gnueabihf')
-          const bindingPackageVersion = require('@auths/node-linux-arm-gnueabihf/package.json').version
+          const binding = require('@auths-dev/node-linux-arm-gnueabihf')
+          const bindingPackageVersion = require('@auths-dev/node-linux-arm-gnueabihf/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -371,8 +371,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-loong64-musl')
-          const bindingPackageVersion = require('@auths/node-linux-loong64-musl/package.json').version
+          const binding = require('@auths-dev/node-linux-loong64-musl')
+          const bindingPackageVersion = require('@auths-dev/node-linux-loong64-musl/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -387,8 +387,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-loong64-gnu')
-          const bindingPackageVersion = require('@auths/node-linux-loong64-gnu/package.json').version
+          const binding = require('@auths-dev/node-linux-loong64-gnu')
+          const bindingPackageVersion = require('@auths-dev/node-linux-loong64-gnu/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -405,8 +405,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-riscv64-musl')
-          const bindingPackageVersion = require('@auths/node-linux-riscv64-musl/package.json').version
+          const binding = require('@auths-dev/node-linux-riscv64-musl')
+          const bindingPackageVersion = require('@auths-dev/node-linux-riscv64-musl/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -421,8 +421,8 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@auths/node-linux-riscv64-gnu')
-          const bindingPackageVersion = require('@auths/node-linux-riscv64-gnu/package.json').version
+          const binding = require('@auths-dev/node-linux-riscv64-gnu')
+          const bindingPackageVersion = require('@auths-dev/node-linux-riscv64-gnu/package.json').version
           if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
             throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
@@ -438,8 +438,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-linux-ppc64-gnu')
-        const bindingPackageVersion = require('@auths/node-linux-ppc64-gnu/package.json').version
+        const binding = require('@auths-dev/node-linux-ppc64-gnu')
+        const bindingPackageVersion = require('@auths-dev/node-linux-ppc64-gnu/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -454,8 +454,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-linux-s390x-gnu')
-        const bindingPackageVersion = require('@auths/node-linux-s390x-gnu/package.json').version
+        const binding = require('@auths-dev/node-linux-s390x-gnu')
+        const bindingPackageVersion = require('@auths-dev/node-linux-s390x-gnu/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -474,8 +474,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-openharmony-arm64')
-        const bindingPackageVersion = require('@auths/node-openharmony-arm64/package.json').version
+        const binding = require('@auths-dev/node-openharmony-arm64')
+        const bindingPackageVersion = require('@auths-dev/node-openharmony-arm64/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -490,8 +490,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-openharmony-x64')
-        const bindingPackageVersion = require('@auths/node-openharmony-x64/package.json').version
+        const binding = require('@auths-dev/node-openharmony-x64')
+        const bindingPackageVersion = require('@auths-dev/node-openharmony-x64/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -506,8 +506,8 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@auths/node-openharmony-arm')
-        const bindingPackageVersion = require('@auths/node-openharmony-arm/package.json').version
+        const binding = require('@auths-dev/node-openharmony-arm')
+        const bindingPackageVersion = require('@auths-dev/node-openharmony-arm/package.json').version
         if (bindingPackageVersion !== '0.1.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
           throw new Error(`Native binding package version mismatch, expected 0.1.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
@@ -538,7 +538,7 @@ if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   }
   if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
     try {
-      wasiBinding = require('@auths/node-wasm32-wasi')
+      wasiBinding = require('@auths-dev/node-wasm32-wasi')
       nativeBinding = wasiBinding
     } catch (err) {
       if (process.env.NAPI_RS_FORCE_WASI) {
@@ -576,4 +576,50 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.addOrgMember = nativeBinding.addOrgMember
+module.exports.addWitness = nativeBinding.addWitness
+module.exports.compilePolicy = nativeBinding.compilePolicy
+module.exports.completePairing = nativeBinding.completePairing
+module.exports.createAgentIdentity = nativeBinding.createAgentIdentity
+module.exports.createIdentity = nativeBinding.createIdentity
+module.exports.createOrg = nativeBinding.createOrg
+module.exports.createPairingSession = nativeBinding.createPairingSession
+module.exports.delegateAgent = nativeBinding.delegateAgent
+module.exports.evaluatePolicy = nativeBinding.evaluatePolicy
+module.exports.extendDeviceAuthorization = nativeBinding.extendDeviceAuthorization
+module.exports.generateAuditReport = nativeBinding.generateAuditReport
+module.exports.getIdentityPublicKey = nativeBinding.getIdentityPublicKey
+module.exports.getLatestAttestation = nativeBinding.getLatestAttestation
+module.exports.getPinnedIdentity = nativeBinding.getPinnedIdentity
+module.exports.joinPairingSession = nativeBinding.joinPairingSession
+module.exports.linkDeviceToIdentity = nativeBinding.linkDeviceToIdentity
+module.exports.listAttestations = nativeBinding.listAttestations
+module.exports.listAttestationsByDevice = nativeBinding.listAttestationsByDevice
+module.exports.listOrgMembers = nativeBinding.listOrgMembers
+module.exports.listPinnedIdentities = nativeBinding.listPinnedIdentities
+module.exports.listWitnesses = nativeBinding.listWitnesses
+module.exports.pinIdentity = nativeBinding.pinIdentity
+module.exports.removePinnedIdentity = nativeBinding.removePinnedIdentity
+module.exports.removeWitness = nativeBinding.removeWitness
+module.exports.revokeDeviceFromIdentity = nativeBinding.revokeDeviceFromIdentity
+module.exports.revokeOrgMember = nativeBinding.revokeOrgMember
+module.exports.rotateIdentityKeys = nativeBinding.rotateIdentityKeys
+module.exports.runDiagnostics = nativeBinding.runDiagnostics
+module.exports.signActionAsAgent = nativeBinding.signActionAsAgent
+module.exports.signActionAsIdentity = nativeBinding.signActionAsIdentity
+module.exports.signArtifact = nativeBinding.signArtifact
+module.exports.signArtifactBytes = nativeBinding.signArtifactBytes
+module.exports.signAsAgent = nativeBinding.signAsAgent
+module.exports.signAsIdentity = nativeBinding.signAsIdentity
+module.exports.signCommit = nativeBinding.signCommit
+module.exports.stopPairingSession = nativeBinding.stopPairingSession
+module.exports.verifyAttestation = nativeBinding.verifyAttestation
+module.exports.verifyAttestationWithCapability = nativeBinding.verifyAttestationWithCapability
+module.exports.verifyAtTime = nativeBinding.verifyAtTime
+module.exports.verifyAtTimeWithCapability = nativeBinding.verifyAtTimeWithCapability
+module.exports.verifyChain = nativeBinding.verifyChain
+module.exports.verifyChainWithCapability = nativeBinding.verifyChainWithCapability
+module.exports.verifyChainWithWitnesses = nativeBinding.verifyChainWithWitnesses
+module.exports.verifyDeviceAuthorization = nativeBinding.verifyDeviceAuthorization
 module.exports.version = nativeBinding.version
+module.exports.waitForPairingResponse = nativeBinding.waitForPairingResponse

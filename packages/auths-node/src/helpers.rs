@@ -21,13 +21,14 @@ pub fn resolve_repo_path(path: Option<String>) -> PathBuf {
 }
 
 pub fn make_env_config(passphrase: &str, repo_path: &str) -> EnvironmentConfig {
+    let mut keychain = KeychainConfig::from_env();
+    if keychain.backend.is_none() {
+        keychain.backend = Some("file".to_string());
+    }
+    keychain.passphrase = Some(passphrase.to_string());
     EnvironmentConfig {
         auths_home: Some(repo_path.into()),
-        keychain: KeychainConfig {
-            backend: Some("file".to_string()),
-            file_path: None,
-            passphrase: Some(passphrase.to_string()),
-        },
+        keychain,
         ssh_agent_socket: None,
     }
 }

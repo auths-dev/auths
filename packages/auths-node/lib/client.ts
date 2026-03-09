@@ -151,6 +151,6 @@ export class Auths {
   }
 
   doctor(): string {
-    return native.runDiagnostics(this.repoPath)
+    return native.runDiagnostics(this.repoPath, this.passphrase)
   }
 }

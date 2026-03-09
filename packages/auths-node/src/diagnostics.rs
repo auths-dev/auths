@@ -64,8 +64,9 @@ impl CryptoDiagnosticProvider for FfiDiagnosticAdapter {
 }
 
 #[napi]
-pub fn run_diagnostics(repo_path: String) -> napi::Result<String> {
+pub fn run_diagnostics(repo_path: String, passphrase: Option<String>) -> napi::Result<String> {
     let _repo = repo_path;
+    let _passphrase = passphrase;
 
     let adapter = FfiDiagnosticAdapter;
     let workflow = DiagnosticsWorkflow::new(&adapter, &adapter);
