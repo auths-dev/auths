@@ -48,6 +48,26 @@ theme:
 
 plugins:
   - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [packages/auths-python/python]
+          options:
+            docstring_style: google
+            docstring_section_style: list
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            show_if_no_docstring: false
+            group_by_category: true
+            heading_level: 3
 
 markdown_extensions:
   - admonition
@@ -124,6 +144,22 @@ nav:
       - Advanced Commands: cli/commands/advanced.md
 
   - SDK & Libraries:
+      - Python SDK:
+          - Overview: sdk/python/overview.md
+          - Quickstart: sdk/python/quickstart.md
+          - API Reference:
+              - Client: sdk/python/api/client.md
+              - Identities: sdk/python/api/identities.md
+              - Devices: sdk/python/api/devices.md
+              - Organizations: sdk/python/api/orgs.md
+              - Attestations: sdk/python/api/attestations.md
+              - Git: sdk/python/api/git.md
+              - Policy: sdk/python/api/policy.md
+              - JWT: sdk/python/api/jwt.md
+              - Verification: sdk/python/api/verification.md
+              - Signing: sdk/python/api/signing.md
+              - Agent Auth: sdk/python/api/agent.md
+          - Errors: sdk/python/errors.md
       - Rust SDK:
           - Overview: sdk/rust/overview.md
           - Quickstart: sdk/rust/quickstart.md
