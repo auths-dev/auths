@@ -1,6 +1,13 @@
 import { IdentityService } from './identity'
 import { DeviceService } from './devices'
 import { SigningService, type SignResult, type ActionEnvelope } from './signing'
+import { OrgService } from './org'
+import { TrustService } from './trust'
+import { WitnessService } from './witness'
+import { AttestationService } from './attestations'
+import { ArtifactService } from './artifacts'
+import { CommitService } from './commits'
+import { AuditService } from './audit'
 import { mapNativeError, CryptoError, VerificationError } from './errors'
 import {
   verifyAttestation,
@@ -14,6 +21,7 @@ import {
   type VerificationReport,
   type WitnessConfig,
 } from './verify'
+import native from './native'
 
 export interface ClientConfig {
   repoPath?: string
@@ -27,6 +35,13 @@ export class Auths {
   readonly identities: IdentityService
   readonly devices: DeviceService
   readonly signing: SigningService
+  readonly orgs: OrgService
+  readonly trust: TrustService
+  readonly witnesses: WitnessService
+  readonly attestations: AttestationService
+  readonly artifacts: ArtifactService
+  readonly commits: CommitService
+  readonly audit: AuditService
 
   constructor(config: ClientConfig = {}) {
     this.repoPath = config.repoPath ?? '~/.auths'
@@ -35,6 +50,13 @@ export class Auths {
     this.identities = new IdentityService(this)
     this.devices = new DeviceService(this)
     this.signing = new SigningService(this)
+    this.orgs = new OrgService(this)
+    this.trust = new TrustService(this)
+    this.witnesses = new WitnessService(this)
+    this.attestations = new AttestationService(this)
+    this.artifacts = new ArtifactService(this)
+    this.commits = new CommitService(this)
+    this.audit = new AuditService(this)
   }
 
   verify(opts: {
@@ -123,5 +145,9 @@ export class Auths {
     passphrase?: string
   }): string {
     return this.identities.getPublicKey(opts)
+  }
+
+  doctor(): string {
+    return native.runDiagnostics(this.repoPath)
   }
 }
