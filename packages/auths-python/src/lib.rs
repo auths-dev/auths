@@ -23,6 +23,7 @@ pub mod token;
 pub mod trust;
 pub mod types;
 pub mod verify;
+pub mod witness;
 
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -119,6 +120,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(trust::remove_pinned_identity, m)?)?;
     m.add_function(wrap_pyfunction!(trust::list_pinned_identities, m)?)?;
     m.add_function(wrap_pyfunction!(trust::get_pinned_identity, m)?)?;
+
+    m.add_function(wrap_pyfunction!(witness::add_witness, m)?)?;
+    m.add_function(wrap_pyfunction!(witness::remove_witness, m)?)?;
+    m.add_function(wrap_pyfunction!(witness::list_witnesses, m)?)?;
 
     Ok(())
 }

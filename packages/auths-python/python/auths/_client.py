@@ -114,6 +114,7 @@ class Auths:
         from auths.identity import IdentityService
         from auths.org import OrgService
         from auths.trust import TrustService
+        from auths.witness import WitnessService
 
         self.identities = IdentityService(self)
         self.devices = DeviceService(self)
@@ -121,6 +122,7 @@ class Auths:
         self.orgs = OrgService(self)
         self.audit = AuditService(self)
         self.trust = TrustService(self)
+        self.witnesses = WitnessService(self)
 
     def verify(
         self,
