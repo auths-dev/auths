@@ -1,3 +1,6 @@
+"""Auths error hierarchy. All errors inherit from AuthsError."""
+
+
 class AuthsError(Exception):
     """Base error for all Auths SDK operations."""
 

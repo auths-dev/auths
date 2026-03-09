@@ -1,3 +1,5 @@
+"""Auths client — primary entry point for all SDK operations."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

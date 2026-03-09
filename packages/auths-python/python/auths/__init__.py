@@ -8,6 +8,7 @@ from auths._errors import (
     KeychainError,
     NetworkError,
     OrgError,
+    PairingError,
     StorageError,
     VerificationError,
 )
