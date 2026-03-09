@@ -33,11 +33,15 @@
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
+    "docs": "typedoc",
     "test": "vitest run",
     "universal": "napi universal -t darwin"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.0.0",
+    "@types/node": "^25.3.5",
+    "typedoc": "^0.28.17",
+    "typedoc-plugin-markdown": "^4.10.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

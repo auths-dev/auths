@@ -94,6 +94,9 @@ __pycache__/
 # === MkDocs ===
 /site/
 
+# === Generated SDK API docs (built in CI) ===
+docs/sdk/node/api/
+
 # === Release artifacts & signatures ===
 *.zip
 *.tar

@@ -1,4 +1,25 @@
+/**
+ * Base error for all Auths SDK operations.
+ *
+ * All errors thrown by the SDK inherit from this class, carrying a
+ * machine-readable {@link AuthsError.code | code} and human-readable
+ * {@link AuthsError.message | message}.
+ *
+ * @example
+ * ```typescript
+ * import { Auths, AuthsError } from '@auths-dev/node'
+ *
+ * try {
+ *   auths.signAs({ message: data, identityDid: did })
+ * } catch (e) {
+ *   if (e instanceof AuthsError) {
+ *     console.log(e.code, e.message)
+ *   }
+ * }
+ * ```
+ */
 export class AuthsError extends Error {
+  /** Machine-readable error code (e.g. `'key_not_found'`, `'invalid_signature'`). */
   code: string
   constructor(message: string, code: string) {
     super(message)
@@ -7,6 +28,25 @@ export class AuthsError extends Error {
   }
 }
 
+/**
+ * Raised when attestation or chain verification fails.
+ *
+ * Common codes: `'invalid_signature'`, `'expired_attestation'`,
+ * `'revoked_device'`, `'missing_capability'`.
+ *
+ * @example
+ * ```typescript
+ * import { verifyAttestation, VerificationError } from '@auths-dev/node'
+ *
+ * try {
+ *   await verifyAttestation(json, publicKey)
+ * } catch (e) {
+ *   if (e instanceof VerificationError) {
+ *     console.log('Verification failed:', e.code)
+ *   }
+ * }
+ * ```
+ */
 export class VerificationError extends AuthsError {
   constructor(message: string, code: string) {
     super(message, code)
@@ -14,6 +54,24 @@ export class VerificationError extends AuthsError {
   }
 }
 
+/**
+ * Raised when a cryptographic operation fails.
+ *
+ * Common codes: `'invalid_key'`, `'key_not_found'`, `'signing_failed'`.
+ *
+ * @example
+ * ```typescript
+ * import { Auths, CryptoError } from '@auths-dev/node'
+ *
+ * try {
+ *   auths.signAs({ message: data, identityDid: did })
+ * } catch (e) {
+ *   if (e instanceof CryptoError && e.code === 'key_not_found') {
+ *     console.log('Identity key not in keychain')
+ *   }
+ * }
+ * ```
+ */
 export class CryptoError extends AuthsError {
   constructor(message: string, code: string) {
     super(message, code)
@@ -21,6 +79,24 @@ export class CryptoError extends AuthsError {
   }
 }
 
+/**
+ * Raised when the platform keychain is inaccessible or locked.
+ *
+ * Common codes: `'keychain_locked'`.
+ *
+ * @example
+ * ```typescript
+ * import { Auths, KeychainError } from '@auths-dev/node'
+ *
+ * try {
+ *   auths.identities.create({ label: 'main' })
+ * } catch (e) {
+ *   if (e instanceof KeychainError) {
+ *     console.log('Unlock your keychain or set AUTHS_KEYCHAIN_BACKEND=file')
+ *   }
+ * }
+ * ```
+ */
 export class KeychainError extends AuthsError {
   constructor(message: string, code: string) {
     super(message, code)
@@ -28,6 +104,24 @@ export class KeychainError extends AuthsError {
   }
 }
 
+/**
+ * Raised when a storage or registry operation fails.
+ *
+ * Common codes: `'repo_not_found'`, `'trust_error'`, `'witness_error'`.
+ *
+ * @example
+ * ```typescript
+ * import { Auths, StorageError } from '@auths-dev/node'
+ *
+ * try {
+ *   auths.trust.pin({ did: 'did:keri:ENOTREAL' })
+ * } catch (e) {
+ *   if (e instanceof StorageError) {
+ *     console.log('Storage error:', e.message)
+ *   }
+ * }
+ * ```
+ */
 export class StorageError extends AuthsError {
   constructor(message: string, code: string) {
     super(message, code)
@@ -35,7 +129,26 @@ export class StorageError extends AuthsError {
   }
 }
 
+/**
+ * Raised when a network operation fails (e.g. witness communication).
+ *
+ * Common codes: `'server_error'`.
+ *
+ * @example
+ * ```typescript
+ * import { NetworkError } from '@auths-dev/node'
+ *
+ * try {
+ *   // network operation
+ * } catch (e) {
+ *   if (e instanceof NetworkError && e.shouldRetry) {
+ *     // safe to retry
+ *   }
+ * }
+ * ```
+ */
 export class NetworkError extends AuthsError {
+  /** Whether the operation is safe to retry. Defaults to `true`. */
   shouldRetry: boolean
   constructor(message: string, code: string, shouldRetry = true) {
     super(message, code)
@@ -44,6 +157,24 @@ export class NetworkError extends AuthsError {
   }
 }
 
+/**
+ * Raised when an identity or device operation fails.
+ *
+ * Common codes: `'identity_not_found'`, `'unknown'`.
+ *
+ * @example
+ * ```typescript
+ * import { Auths, IdentityError } from '@auths-dev/node'
+ *
+ * try {
+ *   auths.devices.link({ identityDid: did, capabilities: ['sign'] })
+ * } catch (e) {
+ *   if (e instanceof IdentityError) {
+ *     console.log('Identity error:', e.code)
+ *   }
+ * }
+ * ```
+ */
 export class IdentityError extends AuthsError {
   constructor(message: string, code: string) {
     super(message, code)
@@ -51,6 +182,24 @@ export class IdentityError extends AuthsError {
   }
 }
 
+/**
+ * Raised when an organization operation fails.
+ *
+ * Common codes: `'org_error'`.
+ *
+ * @example
+ * ```typescript
+ * import { Auths, OrgError } from '@auths-dev/node'
+ *
+ * try {
+ *   auths.orgs.addMember({ orgDid, memberDid, role: 'member' })
+ * } catch (e) {
+ *   if (e instanceof OrgError) {
+ *     console.log('Org error:', e.message)
+ *   }
+ * }
+ * ```
+ */
 export class OrgError extends AuthsError {
   constructor(message: string, code: string) {
     super(message, code)
@@ -58,7 +207,26 @@ export class OrgError extends AuthsError {
   }
 }
 
+/**
+ * Raised when a device pairing operation fails or times out.
+ *
+ * Common codes: `'pairing_error'`, `'timeout'`.
+ *
+ * @example
+ * ```typescript
+ * import { PairingError } from '@auths-dev/node'
+ *
+ * try {
+ *   await auths.pairing.createSession({ bindAddress: '127.0.0.1' })
+ * } catch (e) {
+ *   if (e instanceof PairingError && e.shouldRetry) {
+ *     // safe to retry
+ *   }
+ * }
+ * ```
+ */
 export class PairingError extends AuthsError {
+  /** Whether the operation is safe to retry. Defaults to `true`. */
   shouldRetry: boolean
   constructor(message: string, code: string, shouldRetry = true) {
     super(message, code)
@@ -104,6 +272,16 @@ const ERROR_CODE_MAP: Record<string, [string, new (message: string, code: string
   AUTHS_DIAGNOSTIC_ERROR: ['diagnostic_error', VerificationError],
 }
 
+/**
+ * Maps a native napi-rs error into a typed {@link AuthsError} subclass.
+ *
+ * Parses the `[AUTHS_CODE] message` format emitted by the Rust layer
+ * and instantiates the appropriate error class with a machine-readable code.
+ *
+ * @param err - The raw error from the native binding.
+ * @param defaultCls - Fallback error class when the code is unrecognized.
+ * @returns A typed {@link AuthsError} instance.
+ */
 export function mapNativeError(err: unknown, defaultCls: new (message: string, code: string) => AuthsError = VerificationError): AuthsError {
   const msg = err instanceof Error ? err.message : String(err)
 
