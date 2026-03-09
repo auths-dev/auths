@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use auths_verifier::core::{
     Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
 };
@@ -18,17 +16,6 @@ use napi_derive::napi;
 
 use crate::error::format_error;
 use crate::types::{NapiVerificationReport, NapiVerificationResult};
-
-static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-
-fn runtime() -> &'static tokio::runtime::Runtime {
-    RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .expect("failed to create tokio runtime")
-    })
-}
 
 fn decode_pk_hex(hex_str: &str, label: &str) -> napi::Result<Vec<u8>> {
     let bytes = hex::decode(hex_str)
@@ -72,7 +59,7 @@ fn check_batch_size(jsons: &[String]) -> napi::Result<()> {
 }
 
 #[napi]
-pub fn verify_attestation(
+pub async fn verify_attestation(
     attestation_json: String,
     issuer_pk_hex: String,
 ) -> napi::Result<NapiVerificationResult> {
@@ -100,7 +87,7 @@ pub fn verify_attestation(
         }
     };
 
-    match runtime().block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
+    match verify_with_keys(&att, &issuer_pk_bytes).await {
         Ok(_) => Ok(NapiVerificationResult {
             valid: true,
             error: None,
@@ -115,7 +102,7 @@ pub fn verify_attestation(
 }
 
 #[napi]
-pub fn verify_chain(
+pub async fn verify_chain(
     attestations_json: Vec<String>,
     root_pk_hex: String,
 ) -> napi::Result<NapiVerificationReport> {
@@ -123,7 +110,7 @@ pub fn verify_chain(
     let root_pk_bytes = decode_pk_hex(&root_pk_hex, "root public key")?;
     let attestations = parse_attestations(&attestations_json)?;
 
-    match runtime().block_on(rust_verify_chain(&attestations, &root_pk_bytes)) {
+    match rust_verify_chain(&attestations, &root_pk_bytes).await {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(format_error(
             e.error_code(),
@@ -133,7 +120,7 @@ pub fn verify_chain(
 }
 
 #[napi]
-pub fn verify_device_authorization(
+pub async fn verify_device_authorization(
     identity_did: String,
     device_did: String,
     attestations_json: Vec<String>,
@@ -144,12 +131,14 @@ pub fn verify_device_authorization(
     let attestations = parse_attestations(&attestations_json)?;
     let device = DeviceDID::new(&device_did);
 
-    match runtime().block_on(rust_verify_device_authorization(
+    match rust_verify_device_authorization(
         &identity_did,
         &device,
         &attestations,
         &identity_pk_bytes,
-    )) {
+    )
+    .await
+    {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(format_error(
             e.error_code(),
@@ -159,7 +148,7 @@ pub fn verify_device_authorization(
 }
 
 #[napi]
-pub fn verify_attestation_with_capability(
+pub async fn verify_attestation_with_capability(
     attestation_json: String,
     issuer_pk_hex: String,
     required_capability: String,
@@ -195,7 +184,7 @@ pub fn verify_attestation_with_capability(
         )
     })?;
 
-    match runtime().block_on(rust_verify_with_capability(&att, &cap, &issuer_pk_bytes)) {
+    match rust_verify_with_capability(&att, &cap, &issuer_pk_bytes).await {
         Ok(_) => Ok(NapiVerificationResult {
             valid: true,
             error: None,
@@ -210,7 +199,7 @@ pub fn verify_attestation_with_capability(
 }
 
 #[napi]
-pub fn verify_chain_with_capability(
+pub async fn verify_chain_with_capability(
     attestations_json: Vec<String>,
     root_pk_hex: String,
     required_capability: String,
@@ -226,11 +215,7 @@ pub fn verify_chain_with_capability(
         )
     })?;
 
-    match runtime().block_on(rust_verify_chain_with_capability(
-        &attestations,
-        &cap,
-        &root_pk_bytes,
-    )) {
+    match rust_verify_chain_with_capability(&attestations, &cap, &root_pk_bytes).await {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(format_error(
             e.error_code(),
@@ -276,7 +261,7 @@ fn parse_rfc3339_timestamp(at_rfc3339: &str) -> napi::Result<DateTime<Utc>> {
 }
 
 #[napi]
-pub fn verify_at_time(
+pub async fn verify_at_time(
     attestation_json: String,
     issuer_pk_hex: String,
     at_rfc3339: String,
@@ -306,7 +291,7 @@ pub fn verify_at_time(
         }
     };
 
-    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+    match rust_verify_at_time(&att, &issuer_pk_bytes, at).await {
         Ok(_) => Ok(NapiVerificationResult {
             valid: true,
             error: None,
@@ -321,7 +306,7 @@ pub fn verify_at_time(
 }
 
 #[napi]
-pub fn verify_at_time_with_capability(
+pub async fn verify_at_time_with_capability(
     attestation_json: String,
     issuer_pk_hex: String,
     at_rfc3339: String,
@@ -359,7 +344,7 @@ pub fn verify_at_time_with_capability(
         )
     })?;
 
-    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+    match rust_verify_at_time(&att, &issuer_pk_bytes, at).await {
         Ok(_) => {
             if att.capabilities.contains(&cap) {
                 Ok(NapiVerificationResult {
@@ -386,7 +371,7 @@ pub fn verify_at_time_with_capability(
 }
 
 #[napi]
-pub fn verify_chain_with_witnesses(
+pub async fn verify_chain_with_witnesses(
     attestations_json: Vec<String>,
     root_pk_hex: String,
     receipts_json: Vec<String>,
@@ -451,11 +436,7 @@ pub fn verify_chain_with_witnesses(
         threshold: threshold as usize,
     };
 
-    match runtime().block_on(rust_verify_chain_with_witnesses(
-        &attestations,
-        &root_pk_bytes,
-        &config,
-    )) {
+    match rust_verify_chain_with_witnesses(&attestations, &root_pk_bytes, &config).await {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(format_error(
             e.error_code(),

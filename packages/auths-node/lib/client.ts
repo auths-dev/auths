@@ -62,12 +62,12 @@ export class Auths {
     this.pairing = new PairingService(this)
   }
 
-  verify(opts: {
+  async verify(opts: {
     attestationJson: string
     issuerKey: string
     requiredCapability?: string
     at?: string
-  }): VerificationResult {
+  }): Promise<VerificationResult> {
     if (opts.at && opts.requiredCapability) {
       return verifyAtTimeWithCapability(opts.attestationJson, opts.issuerKey, opts.at, opts.requiredCapability)
     }
@@ -80,12 +80,12 @@ export class Auths {
     return verifyAttestation(opts.attestationJson, opts.issuerKey)
   }
 
-  verifyChain(opts: {
+  async verifyChain(opts: {
     attestations: string[]
     rootKey: string
     requiredCapability?: string
     witnesses?: WitnessConfig
-  }): VerificationReport {
+  }): Promise<VerificationReport> {
     if (opts.witnesses) {
       return verifyChainWithWitnesses(opts.attestations, opts.rootKey, opts.witnesses)
     }

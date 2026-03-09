@@ -233,14 +233,14 @@ export interface NativeBindings {
   completePairing(deviceDid: string, devicePublicKeyHex: string, repoPath: string, capabilitiesJson?: string | null, passphrase?: string | null): NapiPairingResult
 
   // Verification
-  verifyAttestation(attestationJson: string, issuerPkHex: string): NapiVerificationResult
-  verifyChain(attestationsJson: string[], rootPkHex: string): NapiVerificationReport
-  verifyDeviceAuthorization(identityDid: string, deviceDid: string, attestationsJson: string[], identityPkHex: string): NapiVerificationReport
-  verifyAttestationWithCapability(attestationJson: string, issuerPkHex: string, requiredCapability: string): NapiVerificationResult
-  verifyChainWithCapability(attestationsJson: string[], rootPkHex: string, requiredCapability: string): NapiVerificationReport
-  verifyAtTime(attestationJson: string, issuerPkHex: string, atRfc3339: string): NapiVerificationResult
-  verifyAtTimeWithCapability(attestationJson: string, issuerPkHex: string, atRfc3339: string, requiredCapability: string): NapiVerificationResult
-  verifyChainWithWitnesses(attestationsJson: string[], rootPkHex: string, receiptsJson: string[], witnessKeysJson: string[], threshold: number): NapiVerificationReport
+  verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
+  verifyChain(attestationsJson: string[], rootPkHex: string): Promise<NapiVerificationReport>
+  verifyDeviceAuthorization(identityDid: string, deviceDid: string, attestationsJson: string[], identityPkHex: string): Promise<NapiVerificationReport>
+  verifyAttestationWithCapability(attestationJson: string, issuerPkHex: string, requiredCapability: string): Promise<NapiVerificationResult>
+  verifyChainWithCapability(attestationsJson: string[], rootPkHex: string, requiredCapability: string): Promise<NapiVerificationReport>
+  verifyAtTime(attestationJson: string, issuerPkHex: string, atRfc3339: string): Promise<NapiVerificationResult>
+  verifyAtTimeWithCapability(attestationJson: string, issuerPkHex: string, atRfc3339: string, requiredCapability: string): Promise<NapiVerificationResult>
+  verifyChainWithWitnesses(attestationsJson: string[], rootPkHex: string, receiptsJson: string[], witnessKeysJson: string[], threshold: number): Promise<NapiVerificationReport>
 }
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires

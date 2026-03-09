@@ -29,7 +29,7 @@ auths-infra-git = { path = "../../crates/auths-infra-git" }
 # Utilities
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "time"] }
+tokio = { version = "1", features = ["sync", "net"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 hex = "0.4"
 chrono = "0.4"
