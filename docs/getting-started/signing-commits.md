@@ -81,7 +81,7 @@ To configure for the current repository only, replace `--global` with `--local`.
 The `allowed_signers` file maps identities to their authorized public keys. Auths generates this during `init`, but you can regenerate it at any time:
 
 ```bash
-auths git allowed-signers --output ~/.ssh/allowed_signers
+auths signers sync --output ~/.ssh/allowed_signers
 git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
 ```
 

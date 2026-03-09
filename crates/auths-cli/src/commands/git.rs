@@ -21,24 +21,9 @@ pub struct GitCommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum GitSubcommand {
-    /// Generate allowed_signers file from Auths device authorizations.
-    #[command(name = "allowed-signers")]
-    AllowedSigners(AllowedSignersCommand),
-
     /// Install Git hooks for automatic allowed_signers regeneration.
     #[command(name = "install-hooks")]
     InstallHooks(InstallHooksCommand),
-}
-
-#[derive(Parser, Debug, Clone)]
-pub struct AllowedSignersCommand {
-    /// Path to the Auths identity repository.
-    #[arg(long, default_value = "~/.auths")]
-    pub repo: PathBuf,
-
-    /// Output file path. If not specified, outputs to stdout.
-    #[arg(long = "output", short = 'o')]
-    pub output_file: Option<PathBuf>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -65,16 +50,8 @@ pub struct InstallHooksCommand {
 pub fn handle_git(
     cmd: GitCommand,
     repo_override: Option<PathBuf>,
-    attestation_prefix_override: Option<String>,
-    attestation_blob_name_override: Option<String>,
 ) -> Result<()> {
     match cmd.command {
-        GitSubcommand::AllowedSigners(subcmd) => handle_allowed_signers(
-            subcmd,
-            repo_override,
-            attestation_prefix_override,
-            attestation_blob_name_override,
-        ),
         GitSubcommand::InstallHooks(subcmd) => handle_install_hooks(subcmd, repo_override),
     }
 }
@@ -227,56 +204,6 @@ auths signers sync --repo "{}" --output "{}"
     )
 }
 
-fn handle_allowed_signers(
-    cmd: AllowedSignersCommand,
-    repo_override: Option<PathBuf>,
-    _attestation_prefix_override: Option<String>,
-    _attestation_blob_name_override: Option<String>,
-) -> Result<()> {
-    let repo_path = if let Some(override_path) = repo_override {
-        expand_tilde(&override_path)?
-    } else {
-        expand_tilde(&cmd.repo)?
-    };
-
-    let storage = RegistryAttestationStorage::new(&repo_path);
-
-    if let Some(output_path) = cmd.output_file {
-        let mut signers = AllowedSigners::load(&output_path)
-            .with_context(|| format!("Failed to load {:?}", output_path))?;
-        signers
-            .sync(&storage)
-            .context("Failed to load attestations from repository")?;
-        signers
-            .save()
-            .with_context(|| format!("Failed to write to {:?}", output_path))?;
-        eprintln!(
-            "Wrote {} entries to {:?}",
-            signers.list().len(),
-            output_path
-        );
-    } else {
-        let mut signers = AllowedSigners::new("/dev/null");
-        signers
-            .sync(&storage)
-            .context("Failed to load attestations from repository")?;
-        // Print to stdout in legacy format (no section markers)
-        for entry in signers.list() {
-            println!("{}", format_entry_line(entry));
-        }
-    }
-
-    Ok(())
-}
-
-fn format_entry_line(entry: &auths_sdk::workflows::allowed_signers::SignerEntry) -> String {
-    use auths_sdk::workflows::git_integration::public_key_to_ssh;
-    #[allow(clippy::expect_used)] // INVARIANT: Ed25519PublicKey is always 32 valid bytes
-    let ssh_key = public_key_to_ssh(entry.public_key.as_bytes())
-        .expect("Ed25519PublicKey always encodes to valid SSH key");
-    format!("{} namespaces=\"git\" {}", entry.principal, ssh_key)
-}
-
 pub(crate) fn expand_tilde(path: &Path) -> Result<PathBuf> {
     let path_str = path.to_string_lossy();
     if path_str.starts_with("~/") || path_str == "~" {
@@ -296,60 +223,14 @@ use crate::config::CliConfig;
 
 impl ExecutableCommand for GitCommand {
     fn execute(&self, ctx: &CliConfig) -> Result<()> {
-        handle_git(
-            self.clone(),
-            ctx.repo_path.clone(),
-            self.overrides.attestation_prefix.clone(),
-            self.overrides.attestation_blob.clone(),
-        )
+        handle_git(self.clone(), ctx.repo_path.clone())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_sdk::workflows::git_integration::public_key_to_ssh;
     use tempfile::TempDir;
-
-    #[test]
-    fn test_allowed_signers_output_flag_parses() {
-        let cmd = AllowedSignersCommand::try_parse_from([
-            "allowed-signers",
-            "--output",
-            "/tmp/allowed_signers",
-        ])
-        .expect("--output flag must parse without panic");
-        assert_eq!(cmd.output_file, Some(PathBuf::from("/tmp/allowed_signers")));
-    }
-
-    #[test]
-    fn test_allowed_signers_no_output_defaults_to_none() {
-        let cmd = AllowedSignersCommand::try_parse_from(["allowed-signers"])
-            .expect("allowed-signers with no args must parse");
-        assert!(cmd.output_file.is_none());
-    }
-
-    #[test]
-    fn test_public_key_to_ssh() {
-        let pk_bytes: [u8; 32] = [
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
-            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
-            0x1d, 0x1e, 0x1f, 0x20,
-        ];
-
-        let result = public_key_to_ssh(&pk_bytes);
-        assert!(result.is_ok(), "Failed: {:?}", result.err());
-
-        let ssh_key = result.unwrap();
-        assert!(ssh_key.starts_with("ssh-ed25519 "), "Got: {}", ssh_key);
-    }
-
-    #[test]
-    fn test_public_key_to_ssh_invalid_length() {
-        let pk_bytes = vec![0u8; 16];
-        let result = public_key_to_ssh(&pk_bytes);
-        assert!(result.is_err());
-    }
 
     #[test]
     fn test_expand_tilde() {
@@ -380,14 +261,6 @@ mod tests {
         let path = PathBuf::from("relative/path");
         let result = expand_tilde(&path).unwrap();
         assert_eq!(result, PathBuf::from("relative/path"));
-    }
-
-    #[test]
-    fn test_allowed_signers_default_repo_contains_tilde() {
-        let cmd = AllowedSignersCommand::try_parse_from(["allowed-signers"]).unwrap();
-        assert_eq!(cmd.repo, PathBuf::from("~/.auths"));
-        let expanded = expand_tilde(&cmd.repo).unwrap();
-        assert!(!expanded.to_string_lossy().contains("~"));
     }
 
     #[test]

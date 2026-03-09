@@ -154,7 +154,7 @@ fn verify_file(
         bail!(
             "Allowed signers file not found: {:?}\n\n\
             Create it with:\n  \
-            auths git allowed-signers > {:?}",
+            auths signers sync --output {:?}",
             allowed_signers,
             allowed_signers
         );

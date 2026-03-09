@@ -278,7 +278,7 @@ The default path `.auths/allowed_signers` does not exist. Generate it:
 
 ```bash
 mkdir -p .auths
-auths git allowed-signers --output .auths/allowed_signers
+auths signers sync --output .auths/allowed_signers
 ```
 
 ### "Signature from non-allowed signer"

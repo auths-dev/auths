@@ -12,7 +12,7 @@ The recommended approach is to commit the `allowed_signers` file to your reposit
 
 ```bash
 # Generate from your Auths identity
-auths git allowed-signers --output .auths/allowed_signers
+auths signers sync --output .auths/allowed_signers
 
 # Configure Git to use it
 git config --local gpg.ssh.allowedSignersFile .auths/allowed_signers
@@ -35,13 +35,13 @@ Each developer generates their own entry and contributes it to the shared file:
 
 ```bash
 # Teammate runs on their machine:
-auths git allowed-signers
+auths signers list
 ```
 
 This outputs their entry to stdout. They copy it and open a PR to append it to `.auths/allowed_signers`. Alternatively, if you have access to the teammate's Auths identity repository, you can generate the full file from all known attestations:
 
 ```bash
-auths git allowed-signers --repo /path/to/shared/auths-repo --output .auths/allowed_signers
+auths signers sync --repo /path/to/shared/auths-repo --output .auths/allowed_signers
 ```
 
 ### Auto-Regeneration
@@ -55,7 +55,7 @@ auths git install-hooks
 This creates a `.git/hooks/post-merge` hook that runs:
 
 ```bash
-auths git allowed-signers --repo ~/.auths --output .auths/allowed_signers
+auths signers sync --repo ~/.auths --output .auths/allowed_signers
 ```
 
 The hook ensures the `allowed_signers` file stays in sync with the latest device authorizations from your identity repository. Use `--force` to overwrite an existing hook.
@@ -77,7 +77,7 @@ This creates their cryptographic identity, generates a key pair, stores it in th
 The new member exports their public key entry:
 
 ```bash
-auths git allowed-signers
+auths signers list
 ```
 
 They share the output line (e.g., via a PR or secure channel).
@@ -192,7 +192,7 @@ Revoked members' signatures remain valid for commits made before the revocation 
 After revoking a member, regenerate the `allowed_signers` file to remove their key:
 
 ```bash
-auths git allowed-signers --output .auths/allowed_signers
+auths signers sync --output .auths/allowed_signers
 ```
 
 ## Trust Management
@@ -321,7 +321,7 @@ Output shows added, removed, and changed rules with risk scores (`LOW`, `MEDIUM`
 
 Team members who work across multiple machines can pair devices to sign with the same identity from any machine.
 
-Each device generates its own key pair and receives a device attestation from the identity owner. The `allowed_signers` file includes entries for all authorized devices. When `auths git allowed-signers` is run, it scans all non-revoked attestations and generates entries for every authorized device key.
+Each device generates its own key pair and receives a device attestation from the identity owner. The `allowed_signers` file includes entries for all authorized devices. When `auths signers list` is run, it scans all non-revoked attestations and generates entries for every authorized device key.
 
 ## Audit and Compliance
 
@@ -358,7 +358,7 @@ auths init
 
 # Collect allowed_signers entries from all members
 # Commit the shared file to the repository
-auths git allowed-signers --output .auths/allowed_signers
+auths signers sync --output .auths/allowed_signers
 git config --local gpg.ssh.allowedSignersFile .auths/allowed_signers
 git add .auths/allowed_signers
 git commit -S -m "Initialize team signing"
@@ -374,7 +374,7 @@ auths git install-hooks
 auths init
 
 # New member shares their entry:
-auths git allowed-signers
+auths signers list
 # (copy output line)
 
 # Maintainer appends to .auths/allowed_signers and commits
@@ -397,7 +397,7 @@ steps:
 auths org revoke-member --org did:keri:E... --member did:keri:E...
 
 # Remove their entry from allowed_signers
-auths git allowed-signers --output .auths/allowed_signers
+auths signers sync --output .auths/allowed_signers
 
 # Commit the change
 git add .auths/allowed_signers

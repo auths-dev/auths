@@ -136,8 +136,8 @@ const COMMANDS: &[Cmd] = &[
     },
     // ── git ─────────────────────────────────────────────────────────────
     Cmd {
-        args: &["git", "allowed-signers"],
-        marker: "auths git allowed-signers",
+        args: &["signers", "sync"],
+        marker: "auths signers sync",
         doc_file: "docs/cli/commands/advanced.md",
     },
     Cmd {
