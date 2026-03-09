@@ -109,6 +109,7 @@ class Auths:
         self._passphrase = passphrase
 
         from auths.attestation_query import AttestationService
+        from auths.audit import AuditService
         from auths.devices import DeviceService
         from auths.identity import IdentityService
         from auths.org import OrgService
@@ -117,6 +118,7 @@ class Auths:
         self.devices = DeviceService(self)
         self.attestations = AttestationService(self)
         self.orgs = OrgService(self)
+        self.audit = AuditService(self)
 
     def verify(
         self,

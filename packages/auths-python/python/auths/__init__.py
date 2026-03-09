@@ -29,6 +29,7 @@ from auths._native import (
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
+from auths.audit import AuditReport, AuditService, AuditSummary, CommitRecord
 from auths.org import Org, OrgMember, OrgService
 from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
 from auths.attestation_query import Attestation, AttestationService
@@ -107,4 +108,8 @@ __all__ = [
     "OrgMember",
     "OrgService",
     "OrgError",
+    "AuditReport",
+    "AuditService",
+    "AuditSummary",
+    "CommitRecord",
 ]
