@@ -142,7 +142,7 @@ Git and `auths verify` both require an `allowed_signers` file that maps principa
 ### Generate It
 
 ```bash
-auths git allowed-signers --output .auths/allowed_signers
+auths signers sync --output .auths/allowed_signers
 ```
 
 This scans your Auths identity repository for authorized devices and produces a file in the format Git expects:
@@ -173,7 +173,7 @@ Install a post-merge hook that regenerates the `allowed_signers` file after each
 auths git install-hooks
 ```
 
-This creates a `.git/hooks/post-merge` hook that runs `auths git allowed-signers --output .auths/allowed_signers` automatically.
+This creates a `.git/hooks/post-merge` hook that runs `auths signers sync --output .auths/allowed_signers` automatically.
 
 Options:
 

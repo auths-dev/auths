@@ -1,3 +1,4 @@
+mod allowed_signers;
 mod artifact;
 mod audit;
 mod ci_setup;

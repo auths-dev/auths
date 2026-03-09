@@ -133,6 +133,7 @@ pub fn create_pairing_session_ffi(
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
         let controller_did = managed.controller_did.to_string();
 
+        #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
         let session_req = build_pairing_session_request(
             now,
@@ -222,7 +223,6 @@ pub fn join_pairing_session_ffi(
     let short_code = short_code.to_string();
     let endpoint = endpoint.to_string();
     let token = token.to_string();
-    let device_name = device_name;
 
     py.allow_threads(move || {
         let identity_storage = RegistryIdentityStorage::new(repo.clone());
@@ -308,6 +308,7 @@ pub fn join_pairing_session_ffi(
             .unwrap_or_default();
         let expires_at = token_data["expires_at"].as_i64().unwrap_or(0);
 
+        #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
         let pairing_token = auths_core::pairing::PairingToken {
             controller_did: controller_did_str,
@@ -419,6 +420,7 @@ pub fn complete_pairing_ffi(
             &passphrase_str,
         ));
 
+        #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
         let params = PairingAttestationParams {
             identity_storage: identity_storage.clone(),

@@ -180,22 +180,56 @@ fn check_identity_exists() -> Check {
 }
 
 fn check_allowed_signers_file() -> Check {
+    use auths_sdk::workflows::allowed_signers::{AllowedSigners, SignerSource};
+
     let path = crate::factories::storage::read_git_config("gpg.ssh.allowedSignersFile")
         .ok()
         .flatten();
 
     let (passed, detail, suggestion) = match path {
         Some(path_str) => {
-            if std::path::Path::new(&path_str).exists() {
-                (true, format!("Set to: {path_str}"), None)
+            let file_path = std::path::Path::new(&path_str);
+            if file_path.exists() {
+                match AllowedSigners::load(file_path) {
+                    Ok(signers) => {
+                        let entries = signers.list();
+                        let attestation_count = entries
+                            .iter()
+                            .filter(|e| e.source == SignerSource::Attestation)
+                            .count();
+                        let manual_count = entries
+                            .iter()
+                            .filter(|e| e.source == SignerSource::Manual)
+                            .count();
+
+                        let has_markers = std::fs::read_to_string(file_path)
+                            .map(|c| c.contains("# auths:attestation"))
+                            .unwrap_or(false);
+
+                        let mut detail = format!(
+                            "{path_str} ({} attestation, {} manual)",
+                            attestation_count, manual_count
+                        );
+
+                        if !has_markers && !entries.is_empty() {
+                            detail.push_str(
+                                " [no auths markers — run `auths signers sync` to add them]",
+                            );
+                        }
+
+                        (true, detail, None)
+                    }
+                    Err(_) => (
+                        true,
+                        format!("{path_str} (exists, could not parse entries)"),
+                        None,
+                    ),
+                }
             } else {
                 (
                     false,
                     format!("Configured but file not found: {path_str}"),
-                    Some(
-                        "Run: auths init --profile developer  (regenerates allowed_signers)"
-                            .to_string(),
-                    ),
+                    Some("Run: auths signers sync  (regenerates allowed_signers)".to_string()),
                 )
             }
         }

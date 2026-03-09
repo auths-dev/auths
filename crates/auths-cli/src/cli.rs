@@ -24,6 +24,7 @@ use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
 use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
+use crate::commands::signers::SignersCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
@@ -92,6 +93,7 @@ pub enum RootCommand {
     Whoami(WhoamiCommand),
     Tutorial(LearnCommand),
     Doctor(DoctorCommand),
+    Signers(SignersCommand),
     Pair(PairCommand),
     #[command(hide = true)]
     Completions(CompletionsCommand),

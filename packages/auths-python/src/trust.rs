@@ -36,6 +36,7 @@ fn trust_level_str(tl: &TrustLevel) -> &'static str {
 
 #[pyfunction]
 #[pyo3(signature = (did, repo_path, label=None, trust_level="manual"))]
+#[allow(clippy::type_complexity)]
 pub fn pin_identity(
     py: Python<'_>,
     did: &str,
@@ -46,7 +47,6 @@ pub fn pin_identity(
     let tl = parse_trust_level(trust_level)?;
     let did = did.to_string();
     let repo = repo_path.to_string();
-    let label = label;
 
     py.allow_threads(move || {
         let store = PinnedIdentityStore::new(store_path(&repo));
@@ -65,6 +65,7 @@ pub fn pin_identity(
         // Check if already pinned — if so, update label by remove + re-pin
         if let Ok(Some(existing)) = store.lookup(&did) {
             let _ = store.remove(&did);
+            #[allow(clippy::disallowed_methods)] // Presentation boundary
             let now = Utc::now();
             let pin = PinnedIdentity {
                 did: did.clone(),
@@ -76,7 +77,7 @@ pub fn pin_identity(
                 kel_tip_said: existing.kel_tip_said,
                 kel_sequence: existing.kel_sequence,
                 first_seen: existing.first_seen,
-                origin: label.clone().unwrap_or_else(|| existing.origin),
+                origin: label.clone().unwrap_or(existing.origin),
                 trust_level: tl.clone(),
             };
             store
@@ -93,6 +94,7 @@ pub fn pin_identity(
             ));
         }
 
+        #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
         let pin = PinnedIdentity {
             did: did.clone(),
@@ -167,6 +169,7 @@ pub fn list_pinned_identities(py: Python<'_>, repo_path: &str) -> PyResult<Strin
 
 #[pyfunction]
 #[pyo3(signature = (did, repo_path))]
+#[allow(clippy::type_complexity)]
 pub fn get_pinned_identity(
     py: Python<'_>,
     did: &str,

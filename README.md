@@ -98,10 +98,10 @@ auths device revoke --device-did did:key:z6Mk...
 auths verify attestation.json
 ```
 
-**Export allowed-signers for Git verification**
+**Sync allowed-signers for Git verification**
 
 ```bash
-auths git allowed-signers >> ~/.ssh/allowed_signers
+auths signers sync
 ```
 
 ---
@@ -161,7 +161,9 @@ No central server. No blockchain. Just Git and cryptography.
 | `auths verify` | Verify an attestation |
 | `auths verify-commit` | Verify a signed commit |
 | `auths git setup` | Configure Git for signing |
-| `auths git allowed-signers` | Generate allowed-signers file |
+| `auths signers sync` | Sync allowed-signers from registry |
+| `auths signers list` | List allowed signers |
+| `auths signers add` | Add a manual signer |
 
 Run `auths --help` for full documentation.
 

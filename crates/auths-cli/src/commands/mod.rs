@@ -25,6 +25,7 @@ pub mod policy;
 pub mod provision;
 pub mod scim;
 pub mod sign;
+pub mod signers;
 pub mod status;
 pub mod trust;
 pub mod unified_verify;

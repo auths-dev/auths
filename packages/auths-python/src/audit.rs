@@ -23,9 +23,6 @@ pub fn generate_audit_report(
 ) -> PyResult<String> {
     let target = resolve_repo(target_repo_path);
     let _auths = resolve_repo(auths_repo_path);
-    let since = since;
-    let until = until;
-    let author = author;
 
     py.allow_threads(move || {
         let provider = Git2LogProvider::open(&target)
@@ -51,30 +48,28 @@ pub fn generate_audit_report(
             .commits
             .iter()
             .filter(|c| {
-                if let Some(ref a) = author {
-                    if c.author_email != *a {
-                        return false;
-                    }
+                if let Some(ref a) = author
+                    && c.author_email != *a
+                {
+                    return false;
                 }
-                if let Some(since_dt) = since_filter {
-                    if let Ok(ct) = chrono::NaiveDateTime::parse_from_str(
+                if let Some(since_dt) = since_filter
+                    && let Ok(ct) = chrono::NaiveDateTime::parse_from_str(
                         &c.timestamp[..19],
                         "%Y-%m-%dT%H:%M:%S",
-                    ) {
-                        if ct < since_dt {
-                            return false;
-                        }
-                    }
+                    )
+                    && ct < since_dt
+                {
+                    return false;
                 }
-                if let Some(until_dt) = until_filter {
-                    if let Ok(ct) = chrono::NaiveDateTime::parse_from_str(
+                if let Some(until_dt) = until_filter
+                    && let Ok(ct) = chrono::NaiveDateTime::parse_from_str(
                         &c.timestamp[..19],
                         "%Y-%m-%dT%H:%M:%S",
-                    ) {
-                        if ct > until_dt {
-                            return false;
-                        }
-                    }
+                    )
+                    && ct > until_dt
+                {
+                    return false;
                 }
                 true
             })

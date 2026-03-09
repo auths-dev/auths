@@ -881,7 +881,7 @@ fn perform_ssh_migration(key: &SshKeyInfo, cmd: &FromSshCommand, out: &Output) -
             out.println("  1. Start using Auths for new commits:");
             out.println("     auths agent start");
             out.println("  2. Existing SSH-signed commits remain verifiable");
-            out.println("  3. Run 'auths git allowed-signers' to update Git config");
+            out.println("  3. Run 'auths signers sync' to update allowed signers");
 
             Ok(())
         }

@@ -329,22 +329,22 @@ Generate an incident report
 
 ## Git
 
-### auths git allowed-signers
+### auths signers sync
 
 ```bash
-auths git allowed-signers
+auths signers sync
 ```
 
-<!-- BEGIN GENERATED: auths git allowed-signers -->
-Generate allowed_signers file from Auths device authorizations
+<!-- BEGIN GENERATED: auths signers sync -->
+Sync attestation entries from the auths registry
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--repo <REPO>` | `~/.auths` | Path to the Auths identity repository |
-| `-o, --output <OUTPUT_FILE>` | — | Output file path. If not specified, outputs to stdout |
+| `-o, --output <OUTPUT_FILE>` | — | Output file path. Overrides the default location |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
-<!-- END GENERATED: auths git allowed-signers -->
+<!-- END GENERATED: auths signers sync -->
 
 ---
 

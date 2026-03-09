@@ -27,6 +27,7 @@ chrono = "0.4"
 hex = "0.4"
 html-escape = "0.2"
 ssh-key = "0.6"
+tempfile = "3"
 zeroize = "1.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 auths-pairing-daemon = { workspace = true, optional = true }

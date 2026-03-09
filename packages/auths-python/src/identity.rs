@@ -236,6 +236,9 @@ pub fn create_agent_identity(
 
     let parsed_caps_for_att = _parsed_caps;
 
+    #[allow(clippy::disallowed_methods)] // Presentation boundary
+    let now = chrono::Utc::now();
+
     py.allow_threads(|| {
         let (identity_did, result_alias) = initialize_registry_identity(
             backend.clone(),
@@ -275,7 +278,7 @@ pub fn create_agent_identity(
                 "subject": device_did.to_string(),
                 "device_public_key": hex::encode(&pub_bytes),
                 "capabilities": parsed_caps_for_att.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
-                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "timestamp": now.to_rfc3339(),
                 "note": format!("Agent: {}", alias),
             });
             serde_json::to_string(&att).map_err(|e| {

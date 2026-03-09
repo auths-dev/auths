@@ -1,6 +1,6 @@
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::witness_config::WitnessConfig;
@@ -10,24 +10,24 @@ fn resolve_repo(repo_path: &str) -> PathBuf {
     PathBuf::from(shellexpand::tilde(repo_path).as_ref())
 }
 
-fn load_witness_config(repo_path: &PathBuf) -> PyResult<WitnessConfig> {
-    let storage = RegistryIdentityStorage::new(repo_path.clone());
+fn load_witness_config(repo_path: &Path) -> PyResult<WitnessConfig> {
+    let storage = RegistryIdentityStorage::new(repo_path.to_path_buf());
     let identity = storage
         .load_identity()
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_WITNESS_ERROR] {e}")))?;
 
-    if let Some(ref metadata) = identity.metadata {
-        if let Some(wc) = metadata.get("witness_config") {
-            let config: WitnessConfig = serde_json::from_value(wc.clone())
-                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_WITNESS_ERROR] {e}")))?;
-            return Ok(config);
-        }
+    if let Some(ref metadata) = identity.metadata
+        && let Some(wc) = metadata.get("witness_config")
+    {
+        let config: WitnessConfig = serde_json::from_value(wc.clone())
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_WITNESS_ERROR] {e}")))?;
+        return Ok(config);
     }
     Ok(WitnessConfig::default())
 }
 
-fn save_witness_config(repo_path: &PathBuf, config: &WitnessConfig) -> PyResult<()> {
-    let storage = RegistryIdentityStorage::new(repo_path.clone());
+fn save_witness_config(repo_path: &Path, config: &WitnessConfig) -> PyResult<()> {
+    let storage = RegistryIdentityStorage::new(repo_path.to_path_buf());
     let mut identity = storage
         .load_identity()
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_WITNESS_ERROR] {e}")))?;
@@ -59,7 +59,6 @@ pub fn add_witness(
 ) -> PyResult<(String, Option<String>, Option<String>)> {
     let url_str = url.to_string();
     let repo = resolve_repo(repo_path);
-    let label = label;
 
     py.allow_threads(move || {
         let parsed_url: url::Url = url_str.parse().map_err(|e| {
