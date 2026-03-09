@@ -1,3 +1,5 @@
+//! Utility functions for the init command.
+
 use anyhow::{Context, Result, anyhow};
 use clap_complete::Shell;
 use dialoguer::MultiSelect;

@@ -17,7 +17,6 @@ pub mod git;
 pub mod id;
 pub mod index;
 pub mod init;
-pub mod init_helpers;
 pub mod key;
 pub mod learn;
 pub mod org;

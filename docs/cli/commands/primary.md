@@ -11,6 +11,7 @@ Set up your cryptographic identity and Git signing
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--interactive` | — | Force interactive prompts (errors if not a TTY) |
 | `--non-interactive` | — | Skip interactive prompts and use sensible defaults |
 | `--profile <PROFILE>` | — | Preset profile: developer, ci, or agent |
 | `--key-alias <KEY_ALIAS>` | `main` | Key alias for the identity key (default: main) |
