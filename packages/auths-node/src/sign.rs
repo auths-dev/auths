@@ -121,10 +121,11 @@ pub fn sign_action_as_identity(
 pub fn sign_as_agent(
     message: napi::bindgen_prelude::Buffer,
     key_alias: String,
+    repo_path: String,
     passphrase: Option<String>,
 ) -> napi::Result<NapiCommitSignResult> {
     let passphrase_str = resolve_passphrase(passphrase);
-    let (signer, provider) = make_signer(&passphrase_str, "~/.auths")?;
+    let (signer, provider) = make_signer(&passphrase_str, &repo_path)?;
     let alias = KeyAlias::new(&key_alias)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Invalid key alias: {e}")))?;
 
@@ -144,6 +145,7 @@ pub fn sign_action_as_agent(
     payload_json: String,
     key_alias: String,
     agent_did: String,
+    repo_path: String,
     passphrase: Option<String>,
 ) -> napi::Result<NapiActionEnvelope> {
     if payload_json.len() > MAX_ATTESTATION_JSON_SIZE {
@@ -178,7 +180,7 @@ pub fn sign_action_as_agent(
     })?;
 
     let passphrase_str = resolve_passphrase(passphrase);
-    let (signer, provider) = make_signer(&passphrase_str, "~/.auths")?;
+    let (signer, provider) = make_signer(&passphrase_str, &repo_path)?;
     let alias = KeyAlias::new(&key_alias)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Invalid key alias: {e}")))?;
 

@@ -62,7 +62,7 @@ export class SigningService {
   }): SignResult {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
-      const result = native.signAsAgent(opts.message, opts.keyAlias, pp)
+      const result = native.signAsAgent(opts.message, opts.keyAlias, this.client.repoPath, pp)
       return { signature: result.signature, signerDid: result.signerDid }
     } catch (err) {
       throw mapNativeError(err, CryptoError)
@@ -83,6 +83,7 @@ export class SigningService {
         opts.payloadJson,
         opts.keyAlias,
         opts.agentDid,
+        this.client.repoPath,
         pp,
       )
     } catch (err) {

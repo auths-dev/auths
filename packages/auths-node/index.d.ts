@@ -226,7 +226,7 @@ export declare function rotateIdentityKeys(repoPath: string, identityKeyAlias?: 
 
 export declare function runDiagnostics(repoPath: string, passphrase?: string | undefined | null): string
 
-export declare function signActionAsAgent(actionType: string, payloadJson: string, keyAlias: string, agentDid: string, passphrase?: string | undefined | null): NapiActionEnvelope
+export declare function signActionAsAgent(actionType: string, payloadJson: string, keyAlias: string, agentDid: string, repoPath: string, passphrase?: string | undefined | null): NapiActionEnvelope
 
 export declare function signActionAsIdentity(actionType: string, payloadJson: string, identityDid: string, repoPath: string, passphrase?: string | undefined | null): NapiActionEnvelope
 
@@ -234,7 +234,7 @@ export declare function signArtifact(filePath: string, identityKeyAlias: string,
 
 export declare function signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresInDays?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
 
-export declare function signAsAgent(message: Buffer, keyAlias: string, passphrase?: string | undefined | null): NapiCommitSignResult
+export declare function signAsAgent(message: Buffer, keyAlias: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignResult
 
 export declare function signAsIdentity(message: Buffer, identityDid: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignResult
 

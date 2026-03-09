@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use auths_id::storage::identity::IdentityStorage;
 use auths_pairing_daemon::{
     MockNetworkDiscovery, MockNetworkInterfaces, PairingDaemonBuilder, PairingDaemonHandle,
@@ -228,12 +228,12 @@ impl NapiPairingHandle {
 
         let keychain = get_keychain(&env_config)?;
         let aliases = keychain
-            .list_aliases_for_identity(&controller_identity_did)
+            .list_aliases_for_identity_with_role(&controller_identity_did, KeyRole::Primary)
             .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
         let identity_key_alias_str = aliases
             .into_iter()
-            .find(|a| !a.contains("--next-"))
-            .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No signing key found"))?;
+            .next()
+            .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No primary signing key found"))?;
         let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
 
         let key_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
@@ -318,12 +318,12 @@ pub async fn join_pairing_session(
 
     let keychain = get_keychain(&env_config)?;
     let aliases = keychain
-        .list_aliases_for_identity(&controller_identity_did)
+        .list_aliases_for_identity_with_role(&controller_identity_did, KeyRole::Primary)
         .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
     let key_alias_str = aliases
         .into_iter()
-        .find(|a| !a.contains("--next-"))
-        .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No signing key found"))?;
+        .next()
+        .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No primary signing key found"))?;
 
     let (_did, _role, encrypted_key) = keychain
         .load_key(&key_alias_str)

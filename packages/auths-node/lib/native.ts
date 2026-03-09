@@ -190,8 +190,8 @@ export interface NativeBindings {
   // Signing
   signAsIdentity(message: Buffer, identityDid: string, repoPath: string, passphrase?: string | null): NapiCommitSignResult
   signActionAsIdentity(actionType: string, payloadJson: string, identityDid: string, repoPath: string, passphrase?: string | null): NapiActionEnvelope
-  signAsAgent(message: Buffer, keyAlias: string, passphrase?: string | null): NapiCommitSignResult
-  signActionAsAgent(actionType: string, payloadJson: string, keyAlias: string, agentDid: string, passphrase?: string | null): NapiActionEnvelope
+  signAsAgent(message: Buffer, keyAlias: string, repoPath: string, passphrase?: string | null): NapiCommitSignResult
+  signActionAsAgent(actionType: string, payloadJson: string, keyAlias: string, agentDid: string, repoPath: string, passphrase?: string | null): NapiActionEnvelope
 
   // Commit signing
   signCommit(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | null): NapiCommitSignPemResult

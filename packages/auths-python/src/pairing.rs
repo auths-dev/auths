@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use auths_core::storage::keychain::{IdentityDID, KeyAlias};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole};
 use auths_id::storage::identity::IdentityStorage;
 use auths_pairing_daemon::{
     MockNetworkDiscovery, MockNetworkInterfaces, PairingDaemonBuilder, PairingDaemonHandle,
@@ -236,13 +236,13 @@ pub fn join_pairing_session_ffi(
 
         let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let aliases = keychain
-            .list_aliases_for_identity(&controller_identity_did)
+            .list_aliases_for_identity_with_role(&controller_identity_did, KeyRole::Primary)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
         let key_alias = aliases
             .into_iter()
-            .find(|a| !a.contains("--next-"))
+            .next()
             .ok_or_else(|| {
-                PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No signing key found")
+                PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
             })?;
 
         let (_did, _role, encrypted_key) = keychain
@@ -416,13 +416,13 @@ pub fn complete_pairing_ffi(
 
         let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let aliases = keychain
-            .list_aliases_for_identity(&controller_identity_did)
+            .list_aliases_for_identity_with_role(&controller_identity_did, KeyRole::Primary)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
         let identity_key_alias_str = aliases
             .into_iter()
-            .find(|a| !a.contains("--next-"))
+            .next()
             .ok_or_else(|| {
-                PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No signing key found")
+                PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
             })?;
         let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
 
