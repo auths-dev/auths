@@ -23,6 +23,7 @@ schemars.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { workspace = true, optional = true }
+toml = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
@@ -31,6 +32,7 @@ test-utils = []
 sink-http = ["dep:reqwest", "dep:tokio"]
 
 [dev-dependencies]
+tempfile = "3"
 tokio = { workspace = true, features = ["full"] }
 wiremock = "0.6"
 

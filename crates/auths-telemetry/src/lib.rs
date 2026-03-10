@@ -4,6 +4,7 @@
 //! deterministic telemetry standard consumed by auths-auth-server,
 //! auths-registry-server, and auths-chat-server.
 
+pub mod config;
 pub mod emitter;
 pub mod event;
 pub mod logging;
