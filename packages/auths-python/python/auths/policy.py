@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import enum
 import json
 from dataclasses import dataclass
+from typing import Optional
 
 from auths._native import (
     PyCompiledPolicy,
@@ -16,12 +18,63 @@ __all__ = [
     "CompiledPolicy",
     "Decision",
     "EvalContext",
+    "Outcome",
     "PolicyBuilder",
+    "ReasonCode",
     "compile_policy",
 ]
 
 CompiledPolicy = PyCompiledPolicy
 EvalContext = PyEvalContext
+
+
+class Outcome(enum.Enum):
+    """Authorization outcome from a policy evaluation.
+
+    Values match the Rust ``Outcome`` enum in ``auths-policy/src/decision.rs``.
+    """
+
+    ALLOW = "Allow"
+    DENY = "Deny"
+    INDETERMINATE = "Indeterminate"
+    REQUIRES_APPROVAL = "RequiresApproval"
+    MISSING_CREDENTIAL = "MissingCredential"
+
+
+class ReasonCode(enum.Enum):
+    """Machine-readable reason code for stable logging and alerting.
+
+    Values match the Rust ``ReasonCode`` enum in ``auths-policy/src/decision.rs``.
+    """
+
+    UNCONDITIONAL = "Unconditional"
+    ALL_CHECKS_PASSED = "AllChecksPassed"
+    CAPABILITY_PRESENT = "CapabilityPresent"
+    CAPABILITY_MISSING = "CapabilityMissing"
+    ISSUER_MATCH = "IssuerMatch"
+    ISSUER_MISMATCH = "IssuerMismatch"
+    REVOKED = "Revoked"
+    EXPIRED = "Expired"
+    INSUFFICIENT_TTL = "InsufficientTtl"
+    ISSUED_TOO_LONG_AGO = "IssuedTooLongAgo"
+    ROLE_MISMATCH = "RoleMismatch"
+    SCOPE_MISMATCH = "ScopeMismatch"
+    CHAIN_TOO_DEEP = "ChainTooDeep"
+    DELEGATION_MISMATCH = "DelegationMismatch"
+    ATTR_MISMATCH = "AttrMismatch"
+    MISSING_FIELD = "MissingField"
+    RECURSION_EXCEEDED = "RecursionExceeded"
+    SHORT_CIRCUIT = "ShortCircuit"
+    COMBINATOR_RESULT = "CombinatorResult"
+    WORKLOAD_MISMATCH = "WorkloadMismatch"
+    WITNESS_QUORUM_NOT_MET = "WitnessQuorumNotMet"
+    SIGNER_TYPE_MATCH = "SignerTypeMatch"
+    SIGNER_TYPE_MISMATCH = "SignerTypeMismatch"
+    APPROVAL_REQUIRED = "ApprovalRequired"
+    APPROVAL_GRANTED = "ApprovalGranted"
+    APPROVAL_EXPIRED = "ApprovalExpired"
+    APPROVAL_ALREADY_USED = "ApprovalAlreadyUsed"
+    APPROVAL_REQUEST_MISMATCH = "ApprovalRequestMismatch"
 
 
 @dataclass
@@ -39,18 +92,71 @@ class Decision:
     """Human-readable explanation of the decision."""
 
     @property
+    def outcome_enum(self) -> Outcome:
+        """Parse the outcome string into a typed :class:`Outcome` enum."""
+        return Outcome(self.outcome)
+
+    @property
+    def reason_enum(self) -> ReasonCode:
+        """Parse the reason string into a typed :class:`ReasonCode` enum."""
+        return ReasonCode(self.reason)
+
+    @property
     def allowed(self) -> bool:
-        return self.outcome == "allow"
+        return self.outcome == "allow" or self.outcome == "Allow"
 
     @property
     def denied(self) -> bool:
-        return self.outcome == "deny"
+        return self.outcome == "deny" or self.outcome == "Deny"
 
     def __bool__(self) -> bool:
         return self.allowed
 
     def __repr__(self) -> str:
         return f"Decision(outcome='{self.outcome}', reason='{self.reason}')"
+
+
+def eval_context_from_commit_result(
+    commit_result,
+    issuer: str,
+    capabilities: Optional[list[str]] = None,
+) -> dict:
+    """Build an EvalContext dict from a ``CommitResult``.
+
+    Extracts the signer hex from the commit result and converts it to a
+    ``did:key:`` DID for use as the ``subject`` field.
+
+    Args:
+        commit_result: A ``CommitResult`` from ``verify_commit_range()``.
+        issuer: The issuer DID (``did:keri:...``).
+        capabilities: Optional capability list to include.
+
+    Returns:
+        A dict suitable for passing to ``EvalContext`` or ``evaluatePolicy``.
+
+    Examples:
+        ```python
+        result = verify_commit_range("HEAD~1..HEAD")
+        for cr in result.commits:
+            ctx = eval_context_from_commit_result(cr, org.did, ["sign_commit"])
+        ```
+    """
+    from auths._native import signer_hex_to_did
+
+    subject = "unknown"
+    if commit_result.signer:
+        try:
+            subject = signer_hex_to_did(commit_result.signer)
+        except Exception:
+            subject = f"did:key:z{commit_result.signer}"
+
+    ctx: dict = {
+        "issuer": issuer,
+        "subject": subject,
+    }
+    if capabilities:
+        ctx["capabilities"] = capabilities
+    return ctx
 
 
 class PolicyBuilder:
@@ -69,6 +175,32 @@ class PolicyBuilder:
         ```
     """
 
+    #: All available predicate method names for discoverability.
+    AVAILABLE_PREDICATES: list[str] = [
+        "not_revoked",
+        "not_expired",
+        "expires_after",
+        "issued_within",
+        "require_capability",
+        "require_all_capabilities",
+        "require_any_capability",
+        "require_issuer",
+        "require_issuer_in",
+        "require_subject",
+        "require_delegated_by",
+        "require_agent",
+        "require_human",
+        "require_workload",
+        "require_repo",
+        "require_env",
+        "max_chain_depth",
+    ]
+
+    #: Built-in preset policy names.
+    AVAILABLE_PRESETS: list[str] = [
+        "standard",
+    ]
+
     def __init__(self):
         self._predicates: list[dict] = []
 
@@ -76,6 +208,40 @@ class PolicyBuilder:
     def standard(cls, capability: str) -> PolicyBuilder:
         """The "80% policy": not revoked, not expired, requires one capability."""
         return cls().not_revoked().not_expired().require_capability(capability)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> PolicyBuilder:
+        """Reconstruct a PolicyBuilder from a JSON policy expression.
+
+        Args:
+            json_str: JSON string from ``to_json()`` or config files.
+
+        Returns:
+            A new PolicyBuilder with the parsed predicates.
+
+        Examples:
+            ```python
+            builder = PolicyBuilder.from_json(stored_json)
+            policy = builder.build()
+            ```
+        """
+        expr = json.loads(json_str)
+        result = cls()
+        if isinstance(expr, dict) and expr.get("op") == "And" and isinstance(expr.get("args"), list):
+            result._predicates = expr["args"]
+        else:
+            result._predicates = [expr]
+        return result
+
+    @classmethod
+    def available_predicates(cls) -> list[str]:
+        """Return the list of available predicate method names."""
+        return list(cls.AVAILABLE_PREDICATES)
+
+    @classmethod
+    def available_presets(cls) -> list[str]:
+        """Return the list of available preset policy names."""
+        return list(cls.AVAILABLE_PRESETS)
 
     @classmethod
     def any_of(cls, *builders: PolicyBuilder) -> PolicyBuilder:

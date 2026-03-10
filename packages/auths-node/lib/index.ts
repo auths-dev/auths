@@ -30,6 +30,7 @@ export {
 } from './signing'
 export {
   OrgService,
+  isAdmin,
   type OrgResult,
   type OrgMember,
   type CreateOrgOptions,
@@ -37,7 +38,7 @@ export {
   type RevokeOrgMemberOptions,
   type ListOrgMembersOptions,
 } from './org'
-export { TrustService, type PinnedIdentity, type PinIdentityOptions } from './trust'
+export { TrustService, TrustLevel, type PinnedIdentity, type PinIdentityOptions } from './trust'
 export { WitnessService, type WitnessEntry, type AddWitnessOptions } from './witness'
 export { AttestationService, type AttestationInfo } from './attestations'
 export {
@@ -49,13 +50,26 @@ export {
 export { CommitService, type CommitSignResult, type SignCommitOptions } from './commits'
 export {
   AuditService,
+  parseIdentityBundle,
+  parseIdentityBundleInfo,
   type AuditReport,
   type AuditCommit,
   type AuditSummary,
   type AuditReportOptions,
   type AuditComplianceOptions,
+  type IdentityBundleInfo,
 } from './audit'
-export { PolicyBuilder, compilePolicy, evaluatePolicy, type PolicyDecision, type EvalContextOpts } from './policy'
+export {
+  PolicyBuilder,
+  Outcome,
+  ReasonCode,
+  compilePolicy,
+  evaluatePolicy,
+  evalContextFromCommitResult,
+  type PolicyDecision,
+  type EvalContextOpts,
+  type CommitResultLike,
+} from './policy'
 export {
   PairingService,
   type PairingSession,

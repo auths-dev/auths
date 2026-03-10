@@ -31,16 +31,24 @@ from auths._native import (
 )
 from auths.agent import AgentAuth
 from auths.doctor import Check, DiagnosticReport, DoctorService
-from auths.audit import AuditReport, AuditService, AuditSummary, CommitRecord
+from auths.audit import (
+    AuditReport,
+    AuditService,
+    AuditSummary,
+    CommitRecord,
+    IdentityBundleInfo,
+    parse_identity_bundle,
+    parse_identity_bundle_info,
+)
 from auths.org import Org, OrgMember, OrgService
 from auths.pairing import PairingResponse, PairingResult, PairingService, PairingSession
-from auths.trust import TrustEntry, TrustService
+from auths.trust import TrustEntry, TrustLevel, TrustService
 from auths.witness import Witness, WitnessService
 from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
 from auths.attestation_query import Attestation, AttestationService
 from auths.commit import CommitSigningResult
 from auths.jwt import AuthsClaims
-from auths.policy import PolicyBuilder
+from auths.policy import Outcome, PolicyBuilder, ReasonCode, eval_context_from_commit_result
 from auths.devices import Device, DeviceExtension, DeviceService
 from auths.identity import AgentIdentity, DelegatedAgent, Identity, IdentityService
 from auths.rotation import IdentityRotationResult
@@ -89,8 +97,15 @@ __all__ = [
     "AttestationService",
     "CommitSigningResult",
     "AuthsClaims",
+    "Outcome",
     "PolicyBuilder",
+    "ReasonCode",
+    "eval_context_from_commit_result",
     "compile_policy",
+    "parse_identity_bundle",
+    "parse_identity_bundle_info",
+    "IdentityBundleInfo",
+    "TrustLevel",
     "CommitResult",
     "ErrorCode",
     "VerifyResult",

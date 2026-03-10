@@ -32,6 +32,16 @@ export interface OrgMember {
   expiresAt: string | null
 }
 
+/**
+ * Check whether an organization member has admin role.
+ *
+ * @param member - The organization member to check.
+ * @returns `true` if the member's role is `'admin'`.
+ */
+export function isAdmin(member: OrgMember): boolean {
+  return member.role === 'admin'
+}
+
 /** Options for {@link OrgService.create}. */
 export interface CreateOrgOptions {
   /** Human-readable label for the organization. */
