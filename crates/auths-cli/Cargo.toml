@@ -39,7 +39,7 @@ auths-index.workspace = true
 auths-crypto.workspace = true
 auths-sdk.workspace = true
 auths-pairing-protocol.workspace = true
-auths-telemetry.workspace = true
+auths-telemetry = { workspace = true, features = ["sink-http"] }
 auths-verifier = { workspace = true, features = ["native"] }
 auths-infra-git.workspace = true
 auths-infra-http.workspace = true

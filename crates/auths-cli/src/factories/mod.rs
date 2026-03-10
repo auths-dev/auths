@@ -7,8 +7,12 @@ use std::time::Duration;
 use anyhow::Result;
 
 use auths_core::config::EnvironmentConfig;
+use auths_core::paths::auths_home;
 use auths_core::signing::{CachedPassphraseProvider, PassphraseProvider};
 use auths_sdk::ports::agent::AgentSigningPort;
+use auths_telemetry::TelemetryShutdown;
+use auths_telemetry::config::{build_sinks_from_config, load_audit_config};
+use auths_telemetry::sinks::composite::CompositeSink;
 
 use crate::cli::AuthsCli;
 use crate::config::{CliConfig, OutputFormat};
@@ -62,6 +66,29 @@ pub fn build_config(cli: &AuthsCli) -> Result<CliConfig> {
         passphrase_provider,
         env_config,
     })
+}
+
+/// Loads audit sinks from `~/.auths/audit.toml` and initialises the global
+/// telemetry pipeline.
+///
+/// Returns `None` when no sinks are configured — zero overhead in that case.
+///
+/// Usage:
+/// ```ignore
+/// let _telemetry = auths_cli::factories::init_audit_sinks();
+/// ```
+pub fn init_audit_sinks() -> Option<TelemetryShutdown> {
+    let audit_path = match auths_home() {
+        Ok(h) => h.join("audit.toml"),
+        Err(_) => return None,
+    };
+    let config = load_audit_config(&audit_path);
+    let sinks = build_sinks_from_config(&config, |name| std::env::var(name).ok());
+    if sinks.is_empty() {
+        return None;
+    }
+    let composite = Arc::new(CompositeSink::new(sinks));
+    Some(auths_telemetry::init_telemetry_with_sink(composite))
 }
 
 /// Build the platform-appropriate agent signing provider.
