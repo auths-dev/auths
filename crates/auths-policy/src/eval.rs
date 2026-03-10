@@ -45,6 +45,17 @@ pub fn evaluate3(policy: &CompiledPolicy, ctx: &EvalContext) -> Decision {
     decision
 }
 
+/// Evaluate a policy against multiple contexts in a single call.
+///
+/// Returns one `Decision` per context, in the same order. This avoids
+/// per-context FFI overhead when checking many contexts (e.g. batch CI).
+pub fn evaluate_batch(policy: &CompiledPolicy, contexts: &[EvalContext]) -> Vec<Decision> {
+    contexts
+        .iter()
+        .map(|ctx| evaluate_strict(policy, ctx))
+        .collect()
+}
+
 fn eval_expr(expr: &CompiledExpr, ctx: &EvalContext) -> Decision {
     match expr {
         CompiledExpr::True => Decision::allow(ReasonCode::Unconditional, "unconditional allow"),

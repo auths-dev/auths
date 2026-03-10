@@ -27,6 +27,30 @@ impl<G: GitDiagnosticProvider, C: CryptoDiagnosticProvider> DiagnosticsWorkflow<
         Self { git, crypto }
     }
 
+    /// Names of all available checks.
+    pub fn available_checks() -> &'static [&'static str] {
+        &["git_version", "ssh_keygen", "git_signing_config"]
+    }
+
+    /// Run a single diagnostic check by name.
+    ///
+    /// Returns `Err(DiagnosticError::CheckNotFound)` if the name is unknown.
+    pub fn run_single(&self, name: &str) -> Result<CheckResult, DiagnosticError> {
+        match name {
+            "git_version" => self.git.check_git_version(),
+            "ssh_keygen" => self.crypto.check_ssh_keygen_available(),
+            "git_signing_config" => {
+                let mut checks = Vec::new();
+                self.check_git_signing_config(&mut checks)?;
+                checks
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| DiagnosticError::CheckNotFound(name.to_string()))
+            }
+            _ => Err(DiagnosticError::CheckNotFound(name.to_string())),
+        }
+    }
+
     /// Run all diagnostic checks and return the aggregated report.
     ///
     /// Usage:

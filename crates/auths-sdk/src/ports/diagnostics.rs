@@ -48,6 +48,10 @@ pub enum DiagnosticError {
     /// A diagnostic check failed to execute.
     #[error("check failed to execute: {0}")]
     ExecutionFailed(String),
+
+    /// The requested check name does not exist.
+    #[error("check not found: {0}")]
+    CheckNotFound(String),
 }
 
 /// Port for Git-related diagnostic checks.

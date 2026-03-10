@@ -36,6 +36,19 @@ impl PolicyBuilder {
         }
     }
 
+    /// Reconstruct a `PolicyBuilder` from a JSON policy expression.
+    ///
+    /// Enables round-tripping saved policy JSON back to a builder for
+    /// modification or recompilation.
+    pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
+        let expr: Expr = serde_json::from_str(json_str)?;
+        let conditions = match expr {
+            Expr::And(children) => children,
+            single => vec![single],
+        };
+        Ok(Self { conditions })
+    }
+
     /// Require a specific capability.
     pub fn require_capability(mut self, cap: impl Into<String>) -> Self {
         self.conditions.push(Expr::HasCapability(cap.into()));

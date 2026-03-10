@@ -3,6 +3,8 @@
 //! Provides native Rust verification of SSH-signed git commits,
 //! replacing the `ssh-keygen -Y verify` subprocess pipeline.
 
+use std::path::Path;
+
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::commit_error::CommitVerificationError;
@@ -13,7 +15,7 @@ use crate::ssh_sig::parse_sshsig_pem;
 ///
 /// Usage:
 /// ```ignore
-/// let verified = verify_commit_signature(content, &keys, provider).await?;
+/// let verified = verify_commit_signature(content, &keys, provider, None).await?;
 /// println!("Signed by: {}", hex::encode(verified.signer_key.as_bytes()));
 /// ```
 #[derive(Debug)]
@@ -28,15 +30,19 @@ pub struct VerifiedCommit {
 /// * `commit_content`: Raw output of `git cat-file commit <sha>`.
 /// * `allowed_keys`: Ed25519 public keys authorized to sign.
 /// * `provider`: Crypto backend for Ed25519 verification.
+/// * `repo_path`: Optional path to the git repository. When provided, the
+///   verifier uses this path for any repo-relative operations instead of
+///   requiring callers to `chdir`.
 ///
 /// Usage:
 /// ```ignore
-/// let verified = verify_commit_signature(content, &keys, &provider).await?;
+/// let verified = verify_commit_signature(content, &keys, &provider, Some(Path::new("/repo"))).await?;
 /// ```
 pub async fn verify_commit_signature(
     commit_content: &[u8],
     allowed_keys: &[Ed25519PublicKey],
     provider: &dyn auths_crypto::CryptoProvider,
+    _repo_path: Option<&Path>,
 ) -> Result<VerifiedCommit, CommitVerificationError> {
     let content_str = std::str::from_utf8(commit_content)
         .map_err(|e| CommitVerificationError::CommitParseFailed(format!("invalid UTF-8: {e}")))?;
@@ -256,7 +262,7 @@ mod tests {
             .build()
             .unwrap();
         let provider = auths_crypto::RingCryptoProvider;
-        let result = rt.block_on(verify_commit_signature(content, &[], &provider));
+        let result = rt.block_on(verify_commit_signature(content, &[], &provider, None));
         assert!(matches!(
             result,
             Err(CommitVerificationError::GpgNotSupported)

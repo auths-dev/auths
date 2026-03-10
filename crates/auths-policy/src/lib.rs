@@ -55,7 +55,7 @@ pub use compiled::{ApprovalScope, CompiledExpr, CompiledPolicy};
 pub use context::EvalContext;
 pub use decision::{Decision, Outcome, ReasonCode};
 pub use enforce::{Divergence, enforce, enforce_simple};
-pub use eval::{evaluate_strict, evaluate3};
+pub use eval::{evaluate_batch, evaluate_strict, evaluate3};
 pub use expr::Expr;
 pub use glob::glob_match;
 pub use trust::{TrustRegistry, TrustRegistryEntry, ValidatedIssuerUrl};
