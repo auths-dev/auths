@@ -34,7 +34,7 @@ use auths_id::{
     storage::{
         attestation::AttestationSource,
         identity::IdentityStorage,
-        layout::{self, BlobName, GitRef, StorageLayoutConfig},
+        layout::{self, StorageLayoutConfig},
     },
 };
 use auths_storage::git::{
@@ -44,10 +44,10 @@ use auths_storage::git::{
 /// Storage layout presets for different ecosystems.
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
 pub enum LayoutPreset {
-    /// RIP-X layout (refs/rad/id, refs/keys)
+    /// Standard Auths layout (refs/auths/identity, refs/auths/keys)
     #[default]
     Default,
-    /// Alias for default — explicitly Radicle-compatible
+    /// Radicle-compatible layout (refs/rad/id, refs/keys)
     Radicle,
     /// Gitoxide-compatible layout (refs/auths/id, refs/auths/devices)
     Gitoxide,
@@ -57,18 +57,9 @@ impl LayoutPreset {
     /// Convert the preset to a StorageLayoutConfig.
     pub fn to_config(self) -> StorageLayoutConfig {
         match self {
-            LayoutPreset::Default | LayoutPreset::Radicle => StorageLayoutConfig {
-                identity_ref: GitRef::new("refs/rad/id"),
-                device_attestation_prefix: GitRef::new("refs/keys"),
-                attestation_blob_name: BlobName::new(layout::ATTESTATION_JSON),
-                identity_blob_name: BlobName::new(layout::IDENTITY_JSON),
-            },
-            LayoutPreset::Gitoxide => StorageLayoutConfig {
-                identity_ref: GitRef::new("refs/auths/id"),
-                device_attestation_prefix: GitRef::new("refs/auths/devices"),
-                attestation_blob_name: BlobName::new(layout::ATTESTATION_JSON),
-                identity_blob_name: BlobName::new(layout::IDENTITY_JSON),
-            },
+            LayoutPreset::Default => StorageLayoutConfig::default(),
+            LayoutPreset::Radicle => StorageLayoutConfig::radicle(),
+            LayoutPreset::Gitoxide => StorageLayoutConfig::gitoxide(),
         }
     }
 }
