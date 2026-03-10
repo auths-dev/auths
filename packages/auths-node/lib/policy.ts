@@ -106,11 +106,42 @@ export function evalContextFromCommitResult(
   return ctx
 }
 
-/** Context for policy evaluation. */
+/**
+ * Context for policy evaluation.
+ *
+ * **DID format requirements:**
+ * - `issuer`: Must be a valid DID. Typically `did:keri:E...` for identity DIDs
+ *   (organizations, individuals) or `did:key:z...` for device DIDs.
+ * - `subject`: Same format rules as `issuer`. For device attestations, this is
+ *   usually a `did:key:z...` device DID.
+ *
+ * Both `issuer` and `subject` are parsed into `CanonicalDid` values by the
+ * Rust policy engine. The engine accepts both `did:keri:` and `did:key:` formats.
+ * Invalid DID strings will cause evaluation to fail with a parse error.
+ *
+ * @example
+ * ```typescript
+ * const ctx: EvalContextOpts = {
+ *   issuer: 'did:keri:EOrg123',      // organization identity
+ *   subject: 'did:key:z6MkDevice',   // device key
+ *   capabilities: ['sign_commit'],
+ * }
+ * ```
+ */
 export interface EvalContextOpts {
-  /** DID of the attestation issuer. */
+  /**
+   * DID of the attestation issuer.
+   *
+   * Must be a valid `did:keri:` or `did:key:` DID string.
+   * Typically the organization or identity that issued the attestation.
+   */
   issuer: string
-  /** DID of the attestation subject. */
+  /**
+   * DID of the attestation subject.
+   *
+   * Must be a valid `did:keri:` or `did:key:` DID string.
+   * For device attestations, this is the device's `did:key:z...` DID.
+   */
   subject: string
   /** Capabilities held by the subject. */
   capabilities?: string[]

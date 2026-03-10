@@ -1,4 +1,25 @@
-"""Policy engine — compile, evaluate, enforce authorization rules."""
+"""Policy engine — compile, evaluate, enforce authorization rules.
+
+EvalContext DID Format Requirements
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Both ``EvalContext.issuer`` and ``EvalContext.subject`` must be valid DID strings:
+
+- **Identity DIDs**: ``did:keri:E...`` — for organizations and individuals.
+- **Device DIDs**: ``did:key:z...`` — for device keys and signing keys.
+
+The Rust policy engine parses both fields into ``CanonicalDid`` values. Both
+``did:keri:`` and ``did:key:`` formats are accepted. Invalid DID strings will
+cause evaluation to fail with a parse error.
+
+Example::
+
+    ctx = EvalContext(
+        issuer="did:keri:EOrg123",       # organization identity
+        subject="did:key:z6MkDevice",    # device key
+        capabilities=["sign_commit"],
+    )
+"""
 
 from __future__ import annotations
 

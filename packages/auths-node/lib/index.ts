@@ -109,5 +109,17 @@ export {
   mapNativeError,
 } from './errors'
 
+export {
+  parseIdentityDid,
+  parseDeviceDid,
+  SignerType,
+  Role,
+  WellKnownCapability,
+  type IdentityDID,
+  type DeviceDID,
+  type BundleAttestation,
+  type IdentityBundle,
+} from './types'
+
 import native from './native'
 export const version: () => string = native.version
