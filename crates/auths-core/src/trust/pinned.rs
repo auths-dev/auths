@@ -174,6 +174,14 @@ impl PinnedIdentityStore {
         }
     }
 
+    /// Check if an identity is pinned (lightweight existence check).
+    ///
+    /// More efficient than `lookup` when you only need a yes/no answer.
+    pub fn is_pinned(&self, did: &str) -> Result<bool, TrustError> {
+        let _lock = self.lock()?;
+        Ok(self.read_all()?.iter().any(|e| e.did == did))
+    }
+
     /// List all pinned identities.
     pub fn list(&self) -> Result<Vec<PinnedIdentity>, TrustError> {
         let _lock = self.lock()?;

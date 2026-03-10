@@ -50,6 +50,11 @@ class OrgMember:
     expires_at: Optional[str]
     """ISO 8601 expiry timestamp, or None for non-expiring memberships."""
 
+    @property
+    def is_admin(self) -> bool:
+        """Whether this member has admin role."""
+        return self.role == "admin"
+
     def __repr__(self):
         status = " revoked" if self.revoked else ""
         return f"OrgMember(did={self.member_did!r}, role={self.role!r}{status})"

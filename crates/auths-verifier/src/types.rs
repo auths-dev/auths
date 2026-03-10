@@ -320,6 +320,51 @@ impl Deref for DeviceDID {
     }
 }
 
+// ============================================================================
+// DID Utility Functions
+// ============================================================================
+
+/// Convert a hex-encoded Ed25519 public key to a `did:key:` device DID.
+///
+/// The hex string must decode to exactly 32 bytes.
+///
+/// ```rust
+/// # use auths_verifier::types::signer_hex_to_did;
+/// let did = signer_hex_to_did("d75a980182b10ab7d54bfed3c964073a0ee172f3daa3f4a18446b7ddc8").unwrap_err();
+/// // (example key is wrong length — a real 32-byte hex key would succeed)
+/// ```
+pub fn signer_hex_to_did(hex_key: &str) -> Result<DeviceDID, DidConversionError> {
+    let bytes = hex::decode(hex_key).map_err(|e| DidConversionError::InvalidHex(e.to_string()))?;
+    let arr: [u8; 32] = bytes
+        .try_into()
+        .map_err(|v: Vec<u8>| DidConversionError::WrongKeyLength(v.len()))?;
+    Ok(DeviceDID::from_ed25519(&arr))
+}
+
+/// Validate a DID string (accepts both `did:keri:` and `did:key:` formats).
+///
+/// Returns `true` if the DID has a recognized scheme and non-empty identifier.
+pub fn validate_did(did_str: &str) -> bool {
+    if let Some(rest) = did_str.strip_prefix("did:keri:") {
+        !rest.is_empty()
+    } else if let Some(rest) = did_str.strip_prefix("did:key:") {
+        !rest.is_empty()
+    } else {
+        false
+    }
+}
+
+/// Errors from DID conversion operations.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum DidConversionError {
+    /// The input is not valid hexadecimal.
+    #[error("invalid hex: {0}")]
+    InvalidHex(String),
+    /// The decoded key is not 32 bytes.
+    #[error("expected 32-byte Ed25519 key, got {0} bytes")]
+    WrongKeyLength(usize),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

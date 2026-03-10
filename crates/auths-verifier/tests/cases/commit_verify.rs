@@ -64,7 +64,7 @@ fn extract_returns_unsigned_for_empty() {
 async fn verify_real_signed_commit() {
     let provider = auths_crypto::RingCryptoProvider;
     let key = fixture_pubkey();
-    let result = verify_commit_signature(FIXTURE_COMMIT.as_bytes(), &[key], &provider).await;
+    let result = verify_commit_signature(FIXTURE_COMMIT.as_bytes(), &[key], &provider, None).await;
     let verified = result.unwrap();
     assert_eq!(verified.signer_key, key);
 }
@@ -73,7 +73,8 @@ async fn verify_real_signed_commit() {
 async fn verify_rejects_unknown_signer() {
     let provider = auths_crypto::RingCryptoProvider;
     let wrong_key = Ed25519PublicKey::from_bytes([0x99; 32]);
-    let result = verify_commit_signature(FIXTURE_COMMIT.as_bytes(), &[wrong_key], &provider).await;
+    let result =
+        verify_commit_signature(FIXTURE_COMMIT.as_bytes(), &[wrong_key], &provider, None).await;
     assert!(matches!(
         result,
         Err(CommitVerificationError::UnknownSigner)
@@ -85,7 +86,7 @@ async fn verify_rejects_tampered_content() {
     let provider = auths_crypto::RingCryptoProvider;
     let key = fixture_pubkey();
     let tampered = FIXTURE_COMMIT.replace("test commit message", "tampered message");
-    let result = verify_commit_signature(tampered.as_bytes(), &[key], &provider).await;
+    let result = verify_commit_signature(tampered.as_bytes(), &[key], &provider, None).await;
     assert!(matches!(
         result,
         Err(CommitVerificationError::SignatureInvalid)
@@ -96,7 +97,7 @@ async fn verify_rejects_tampered_content() {
 async fn verify_rejects_gpg_commit() {
     let provider = auths_crypto::RingCryptoProvider;
     let gpg_commit = b"tree abc\ngpgsig -----BEGIN PGP SIGNATURE-----\n iQEz\n -----END PGP SIGNATURE-----\n\nmsg\n";
-    let result = verify_commit_signature(gpg_commit, &[], &provider).await;
+    let result = verify_commit_signature(gpg_commit, &[], &provider, None).await;
     assert!(matches!(
         result,
         Err(CommitVerificationError::GpgNotSupported)
@@ -107,7 +108,7 @@ async fn verify_rejects_gpg_commit() {
 async fn verify_rejects_unsigned() {
     let provider = auths_crypto::RingCryptoProvider;
     let unsigned = b"tree abc\nauthor A <a@b> 1 +0000\ncommitter A <a@b> 1 +0000\n\nmsg\n";
-    let result = verify_commit_signature(unsigned, &[], &provider).await;
+    let result = verify_commit_signature(unsigned, &[], &provider, None).await;
     assert!(matches!(
         result,
         Err(CommitVerificationError::UnsignedCommit)

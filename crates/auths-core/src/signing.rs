@@ -382,6 +382,35 @@ impl CachedPassphraseProvider {
         }
     }
 
+    /// Pre-fill the cache with a passphrase for session-based unlock.
+    ///
+    /// This allows callers to unlock once and re-use the passphrase for
+    /// the configured TTL without re-prompting. The passphrase is stored
+    /// only in Rust memory (never crosses FFI boundary after this call).
+    ///
+    /// The default prompt key is used so all subsequent signing operations
+    /// that use the same prompt will hit the cache.
+    pub fn unlock(&self, passphrase: &str) {
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache.insert(
+            String::new(),
+            (Zeroizing::new(passphrase.to_string()), Instant::now()),
+        );
+    }
+
+    /// Returns the remaining TTL in seconds, or `None` if no cached passphrase.
+    pub fn remaining_ttl(&self) -> Option<Duration> {
+        let cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache.values().next().and_then(|(_, cached_at)| {
+            let elapsed = cached_at.elapsed();
+            if elapsed < self.ttl {
+                Some(self.ttl - elapsed)
+            } else {
+                None
+            }
+        })
+    }
+
     /// Clears all cached passphrases.
     ///
     /// Call this on logout, lock, or when the session ends to ensure

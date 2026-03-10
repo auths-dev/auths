@@ -68,7 +68,10 @@ pub mod wasm;
 pub mod witness;
 
 // Re-export verification types for convenience
-pub use types::{ChainLink, DeviceDID, IdentityDID, VerificationReport, VerificationStatus};
+pub use types::{
+    ChainLink, DeviceDID, DidConversionError, IdentityDID, VerificationReport, VerificationStatus,
+    signer_hex_to_did, validate_did,
+};
 
 // Re-export action envelope
 pub use action::ActionEnvelope;

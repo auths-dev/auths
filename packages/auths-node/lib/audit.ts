@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import native from './native'
 import { mapNativeError, VerificationError } from './errors'
 import type { Auths } from './client'
@@ -62,6 +63,55 @@ export interface AuditReportOptions {
   author?: string
   /** Maximum number of commits to analyze. */
   limit?: number
+  /** Path to an Auths identity-bundle JSON file for signer DID resolution. */
+  identityBundlePath?: string
+}
+
+/** Parsed identity bundle metadata. */
+export interface IdentityBundleInfo {
+  /** Identity DID (`did:keri:...`). */
+  did: string
+  /** Hex-encoded Ed25519 public key. */
+  publicKeyHex: string
+  /** Human-readable identity label. */
+  label: string | null
+  /** Number of device attestations in the chain. */
+  deviceCount: number
+}
+
+/**
+ * Parse an Auths identity-bundle JSON file.
+ *
+ * @param path - Path to the identity-bundle JSON file.
+ * @returns The parsed bundle object.
+ *
+ * @example
+ * ```typescript
+ * const bundle = parseIdentityBundle('.auths/identity-bundle.json')
+ * console.log(bundle.did)
+ * ```
+ */
+export function parseIdentityBundle(path: string): Record<string, unknown> {
+  const content = readFileSync(path, 'utf-8')
+  return JSON.parse(content) as Record<string, unknown>
+}
+
+/**
+ * Parse an identity bundle into a typed {@link IdentityBundleInfo}.
+ *
+ * @param path - Path to the identity-bundle JSON file.
+ * @returns Typed bundle metadata.
+ */
+export function parseIdentityBundleInfo(path: string): IdentityBundleInfo {
+  const bundle = parseIdentityBundle(path)
+  const pkHex = (bundle.public_key_hex ?? bundle.publicKeyHex ?? '') as string
+  const chain = (bundle.attestation_chain ?? []) as unknown[]
+  return {
+    did: (bundle.did ?? '') as string,
+    publicKeyHex: pkHex,
+    label: (bundle.label ?? null) as string | null,
+    deviceCount: chain.length,
+  }
 }
 
 /** Options for {@link AuditService.isCompliant}. */

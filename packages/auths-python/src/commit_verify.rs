@@ -94,7 +94,7 @@ pub fn verify_commit_native(
     let content = commit_content.to_vec();
     py.allow_threads(|| {
         let provider = auths_crypto::RingCryptoProvider;
-        let result = runtime().block_on(verify_commit_signature(&content, &keys, &provider));
+        let result = runtime().block_on(verify_commit_signature(&content, &keys, &provider, None));
 
         match result {
             Ok(verified) => Ok(PyCommitVerificationResult {

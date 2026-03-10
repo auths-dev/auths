@@ -117,3 +117,65 @@ pub async fn publish_artifact<R: RegistryClient>(
 pub fn compute_digest(source: &dyn ArtifactSource) -> Result<ArtifactDigest, ArtifactError> {
     source.digest()
 }
+
+/// Verify an artifact attestation against an expected signer DID.
+///
+/// Symmetric to `sign_artifact()` — given the attestation JSON and the
+/// expected signer's DID, verifies the signature is valid.
+///
+/// Args:
+/// * `attestation_json`: The attestation JSON string.
+/// * `signer_did`: Expected signer DID (`did:keri:` or `did:key:`).
+/// * `provider`: Crypto backend for Ed25519 verification.
+///
+/// Usage:
+/// ```ignore
+/// let result = verify_artifact(&json, "did:key:z6Mk...", &provider).await?;
+/// assert!(result.valid);
+/// ```
+pub async fn verify_artifact<R: RegistryClient>(
+    config: &ArtifactVerifyConfig,
+    registry: &R,
+) -> Result<ArtifactVerifyResult, ArtifactPublishError> {
+    let body = serde_json::json!({
+        "attestation": config.attestation_json,
+        "issuer_key": config.signer_did,
+    });
+    let json_bytes =
+        serde_json::to_vec(&body).map_err(|e| ArtifactPublishError::Serialize(e.to_string()))?;
+
+    let response = registry
+        .post_json(&config.registry_url, "v1/verify", &json_bytes)
+        .await?;
+
+    match response.status {
+        200 => {
+            let result: ArtifactVerifyResult = serde_json::from_slice(&response.body)
+                .map_err(|e| ArtifactPublishError::Deserialize(e.to_string()))?;
+            Ok(result)
+        }
+        status => {
+            let body = String::from_utf8_lossy(&response.body).into_owned();
+            Err(ArtifactPublishError::RegistryError { status, body })
+        }
+    }
+}
+
+/// Configuration for verifying an artifact attestation.
+pub struct ArtifactVerifyConfig {
+    /// The attestation JSON to verify.
+    pub attestation_json: String,
+    /// Expected signer DID.
+    pub signer_did: String,
+    /// Registry URL for verification.
+    pub registry_url: String,
+}
+
+/// Result of artifact verification.
+#[derive(Debug, Deserialize)]
+pub struct ArtifactVerifyResult {
+    /// Whether the attestation verified successfully.
+    pub valid: bool,
+    /// The signer DID extracted from the attestation (if valid).
+    pub signer_did: Option<String>,
+}

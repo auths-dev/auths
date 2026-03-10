@@ -2,6 +2,21 @@ import native from './native'
 import { mapNativeError, StorageError } from './errors'
 import type { Auths } from './client'
 
+/**
+ * Trust level for a pinned identity.
+ *
+ * Values match the Rust `TrustLevel` enum in `auths-core/src/trust/pinned.rs`.
+ */
+export const TrustLevel = {
+  /** Accepted on first use (interactive prompt). */
+  Tofu: 'tofu',
+  /** Manually pinned via CLI or `--issuer-pk`. */
+  Manual: 'manual',
+  /** Loaded from roots.json org policy file. */
+  OrgPolicy: 'org_policy',
+} as const
+export type TrustLevel = (typeof TrustLevel)[keyof typeof TrustLevel]
+
 /** A pinned (trusted) identity in the local trust store. */
 export interface PinnedIdentity {
   /** The pinned identity's DID. */

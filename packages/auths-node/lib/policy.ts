@@ -1,6 +1,57 @@
 import native from './native'
 import { mapNativeError, AuthsError } from './errors'
 
+/**
+ * Authorization outcome from a policy evaluation.
+ *
+ * Values match the Rust `Outcome` enum in `auths-policy/src/decision.rs`.
+ */
+export const Outcome = {
+  Allow: 'Allow',
+  Deny: 'Deny',
+  Indeterminate: 'Indeterminate',
+  RequiresApproval: 'RequiresApproval',
+  MissingCredential: 'MissingCredential',
+} as const
+export type Outcome = (typeof Outcome)[keyof typeof Outcome]
+
+/**
+ * Machine-readable reason code for stable logging and alerting.
+ *
+ * Values match the Rust `ReasonCode` enum in `auths-policy/src/decision.rs`.
+ */
+export const ReasonCode = {
+  Unconditional: 'Unconditional',
+  AllChecksPassed: 'AllChecksPassed',
+  CapabilityPresent: 'CapabilityPresent',
+  CapabilityMissing: 'CapabilityMissing',
+  IssuerMatch: 'IssuerMatch',
+  IssuerMismatch: 'IssuerMismatch',
+  Revoked: 'Revoked',
+  Expired: 'Expired',
+  InsufficientTtl: 'InsufficientTtl',
+  IssuedTooLongAgo: 'IssuedTooLongAgo',
+  RoleMismatch: 'RoleMismatch',
+  ScopeMismatch: 'ScopeMismatch',
+  ChainTooDeep: 'ChainTooDeep',
+  DelegationMismatch: 'DelegationMismatch',
+  AttrMismatch: 'AttrMismatch',
+  MissingField: 'MissingField',
+  RecursionExceeded: 'RecursionExceeded',
+  ShortCircuit: 'ShortCircuit',
+  CombinatorResult: 'CombinatorResult',
+  WorkloadMismatch: 'WorkloadMismatch',
+  WitnessQuorumNotMet: 'WitnessQuorumNotMet',
+  SignerTypeMatch: 'SignerTypeMatch',
+  SignerTypeMismatch: 'SignerTypeMismatch',
+  ApprovalRequired: 'ApprovalRequired',
+  ApprovalGranted: 'ApprovalGranted',
+  ApprovalExpired: 'ApprovalExpired',
+  ApprovalAlreadyUsed: 'ApprovalAlreadyUsed',
+  ApprovalRequestMismatch: 'ApprovalRequestMismatch',
+} as const
+export type ReasonCode = (typeof ReasonCode)[keyof typeof ReasonCode]
+
 /** Result of evaluating a policy against a context. */
 export interface PolicyDecision {
   /** Raw outcome string (`'allow'` or `'deny'`). */
@@ -15,11 +66,82 @@ export interface PolicyDecision {
   denied: boolean
 }
 
-/** Context for policy evaluation. */
+/** A commit verification result (from Git commit verification). */
+export interface CommitResultLike {
+  /** Git commit SHA. */
+  commitSha: string
+  /** Whether the commit signature is valid. */
+  isValid: boolean
+  /** Hex-encoded public key of the signer, if identified. */
+  signer?: string | null
+}
+
+/**
+ * Build an EvalContext options object from a commit verification result.
+ *
+ * Extracts the signer hex from the commit result and converts it to a
+ * `did:key:` DID for use as the `subject` field.
+ *
+ * @param commitResult - A commit verification result with a `signer` hex field.
+ * @param issuer - The issuer DID (`did:keri:...`).
+ * @param capabilities - Optional capability list to include.
+ * @returns An EvalContextOpts suitable for `evaluatePolicy()`.
+ *
+ * @example
+ * ```typescript
+ * const ctx = evalContextFromCommitResult(cr, org.orgDid, ['sign_commit'])
+ * const decision = evaluatePolicy(compiled, ctx)
+ * ```
+ */
+export function evalContextFromCommitResult(
+  commitResult: CommitResultLike,
+  issuer: string,
+  capabilities?: string[],
+): EvalContextOpts {
+  const subject = commitResult.signer
+    ? `did:key:z${commitResult.signer}`
+    : 'unknown'
+  const ctx: EvalContextOpts = { issuer, subject }
+  if (capabilities) ctx.capabilities = capabilities
+  return ctx
+}
+
+/**
+ * Context for policy evaluation.
+ *
+ * **DID format requirements:**
+ * - `issuer`: Must be a valid DID. Typically `did:keri:E...` for identity DIDs
+ *   (organizations, individuals) or `did:key:z...` for device DIDs.
+ * - `subject`: Same format rules as `issuer`. For device attestations, this is
+ *   usually a `did:key:z...` device DID.
+ *
+ * Both `issuer` and `subject` are parsed into `CanonicalDid` values by the
+ * Rust policy engine. The engine accepts both `did:keri:` and `did:key:` formats.
+ * Invalid DID strings will cause evaluation to fail with a parse error.
+ *
+ * @example
+ * ```typescript
+ * const ctx: EvalContextOpts = {
+ *   issuer: 'did:keri:EOrg123',      // organization identity
+ *   subject: 'did:key:z6MkDevice',   // device key
+ *   capabilities: ['sign_commit'],
+ * }
+ * ```
+ */
 export interface EvalContextOpts {
-  /** DID of the attestation issuer. */
+  /**
+   * DID of the attestation issuer.
+   *
+   * Must be a valid `did:keri:` or `did:key:` DID string.
+   * Typically the organization or identity that issued the attestation.
+   */
   issuer: string
-  /** DID of the attestation subject. */
+  /**
+   * DID of the attestation subject.
+   *
+   * Must be a valid `did:keri:` or `did:key:` DID string.
+   * For device attestations, this is the device's `did:key:z...` DID.
+   */
   subject: string
   /** Capabilities held by the subject. */
   capabilities?: string[]
@@ -75,6 +197,48 @@ type Predicate = Record<string, unknown>
 export class PolicyBuilder {
   private predicates: Predicate[] = []
 
+  /** All available predicate method names. */
+  static readonly AVAILABLE_PREDICATES: string[] = [
+    'notRevoked',
+    'notExpired',
+    'expiresAfter',
+    'issuedWithin',
+    'requireCapability',
+    'requireAllCapabilities',
+    'requireAnyCapability',
+    'requireIssuer',
+    'requireIssuerIn',
+    'requireSubject',
+    'requireDelegatedBy',
+    'requireAgent',
+    'requireHuman',
+    'requireWorkload',
+    'requireRepo',
+    'requireRepoIn',
+    'requireEnv',
+    'requireEnvIn',
+    'refMatches',
+    'pathAllowed',
+    'maxChainDepth',
+    'attrEquals',
+    'attrIn',
+    'workloadIssuerIs',
+    'workloadClaimEquals',
+  ]
+
+  /** Built-in preset policy names. */
+  static readonly AVAILABLE_PRESETS: string[] = ['standard']
+
+  /** Returns the list of available predicate method names. */
+  static availablePredicates(): string[] {
+    return [...PolicyBuilder.AVAILABLE_PREDICATES]
+  }
+
+  /** Returns the list of available preset policy names. */
+  static availablePresets(): string[] {
+    return [...PolicyBuilder.AVAILABLE_PRESETS]
+  }
+
   /**
    * Creates a standard policy requiring not-revoked, not-expired, and a capability.
    *
@@ -91,6 +255,23 @@ export class PolicyBuilder {
       .notRevoked()
       .notExpired()
       .requireCapability(capability)
+  }
+
+  /**
+   * Reconstructs a PolicyBuilder from a JSON policy expression.
+   *
+   * @param jsonStr - JSON string from `toJson()` or config files.
+   * @returns A new builder with the parsed predicates.
+   */
+  static fromJson(jsonStr: string): PolicyBuilder {
+    const expr = JSON.parse(jsonStr) as Record<string, unknown>
+    const result = new PolicyBuilder()
+    if (expr.op === 'And' && Array.isArray(expr.args)) {
+      result.predicates = expr.args as Predicate[]
+    } else {
+      result.predicates = [expr as Predicate]
+    }
+    return result
   }
 
   /**

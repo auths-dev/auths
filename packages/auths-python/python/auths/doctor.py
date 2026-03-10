@@ -21,18 +21,45 @@ class Check:
 
 @dataclass
 class DiagnosticReport:
-    """Full health check report."""
+    """Full health check report.
+
+    Attributes:
+        checks: Individual check results.
+        all_passed: True if every check passed.
+        version: Auths CLI/SDK version string (e.g. ``"0.9.0"``).
+            Useful for support tickets and compatibility checks.
+    """
 
     checks: list[Check]
     all_passed: bool
     version: str
+    """Auths CLI/SDK version string (e.g. ``"0.9.0"``)."""
 
 
 class DoctorService:
     """Resource service for system diagnostics."""
 
+    #: Known diagnostic check names.
+    AVAILABLE_CHECKS: list[str] = [
+        "git_version",
+        "ssh_keygen",
+        "git_signing_config",
+    ]
+
     def __init__(self, client):
         self._client = client
+
+    @classmethod
+    def available_checks(cls) -> list[str]:
+        """Return the list of known diagnostic check names.
+
+        Examples:
+            ```python
+            for name in DoctorService.available_checks():
+                result = client.doctor.check_one(name)
+            ```
+        """
+        return list(cls.AVAILABLE_CHECKS)
 
     def check(
         self,

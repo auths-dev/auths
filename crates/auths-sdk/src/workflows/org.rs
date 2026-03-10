@@ -256,6 +256,59 @@ pub struct UpdateCapabilitiesCommand {
     pub public_key_hex: String,
 }
 
+/// Command to atomically update a member's role and capabilities.
+///
+/// Unlike separate revoke+add, this is a single atomic operation that
+/// prevents partial state if one step fails.
+pub struct UpdateMemberCommand {
+    /// KERI method-specific ID of the org.
+    pub org_prefix: String,
+    /// Full DID of the member being updated.
+    pub member_did: String,
+    /// New role (if changing).
+    pub role: Option<Role>,
+    /// New capability strings (if changing).
+    pub capabilities: Option<Vec<String>>,
+    /// Hex-encoded public key of the admin performing the update.
+    pub admin_public_key_hex: String,
+}
+
+/// Accepts either a KERI prefix or a full DID.
+///
+/// Auto-detected by whether the string starts with `did:`.
+#[derive(Debug, Clone)]
+pub enum OrgIdentifier {
+    /// Bare KERI prefix (e.g. `EOrg1234567890`).
+    Prefix(String),
+    /// Full DID (e.g. `did:keri:EOrg1234567890`).
+    Did(String),
+}
+
+impl OrgIdentifier {
+    /// Parse a string into an `OrgIdentifier`, auto-detecting the format.
+    pub fn parse(s: &str) -> Self {
+        if s.starts_with("did:") {
+            OrgIdentifier::Did(s.to_owned())
+        } else {
+            OrgIdentifier::Prefix(s.to_owned())
+        }
+    }
+
+    /// Extract the KERI prefix regardless of format.
+    pub fn prefix(&self) -> &str {
+        match self {
+            OrgIdentifier::Prefix(p) => p,
+            OrgIdentifier::Did(d) => d.strip_prefix("did:keri:").unwrap_or(d),
+        }
+    }
+}
+
+impl From<&str> for OrgIdentifier {
+    fn from(s: &str) -> Self {
+        OrgIdentifier::parse(s)
+    }
+}
+
 // ── Workflow functions ────────────────────────────────────────────────────────
 
 /// Add a new member to an organization with a cryptographically signed attestation.
@@ -422,4 +475,57 @@ pub fn update_member_capabilities(
         .map_err(|e| OrgError::Storage(e.to_string()))?;
 
     Ok(updated)
+}
+
+/// Atomically update a member's role and/or capabilities in a single operation.
+///
+/// Unlike the current pattern of revoke+re-add, this performs an in-place update
+/// to prevent partial state on failure.
+pub fn update_organization_member(
+    backend: &dyn RegistryBackend,
+    clock: &dyn ClockProvider,
+    cmd: UpdateMemberCommand,
+) -> Result<Attestation, OrgError> {
+    find_admin(backend, &cmd.org_prefix, &cmd.admin_public_key_hex)?;
+
+    let existing = find_member(backend, &cmd.org_prefix, &cmd.member_did)?.ok_or_else(|| {
+        OrgError::MemberNotFound {
+            org: cmd.org_prefix.clone(),
+            did: cmd.member_did.clone(),
+        }
+    })?;
+
+    if existing.is_revoked() {
+        return Err(OrgError::AlreadyRevoked {
+            did: cmd.member_did.clone(),
+        });
+    }
+
+    let mut updated = existing;
+
+    if let Some(caps) = cmd.capabilities {
+        updated.capabilities = parse_capabilities(&caps)?;
+    }
+    if let Some(role) = cmd.role {
+        updated.role = Some(role);
+    }
+    updated.timestamp = Some(clock.now());
+
+    backend
+        .store_org_member(&cmd.org_prefix, &updated)
+        .map_err(|e| OrgError::Storage(e.to_string()))?;
+
+    Ok(updated)
+}
+
+/// Look up a single org member by DID (O(1) with the right backend).
+pub fn get_organization_member(
+    backend: &dyn RegistryBackend,
+    org_prefix: &str,
+    member_did: &str,
+) -> Result<Attestation, OrgError> {
+    find_member(backend, org_prefix, member_did)?.ok_or_else(|| OrgError::MemberNotFound {
+        org: org_prefix.to_owned(),
+        did: member_did.to_owned(),
+    })
 }

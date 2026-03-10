@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import json
 from dataclasses import dataclass
 from typing import Optional
@@ -14,6 +15,20 @@ from auths._client import _map_error
 from auths._errors import AuthsError
 
 
+class TrustLevel(enum.Enum):
+    """Trust level for a pinned identity.
+
+    Values match the Rust ``TrustLevel`` enum in ``auths-core/src/trust/pinned.rs``.
+    """
+
+    TOFU = "tofu"
+    """Accepted on first use (interactive prompt)."""
+    MANUAL = "manual"
+    """Manually pinned via CLI or ``--issuer-pk``."""
+    ORG_POLICY = "org_policy"
+    """Loaded from roots.json org policy file."""
+
+
 @dataclass
 class TrustEntry:
     """A pinned trusted identity."""
@@ -24,6 +39,11 @@ class TrustEntry:
     first_seen: str
     kel_sequence: Optional[int]
     pinned_at: str
+
+    @property
+    def trust_level_enum(self) -> TrustLevel:
+        """Parse the trust_level string into a typed :class:`TrustLevel` enum."""
+        return TrustLevel(self.trust_level)
 
 
 class TrustService:

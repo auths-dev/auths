@@ -156,6 +156,88 @@ impl CompiledPolicy {
     pub fn source_hash(&self) -> &[u8; 32] {
         &self.source_hash
     }
+
+    /// Return a human-readable summary of the policy's requirements.
+    pub fn describe(&self) -> String {
+        describe_expr(&self.expr, 0)
+    }
+}
+
+fn describe_expr(expr: &CompiledExpr, depth: usize) -> String {
+    let indent = "  ".repeat(depth);
+    match expr {
+        CompiledExpr::True => format!("{indent}always allow"),
+        CompiledExpr::False => format!("{indent}always deny"),
+        CompiledExpr::And(children) => {
+            let parts: Vec<String> = children
+                .iter()
+                .map(|c| describe_expr(c, depth + 1))
+                .collect();
+            format!("{indent}ALL of:\n{}", parts.join("\n"))
+        }
+        CompiledExpr::Or(children) => {
+            let parts: Vec<String> = children
+                .iter()
+                .map(|c| describe_expr(c, depth + 1))
+                .collect();
+            format!("{indent}ANY of:\n{}", parts.join("\n"))
+        }
+        CompiledExpr::Not(inner) => format!("{indent}NOT:\n{}", describe_expr(inner, depth + 1)),
+        CompiledExpr::HasCapability(c) => format!("{indent}require capability: {c}"),
+        CompiledExpr::HasAllCapabilities(caps) => {
+            let names: Vec<String> = caps.iter().map(|c| c.to_string()).collect();
+            format!("{indent}require all capabilities: [{}]", names.join(", "))
+        }
+        CompiledExpr::HasAnyCapability(caps) => {
+            let names: Vec<String> = caps.iter().map(|c| c.to_string()).collect();
+            format!("{indent}require any capability: [{}]", names.join(", "))
+        }
+        CompiledExpr::IssuerIs(d) => format!("{indent}issuer must be: {d}"),
+        CompiledExpr::IssuerIn(ds) => {
+            let names: Vec<String> = ds.iter().map(|d| d.to_string()).collect();
+            format!("{indent}issuer in: [{}]", names.join(", "))
+        }
+        CompiledExpr::SubjectIs(d) => format!("{indent}subject must be: {d}"),
+        CompiledExpr::DelegatedBy(d) => format!("{indent}delegated by: {d}"),
+        CompiledExpr::NotRevoked => format!("{indent}not revoked"),
+        CompiledExpr::NotExpired => format!("{indent}not expired"),
+        CompiledExpr::ExpiresAfter(s) => format!("{indent}expires after {s}s"),
+        CompiledExpr::IssuedWithin(s) => format!("{indent}issued within {s}s"),
+        CompiledExpr::RoleIs(r) => format!("{indent}role must be: {r}"),
+        CompiledExpr::RoleIn(rs) => format!("{indent}role in: [{}]", rs.join(", ")),
+        CompiledExpr::RepoIs(r) => format!("{indent}repo must be: {r}"),
+        CompiledExpr::RepoIn(rs) => format!("{indent}repo in: [{}]", rs.join(", ")),
+        CompiledExpr::RefMatches(g) => format!("{indent}ref matches: {g}"),
+        CompiledExpr::PathAllowed(gs) => {
+            let names: Vec<String> = gs.iter().map(|g| g.to_string()).collect();
+            format!("{indent}paths allowed: [{}]", names.join(", "))
+        }
+        CompiledExpr::EnvIs(e) => format!("{indent}env must be: {e}"),
+        CompiledExpr::EnvIn(es) => format!("{indent}env in: [{}]", es.join(", ")),
+        CompiledExpr::WorkloadIssuerIs(d) => format!("{indent}workload issuer: {d}"),
+        CompiledExpr::WorkloadClaimEquals { key, value } => {
+            format!("{indent}workload claim {key} = {value}")
+        }
+        CompiledExpr::IsAgent => format!("{indent}signer is agent"),
+        CompiledExpr::IsHuman => format!("{indent}signer is human"),
+        CompiledExpr::IsWorkload => format!("{indent}signer is workload"),
+        CompiledExpr::MaxChainDepth(d) => format!("{indent}max chain depth: {d}"),
+        CompiledExpr::AttrEquals { key, value } => format!("{indent}attr {key} = {value}"),
+        CompiledExpr::AttrIn { key, values } => {
+            format!("{indent}attr {key} in: [{}]", values.join(", "))
+        }
+        CompiledExpr::ApprovalGate {
+            approvers,
+            ttl_seconds,
+            ..
+        } => {
+            let names: Vec<String> = approvers.iter().map(|d| d.to_string()).collect();
+            format!(
+                "{indent}requires approval from [{}] (TTL: {ttl_seconds}s)",
+                names.join(", ")
+            )
+        }
+    }
 }
 
 impl PartialEq for CompiledPolicy {

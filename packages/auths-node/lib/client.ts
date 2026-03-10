@@ -281,4 +281,13 @@ export class Auths {
   doctor(): string {
     return native.runDiagnostics(this.repoPath, this.passphrase)
   }
+
+  /**
+   * Returns the list of known diagnostic check names.
+   *
+   * @returns Array of check name strings.
+   */
+  static availableChecks(): string[] {
+    return ['git_version', 'ssh_keygen', 'git_signing_config']
+  }
 }
