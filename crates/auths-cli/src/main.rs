@@ -11,7 +11,7 @@ use clap::Parser;
 use auths_cli::cli::{AuthsCli, RootCommand};
 use auths_cli::commands::executable::ExecutableCommand;
 use auths_cli::config::OutputFormat;
-use auths_cli::factories::build_config;
+use auths_cli::factories::{build_config, init_audit_sinks};
 use auths_cli::ux::format::set_json_mode;
 
 fn main() {
@@ -21,8 +21,23 @@ fn main() {
     }
 }
 
+/// Maps auditable commands to their action name. Returns `None` for commands
+/// that don't emit audit events.
+fn audit_action(command: &RootCommand) -> Option<&'static str> {
+    match command {
+        RootCommand::Init(_) => Some("identity_created"),
+        RootCommand::Pair(_) => Some("device_paired"),
+        RootCommand::Device(_) => Some("device_command"),
+        RootCommand::Verify(_) => Some("commit_verified"),
+        RootCommand::Signers(_) => Some("signers_command"),
+        _ => None,
+    }
+}
+
 fn run() -> Result<()> {
     env_logger::init();
+
+    let _telemetry = init_audit_sinks();
 
     let cli = AuthsCli::parse();
 
@@ -58,7 +73,9 @@ fn run() -> Result<()> {
         }
     };
 
-    match command {
+    let action = audit_action(&command);
+
+    let result = match command {
         RootCommand::Init(cmd) => cmd.execute(&ctx),
         RootCommand::Sign(cmd) => cmd.execute(&ctx),
         RootCommand::Verify(cmd) => cmd.execute(&ctx),
@@ -86,5 +103,14 @@ fn run() -> Result<()> {
         RootCommand::Config(cmd) => cmd.execute(&ctx),
         RootCommand::Commit(cmd) => cmd.execute(&ctx),
         RootCommand::Debug(cmd) => cmd.execute(&ctx),
+    };
+
+    if let Some(action) = action {
+        let status = if result.is_ok() { "success" } else { "failed" };
+        let now = chrono::Utc::now().timestamp();
+        let event = auths_telemetry::build_audit_event("unknown", action, status, now);
+        auths_telemetry::emit_telemetry(&event);
     }
+
+    result
 }
