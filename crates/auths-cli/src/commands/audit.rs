@@ -100,7 +100,9 @@ pub struct AuditReport {
 }
 
 /// Handle the audit command.
+#[allow(clippy::disallowed_methods)]
 pub fn handle_audit(cmd: AuditCommand) -> Result<()> {
+    let now = chrono::Utc::now();
     let out = Output::new();
 
     let since = cmd.since.as_ref().map(|s| parse_date_arg(s)).transpose()?;
@@ -126,7 +128,7 @@ pub fn handle_audit(cmd: AuditCommand) -> Result<()> {
 
     let summary = summarize_commits(&commits);
     let unsigned_commits = summary.unsigned_commits;
-    let generated_at = chrono::Utc::now().to_rfc3339();
+    let generated_at = now.to_rfc3339();
     let repository = cmd.repo.display().to_string();
 
     let output = match cmd.format {

@@ -253,7 +253,7 @@ These are the features that separate "impressive developer tool" from "enterpris
 - `crates/auths-verifier/src/error.rs`
 - `crates/auths-cli/src/commands/executable.rs` — add error code formatting to output
 - New: `crates/auths-cli/src/commands/explain.rs`
-- Docs: `docs/errors/` directory with one `.md` per error code
+- Docs: `docs/errors/` directory with one `.md` per error code. Look into automating error docs via a similar approach in `auths/crates/xtask/src/gen_docs.rs`, and should add new `{error}.md` files if we add errors to the code
 
 ---
 
