@@ -4,6 +4,8 @@ use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 use anyhow::{Result, bail};
 use auths_core::config::{AuthsConfig, PassphraseCachePolicy, load_config, save_config};
+
+use crate::adapters::config_store::FileConfigStore;
 use clap::{Parser, Subcommand};
 
 /// Manage Auths configuration.
@@ -44,7 +46,8 @@ impl ExecutableCommand for ConfigCommand {
 }
 
 fn execute_set(key: &str, value: &str) -> Result<()> {
-    let mut config = load_config();
+    let store = FileConfigStore;
+    let mut config = load_config(&store);
 
     match key {
         "passphrase.cache" => {
@@ -68,13 +71,13 @@ fn execute_set(key: &str, value: &str) -> Result<()> {
         ),
     }
 
-    save_config(&config)?;
+    save_config(&config, &store)?;
     println!("Set {} = {}", key, value);
     Ok(())
 }
 
 fn execute_get(key: &str) -> Result<()> {
-    let config = load_config();
+    let config = load_config(&FileConfigStore);
 
     match key {
         "passphrase.cache" => {
@@ -100,7 +103,7 @@ fn execute_get(key: &str) -> Result<()> {
 }
 
 fn execute_show() -> Result<()> {
-    let config = load_config();
+    let config = load_config(&FileConfigStore);
     let toml_str = toml::to_string_pretty(&config)
         .map_err(|e| anyhow::anyhow!("Failed to serialize config: {}", e))?;
     println!("{}", toml_str);
@@ -138,7 +141,8 @@ fn parse_bool(s: &str) -> Result<bool> {
 }
 
 fn _ensure_default_config_exists() -> Result<AuthsConfig> {
-    let config = load_config();
-    save_config(&config)?;
+    let store = FileConfigStore;
+    let config = load_config(&store);
+    save_config(&config, &store)?;
     Ok(config)
 }

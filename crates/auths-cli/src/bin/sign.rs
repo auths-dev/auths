@@ -34,6 +34,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 
+use auths_cli::adapters::config_store::FileConfigStore;
 use auths_cli::core::pubkey_cache::get_cached_pubkey;
 use auths_cli::factories::build_agent_provider;
 use auths_core::config::{EnvironmentConfig, load_config};
@@ -117,7 +118,7 @@ fn build_signing_context(alias: &str) -> Result<CommitSigningContext> {
         if let Some(passphrase) = env_config.keychain.passphrase.clone() {
             Arc::new(auths_core::PrefilledPassphraseProvider::new(&passphrase))
         } else {
-            let config = load_config();
+            let config = load_config(&FileConfigStore);
             let cache = get_passphrase_cache(config.passphrase.biometric);
             let ttl_secs = config
                 .passphrase

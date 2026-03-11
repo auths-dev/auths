@@ -304,23 +304,26 @@ pub struct AuthsConfig {
 
 /// Loads `~/.auths/config.toml`, returning defaults on any error.
 ///
+/// Args:
+/// * `store`: The config store implementation for file I/O.
+///
 /// Usage:
 /// ```ignore
-/// let config = auths_core::config::load_config();
+/// let config = auths_core::config::load_config(&file_store);
 /// match config.passphrase.cache {
 ///     PassphraseCachePolicy::Always => { /* ... */ }
 ///     _ => {}
 /// }
 /// ```
-pub fn load_config() -> AuthsConfig {
+pub fn load_config(store: &dyn crate::ports::config_store::ConfigStore) -> AuthsConfig {
     let home = match auths_home() {
         Ok(h) => h,
         Err(_) => return AuthsConfig::default(),
     };
     let path = home.join("config.toml");
-    match std::fs::read_to_string(&path) {
-        Ok(contents) => toml::from_str(&contents).unwrap_or_default(),
-        Err(_) => AuthsConfig::default(),
+    match store.read(&path) {
+        Ok(Some(contents)) => toml::from_str(&contents).unwrap_or_default(),
+        _ => AuthsConfig::default(),
     }
 }
 
@@ -328,18 +331,28 @@ pub fn load_config() -> AuthsConfig {
 ///
 /// Args:
 /// * `config`: The configuration to persist.
+/// * `store`: The config store implementation for file I/O.
 ///
 /// Usage:
 /// ```ignore
-/// let mut config = load_config();
+/// let mut config = load_config(&file_store);
 /// config.passphrase.cache = PassphraseCachePolicy::Always;
-/// save_config(&config)?;
+/// save_config(&config, &file_store)?;
 /// ```
-pub fn save_config(config: &AuthsConfig) -> Result<(), std::io::Error> {
-    let home = auths_home().map_err(|e| std::io::Error::other(e.to_string()))?;
-    std::fs::create_dir_all(&home)?;
+pub fn save_config(
+    config: &AuthsConfig,
+    store: &dyn crate::ports::config_store::ConfigStore,
+) -> Result<(), crate::ports::config_store::ConfigStoreError> {
+    let home = auths_home().map_err(|e| crate::ports::config_store::ConfigStoreError::Write {
+        path: PathBuf::from("~/.auths"),
+        source: std::io::Error::other(e.to_string()),
+    })?;
     let path = home.join("config.toml");
-    let contents =
-        toml::to_string_pretty(config).map_err(|e| std::io::Error::other(e.to_string()))?;
-    std::fs::write(&path, contents)
+    let contents = toml::to_string_pretty(config).map_err(|e| {
+        crate::ports::config_store::ConfigStoreError::Write {
+            path: path.clone(),
+            source: std::io::Error::other(e.to_string()),
+        }
+    })?;
+    store.write(&path, &contents)
 }

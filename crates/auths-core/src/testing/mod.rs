@@ -38,6 +38,7 @@
 
 mod builder;
 mod deterministic_uuid;
+mod fake_config_store;
 mod in_memory_storage;
 
 // Re-export test utilities from storage::memory
@@ -51,4 +52,5 @@ pub use builder::{TestIdentity, TestIdentityBuilder, TestPassphraseProvider};
 
 // Re-export deterministic UUID provider and in-memory storage
 pub use deterministic_uuid::DeterministicUuidProvider;
+pub use fake_config_store::FakeConfigStore;
 pub use in_memory_storage::InMemoryStorage;
