@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use auths_core::trust::pinned::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
 use auths_id::identity::resolve::{DefaultDidResolver, DidResolver};
+use auths_verifier::PublicKeyHex;
 use chrono::Utc;
 
 fn resolve_repo(repo_path: &str) -> PathBuf {
@@ -54,11 +55,13 @@ pub fn pin_identity(
 
         let resolver = DefaultDidResolver::with_repo(&repo_path);
         let public_key_hex = match resolver.resolve(&did) {
-            Ok(resolved) => hex::encode(resolved.public_key().as_bytes()),
+            Ok(resolved) => {
+                PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes()))
+            }
             Err(_) => {
                 // If DID can't be resolved, use a placeholder — the pin still works
                 // for trust-on-first-use patterns where the key isn't known yet
-                String::new()
+                PublicKeyHex::new_unchecked("")
             }
         };
 
@@ -69,7 +72,7 @@ pub fn pin_identity(
             let now = Utc::now();
             let pin = PinnedIdentity {
                 did: did.clone(),
-                public_key_hex: if public_key_hex.is_empty() {
+                public_key_hex: if public_key_hex.as_ref().is_empty() {
                     existing.public_key_hex
                 } else {
                     public_key_hex

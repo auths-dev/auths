@@ -7,7 +7,7 @@ use auths_radicle::verify::AuthsStorage;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature};
 use auths_verifier::keri::{Prefix, Said};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::{CanonicalDid, DeviceDID};
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 
@@ -127,7 +127,7 @@ pub fn make_test_attestation(
     Attestation {
         version: 1,
         rid: auths_verifier::core::ResourceId::new(rid.to_string()),
-        issuer: IdentityDID::new_unchecked(issuer.to_string()),
+        issuer: CanonicalDid::new_unchecked(issuer.to_string()),
         subject: DeviceDID::new_unchecked(device_did.to_string()),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),

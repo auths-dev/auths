@@ -202,6 +202,8 @@ pub fn handle_device(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
+    #[allow(clippy::disallowed_methods)]
+    let now = Utc::now();
     let repo_path = layout::resolve_repo_path(repo_opt)?;
 
     let mut config = StorageLayoutConfig::default();
@@ -220,7 +222,7 @@ pub fn handle_device(
 
     match cmd.command {
         DeviceSubcommand::List { include_revoked } => {
-            list_devices(&repo_path, &config, include_revoked)
+            list_devices(now, &repo_path, &config, include_revoked)
         }
         DeviceSubcommand::Resolve { device_did } => resolve_device(&repo_path, &device_did),
         DeviceSubcommand::Pair(pair_cmd) => super::pair::handle_pair(pair_cmd, env_config),
@@ -433,7 +435,8 @@ fn handle_extend(
 ) -> Result<()> {
     let config = auths_sdk::types::DeviceExtensionConfig {
         repo_path: repo_path.to_path_buf(),
-        device_did: device_did.to_string(),
+        #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from CLI arg validated upstream
+        device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did),
         days: days as u32,
         identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
         device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
@@ -471,6 +474,7 @@ fn resolve_device(repo_path: &Path, device_did_str: &str) -> Result<()> {
 }
 
 fn list_devices(
+    now: chrono::DateTime<Utc>,
     repo_path: &Path,
     _config: &StorageLayoutConfig,
     include_revoked: bool,
@@ -499,19 +503,15 @@ fn list_devices(
             .last()
             .expect("Grouped attestations should not be empty");
 
-        let verification_result = auths_id::attestation::verify::verify_with_resolver(
-            chrono::Utc::now(),
-            &resolver,
-            latest,
-            None,
-        );
+        let verification_result =
+            auths_id::attestation::verify::verify_with_resolver(now, &resolver, latest, None);
 
         let status_string = match verification_result {
             Ok(()) => {
                 if latest.is_revoked() {
                     "revoked".to_string()
                 } else if let Some(expiry) = latest.expires_at {
-                    if Utc::now() > expiry {
+                    if now > expiry {
                         "expired".to_string()
                     } else {
                         format!("active (expires {})", expiry.date_naive())
@@ -544,7 +544,7 @@ fn list_devices(
             }
         };
 
-        let is_inactive = latest.is_revoked() || latest.expires_at.is_some_and(|e| Utc::now() > e);
+        let is_inactive = latest.is_revoked() || latest.expires_at.is_some_and(|e| now > e);
         if !include_revoked && is_inactive {
             continue;
         }

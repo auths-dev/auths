@@ -69,8 +69,8 @@ pub mod witness;
 
 // Re-export verification types for convenience
 pub use types::{
-    ChainLink, DeviceDID, DidConversionError, DidParseError, IdentityDID, VerificationReport,
-    VerificationStatus, signer_hex_to_did, validate_did,
+    CanonicalDid, ChainLink, DeviceDID, DidConversionError, DidParseError, IdentityDID,
+    VerificationReport, VerificationStatus, signer_hex_to_did, validate_did,
 };
 
 // Re-export action envelope
@@ -78,9 +78,10 @@ pub use action::ActionEnvelope;
 
 // Re-export core types
 pub use core::{
-    Capability, CapabilityError, Ed25519KeyError, Ed25519PublicKey, Ed25519Signature,
-    IdentityBundle, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE, ResourceId, Role,
-    RoleParseError, SignatureLengthError, ThresholdPolicy, VerifiedAttestation,
+    Capability, CapabilityError, CommitOid, CommitOidError, Ed25519KeyError, Ed25519PublicKey,
+    Ed25519Signature, IdentityBundle, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE, PolicyId,
+    PublicKeyHex, PublicKeyHexError, ResourceId, Role, RoleParseError, SignatureLengthError,
+    ThresholdPolicy, VerifiedAttestation,
 };
 
 // Re-export error types

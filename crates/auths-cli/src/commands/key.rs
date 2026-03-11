@@ -318,6 +318,7 @@ fn key_import(alias: &str, seed_file_path: &PathBuf, controller_did: &IdentityDI
     let seed: [u8; 32] = seed_bytes.try_into().expect("validated 32 bytes above");
     let seed = Zeroizing::new(seed);
 
+    #[allow(clippy::disallowed_methods)] // CLI boundary: passphrase from env
     let passphrase = if let Ok(env_pass) = std::env::var("AUTHS_PASSPHRASE") {
         Zeroizing::new(env_pass)
     } else {
@@ -379,7 +380,10 @@ fn key_copy_backend(
             // Wrap immediately in Zeroizing so the heap allocation is cleared on drop.
             let password: Zeroizing<String> = dst_passphrase
                 .map(|s| Zeroizing::new(s.to_string()))
-                .or_else(|| std::env::var("AUTHS_PASSPHRASE").ok().map(Zeroizing::new))
+                .or_else(|| {
+                    #[allow(clippy::disallowed_methods)] // CLI boundary: passphrase from env
+                    std::env::var("AUTHS_PASSPHRASE").ok().map(Zeroizing::new)
+                })
                 .ok_or_else(|| {
                     anyhow!(
                         "Passphrase required for file backend. \

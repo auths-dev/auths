@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use auths_crypto::SecureSeed;
 use auths_verifier::keri::{Prefix, Said};
+use auths_verifier::types::DeviceDID;
 use axum::{
     Json, Router,
     extract::{Path as AxumPath, State},
@@ -42,7 +43,7 @@ pub struct WitnessServerState {
 
 struct WitnessServerInner {
     /// Witness identifier (DID)
-    witness_did: String,
+    witness_did: DeviceDID,
     /// Ed25519 seed for signing receipts
     seed: SecureSeed,
     /// Ed25519 public key (32 bytes)
@@ -57,7 +58,7 @@ struct WitnessServerInner {
 #[derive(Clone)]
 pub struct WitnessServerConfig {
     /// Witness identifier (DID)
-    pub witness_did: String,
+    pub witness_did: DeviceDID,
     /// Ed25519 seed for signing
     pub keypair_seed: SecureSeed,
     /// Ed25519 public key (32 bytes)
@@ -78,7 +79,8 @@ impl WitnessServerConfig {
         let (seed, public_key) = provider_bridge::generate_ed25519_keypair_sync()
             .map_err(|e| WitnessError::Network(format!("failed to generate keypair: {}", e)))?;
 
-        let witness_did = format!("did:key:z6Mk{}", hex::encode(&public_key[..16]));
+        let witness_did =
+            DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
 
         Ok(Self {
             witness_did,
@@ -111,7 +113,7 @@ pub struct HealthResponse {
     /// Witness server status string.
     pub status: String,
     /// DID of this witness.
-    pub witness_did: String,
+    pub witness_did: DeviceDID,
     /// Number of first-seen events recorded.
     pub first_seen_count: usize,
     /// Total receipts issued.
@@ -157,7 +159,7 @@ impl WitnessServerState {
     /// Create a new server state with in-memory storage (for testing).
     #[allow(clippy::disallowed_methods)] // Server constructor is a clock boundary
     pub fn in_memory(
-        witness_did: String,
+        witness_did: DeviceDID,
         seed: SecureSeed,
         public_key: [u8; 32],
     ) -> Result<Self, WitnessError> {
@@ -182,7 +184,8 @@ impl WitnessServerState {
         let (seed, public_key) = provider_bridge::generate_ed25519_keypair_sync()
             .map_err(|e| WitnessError::Network(format!("failed to generate keypair: {}", e)))?;
 
-        let witness_did = format!("did:key:z6Mk{}", hex::encode(&public_key[..16]));
+        let witness_did =
+            DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
 
         let storage = WitnessStorage::in_memory()?;
 
@@ -213,7 +216,7 @@ impl WitnessServerState {
             v: KERI_VERSION.into(),
             t: RECEIPT_TYPE.into(),
             d: Said::default(),
-            i: self.inner.witness_did.clone(),
+            i: self.inner.witness_did.to_string(),
             s: seq,
             a: event_said.clone(),
             sig: vec![],

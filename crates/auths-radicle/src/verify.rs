@@ -468,6 +468,7 @@ mod tests {
     use super::*;
     use auths_verifier::IdentityDID;
     use auths_verifier::keri::{Prefix, Said};
+    use auths_verifier::types::CanonicalDid;
     use auths_verifier::types::DeviceDID as VerifierDeviceDID;
     use chrono::{DateTime, Utc};
     use std::collections::HashMap;
@@ -590,7 +591,7 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new("test"),
-            issuer: IdentityDID::new_unchecked(issuer.to_string()),
+            issuer: CanonicalDid::new_unchecked(issuer.to_string()),
             subject: DeviceDID::new_unchecked(device_did.to_string()),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),

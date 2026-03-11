@@ -75,6 +75,7 @@ pub struct ExpiringDevice {
 }
 
 /// Handle the status command.
+#[allow(clippy::disallowed_methods)]
 pub fn handle_status(_cmd: StatusCommand, repo: Option<PathBuf>) -> Result<()> {
     let now = Utc::now();
     let repo_path = resolve_repo_path(repo)?;

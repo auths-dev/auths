@@ -16,6 +16,7 @@ use auths_sdk::workflows::org::{
 };
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 use auths_verifier::Capability;
+use auths_verifier::PublicKeyHex;
 use auths_verifier::core::{Ed25519PublicKey, Role};
 use auths_verifier::types::DeviceDID;
 use napi_derive::napi;
@@ -218,13 +219,13 @@ pub fn add_org_member(
     ));
 
     let resolver = RegistryDidResolver::new(backend.clone());
-    let admin_pk_hex = hex::encode(
+    let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
         resolver
             .resolve(&org_did)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?
             .public_key()
             .as_bytes(),
-    );
+    ));
 
     let member_pk = if let Some(pk_hex) = member_public_key_hex {
         let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
@@ -304,13 +305,13 @@ pub fn revoke_org_member(
     ));
 
     let resolver = RegistryDidResolver::new(backend.clone());
-    let admin_pk_hex = hex::encode(
+    let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
         resolver
             .resolve(&org_did)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?
             .public_key()
             .as_bytes(),
-    );
+    ));
 
     let member_pk = if let Some(pk_hex) = member_public_key_hex {
         let pk_bytes = hex::decode(&pk_hex).map_err(|e| {

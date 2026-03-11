@@ -235,6 +235,7 @@ pub fn expected_org_issuer(org: &str) -> String {
 mod tests {
     use super::*;
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature};
+    use auths_verifier::types::CanonicalDid;
 
     #[test]
     fn member_filter_defaults_to_active_only() {
@@ -275,7 +276,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: "test".into(),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -300,7 +301,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: "test".into(),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -326,7 +327,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: "test".into(),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -355,7 +356,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: "test".into(),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -381,7 +382,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: "test".into(),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -437,7 +438,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: "test".into(),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),

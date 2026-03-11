@@ -32,6 +32,8 @@ use std::path::PathBuf;
 use auths_id::error::StorageError;
 use auths_verifier::core::{Attestation, VerifiedAttestation};
 use auths_verifier::types::DeviceDID;
+#[cfg(feature = "indexed-storage")]
+use auths_verifier::types::IdentityDID;
 
 use auths_id::attestation::AttestationSink;
 use auths_id::storage::attestation::AttestationSource;
@@ -212,11 +214,11 @@ impl AttestationSink for RegistryAttestationStorage {
             #[allow(clippy::disallowed_methods)]
             // Timestamp fallback for missing attestation timestamp
             let indexed = IndexedAttestation {
-                rid: attestation.rid.to_string(),
-                issuer_did: attestation.issuer.to_string(),
-                device_did: attestation.subject.to_string(),
+                rid: attestation.rid.clone(),
+                issuer_did: IdentityDID::new_unchecked(attestation.issuer.as_str()),
+                device_did: attestation.subject.clone(),
                 git_ref,
-                commit_oid: String::new(),
+                commit_oid: auths_verifier::CommitOid::new_unchecked(""),
                 revoked_at: attestation.revoked_at,
                 expires_at: attestation.expires_at,
                 updated_at: attestation.timestamp.unwrap_or_else(chrono::Utc::now),
@@ -238,7 +240,7 @@ impl AttestationSink for RegistryAttestationStorage {
 mod tests {
     use super::*;
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
-    use auths_verifier::types::IdentityDID;
+    use auths_verifier::types::CanonicalDid;
     use git2::Repository;
     use tempfile::TempDir;
 
@@ -260,7 +262,7 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new(format!("test-rid-{}", seq)),
-            issuer: IdentityDID::new_unchecked("did:keri:ETestIssuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:ETestIssuer"),
             subject: DeviceDID::new_unchecked(subject),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),

@@ -490,6 +490,176 @@ pub enum DidParseError {
     /// The method-specific identifier portion is empty.
     #[error("DID method-specific identifier is empty")]
     EmptyIdentifier,
+    /// Generic DID format validation failure (used by `CanonicalDid`).
+    #[error("{0}")]
+    InvalidFormat(String),
+    /// DID string contains control characters.
+    #[error("DID contains control characters")]
+    ControlCharacters,
+}
+
+// ============================================================================
+// CanonicalDid Type
+// ============================================================================
+
+/// A validated, canonical DID that accepts any method (`did:keri:`, `did:key:`, etc.).
+///
+/// Use this for fields that can hold either identity or device DIDs,
+/// such as attestation issuers which may be `did:keri:` or `did:key:`.
+///
+/// Constructed via `parse()` which enforces:
+/// - Starts with `did:`
+/// - Has at least method and id segments: `did:method:id`
+/// - Lowercased method (KERI, key methods are case-sensitive in id, not method)
+/// - No trailing whitespace or control characters
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(transparent)]
+pub struct CanonicalDid(String);
+
+impl CanonicalDid {
+    /// Parse and validate a DID string into canonical form.
+    pub fn parse(raw: &str) -> Result<Self, DidParseError> {
+        if raw.chars().any(|c| c.is_control()) {
+            return Err(DidParseError::ControlCharacters);
+        }
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(DidParseError::EmptyIdentifier);
+        }
+        let parts: Vec<&str> = trimmed.splitn(3, ':').collect();
+        if parts.len() < 3 || parts[0] != "did" || parts[1].is_empty() || parts[2].is_empty() {
+            return Err(DidParseError::InvalidFormat(format!(
+                "invalid DID format: '{}'",
+                trimmed
+            )));
+        }
+        let canonical = format!("did:{}:{}", parts[1].to_lowercase(), parts[2]);
+        Ok(Self(canonical))
+    }
+
+    /// Wraps a DID string without validation (for trusted internal paths).
+    pub fn new_unchecked<S: Into<String>>(s: S) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the canonical DID as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Returns the method-specific identifier (the part after `did:method:`).
+    pub fn method_specific_id(&self) -> &str {
+        self.0.splitn(3, ':').nth(2).unwrap_or("")
+    }
+
+    /// Validates that this DID uses the `keri` method with a valid KERI prefix.
+    pub fn require_keri(self) -> Result<Self, DidParseError> {
+        let parts: Vec<&str> = self.0.splitn(3, ':').collect();
+        if parts[1] != "keri" {
+            return Err(DidParseError::InvalidFormat(format!(
+                "expected did:keri: DID, got did:{}:",
+                parts[1]
+            )));
+        }
+        let id = parts[2];
+        if id.len() < 2 || id.len() > 128 {
+            return Err(DidParseError::InvalidFormat(
+                "invalid KERI prefix: length must be 2–128 characters".into(),
+            ));
+        }
+        if !id.starts_with(|c: char| c.is_ascii_uppercase()) {
+            return Err(DidParseError::InvalidFormat(format!(
+                "invalid KERI prefix: must start with an uppercase derivation code, got '{}'",
+                &id[..1]
+            )));
+        }
+        Ok(self)
+    }
+
+    /// Consumes self and returns the inner String.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl TryFrom<String> for CanonicalDid {
+    type Error = DidParseError;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
+    }
+}
+
+impl TryFrom<&str> for CanonicalDid {
+    type Error = DidParseError;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
+    }
+}
+
+impl From<CanonicalDid> for String {
+    fn from(d: CanonicalDid) -> Self {
+        d.0
+    }
+}
+
+impl fmt::Display for CanonicalDid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Deref for CanonicalDid {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for CanonicalDid {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for CanonicalDid {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CanonicalDid {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl PartialEq<str> for CanonicalDid {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for CanonicalDid {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+impl From<IdentityDID> for CanonicalDid {
+    fn from(did: IdentityDID) -> Self {
+        Self(did.into_inner())
+    }
+}
+
+impl From<DeviceDID> for CanonicalDid {
+    fn from(did: DeviceDID) -> Self {
+        Self(did.0)
+    }
 }
 
 #[cfg(test)]

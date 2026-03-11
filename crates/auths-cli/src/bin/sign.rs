@@ -1,9 +1,4 @@
-#![allow(
-    clippy::print_stdout,
-    clippy::print_stderr,
-    clippy::disallowed_methods,
-    clippy::exit
-)]
+#![allow(clippy::print_stdout, clippy::print_stderr, clippy::exit)]
 //! auths-sign: Git SSH signing program compatible with `gpg.ssh.program`
 //!
 //! Git calls this binary with ssh-keygen compatible arguments:
@@ -266,8 +261,10 @@ fn run_sign(args: &Args) -> Result<()> {
         params = params.with_repo_path(path);
     }
 
-    let signature_pem = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now())
-        .map_err(anyhow::Error::new)?;
+    #[allow(clippy::disallowed_methods)]
+    let now = chrono::Utc::now();
+    let signature_pem =
+        CommitSigningWorkflow::execute(&ctx, params, now).map_err(anyhow::Error::new)?;
 
     let sig_path = format!("{}.sig", buffer_file.display());
     fs::write(&sig_path, &signature_pem)

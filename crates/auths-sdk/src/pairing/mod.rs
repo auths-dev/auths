@@ -126,7 +126,7 @@ pub struct PairingSessionRequest {
 /// let response = DecryptedPairingResponse {
 ///     auths_dir: auths_dir.to_path_buf(),
 ///     device_pubkey: pubkey_bytes,
-///     device_did: "did:key:z6Mk...".into(),
+///     device_did: DeviceDID::new_unchecked("did:key:z6Mk..."),
 ///     device_name: Some("iPhone 15".into()),
 ///     capabilities: vec!["sign_commit".into()],
 ///     identity_key_alias: "main".into(),
@@ -137,8 +137,8 @@ pub struct DecryptedPairingResponse {
     pub auths_dir: PathBuf,
     /// Ed25519 signing public key bytes (32 bytes).
     pub device_pubkey: Vec<u8>,
-    /// DID string of the responding device.
-    pub device_did: String,
+    /// DID of the responding device.
+    pub device_did: DeviceDID,
     /// Optional human-readable device name.
     pub device_name: Option<String>,
     /// Capability strings to grant.
@@ -163,14 +163,14 @@ pub enum PairingCompletionResult {
     /// Pairing completed successfully with a signed attestation.
     Success {
         /// The DID of the paired device.
-        device_did: String,
+        device_did: DeviceDID,
         /// Optional human-readable name of the paired device.
         device_name: Option<String>,
     },
     /// Attestation creation failed; caller should fall back to raw device info storage.
     Fallback {
         /// The DID of the device that could not be fully attested.
-        device_did: String,
+        device_did: DeviceDID,
         /// Optional human-readable name of the device.
         device_name: Option<String>,
         /// The error message from the failed attestation attempt.
@@ -468,7 +468,7 @@ pub fn complete_pairing_from_response(
             identity_storage,
             key_storage,
             device_pubkey: &device_pubkey,
-            device_did_str: &device_did,
+            device_did_str: device_did.as_str(),
             capabilities: &capabilities,
             identity_key_alias: &identity_key_alias,
             passphrase_provider,
@@ -752,7 +752,7 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
     let decrypted = DecryptedPairingResponse {
         auths_dir: PathBuf::new(),
         device_pubkey: device_signing_bytes,
-        device_did: response.device_did.to_string(),
+        device_did: DeviceDID::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
         capabilities: session.token.capabilities.clone(),
         identity_key_alias,
@@ -844,7 +844,7 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
 
     Ok(PairingCompletionResult::Success {
-        device_did: pairing_response.device_did,
+        device_did: DeviceDID::new_unchecked(pairing_response.device_did),
         device_name: None,
     })
 }

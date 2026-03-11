@@ -4,7 +4,6 @@ use anyhow::{Context, Result};
 use auths_core::config::EnvironmentConfig;
 use auths_core::pairing::{QrOptions, render_qr};
 use auths_sdk::pairing::{PairingSessionParams, PairingStatus, initiate_online_pairing};
-use chrono::Utc;
 use console::style;
 use indicatif::ProgressBar;
 
@@ -17,6 +16,7 @@ use super::common::*;
 
 /// Initiate a pairing session using the registry relay.
 pub(crate) async fn handle_initiate_online(
+    now: chrono::DateTime<chrono::Utc>,
     registry: &str,
     no_qr: bool,
     expiry_secs: u64,
@@ -114,7 +114,7 @@ pub(crate) async fn handle_initiate_online(
         expiry_secs,
     };
 
-    match initiate_online_pairing(params, &relay, &ctx, Utc::now(), Some(&on_status))
+    match initiate_online_pairing(params, &relay, &ctx, now, Some(&on_status))
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))?
     {

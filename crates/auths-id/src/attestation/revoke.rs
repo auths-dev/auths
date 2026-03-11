@@ -3,7 +3,7 @@ use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::error::AttestationError;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::{CanonicalDid, DeviceDID};
 
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
@@ -45,10 +45,11 @@ pub fn create_signed_revocation(
 
     // 1. Construct the revocation-specific canonical data
     let revoked_at_value = Some(timestamp_arg);
+    let issuer_canonical = CanonicalDid::new_unchecked(identity_did.as_str());
     let data_to_canonicalize_revocation = CanonicalRevocationData {
         version: REVOCATION_VERSION,
         rid,
-        issuer: identity_did,
+        issuer: &issuer_canonical,
         subject: device_did,
         timestamp: &Some(timestamp_arg),
         revoked_at: &revoked_at_value,
@@ -83,7 +84,7 @@ pub fn create_signed_revocation(
     Ok(Attestation {
         version: REVOCATION_VERSION,
         subject: device_did.clone(),
-        issuer: identity_did.clone(),
+        issuer: CanonicalDid::new_unchecked(identity_did.as_str()),
         rid: ResourceId::new(rid),
         payload: payload_arg.clone(),
         timestamp: Some(timestamp_arg),

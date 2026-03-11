@@ -12,6 +12,7 @@ publish = true
 license.workspace = true
 
 [dependencies]
+auths-verifier.workspace = true
 sqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"

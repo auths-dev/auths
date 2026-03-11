@@ -138,7 +138,11 @@ fn resolve_interactive(cmd: &InitCommand) -> Result<bool> {
 /// ```ignore
 /// handle_init(cmd, &ctx)?;
 /// ```
-pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
+pub fn handle_init(
+    cmd: InitCommand,
+    ctx: &CliConfig,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
     let out = Output::new();
     let interactive = resolve_interactive(&cmd)?;
 
@@ -155,7 +159,7 @@ pub fn handle_init(cmd: InitCommand, ctx: &CliConfig) -> Result<()> {
     out.println("=".repeat(40).as_str());
 
     match profile {
-        InitProfile::Developer => run_developer_setup(interactive, &out, &cmd, ctx)?,
+        InitProfile::Developer => run_developer_setup(interactive, &out, &cmd, ctx, now)?,
         InitProfile::Ci => run_ci_setup(&out, ctx)?,
         InitProfile::Agent => run_agent_setup(interactive, &out, &cmd, ctx)?,
     }
@@ -168,6 +172,7 @@ fn run_developer_setup(
     out: &Output,
     cmd: &InitCommand,
     ctx: &CliConfig,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
     let mut guide = GuidedSetup::new(out, guided::developer_steps());
 
@@ -219,6 +224,7 @@ fn run_developer_setup(
             out,
             Arc::clone(&ctx.passphrase_provider),
             &ctx.env_config,
+            now,
         )? {
             Some((url, _username)) => {
                 out.print_success(&format!("Proof anchored: {}", url));
@@ -332,8 +338,9 @@ fn run_agent_setup(
 }
 
 impl crate::commands::executable::ExecutableCommand for InitCommand {
+    #[allow(clippy::disallowed_methods)]
     fn execute(&self, ctx: &CliConfig) -> anyhow::Result<()> {
-        handle_init(self.clone(), ctx)
+        handle_init(self.clone(), ctx, chrono::Utc::now())
     }
 }
 

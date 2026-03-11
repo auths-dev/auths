@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, anyhow};
-use chrono::Utc;
 use clap::{ArgAction, Parser, Subcommand};
 use ring::signature::KeyPair;
 use serde::Serialize;
@@ -249,6 +248,7 @@ pub fn handle_id(
     attestation_blob_name_override: Option<String>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
     // Determine repo path using the passed Option
     let repo_path = layout::resolve_repo_path(repo_opt)?;
@@ -598,7 +598,9 @@ pub fn handle_id(
             let pkcs8_bytes = auths_core::crypto::signer::decrypt_keypair(&encrypted_key, &pass)
                 .context("Failed to decrypt key")?;
             let keypair = auths_id::identity::helpers::load_keypair_from_der_or_seed(&pkcs8_bytes)?;
-            let public_key_hex = hex::encode(keypair.public_key().as_ref());
+            let public_key_hex = auths_verifier::PublicKeyHex::new_unchecked(hex::encode(
+                keypair.public_key().as_ref(),
+            ));
 
             // Create the bundle
             let bundle = IdentityBundle {
@@ -606,7 +608,7 @@ pub fn handle_id(
                 identity_did: IdentityDID::new_unchecked(identity.controller_did.to_string()),
                 public_key_hex,
                 attestation_chain: attestations,
-                bundle_timestamp: Utc::now(),
+                bundle_timestamp: now,
                 max_valid_for_secs: max_age_secs,
             };
 
@@ -633,9 +635,9 @@ pub fn handle_id(
         }
 
         IdSubcommand::Claim(claim_cmd) => {
-            super::claim::handle_claim(&claim_cmd, &repo_path, passphrase_provider, env_config)
+            super::claim::handle_claim(&claim_cmd, &repo_path, passphrase_provider, env_config, now)
         }
 
-        IdSubcommand::Migrate(migrate_cmd) => super::migrate::handle_migrate(migrate_cmd),
+        IdSubcommand::Migrate(migrate_cmd) => super::migrate::handle_migrate(migrate_cmd, now),
     }
 }

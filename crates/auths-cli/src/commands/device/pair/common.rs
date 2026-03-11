@@ -127,6 +127,7 @@ pub(crate) fn display_sas_mismatch_warning() {
 
 /// Handle a successful pairing response — verify signature, complete ECDH, create attestation.
 pub(crate) fn handle_pairing_response(
+    now: chrono::DateTime<chrono::Utc>,
     session: &mut PairingSession,
     response: SubmitResponseRequest,
     auths_dir: &Path,
@@ -229,7 +230,7 @@ pub(crate) fn handle_pairing_response(
             style("No local identity found at ~/.auths").yellow()
         );
         println!("  Run 'auths init' first to create an identity.");
-        save_device_info(auths_dir, &response)?;
+        save_device_info(now, auths_dir, &response)?;
         return Ok(());
     }
 
@@ -277,7 +278,8 @@ pub(crate) fn handle_pairing_response(
     let decrypted = DecryptedPairingResponse {
         auths_dir: auths_dir.to_path_buf(),
         device_pubkey: device_signing_bytes,
-        device_did: response.device_did.to_string(),
+        #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from pairing protocol response
+        device_did: auths_verifier::types::DeviceDID::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
         capabilities: capabilities.to_vec(),
         identity_key_alias,
@@ -324,7 +326,7 @@ pub(crate) fn handle_pairing_response(
                 "    {}",
                 style(format!("auths device link --device-did {} ...", device_did)).dim()
             );
-            save_device_info(auths_dir, &response)?;
+            save_device_info(now, auths_dir, &response)?;
         }
     }
 
@@ -332,7 +334,11 @@ pub(crate) fn handle_pairing_response(
 }
 
 /// Save device info as a JSON file (fallback when attestation creation fails).
-pub(crate) fn save_device_info(auths_dir: &Path, response: &SubmitResponseRequest) -> Result<()> {
+pub(crate) fn save_device_info(
+    now: chrono::DateTime<chrono::Utc>,
+    auths_dir: &Path,
+    response: &SubmitResponseRequest,
+) -> Result<()> {
     let devices_dir = auths_dir.join("devices");
     create_restricted_dir(&devices_dir)?;
 
@@ -345,7 +351,7 @@ pub(crate) fn save_device_info(auths_dir: &Path, response: &SubmitResponseReques
         "signing_pubkey": response.device_signing_pubkey.as_str(),
         "x25519_pubkey": response.device_x25519_pubkey.as_str(),
         "name": response.device_name,
-        "paired_at": chrono::Utc::now().to_rfc3339(),
+        "paired_at": now.to_rfc3339(),
     });
 
     write_sensitive_file(&device_file, serde_json::to_string_pretty(&device_info)?)?;
@@ -359,6 +365,7 @@ pub(crate) fn save_device_info(auths_dir: &Path, response: &SubmitResponseReques
 }
 
 /// Get the hostname of this machine for device naming.
+#[allow(clippy::disallowed_methods)] // CLI boundary: hostname from env
 pub(crate) fn hostname() -> String {
     std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("HOST"))

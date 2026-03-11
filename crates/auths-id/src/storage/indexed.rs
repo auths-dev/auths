@@ -8,8 +8,8 @@ use crate::error::StorageError;
 use crate::storage::attestation::AttestationSource;
 use crate::storage::layout::StorageLayoutConfig;
 use auths_index::{AttestationIndex, IndexedAttestation, rebuild_attestations_from_git};
-use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::core::{Attestation, CommitOid};
+use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 
@@ -87,11 +87,11 @@ impl IndexedAttestationStorage {
         now: DateTime<Utc>,
     ) -> Result<(), StorageError> {
         let indexed = IndexedAttestation {
-            rid: att.rid.to_string(),
-            issuer_did: att.issuer.to_string(),
-            device_did: att.subject.to_string(),
+            rid: att.rid.clone(),
+            issuer_did: IdentityDID::new_unchecked(att.issuer.as_str()),
+            device_did: att.subject.clone(),
             git_ref: git_ref.to_string(),
-            commit_oid: commit_oid.to_string(),
+            commit_oid: CommitOid::new_unchecked(commit_oid),
             revoked_at: att.revoked_at,
             expires_at: att.expires_at,
             updated_at: att.timestamp.unwrap_or(now),
@@ -151,10 +151,7 @@ impl AttestationSource for IndexedAttestationStorage {
         }
 
         // Collect unique device DIDs from the index
-        let mut dids: Vec<DeviceDID> = active
-            .into_iter()
-            .map(|a| DeviceDID::new_unchecked(&a.device_did))
-            .collect();
+        let mut dids: Vec<DeviceDID> = active.into_iter().map(|a| a.device_did.clone()).collect();
         dids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         dids.dedup();
         Ok(dids)

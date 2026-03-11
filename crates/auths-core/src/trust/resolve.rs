@@ -3,6 +3,8 @@
 //! This module provides the core trust decision engine that determines
 //! whether to trust a presented identity based on the configured policy.
 
+use auths_verifier::PublicKeyHex;
+
 use super::continuity::{KelContinuityChecker, RotationProof};
 use super::pinned::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
 use super::policy::TrustPolicy;
@@ -155,7 +157,7 @@ pub fn resolve_trust(
                 if prompt(&msg) {
                     let pin = PinnedIdentity {
                         did,
-                        public_key_hex: pk_hex,
+                        public_key_hex: PublicKeyHex::new_unchecked(pk_hex),
                         kel_tip_said: None,
                         kel_sequence: None,
                         first_seen: now,
@@ -186,7 +188,7 @@ pub fn resolve_trust(
         TrustDecision::RotationVerified { old_pin, proof } => {
             let updated = PinnedIdentity {
                 did: old_pin.did,
-                public_key_hex: hex::encode(&proof.new_public_key),
+                public_key_hex: PublicKeyHex::new_unchecked(hex::encode(&proof.new_public_key)),
                 kel_tip_said: Some(proof.new_kel_tip),
                 kel_sequence: Some(proof.new_sequence),
                 first_seen: old_pin.first_seen,
@@ -198,7 +200,7 @@ pub fn resolve_trust(
         }
 
         TrustDecision::Conflict { pin, presented_pk } => {
-            let pinned_hex = &pin.public_key_hex;
+            let pinned_hex = pin.public_key_hex.as_str();
             let presented_hex = hex::encode(&presented_pk);
             Err(TrustError::PolicyRejected(format!(
                 "TRUST CONFLICT for {}\n  \
@@ -225,8 +227,9 @@ mod tests {
     fn make_test_pin() -> PinnedIdentity {
         PinnedIdentity {
             did: "did:keri:ETest123".to_string(),
-            public_key_hex: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
-                .to_string(),
+            public_key_hex: PublicKeyHex::new_unchecked(
+                "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+            ),
             kel_tip_said: Some("ETip".to_string()),
             kel_sequence: Some(0),
             first_seen: Utc::now(),

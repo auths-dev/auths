@@ -551,7 +551,7 @@ pub trait RegistryBackend: Send + Sync {
                     status,
                     role: att.role,
                     capabilities: att.capabilities.clone(),
-                    issuer: att.issuer.clone(),
+                    issuer: IdentityDID::new_unchecked(att.issuer.as_str()),
                     rid: att.rid.clone(),
                     revoked_at,
                     expires_at: att.expires_at,

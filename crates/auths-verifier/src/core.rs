@@ -1,7 +1,7 @@
 //! Core attestation types and canonical serialization.
 
 use crate::error::AttestationError;
-use crate::types::{DeviceDID, IdentityDID};
+use crate::types::{CanonicalDid, DeviceDID, IdentityDID};
 use chrono::{DateTime, Utc};
 use hex;
 use json_canon;
@@ -664,7 +664,7 @@ pub struct IdentityBundle {
     /// The DID of the identity (e.g., `"did:keri:..."`)
     pub identity_did: IdentityDID,
     /// The public key in hex format for signature verification
-    pub public_key_hex: String,
+    pub public_key_hex: PublicKeyHex,
     /// Chain of attestations linking the signing key to the identity
     pub attestation_chain: Vec<Attestation>,
     /// UTC timestamp when this bundle was created
@@ -703,8 +703,8 @@ pub struct Attestation {
     pub version: u32,
     /// Record identifier linking this attestation to its storage ref.
     pub rid: ResourceId,
-    /// DID of the issuing identity.
-    pub issuer: IdentityDID,
+    /// DID of the issuing identity (can be `did:keri:` or `did:key:`).
+    pub issuer: CanonicalDid,
     /// DID of the device being attested.
     pub subject: DeviceDID,
     /// Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
@@ -739,7 +739,7 @@ pub struct Attestation {
 
     /// DID of the attestation that delegated authority (for chain tracking).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub delegated_by: Option<IdentityDID>,
+    pub delegated_by: Option<CanonicalDid>,
 
     /// The type of entity that produced this signature (human, agent, workload).
     /// Included in the canonical JSON before signing — the signature covers this field.
@@ -822,7 +822,7 @@ pub struct CanonicalAttestationData<'a> {
     /// Record identifier.
     pub rid: &'a str,
     /// DID of the issuing identity.
-    pub issuer: &'a IdentityDID,
+    pub issuer: &'a CanonicalDid,
     /// DID of the device being attested.
     pub subject: &'a DeviceDID,
     /// Raw Ed25519 public key of the device.
@@ -847,7 +847,7 @@ pub struct CanonicalAttestationData<'a> {
     pub capabilities: Option<&'a Vec<Capability>>,
     /// DID of the delegating attestation (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub delegated_by: Option<&'a IdentityDID>,
+    pub delegated_by: Option<&'a CanonicalDid>,
     /// Type of signer (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signer_type: Option<&'a SignerType>,
@@ -984,7 +984,7 @@ pub struct ThresholdPolicy {
     pub signers: Vec<String>,
 
     /// Unique identifier for this policy
-    pub policy_id: String,
+    pub policy_id: PolicyId,
 
     /// Scope of operations this policy covers (optional)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -997,11 +997,11 @@ pub struct ThresholdPolicy {
 
 impl ThresholdPolicy {
     /// Create a new threshold policy
-    pub fn new(threshold: u8, signers: Vec<String>, policy_id: String) -> Self {
+    pub fn new(threshold: u8, signers: Vec<String>, policy_id: impl Into<PolicyId>) -> Self {
         Self {
             threshold,
             signers,
-            policy_id,
+            policy_id: policy_id.into(),
             scope: None,
             ceremony_endpoint: None,
         }
@@ -1031,6 +1031,302 @@ impl ThresholdPolicy {
     /// Returns M (threshold) and N (total signers)
     pub fn m_of_n(&self) -> (u8, usize) {
         (self.threshold, self.signers.len())
+    }
+}
+
+// =============================================================================
+// CommitOid newtype (validated)
+// =============================================================================
+
+/// Error type for `CommitOid` construction.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CommitOidError {
+    /// The string is empty.
+    #[error("commit OID is empty")]
+    Empty,
+    /// The string length is not 40 (SHA-1) or 64 (SHA-256).
+    #[error("expected 40 or 64 hex chars, got {0}")]
+    InvalidLength(usize),
+    /// The string contains non-hex characters.
+    #[error("invalid hex character in commit OID")]
+    InvalidHex,
+}
+
+/// A validated Git commit object identifier (SHA-1 or SHA-256 hex string).
+///
+/// Accepts exactly 40 lowercase hex characters (SHA-1) or 64 (SHA-256).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[repr(transparent)]
+#[serde(try_from = "String")]
+pub struct CommitOid(String);
+
+impl CommitOid {
+    /// Parses and validates a commit OID string.
+    ///
+    /// Args:
+    /// * `raw`: A hex string that must be exactly 40 or 64 lowercase hex characters.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let oid = CommitOid::parse("a".repeat(40))?;
+    /// ```
+    pub fn parse(raw: &str) -> Result<Self, CommitOidError> {
+        let s = raw.trim().to_lowercase();
+        if s.is_empty() {
+            return Err(CommitOidError::Empty);
+        }
+        if s.len() != 40 && s.len() != 64 {
+            return Err(CommitOidError::InvalidLength(s.len()));
+        }
+        if !s.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(CommitOidError::InvalidHex);
+        }
+        Ok(Self(s))
+    }
+
+    /// Creates a `CommitOid` without validation.
+    ///
+    /// Only use at deserialization boundaries where the value was previously validated.
+    pub fn new_unchecked(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes self and returns the inner `String`.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl fmt::Display for CommitOid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for CommitOid {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for CommitOid {
+    type Error = CommitOidError;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
+    }
+}
+
+impl TryFrom<&str> for CommitOid {
+    type Error = CommitOidError;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
+    }
+}
+
+impl FromStr for CommitOid {
+    type Err = CommitOidError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl From<CommitOid> for String {
+    fn from(oid: CommitOid) -> Self {
+        oid.0
+    }
+}
+
+impl<'de> Deserialize<'de> for CommitOid {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+// =============================================================================
+// PublicKeyHex newtype (validated)
+// =============================================================================
+
+/// Error type for `PublicKeyHex` construction.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PublicKeyHexError {
+    /// The hex string has the wrong length (not 64 chars / 32 bytes).
+    #[error("expected 64 hex chars (32 bytes), got {0} chars")]
+    InvalidLength(usize),
+    /// The string contains non-hex characters.
+    #[error("invalid hex: {0}")]
+    InvalidHex(String),
+}
+
+/// A validated hex-encoded Ed25519 public key (64 hex chars = 32 bytes).
+///
+/// Use `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[repr(transparent)]
+#[serde(try_from = "String")]
+pub struct PublicKeyHex(String);
+
+impl PublicKeyHex {
+    /// Parses and validates a hex-encoded public key string.
+    ///
+    /// Args:
+    /// * `raw`: A 64-character hex string encoding 32 bytes.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let pk = PublicKeyHex::parse("ab".repeat(32))?;
+    /// ```
+    pub fn parse(raw: &str) -> Result<Self, PublicKeyHexError> {
+        let s = raw.trim().to_lowercase();
+        let bytes = hex::decode(&s).map_err(|e| PublicKeyHexError::InvalidHex(e.to_string()))?;
+        if bytes.len() != 32 {
+            return Err(PublicKeyHexError::InvalidLength(s.len()));
+        }
+        Ok(Self(s))
+    }
+
+    /// Creates a `PublicKeyHex` without validation.
+    ///
+    /// Only use at deserialization boundaries where the value was previously validated.
+    pub fn new_unchecked(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes self and returns the inner `String`.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+
+    /// Decodes the hex and returns the byte-array `Ed25519PublicKey`.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let pk_hex = PublicKeyHex::parse("ab".repeat(32))?;
+    /// let pk = pk_hex.to_ed25519()?;
+    /// ```
+    pub fn to_ed25519(&self) -> Result<Ed25519PublicKey, Ed25519KeyError> {
+        let bytes = hex::decode(&self.0).map_err(|e| Ed25519KeyError::InvalidHex(e.to_string()))?;
+        Ed25519PublicKey::try_from_slice(&bytes)
+    }
+}
+
+impl fmt::Display for PublicKeyHex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for PublicKeyHex {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for PublicKeyHex {
+    type Error = PublicKeyHexError;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
+    }
+}
+
+impl TryFrom<&str> for PublicKeyHex {
+    type Error = PublicKeyHexError;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
+    }
+}
+
+impl FromStr for PublicKeyHex {
+    type Err = PublicKeyHexError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl From<PublicKeyHex> for String {
+    fn from(pk: PublicKeyHex) -> Self {
+        pk.0
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKeyHex {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+// =============================================================================
+// PolicyId newtype (unvalidated)
+// =============================================================================
+
+/// An opaque policy identifier.
+///
+/// No validation — wraps any `String`. Use where policy IDs are passed around
+/// without needing to inspect their content.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(transparent)]
+pub struct PolicyId(String);
+
+impl PolicyId {
+    /// Creates a new PolicyId.
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for PolicyId {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for PolicyId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for PolicyId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for PolicyId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl PartialEq<str> for PolicyId {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for PolicyId {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
     }
 }
 
@@ -1321,7 +1617,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -1333,7 +1629,7 @@ mod tests {
             payload: None,
             role: Some(Role::Admin),
             capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
-            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Edelegator")),
+            delegated_by: Some(CanonicalDid::new_unchecked("did:keri:Edelegator")),
             signer_type: None,
             environment_claim: None,
         };
@@ -1354,7 +1650,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -1387,7 +1683,7 @@ mod tests {
         let original = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -1399,7 +1695,7 @@ mod tests {
             payload: None,
             role: Some(Role::Member),
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
-            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eadmin")),
+            delegated_by: Some(CanonicalDid::new_unchecked("did:keri:Eadmin")),
             signer_type: None,
             environment_claim: None,
         };
@@ -1534,7 +1830,7 @@ mod tests {
     fn identity_bundle_serializes_correctly() {
         let bundle = IdentityBundle {
             identity_did: IdentityDID::new_unchecked("did:keri:test123"),
-            public_key_hex: "aabbccdd".to_string(),
+            public_key_hex: PublicKeyHex::new_unchecked("aabbccdd"),
             attestation_chain: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
@@ -1554,7 +1850,7 @@ mod tests {
     fn identity_bundle_deserializes_correctly() {
         let json = r#"{
             "identity_did": "did:keri:abc123",
-            "public_key_hex": "112233",
+            "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
             "attestation_chain": [],
             "bundle_timestamp": "2099-01-01T00:00:00Z",
             "max_valid_for_secs": 86400
@@ -1563,7 +1859,10 @@ mod tests {
         let bundle: IdentityBundle = serde_json::from_str(json).unwrap();
 
         assert_eq!(bundle.identity_did.as_str(), "did:keri:abc123");
-        assert_eq!(bundle.public_key_hex, "112233");
+        assert_eq!(
+            bundle.public_key_hex.as_str(),
+            "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+        );
         assert!(bundle.attestation_chain.is_empty());
     }
 
@@ -1574,7 +1873,7 @@ mod tests {
         let attestation = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -1593,7 +1892,9 @@ mod tests {
 
         let original = IdentityBundle {
             identity_did: IdentityDID::new_unchecked("did:keri:Eexample"),
-            public_key_hex: "deadbeef".to_string(),
+            public_key_hex: PublicKeyHex::new_unchecked(
+                "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            ),
             attestation_chain: vec![attestation],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()

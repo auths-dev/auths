@@ -17,9 +17,9 @@ use auths_sdk::workflows::org::{
     revoke_organization_member,
 };
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
-use auths_verifier::Capability;
 use auths_verifier::core::{Ed25519PublicKey, Role};
 use auths_verifier::types::DeviceDID;
+use auths_verifier::{Capability, PublicKeyHex};
 use chrono::Utc;
 
 use crate::identity::{make_keychain_config, resolve_passphrase};
@@ -205,13 +205,13 @@ pub fn add_org_member(
         ));
 
         let resolver = RegistryDidResolver::new(backend.clone());
-        let admin_pk_hex = hex::encode(
+        let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
             resolver
                 .resolve(&org_did)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?
                 .public_key()
                 .as_bytes(),
-        );
+        ));
 
         let member_pk = if let Some(pk_hex) = member_public_key_hex {
             let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
@@ -299,13 +299,13 @@ pub fn revoke_org_member(
         ));
 
         let resolver = RegistryDidResolver::new(backend.clone());
-        let admin_pk_hex = hex::encode(
+        let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
             resolver
                 .resolve(&org_did)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?
                 .public_key()
                 .as_bytes(),
-        );
+        ));
 
         let member_pk = if let Some(pk_hex) = member_public_key_hex {
             let pk_bytes = hex::decode(&pk_hex).map_err(|e| {

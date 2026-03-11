@@ -101,7 +101,9 @@ struct VerifyResult {
 /// Handle verify command. Returns Ok(()) on success, Err on error.
 /// Uses exit codes: 0=valid, 1=invalid, 2=error
 pub async fn handle_verify(cmd: VerifyCommand) -> Result<()> {
-    let result = run_verify(&cmd).await;
+    #[allow(clippy::disallowed_methods)]
+    let now = Utc::now();
+    let result = run_verify(now, &cmd).await;
 
     match result {
         Ok(verify_result) => {
@@ -169,7 +171,11 @@ fn effective_trust_policy(cmd: &VerifyCommand) -> TrustPolicy {
 /// 2. Pinned identity store
 /// 3. roots.json file
 /// 4. Trust policy (TOFU prompt or explicit rejection)
-fn resolve_issuer_key(cmd: &VerifyCommand, att: &Attestation) -> Result<Vec<u8>> {
+fn resolve_issuer_key(
+    now: chrono::DateTime<Utc>,
+    cmd: &VerifyCommand,
+    att: &Attestation,
+) -> Result<Vec<u8>> {
     // 1. Direct key takes precedence
     if let Some(ref pk_hex) = cmd.issuer_pk {
         let pk_bytes =
@@ -221,7 +227,7 @@ fn resolve_issuer_key(cmd: &VerifyCommand, att: &Attestation) -> Result<Vec<u8>>
                 public_key_hex: root.public_key_hex.clone(),
                 kel_tip_said: root.kel_tip_said.clone(),
                 kel_sequence: None,
-                first_seen: Utc::now(),
+                first_seen: now,
                 origin: format!("roots.json:{}", roots_path.display()),
                 trust_level: TrustLevel::OrgPolicy,
             };
@@ -258,7 +264,7 @@ fn resolve_issuer_key(cmd: &VerifyCommand, att: &Attestation) -> Result<Vec<u8>>
 
 use crate::commands::verify_helpers::parse_witness_keys;
 
-async fn run_verify(cmd: &VerifyCommand) -> Result<VerifyResult> {
+async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<VerifyResult> {
     // 1. Read attestation from file or stdin
     let attestation_bytes = if cmd.attestation == "-" {
         let mut buffer = Vec::new();
@@ -283,7 +289,7 @@ async fn run_verify(cmd: &VerifyCommand) -> Result<VerifyResult> {
     }
 
     // 3. Resolve issuer public key
-    let issuer_pk_bytes = resolve_issuer_key(cmd, &att)?;
+    let issuer_pk_bytes = resolve_issuer_key(now, cmd, &att)?;
 
     let required_capability: Option<Capability> = cmd.require_capability.as_ref().map(|cap| {
         cap.parse::<Capability>().unwrap_or_else(|e| {

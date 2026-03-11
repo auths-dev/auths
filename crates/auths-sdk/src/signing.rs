@@ -12,7 +12,7 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::core::resign_attestation;
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::storage::git_refs::AttestationMetadata;
-use auths_verifier::core::Capability;
+use auths_verifier::core::{Capability, ResourceId};
 use auths_verifier::types::DeviceDID;
 use std::collections::HashMap;
 use std::path::Path;
@@ -190,7 +190,7 @@ pub struct ArtifactSigningResult {
     /// Canonical JSON of the signed attestation.
     pub attestation_json: String,
     /// Resource identifier assigned to the attestation in the identity store.
-    pub rid: String,
+    pub rid: ResourceId,
     /// Hex-encoded SHA-256 digest of the attested artifact.
     pub digest: String,
 }
@@ -391,7 +391,7 @@ pub fn sign_artifact(
         .metadata()
         .map_err(|e| ArtifactSigningError::DigestFailed(e.to_string()))?;
 
-    let rid = format!("sha256:{}", artifact_meta.digest.hex);
+    let rid = ResourceId::new(format!("sha256:{}", artifact_meta.digest.hex));
     let now = ctx.clock.now();
     let meta = AttestationMetadata {
         timestamp: Some(now),

@@ -1,5 +1,6 @@
 use auths_core::storage::keychain::KeyAlias;
 use auths_verifier::Capability;
+use auths_verifier::types::DeviceDID;
 use std::path::PathBuf;
 
 /// Policy for handling an existing identity during developer setup.
@@ -586,7 +587,7 @@ pub struct DeviceExtensionConfig {
     /// Path to the auths registry.
     pub repo_path: PathBuf,
     /// DID of the device whose authorization to extend.
-    pub device_did: String,
+    pub device_did: DeviceDID,
     /// Number of days from now for the new expiration.
     pub days: u32,
     /// Keychain alias for the identity signing key.

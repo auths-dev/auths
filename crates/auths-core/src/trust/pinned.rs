@@ -7,6 +7,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
+use auths_verifier::PublicKeyHex;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -22,10 +23,7 @@ pub struct PinnedIdentity {
     pub did: String,
 
     /// Root public key, raw bytes stored as lowercase hex.
-    ///
-    /// Always normalized at pin-time via `hex::encode`.
-    /// All comparisons happen on decoded bytes, never on strings.
-    pub public_key_hex: String,
+    pub public_key_hex: PublicKeyHex,
 
     /// KEL tip SAID at the time of pinning (enables rotation continuity check).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -50,7 +48,7 @@ impl PinnedIdentity {
     ///
     /// Validates hex at construction; this should never fail on a well-formed pin.
     pub fn public_key_bytes(&self) -> Result<Vec<u8>, TrustError> {
-        hex::decode(&self.public_key_hex).map_err(|e| {
+        hex::decode(self.public_key_hex.as_str()).map_err(|e| {
             TrustError::InvalidData(format!("Corrupt pin for {}: invalid hex: {}", self.did, e))
         })
     }
@@ -128,9 +126,6 @@ impl PinnedIdentityStore {
     /// The public key hex is validated at pin-time.
     /// Errors if the DID is already pinned (use `update` for rotation).
     pub fn pin(&self, identity: PinnedIdentity) -> Result<(), TrustError> {
-        let _ = hex::decode(&identity.public_key_hex)
-            .map_err(|e| TrustError::InvalidData(format!("Invalid public_key_hex: {}", e)))?;
-
         let _lock = self.lock()?;
         let mut entries = self.read_all()?;
         if entries.iter().any(|e| e.did == identity.did) {
@@ -281,8 +276,9 @@ mod tests {
     fn make_test_pin() -> PinnedIdentity {
         PinnedIdentity {
             did: "did:keri:ETest123".to_string(),
-            public_key_hex: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
-                .to_string(),
+            public_key_hex: PublicKeyHex::new_unchecked(
+                "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+            ),
             kel_tip_said: Some("ETip".to_string()),
             kel_sequence: Some(0),
             first_seen: Utc::now(),
@@ -301,12 +297,16 @@ mod tests {
     }
 
     #[test]
-    fn test_public_key_bytes_invalid_hex() {
-        let mut pin = make_test_pin();
-        pin.public_key_hex = "not-valid-hex".to_string();
-        let result = pin.public_key_bytes();
+    fn test_serde_rejects_invalid_hex() {
+        let json = r#"{
+            "did": "did:keri:ETest123",
+            "public_key_hex": "not-valid-hex",
+            "first_seen": "2024-01-01T00:00:00Z",
+            "origin": "test",
+            "trust_level": "tofu"
+        }"#;
+        let result: Result<PinnedIdentity, _> = serde_json::from_str(json);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Corrupt pin"));
     }
 
     #[test]
@@ -325,10 +325,10 @@ mod tests {
 
     #[test]
     fn test_key_matches_case_insensitive() {
-        // Mixed case hex should still match
         let mut pin = make_test_pin();
-        pin.public_key_hex =
-            "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20".to_string();
+        pin.public_key_hex = PublicKeyHex::new_unchecked(
+            "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20",
+        );
         let expected: Vec<u8> = (1..=32).collect();
         assert!(pin.key_matches(&expected).unwrap());
     }
@@ -404,14 +404,9 @@ mod tests {
     }
 
     #[test]
-    fn test_store_pin_rejects_invalid_hex() {
-        let (_dir, store) = temp_store();
-        let mut pin = make_test_pin();
-        pin.public_key_hex = "not-valid-hex".to_string();
-
-        let result = store.pin(pin);
+    fn test_public_key_hex_rejects_invalid_at_parse() {
+        let result = PublicKeyHex::parse("not-valid-hex");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid"));
     }
 
     #[test]
@@ -432,15 +427,15 @@ mod tests {
         let mut pin = make_test_pin();
         store.pin(pin.clone()).unwrap();
 
-        // Update with new key
-        pin.public_key_hex =
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        pin.public_key_hex = PublicKeyHex::new_unchecked(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        );
         pin.kel_sequence = Some(1);
         store.update(pin.clone()).unwrap();
 
         let found = store.lookup(&pin.did).unwrap().unwrap();
         assert_eq!(found.kel_sequence, Some(1));
-        assert!(found.public_key_hex.starts_with("aaaa"));
+        assert!(found.public_key_hex.as_str().starts_with("aaaa"));
     }
 
     #[test]

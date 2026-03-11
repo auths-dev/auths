@@ -83,6 +83,7 @@ pub fn init_audit_sinks() -> Option<TelemetryShutdown> {
         Err(_) => return None,
     };
     let config = load_audit_config(&audit_path);
+    #[allow(clippy::disallowed_methods)] // CLI boundary: audit config reads env vars
     let sinks = build_sinks_from_config(&config, |name| std::env::var(name).ok());
     if sinks.is_empty() {
         return None;

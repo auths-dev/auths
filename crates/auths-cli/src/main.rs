@@ -1,10 +1,5 @@
-// CLI is the presentation boundary — Utc::now(), env::var, and printing are expected here.
-#![allow(
-    clippy::print_stdout,
-    clippy::print_stderr,
-    clippy::disallowed_methods,
-    clippy::exit
-)]
+// CLI is the presentation boundary — printing and exit are expected here.
+#![allow(clippy::print_stdout, clippy::print_stderr, clippy::exit)]
 use anyhow::Result;
 use clap::Parser;
 
@@ -107,6 +102,7 @@ fn run() -> Result<()> {
 
     if let Some(action) = action {
         let status = if result.is_ok() { "success" } else { "failed" };
+        #[allow(clippy::disallowed_methods)]
         let now = chrono::Utc::now().timestamp();
         let event = auths_telemetry::build_audit_event("unknown", action, status, now);
         auths_telemetry::emit_telemetry(&event);

@@ -12,6 +12,8 @@
 //! - On any mismatch, cache is treated as a miss and full replay occurs
 //! - Cache files are local-only, never committed to Git or replicated
 
+use auths_verifier::CommitOid;
+use auths_verifier::types::IdentityDID;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -33,13 +35,13 @@ pub struct CachedKelState {
     /// Cache format version for forward compatibility
     pub version: u32,
     /// The DID this cache entry is for (authoritative, verified on load)
-    pub did: String,
+    pub did: IdentityDID,
     /// Sequence number of the last event
     pub sequence: u64,
     /// SAID of the tip event when this cache was validated
     pub validated_against_tip_said: Said,
     /// Git commit OID of the tip event (hex-encoded) - enables incremental validation
-    pub last_commit_oid: String,
+    pub last_commit_oid: CommitOid,
     /// The validated key state
     pub state: KeyState,
     /// When this cache entry was created
@@ -104,10 +106,10 @@ pub fn write_kel_cache(
 ) -> Result<(), CacheError> {
     let cache = CachedKelState {
         version: CACHE_VERSION,
-        did: did.to_string(),
+        did: IdentityDID::new_unchecked(did),
         sequence: state.sequence,
         validated_against_tip_said: Said::new_unchecked(tip_said.to_string()),
-        last_commit_oid: commit_oid.to_string(),
+        last_commit_oid: CommitOid::new_unchecked(commit_oid),
         state: state.clone(),
         cached_at: now,
     };
@@ -208,7 +210,7 @@ pub fn try_load_cached_state_full(auths_home: &Path, did: &str) -> Option<Cached
     }
 
     // DID must match - prevents file swap/collision attacks
-    if cache.did != did {
+    if cache.did.as_str() != did {
         return None;
     }
 
@@ -238,13 +240,13 @@ pub fn invalidate_cache(auths_home: &Path, did: &str) -> Result<(), io::Error> {
 #[derive(Debug, Clone)]
 pub struct CacheEntry {
     /// The DID this cache is for
-    pub did: String,
+    pub did: IdentityDID,
     /// Sequence number
     pub sequence: u64,
     /// SAID the cache was validated against
     pub validated_against_tip_said: Said,
     /// Git commit OID of the cached position
-    pub last_commit_oid: String,
+    pub last_commit_oid: CommitOid,
     /// When the cache was created
     pub cached_at: DateTime<Utc>,
     /// Path to the cache file
@@ -436,7 +438,7 @@ mod tests {
         let path = cache_path_for_did(dir.path(), did);
         let mut cache: CachedKelState =
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        cache.did = "did:keri:EWrongDid".to_string();
+        cache.did = IdentityDID::new_unchecked("did:keri:EWrongDid");
         fs::write(&path, serde_json::to_vec_pretty(&cache).unwrap()).unwrap();
 
         // Try to load - should return None due to DID mismatch

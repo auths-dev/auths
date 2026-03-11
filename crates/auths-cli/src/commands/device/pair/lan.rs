@@ -25,6 +25,7 @@ use super::lan_server::{LanPairingServer, detect_lan_ip};
 /// 6. Wait for response
 /// 7. Verify + create attestation
 pub async fn handle_initiate_lan(
+    now: chrono::DateTime<chrono::Utc>,
     no_qr: bool,
     no_mdns: bool,
     expiry_secs: u64,
@@ -46,7 +47,7 @@ pub async fn handle_initiate_lan(
     // Generate a session token with a placeholder endpoint — we'll update it after
     // the server starts and we know the actual port.
     let mut session = PairingToken::generate_with_expiry(
-        chrono::Utc::now(),
+        now,
         controller_did.clone(),
         "http://placeholder".to_string(), // replaced below
         capabilities.to_vec(),
@@ -186,6 +187,7 @@ pub async fn handle_initiate_lan(
             }
 
             handle_pairing_response(
+                now,
                 &mut session,
                 response_data,
                 &auths_dir,
@@ -212,7 +214,11 @@ pub async fn handle_initiate_lan(
 }
 
 /// Join a LAN pairing session by discovering it via mDNS.
-pub async fn handle_join_lan(code: &str, env_config: &EnvironmentConfig) -> Result<()> {
+pub async fn handle_join_lan(
+    now: chrono::DateTime<chrono::Utc>,
+    code: &str,
+    env_config: &EnvironmentConfig,
+) -> Result<()> {
     use auths_core::pairing::normalize_short_code;
 
     let normalized = normalize_short_code(code);
@@ -254,5 +260,5 @@ pub async fn handle_join_lan(code: &str, env_config: &EnvironmentConfig) -> Resu
     let registry = format!("http://{}", addr);
 
     // Delegate to the standard join flow
-    super::join::handle_join(&normalized, &registry, env_config).await
+    super::join::handle_join(now, &normalized, &registry, env_config).await
 }

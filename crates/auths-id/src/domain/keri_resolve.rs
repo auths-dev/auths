@@ -1,4 +1,5 @@
 use auths_crypto::KeriPublicKey;
+use auths_verifier::types::IdentityDID;
 
 use super::kel_port::KelPort;
 use crate::keri::{DidKeriResolution, Event, Prefix, ResolveError, parse_did_keri, validate_kel};
@@ -33,7 +34,7 @@ pub fn resolve_from_events(
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 
     Ok(DidKeriResolution {
-        did: did.to_string(),
+        did: IdentityDID::new_unchecked(did),
         prefix: prefix.clone(),
         public_key,
         sequence: state.sequence,

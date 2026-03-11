@@ -6,6 +6,7 @@
 //! 3. Decoding the current public key
 
 use auths_crypto::KeriPublicKey;
+use auths_verifier::types::IdentityDID;
 use git2::Repository;
 
 use super::types::Prefix;
@@ -41,7 +42,7 @@ pub enum ResolveError {
 #[derive(Debug, Clone)]
 pub struct DidKeriResolution {
     /// The full DID string
-    pub did: String,
+    pub did: IdentityDID,
 
     /// The KERI prefix
     pub prefix: Prefix,
@@ -90,7 +91,7 @@ pub fn resolve_did_keri(repo: &Repository, did: &str) -> Result<DidKeriResolutio
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 
     Ok(DidKeriResolution {
-        did: did.to_string(),
+        did: IdentityDID::new_unchecked(did),
         prefix,
         public_key,
         sequence: state.sequence,
@@ -142,7 +143,7 @@ pub fn resolve_did_keri_at_sequence(
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 
     Ok(DidKeriResolution {
-        did: did.to_string(),
+        did: IdentityDID::new_unchecked(did),
         prefix,
         public_key,
         sequence: state.sequence,

@@ -183,12 +183,14 @@ struct TestContext {
 
 // ── Handler ─────────────────────────────────────────────────────────────
 
+#[allow(clippy::disallowed_methods)]
 pub fn handle_policy(cmd: PolicyCommand) -> Result<()> {
+    let now = Utc::now();
     match cmd.command {
         PolicySubcommand::Lint(lint) => handle_lint(lint),
         PolicySubcommand::Compile(compile) => handle_compile(compile),
-        PolicySubcommand::Explain(explain) => handle_explain(explain),
-        PolicySubcommand::Test(test) => handle_test(test),
+        PolicySubcommand::Explain(explain) => handle_explain(explain, now),
+        PolicySubcommand::Test(test) => handle_test(test, now),
         PolicySubcommand::Diff(diff) => handle_diff(diff),
     }
 }
@@ -333,7 +335,7 @@ fn handle_compile(cmd: CompileCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_explain(cmd: ExplainCommand) -> Result<()> {
+fn handle_explain(cmd: ExplainCommand, now: DateTime<Utc>) -> Result<()> {
     let out = Output::new();
     let limits = PolicyLimits::default();
 
@@ -359,7 +361,7 @@ fn handle_explain(cmd: ExplainCommand) -> Result<()> {
     let test_ctx: TestContext =
         serde_json::from_slice(&ctx_content).with_context(|| "failed to parse context JSON")?;
 
-    let eval_ctx = build_eval_context(&test_ctx)?;
+    let eval_ctx = build_eval_context(&test_ctx, now)?;
 
     // Evaluate
     let decision = auths_policy::evaluate3(&policy, &eval_ctx);
@@ -393,7 +395,7 @@ fn handle_explain(cmd: ExplainCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_test(cmd: TestCommand) -> Result<()> {
+fn handle_test(cmd: TestCommand, now: DateTime<Utc>) -> Result<()> {
     let out = Output::new();
     let limits = PolicyLimits::default();
 
@@ -424,7 +426,7 @@ fn handle_test(cmd: TestCommand) -> Result<()> {
     let mut failed = 0;
 
     for test in test_cases {
-        let eval_ctx = match build_eval_context(&test.context) {
+        let eval_ctx = match build_eval_context(&test.context, now) {
             Ok(ctx) => ctx,
             Err(e) => {
                 results.push(TestResult {
@@ -607,8 +609,8 @@ fn compute_policy_stats(expr: &CompiledExpr) -> PolicyStats {
     }
 }
 
-fn build_eval_context(test: &TestContext) -> Result<EvalContext> {
-    let mut ctx = EvalContext::try_from_strings(Utc::now(), &test.issuer, &test.subject)
+fn build_eval_context(test: &TestContext, now: DateTime<Utc>) -> Result<EvalContext> {
+    let mut ctx = EvalContext::try_from_strings(now, &test.issuer, &test.subject)
         .map_err(|e| anyhow!("invalid DID: {}", e))?;
 
     ctx = ctx.revoked(test.revoked);

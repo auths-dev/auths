@@ -1,4 +1,5 @@
 use auths_core::error::AuthsErrorInfo;
+use auths_verifier::types::DeviceDID;
 use thiserror::Error;
 
 /// Typed storage errors originating from the `auths-id` layer.
@@ -143,14 +144,14 @@ pub enum DeviceExtensionError {
     #[error("no attestation found for device {device_did}")]
     NoAttestationFound {
         /// The DID of the device with no attestation.
-        device_did: String,
+        device_did: DeviceDID,
     },
 
     /// The device has already been revoked.
     #[error("device {device_did} is already revoked")]
     AlreadyRevoked {
         /// The DID of the revoked device.
-        device_did: String,
+        device_did: DeviceDID,
     },
 
     /// Creating a new attestation failed.

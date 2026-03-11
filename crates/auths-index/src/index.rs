@@ -1,5 +1,8 @@
 use crate::error::Result;
 use crate::schema;
+use auths_verifier::core::{CommitOid, ResourceId};
+use auths_verifier::keri::{Prefix, Said};
+use auths_verifier::types::{DeviceDID, IdentityDID};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlite::Connection;
@@ -10,15 +13,15 @@ use std::path::Path;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedAttestation {
     /// Primary key - the attestation RID
-    pub rid: String,
+    pub rid: ResourceId,
     /// DID of the issuer (controller)
-    pub issuer_did: String,
+    pub issuer_did: IdentityDID,
     /// DID of the device this attestation is for
-    pub device_did: String,
+    pub device_did: DeviceDID,
     /// Git ref path (e.g., refs/auths/devices/nodes/...)
     pub git_ref: String,
     /// Git commit OID for loading full attestation
-    pub commit_oid: String,
+    pub commit_oid: CommitOid,
     /// When this attestation was revoked, if applicable
     pub revoked_at: Option<DateTime<Utc>>,
     /// Optional expiration timestamp
@@ -33,10 +36,10 @@ pub struct IndexedAttestation {
 /// Full `KeyState` is loaded from `GitRegistryBackend` when needed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedIdentity {
-    pub prefix: String,
+    pub prefix: Prefix,
     pub current_keys: Vec<String>,
     pub sequence: u64,
-    pub tip_said: String,
+    pub tip_said: Said,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -46,10 +49,10 @@ pub struct IndexedIdentity {
 /// Full `Attestation` is loaded from Git when policy evaluation needs it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedOrgMember {
-    pub org_prefix: String,
-    pub member_did: String,
-    pub issuer_did: String,
-    pub rid: String,
+    pub org_prefix: Prefix,
+    pub member_did: DeviceDID,
+    pub issuer_did: IdentityDID,
+    pub rid: ResourceId,
     pub revoked_at: Option<DateTime<Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
@@ -274,11 +277,11 @@ impl AttestationIndex {
             .unwrap_or_else(|_| Utc::now());
 
         Ok(IndexedAttestation {
-            rid,
-            issuer_did,
-            device_did,
+            rid: ResourceId::new(rid),
+            issuer_did: IdentityDID::new_unchecked(issuer_did),
+            device_did: DeviceDID::new_unchecked(device_did),
             git_ref,
-            commit_oid,
+            commit_oid: CommitOid::new_unchecked(commit_oid),
             revoked_at,
             expires_at,
             updated_at,
@@ -335,10 +338,10 @@ impl AttestationIndex {
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now());
             Ok(Some(IndexedIdentity {
-                prefix,
+                prefix: Prefix::new_unchecked(prefix),
                 current_keys,
                 sequence: sequence as u64,
-                tip_said,
+                tip_said: Said::new_unchecked(tip_said),
                 updated_at,
             }))
         } else {
@@ -404,10 +407,10 @@ impl AttestationIndex {
             let updated_str: String = stmt.read(6)?;
 
             members.push(IndexedOrgMember {
-                org_prefix,
-                member_did,
-                issuer_did,
-                rid,
+                org_prefix: Prefix::new_unchecked(org_prefix),
+                member_did: DeviceDID::new_unchecked(member_did),
+                issuer_did: IdentityDID::new_unchecked(issuer_did),
+                rid: ResourceId::new(rid),
                 revoked_at: parse_dt(revoked_str),
                 expires_at: parse_dt(expires_str),
                 updated_at: DateTime::parse_from_rfc3339(&updated_str)
@@ -455,11 +458,11 @@ mod tests {
         revoked_at: Option<DateTime<Utc>>,
     ) -> IndexedAttestation {
         IndexedAttestation {
-            rid: rid.to_string(),
-            issuer_did: "did:key:issuer123".to_string(),
-            device_did: device.to_string(),
+            rid: ResourceId::new(rid),
+            issuer_did: IdentityDID::new_unchecked("did:key:issuer123"),
+            device_did: DeviceDID::new_unchecked(device),
             git_ref: format!("refs/auths/devices/nodes/{}/signatures", device),
-            commit_oid: "abc123".to_string(),
+            commit_oid: CommitOid::new_unchecked("abc123"),
             revoked_at,
             expires_at: Some(Utc::now() + Duration::days(30)),
             updated_at: Utc::now(),
@@ -582,10 +585,10 @@ mod tests {
     fn test_upsert_and_query_identity() {
         let index = AttestationIndex::in_memory().unwrap();
         let identity = IndexedIdentity {
-            prefix: "ETestPrefix123".to_string(),
+            prefix: Prefix::new_unchecked("ETestPrefix123".to_string()),
             current_keys: vec!["DKey1".to_string(), "DKey2".to_string()],
             sequence: 3,
-            tip_said: "ETipSaid123".to_string(),
+            tip_said: Said::new_unchecked("ETipSaid123".to_string()),
             updated_at: Utc::now(),
         };
 
@@ -604,19 +607,19 @@ mod tests {
     fn test_upsert_identity_updates_existing() {
         let index = AttestationIndex::in_memory().unwrap();
         let identity = IndexedIdentity {
-            prefix: "ETestPrefix".to_string(),
+            prefix: Prefix::new_unchecked("ETestPrefix".to_string()),
             current_keys: vec!["DKey1".to_string()],
             sequence: 0,
-            tip_said: "ESaid0".to_string(),
+            tip_said: Said::new_unchecked("ESaid0".to_string()),
             updated_at: Utc::now(),
         };
         index.upsert_identity(&identity).unwrap();
 
         let updated = IndexedIdentity {
-            prefix: "ETestPrefix".to_string(),
+            prefix: Prefix::new_unchecked("ETestPrefix".to_string()),
             current_keys: vec!["DKey2".to_string()],
             sequence: 1,
-            tip_said: "ESaid1".to_string(),
+            tip_said: Said::new_unchecked("ESaid1".to_string()),
             updated_at: Utc::now(),
         };
         index.upsert_identity(&updated).unwrap();
@@ -638,10 +641,10 @@ mod tests {
     fn test_upsert_and_list_org_members() {
         let index = AttestationIndex::in_memory().unwrap();
         let member = IndexedOrgMember {
-            org_prefix: "did:keri:EOrg".to_string(),
-            member_did: "did:key:z6MkMember1".to_string(),
-            issuer_did: "did:keri:EOrg".to_string(),
-            rid: "rid-member-1".to_string(),
+            org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
+            member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
+            issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+            rid: ResourceId::new("rid-member-1"),
             revoked_at: None,
             expires_at: None,
             updated_at: Utc::now(),
@@ -651,7 +654,7 @@ mod tests {
 
         let members = index.list_org_members_indexed("did:keri:EOrg").unwrap();
         assert_eq!(members.len(), 1);
-        assert_eq!(members[0].member_did, "did:key:z6MkMember1");
+        assert_eq!(members[0].member_did.as_str(), "did:key:z6MkMember1");
         assert_eq!(members[0].rid, "rid-member-1");
     }
 
@@ -659,10 +662,10 @@ mod tests {
     fn test_upsert_org_member_updates_existing() {
         let index = AttestationIndex::in_memory().unwrap();
         let member = IndexedOrgMember {
-            org_prefix: "did:keri:EOrg".to_string(),
-            member_did: "did:key:z6MkMember1".to_string(),
-            issuer_did: "did:keri:EOrg".to_string(),
-            rid: "rid-v1".to_string(),
+            org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
+            member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
+            issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+            rid: ResourceId::new("rid-v1"),
             revoked_at: None,
             expires_at: None,
             updated_at: Utc::now(),
@@ -670,10 +673,10 @@ mod tests {
         index.upsert_org_member(&member).unwrap();
 
         let updated = IndexedOrgMember {
-            org_prefix: "did:keri:EOrg".to_string(),
-            member_did: "did:key:z6MkMember1".to_string(),
-            issuer_did: "did:keri:EOrg".to_string(),
-            rid: "rid-v2".to_string(),
+            org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
+            member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
+            issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+            rid: ResourceId::new("rid-v2"),
             revoked_at: Some(Utc::now()),
             expires_at: None,
             updated_at: Utc::now(),
@@ -694,10 +697,10 @@ mod tests {
         for i in 0..3 {
             index
                 .upsert_org_member(&IndexedOrgMember {
-                    org_prefix: "did:keri:EOrg".to_string(),
-                    member_did: format!("did:key:z6MkMember{}", i),
-                    issuer_did: "did:keri:EOrg".to_string(),
-                    rid: format!("rid-{}", i),
+                    org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
+                    member_did: DeviceDID::new_unchecked(format!("did:key:z6MkMember{}", i)),
+                    issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+                    rid: ResourceId::new(format!("rid-{}", i)),
                     revoked_at: None,
                     expires_at: None,
                     updated_at: Utc::now(),

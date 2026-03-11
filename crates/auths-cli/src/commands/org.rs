@@ -31,7 +31,7 @@ use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::types::DeviceDID;
-use auths_verifier::{Capability, Ed25519PublicKey, Prefix};
+use auths_verifier::{Capability, Ed25519PublicKey, Prefix, PublicKeyHex};
 
 use clap::ValueEnum;
 
@@ -176,7 +176,11 @@ pub enum OrgSubcommand {
 }
 
 /// Handles `org` commands for issuing or revoking member authorizations.
-pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()> {
+pub fn handle_org(
+    cmd: OrgCommand,
+    ctx: &crate::config::CliConfig,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
     let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
     let passphrase_provider = ctx.passphrase_provider.clone();
 
@@ -252,7 +256,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let mut metadata_json = serde_json::json!({
                 "type": "org",
                 "name": name,
-                "created_at": Utc::now().to_rfc3339()
+                "created_at": now.to_rfc3339()
             });
 
             // Merge with additional metadata file if provided
@@ -316,7 +320,6 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             })?;
             let org_pk_bytes = *org_resolved.public_key();
 
-            let now = Utc::now();
             let admin_capabilities = vec![
                 Capability::sign_commit(),
                 Capability::sign_release(),
@@ -443,7 +446,6 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             })?;
             let device_pk_bytes = *device_resolved.public_key();
 
-            let now = Utc::now();
             let meta = AttestationMetadata {
                 note,
                 timestamp: Some(now),
@@ -524,7 +526,6 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: accepts both did:key and did:keri
             let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
-            let now = Utc::now();
 
             // Look up the subject's public key from existing attestations
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
@@ -577,23 +578,19 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             if let Some(list) = group.by_device.get(subject_device_did.as_str()) {
                 for (i, att) in list.iter().enumerate() {
                     if !include_revoked
-                        && (att.is_revoked() || att.expires_at.is_some_and(|e| Utc::now() > e))
+                        && (att.is_revoked() || att.expires_at.is_some_and(|e| now > e))
                     {
                         continue;
                     }
 
-                    let status = match verify_with_resolver(Utc::now(), &resolver, att, None) {
+                    let status = match verify_with_resolver(now, &resolver, att, None) {
                         Ok(_) => "✅ valid",
                         Err(e) if e.to_string().contains("revoked") => "🛑 revoked",
                         Err(e) if e.to_string().contains("expired") => "⌛ expired",
                         Err(_) => "❌ invalid",
                     };
 
-                    println!(
-                        "{i}. [{}] @ {}",
-                        status,
-                        att.timestamp.unwrap_or(Utc::now())
-                    );
+                    println!("{i}. [{}] @ {}", status, att.timestamp.unwrap_or(now));
                     if let Some(note) = &att.note {
                         println!("   📝 {}", note);
                     }
@@ -618,12 +615,12 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
                     continue;
                 };
                 if !include_revoked
-                    && (latest.is_revoked() || latest.expires_at.is_some_and(|e| Utc::now() > e))
+                    && (latest.is_revoked() || latest.expires_at.is_some_and(|e| now > e))
                 {
                     continue;
                 }
 
-                let status = match verify_with_resolver(Utc::now(), &resolver, latest, None) {
+                let status = match verify_with_resolver(now, &resolver, latest, None) {
                     Ok(_) => "✅ valid",
                     Err(e) if e.to_string().contains("revoked") => "🛑 revoked",
                     Err(e) if e.to_string().contains("expired") => "⌛ expired",
@@ -665,7 +662,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
-            let admin_pk_hex = hex::encode(
+            let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
                 resolver
                     .resolve(stored_did.as_str())
                     .with_context(|| {
@@ -673,7 +670,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
                     })?
                     .public_key()
                     .as_bytes(),
-            );
+            ));
 
             let member_resolved = resolver
                 .resolve(&member)
@@ -779,7 +776,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
-            let admin_pk_hex = hex::encode(
+            let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
                 resolver
                     .resolve(stored_did.as_str())
                     .with_context(|| {
@@ -787,7 +784,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
                     })?
                     .public_key()
                     .as_bytes(),
-            );
+            ));
 
             let member_resolved = resolver
                 .resolve(&member)
@@ -871,7 +868,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
                 }
 
                 // Skip expired attestations
-                if att.expires_at.is_some_and(|e| Utc::now() > e) && !include_revoked {
+                if att.expires_at.is_some_and(|e| now > e) && !include_revoked {
                     continue;
                 }
 
@@ -987,7 +984,8 @@ use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
 impl ExecutableCommand for OrgCommand {
+    #[allow(clippy::disallowed_methods)]
     fn execute(&self, ctx: &CliConfig) -> Result<()> {
-        handle_org(self.clone(), ctx)
+        handle_org(self.clone(), ctx, Utc::now())
     }
 }

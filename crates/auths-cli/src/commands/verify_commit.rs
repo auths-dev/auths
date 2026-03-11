@@ -5,7 +5,7 @@ use auths_verifier::{
     IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
 };
 use base64;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use clap::Parser;
 use serde::Serialize;
 use std::fs;
@@ -113,7 +113,10 @@ impl SignersSource {
 
 /// Handle verify-commit command.
 /// Exit codes: 0=valid, 1=invalid/unsigned, 2=error
+#[allow(clippy::disallowed_methods)]
 pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
+    let now = Utc::now();
+
     if let Err(e) = check_ssh_keygen() {
         return handle_error(&cmd, 2, &format!("OpenSSH required: {}", e));
     }
@@ -123,7 +126,7 @@ pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
         Err(e) => return handle_error(&cmd, 2, &e.to_string()),
     };
 
-    let results = match verify_commits(&cmd, &source).await {
+    let results = match verify_commits(&cmd, &source, now).await {
         Ok(r) => r,
         Err(e) => return handle_error(&cmd, 2, &e.to_string()),
     };
@@ -140,8 +143,8 @@ fn resolve_signers_source(cmd: &VerifyCommitCommand) -> Result<SignersSource> {
         let bundle: IdentityBundle = serde_json::from_str(&bundle_content)
             .with_context(|| format!("Failed to parse identity bundle: {:?}", bundle_path))?;
 
-        let public_key_bytes =
-            hex::decode(&bundle.public_key_hex).context("Invalid public key hex in bundle")?;
+        let public_key_bytes = hex::decode(bundle.public_key_hex.as_str())
+            .context("Invalid public key hex in bundle")?;
 
         let ssh_key = format_ed25519_as_ssh(&public_key_bytes)?;
         let temp_signers_content = format!("{} {}", bundle.identity_did, ssh_key);
@@ -203,12 +206,13 @@ fn resolve_commits(commit_spec: &str) -> Result<Vec<String>> {
 async fn verify_commits(
     cmd: &VerifyCommitCommand,
     source: &SignersSource,
+    now: DateTime<Utc>,
 ) -> Result<Vec<VerifyCommitResult>> {
     let commits = resolve_commits(&cmd.commit)?;
     let mut results = Vec::with_capacity(commits.len());
 
     for sha in &commits {
-        let result = verify_one_commit(cmd, source, sha).await;
+        let result = verify_one_commit(cmd, source, sha, now).await;
         results.push(result);
     }
 
@@ -220,6 +224,7 @@ async fn verify_one_commit(
     cmd: &VerifyCommitCommand,
     source: &SignersSource,
     commit_sha: &str,
+    now: DateTime<Utc>,
 ) -> VerifyCommitResult {
     // Resolve commit ref to SHA
     let sha = match resolve_commit_sha(commit_sha) {
@@ -273,7 +278,7 @@ async fn verify_one_commit(
 
     // 2. Attestation chain verification (only when bundle is present)
     let (chain_valid, chain_report) = if let Some(bundle) = source.bundle() {
-        let (cv, cr, cw) = verify_bundle_chain(bundle).await;
+        let (cv, cr, cw) = verify_bundle_chain(bundle, now).await;
         warnings.extend(cw);
         (cv, cr)
     } else {
@@ -331,8 +336,9 @@ async fn verify_one_commit(
 /// Returns (chain_valid, chain_report, warnings).
 async fn verify_bundle_chain(
     bundle: &IdentityBundle,
+    now: DateTime<Utc>,
 ) -> (Option<bool>, Option<VerificationReport>, Vec<String>) {
-    if let Err(e) = bundle.check_freshness(Utc::now()) {
+    if let Err(e) = bundle.check_freshness(now) {
         return (
             Some(false),
             None,
@@ -348,7 +354,7 @@ async fn verify_bundle_chain(
         );
     }
 
-    let root_pk = match hex::decode(&bundle.public_key_hex) {
+    let root_pk = match hex::decode(bundle.public_key_hex.as_str()) {
         Ok(pk) => pk,
         Err(e) => {
             return (
@@ -366,7 +372,7 @@ async fn verify_bundle_chain(
             // Scan for upcoming expiry (< 30 days)
             for att in &bundle.attestation_chain {
                 if let Some(exp) = att.expires_at {
-                    let remaining = exp - Utc::now();
+                    let remaining = exp - now;
                     if remaining < Duration::zero() {
                         // Already expired — chain_valid will be false from the report
                     } else if remaining < Duration::days(30) {
@@ -418,8 +424,8 @@ async fn verify_witnesses(
     if let Some(bundle) = bundle
         && !bundle.attestation_chain.is_empty()
     {
-        let root_pk =
-            hex::decode(&bundle.public_key_hex).context("Invalid public key hex in bundle")?;
+        let root_pk = hex::decode(bundle.public_key_hex.as_str())
+            .context("Invalid public key hex in bundle")?;
 
         let report = verify_chain_with_witnesses(&bundle.attestation_chain, &root_pk, &config)
             .await
@@ -813,6 +819,7 @@ impl crate::commands::executable::ExecutableCommand for VerifyCommitCommand {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 
@@ -914,12 +921,12 @@ mod tests {
     async fn verify_bundle_chain_empty_chain() {
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
-            public_key_hex: "aa".repeat(32),
+            public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("aa".repeat(32)),
             attestation_chain: vec![],
             bundle_timestamp: Utc::now(),
             max_valid_for_secs: 86400,
         };
-        let (cv, cr, warnings) = verify_bundle_chain(&bundle).await;
+        let (cv, cr, warnings) = verify_bundle_chain(&bundle, Utc::now()).await;
         assert!(cv.is_none());
         assert!(cr.is_none());
         assert!(!warnings.is_empty());
@@ -930,11 +937,11 @@ mod tests {
     async fn verify_bundle_chain_invalid_hex() {
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
-            public_key_hex: "not_hex".into(),
+            public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("not_hex"),
             attestation_chain: vec![auths_verifier::core::Attestation {
                 version: 1,
                 rid: "test".into(),
-                issuer: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
+                issuer: auths_verifier::CanonicalDid::new_unchecked("did:keri:test"),
                 subject: auths_verifier::DeviceDID::new_unchecked("did:key:zTest"),
                 device_public_key: auths_verifier::Ed25519PublicKey::from_bytes([0u8; 32]),
                 identity_signature: auths_verifier::core::Ed25519Signature::empty(),
@@ -953,7 +960,7 @@ mod tests {
             bundle_timestamp: Utc::now(),
             max_valid_for_secs: 86400,
         };
-        let (cv, _cr, warnings) = verify_bundle_chain(&bundle).await;
+        let (cv, _cr, warnings) = verify_bundle_chain(&bundle, Utc::now()).await;
         assert_eq!(cv, Some(false));
         assert!(warnings[0].contains("Invalid public key hex"));
     }

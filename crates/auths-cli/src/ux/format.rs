@@ -125,6 +125,7 @@ impl Output {
         }
 
         // Respect NO_COLOR env var
+        #[allow(clippy::disallowed_methods)] // CLI boundary: NO_COLOR convention
         if std::env::var("NO_COLOR").is_ok() {
             return false;
         }

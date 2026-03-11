@@ -2,12 +2,11 @@
 
 use assert_cmd::Command;
 use auths_crypto::testing::gen_keypair;
-use auths_verifier::IdentityDID;
 use auths_verifier::core::{
     Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
     canonicalize_attestation_data,
 };
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::{CanonicalDid, DeviceDID};
 use chrono::{Duration, Utc};
 use ring::signature::KeyPair;
 use std::io::Write;
@@ -22,7 +21,7 @@ fn create_signed_attestation(
     let mut att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new_unchecked(format!(
+        issuer: CanonicalDid::new_unchecked(format!(
             "did:key:{}",
             hex::encode(issuer_kp.public_key().as_ref())
         )),

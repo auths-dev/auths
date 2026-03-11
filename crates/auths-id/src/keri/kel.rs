@@ -896,7 +896,7 @@ mod tests {
             &did,
             &cached_full.state,
             "EFakeSaidThatDoesNotMatchCommit",
-            &cached_full.last_commit_oid,
+            cached_full.last_commit_oid.as_str(),
             chrono::Utc::now(),
         );
 
