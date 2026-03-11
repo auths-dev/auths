@@ -1,7 +1,11 @@
 use anyhow::Error;
 use auths_core::error::{AgentError, AuthsErrorInfo};
-use auths_sdk::error::{DeviceError, SetupError};
+use auths_sdk::error::{
+    ApprovalError, DeviceError, DeviceExtensionError, McpAuthError, OrgError, RegistrationError,
+    RotationError, SetupError,
+};
 use auths_sdk::signing::SigningError;
+use auths_sdk::workflows::allowed_signers::AllowedSignersError;
 use auths_verifier::AttestationError;
 use colored::Colorize;
 
@@ -12,10 +16,9 @@ const DOCS_BASE_URL: &str = "https://docs.auths.dev";
 
 /// Render an error to stderr in either text or JSON format.
 ///
-/// Attempts to downcast the anyhow error to known Auths error types
-/// (`AgentError`, `AttestationError`) to extract structured metadata
-/// (error code, suggestion, docs URL). Falls back to a plain message
-/// for unknown error types.
+/// Args:
+/// * `err`: The error to render.
+/// * `json_mode`: If `true`, output structured JSON; otherwise styled text.
 pub fn render_error(err: &Error, json_mode: bool) {
     if json_mode {
         render_json(err);
@@ -24,11 +27,47 @@ pub fn render_error(err: &Error, json_mode: bool) {
     }
 }
 
-/// Render a styled error message to stderr.
+/// Try to extract `AuthsErrorInfo` from an `anyhow::Error` by downcasting
+/// through all known error types.
+fn extract_error_info(err: &Error) -> Option<(&str, &str, Option<&str>)> {
+    macro_rules! try_downcast {
+        ($err:expr, $($ty:ty),+ $(,)?) => {
+            $(
+                if let Some(e) = $err.downcast_ref::<$ty>() {
+                    let code = AuthsErrorInfo::error_code(e);
+                    let msg = format!("{e}");
+                    // SAFETY: we leak the String to get a &'static str because
+                    // the caller consumes it immediately in the same scope.
+                    // This is bounded to a single error render per invocation.
+                    let msg: &str = Box::leak(msg.into_boxed_str());
+                    return Some((code, msg, AuthsErrorInfo::suggestion(e)));
+                }
+            )+
+        };
+    }
+
+    try_downcast!(
+        err,
+        AgentError,
+        AttestationError,
+        SetupError,
+        DeviceError,
+        DeviceExtensionError,
+        RotationError,
+        RegistrationError,
+        McpAuthError,
+        OrgError,
+        ApprovalError,
+        AllowedSignersError,
+        SigningError,
+    );
+
+    None
+}
+
 fn render_text(err: &Error) {
     let out = Output::new();
 
-    // Try CliError first (most specific)
     if let Some(cli_err) = err.downcast_ref::<CliError>() {
         eprintln!("\n{} {}", "Error:".red().bold(), cli_err);
         eprintln!("\n{}", cli_err.suggestion());
@@ -39,102 +78,45 @@ fn render_text(err: &Error) {
         return;
     }
 
-    if let Some(signing_err) = err.downcast_ref::<SigningError>() {
-        let message = format!("{signing_err}");
-        out.print_error(&out.bold(&message));
+    if let Some((code, message, suggestion)) = extract_error_info(err) {
+        let prefix = format!("[{code}]").yellow();
+        out.print_error(&format!("{prefix} {}", out.bold(message)));
         eprintln!();
-        let suggestion = match signing_err {
-            SigningError::PassphraseExhausted { attempts } => Some(format!(
-                "All {attempts} passphrase attempt(s) failed.\n     Forgot your passphrase? Run: auths key reset <alias>"
-            )),
-            SigningError::IdentityFrozen(_) => {
-                Some("To unfreeze: auths emergency unfreeze".to_string())
-            }
-            SigningError::KeychainUnavailable(_) => Some(format!(
-                "Cannot access system keychain.\n\n     If running headless (CI/Docker), set:\n       export AUTHS_KEYCHAIN_BACKEND=file\n       export AUTHS_PASSPHRASE=<your-passphrase>\n\n     See: {DOCS_BASE_URL}/cli/troubleshooting/"
-            )),
-            _ => None,
-        };
         if let Some(suggestion) = suggestion {
             eprintln!("  fix:  {suggestion}");
+        }
+        if let Some(url) = docs_url(code) {
+            eprintln!("  docs: {url}");
         }
         return;
     }
 
-    if let Some(agent_err) = err.downcast_ref::<AgentError>() {
-        let code = AuthsErrorInfo::error_code(agent_err);
-        let message = format!("{agent_err}");
-        out.print_error(&out.bold(&message));
-        eprintln!();
-        if let Some(suggestion) = AuthsErrorInfo::suggestion(agent_err) {
-            eprintln!("  fix:  {suggestion}");
-        }
-        if let Some(url) = docs_url(code) {
-            eprintln!("  docs: {url}");
-        }
-    } else if let Some(att_err) = err.downcast_ref::<AttestationError>() {
-        let code = AuthsErrorInfo::error_code(att_err);
-        let message = format!("{att_err}");
-        out.print_error(&out.bold(&message));
-        eprintln!();
-        if let Some(suggestion) = AuthsErrorInfo::suggestion(att_err) {
-            eprintln!("  fix:  {suggestion}");
-        }
-        if let Some(url) = docs_url(code) {
-            eprintln!("  docs: {url}");
-        }
-    } else if let Some(setup_err) = err.downcast_ref::<SetupError>() {
-        let code = AuthsErrorInfo::error_code(setup_err);
-        let message = format!("{setup_err}");
-        out.print_error(&out.bold(&message));
-        eprintln!();
-        if let Some(suggestion) = AuthsErrorInfo::suggestion(setup_err) {
-            eprintln!("  fix:  {suggestion}");
-        }
-        if let Some(url) = docs_url(code) {
-            eprintln!("  docs: {url}");
-        }
-    } else if let Some(device_err) = err.downcast_ref::<DeviceError>() {
-        let code = AuthsErrorInfo::error_code(device_err);
-        let message = format!("{device_err}");
-        out.print_error(&out.bold(&message));
-        eprintln!();
-        if let Some(suggestion) = AuthsErrorInfo::suggestion(device_err) {
-            eprintln!("  fix:  {suggestion}");
-        }
-        if let Some(url) = docs_url(code) {
-            eprintln!("  docs: {url}");
-        }
-    } else {
-        // Fallback for generic anyhow::Error
-        let msg = err.to_string();
-        let suggestion = match msg.as_str() {
-            s if s.contains("No identity found") => Some(format!(
-                "Run `auths init` to create one, or `auths key import` to restore from a backup.\n     See: {DOCS_BASE_URL}/getting-started/quickstart/"
-            )),
-            s if s.contains("keychain") || s.contains("Secret Service") => Some(format!(
-                "Cannot access system keychain.\n\n     If running headless (CI/Docker), set:\n       export AUTHS_KEYCHAIN_BACKEND=file\n       export AUTHS_PASSPHRASE=<your-passphrase>\n\n     See: {DOCS_BASE_URL}/cli/troubleshooting/"
-            )),
-            s if s.contains("ssh-keygen") && s.contains("not found") => Some(
-                "ssh-keygen not found on PATH.\n\n     Install OpenSSH:\n       Ubuntu: sudo apt install openssh-client\n       macOS:  ssh-keygen is pre-installed\n       Windows: Install OpenSSH via Settings > Apps > Optional features".to_string()
-            ),
-            _ => None,
-        };
+    // Fallback for generic anyhow::Error
+    let msg = err.to_string();
+    let suggestion = match msg.as_str() {
+        s if s.contains("No identity found") => Some(format!(
+            "Run `auths init` to create one, or `auths key import` to restore from a backup.\n     See: {DOCS_BASE_URL}/getting-started/quickstart/"
+        )),
+        s if s.contains("keychain") || s.contains("Secret Service") => Some(format!(
+            "Cannot access system keychain.\n\n     If running headless (CI/Docker), set:\n       export AUTHS_KEYCHAIN_BACKEND=file\n       export AUTHS_PASSPHRASE=<your-passphrase>\n\n     See: {DOCS_BASE_URL}/cli/troubleshooting/"
+        )),
+        s if s.contains("ssh-keygen") && s.contains("not found") => Some(
+            "ssh-keygen not found on PATH.\n\n     Install OpenSSH:\n       Ubuntu: sudo apt install openssh-client\n       macOS:  ssh-keygen is pre-installed\n       Windows: Install OpenSSH via Settings > Apps > Optional features".to_string()
+        ),
+        _ => None,
+    };
 
-        if let Some(suggestion) = suggestion {
-            out.print_error(&msg);
-            eprintln!("\n{suggestion}");
-        } else {
-            // Unknown error — print the message and any causal chain
-            out.print_error(&format!("{err}"));
-            for cause in err.chain().skip(1) {
-                eprintln!("  caused by: {cause}");
-            }
+    if let Some(suggestion) = suggestion {
+        out.print_error(&msg);
+        eprintln!("\n{suggestion}");
+    } else {
+        out.print_error(&format!("{err}"));
+        for cause in err.chain().skip(1) {
+            eprintln!("  caused by: {cause}");
         }
     }
 }
 
-/// Render a JSON error object to stderr.
 fn render_json(err: &Error) {
     let json = if let Some(cli_err) = err.downcast_ref::<CliError>() {
         build_json(
@@ -143,50 +125,8 @@ fn render_json(err: &Error) {
             Some(cli_err.suggestion()),
             cli_err.docs_url().map(|s| s.to_string()),
         )
-    } else if let Some(signing_err) = err.downcast_ref::<SigningError>() {
-        let suggestion = match signing_err {
-            SigningError::PassphraseExhausted { attempts } => Some(format!(
-                "All {} passphrase attempt(s) failed. Run: auths key reset <alias>",
-                attempts
-            )),
-            SigningError::IdentityFrozen(_) => {
-                Some("To unfreeze: auths emergency unfreeze".to_string())
-            }
-            _ => None,
-        };
-        build_json(None, &format!("{signing_err}"), suggestion.as_deref(), None)
-    } else if let Some(agent_err) = err.downcast_ref::<AgentError>() {
-        let code = AuthsErrorInfo::error_code(agent_err);
-        build_json(
-            Some(code),
-            &format!("{agent_err}"),
-            AuthsErrorInfo::suggestion(agent_err),
-            docs_url(code),
-        )
-    } else if let Some(att_err) = err.downcast_ref::<AttestationError>() {
-        let code = AuthsErrorInfo::error_code(att_err);
-        build_json(
-            Some(code),
-            &format!("{att_err}"),
-            AuthsErrorInfo::suggestion(att_err),
-            docs_url(code),
-        )
-    } else if let Some(setup_err) = err.downcast_ref::<SetupError>() {
-        let code = AuthsErrorInfo::error_code(setup_err);
-        build_json(
-            Some(code),
-            &format!("{setup_err}"),
-            AuthsErrorInfo::suggestion(setup_err),
-            docs_url(code),
-        )
-    } else if let Some(device_err) = err.downcast_ref::<DeviceError>() {
-        let code = AuthsErrorInfo::error_code(device_err);
-        build_json(
-            Some(code),
-            &format!("{device_err}"),
-            AuthsErrorInfo::suggestion(device_err),
-            docs_url(code),
-        )
+    } else if let Some((code, message, suggestion)) = extract_error_info(err) {
+        build_json(Some(code), message, suggestion, docs_url(code))
     } else {
         build_json(None, &format!("{err}"), None, None)
     };
@@ -194,7 +134,6 @@ fn render_json(err: &Error) {
     eprintln!("{json}");
 }
 
-/// Build a JSON error string from optional fields.
 fn build_json(
     code: Option<&str>,
     message: &str,
@@ -218,7 +157,6 @@ fn build_json(
         .unwrap_or_else(|_| format!("{{\"error\":{{\"message\":\"{message}\"}}}}"))
 }
 
-/// Map an error code to a docs URL.
 fn docs_url(code: &str) -> Option<String> {
     if code.starts_with("AUTHS-E") {
         Some(format!("{DOCS_BASE_URL}/errors/#{code}"))
@@ -279,7 +217,6 @@ mod tests {
     #[test]
     fn render_error_agent_error_text() {
         let err = Error::new(AgentError::KeyNotFound);
-        // Should not panic — just writes to stderr
         render_error(&err, false);
     }
 
@@ -305,5 +242,13 @@ mod tests {
     fn render_error_unknown_error_json() {
         let err = anyhow::anyhow!("something unexpected");
         render_error(&err, true);
+    }
+
+    #[test]
+    fn extract_error_info_returns_code_for_agent_error() {
+        let err = Error::new(AgentError::KeyNotFound);
+        let (code, _, suggestion) = extract_error_info(&err).unwrap();
+        assert_eq!(code, "AUTHS-E3001");
+        assert!(suggestion.is_some());
     }
 }
