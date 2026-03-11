@@ -11,6 +11,7 @@ use auths_sdk::workflows::org::{
     add_organization_member, revoke_organization_member, update_member_capabilities,
 };
 use auths_verifier::Capability;
+use auths_verifier::PublicKeyHex;
 use auths_verifier::clock::ClockProvider;
 use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::testing::MockClock;
@@ -29,8 +30,8 @@ const MEMBER_PUBKEY: [u8; 32] = [
     0, 0, 0, 0,
 ];
 
-fn admin_pubkey_hex() -> String {
-    hex::encode(ADMIN_PUBKEY)
+fn admin_pubkey_hex() -> PublicKeyHex {
+    PublicKeyHex::new_unchecked(hex::encode(ADMIN_PUBKEY))
 }
 
 fn org_issuer() -> IdentityDID {
@@ -151,7 +152,7 @@ fn find_admin_returns_not_found_when_pubkey_mismatch() {
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
 
-    let wrong_hex = hex::encode([0x00u8; 4]);
+    let wrong_hex = PublicKeyHex::new_unchecked(hex::encode([0x00u8; 32]));
     let result = add_organization_member(
         &ctx,
         AddMemberCommand {

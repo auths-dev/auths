@@ -212,7 +212,7 @@ impl AttestationSink for RegistryAttestationStorage {
             #[allow(clippy::disallowed_methods)]
             // Timestamp fallback for missing attestation timestamp
             let indexed = IndexedAttestation {
-                rid: attestation.rid.to_string(),
+                rid: attestation.rid.clone(),
                 issuer_did: attestation.issuer.to_string(),
                 device_did: attestation.subject.to_string(),
                 git_ref,

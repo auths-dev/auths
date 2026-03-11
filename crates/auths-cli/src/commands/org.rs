@@ -31,7 +31,7 @@ use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::types::DeviceDID;
-use auths_verifier::{Capability, Ed25519PublicKey, Prefix};
+use auths_verifier::{Capability, Ed25519PublicKey, Prefix, PublicKeyHex};
 
 use clap::ValueEnum;
 
@@ -665,7 +665,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
-            let admin_pk_hex = hex::encode(
+            let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
                 resolver
                     .resolve(stored_did.as_str())
                     .with_context(|| {
@@ -673,7 +673,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
                     })?
                     .public_key()
                     .as_bytes(),
-            );
+            ));
 
             let member_resolved = resolver
                 .resolve(&member)
@@ -779,7 +779,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
-            let admin_pk_hex = hex::encode(
+            let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
                 resolver
                     .resolve(stored_did.as_str())
                     .with_context(|| {
@@ -787,7 +787,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
                     })?
                     .public_key()
                     .as_bytes(),
-            );
+            ));
 
             let member_resolved = resolver
                 .resolve(&member)

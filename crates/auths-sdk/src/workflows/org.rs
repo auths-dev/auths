@@ -15,6 +15,7 @@ use auths_id::attestation::revoke::create_signed_revocation;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_verifier::Capability;
+use auths_verifier::PublicKeyHex;
 pub use auths_verifier::core::Role;
 use auths_verifier::core::{Attestation, Ed25519PublicKey};
 use auths_verifier::types::{DeviceDID, IdentityDID};
@@ -90,9 +91,9 @@ pub fn member_role_order(role: &Option<Role>) -> u8 {
 pub(crate) fn find_admin(
     backend: &dyn RegistryBackend,
     org_prefix: &str,
-    public_key_hex: &str,
+    public_key_hex: &PublicKeyHex,
 ) -> Result<Attestation, OrgError> {
-    let signer_bytes = hex::decode(public_key_hex)
+    let signer_bytes = hex::decode(public_key_hex.as_str())
         .map_err(|e| OrgError::InvalidPublicKey(format!("hex decode failed: {e}")))?;
 
     let mut found: Option<Attestation> = None;
@@ -201,7 +202,7 @@ pub struct AddMemberCommand {
     /// Capability strings to grant.
     pub capabilities: Vec<String>,
     /// Hex-encoded public key of the signing admin.
-    pub admin_public_key_hex: String,
+    pub admin_public_key_hex: PublicKeyHex,
     /// Keychain alias of the admin's signing key.
     pub signer_alias: KeyAlias,
     /// Optional note for the attestation.
@@ -237,7 +238,7 @@ pub struct RevokeMemberCommand {
     /// Ed25519 public key of the member (from existing attestation).
     pub member_public_key: Ed25519PublicKey,
     /// Hex-encoded public key of the signing admin.
-    pub admin_public_key_hex: String,
+    pub admin_public_key_hex: PublicKeyHex,
     /// Keychain alias of the admin's signing key.
     pub signer_alias: KeyAlias,
     /// Optional reason for revocation.
@@ -253,7 +254,7 @@ pub struct UpdateCapabilitiesCommand {
     /// New capability strings to replace the existing set.
     pub capabilities: Vec<String>,
     /// Hex-encoded public key of the admin performing the update.
-    pub public_key_hex: String,
+    pub public_key_hex: PublicKeyHex,
 }
 
 /// Command to atomically update a member's role and capabilities.
@@ -270,7 +271,7 @@ pub struct UpdateMemberCommand {
     /// New capability strings (if changing).
     pub capabilities: Option<Vec<String>>,
     /// Hex-encoded public key of the admin performing the update.
-    pub admin_public_key_hex: String,
+    pub admin_public_key_hex: PublicKeyHex,
 }
 
 /// Accepts either a KERI prefix or a full DID.

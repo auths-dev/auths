@@ -598,7 +598,9 @@ pub fn handle_id(
             let pkcs8_bytes = auths_core::crypto::signer::decrypt_keypair(&encrypted_key, &pass)
                 .context("Failed to decrypt key")?;
             let keypair = auths_id::identity::helpers::load_keypair_from_der_or_seed(&pkcs8_bytes)?;
-            let public_key_hex = hex::encode(keypair.public_key().as_ref());
+            let public_key_hex = auths_verifier::PublicKeyHex::new_unchecked(hex::encode(
+                keypair.public_key().as_ref(),
+            ));
 
             // Create the bundle
             let bundle = IdentityBundle {

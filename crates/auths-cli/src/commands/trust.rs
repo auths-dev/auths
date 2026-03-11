@@ -3,8 +3,9 @@
 //! Manage pinned identity roots for trust-on-first-use (TOFU) and explicit trust.
 
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use auths_core::trust::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
+use auths_verifier::PublicKeyHex;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -96,7 +97,7 @@ struct PinSummary {
 #[derive(Debug, Serialize)]
 struct PinDetails {
     did: String,
-    public_key_hex: String,
+    public_key_hex: PublicKeyHex,
     trust_level: String,
     first_seen: String,
     origin: String,
@@ -160,14 +161,7 @@ fn handle_list(_cmd: TrustListCommand) -> Result<()> {
 }
 
 fn handle_pin(cmd: TrustPinCommand) -> Result<()> {
-    // Validate hex format and length
-    let bytes = hex::decode(&cmd.key).map_err(|e| anyhow!("Invalid hex for public key: {}", e))?;
-    if bytes.len() != 32 {
-        anyhow::bail!(
-            "Invalid key length: expected 32 bytes (64 hex chars), got {} bytes",
-            bytes.len()
-        );
-    }
+    let public_key_hex = PublicKeyHex::parse(&cmd.key).context("Invalid public key hex")?;
 
     let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
 
@@ -183,7 +177,7 @@ fn handle_pin(cmd: TrustPinCommand) -> Result<()> {
 
     let pin = PinnedIdentity {
         did: cmd.did.clone(),
-        public_key_hex: cmd.key.clone(),
+        public_key_hex,
         kel_tip_said: cmd.kel_tip,
         kel_sequence: None,
         first_seen: Utc::now(),

@@ -1,6 +1,7 @@
 //! Artifact digest computation and publishing workflow.
 
 use auths_core::ports::network::{NetworkError, RegistryClient};
+use auths_verifier::core::ResourceId;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -25,7 +26,7 @@ pub struct ArtifactPublishConfig {
 #[derive(Debug, Deserialize)]
 pub struct ArtifactPublishResult {
     /// Stable registry identifier for the stored attestation.
-    pub attestation_rid: String,
+    pub attestation_rid: ResourceId,
     /// Package identifier echoed back by the registry, if provided.
     pub package_name: Option<String>,
     /// DID of the identity that signed the attestation.

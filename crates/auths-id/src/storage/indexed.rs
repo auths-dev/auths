@@ -87,7 +87,7 @@ impl IndexedAttestationStorage {
         now: DateTime<Utc>,
     ) -> Result<(), StorageError> {
         let indexed = IndexedAttestation {
-            rid: att.rid.to_string(),
+            rid: att.rid.clone(),
             issuer_did: att.issuer.to_string(),
             device_did: att.subject.to_string(),
             git_ref: git_ref.to_string(),

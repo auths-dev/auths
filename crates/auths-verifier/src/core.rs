@@ -664,7 +664,7 @@ pub struct IdentityBundle {
     /// The DID of the identity (e.g., `"did:keri:..."`)
     pub identity_did: IdentityDID,
     /// The public key in hex format for signature verification
-    pub public_key_hex: String,
+    pub public_key_hex: PublicKeyHex,
     /// Chain of attestations linking the signing key to the identity
     pub attestation_chain: Vec<Attestation>,
     /// UTC timestamp when this bundle was created
@@ -1167,6 +1167,7 @@ pub enum PublicKeyHexError {
 ///
 /// Use `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 #[serde(try_from = "String")]
 pub struct PublicKeyHex(String);
@@ -1815,7 +1816,7 @@ mod tests {
     fn identity_bundle_serializes_correctly() {
         let bundle = IdentityBundle {
             identity_did: IdentityDID::new_unchecked("did:keri:test123"),
-            public_key_hex: "aabbccdd".to_string(),
+            public_key_hex: PublicKeyHex::new_unchecked("aabbccdd"),
             attestation_chain: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
@@ -1835,7 +1836,7 @@ mod tests {
     fn identity_bundle_deserializes_correctly() {
         let json = r#"{
             "identity_did": "did:keri:abc123",
-            "public_key_hex": "112233",
+            "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
             "attestation_chain": [],
             "bundle_timestamp": "2099-01-01T00:00:00Z",
             "max_valid_for_secs": 86400
@@ -1844,7 +1845,10 @@ mod tests {
         let bundle: IdentityBundle = serde_json::from_str(json).unwrap();
 
         assert_eq!(bundle.identity_did.as_str(), "did:keri:abc123");
-        assert_eq!(bundle.public_key_hex, "112233");
+        assert_eq!(
+            bundle.public_key_hex.as_str(),
+            "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+        );
         assert!(bundle.attestation_chain.is_empty());
     }
 
@@ -1874,7 +1878,9 @@ mod tests {
 
         let original = IdentityBundle {
             identity_did: IdentityDID::new_unchecked("did:keri:Eexample"),
-            public_key_hex: "deadbeef".to_string(),
+            public_key_hex: PublicKeyHex::new_unchecked(
+                "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            ),
             attestation_chain: vec![attestation],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()

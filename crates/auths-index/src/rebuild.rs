@@ -1,5 +1,6 @@
 use crate::error::Result;
 use crate::index::{AttestationIndex, IndexedAttestation};
+use auths_verifier::core::ResourceId;
 use chrono::Utc;
 use git2::Repository;
 use std::path::Path;
@@ -117,7 +118,7 @@ fn extract_attestation_from_ref(
         .unwrap_or_else(Utc::now);
 
     Ok(IndexedAttestation {
-        rid,
+        rid: ResourceId::new(rid),
         issuer_did,
         device_did,
         git_ref: ref_name.to_string(),

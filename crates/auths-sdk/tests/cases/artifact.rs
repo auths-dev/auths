@@ -137,7 +137,7 @@ fn sign_artifact_with_alias_keys_produces_valid_json() {
     assert!(!result.digest.is_empty());
 
     let parsed: serde_json::Value = serde_json::from_str(&result.attestation_json).unwrap();
-    assert_eq!(parsed["rid"].as_str().unwrap(), result.rid);
+    assert_eq!(result.rid, parsed["rid"].as_str().unwrap());
     assert!(parsed.get("identity_signature").is_some());
     assert!(parsed.get("device_signature").is_some());
 }
@@ -164,7 +164,7 @@ fn sign_artifact_with_direct_device_key_produces_valid_json() {
 
     assert!(result.rid.starts_with("sha256:"));
     let parsed: serde_json::Value = serde_json::from_str(&result.attestation_json).unwrap();
-    assert_eq!(parsed["rid"].as_str().unwrap(), result.rid);
+    assert_eq!(result.rid, parsed["rid"].as_str().unwrap());
 }
 
 #[test]

@@ -646,10 +646,10 @@ impl GitRegistryBackend {
         for (prefix_str, state) in &state_overlay {
             if let Some(index) = &self.index {
                 let indexed = auths_index::IndexedIdentity {
-                    prefix: prefix_str.clone(),
+                    prefix: auths_verifier::keri::Prefix::new_unchecked(prefix_str.clone()),
                     current_keys: state.current_keys.clone(),
                     sequence: state.sequence,
-                    tip_said: state.last_event_said.to_string(),
+                    tip_said: state.last_event_said.clone(),
                     updated_at: self.clock.now(),
                 };
                 #[allow(clippy::unwrap_used)]
@@ -947,10 +947,10 @@ impl RegistryBackend for GitRegistryBackend {
         #[cfg(feature = "indexed-storage")]
         if let Some(index) = &self.index {
             let indexed = auths_index::IndexedIdentity {
-                prefix: prefix.to_string(),
+                prefix: prefix.clone(),
                 current_keys: new_state.current_keys.clone(),
                 sequence: new_state.sequence,
-                tip_said: event.said().to_string(),
+                tip_said: event.said().clone(),
                 updated_at: self.clock.now(),
             };
             // INVARIANT: Mutex poisoning is fatal by design
@@ -1208,7 +1208,7 @@ impl RegistryBackend for GitRegistryBackend {
         #[cfg(feature = "indexed-storage")]
         if let Some(index) = &self.index {
             let indexed = auths_index::IndexedAttestation {
-                rid: attestation.rid.to_string(),
+                rid: attestation.rid.clone(),
                 issuer_did: attestation.issuer.to_string(),
                 device_did: attestation.subject.to_string(),
                 git_ref: REGISTRY_REF.to_string(),
@@ -1383,10 +1383,10 @@ impl RegistryBackend for GitRegistryBackend {
         #[cfg(feature = "indexed-storage")]
         if let Some(index) = &self.index {
             let indexed = auths_index::IndexedOrgMember {
-                org_prefix: org.to_string(),
+                org_prefix: auths_verifier::keri::Prefix::new_unchecked(org.to_string()),
                 member_did: member.subject.to_string(),
                 issuer_did: member.issuer.to_string(),
-                rid: member.rid.to_string(),
+                rid: member.rid.clone(),
                 revoked_at: member.revoked_at,
                 expires_at: member.expires_at,
                 updated_at: member.timestamp.unwrap_or_else(|| self.clock.now()),
@@ -1575,7 +1575,7 @@ impl RegistryBackend for GitRegistryBackend {
                 role: None,
                 capabilities: vec![],
                 issuer: auths_core::storage::keychain::IdentityDID::new_unchecked(m.issuer_did),
-                rid: auths_verifier::core::ResourceId::new(m.rid),
+                rid: m.rid,
                 revoked_at: m.revoked_at,
                 expires_at: m.expires_at,
                 timestamp: None,
@@ -1726,10 +1726,10 @@ pub fn rebuild_identities_from_registry(
         match backend.get_key_state(&prefix_typed) {
             Ok(state) => {
                 let indexed = IndexedIdentity {
-                    prefix: state.prefix.to_string(),
+                    prefix: state.prefix.clone(),
                     current_keys: state.current_keys.clone(),
                     sequence: state.sequence,
-                    tip_said: state.last_event_said.to_string(),
+                    tip_said: state.last_event_said.clone(),
                     updated_at: backend.clock.now(),
                 };
                 match index.upsert_identity(&indexed) {
@@ -1790,10 +1790,10 @@ pub fn rebuild_org_members_from_registry(
 
             if let Ok(att) = &entry.attestation {
                 let indexed = IndexedOrgMember {
-                    org_prefix: org_prefix.clone(),
+                    org_prefix: auths_verifier::keri::Prefix::new_unchecked(org_prefix.clone()),
                     member_did: entry.did.to_string(),
                     issuer_did: att.issuer.to_string(),
-                    rid: att.rid.to_string(),
+                    rid: att.rid.clone(),
                     revoked_at: att.revoked_at,
                     expires_at: att.expires_at,
                     updated_at: att.timestamp.unwrap_or_else(|| backend.clock.now()),

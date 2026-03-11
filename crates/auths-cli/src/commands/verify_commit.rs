@@ -140,8 +140,8 @@ fn resolve_signers_source(cmd: &VerifyCommitCommand) -> Result<SignersSource> {
         let bundle: IdentityBundle = serde_json::from_str(&bundle_content)
             .with_context(|| format!("Failed to parse identity bundle: {:?}", bundle_path))?;
 
-        let public_key_bytes =
-            hex::decode(&bundle.public_key_hex).context("Invalid public key hex in bundle")?;
+        let public_key_bytes = hex::decode(bundle.public_key_hex.as_str())
+            .context("Invalid public key hex in bundle")?;
 
         let ssh_key = format_ed25519_as_ssh(&public_key_bytes)?;
         let temp_signers_content = format!("{} {}", bundle.identity_did, ssh_key);
@@ -348,7 +348,7 @@ async fn verify_bundle_chain(
         );
     }
 
-    let root_pk = match hex::decode(&bundle.public_key_hex) {
+    let root_pk = match hex::decode(bundle.public_key_hex.as_str()) {
         Ok(pk) => pk,
         Err(e) => {
             return (
@@ -418,8 +418,8 @@ async fn verify_witnesses(
     if let Some(bundle) = bundle
         && !bundle.attestation_chain.is_empty()
     {
-        let root_pk =
-            hex::decode(&bundle.public_key_hex).context("Invalid public key hex in bundle")?;
+        let root_pk = hex::decode(bundle.public_key_hex.as_str())
+            .context("Invalid public key hex in bundle")?;
 
         let report = verify_chain_with_witnesses(&bundle.attestation_chain, &root_pk, &config)
             .await
@@ -914,7 +914,7 @@ mod tests {
     async fn verify_bundle_chain_empty_chain() {
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
-            public_key_hex: "aa".repeat(32),
+            public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("aa".repeat(32)),
             attestation_chain: vec![],
             bundle_timestamp: Utc::now(),
             max_valid_for_secs: 86400,
@@ -930,7 +930,7 @@ mod tests {
     async fn verify_bundle_chain_invalid_hex() {
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
-            public_key_hex: "not_hex".into(),
+            public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("not_hex"),
             attestation_chain: vec![auths_verifier::core::Attestation {
                 version: 1,
                 rid: "test".into(),

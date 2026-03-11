@@ -4,6 +4,7 @@
 //! the OIDC bridge. The `reqwest::Client` is injected so callers can configure
 //! timeouts, certificate pinning, and test-time mocking.
 
+use auths_verifier::PublicKeyHex;
 use auths_verifier::core::Attestation;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +14,7 @@ use crate::error::McpAuthError;
 #[derive(Serialize)]
 struct McpExchangeRequest {
     attestation_chain: Vec<Attestation>,
-    root_public_key: String,
+    root_public_key: PublicKeyHex,
     #[serde(skip_serializing_if = "Option::is_none")]
     requested_capabilities: Option<Vec<String>>,
 }
@@ -60,14 +61,14 @@ pub async fn exchange_token(
     client: &reqwest::Client,
     bridge_url: &str,
     chain: &[Attestation],
-    root_public_key_hex: &str,
+    root_public_key_hex: &PublicKeyHex,
     requested_capabilities: &[&str],
 ) -> Result<String, McpAuthError> {
     let url = format!("{}/token", bridge_url.trim_end_matches('/'));
 
     let request_body = McpExchangeRequest {
         attestation_chain: chain.to_vec(),
-        root_public_key: root_public_key_hex.to_string(),
+        root_public_key: root_public_key_hex.clone(),
         requested_capabilities: if requested_capabilities.is_empty() {
             None
         } else {

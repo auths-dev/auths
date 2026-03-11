@@ -3,6 +3,7 @@
 //! This module provides loading and validation for `.auths/roots.json` files,
 //! which allow repositories to define trusted identity roots for CI pipelines.
 
+use auths_verifier::PublicKeyHex;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -44,7 +45,7 @@ pub struct RootEntry {
     pub did: String,
 
     /// The public key in hex format (64 chars, 32 bytes for Ed25519).
-    pub public_key_hex: String,
+    pub public_key_hex: PublicKeyHex,
 
     /// Optional KEL tip SAID for rotation-aware matching.
     #[serde(default)]
@@ -67,22 +68,6 @@ impl RootsFile {
                 "Unsupported roots.json version: {}. Expected version 1.",
                 file.version
             )));
-        }
-
-        for root in &file.roots {
-            let bytes = hex::decode(&root.public_key_hex).map_err(|e| {
-                TrustError::InvalidData(format!(
-                    "Invalid public_key_hex for {} in roots.json: {}",
-                    root.did, e
-                ))
-            })?;
-            if bytes.len() != 32 {
-                return Err(TrustError::InvalidData(format!(
-                    "Invalid key length for {} in roots.json: expected 32 bytes, got {}",
-                    root.did,
-                    bytes.len()
-                )));
-            }
         }
 
         Ok(file)
@@ -109,7 +94,7 @@ impl RootsFile {
 impl RootEntry {
     /// Decode the public key to raw bytes.
     pub fn public_key_bytes(&self) -> Result<Vec<u8>, TrustError> {
-        hex::decode(&self.public_key_hex)
+        hex::decode(self.public_key_hex.as_str())
             .map_err(|e| TrustError::InvalidData(format!("Invalid public_key_hex: {}", e)))
     }
 }
@@ -202,7 +187,6 @@ mod tests {
         let result = RootsFile::load(&path);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid"));
     }
 
     #[test]
@@ -221,7 +205,6 @@ mod tests {
         let result = RootsFile::load(&path);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("32 bytes"));
     }
 
     #[test]
@@ -277,8 +260,9 @@ mod tests {
     fn test_root_entry_public_key_bytes() {
         let entry = RootEntry {
             did: "did:keri:ETest".to_string(),
-            public_key_hex: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
-                .to_string(),
+            public_key_hex: PublicKeyHex::new_unchecked(
+                "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+            ),
             kel_tip_said: None,
             note: None,
         };

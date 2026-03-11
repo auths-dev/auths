@@ -6,13 +6,14 @@ use auths_infra_http::HttpRegistryClient;
 use auths_sdk::workflows::artifact::{
     ArtifactPublishConfig, ArtifactPublishError, publish_artifact,
 };
+use auths_verifier::core::ResourceId;
 use serde::Serialize;
 
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
 #[derive(Serialize)]
 struct PublishJsonResponse {
-    attestation_rid: String,
+    attestation_rid: ResourceId,
     registry: String,
     package_name: Option<String>,
     signer_did: String,

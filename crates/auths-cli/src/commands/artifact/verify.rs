@@ -215,7 +215,8 @@ fn resolve_identity_key(
             .with_context(|| format!("Failed to read identity bundle: {:?}", bundle_path))?;
         let bundle: IdentityBundle = serde_json::from_str(&bundle_content)
             .with_context(|| format!("Failed to parse identity bundle: {:?}", bundle_path))?;
-        let pk = hex::decode(&bundle.public_key_hex).context("Invalid public key hex in bundle")?;
+        let pk = hex::decode(bundle.public_key_hex.as_str())
+            .context("Invalid public key hex in bundle")?;
         Ok((pk, bundle.identity_did))
     } else {
         // Resolve public key from the issuer DID
