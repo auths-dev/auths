@@ -126,6 +126,7 @@ impl ChainLink {
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
+use std::str::FromStr;
 
 // ============================================================================
 // IdentityDID Type
@@ -156,6 +157,55 @@ impl IdentityDID {
         Self(s)
     }
 
+    /// Validates and parses a `did:keri:` string into an `IdentityDID`.
+    ///
+    /// Args:
+    /// * `s`: A DID string that must start with `did:keri:` followed by a non-empty KERI prefix.
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::IdentityDID;
+    /// let did = IdentityDID::parse("did:keri:EPrefix123").unwrap();
+    /// assert_eq!(did.as_str(), "did:keri:EPrefix123");
+    /// ```
+    pub fn parse(s: &str) -> Result<Self, DidParseError> {
+        match s.strip_prefix("did:keri:") {
+            Some("") => Err(DidParseError::EmptyIdentifier),
+            Some(_) => Ok(Self(s.to_string())),
+            None => Err(DidParseError::InvalidIdentityPrefix(s.to_string())),
+        }
+    }
+
+    /// Builds an `IdentityDID` from a raw KERI prefix string.
+    ///
+    /// Args:
+    /// * `prefix`: The KERI prefix without the `did:keri:` scheme (e.g., `"EOrg123"`).
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::IdentityDID;
+    /// let did = IdentityDID::from_prefix("EOrg123").unwrap();
+    /// assert_eq!(did.as_str(), "did:keri:EOrg123");
+    /// ```
+    pub fn from_prefix(prefix: &str) -> Result<Self, DidParseError> {
+        if prefix.is_empty() {
+            return Err(DidParseError::EmptyIdentifier);
+        }
+        Ok(Self(format!("did:keri:{}", prefix)))
+    }
+
+    /// Returns the KERI prefix portion of the DID (after `did:keri:`).
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::IdentityDID;
+    /// let did = IdentityDID::parse("did:keri:EOrg123").unwrap();
+    /// assert_eq!(did.prefix(), "EOrg123");
+    /// ```
+    pub fn prefix(&self) -> &str {
+        self.0.strip_prefix("did:keri:").unwrap_or(&self.0)
+    }
+
     /// Returns the DID as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -170,6 +220,14 @@ impl IdentityDID {
 impl fmt::Display for IdentityDID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl FromStr for IdentityDID {
+    type Err = DidParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
     }
 }
 
@@ -250,6 +308,25 @@ impl DeviceDID {
         DeviceDID(s.into())
     }
 
+    /// Validates and parses a `did:key:z` string into a `DeviceDID`.
+    ///
+    /// Args:
+    /// * `s`: A DID string that must start with `did:key:z` followed by non-empty base58 content.
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::DeviceDID;
+    /// let did = DeviceDID::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
+    /// assert_eq!(did.as_str(), "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
+    /// ```
+    pub fn parse(s: &str) -> Result<Self, DidParseError> {
+        match s.strip_prefix("did:key:z") {
+            Some("") => Err(DidParseError::EmptyIdentifier),
+            Some(_) => Ok(Self(s.to_string())),
+            None => Err(DidParseError::InvalidDevicePrefix(s.to_string())),
+        }
+    }
+
     /// Constructs a `did:key:z...` identifier from a 32-byte Ed25519 public key.
     ///
     /// This uses the multicodec prefix for Ed25519 (0xED 0x01) and encodes it with base58btc.
@@ -291,10 +368,17 @@ impl DeviceDID {
     }
 }
 
-// Allow `.to_string()` and printing
 impl fmt::Display for DeviceDID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl FromStr for DeviceDID {
+    type Err = DidParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
     }
 }
 
@@ -363,6 +447,21 @@ pub enum DidConversionError {
     /// The decoded key is not 32 bytes.
     #[error("expected 32-byte Ed25519 key, got {0} bytes")]
     WrongKeyLength(usize),
+}
+
+/// Errors from DID string parsing and validation.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum DidParseError {
+    /// DeviceDID must start with `did:key:z`.
+    #[error("DeviceDID must start with 'did:key:z', got: {0}")]
+    InvalidDevicePrefix(String),
+    /// IdentityDID must start with `did:keri:`.
+    #[error("IdentityDID must start with 'did:keri:', got: {0}")]
+    InvalidIdentityPrefix(String),
+    /// The method-specific identifier portion is empty.
+    #[error("DID method-specific identifier is empty")]
+    EmptyIdentifier,
 }
 
 #[cfg(test)]
