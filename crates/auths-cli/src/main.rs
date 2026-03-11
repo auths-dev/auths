@@ -1,10 +1,5 @@
-// CLI is the presentation boundary — Utc::now(), env::var, and printing are expected here.
-#![allow(
-    clippy::print_stdout,
-    clippy::print_stderr,
-    clippy::disallowed_methods,
-    clippy::exit
-)]
+// CLI is the presentation boundary — printing and exit are expected here.
+#![allow(clippy::print_stdout, clippy::print_stderr, clippy::exit)]
 use anyhow::Result;
 use clap::Parser;
 

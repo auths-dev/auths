@@ -76,6 +76,7 @@ pub(crate) fn parse_git_version(version_str: &str) -> Result<(u32, u32, u32)> {
     }
 }
 
+#[allow(clippy::disallowed_methods)] // CLI boundary: CI env detection
 pub(crate) fn detect_ci_environment() -> Option<String> {
     if std::env::var("GITHUB_ACTIONS").is_ok() {
         Some("GitHub Actions".to_string())
@@ -207,6 +208,7 @@ pub(crate) fn select_agent_capabilities(
 
 // --- Shell Completion Helpers ---
 
+#[allow(clippy::disallowed_methods)] // CLI boundary: shell detection
 pub(crate) fn detect_shell() -> Option<Shell> {
     std::env::var("SHELL").ok().and_then(|shell_path| {
         if shell_path.contains("zsh") {

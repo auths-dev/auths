@@ -156,6 +156,7 @@ fn run_github_verification(
     use auths_sdk::workflows::platform::create_signed_platform_claim;
 
     const GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";
+    #[allow(clippy::disallowed_methods)] // CLI boundary: optional env override
     let client_id =
         std::env::var("AUTHS_GITHUB_CLIENT_ID").unwrap_or_else(|_| GITHUB_CLIENT_ID.to_string());
 

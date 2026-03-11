@@ -1,9 +1,4 @@
-#![allow(
-    clippy::print_stdout,
-    clippy::print_stderr,
-    clippy::disallowed_methods,
-    clippy::exit
-)]
+#![allow(clippy::print_stdout, clippy::print_stderr, clippy::exit)]
 //! auths-sign: Git SSH signing program compatible with `gpg.ssh.program`
 //!
 //! Git calls this binary with ssh-keygen compatible arguments:

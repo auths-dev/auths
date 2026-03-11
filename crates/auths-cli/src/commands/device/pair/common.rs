@@ -278,6 +278,7 @@ pub(crate) fn handle_pairing_response(
     let decrypted = DecryptedPairingResponse {
         auths_dir: auths_dir.to_path_buf(),
         device_pubkey: device_signing_bytes,
+        #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from pairing protocol response
         device_did: auths_verifier::types::DeviceDID::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
         capabilities: capabilities.to_vec(),
@@ -364,6 +365,7 @@ pub(crate) fn save_device_info(
 }
 
 /// Get the hostname of this machine for device naming.
+#[allow(clippy::disallowed_methods)] // CLI boundary: hostname from env
 pub(crate) fn hostname() -> String {
     std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("HOST"))

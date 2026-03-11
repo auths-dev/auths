@@ -435,6 +435,7 @@ fn handle_extend(
 ) -> Result<()> {
     let config = auths_sdk::types::DeviceExtensionConfig {
         repo_path: repo_path.to_path_buf(),
+        #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from CLI arg validated upstream
         device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did),
         days: days as u32,
         identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),

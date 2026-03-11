@@ -78,6 +78,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                     };
 
                     WitnessServerState::new(WitnessServerConfig {
+                        #[allow(clippy::disallowed_methods)] // INVARIANT: witness_did derived from keypair
                         witness_did: auths_verifier::types::DeviceDID::new_unchecked(witness_did),
                         keypair_seed: seed,
                         keypair_pubkey: pubkey,
