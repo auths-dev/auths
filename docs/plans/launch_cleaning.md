@@ -280,7 +280,7 @@ These are the features that separate "impressive developer tool" from "enterpris
 
 ---
 
-#### Epic 3: CLI Integration Test Suite
+~~#### Epic 3: CLI Integration Test Suite~~
 **Why it matters:** With only ~50 lines of `assert_cmd` coverage across the entire CLI, you cannot confidently say the install-to-first-commit journey works on a clean machine. This is a launch confidence blocker.
 
 **Scope:**

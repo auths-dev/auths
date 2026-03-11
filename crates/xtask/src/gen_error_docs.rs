@@ -62,7 +62,13 @@ pub fn run(workspace_root: &Path, check: bool) -> Result<()> {
     // --- docs/errors/index.md ---
     let index_content = generate_error_index(&entries);
     let index_path = docs_dir.join("index.md");
-    check_or_write(&index_path, &index_content, check, &mut stale, "docs/errors/index.md")?;
+    check_or_write(
+        &index_path,
+        &index_content,
+        check,
+        &mut stale,
+        "docs/errors/index.md",
+    )?;
 
     // --- mkdocs.yml nav entry ---
     let mkdocs_path = workspace_root.join("mkdocs.yml");

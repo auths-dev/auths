@@ -1,5 +1,3 @@
-#![allow(deprecated)] // cargo_bin is deprecated but replacement requires significant refactor
-
 use assert_cmd::Command;
 use auths_crypto::testing::gen_keypair;
 use auths_verifier::core::{

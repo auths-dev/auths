@@ -1,4 +1,5 @@
 #![allow(
+    deprecated,
     clippy::disallowed_methods,
     clippy::print_stdout,
     clippy::print_stderr,
