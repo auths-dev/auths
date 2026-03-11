@@ -1,5 +1,7 @@
 use std::sync::Mutex;
 
+use sha2::{Digest, Sha256};
+
 use crate::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
 
 /// Configurable fake for [`ArtifactSource`].
@@ -44,6 +46,30 @@ impl FakeArtifactSource {
             name: String::new(),
             size: 0,
             fail_digest: Mutex::new(Some(msg.to_string())),
+            fail_metadata: Mutex::new(None),
+        }
+    }
+
+    /// Create a fake from raw bytes, computing a real SHA-256 digest.
+    ///
+    /// Args:
+    /// * `name`: Artifact name for metadata.
+    /// * `data`: Raw bytes to hash.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let fake = FakeArtifactSource::from_data("release.bin", b"binary content");
+    /// ```
+    pub fn from_data(name: &str, data: &[u8]) -> Self {
+        let hash = Sha256::digest(data);
+        Self {
+            digest: ArtifactDigest {
+                algorithm: "sha256".to_string(),
+                hex: hex::encode(hash),
+            },
+            name: name.to_string(),
+            size: data.len() as u64,
+            fail_digest: Mutex::new(None),
             fail_metadata: Mutex::new(None),
         }
     }

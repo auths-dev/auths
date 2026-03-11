@@ -3,55 +3,15 @@ use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata
 use auths_sdk::signing::{
     ArtifactSigningError, ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
 };
+use auths_sdk::testing::fakes::FakeArtifactSource;
 use auths_sdk::workflows::artifact::compute_digest;
 use std::sync::Arc;
 
 use crate::cases::helpers::{build_empty_test_context, setup_signed_artifact_context};
 
-struct InMemoryArtifact {
-    data: Vec<u8>,
-    name: String,
-}
-
-impl ArtifactSource for InMemoryArtifact {
-    fn digest(&self) -> Result<ArtifactDigest, ArtifactError> {
-        use sha2::{Digest, Sha256};
-        let hash = Sha256::digest(&self.data);
-        Ok(ArtifactDigest {
-            algorithm: "sha256".to_string(),
-            hex: hex::encode(hash),
-        })
-    }
-
-    fn metadata(&self) -> Result<ArtifactMetadata, ArtifactError> {
-        let digest = self.digest()?;
-        Ok(ArtifactMetadata {
-            artifact_type: "memory".to_string(),
-            digest,
-            name: Some(self.name.clone()),
-            size: Some(self.data.len() as u64),
-        })
-    }
-}
-
-struct FailingArtifact;
-
-impl ArtifactSource for FailingArtifact {
-    fn digest(&self) -> Result<ArtifactDigest, ArtifactError> {
-        Err(ArtifactError::Io("simulated read failure".to_string()))
-    }
-
-    fn metadata(&self) -> Result<ArtifactMetadata, ArtifactError> {
-        Err(ArtifactError::Metadata("no metadata available".to_string()))
-    }
-}
-
 #[test]
-fn in_memory_artifact_digest_is_deterministic() {
-    let artifact = InMemoryArtifact {
-        data: b"hello world".to_vec(),
-        name: "test.bin".to_string(),
-    };
+fn fake_artifact_from_data_digest_is_deterministic() {
+    let artifact = FakeArtifactSource::from_data("test.bin", b"hello world");
 
     let d1 = artifact.digest().unwrap();
     let d2 = artifact.digest().unwrap();
@@ -65,11 +25,8 @@ fn in_memory_artifact_digest_is_deterministic() {
 }
 
 #[test]
-fn in_memory_artifact_metadata_includes_name_and_size() {
-    let artifact = InMemoryArtifact {
-        data: b"some content".to_vec(),
-        name: "payload.tar.gz".to_string(),
-    };
+fn fake_artifact_from_data_metadata_includes_name_and_size() {
+    let artifact = FakeArtifactSource::from_data("payload.tar.gz", b"some content");
 
     let meta = artifact.metadata().unwrap();
 
@@ -81,10 +38,7 @@ fn in_memory_artifact_metadata_includes_name_and_size() {
 
 #[test]
 fn compute_digest_delegates_to_source() {
-    let artifact = InMemoryArtifact {
-        data: b"test data".to_vec(),
-        name: "test.bin".to_string(),
-    };
+    let artifact = FakeArtifactSource::from_data("test.bin", b"test data");
 
     let direct = artifact.digest().unwrap();
     let via_workflow = compute_digest(&artifact).unwrap();
@@ -94,7 +48,7 @@ fn compute_digest_delegates_to_source() {
 
 #[test]
 fn failing_artifact_returns_io_error() {
-    let artifact = FailingArtifact;
+    let artifact = FakeArtifactSource::digest_fails_with("simulated read failure");
     let result = artifact.digest();
 
     assert!(result.is_err());
@@ -108,7 +62,7 @@ fn failing_artifact_returns_io_error() {
 
 #[test]
 fn failing_artifact_metadata_returns_error() {
-    let artifact = FailingArtifact;
+    let artifact = FakeArtifactSource::metadata_fails_with("no metadata available");
     let result = artifact.metadata();
 
     assert!(result.is_err());
@@ -163,10 +117,10 @@ fn artifact_metadata_serialization_roundtrip() {
 fn sign_artifact_with_alias_keys_produces_valid_json() {
     let (_tmp, key_alias, ctx) = setup_signed_artifact_context();
 
-    let artifact = Arc::new(InMemoryArtifact {
-        data: b"release binary content".to_vec(),
-        name: "release.bin".to_string(),
-    });
+    let artifact = Arc::new(FakeArtifactSource::from_data(
+        "release.bin",
+        b"release binary content",
+    ));
 
     let params = ArtifactSigningParams {
         artifact,
@@ -193,10 +147,10 @@ fn sign_artifact_with_direct_device_key_produces_valid_json() {
     let (_tmp, key_alias, ctx) = setup_signed_artifact_context();
 
     let device_seed = SecureSeed::new([42u8; 32]);
-    let artifact = Arc::new(InMemoryArtifact {
-        data: b"release binary content v2".to_vec(),
-        name: "release-v2.bin".to_string(),
-    });
+    let artifact = Arc::new(FakeArtifactSource::from_data(
+        "release-v2.bin",
+        b"release binary content v2",
+    ));
 
     let params = ArtifactSigningParams {
         artifact,
@@ -218,10 +172,7 @@ fn sign_artifact_identity_not_found_returns_error() {
     let (_tmp, empty_ctx) = build_empty_test_context();
 
     let device_seed = SecureSeed::new([1u8; 32]);
-    let artifact = Arc::new(InMemoryArtifact {
-        data: b"data".to_vec(),
-        name: "file.bin".to_string(),
-    });
+    let artifact = Arc::new(FakeArtifactSource::from_data("file.bin", b"data"));
 
     let params = ArtifactSigningParams {
         artifact,
