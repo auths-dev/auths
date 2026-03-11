@@ -2,26 +2,7 @@
 
 use thiserror::Error;
 
-/// Trait for error metadata providing structured error codes and actionable suggestions.
-///
-/// All Auths error types implement this trait to provide:
-/// - A unique error code for programmatic handling (e.g., "AUTHS_KEY_NOT_FOUND")
-/// - An optional human-readable suggestion for how to resolve the error
-pub trait AuthsErrorInfo {
-    /// Returns a unique error code string following the AUTHS_* naming convention.
-    ///
-    /// Error codes are stable identifiers that can be used for:
-    /// - Programmatic error handling in scripts
-    /// - Internationalization of error messages
-    /// - Logging and debugging
-    fn error_code(&self) -> &'static str;
-
-    /// Returns an optional actionable suggestion for resolving the error.
-    ///
-    /// Suggestions should be clear, concise commands or instructions
-    /// that help the user fix the problem.
-    fn suggestion(&self) -> Option<&'static str>;
-}
+pub use auths_crypto::AuthsErrorInfo;
 
 /// Errors from the Auths agent and core operations.
 #[derive(Debug, Error)]
@@ -144,30 +125,30 @@ pub enum AgentError {
 impl AuthsErrorInfo for AgentError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::KeyNotFound => "AUTHS_KEY_NOT_FOUND",
-            Self::IncorrectPassphrase => "AUTHS_INCORRECT_PASSPHRASE",
-            Self::MissingPassphrase => "AUTHS_MISSING_PASSPHRASE",
-            Self::SecurityError(_) => "AUTHS_SECURITY_ERROR",
-            Self::CryptoError(_) => "AUTHS_CRYPTO_ERROR",
-            Self::KeyDeserializationError(_) => "AUTHS_KEY_DESERIALIZATION_ERROR",
-            Self::SigningFailed(_) => "AUTHS_SIGNING_FAILED",
-            Self::Proto(_) => "AUTHS_PROTOCOL_ERROR",
-            Self::IO(_) => "AUTHS_IO_ERROR",
-            Self::GitError(_) => "AUTHS_GIT_ERROR",
-            Self::InvalidInput(_) => "AUTHS_INVALID_INPUT",
-            Self::MutexError(_) => "AUTHS_MUTEX_ERROR",
-            Self::StorageError(_) => "AUTHS_STORAGE_ERROR",
-            Self::UserInputCancelled => "AUTHS_USER_CANCELLED",
-            Self::BackendUnavailable { .. } => "AUTHS_BACKEND_UNAVAILABLE",
-            Self::StorageLocked => "AUTHS_STORAGE_LOCKED",
-            Self::BackendInitFailed { .. } => "AUTHS_BACKEND_INIT_FAILED",
-            Self::CredentialTooLarge { .. } => "AUTHS_CREDENTIAL_TOO_LARGE",
-            Self::AgentLocked => "AUTHS_AGENT_LOCKED",
-            Self::WeakPassphrase(_) => "AUTHS_WEAK_PASSPHRASE",
-            Self::HsmPinLocked => "AUTHS_HSM_PIN_LOCKED",
-            Self::HsmDeviceRemoved => "AUTHS_HSM_DEVICE_REMOVED",
-            Self::HsmSessionExpired => "AUTHS_HSM_SESSION_EXPIRED",
-            Self::HsmUnsupportedMechanism(_) => "AUTHS_HSM_UNSUPPORTED_MECHANISM",
+            Self::KeyNotFound => "AUTHS-E3001",
+            Self::IncorrectPassphrase => "AUTHS-E3002",
+            Self::MissingPassphrase => "AUTHS-E3003",
+            Self::SecurityError(_) => "AUTHS-E3004",
+            Self::CryptoError(_) => "AUTHS-E3005",
+            Self::KeyDeserializationError(_) => "AUTHS-E3006",
+            Self::SigningFailed(_) => "AUTHS-E3007",
+            Self::Proto(_) => "AUTHS-E3008",
+            Self::IO(_) => "AUTHS-E3009",
+            Self::GitError(_) => "AUTHS-E3010",
+            Self::InvalidInput(_) => "AUTHS-E3011",
+            Self::MutexError(_) => "AUTHS-E3012",
+            Self::StorageError(_) => "AUTHS-E3013",
+            Self::UserInputCancelled => "AUTHS-E3014",
+            Self::BackendUnavailable { .. } => "AUTHS-E3015",
+            Self::StorageLocked => "AUTHS-E3016",
+            Self::BackendInitFailed { .. } => "AUTHS-E3017",
+            Self::CredentialTooLarge { .. } => "AUTHS-E3018",
+            Self::AgentLocked => "AUTHS-E3019",
+            Self::WeakPassphrase(_) => "AUTHS-E3020",
+            Self::HsmPinLocked => "AUTHS-E3021",
+            Self::HsmDeviceRemoved => "AUTHS-E3022",
+            Self::HsmSessionExpired => "AUTHS-E3023",
+            Self::HsmUnsupportedMechanism(_) => "AUTHS-E3024",
         }
     }
 
@@ -246,13 +227,13 @@ pub enum TrustError {
 impl AuthsErrorInfo for TrustError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::Io(_) => "AUTHS_TRUST_IO_ERROR",
-            Self::InvalidData(_) => "AUTHS_TRUST_INVALID_DATA",
-            Self::NotFound(_) => "AUTHS_TRUST_NOT_FOUND",
-            Self::Serialization(_) => "AUTHS_TRUST_SERIALIZATION_ERROR",
-            Self::AlreadyExists(_) => "AUTHS_TRUST_ALREADY_EXISTS",
-            Self::Lock(_) => "AUTHS_TRUST_LOCK_FAILED",
-            Self::PolicyRejected(_) => "AUTHS_TRUST_POLICY_REJECTED",
+            Self::Io(_) => "AUTHS-E3101",
+            Self::InvalidData(_) => "AUTHS-E3102",
+            Self::NotFound(_) => "AUTHS-E3103",
+            Self::Serialization(_) => "AUTHS-E3104",
+            Self::AlreadyExists(_) => "AUTHS-E3105",
+            Self::Lock(_) => "AUTHS-E3106",
+            Self::PolicyRejected(_) => "AUTHS-E3107",
         }
     }
 

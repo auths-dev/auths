@@ -13,6 +13,22 @@ pub enum SshKeyError {
     UnsupportedKeyType,
 }
 
+impl crate::AuthsErrorInfo for SshKeyError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidFormat(_) => "AUTHS-E1301",
+            Self::UnsupportedKeyType => "AUTHS-E1302",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidFormat(_) => Some("Check that the public key is a valid OpenSSH format"),
+            Self::UnsupportedKeyType => Some("Only ssh-ed25519 keys are supported"),
+        }
+    }
+}
+
 /// Parse an OpenSSH Ed25519 public key line and return the raw 32-byte public key.
 ///
 /// Args:

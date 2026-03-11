@@ -13,6 +13,7 @@ pub mod debug;
 pub mod device;
 pub mod doctor;
 pub mod emergency;
+pub mod error_lookup;
 pub mod git;
 pub mod id;
 pub mod index;

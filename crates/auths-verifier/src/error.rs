@@ -3,18 +3,7 @@
 use crate::core::Capability;
 use thiserror::Error;
 
-/// Trait for error metadata providing structured error codes and actionable suggestions.
-///
-/// All Auths error types implement this trait to provide:
-/// - A unique error code for programmatic handling (e.g., "AUTHS_VERIFICATION_ERROR")
-/// - An optional human-readable suggestion for how to resolve the error
-pub trait AuthsErrorInfo {
-    /// Returns a unique error code string following the AUTHS_* naming convention.
-    fn error_code(&self) -> &'static str;
-
-    /// Returns an optional actionable suggestion for resolving the error.
-    fn suggestion(&self) -> Option<&'static str>;
-}
+pub use auths_crypto::AuthsErrorInfo;
 
 /// Errors returned by attestation signing, verification, and related operations.
 #[derive(Error, Debug)]
@@ -116,24 +105,24 @@ pub enum AttestationError {
 impl AuthsErrorInfo for AttestationError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::IssuerSignatureFailed(_) => "AUTHS_ISSUER_SIG_FAILED",
-            Self::DeviceSignatureFailed(_) => "AUTHS_DEVICE_SIG_FAILED",
-            Self::AttestationExpired { .. } => "AUTHS_ATTESTATION_EXPIRED",
-            Self::AttestationRevoked => "AUTHS_ATTESTATION_REVOKED",
-            Self::TimestampInFuture { .. } => "AUTHS_TIMESTAMP_IN_FUTURE",
-            Self::MissingCapability { .. } => "AUTHS_MISSING_CAPABILITY",
-            Self::SigningError(_) => "AUTHS_SIGNING_ERROR",
-            Self::DidResolutionError(_) => "AUTHS_DID_RESOLUTION_ERROR",
-            Self::SerializationError(_) => "AUTHS_SERIALIZATION_ERROR",
-            Self::InputTooLarge(_) => "AUTHS_INPUT_TOO_LARGE",
-            Self::InvalidInput(_) => "AUTHS_INVALID_INPUT",
-            Self::CryptoError(_) => "AUTHS_CRYPTO_ERROR",
-            Self::InternalError(_) => "AUTHS_INTERNAL_ERROR",
-            Self::OrgVerificationFailed(_) => "AUTHS_ORG_VERIFICATION_FAILED",
-            Self::OrgAttestationExpired => "AUTHS_ORG_ATTESTATION_EXPIRED",
-            Self::OrgDidResolutionFailed(_) => "AUTHS_ORG_DID_RESOLUTION_FAILED",
-            Self::BundleExpired { .. } => "AUTHS_BUNDLE_EXPIRED",
-            Self::AttestationTooOld { .. } => "AUTHS_ATTESTATION_TOO_OLD",
+            Self::IssuerSignatureFailed(_) => "AUTHS-E2001",
+            Self::DeviceSignatureFailed(_) => "AUTHS-E2002",
+            Self::AttestationExpired { .. } => "AUTHS-E2003",
+            Self::AttestationRevoked => "AUTHS-E2004",
+            Self::TimestampInFuture { .. } => "AUTHS-E2005",
+            Self::MissingCapability { .. } => "AUTHS-E2006",
+            Self::SigningError(_) => "AUTHS-E2007",
+            Self::DidResolutionError(_) => "AUTHS-E2008",
+            Self::SerializationError(_) => "AUTHS-E2009",
+            Self::InputTooLarge(_) => "AUTHS-E2010",
+            Self::InvalidInput(_) => "AUTHS-E2011",
+            Self::CryptoError(_) => "AUTHS-E2012",
+            Self::InternalError(_) => "AUTHS-E2013",
+            Self::OrgVerificationFailed(_) => "AUTHS-E2014",
+            Self::OrgAttestationExpired => "AUTHS-E2015",
+            Self::OrgDidResolutionFailed(_) => "AUTHS-E2016",
+            Self::BundleExpired { .. } => "AUTHS-E2017",
+            Self::AttestationTooOld { .. } => "AUTHS-E2018",
         }
     }
 

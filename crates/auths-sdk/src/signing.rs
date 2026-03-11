@@ -57,6 +57,40 @@ pub enum SigningError {
     KeyDecryptionFailed(String),
 }
 
+impl auths_core::error::AuthsErrorInfo for SigningError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::IdentityFrozen(_) => "AUTHS-E5901",
+            Self::KeyResolution(_) => "AUTHS-E5902",
+            Self::SigningFailed(_) => "AUTHS-E5903",
+            Self::InvalidPassphrase => "AUTHS-E5904",
+            Self::PemEncoding(_) => "AUTHS-E5905",
+            Self::AgentUnavailable(_) => "AUTHS-E5906",
+            Self::AgentSigningFailed(_) => "AUTHS-E5907",
+            Self::PassphraseExhausted { .. } => "AUTHS-E5908",
+            Self::KeychainUnavailable(_) => "AUTHS-E5909",
+            Self::KeyDecryptionFailed(_) => "AUTHS-E5910",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::IdentityFrozen(_) => Some("To unfreeze: auths emergency unfreeze"),
+            Self::KeyResolution(_) => Some("Run `auths key list` to check available keys"),
+            Self::SigningFailed(_) => None,
+            Self::InvalidPassphrase => Some("Check your passphrase and try again"),
+            Self::PemEncoding(_) => None,
+            Self::AgentUnavailable(_) => Some("Start the agent with `auths agent start`"),
+            Self::AgentSigningFailed(_) => Some("Check agent logs with `auths agent status`"),
+            Self::PassphraseExhausted { .. } => {
+                Some("Run `auths key reset <alias>` to reset your passphrase")
+            }
+            Self::KeychainUnavailable(_) => Some("Run `auths doctor` to diagnose keychain issues"),
+            Self::KeyDecryptionFailed(_) => Some("Check your passphrase and try again"),
+        }
+    }
+}
+
 /// Configuration for a signing operation.
 ///
 /// Args:

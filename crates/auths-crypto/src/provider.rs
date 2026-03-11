@@ -36,6 +36,29 @@ pub enum CryptoError {
     UnsupportedTarget,
 }
 
+impl crate::AuthsErrorInfo for CryptoError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidSignature => "AUTHS-E1001",
+            Self::InvalidKeyLength { .. } => "AUTHS-E1002",
+            Self::InvalidPrivateKey(_) => "AUTHS-E1003",
+            Self::OperationFailed(_) => "AUTHS-E1004",
+            Self::UnsupportedTarget => "AUTHS-E1005",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidSignature => Some("The signature does not match the data or public key"),
+            Self::InvalidKeyLength { .. } => Some("Ensure the key is exactly 32 bytes for Ed25519"),
+            Self::UnsupportedTarget => {
+                Some("This operation is not available on the current platform")
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Zeroize-on-drop wrapper for a raw 32-byte Ed25519 seed.
 ///
 /// This is the portable key representation that crosses the [`CryptoProvider`]

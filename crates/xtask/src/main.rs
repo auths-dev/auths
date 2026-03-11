@@ -8,6 +8,7 @@
 )]
 mod ci_setup;
 mod gen_docs;
+mod gen_error_docs;
 mod gen_schema;
 mod schemas;
 mod shell;
@@ -38,6 +39,13 @@ enum Command {
     GenerateSchemas,
     /// Validate test fixture JSON files against committed schemas
     ValidateSchemas,
+    /// Regenerate error code docs and CLI registry from `AuthsErrorInfo` impls.
+    /// Pass `--check` to fail if any output is stale (CI gate).
+    GenErrorDocs {
+        /// Fail instead of writing if any output is stale (CI mode).
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -54,5 +62,6 @@ fn main() -> anyhow::Result<()> {
         Command::GenDocs { check } => gen_docs::run(workspace_root(), check),
         Command::GenerateSchemas => schemas::generate(workspace_root()),
         Command::ValidateSchemas => schemas::validate(workspace_root()),
+        Command::GenErrorDocs { check } => gen_error_docs::run(workspace_root(), check),
     }
 }

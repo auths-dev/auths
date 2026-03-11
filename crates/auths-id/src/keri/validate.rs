@@ -87,6 +87,48 @@ pub enum ValidationError {
     MalformedSequence { raw: String },
 }
 
+impl auths_core::error::AuthsErrorInfo for ValidationError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidSaid { .. } => "AUTHS-E4501",
+            Self::BrokenChain { .. } => "AUTHS-E4502",
+            Self::InvalidSequence { .. } => "AUTHS-E4503",
+            Self::CommitmentMismatch { .. } => "AUTHS-E4504",
+            Self::SignatureFailed { .. } => "AUTHS-E4505",
+            Self::NotInception => "AUTHS-E4506",
+            Self::EmptyKel => "AUTHS-E4507",
+            Self::MultipleInceptions => "AUTHS-E4508",
+            Self::Serialization(_) => "AUTHS-E4509",
+            Self::MalformedSequence { .. } => "AUTHS-E4510",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidSaid { .. } => {
+                Some("The KEL may have been tampered with; re-sync from a trusted source")
+            }
+            Self::BrokenChain { .. } => {
+                Some("The KEL chain is broken; re-sync from a trusted source")
+            }
+            Self::InvalidSequence { .. } => {
+                Some("The KEL has sequence gaps; re-sync from a trusted source")
+            }
+            Self::CommitmentMismatch { .. } => {
+                Some("The rotation key does not match the pre-rotation commitment")
+            }
+            Self::SignatureFailed { .. } => {
+                Some("The event signature is invalid; the KEL may be corrupted")
+            }
+            Self::NotInception => Some("The first event in a KEL must be an inception event"),
+            Self::EmptyKel => Some("No events found; initialize the identity first"),
+            Self::MultipleInceptions => Some("A KEL must contain exactly one inception event"),
+            Self::Serialization(_) => None,
+            Self::MalformedSequence { .. } => None,
+        }
+    }
+}
+
 /// Validate a KEL and return the resulting KeyState.
 ///
 /// This is a **pure function** and serves as the core entrypoint for

@@ -90,6 +90,34 @@ impl From<pkcs8::der::Error> for IdentityError {
     }
 }
 
+impl auths_core::error::AuthsErrorInfo for IdentityError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Keri(_) => "AUTHS-E4401",
+            Self::Pkcs8EncodeError(_) => "AUTHS-E4402",
+            Self::Pkcs8DecodeError(_) => "AUTHS-E4403",
+            Self::EmptyPassphrase => "AUTHS-E4404",
+            Self::InvalidKeyLength(_) => "AUTHS-E4405",
+            Self::KeyStorage(_) => "AUTHS-E4406",
+            Self::KeyRetrieval(_) => "AUTHS-E4407",
+            Self::RingError(_) => "AUTHS-E4408",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Keri(_) => Some("KERI operation failed; check identity state"),
+            Self::Pkcs8EncodeError(_) => None,
+            Self::Pkcs8DecodeError(_) => Some("The key may be in an unsupported format"),
+            Self::EmptyPassphrase => Some("Provide a non-empty passphrase"),
+            Self::InvalidKeyLength(_) => Some("Expected a 32-byte Ed25519 key"),
+            Self::KeyStorage(_) => Some("Check keychain permissions"),
+            Self::KeyRetrieval(_) => Some("Check that the key alias exists in the keychain"),
+            Self::RingError(_) => None,
+        }
+    }
+}
+
 /// Extract the Ed25519 32-byte seed from PKCS#8-encoded key material.
 pub fn extract_seed_bytes(pkcs8_bytes: &[u8]) -> Result<&[u8], IdentityError> {
     let pk_info = PrivateKeyInfo::from_der(pkcs8_bytes)?;

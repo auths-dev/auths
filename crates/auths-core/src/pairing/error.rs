@@ -1,3 +1,4 @@
+use auths_crypto::AuthsErrorInfo;
 use thiserror::Error;
 
 /// Errors that can occur during the pairing protocol.
@@ -34,6 +35,29 @@ pub enum PairingError {
     /// LAN pairing timed out waiting for a response.
     #[error("LAN pairing timed out")]
     LanTimeout,
+}
+
+impl AuthsErrorInfo for PairingError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Protocol(_) => "AUTHS-E3201",
+            Self::QrCodeFailed(_) => "AUTHS-E3202",
+            Self::RelayError(_) => "AUTHS-E3203",
+            Self::LocalServerError(_) => "AUTHS-E3204",
+            Self::MdnsError(_) => "AUTHS-E3205",
+            Self::NoPeerFound => "AUTHS-E3206",
+            Self::LanTimeout => "AUTHS-E3207",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::NoPeerFound => Some("Ensure both devices are on the same network"),
+            Self::LanTimeout => Some("Check your network and try again"),
+            Self::RelayError(_) => Some("Check your internet connection"),
+            _ => None,
+        }
+    }
 }
 
 impl From<serde_json::Error> for PairingError {

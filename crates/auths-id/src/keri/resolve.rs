@@ -38,6 +38,32 @@ pub enum ResolveError {
     UnknownKeyType(String),
 }
 
+impl auths_core::error::AuthsErrorInfo for ResolveError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidFormat(_) => "AUTHS-E4801",
+            Self::NotFound(_) => "AUTHS-E4802",
+            Self::Kel(_) => "AUTHS-E4803",
+            Self::Validation(_) => "AUTHS-E4804",
+            Self::InvalidKeyEncoding(_) => "AUTHS-E4805",
+            Self::NoCurrentKey => "AUTHS-E4806",
+            Self::UnknownKeyType(_) => "AUTHS-E4807",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidFormat(_) => Some("Use the format 'did:keri:E<prefix>'"),
+            Self::NotFound(_) => Some("The identity does not exist; check the DID prefix"),
+            Self::Kel(_) => None,
+            Self::Validation(_) => None,
+            Self::InvalidKeyEncoding(_) => None,
+            Self::NoCurrentKey => Some("The identity has no active key; it may be abandoned"),
+            Self::UnknownKeyType(_) => Some("Only Ed25519 keys (D prefix) are currently supported"),
+        }
+    }
+}
+
 /// Result of resolving a did:keri.
 #[derive(Debug, Clone)]
 pub struct DidKeriResolution {

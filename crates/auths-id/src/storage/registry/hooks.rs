@@ -23,6 +23,22 @@ pub enum HookError {
     NotGitRepo(String),
 }
 
+impl auths_core::error::AuthsErrorInfo for HookError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Io(_) => "AUTHS-E4991",
+            Self::NotGitRepo(_) => "AUTHS-E4992",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Io(_) => Some("Check file permissions on the Git hooks directory"),
+            Self::NotGitRepo(_) => Some("Ensure the path points to a valid Git repository"),
+        }
+    }
+}
+
 /// Hook types that invalidate the cache.
 #[cfg(not(windows))]
 const CACHE_HOOKS: &[&str] = &["post-merge", "post-checkout", "post-rewrite"];

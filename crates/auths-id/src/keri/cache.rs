@@ -59,6 +59,26 @@ pub enum CacheError {
     Json(#[from] serde_json::Error),
 }
 
+impl auths_core::error::AuthsErrorInfo for CacheError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Io(_) => "AUTHS-E4981",
+            Self::Json(_) => "AUTHS-E4982",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Io(_) => {
+                Some("Check cache directory permissions; the cache is optional and can be cleared")
+            }
+            Self::Json(_) => {
+                Some("The cache file may be corrupted; try clearing it with 'auths cache clear'")
+            }
+        }
+    }
+}
+
 /// Returns the cache file path for a given DID.
 ///
 /// Uses SHA-256 hash of the DID for the filename to avoid collisions

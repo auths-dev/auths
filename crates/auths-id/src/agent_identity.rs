@@ -107,6 +107,30 @@ pub enum AgentProvisioningError {
     ConfigWrite(#[from] std::io::Error),
 }
 
+impl auths_core::error::AuthsErrorInfo for AgentProvisioningError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::RepoCreation(_) => "AUTHS-E4301",
+            Self::IdentityCreation(_) => "AUTHS-E4302",
+            Self::AttestationCreation(_) => "AUTHS-E4303",
+            Self::KeychainAccess(_) => "AUTHS-E4304",
+            Self::ConfigWrite(_) => "AUTHS-E4305",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::RepoCreation(_) => Some("Check that the agent repo path is writable"),
+            Self::IdentityCreation(_) => {
+                Some("Identity creation failed; check keychain and backend")
+            }
+            Self::AttestationCreation(_) => Some("Attestation signing failed; verify key access"),
+            Self::KeychainAccess(_) => Some("Check keychain permissions and passphrase"),
+            Self::ConfigWrite(_) => Some("Check file permissions and disk space"),
+        }
+    }
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /// Provision a new agent identity.

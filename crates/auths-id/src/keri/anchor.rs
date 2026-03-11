@@ -37,6 +37,28 @@ pub enum AnchorError {
     NotFound(String),
 }
 
+impl auths_core::error::AuthsErrorInfo for AnchorError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Kel(_) => "AUTHS-E4961",
+            Self::Validation(_) => "AUTHS-E4962",
+            Self::Serialization(_) => "AUTHS-E4963",
+            Self::InvalidDid(_) => "AUTHS-E4964",
+            Self::NotFound(_) => "AUTHS-E4965",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Kel(_) => None,
+            Self::Validation(_) => None,
+            Self::Serialization(_) => None,
+            Self::InvalidDid(_) => Some("Use the format 'did:keri:E<prefix>'"),
+            Self::NotFound(_) => Some("Initialize the identity first with 'auths init'"),
+        }
+    }
+}
+
 /// Result of anchor verification.
 #[derive(Debug, Clone)]
 pub struct AnchorVerification {

@@ -34,6 +34,26 @@ pub enum CryptoError {
     InvalidKeyFormat(String),
 }
 
+impl auths_crypto::AuthsErrorInfo for CryptoError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::SshKeyConstruction(_) => "AUTHS-E3301",
+            Self::SigningFailed(_) => "AUTHS-E3302",
+            Self::PemEncoding(_) => "AUTHS-E3303",
+            Self::InvalidSeedLength(_) => "AUTHS-E3304",
+            Self::InvalidKeyFormat(_) => "AUTHS-E3305",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidSeedLength(_) => Some("Ensure the seed is exactly 32 bytes"),
+            Self::InvalidKeyFormat(_) => Some("Check that the key file is a valid Ed25519 key"),
+            _ => None,
+        }
+    }
+}
+
 impl From<auths_crypto::CryptoError> for CryptoError {
     fn from(e: auths_crypto::CryptoError) -> Self {
         CryptoError::InvalidKeyFormat(e.to_string())

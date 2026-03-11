@@ -71,6 +71,7 @@ fn run() -> Result<()> {
     let action = audit_action(&command);
 
     let result = match command {
+        RootCommand::Error(cmd) => cmd.execute(&ctx),
         RootCommand::Init(cmd) => cmd.execute(&ctx),
         RootCommand::Sign(cmd) => cmd.execute(&ctx),
         RootCommand::Verify(cmd) => cmd.execute(&ctx),
