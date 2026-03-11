@@ -14,6 +14,7 @@ use crate::commands::debug::DebugCmd;
 use crate::commands::device::DeviceCommand;
 use crate::commands::device::pair::PairCommand;
 use crate::commands::doctor::DoctorCommand;
+use crate::commands::error_lookup::ErrorLookupCommand;
 use crate::commands::emergency::EmergencyCommand;
 use crate::commands::git::GitCommand;
 use crate::commands::id::IdCommand;
@@ -95,6 +96,7 @@ pub enum RootCommand {
     Doctor(DoctorCommand),
     Signers(SignersCommand),
     Pair(PairCommand),
+    Error(ErrorLookupCommand),
     #[command(hide = true)]
     Completions(CompletionsCommand),
     #[command(hide = true)]

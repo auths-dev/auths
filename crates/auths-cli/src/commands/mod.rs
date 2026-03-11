@@ -12,6 +12,7 @@ pub mod config;
 pub mod debug;
 pub mod device;
 pub mod doctor;
+pub mod error_lookup;
 pub mod emergency;
 pub mod git;
 pub mod id;
