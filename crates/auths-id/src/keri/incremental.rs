@@ -138,7 +138,7 @@ pub fn try_incremental_validation<'a>(
     }
 
     // Parse cached commit hash
-    let cached_hash = match GitKel::parse_hash(&cached.last_commit_oid) {
+    let cached_hash = match GitKel::parse_hash(cached.last_commit_oid.as_str()) {
         Ok(h) => h,
         Err(_) => {
             log::debug!("KEL cache corrupt for {}: invalid commit hash", did);

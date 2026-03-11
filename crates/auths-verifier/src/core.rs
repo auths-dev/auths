@@ -984,7 +984,7 @@ pub struct ThresholdPolicy {
     pub signers: Vec<String>,
 
     /// Unique identifier for this policy
-    pub policy_id: String,
+    pub policy_id: PolicyId,
 
     /// Scope of operations this policy covers (optional)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -997,11 +997,11 @@ pub struct ThresholdPolicy {
 
 impl ThresholdPolicy {
     /// Create a new threshold policy
-    pub fn new(threshold: u8, signers: Vec<String>, policy_id: String) -> Self {
+    pub fn new(threshold: u8, signers: Vec<String>, policy_id: impl Into<PolicyId>) -> Self {
         Self {
             threshold,
             signers,
-            policy_id,
+            policy_id: policy_id.into(),
             scope: None,
             ceremony_endpoint: None,
         }
@@ -1313,6 +1313,18 @@ impl From<String> for PolicyId {
 impl From<&str> for PolicyId {
     fn from(s: &str) -> Self {
         Self(s.to_string())
+    }
+}
+
+impl PartialEq<str> for PolicyId {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for PolicyId {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
     }
 }
 

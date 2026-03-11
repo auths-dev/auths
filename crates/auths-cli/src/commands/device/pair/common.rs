@@ -277,7 +277,7 @@ pub(crate) fn handle_pairing_response(
     let decrypted = DecryptedPairingResponse {
         auths_dir: auths_dir.to_path_buf(),
         device_pubkey: device_signing_bytes,
-        device_did: response.device_did.to_string(),
+        device_did: auths_verifier::types::DeviceDID::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
         capabilities: capabilities.to_vec(),
         identity_key_alias,
