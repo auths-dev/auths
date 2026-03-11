@@ -1,3 +1,4 @@
+mod doctor;
 mod helpers;
 mod init;
 mod key_rotation;
