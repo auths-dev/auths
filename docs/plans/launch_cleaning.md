@@ -238,7 +238,7 @@ These are the features that separate "impressive developer tool" from "enterpris
 
 ---
 
-#### Epic 1: Structured Error Codes and Actionable CLI Output
+~~#### Epic 1: Structured Error Codes and Actionable CLI Output~~
 **Why it matters:** A CISO cannot mandate a tool their engineers curse at. Error messages must be searchable in docs.
 
 **Scope:**

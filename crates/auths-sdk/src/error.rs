@@ -265,13 +265,13 @@ impl From<auths_core::ports::network::NetworkError> for RegistrationError {
 impl AuthsErrorInfo for SetupError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::IdentityAlreadyExists { .. } => "AUTHS_IDENTITY_ALREADY_EXISTS",
-            Self::KeychainUnavailable { .. } => "AUTHS_KEYCHAIN_UNAVAILABLE",
+            Self::IdentityAlreadyExists { .. } => "AUTHS-E5001",
+            Self::KeychainUnavailable { .. } => "AUTHS-E5002",
             Self::CryptoError(e) => e.error_code(),
-            Self::StorageError(_) => "AUTHS_SETUP_STORAGE_ERROR",
-            Self::GitConfigError(_) => "AUTHS_GIT_CONFIG_ERROR",
-            Self::RegistrationFailed(_) => "AUTHS_REGISTRATION_FAILED",
-            Self::PlatformVerificationFailed(_) => "AUTHS_PLATFORM_VERIFICATION_FAILED",
+            Self::StorageError(_) => "AUTHS-E5003",
+            Self::GitConfigError(_) => "AUTHS-E5004",
+            Self::RegistrationFailed(_) => "AUTHS-E5005",
+            Self::PlatformVerificationFailed(_) => "AUTHS-E5006",
         }
     }
 
@@ -297,11 +297,11 @@ impl AuthsErrorInfo for SetupError {
 impl AuthsErrorInfo for DeviceError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::IdentityNotFound { .. } => "AUTHS_IDENTITY_NOT_FOUND",
-            Self::DeviceNotFound { .. } => "AUTHS_DEVICE_NOT_FOUND",
-            Self::AttestationError(_) => "AUTHS_ATTESTATION_ERROR",
+            Self::IdentityNotFound { .. } => "AUTHS-E5101",
+            Self::DeviceNotFound { .. } => "AUTHS-E5102",
+            Self::AttestationError(_) => "AUTHS-E5103",
             Self::CryptoError(e) => e.error_code(),
-            Self::StorageError(_) => "AUTHS_DEVICE_STORAGE_ERROR",
+            Self::StorageError(_) => "AUTHS-E5104",
         }
     }
 
@@ -312,6 +312,155 @@ impl AuthsErrorInfo for DeviceError {
             Self::AttestationError(_) => None,
             Self::CryptoError(e) => e.suggestion(),
             Self::StorageError(_) => Some("Check file permissions and disk space"),
+        }
+    }
+}
+
+impl AuthsErrorInfo for DeviceExtensionError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::IdentityNotFound => "AUTHS-E5201",
+            Self::NoAttestationFound { .. } => "AUTHS-E5202",
+            Self::AlreadyRevoked { .. } => "AUTHS-E5203",
+            Self::AttestationFailed(_) => "AUTHS-E5204",
+            Self::StorageError(_) => "AUTHS-E5205",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::IdentityNotFound => Some("Run `auths init` to create an identity first"),
+            Self::NoAttestationFound { .. } => {
+                Some("Run `auths device link` to create an attestation for this device")
+            }
+            Self::AlreadyRevoked { .. } => None,
+            Self::AttestationFailed(_) => None,
+            Self::StorageError(_) => Some("Check file permissions and disk space"),
+        }
+    }
+}
+
+impl AuthsErrorInfo for RotationError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::IdentityNotFound { .. } => "AUTHS-E5301",
+            Self::KeyNotFound(_) => "AUTHS-E5302",
+            Self::KeyDecryptionFailed(_) => "AUTHS-E5303",
+            Self::KelHistoryFailed(_) => "AUTHS-E5304",
+            Self::RotationFailed(_) => "AUTHS-E5305",
+            Self::PartialRotation(_) => "AUTHS-E5306",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::IdentityNotFound { .. } => Some("Run `auths init` to create an identity first"),
+            Self::KeyNotFound(_) => Some("Run `auths key list` to see available keys"),
+            Self::KeyDecryptionFailed(_) => Some("Check your passphrase and try again"),
+            Self::KelHistoryFailed(_) => Some("Run `auths doctor` to check KEL integrity"),
+            Self::RotationFailed(_) => None,
+            Self::PartialRotation(_) => {
+                Some("Re-run the rotation with the same new key to complete the keychain write")
+            }
+        }
+    }
+}
+
+impl AuthsErrorInfo for RegistrationError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::AlreadyRegistered => "AUTHS-E5401",
+            Self::QuotaExceeded => "AUTHS-E5402",
+            Self::NetworkError(e) => e.error_code(),
+            Self::LocalDataError(_) => "AUTHS-E5403",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::AlreadyRegistered => None,
+            Self::QuotaExceeded => Some("Wait a few minutes and try again"),
+            Self::NetworkError(e) => e.suggestion(),
+            Self::LocalDataError(_) => Some("Run `auths doctor` to check local identity data"),
+        }
+    }
+}
+
+impl AuthsErrorInfo for McpAuthError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::BridgeUnreachable(_) => "AUTHS-E5501",
+            Self::TokenExchangeFailed { .. } => "AUTHS-E5502",
+            Self::InvalidResponse(_) => "AUTHS-E5503",
+            Self::InsufficientCapabilities { .. } => "AUTHS-E5504",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::BridgeUnreachable(_) => Some("Check network connectivity to the OIDC bridge"),
+            Self::TokenExchangeFailed { .. } => Some("Verify your credentials and try again"),
+            Self::InvalidResponse(_) => None,
+            Self::InsufficientCapabilities { .. } => {
+                Some("Request fewer capabilities or contact your administrator")
+            }
+        }
+    }
+}
+
+impl AuthsErrorInfo for OrgError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::AdminNotFound { .. } => "AUTHS-E5601",
+            Self::MemberNotFound { .. } => "AUTHS-E5602",
+            Self::AlreadyRevoked { .. } => "AUTHS-E5603",
+            Self::InvalidCapability { .. } => "AUTHS-E5604",
+            Self::InvalidDid(_) => "AUTHS-E5605",
+            Self::InvalidPublicKey(_) => "AUTHS-E5606",
+            Self::Signing(_) => "AUTHS-E5607",
+            Self::Identity(_) => "AUTHS-E5608",
+            Self::KeyStorage(_) => "AUTHS-E5609",
+            Self::Storage(_) => "AUTHS-E5610",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::AdminNotFound { .. } => {
+                Some("Verify you are using the correct admin key for this organization")
+            }
+            Self::MemberNotFound { .. } => {
+                Some("Run `auths org list-members` to see current members")
+            }
+            Self::AlreadyRevoked { .. } => None,
+            Self::InvalidCapability { .. } => None,
+            Self::InvalidDid(_) => Some("Organization DIDs must be valid did:keri identifiers"),
+            Self::InvalidPublicKey(_) => Some("Public keys must be hex-encoded Ed25519 keys"),
+            _ => None,
+        }
+    }
+}
+
+impl AuthsErrorInfo for ApprovalError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::NotApprovalRequired => "AUTHS-E5701",
+            Self::RequestNotFound { .. } => "AUTHS-E5702",
+            Self::RequestExpired { .. } => "AUTHS-E5703",
+            Self::ApprovalAlreadyUsed { .. } => "AUTHS-E5704",
+            Self::PartialApproval(_) => "AUTHS-E5705",
+            Self::ApprovalStorage(_) => "AUTHS-E5706",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::NotApprovalRequired => None,
+            Self::RequestNotFound { .. } => Some("Run `auths approval list` to see pending requests"),
+            Self::RequestExpired { .. } => Some("Submit a new approval request"),
+            Self::ApprovalAlreadyUsed { .. } => Some("Submit a new approval request"),
+            Self::PartialApproval(_) => Some("Check approval status and retry if needed"),
+            Self::ApprovalStorage(_) => Some("Check file permissions and disk space"),
         }
     }
 }

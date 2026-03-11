@@ -177,6 +177,88 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E3951" => Some(include_str!("../../../../docs/errors/AUTHS-E3951.md")),
         "AUTHS-E3952" => Some(include_str!("../../../../docs/errors/AUTHS-E3952.md")),
 
+        // --- auths-sdk (SetupError) ---
+        "AUTHS-E5001" => Some(include_str!("../../../../docs/errors/AUTHS-E5001.md")),
+        "AUTHS-E5002" => Some(include_str!("../../../../docs/errors/AUTHS-E5002.md")),
+        "AUTHS-E5003" => Some(include_str!("../../../../docs/errors/AUTHS-E5003.md")),
+        "AUTHS-E5004" => Some(include_str!("../../../../docs/errors/AUTHS-E5004.md")),
+        "AUTHS-E5005" => Some(include_str!("../../../../docs/errors/AUTHS-E5005.md")),
+        "AUTHS-E5006" => Some(include_str!("../../../../docs/errors/AUTHS-E5006.md")),
+
+        // --- auths-sdk (DeviceError) ---
+        "AUTHS-E5101" => Some(include_str!("../../../../docs/errors/AUTHS-E5101.md")),
+        "AUTHS-E5102" => Some(include_str!("../../../../docs/errors/AUTHS-E5102.md")),
+        "AUTHS-E5103" => Some(include_str!("../../../../docs/errors/AUTHS-E5103.md")),
+        "AUTHS-E5104" => Some(include_str!("../../../../docs/errors/AUTHS-E5104.md")),
+
+        // --- auths-sdk (DeviceExtensionError) ---
+        "AUTHS-E5201" => Some(include_str!("../../../../docs/errors/AUTHS-E5201.md")),
+        "AUTHS-E5202" => Some(include_str!("../../../../docs/errors/AUTHS-E5202.md")),
+        "AUTHS-E5203" => Some(include_str!("../../../../docs/errors/AUTHS-E5203.md")),
+        "AUTHS-E5204" => Some(include_str!("../../../../docs/errors/AUTHS-E5204.md")),
+        "AUTHS-E5205" => Some(include_str!("../../../../docs/errors/AUTHS-E5205.md")),
+
+        // --- auths-sdk (RotationError) ---
+        "AUTHS-E5301" => Some(include_str!("../../../../docs/errors/AUTHS-E5301.md")),
+        "AUTHS-E5302" => Some(include_str!("../../../../docs/errors/AUTHS-E5302.md")),
+        "AUTHS-E5303" => Some(include_str!("../../../../docs/errors/AUTHS-E5303.md")),
+        "AUTHS-E5304" => Some(include_str!("../../../../docs/errors/AUTHS-E5304.md")),
+        "AUTHS-E5305" => Some(include_str!("../../../../docs/errors/AUTHS-E5305.md")),
+        "AUTHS-E5306" => Some(include_str!("../../../../docs/errors/AUTHS-E5306.md")),
+
+        // --- auths-sdk (RegistrationError) ---
+        "AUTHS-E5401" => Some(include_str!("../../../../docs/errors/AUTHS-E5401.md")),
+        "AUTHS-E5402" => Some(include_str!("../../../../docs/errors/AUTHS-E5402.md")),
+        "AUTHS-E5403" => Some(include_str!("../../../../docs/errors/AUTHS-E5403.md")),
+
+        // --- auths-sdk (McpAuthError) ---
+        "AUTHS-E5501" => Some(include_str!("../../../../docs/errors/AUTHS-E5501.md")),
+        "AUTHS-E5502" => Some(include_str!("../../../../docs/errors/AUTHS-E5502.md")),
+        "AUTHS-E5503" => Some(include_str!("../../../../docs/errors/AUTHS-E5503.md")),
+        "AUTHS-E5504" => Some(include_str!("../../../../docs/errors/AUTHS-E5504.md")),
+
+        // --- auths-sdk (OrgError) ---
+        "AUTHS-E5601" => Some(include_str!("../../../../docs/errors/AUTHS-E5601.md")),
+        "AUTHS-E5602" => Some(include_str!("../../../../docs/errors/AUTHS-E5602.md")),
+        "AUTHS-E5603" => Some(include_str!("../../../../docs/errors/AUTHS-E5603.md")),
+        "AUTHS-E5604" => Some(include_str!("../../../../docs/errors/AUTHS-E5604.md")),
+        "AUTHS-E5605" => Some(include_str!("../../../../docs/errors/AUTHS-E5605.md")),
+        "AUTHS-E5606" => Some(include_str!("../../../../docs/errors/AUTHS-E5606.md")),
+        "AUTHS-E5607" => Some(include_str!("../../../../docs/errors/AUTHS-E5607.md")),
+        "AUTHS-E5608" => Some(include_str!("../../../../docs/errors/AUTHS-E5608.md")),
+        "AUTHS-E5609" => Some(include_str!("../../../../docs/errors/AUTHS-E5609.md")),
+        "AUTHS-E5610" => Some(include_str!("../../../../docs/errors/AUTHS-E5610.md")),
+
+        // --- auths-sdk (ApprovalError) ---
+        "AUTHS-E5701" => Some(include_str!("../../../../docs/errors/AUTHS-E5701.md")),
+        "AUTHS-E5702" => Some(include_str!("../../../../docs/errors/AUTHS-E5702.md")),
+        "AUTHS-E5703" => Some(include_str!("../../../../docs/errors/AUTHS-E5703.md")),
+        "AUTHS-E5704" => Some(include_str!("../../../../docs/errors/AUTHS-E5704.md")),
+        "AUTHS-E5705" => Some(include_str!("../../../../docs/errors/AUTHS-E5705.md")),
+        "AUTHS-E5706" => Some(include_str!("../../../../docs/errors/AUTHS-E5706.md")),
+
+        // --- auths-sdk (AllowedSignersError) ---
+        "AUTHS-E5801" => Some(include_str!("../../../../docs/errors/AUTHS-E5801.md")),
+        "AUTHS-E5802" => Some(include_str!("../../../../docs/errors/AUTHS-E5802.md")),
+        "AUTHS-E5803" => Some(include_str!("../../../../docs/errors/AUTHS-E5803.md")),
+        "AUTHS-E5804" => Some(include_str!("../../../../docs/errors/AUTHS-E5804.md")),
+        "AUTHS-E5805" => Some(include_str!("../../../../docs/errors/AUTHS-E5805.md")),
+        "AUTHS-E5806" => Some(include_str!("../../../../docs/errors/AUTHS-E5806.md")),
+        "AUTHS-E5807" => Some(include_str!("../../../../docs/errors/AUTHS-E5807.md")),
+        "AUTHS-E5808" => Some(include_str!("../../../../docs/errors/AUTHS-E5808.md")),
+
+        // --- auths-sdk (SigningError) ---
+        "AUTHS-E5901" => Some(include_str!("../../../../docs/errors/AUTHS-E5901.md")),
+        "AUTHS-E5902" => Some(include_str!("../../../../docs/errors/AUTHS-E5902.md")),
+        "AUTHS-E5903" => Some(include_str!("../../../../docs/errors/AUTHS-E5903.md")),
+        "AUTHS-E5904" => Some(include_str!("../../../../docs/errors/AUTHS-E5904.md")),
+        "AUTHS-E5905" => Some(include_str!("../../../../docs/errors/AUTHS-E5905.md")),
+        "AUTHS-E5906" => Some(include_str!("../../../../docs/errors/AUTHS-E5906.md")),
+        "AUTHS-E5907" => Some(include_str!("../../../../docs/errors/AUTHS-E5907.md")),
+        "AUTHS-E5908" => Some(include_str!("../../../../docs/errors/AUTHS-E5908.md")),
+        "AUTHS-E5909" => Some(include_str!("../../../../docs/errors/AUTHS-E5909.md")),
+        "AUTHS-E5910" => Some(include_str!("../../../../docs/errors/AUTHS-E5910.md")),
+
         _ => None,
     }
 }
@@ -304,6 +386,68 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E3903",
         "AUTHS-E3951",
         "AUTHS-E3952",
+        "AUTHS-E5001",
+        "AUTHS-E5002",
+        "AUTHS-E5003",
+        "AUTHS-E5004",
+        "AUTHS-E5005",
+        "AUTHS-E5006",
+        "AUTHS-E5101",
+        "AUTHS-E5102",
+        "AUTHS-E5103",
+        "AUTHS-E5104",
+        "AUTHS-E5201",
+        "AUTHS-E5202",
+        "AUTHS-E5203",
+        "AUTHS-E5204",
+        "AUTHS-E5205",
+        "AUTHS-E5301",
+        "AUTHS-E5302",
+        "AUTHS-E5303",
+        "AUTHS-E5304",
+        "AUTHS-E5305",
+        "AUTHS-E5306",
+        "AUTHS-E5401",
+        "AUTHS-E5402",
+        "AUTHS-E5403",
+        "AUTHS-E5501",
+        "AUTHS-E5502",
+        "AUTHS-E5503",
+        "AUTHS-E5504",
+        "AUTHS-E5601",
+        "AUTHS-E5602",
+        "AUTHS-E5603",
+        "AUTHS-E5604",
+        "AUTHS-E5605",
+        "AUTHS-E5606",
+        "AUTHS-E5607",
+        "AUTHS-E5608",
+        "AUTHS-E5609",
+        "AUTHS-E5610",
+        "AUTHS-E5701",
+        "AUTHS-E5702",
+        "AUTHS-E5703",
+        "AUTHS-E5704",
+        "AUTHS-E5705",
+        "AUTHS-E5706",
+        "AUTHS-E5801",
+        "AUTHS-E5802",
+        "AUTHS-E5803",
+        "AUTHS-E5804",
+        "AUTHS-E5805",
+        "AUTHS-E5806",
+        "AUTHS-E5807",
+        "AUTHS-E5808",
+        "AUTHS-E5901",
+        "AUTHS-E5902",
+        "AUTHS-E5903",
+        "AUTHS-E5904",
+        "AUTHS-E5905",
+        "AUTHS-E5906",
+        "AUTHS-E5907",
+        "AUTHS-E5908",
+        "AUTHS-E5909",
+        "AUTHS-E5910",
     ];
     CODES
 }
@@ -338,6 +482,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 120);
+        assert_eq!(all_codes().len(), 182);
     }
 }

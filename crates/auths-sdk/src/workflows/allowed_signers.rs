@@ -215,14 +215,14 @@ pub enum AllowedSignersError {
 impl AuthsErrorInfo for AllowedSignersError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::InvalidEmail(_) => "AUTHS_INVALID_EMAIL",
-            Self::InvalidKey(_) => "AUTHS_INVALID_SSH_KEY",
-            Self::FileRead { .. } => "AUTHS_SIGNERS_FILE_READ",
-            Self::FileWrite { .. } => "AUTHS_SIGNERS_FILE_WRITE",
-            Self::ParseError { .. } => "AUTHS_SIGNERS_PARSE_ERROR",
-            Self::DuplicatePrincipal(_) => "AUTHS_DUPLICATE_PRINCIPAL",
-            Self::AttestationEntryProtected(_) => "AUTHS_ATTESTATION_ENTRY_PROTECTED",
-            Self::Storage(_) => "AUTHS_SIGNERS_STORAGE_ERROR",
+            Self::InvalidEmail(_) => "AUTHS-E5801",
+            Self::InvalidKey(_) => "AUTHS-E5802",
+            Self::FileRead { .. } => "AUTHS-E5803",
+            Self::FileWrite { .. } => "AUTHS-E5804",
+            Self::ParseError { .. } => "AUTHS-E5805",
+            Self::DuplicatePrincipal(_) => "AUTHS-E5806",
+            Self::AttestationEntryProtected(_) => "AUTHS-E5807",
+            Self::Storage(_) => "AUTHS-E5808",
         }
     }
 
