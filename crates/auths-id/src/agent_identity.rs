@@ -187,6 +187,7 @@ fn resolve_repo_path(mode: &AgentStorageMode) -> Result<(PathBuf, bool), AgentPr
     }
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: agent repo setup — directory creation before git init
 fn ensure_git_repo(path: &Path) -> Result<(), AgentProvisioningError> {
     if !path.exists() {
         std::fs::create_dir_all(path)?;
@@ -197,6 +198,7 @@ fn ensure_git_repo(path: &Path) -> Result<(), AgentProvisioningError> {
     Ok(())
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: designated home-dir resolution for agent repo default path
 fn default_agent_repo_path() -> Result<PathBuf, AgentProvisioningError> {
     let home = dirs::home_dir().ok_or_else(|| {
         AgentProvisioningError::ConfigWrite(std::io::Error::new(
@@ -337,6 +339,7 @@ fn build_attestation_meta(
 
 // ── Config File ─────────────────────────────────────────────────────────────
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: agent config file write — one-shot file creation during provisioning
 fn write_agent_toml(
     repo_path: &Path,
     did: &str,
@@ -383,6 +386,7 @@ pub fn format_agent_toml(did: &str, key_alias: &str, config: &AgentProvisioningC
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

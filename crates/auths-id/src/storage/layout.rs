@@ -265,6 +265,7 @@ pub fn sanitize_did_for_ref(did: &str) -> String {
 /// `~/.auths` work correctly (the shell does not expand tildes when they
 /// arrive via clap default values or programmatic callers).
 #[cfg(feature = "git-storage")]
+#[allow(clippy::disallowed_methods)] // INVARIANT: designated home-dir resolution for repo path
 pub fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf, StorageError> {
     match repo_arg {
         Some(pathbuf) if !pathbuf.as_os_str().is_empty() => Ok(expand_tilde(&pathbuf)?),
@@ -278,6 +279,7 @@ pub fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf, StorageEr
 
 /// Expand a leading `~/` or bare `~` to the user's home directory.
 #[cfg(feature = "git-storage")]
+#[allow(clippy::disallowed_methods)] // INVARIANT: tilde expansion requires OS home-dir lookup
 fn expand_tilde(path: &std::path::Path) -> Result<PathBuf, StorageError> {
     let s = path.to_string_lossy();
     if s.starts_with("~/") || s == "~" {
@@ -336,6 +338,7 @@ pub fn default_attestation_prefixes(config: &StorageLayoutConfig) -> Vec<String>
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

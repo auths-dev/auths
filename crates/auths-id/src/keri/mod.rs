@@ -98,6 +98,8 @@
 
 #[cfg(feature = "git-storage")]
 pub mod anchor;
+#[allow(clippy::disallowed_methods)]
+// INVARIANT: file-based KEL cache — entire module is an I/O adapter
 pub mod cache;
 pub mod event;
 #[cfg(feature = "git-storage")]
