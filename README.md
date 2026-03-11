@@ -1,6 +1,6 @@
 # Auths
 
-[![Verify Commits](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml)
+[![Verify Commits](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml?query=branch%3Amain+event%3Apush)
 
 Decentralized identity for individuals, AI agents, and their organizations.
 
