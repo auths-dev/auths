@@ -490,6 +490,7 @@ name = "auths-index"
 version = "0.0.1-rc.8"
 dependencies = [
  "anyhow",
+ "auths-verifier",
  "chrono",
  "git2",
  "log",

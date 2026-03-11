@@ -1034,6 +1034,287 @@ impl ThresholdPolicy {
     }
 }
 
+// =============================================================================
+// CommitOid newtype (validated)
+// =============================================================================
+
+/// Error type for `CommitOid` construction.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CommitOidError {
+    /// The string is empty.
+    #[error("commit OID is empty")]
+    Empty,
+    /// The string length is not 40 (SHA-1) or 64 (SHA-256).
+    #[error("expected 40 or 64 hex chars, got {0}")]
+    InvalidLength(usize),
+    /// The string contains non-hex characters.
+    #[error("invalid hex character in commit OID")]
+    InvalidHex,
+}
+
+/// A validated Git commit object identifier (SHA-1 or SHA-256 hex string).
+///
+/// Accepts exactly 40 lowercase hex characters (SHA-1) or 64 (SHA-256).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[repr(transparent)]
+#[serde(try_from = "String")]
+pub struct CommitOid(String);
+
+impl CommitOid {
+    /// Parses and validates a commit OID string.
+    ///
+    /// Args:
+    /// * `raw`: A hex string that must be exactly 40 or 64 lowercase hex characters.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let oid = CommitOid::parse("a".repeat(40))?;
+    /// ```
+    pub fn parse(raw: &str) -> Result<Self, CommitOidError> {
+        let s = raw.trim().to_lowercase();
+        if s.is_empty() {
+            return Err(CommitOidError::Empty);
+        }
+        if s.len() != 40 && s.len() != 64 {
+            return Err(CommitOidError::InvalidLength(s.len()));
+        }
+        if !s.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(CommitOidError::InvalidHex);
+        }
+        Ok(Self(s))
+    }
+
+    /// Creates a `CommitOid` without validation.
+    ///
+    /// Only use at deserialization boundaries where the value was previously validated.
+    pub fn new_unchecked(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes self and returns the inner `String`.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl fmt::Display for CommitOid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for CommitOid {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for CommitOid {
+    type Error = CommitOidError;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
+    }
+}
+
+impl TryFrom<&str> for CommitOid {
+    type Error = CommitOidError;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
+    }
+}
+
+impl FromStr for CommitOid {
+    type Err = CommitOidError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl From<CommitOid> for String {
+    fn from(oid: CommitOid) -> Self {
+        oid.0
+    }
+}
+
+impl<'de> Deserialize<'de> for CommitOid {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+// =============================================================================
+// PublicKeyHex newtype (validated)
+// =============================================================================
+
+/// Error type for `PublicKeyHex` construction.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PublicKeyHexError {
+    /// The hex string has the wrong length (not 64 chars / 32 bytes).
+    #[error("expected 64 hex chars (32 bytes), got {0} chars")]
+    InvalidLength(usize),
+    /// The string contains non-hex characters.
+    #[error("invalid hex: {0}")]
+    InvalidHex(String),
+}
+
+/// A validated hex-encoded Ed25519 public key (64 hex chars = 32 bytes).
+///
+/// Use `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[repr(transparent)]
+#[serde(try_from = "String")]
+pub struct PublicKeyHex(String);
+
+impl PublicKeyHex {
+    /// Parses and validates a hex-encoded public key string.
+    ///
+    /// Args:
+    /// * `raw`: A 64-character hex string encoding 32 bytes.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let pk = PublicKeyHex::parse("ab".repeat(32))?;
+    /// ```
+    pub fn parse(raw: &str) -> Result<Self, PublicKeyHexError> {
+        let s = raw.trim().to_lowercase();
+        let bytes = hex::decode(&s).map_err(|e| PublicKeyHexError::InvalidHex(e.to_string()))?;
+        if bytes.len() != 32 {
+            return Err(PublicKeyHexError::InvalidLength(s.len()));
+        }
+        Ok(Self(s))
+    }
+
+    /// Creates a `PublicKeyHex` without validation.
+    ///
+    /// Only use at deserialization boundaries where the value was previously validated.
+    pub fn new_unchecked(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes self and returns the inner `String`.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+
+    /// Decodes the hex and returns the byte-array `Ed25519PublicKey`.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let pk_hex = PublicKeyHex::parse("ab".repeat(32))?;
+    /// let pk = pk_hex.to_ed25519()?;
+    /// ```
+    pub fn to_ed25519(&self) -> Result<Ed25519PublicKey, Ed25519KeyError> {
+        let bytes = hex::decode(&self.0).map_err(|e| Ed25519KeyError::InvalidHex(e.to_string()))?;
+        Ed25519PublicKey::try_from_slice(&bytes)
+    }
+}
+
+impl fmt::Display for PublicKeyHex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for PublicKeyHex {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for PublicKeyHex {
+    type Error = PublicKeyHexError;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
+    }
+}
+
+impl TryFrom<&str> for PublicKeyHex {
+    type Error = PublicKeyHexError;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
+    }
+}
+
+impl FromStr for PublicKeyHex {
+    type Err = PublicKeyHexError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl From<PublicKeyHex> for String {
+    fn from(pk: PublicKeyHex) -> Self {
+        pk.0
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKeyHex {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+// =============================================================================
+// PolicyId newtype (unvalidated)
+// =============================================================================
+
+/// An opaque policy identifier.
+///
+/// No validation — wraps any `String`. Use where policy IDs are passed around
+/// without needing to inspect their content.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PolicyId(String);
+
+impl PolicyId {
+    /// Creates a new PolicyId.
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for PolicyId {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for PolicyId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for PolicyId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for PolicyId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
