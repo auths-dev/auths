@@ -115,6 +115,8 @@ impl RootEntry {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+#[allow(clippy::disallowed_types)]
 mod tests {
     use super::*;
     use std::io::Write;

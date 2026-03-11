@@ -333,6 +333,7 @@ impl Clone for AgentHandle {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use ring::rand::SystemRandom;

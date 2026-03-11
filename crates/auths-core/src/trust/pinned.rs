@@ -236,6 +236,7 @@ impl PinnedIdentityStore {
 ///
 /// The lock file is NOT deleted on drop. Deleting creates a race where two
 /// threads acquire flock on different inodes simultaneously.
+#[allow(clippy::disallowed_types)] // INVARIANT: file-lock guard — holds an open file descriptor
 struct LockGuard {
     _file: fs::File,
 }
