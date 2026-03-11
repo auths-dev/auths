@@ -397,11 +397,10 @@ pub fn evaluate_with_receipts(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_core::storage::keychain::IdentityDID;
     use auths_core::witness::NoOpWitness;
     use auths_verifier::core::{Capability, Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::keri::{Prefix, Said};
-    use auths_verifier::types::DeviceDID;
+    use auths_verifier::types::{CanonicalDid, DeviceDID};
     use chrono::Duration;
 
     /// Mock witness for testing
@@ -441,7 +440,7 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new("test"),
-            issuer: IdentityDID::new_unchecked(issuer),
+            issuer: CanonicalDid::new_unchecked(issuer),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -470,7 +469,7 @@ mod tests {
         let ctx = context_from_attestation(&att, now).unwrap();
 
         assert_eq!(ctx.issuer.as_str(), "did:keri:ETest");
-        assert_eq!(ctx.subject.as_str(), "did:key:subject");
+        assert_eq!(ctx.subject.as_str(), "did:key:zSubject");
         assert!(!ctx.revoked);
     }
 

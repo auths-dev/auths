@@ -8,7 +8,7 @@ use auths_verifier::core::{
     canonicalize_attestation_data,
 };
 use auths_verifier::error::AttestationError;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::{CanonicalDid, DeviceDID};
 
 use chrono::{DateTime, Utc};
 use log::debug;
@@ -28,7 +28,7 @@ const MAX_CREATION_SKEW_SECS: i64 = 5 * 60;
 pub struct CanonicalRevocationData<'a> {
     pub version: u32,
     pub rid: &'a str,
-    pub issuer: &'a IdentityDID,
+    pub issuer: &'a CanonicalDid,
     pub subject: &'a DeviceDID,
     pub timestamp: &'a Option<DateTime<Utc>>,
     pub revoked_at: &'a Option<DateTime<Utc>>, // Should always be Some(...)
@@ -91,10 +91,12 @@ pub fn create_signed_attestation(
     }
 
     // Construct the canonical data to be signed
+    let issuer_canonical = CanonicalDid::new_unchecked(identity_did.as_str());
+    let delegated_canonical = delegated_by.as_ref().map(|d| CanonicalDid::from(d.clone()));
     let data_to_canonicalize = CanonicalAttestationData {
         version: ATTESTATION_VERSION,
         rid,
-        issuer: identity_did,
+        issuer: &issuer_canonical,
         subject: device_did,
         device_public_key,
         payload: &payload,
@@ -109,7 +111,7 @@ pub fn create_signed_attestation(
         } else {
             Some(&capabilities)
         },
-        delegated_by: delegated_by.as_ref(),
+        delegated_by: delegated_canonical.as_ref(),
         signer_type: None,
     };
 
@@ -158,7 +160,7 @@ pub fn create_signed_attestation(
     Ok(Attestation {
         version: ATTESTATION_VERSION,
         subject: device_did.clone(),
-        issuer: identity_did.clone(),
+        issuer: issuer_canonical,
         rid: ResourceId::new(rid),
         payload: payload.clone(),
         timestamp: meta.timestamp,
@@ -171,7 +173,7 @@ pub fn create_signed_attestation(
         device_signature,
         role,
         capabilities,
-        delegated_by,
+        delegated_by: delegated_canonical,
         signer_type: None,
         environment_claim: None,
     })

@@ -12,6 +12,7 @@ use auths_storage::git::{
 };
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
+use auths_verifier::types::DeviceDID;
 use napi_derive::napi;
 
 use crate::error::format_error;
@@ -177,7 +178,7 @@ pub fn extend_device_authorization(
 
     let ext_config = DeviceExtensionConfig {
         repo_path: repo,
-        device_did: device_did.clone(),
+        device_did: DeviceDID::new_unchecked(&device_did),
         days,
         identity_key_alias: alias,
         device_key_alias: None,

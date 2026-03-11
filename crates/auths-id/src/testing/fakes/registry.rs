@@ -294,7 +294,7 @@ fn validate_org_member(
     if att.issuer.as_str() != expected_issuer {
         return Err(MemberInvalidReason::IssuerMismatch {
             expected_issuer: IdentityDID::new_unchecked(expected_issuer),
-            actual_issuer: att.issuer.clone(),
+            actual_issuer: IdentityDID::new_unchecked(att.issuer.as_str()),
         });
     }
     if att.subject.as_str() != member_did_str {

@@ -630,6 +630,7 @@ dependencies = [
 name = "auths-policy"
 version = "0.0.1-rc.8"
 dependencies = [
+ "auths-verifier",
  "blake3",
  "chrono",
  "serde",

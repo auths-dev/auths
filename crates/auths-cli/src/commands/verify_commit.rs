@@ -941,7 +941,7 @@ mod tests {
             attestation_chain: vec![auths_verifier::core::Attestation {
                 version: 1,
                 rid: "test".into(),
-                issuer: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
+                issuer: auths_verifier::CanonicalDid::new_unchecked("did:keri:test"),
                 subject: auths_verifier::DeviceDID::new_unchecked("did:key:zTest"),
                 device_public_key: auths_verifier::Ed25519PublicKey::from_bytes([0u8; 32]),
                 identity_signature: auths_verifier::core::Ed25519Signature::empty(),

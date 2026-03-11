@@ -503,12 +503,8 @@ fn list_devices(
             .last()
             .expect("Grouped attestations should not be empty");
 
-        let verification_result = auths_id::attestation::verify::verify_with_resolver(
-            now,
-            &resolver,
-            latest,
-            None,
-        );
+        let verification_result =
+            auths_id::attestation::verify::verify_with_resolver(now, &resolver, latest, None);
 
         let status_string = match verification_result {
             Ok(()) => {

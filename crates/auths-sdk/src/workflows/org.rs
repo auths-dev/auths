@@ -345,10 +345,11 @@ pub fn add_organization_member(
         expires_at: None,
     };
 
+    let admin_issuer_did = IdentityDID::new_unchecked(admin_att.issuer.as_str());
     let attestation = create_signed_attestation(
         now,
         &rid,
-        &admin_att.issuer,
+        &admin_issuer_did,
         &member_did,
         cmd.member_public_key.as_bytes(),
         Some(serde_json::json!({
@@ -411,9 +412,10 @@ pub fn revoke_organization_member(
     let now = ctx.clock.now();
     let member_did = DeviceDID::new_unchecked(&cmd.member_did);
 
+    let admin_issuer_did = IdentityDID::new_unchecked(admin_att.issuer.as_str());
     let revocation = create_signed_revocation(
         admin_att.rid.as_str(),
-        &admin_att.issuer,
+        &admin_issuer_did,
         &member_did,
         cmd.member_public_key.as_bytes(),
         cmd.note,

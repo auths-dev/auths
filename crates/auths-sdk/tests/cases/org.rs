@@ -15,7 +15,7 @@ use auths_verifier::PublicKeyHex;
 use auths_verifier::clock::ClockProvider;
 use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::testing::MockClock;
-use auths_verifier::types::{DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, DeviceDID, IdentityDID};
 use chrono::TimeZone;
 
 const ORG: &str = "ETestOrg0001";
@@ -42,7 +42,7 @@ fn base_admin_attestation() -> Attestation {
     Attestation {
         version: 1,
         rid: ResourceId::new("admin-rid-001"),
-        issuer: org_issuer(),
+        issuer: org_issuer().into(),
         subject: DeviceDID::new_unchecked(ADMIN_DID),
         device_public_key: Ed25519PublicKey::from_bytes(ADMIN_PUBKEY),
         identity_signature: Ed25519Signature::empty(),
@@ -64,7 +64,7 @@ fn base_member_attestation() -> Attestation {
     Attestation {
         version: 1,
         rid: ResourceId::new("member-rid-001"),
-        issuer: org_issuer(),
+        issuer: org_issuer().into(),
         subject: DeviceDID::new_unchecked(MEMBER_DID),
         device_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
         identity_signature: Ed25519Signature::empty(),
@@ -76,7 +76,7 @@ fn base_member_attestation() -> Attestation {
         payload: None,
         role: Some(Role::Member),
         capabilities: vec![Capability::sign_commit()],
-        delegated_by: Some(IdentityDID::new_unchecked(ADMIN_DID)),
+        delegated_by: Some(CanonicalDid::new_unchecked(ADMIN_DID)),
         signer_type: None,
         environment_claim: None,
     }

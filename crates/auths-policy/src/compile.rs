@@ -254,7 +254,7 @@ fn compile_inner(
             Err(e) => {
                 errors.push(CompileError {
                     path: path.into(),
-                    message: e.0,
+                    message: e.to_string(),
                 });
                 CompiledExpr::False
             }
@@ -269,7 +269,7 @@ fn compile_inner(
                     Err(e) => {
                         errors.push(CompileError {
                             path: path.into(),
-                            message: e.0,
+                            message: e.to_string(),
                         });
                         None
                     }
@@ -287,7 +287,7 @@ fn compile_inner(
                     Err(e) => {
                         errors.push(CompileError {
                             path: path.into(),
-                            message: e.0,
+                            message: e.to_string(),
                         });
                         None
                     }
@@ -301,7 +301,7 @@ fn compile_inner(
             Err(e) => {
                 errors.push(CompileError {
                     path: path.into(),
-                    message: e.0,
+                    message: e.to_string(),
                 });
                 CompiledExpr::False
             }
@@ -316,7 +316,7 @@ fn compile_inner(
                     Err(e) => {
                         errors.push(CompileError {
                             path: path.into(),
-                            message: e.0,
+                            message: e.to_string(),
                         });
                         None
                     }
@@ -330,7 +330,7 @@ fn compile_inner(
             Err(e) => {
                 errors.push(CompileError {
                     path: path.into(),
-                    message: e.0,
+                    message: e.to_string(),
                 });
                 CompiledExpr::False
             }
@@ -341,7 +341,7 @@ fn compile_inner(
             Err(e) => {
                 errors.push(CompileError {
                     path: path.into(),
-                    message: e.0,
+                    message: e.to_string(),
                 });
                 CompiledExpr::False
             }
@@ -352,7 +352,7 @@ fn compile_inner(
             Err(e) => {
                 errors.push(CompileError {
                     path: path.into(),
-                    message: e.0,
+                    message: e.to_string(),
                 });
                 CompiledExpr::False
             }
@@ -367,7 +367,7 @@ fn compile_inner(
                     Err(e) => {
                         errors.push(CompileError {
                             path: path.into(),
-                            message: e.0,
+                            message: e.to_string(),
                         });
                         None
                     }
@@ -398,7 +398,7 @@ fn compile_inner(
             Err(e) => {
                 errors.push(CompileError {
                     path: path.into(),
-                    message: e.0,
+                    message: e.to_string(),
                 });
                 CompiledExpr::False
             }
@@ -477,7 +477,7 @@ fn compile_inner(
                     Err(e) => {
                         errors.push(CompileError {
                             path: path.into(),
-                            message: e.0,
+                            message: e.to_string(),
                         });
                         None
                     }

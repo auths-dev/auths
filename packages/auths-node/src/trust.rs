@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use auths_core::trust::pinned::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
 use auths_id::identity::resolve::{DefaultDidResolver, DidResolver};
+use auths_verifier::PublicKeyHex;
 use napi_derive::napi;
 
 use crate::error::format_error;
@@ -61,8 +62,8 @@ pub fn pin_identity(
 
     let resolver = DefaultDidResolver::with_repo(&repo);
     let public_key_hex = match resolver.resolve(&did) {
-        Ok(resolved) => hex::encode(resolved.public_key().as_bytes()),
-        Err(_) => String::new(),
+        Ok(resolved) => PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes())),
+        Err(_) => PublicKeyHex::new_unchecked(""),
     };
 
     #[allow(clippy::disallowed_methods)]
@@ -72,7 +73,7 @@ pub fn pin_identity(
         let _ = store.remove(&did);
         let pin = PinnedIdentity {
             did: did.clone(),
-            public_key_hex: if public_key_hex.is_empty() {
+            public_key_hex: if public_key_hex.as_ref().is_empty() {
                 existing.public_key_hex
             } else {
                 public_key_hex

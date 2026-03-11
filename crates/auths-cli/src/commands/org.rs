@@ -176,7 +176,11 @@ pub enum OrgSubcommand {
 }
 
 /// Handles `org` commands for issuing or revoking member authorizations.
-pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
+pub fn handle_org(
+    cmd: OrgCommand,
+    ctx: &crate::config::CliConfig,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
     let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
     let passphrase_provider = ctx.passphrase_provider.clone();
 
@@ -586,11 +590,7 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig, now: chrono::
                         Err(_) => "❌ invalid",
                     };
 
-                    println!(
-                        "{i}. [{}] @ {}",
-                        status,
-                        att.timestamp.unwrap_or(now)
-                    );
+                    println!("{i}. [{}] @ {}", status, att.timestamp.unwrap_or(now));
                     if let Some(note) = &att.note {
                         println!("   📝 {}", note);
                     }

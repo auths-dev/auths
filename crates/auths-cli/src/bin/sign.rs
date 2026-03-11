@@ -263,8 +263,8 @@ fn run_sign(args: &Args) -> Result<()> {
 
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();
-    let signature_pem = CommitSigningWorkflow::execute(&ctx, params, now)
-        .map_err(anyhow::Error::new)?;
+    let signature_pem =
+        CommitSigningWorkflow::execute(&ctx, params, now).map_err(anyhow::Error::new)?;
 
     let sig_path = format!("{}.sig", buffer_file.display());
     fs::write(&sig_path, &signature_pem)

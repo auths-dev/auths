@@ -1,7 +1,7 @@
 use auths_verifier::core::{
     Attestation, Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role, ThresholdPolicy,
 };
-use auths_verifier::types::{DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, DeviceDID};
 use chrono::{DateTime, TimeZone, Utc};
 use proptest::prelude::*;
 
@@ -21,14 +21,18 @@ fn arb_did() -> impl Strategy<Value = String> {
     })
 }
 
-/// Generate arbitrary IdentityDID
-fn arb_identity_did() -> impl Strategy<Value = IdentityDID> {
-    arb_did().prop_map(IdentityDID::new_unchecked)
+/// Generate arbitrary CanonicalDid (must use did:keri: prefix for valid deserialization)
+fn arb_canonical_did() -> impl Strategy<Value = CanonicalDid> {
+    proptest::string::string_regex("[A-Z][a-zA-Z0-9]{31,63}")
+        .unwrap()
+        .prop_map(|suffix| CanonicalDid::new_unchecked(format!("did:keri:{}", suffix)))
 }
 
-/// Generate arbitrary DeviceDID
+/// Generate arbitrary DeviceDID (must use did:key:z prefix for valid deserialization)
 fn arb_device_did() -> impl Strategy<Value = DeviceDID> {
-    arb_did().prop_map(DeviceDID::new_unchecked)
+    proptest::string::string_regex("[a-zA-Z0-9]{32,64}")
+        .unwrap()
+        .prop_map(|suffix| DeviceDID::new_unchecked(format!("did:key:z{}", suffix)))
 }
 
 /// Generate arbitrary 32-byte public key
@@ -105,7 +109,7 @@ fn arb_attestation() -> impl Strategy<Value = Attestation> {
     // Split into two tuples to stay under 12-element limit
     let core_fields = (
         arb_rid(),               // rid
-        arb_identity_did(),      // issuer
+        arb_canonical_did(),     // issuer
         arb_device_did(),        // subject
         arb_public_key(),        // device_public_key
         arb_signature(),         // identity_signature
@@ -119,7 +123,7 @@ fn arb_attestation() -> impl Strategy<Value = Attestation> {
         arb_optional_note(),                               // note
         arb_optional_role(),                               // role
         proptest::collection::vec(arb_capability(), 0..4), // capabilities
-        proptest::option::of(arb_identity_did()),          // delegated_by
+        proptest::option::of(arb_canonical_did()),         // delegated_by
     );
 
     (core_fields, optional_fields).prop_map(

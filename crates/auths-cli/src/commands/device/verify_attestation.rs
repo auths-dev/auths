@@ -171,7 +171,11 @@ fn effective_trust_policy(cmd: &VerifyCommand) -> TrustPolicy {
 /// 2. Pinned identity store
 /// 3. roots.json file
 /// 4. Trust policy (TOFU prompt or explicit rejection)
-fn resolve_issuer_key(now: chrono::DateTime<Utc>, cmd: &VerifyCommand, att: &Attestation) -> Result<Vec<u8>> {
+fn resolve_issuer_key(
+    now: chrono::DateTime<Utc>,
+    cmd: &VerifyCommand,
+    att: &Attestation,
+) -> Result<Vec<u8>> {
     // 1. Direct key takes precedence
     if let Some(ref pk_hex) = cmd.issuer_pk {
         let pk_bytes =

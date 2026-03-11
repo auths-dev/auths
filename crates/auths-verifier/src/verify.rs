@@ -565,7 +565,7 @@ mod tests {
     use crate::clock::ClockProvider;
     use crate::core::{Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
     use crate::keri::Said;
-    use crate::types::{DeviceDID, IdentityDID};
+    use crate::types::{CanonicalDid, DeviceDID};
     use crate::verifier::Verifier;
     use auths_crypto::RingCryptoProvider;
     use auths_crypto::testing::create_test_keypair;
@@ -605,7 +605,7 @@ mod tests {
         let mut att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked(issuer_did),
+            issuer: CanonicalDid::new_unchecked(issuer_did),
             subject: DeviceDID::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),
@@ -1213,7 +1213,7 @@ mod tests {
         let mut att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked(issuer_did),
+            issuer: CanonicalDid::new_unchecked(issuer_did),
             subject: DeviceDID::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),
@@ -1519,7 +1519,7 @@ mod tests {
                 .is_ok()
         );
 
-        att.delegated_by = Some(IdentityDID::new_unchecked("did:keri:Eattacker"));
+        att.delegated_by = Some(CanonicalDid::new_unchecked("did:keri:Eattacker"));
         let result = test_verifier().verify_with_keys(&att, &root_pk).await;
         assert!(
             result.is_err(),
@@ -1563,7 +1563,7 @@ mod tests {
         let mut att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked(issuer_did),
+            issuer: CanonicalDid::new_unchecked(issuer_did),
             subject: DeviceDID::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),

@@ -183,12 +183,12 @@ fn environment_claim_excluded_from_canonical_form() {
         Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
         canonicalize_attestation_data,
     };
-    use auths_verifier::types::{DeviceDID, IdentityDID};
+    use auths_verifier::types::{CanonicalDid, DeviceDID};
 
     let att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new_unchecked("did:keri:ETest"),
+        issuer: CanonicalDid::new_unchecked("did:keri:ETest"),
         subject: DeviceDID::new_unchecked("did:key:z6Mk..."),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),
@@ -257,12 +257,12 @@ fn environment_claim_excluded_from_canonical_form() {
 #[test]
 fn environment_claim_roundtrips_through_json() {
     use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
-    use auths_verifier::types::{DeviceDID, IdentityDID};
+    use auths_verifier::types::{CanonicalDid, DeviceDID};
 
     let att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new_unchecked("did:keri:ETest"),
+        issuer: CanonicalDid::new_unchecked("did:keri:ETest"),
         subject: DeviceDID::new_unchecked("did:key:z6Mk..."),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),

@@ -79,7 +79,8 @@ impl WitnessServerConfig {
         let (seed, public_key) = provider_bridge::generate_ed25519_keypair_sync()
             .map_err(|e| WitnessError::Network(format!("failed to generate keypair: {}", e)))?;
 
-        let witness_did = DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
+        let witness_did =
+            DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
 
         Ok(Self {
             witness_did,
@@ -183,7 +184,8 @@ impl WitnessServerState {
         let (seed, public_key) = provider_bridge::generate_ed25519_keypair_sync()
             .map_err(|e| WitnessError::Network(format!("failed to generate keypair: {}", e)))?;
 
-        let witness_did = DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
+        let witness_did =
+            DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
 
         let storage = WitnessStorage::in_memory()?;
 

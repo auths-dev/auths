@@ -3,9 +3,9 @@
 //! This module implements the device authorization rules that determine
 //! whether a device attestation grants permission for a specific action.
 
-#[cfg(test)]
-use auths_verifier::IdentityDID;
 use auths_verifier::core::{Attestation, Capability};
+#[cfg(test)]
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 
 use super::Decision;
@@ -186,7 +186,7 @@ mod tests {
         Attestation {
             version: 1,
             rid: "test-rid".into(),
-            issuer: IdentityDID::new_unchecked(issuer),
+            issuer: CanonicalDid::new_unchecked(issuer),
             subject: DeviceDID::new_unchecked("did:key:z6MkTest"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),

@@ -222,44 +222,56 @@ fn handle_interactive_flow() -> Result<()> {
         0 => {
             // Device lost/stolen
             out.print_info("Starting device revocation flow...");
-            handle_revoke_device(RevokeDeviceCommand {
-                device: None,
-                identity_key_alias: None,
-                note: None,
-                yes: false,
-                dry_run: false,
-                repo: None,
-            }, now)
+            handle_revoke_device(
+                RevokeDeviceCommand {
+                    device: None,
+                    identity_key_alias: None,
+                    note: None,
+                    yes: false,
+                    dry_run: false,
+                    repo: None,
+                },
+                now,
+            )
         }
         1 => {
             // Key exposed
             out.print_info("Starting key rotation flow...");
-            handle_rotate_now(RotateNowCommand {
-                current_alias: None,
-                next_alias: None,
-                yes: false,
-                dry_run: false,
-                reason: Some("Potential key exposure".to_string()),
-                repo: None,
-            }, now)
+            handle_rotate_now(
+                RotateNowCommand {
+                    current_alias: None,
+                    next_alias: None,
+                    yes: false,
+                    dry_run: false,
+                    reason: Some("Potential key exposure".to_string()),
+                    repo: None,
+                },
+                now,
+            )
         }
         2 => {
             // Freeze everything
             out.print_warn("Starting freeze flow...");
-            handle_freeze(FreezeCommand {
-                duration: "24h".to_string(),
-                yes: false,
-                dry_run: false,
-                repo: None,
-            }, now)
+            handle_freeze(
+                FreezeCommand {
+                    duration: "24h".to_string(),
+                    yes: false,
+                    dry_run: false,
+                    repo: None,
+                },
+                now,
+            )
         }
         3 => {
             // Generate report
-            handle_report(ReportCommand {
-                events: 100,
-                output_file: None,
-                repo: None,
-            }, now)
+            handle_report(
+                ReportCommand {
+                    events: 100,
+                    output_file: None,
+                    repo: None,
+                },
+                now,
+            )
         }
         _ => {
             out.println("Cancelled.");
@@ -269,7 +281,10 @@ fn handle_interactive_flow() -> Result<()> {
 }
 
 /// Handle device revocation using the real revocation code path.
-fn handle_revoke_device(cmd: RevokeDeviceCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
+fn handle_revoke_device(
+    cmd: RevokeDeviceCommand,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
     use auths_core::signing::{PassphraseProvider, StorageSigner};
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::attestation::export::AttestationSink;
@@ -858,12 +873,15 @@ mod tests {
     #[test]
     fn test_freeze_dry_run() {
         let dir = tempfile::TempDir::new().unwrap();
-        let result = handle_freeze(FreezeCommand {
-            duration: "24h".to_string(),
-            yes: true,
-            dry_run: true,
-            repo: Some(dir.path().to_path_buf()),
-        }, chrono::Utc::now());
+        let result = handle_freeze(
+            FreezeCommand {
+                duration: "24h".to_string(),
+                yes: true,
+                dry_run: true,
+                repo: Some(dir.path().to_path_buf()),
+            },
+            chrono::Utc::now(),
+        );
 
         assert!(result.is_ok());
         // Dry run should NOT create the freeze file
@@ -873,12 +891,15 @@ mod tests {
     #[test]
     fn test_freeze_creates_freeze_file() {
         let dir = tempfile::TempDir::new().unwrap();
-        let result = handle_freeze(FreezeCommand {
-            duration: "1h".to_string(),
-            yes: true,
-            dry_run: false,
-            repo: Some(dir.path().to_path_buf()),
-        }, chrono::Utc::now());
+        let result = handle_freeze(
+            FreezeCommand {
+                duration: "1h".to_string(),
+                yes: true,
+                dry_run: false,
+                repo: Some(dir.path().to_path_buf()),
+            },
+            chrono::Utc::now(),
+        );
 
         assert!(result.is_ok());
         assert!(dir.path().join("freeze.json").exists());
@@ -891,12 +912,15 @@ mod tests {
     #[test]
     fn test_freeze_invalid_duration() {
         let dir = tempfile::TempDir::new().unwrap();
-        let result = handle_freeze(FreezeCommand {
-            duration: "invalid".to_string(),
-            yes: true,
-            dry_run: false,
-            repo: Some(dir.path().to_path_buf()),
-        }, chrono::Utc::now());
+        let result = handle_freeze(
+            FreezeCommand {
+                duration: "invalid".to_string(),
+                yes: true,
+                dry_run: false,
+                repo: Some(dir.path().to_path_buf()),
+            },
+            chrono::Utc::now(),
+        );
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -912,20 +936,26 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
 
         // Create a freeze
-        handle_freeze(FreezeCommand {
-            duration: "24h".to_string(),
-            yes: true,
-            dry_run: false,
-            repo: Some(dir.path().to_path_buf()),
-        }, chrono::Utc::now())
+        handle_freeze(
+            FreezeCommand {
+                duration: "24h".to_string(),
+                yes: true,
+                dry_run: false,
+                repo: Some(dir.path().to_path_buf()),
+            },
+            chrono::Utc::now(),
+        )
         .unwrap();
         assert!(dir.path().join("freeze.json").exists());
 
         // Unfreeze
-        handle_unfreeze(UnfreezeCommand {
-            yes: true,
-            repo: Some(dir.path().to_path_buf()),
-        }, chrono::Utc::now())
+        handle_unfreeze(
+            UnfreezeCommand {
+                yes: true,
+                repo: Some(dir.path().to_path_buf()),
+            },
+            chrono::Utc::now(),
+        )
         .unwrap();
         assert!(!dir.path().join("freeze.json").exists());
     }

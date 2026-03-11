@@ -654,7 +654,7 @@ mod tests {
 
         let members = index.list_org_members_indexed("did:keri:EOrg").unwrap();
         assert_eq!(members.len(), 1);
-        assert_eq!(members[0].member_did, "did:key:z6MkMember1");
+        assert_eq!(members[0].member_did.as_str(), "did:key:z6MkMember1");
         assert_eq!(members[0].rid, "rid-member-1");
     }
 

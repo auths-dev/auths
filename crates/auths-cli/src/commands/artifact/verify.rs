@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use auths_verifier::core::Attestation;
 use auths_verifier::witness::{WitnessQuorum, WitnessReceipt, WitnessVerifyConfig};
 use auths_verifier::{
-    Capability, IdentityBundle, IdentityDID, VerificationReport, verify_chain,
+    CanonicalDid, Capability, IdentityBundle, VerificationReport, verify_chain,
     verify_chain_with_capability, verify_chain_with_witnesses,
 };
 
@@ -209,7 +209,7 @@ pub async fn handle_verify(
 fn resolve_identity_key(
     identity_bundle: &Option<PathBuf>,
     attestation: &Attestation,
-) -> Result<(Vec<u8>, IdentityDID)> {
+) -> Result<(Vec<u8>, CanonicalDid)> {
     if let Some(bundle_path) = identity_bundle {
         let bundle_content = fs::read_to_string(bundle_path)
             .with_context(|| format!("Failed to read identity bundle: {:?}", bundle_path))?;
@@ -217,7 +217,7 @@ fn resolve_identity_key(
             .with_context(|| format!("Failed to parse identity bundle: {:?}", bundle_path))?;
         let pk = hex::decode(bundle.public_key_hex.as_str())
             .context("Invalid public key hex in bundle")?;
-        Ok((pk, bundle.identity_did))
+        Ok((pk, bundle.identity_did.into()))
     } else {
         // Resolve public key from the issuer DID
         let issuer = &attestation.issuer;

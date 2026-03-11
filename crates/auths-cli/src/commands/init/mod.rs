@@ -138,7 +138,11 @@ fn resolve_interactive(cmd: &InitCommand) -> Result<bool> {
 /// ```ignore
 /// handle_init(cmd, &ctx)?;
 /// ```
-pub fn handle_init(cmd: InitCommand, ctx: &CliConfig, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
+pub fn handle_init(
+    cmd: InitCommand,
+    ctx: &CliConfig,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
     let out = Output::new();
     let interactive = resolve_interactive(&cmd)?;
 

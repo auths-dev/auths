@@ -1,7 +1,7 @@
 //! Core attestation types and canonical serialization.
 
 use crate::error::AttestationError;
-use crate::types::{DeviceDID, IdentityDID};
+use crate::types::{CanonicalDid, DeviceDID, IdentityDID};
 use chrono::{DateTime, Utc};
 use hex;
 use json_canon;
@@ -703,8 +703,8 @@ pub struct Attestation {
     pub version: u32,
     /// Record identifier linking this attestation to its storage ref.
     pub rid: ResourceId,
-    /// DID of the issuing identity.
-    pub issuer: IdentityDID,
+    /// DID of the issuing identity (can be `did:keri:` or `did:key:`).
+    pub issuer: CanonicalDid,
     /// DID of the device being attested.
     pub subject: DeviceDID,
     /// Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
@@ -739,7 +739,7 @@ pub struct Attestation {
 
     /// DID of the attestation that delegated authority (for chain tracking).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub delegated_by: Option<IdentityDID>,
+    pub delegated_by: Option<CanonicalDid>,
 
     /// The type of entity that produced this signature (human, agent, workload).
     /// Included in the canonical JSON before signing — the signature covers this field.
@@ -822,7 +822,7 @@ pub struct CanonicalAttestationData<'a> {
     /// Record identifier.
     pub rid: &'a str,
     /// DID of the issuing identity.
-    pub issuer: &'a IdentityDID,
+    pub issuer: &'a CanonicalDid,
     /// DID of the device being attested.
     pub subject: &'a DeviceDID,
     /// Raw Ed25519 public key of the device.
@@ -847,7 +847,7 @@ pub struct CanonicalAttestationData<'a> {
     pub capabilities: Option<&'a Vec<Capability>>,
     /// DID of the delegating attestation (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub delegated_by: Option<&'a IdentityDID>,
+    pub delegated_by: Option<&'a CanonicalDid>,
     /// Type of signer (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signer_type: Option<&'a SignerType>,
@@ -1617,7 +1617,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -1629,7 +1629,7 @@ mod tests {
             payload: None,
             role: Some(Role::Admin),
             capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
-            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Edelegator")),
+            delegated_by: Some(CanonicalDid::new_unchecked("did:keri:Edelegator")),
             signer_type: None,
             environment_claim: None,
         };
@@ -1650,7 +1650,7 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -1683,7 +1683,7 @@ mod tests {
         let original = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -1695,7 +1695,7 @@ mod tests {
             payload: None,
             role: Some(Role::Member),
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
-            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eadmin")),
+            delegated_by: Some(CanonicalDid::new_unchecked("did:keri:Eadmin")),
             signer_type: None,
             environment_claim: None,
         };
@@ -1873,7 +1873,7 @@ mod tests {
         let attestation = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
             subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),

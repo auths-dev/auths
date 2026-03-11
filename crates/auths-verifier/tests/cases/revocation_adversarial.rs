@@ -3,7 +3,7 @@ use auths_verifier::core::{
     Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
     canonicalize_attestation_data,
 };
-use auths_verifier::types::{DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, DeviceDID};
 use auths_verifier::verify::verify_with_keys;
 use chrono::{DateTime, Duration, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -24,7 +24,7 @@ fn create_signed_attestation(
     let mut att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new_unchecked(issuer_did),
+        issuer: CanonicalDid::new_unchecked(issuer_did),
         subject: DeviceDID::new_unchecked(subject_did),
         device_public_key: Ed25519PublicKey::from_bytes(device_pk),
         identity_signature: Ed25519Signature::empty(),

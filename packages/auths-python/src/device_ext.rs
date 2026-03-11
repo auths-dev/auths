@@ -10,6 +10,7 @@ use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
+use auths_verifier::types::DeviceDID;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -91,7 +92,7 @@ pub fn extend_device_authorization_ffi(
 
     let ext_config = DeviceExtensionConfig {
         repo_path: repo,
-        device_did: device_did.to_string(),
+        device_did: DeviceDID::new_unchecked(device_did),
         days,
         identity_key_alias: alias,
         device_key_alias: None,

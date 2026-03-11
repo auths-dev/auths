@@ -12,8 +12,8 @@
 //! - On any mismatch, cache is treated as a miss and full replay occurs
 //! - Cache files are local-only, never committed to Git or replicated
 
-use auths_verifier::types::IdentityDID;
 use auths_verifier::CommitOid;
+use auths_verifier::types::IdentityDID;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

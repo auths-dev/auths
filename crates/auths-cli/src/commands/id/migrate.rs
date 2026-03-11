@@ -344,7 +344,12 @@ fn parse_gpg_colon_output(output: &str) -> Result<Vec<GpgKeyInfo>> {
 }
 
 /// Perform the actual GPG key migration.
-fn perform_gpg_migration(key: &GpgKeyInfo, cmd: &FromGpgCommand, out: &Output, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
+fn perform_gpg_migration(
+    key: &GpgKeyInfo,
+    cmd: &FromGpgCommand,
+    out: &Output,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
     use auths_core::error::AgentError;
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::identity::initialize::initialize_registry_identity;
@@ -743,7 +748,12 @@ fn get_ssh_key_bits(public_path: &Path) -> Result<u32> {
 }
 
 /// Perform the actual SSH key migration.
-fn perform_ssh_migration(key: &SshKeyInfo, cmd: &FromSshCommand, out: &Output, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
+fn perform_ssh_migration(
+    key: &SshKeyInfo,
+    cmd: &FromSshCommand,
+    out: &Output,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<()> {
     use auths_core::error::AgentError;
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::identity::initialize::initialize_registry_identity;

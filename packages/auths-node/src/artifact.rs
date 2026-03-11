@@ -158,7 +158,7 @@ fn build_context_and_sign(
 
     Ok(NapiArtifactResult {
         attestation_json: result.attestation_json,
-        rid: result.rid,
+        rid: result.rid.to_string(),
         digest: result.digest,
         file_size,
     })

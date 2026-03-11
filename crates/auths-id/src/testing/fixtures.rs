@@ -1,7 +1,6 @@
 use auths_core::crypto::said::compute_next_commitment;
-use auths_verifier::IdentityDID;
 use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::{CanonicalDid, DeviceDID};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::rand::SystemRandom;
@@ -80,7 +79,7 @@ pub fn test_attestation(device_did: &DeviceDID, issuer: &str) -> Attestation {
     Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new_unchecked(issuer),
+        issuer: CanonicalDid::new_unchecked(issuer),
         subject: device_did.clone(),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),

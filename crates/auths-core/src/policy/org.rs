@@ -18,8 +18,6 @@
 //! with filtering (role, capabilities), use the registry's `list_org_members()`
 //! with `MemberFilter`, then apply this policy to each result.
 
-#[cfg(test)]
-use auths_verifier::IdentityDID;
 use auths_verifier::core::{Attestation, Capability};
 use auths_verifier::keri::Prefix;
 use chrono::{DateTime, Utc};
@@ -175,7 +173,7 @@ fn capability_name(cap: &Capability) -> &str {
 mod tests {
     use super::*;
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
-    use auths_verifier::types::DeviceDID;
+    use auths_verifier::types::{CanonicalDid, DeviceDID};
     use chrono::Duration;
 
     fn make_membership(
@@ -188,7 +186,7 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new("membership"),
-            issuer: IdentityDID::new_unchecked(issuer),
+            issuer: CanonicalDid::new_unchecked(issuer),
             subject: DeviceDID::new_unchecked("did:key:z6MkMember"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
