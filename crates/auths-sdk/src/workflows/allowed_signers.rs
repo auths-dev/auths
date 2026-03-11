@@ -277,6 +277,7 @@ impl AllowedSigners {
     /// ```ignore
     /// let signers = AllowedSigners::load("~/.ssh/allowed_signers")?;
     /// ```
+    #[allow(clippy::disallowed_methods)] // TODO(fn-61.4): extract AllowedSignersStore port trait
     pub fn load(path: impl Into<PathBuf>) -> Result<Self, AllowedSignersError> {
         let path = path.into();
         let content = match std::fs::read_to_string(&path) {
@@ -299,6 +300,7 @@ impl AllowedSigners {
     /// ```ignore
     /// signers.save()?;
     /// ```
+    #[allow(clippy::disallowed_methods)] // TODO(fn-61.4): extract AllowedSignersStore port trait
     pub fn save(&self) -> Result<(), AllowedSignersError> {
         let content = self.format_content();
         if let Some(parent) = self.file_path.parent() {
