@@ -136,16 +136,16 @@ pub struct SshKeyInfo {
 }
 
 /// Handle the migrate command.
-pub fn handle_migrate(cmd: MigrateCommand) -> Result<()> {
+pub fn handle_migrate(cmd: MigrateCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     match cmd.command {
-        MigrateSubcommand::FromGpg(gpg_cmd) => handle_from_gpg(gpg_cmd),
-        MigrateSubcommand::FromSsh(ssh_cmd) => handle_from_ssh(ssh_cmd),
+        MigrateSubcommand::FromGpg(gpg_cmd) => handle_from_gpg(gpg_cmd, now),
+        MigrateSubcommand::FromSsh(ssh_cmd) => handle_from_ssh(ssh_cmd, now),
         MigrateSubcommand::Status(status_cmd) => handle_migrate_status(status_cmd),
     }
 }
 
 /// Handle the from-gpg subcommand.
-fn handle_from_gpg(cmd: FromGpgCommand) -> Result<()> {
+fn handle_from_gpg(cmd: FromGpgCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     let out = Output::new();
 
     // Check if GPG is installed
@@ -231,7 +231,7 @@ fn handle_from_gpg(cmd: FromGpgCommand) -> Result<()> {
     }
 
     // Perform the actual migration
-    perform_gpg_migration(&key, &cmd, &out)
+    perform_gpg_migration(&key, &cmd, &out, now)
 }
 
 /// Check if GPG is available.
@@ -344,7 +344,7 @@ fn parse_gpg_colon_output(output: &str) -> Result<Vec<GpgKeyInfo>> {
 }
 
 /// Perform the actual GPG key migration.
-fn perform_gpg_migration(key: &GpgKeyInfo, cmd: &FromGpgCommand, out: &Output) -> Result<()> {
+fn perform_gpg_migration(key: &GpgKeyInfo, cmd: &FromGpgCommand, out: &Output, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_core::error::AgentError;
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::identity::initialize::initialize_registry_identity;
@@ -405,7 +405,7 @@ fn perform_gpg_migration(key: &GpgKeyInfo, cmd: &FromGpgCommand, out: &Output) -
         "gpg_key_id": key.key_id,
         "gpg_fingerprint": key.fingerprint,
         "gpg_user_id": key.user_id,
-        "created_at": chrono::Utc::now().to_rfc3339()
+        "created_at": now.to_rfc3339()
     });
 
     // Create a simple passphrase provider that prompts if needed
@@ -438,7 +438,7 @@ fn perform_gpg_migration(key: &GpgKeyInfo, cmd: &FromGpgCommand, out: &Output) -
             // Create cross-reference attestation
             out.print_info("Creating cross-reference attestation...");
 
-            let attestation = create_gpg_cross_reference_attestation(key, &controller_did)?;
+            let attestation = create_gpg_cross_reference_attestation(key, &controller_did, now)?;
 
             // Save the attestation
             let attestation_path = repo_path.join("gpg-migration.json");
@@ -489,6 +489,7 @@ fn perform_gpg_migration(key: &GpgKeyInfo, cmd: &FromGpgCommand, out: &Output) -
 fn create_gpg_cross_reference_attestation(
     gpg_key: &GpgKeyInfo,
     auths_did: &str,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<serde_json::Value> {
     let attestation = serde_json::json!({
         "version": 1,
@@ -503,7 +504,7 @@ fn create_gpg_cross_reference_attestation(
             "did": auths_did
         },
         "statement": "This attestation links the GPG key to the Auths identity. Both keys belong to the same entity.",
-        "created_at": chrono::Utc::now().to_rfc3339(),
+        "created_at": now.to_rfc3339(),
         "instructions": "To complete the cross-reference: 1) Sign this file with your GPG key using 'gpg --armor --detach-sign', 2) The Auths signature will be added automatically."
     });
 
@@ -515,7 +516,7 @@ fn create_gpg_cross_reference_attestation(
 // ============================================================================
 
 /// Handle the from-ssh subcommand.
-fn handle_from_ssh(cmd: FromSshCommand) -> Result<()> {
+fn handle_from_ssh(cmd: FromSshCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     let out = Output::new();
 
     // Scan for SSH keys
@@ -604,7 +605,7 @@ fn handle_from_ssh(cmd: FromSshCommand) -> Result<()> {
     }
 
     // Perform the actual migration
-    perform_ssh_migration(&key, &cmd, &out)
+    perform_ssh_migration(&key, &cmd, &out, now)
 }
 
 /// List SSH keys in ~/.ssh/
@@ -742,7 +743,7 @@ fn get_ssh_key_bits(public_path: &Path) -> Result<u32> {
 }
 
 /// Perform the actual SSH key migration.
-fn perform_ssh_migration(key: &SshKeyInfo, cmd: &FromSshCommand, out: &Output) -> Result<()> {
+fn perform_ssh_migration(key: &SshKeyInfo, cmd: &FromSshCommand, out: &Output, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_core::error::AgentError;
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::identity::initialize::initialize_registry_identity;
@@ -798,7 +799,7 @@ fn perform_ssh_migration(key: &SshKeyInfo, cmd: &FromSshCommand, out: &Output) -
         "ssh_algorithm": key.algorithm,
         "ssh_fingerprint": key.fingerprint,
         "ssh_comment": key.comment,
-        "created_at": chrono::Utc::now().to_rfc3339()
+        "created_at": now.to_rfc3339()
     });
 
     // Create a simple passphrase provider
@@ -829,7 +830,7 @@ fn perform_ssh_migration(key: &SshKeyInfo, cmd: &FromSshCommand, out: &Output) -
             // Create cross-reference attestation
             out.print_info("Creating cross-reference attestation...");
 
-            let attestation = create_ssh_cross_reference_attestation(key, &controller_did)?;
+            let attestation = create_ssh_cross_reference_attestation(key, &controller_did, now)?;
 
             // Save the attestation
             let attestation_path = repo_path.join("ssh-migration.json");
@@ -893,6 +894,7 @@ fn perform_ssh_migration(key: &SshKeyInfo, cmd: &FromSshCommand, out: &Output) -
 fn create_ssh_cross_reference_attestation(
     ssh_key: &SshKeyInfo,
     auths_did: &str,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<serde_json::Value> {
     let attestation = serde_json::json!({
         "version": 1,
@@ -907,7 +909,7 @@ fn create_ssh_cross_reference_attestation(
             "did": auths_did
         },
         "statement": "This attestation links the SSH key to the Auths identity. Both keys belong to the same entity.",
-        "created_at": chrono::Utc::now().to_rfc3339()
+        "created_at": now.to_rfc3339()
     });
 
     Ok(attestation)

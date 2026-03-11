@@ -6,7 +6,6 @@ use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
 use auths_infra_http::{HttpGistPublisher, HttpGitHubOAuthProvider, HttpRegistryClaimClient};
 use auths_sdk::workflows::platform::{GitHubClaimConfig, claim_github_identity};
-use chrono::Utc;
 use clap::{Parser, Subcommand};
 use console::style;
 
@@ -42,6 +41,7 @@ pub fn handle_claim(
     repo_path: &Path,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
     let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))
         .context("Failed to build auths context")?;
@@ -83,7 +83,7 @@ pub fn handle_claim(
             &registry_client,
             &ctx,
             config,
-            Utc::now(),
+            now,
             &on_device_code,
         ))
         .map_err(|e| anyhow::anyhow!("{}", e))?;

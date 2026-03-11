@@ -12,6 +12,7 @@ use crate::config::CliConfig;
 use anyhow::Result;
 
 impl ExecutableCommand for IdCommand {
+    #[allow(clippy::disallowed_methods)]
     fn execute(&self, ctx: &CliConfig) -> Result<()> {
         handle_id(
             self.clone(),
@@ -22,6 +23,7 @@ impl ExecutableCommand for IdCommand {
             self.overrides.attestation_blob.clone(),
             ctx.passphrase_provider.clone(),
             &ctx.env_config,
+            chrono::Utc::now(),
         )
     }
 }

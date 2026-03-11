@@ -118,6 +118,7 @@ pub(crate) fn prompt_platform_verification(
     out: &Output,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &auths_core::config::EnvironmentConfig,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Option<(String, String)>> {
     let items = [
         "GitHub — link your GitHub identity (recommended)",
@@ -132,7 +133,7 @@ pub(crate) fn prompt_platform_verification(
         .interact()?;
 
     match selection {
-        0 => run_github_verification(out, passphrase_provider, env_config),
+        0 => run_github_verification(out, passphrase_provider, env_config, now),
         1 => {
             out.print_warn("GitLab integration is coming soon. Continuing as anonymous.");
             Ok(None)
@@ -145,6 +146,7 @@ fn run_github_verification(
     out: &Output,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &auths_core::config::EnvironmentConfig,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Option<(String, String)>> {
     use std::time::Duration;
 
@@ -217,7 +219,7 @@ fn run_github_verification(
         &controller_did,
         &key_alias,
         &ctx,
-        chrono::Utc::now(),
+        now,
     )
     .map_err(|e| anyhow::anyhow!("{e}"))?;
 
