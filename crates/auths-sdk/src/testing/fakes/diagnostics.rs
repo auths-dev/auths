@@ -73,3 +73,18 @@ impl CryptoDiagnosticProvider for FakeCryptoDiagnosticProvider {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::testing::fakes::diagnostics::{
+        FakeCryptoDiagnosticProvider, FakeGitDiagnosticProvider,
+    };
+
+    crate::git_diagnostic_provider_contract_tests!(fake_git, {
+        (FakeGitDiagnosticProvider::new(true, vec![]), ())
+    },);
+
+    crate::crypto_diagnostic_provider_contract_tests!(fake_crypto, {
+        (FakeCryptoDiagnosticProvider::new(true), ())
+    },);
+}

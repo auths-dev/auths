@@ -93,3 +93,15 @@ impl ArtifactSource for FakeArtifactSource {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::testing::fakes::artifact::FakeArtifactSource;
+
+    crate::artifact_source_contract_tests!(fake, {
+        (
+            FakeArtifactSource::new("test.bin", "sha256", "abc123def456", 42),
+            (),
+        )
+    },);
+}

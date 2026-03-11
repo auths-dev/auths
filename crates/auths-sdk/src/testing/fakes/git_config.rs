@@ -102,3 +102,10 @@ impl GitConfigProvider for FakeGitConfigProvider {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::testing::fakes::git_config::FakeGitConfigProvider;
+
+    crate::git_config_provider_contract_tests!(fake, { (FakeGitConfigProvider::new(), ()) },);
+}
