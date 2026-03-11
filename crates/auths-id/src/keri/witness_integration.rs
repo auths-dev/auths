@@ -32,6 +32,24 @@ pub enum WitnessIntegrationError {
     Runtime(#[from] std::io::Error),
 }
 
+impl auths_core::error::AuthsErrorInfo for WitnessIntegrationError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Collection(_) => "AUTHS-E4971",
+            Self::Storage(_) => "AUTHS-E4972",
+            Self::Runtime(_) => "AUTHS-E4973",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Collection(_) => Some("Check witness server connectivity and threshold configuration"),
+            Self::Storage(_) => Some("Check storage backend permissions"),
+            Self::Runtime(_) => None,
+        }
+    }
+}
+
 /// Collect witness receipts for an event and store them in Git.
 ///
 /// Builds `HttpWitnessClient` instances from the config URLs, runs

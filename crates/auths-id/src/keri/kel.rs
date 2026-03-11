@@ -42,6 +42,32 @@ pub enum KelError {
     ValidationFailed(#[from] super::ValidationError),
 }
 
+impl auths_core::error::AuthsErrorInfo for KelError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Git(_) => "AUTHS-E4601",
+            Self::Serialization(_) => "AUTHS-E4602",
+            Self::NotFound(_) => "AUTHS-E4603",
+            Self::InvalidOperation(_) => "AUTHS-E4604",
+            Self::InvalidData(_) => "AUTHS-E4605",
+            Self::ChainIntegrity(_) => "AUTHS-E4606",
+            Self::ValidationFailed(_) => "AUTHS-E4607",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Git(_) => Some("Check that the Git repository is accessible and not corrupted"),
+            Self::Serialization(_) => None,
+            Self::NotFound(_) => Some("Initialize the identity first with 'auths init'"),
+            Self::InvalidOperation(_) => None,
+            Self::InvalidData(_) => Some("The KEL data may be corrupted; try re-syncing"),
+            Self::ChainIntegrity(_) => Some("The KEL has non-linear history; this indicates tampering"),
+            Self::ValidationFailed(_) => None,
+        }
+    }
+}
+
 /// Standard filename for storing KERI events in commits.
 const EVENT_BLOB_NAME: &str = "event.json";
 

@@ -93,6 +93,32 @@ pub enum IncrementalError {
     MissingParent { commit: String },
 }
 
+impl auths_core::error::AuthsErrorInfo for IncrementalError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Kel(_) => "AUTHS-E4951",
+            Self::ChainContinuity { .. } => "AUTHS-E4952",
+            Self::SequenceError { .. } => "AUTHS-E4953",
+            Self::MalformedSequence { .. } => "AUTHS-E4954",
+            Self::InvalidEventType(_) => "AUTHS-E4955",
+            Self::NonLinearHistory { .. } => "AUTHS-E4956",
+            Self::MissingParent { .. } => "AUTHS-E4957",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Kel(_) => None,
+            Self::ChainContinuity { .. } => Some("The KEL chain is broken; clear the cache and retry"),
+            Self::SequenceError { .. } => Some("The KEL has sequence gaps; re-sync from a trusted source"),
+            Self::MalformedSequence { .. } => None,
+            Self::InvalidEventType(_) => None,
+            Self::NonLinearHistory { .. } => Some("The KEL has merge commits, indicating tampering"),
+            Self::MissingParent { .. } => Some("The KEL commit history is corrupted"),
+        }
+    }
+}
+
 /// Attempt incremental validation from cached state to current tip.
 ///
 /// Returns `IncrementalResult::NeedsFullReplay` if:

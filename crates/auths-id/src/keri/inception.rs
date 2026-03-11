@@ -41,6 +41,28 @@ pub enum InceptionError {
     Serialization(String),
 }
 
+impl auths_core::error::AuthsErrorInfo for InceptionError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::KeyGeneration(_) => "AUTHS-E4901",
+            Self::Kel(_) => "AUTHS-E4902",
+            Self::Storage(_) => "AUTHS-E4903",
+            Self::Validation(_) => "AUTHS-E4904",
+            Self::Serialization(_) => "AUTHS-E4905",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::KeyGeneration(_) => None,
+            Self::Kel(_) => Some("Check the KEL state; a KEL may already exist for this prefix"),
+            Self::Storage(_) => Some("Check storage backend connectivity"),
+            Self::Validation(_) => None,
+            Self::Serialization(_) => None,
+        }
+    }
+}
+
 /// Result of a KERI identity inception.
 pub struct InceptionResult {
     /// The KERI prefix (use with `did:keri:<prefix>`)

@@ -52,6 +52,34 @@ pub enum RotationError {
     InvalidKey(String),
 }
 
+impl auths_core::error::AuthsErrorInfo for RotationError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::KeyGeneration(_) => "AUTHS-E4701",
+            Self::Kel(_) => "AUTHS-E4702",
+            Self::Storage(_) => "AUTHS-E4703",
+            Self::Validation(_) => "AUTHS-E4704",
+            Self::IdentityAbandoned => "AUTHS-E4705",
+            Self::CommitmentMismatch => "AUTHS-E4706",
+            Self::Serialization(_) => "AUTHS-E4707",
+            Self::InvalidKey(_) => "AUTHS-E4708",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::KeyGeneration(_) => None,
+            Self::Kel(_) => Some("Check the KEL state for the identity"),
+            Self::Storage(_) => Some("Check storage backend connectivity"),
+            Self::Validation(_) => None,
+            Self::IdentityAbandoned => Some("This identity has been abandoned and cannot be rotated"),
+            Self::CommitmentMismatch => Some("The provided next key does not match the pre-rotation commitment"),
+            Self::Serialization(_) => None,
+            Self::InvalidKey(_) => Some("Provide a valid Ed25519 key in PKCS#8 format"),
+        }
+    }
+}
+
 /// Result of a KERI key rotation.
 pub struct RotationResult {
     /// The KERI prefix

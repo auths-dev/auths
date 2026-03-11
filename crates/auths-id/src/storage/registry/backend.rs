@@ -73,6 +73,24 @@ pub enum TenantIdError {
     Reserved(String),
 }
 
+impl auths_core::error::AuthsErrorInfo for TenantIdError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidLength(_) => "AUTHS-E4851",
+            Self::InvalidCharacter(_) => "AUTHS-E4852",
+            Self::Reserved(_) => "AUTHS-E4853",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidLength(_) => Some("Tenant ID must be between 1 and 64 characters"),
+            Self::InvalidCharacter(_) => Some("Only lowercase letters, digits, hyphens, and underscores are allowed"),
+            Self::Reserved(_) => Some("Choose a different tenant ID; this name is reserved"),
+        }
+    }
+}
+
 /// A tenant identifier that has been normalized (lowercased) and validated.
 ///
 /// Construct via [`ValidatedTenantId::new`] which enforces:
@@ -240,6 +258,52 @@ pub enum RegistryError {
         /// The underlying validation error.
         source: Box<RegistryError>,
     },
+}
+
+impl auths_core::error::AuthsErrorInfo for RegistryError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Storage(_) => "AUTHS-E4861",
+            Self::InvalidPrefix { .. } => "AUTHS-E4862",
+            Self::InvalidDeviceDid { .. } => "AUTHS-E4863",
+            Self::EventExists { .. } => "AUTHS-E4864",
+            Self::SequenceGap { .. } => "AUTHS-E4865",
+            Self::NotFound { .. } => "AUTHS-E4866",
+            Self::Serialization(_) => "AUTHS-E4867",
+            Self::ConcurrentModification(_) => "AUTHS-E4868",
+            Self::SaidMismatch { .. } => "AUTHS-E4869",
+            Self::InvalidEvent { .. } => "AUTHS-E4870",
+            Self::Io(_) => "AUTHS-E4871",
+            Self::Internal(_) => "AUTHS-E4872",
+            Self::InvalidTenantId { .. } => "AUTHS-E4873",
+            Self::Attestation(_) => "AUTHS-E4874",
+            Self::StaleAttestation(_) => "AUTHS-E4875",
+            Self::NotImplemented { .. } => "AUTHS-E4876",
+            Self::BatchValidationFailed { .. } => "AUTHS-E4877",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Storage(_) => Some("Check storage backend connectivity"),
+            Self::InvalidPrefix { .. } => Some("KERI prefixes must start with 'E' (Blake3 SAID)"),
+            Self::InvalidDeviceDid { .. } => Some("Device DIDs must be in 'did:key:z...' format"),
+            Self::EventExists { .. } => Some("This event has already been appended to the KEL"),
+            Self::SequenceGap { .. } => Some("Events must be appended in strict sequence order"),
+            Self::NotFound { .. } => None,
+            Self::Serialization(_) => None,
+            Self::ConcurrentModification(_) => Some("Retry the operation; another process modified the registry"),
+            Self::SaidMismatch { .. } => Some("The event content does not match its declared SAID"),
+            Self::InvalidEvent { .. } => None,
+            Self::Io(_) => Some("Check file permissions and disk space"),
+            Self::Internal(_) => None,
+            Self::InvalidTenantId { .. } => None,
+            Self::Attestation(_) => None,
+            Self::StaleAttestation(_) => Some("The attestation has been superseded by a newer version"),
+            Self::NotImplemented { .. } => Some("This operation is not supported by the current backend"),
+            Self::BatchValidationFailed { .. } => None,
+        }
+    }
 }
 
 impl RegistryError {
