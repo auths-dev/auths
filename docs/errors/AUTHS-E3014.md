@@ -1,20 +1,7 @@
-# AUTHS-E3014: Backend Unavailable
+# AUTHS-E3014: User Input Cancelled
 
-The keychain backend is not available on this platform or configuration.
+The user cancelled an interactive prompt before providing the required input.
 
 ## Resolution
 
-1. Run diagnostics:
-   ```bash
-   auths doctor
-   ```
-2. If running headless (CI/Docker), switch to the file backend:
-   ```bash
-   export AUTHS_KEYCHAIN_BACKEND=file
-   export AUTHS_PASSPHRASE=<your-passphrase>
-   ```
-
-## Related
-
-- `AUTHS-E3016` — Backend init failed
-- `AUTHS-E3015` — Storage locked
+Run the command again and provide the required input when prompted.

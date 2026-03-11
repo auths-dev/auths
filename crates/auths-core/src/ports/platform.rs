@@ -45,6 +45,28 @@ pub enum PlatformError {
     },
 }
 
+impl auths_crypto::AuthsErrorInfo for PlatformError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::AuthorizationPending => "AUTHS-E3801",
+            Self::SlowDown => "AUTHS-E3802",
+            Self::AccessDenied => "AUTHS-E3803",
+            Self::ExpiredToken => "AUTHS-E3804",
+            Self::Network(_) => "AUTHS-E3805",
+            Self::Platform { .. } => "AUTHS-E3806",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::AccessDenied => Some("Re-run the command and approve the authorization request"),
+            Self::ExpiredToken => Some("The device code expired — restart the flow"),
+            Self::Network(_) => Some("Check your internet connection"),
+            _ => None,
+        }
+    }
+}
+
 /// OAuth 2.0 device authorization grant response (RFC 8628 §3.2).
 ///
 /// Returned by [`OAuthDeviceFlowProvider::request_device_code`].

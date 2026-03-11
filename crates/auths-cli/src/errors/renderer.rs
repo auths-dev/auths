@@ -218,29 +218,12 @@ fn build_json(
         .unwrap_or_else(|_| format!("{{\"error\":{{\"message\":\"{message}\"}}}}"))
 }
 
-/// Map an error code to a docs URL. Returns `None` for codes that don't
-/// have actionable documentation.
+/// Map an error code to a docs URL.
 fn docs_url(code: &str) -> Option<String> {
-    match code {
-        "AUTHS_KEY_NOT_FOUND"
-        | "AUTHS_INCORRECT_PASSPHRASE"
-        | "AUTHS_MISSING_PASSPHRASE"
-        | "AUTHS_BACKEND_UNAVAILABLE"
-        | "AUTHS_STORAGE_LOCKED"
-        | "AUTHS_BACKEND_INIT_FAILED"
-        | "AUTHS_AGENT_LOCKED"
-        | "AUTHS_ISSUER_SIG_FAILED"
-        | "AUTHS_DEVICE_SIG_FAILED"
-        | "AUTHS_ATTESTATION_EXPIRED"
-        | "AUTHS_ATTESTATION_REVOKED"
-        | "AUTHS_TIMESTAMP_IN_FUTURE"
-        | "AUTHS_MISSING_CAPABILITY"
-        | "AUTHS_DID_RESOLUTION_ERROR"
-        | "AUTHS_ORG_VERIFICATION_FAILED"
-        | "AUTHS_ORG_ATTESTATION_EXPIRED"
-        | "AUTHS_ORG_DID_RESOLUTION_FAILED"
-        | "AUTHS_GIT_ERROR" => Some(format!("{DOCS_BASE_URL}/errors/#{code}")),
-        _ => None,
+    if code.starts_with("AUTHS-E") {
+        Some(format!("{DOCS_BASE_URL}/errors/#{code}"))
+    } else {
+        None
     }
 }
 
@@ -250,36 +233,36 @@ mod tests {
 
     #[test]
     fn docs_url_returns_some_for_known_codes() {
-        let url = docs_url("AUTHS_KEY_NOT_FOUND");
+        let url = docs_url("AUTHS-E3001");
         assert_eq!(
             url,
-            Some(format!("{DOCS_BASE_URL}/errors/#AUTHS_KEY_NOT_FOUND"))
+            Some(format!("{DOCS_BASE_URL}/errors/#AUTHS-E3001"))
         );
     }
 
     #[test]
     fn docs_url_returns_none_for_unknown_codes() {
-        assert!(docs_url("AUTHS_IO_ERROR").is_none());
         assert!(docs_url("UNKNOWN").is_none());
+        assert!(docs_url("SOME_OTHER").is_none());
     }
 
     #[test]
     fn build_json_with_all_fields() {
         let json = build_json(
-            Some("AUTHS_KEY_NOT_FOUND"),
+            Some("AUTHS-E3001"),
             "Key not found",
             Some("Run `auths key list`"),
-            Some(format!("{DOCS_BASE_URL}/errors/#AUTHS_KEY_NOT_FOUND")),
+            Some(format!("{DOCS_BASE_URL}/errors/#AUTHS-E3001")),
         );
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["error"]["code"], "AUTHS_KEY_NOT_FOUND");
+        assert_eq!(parsed["error"]["code"], "AUTHS-E3001");
         assert_eq!(parsed["error"]["message"], "Key not found");
         assert_eq!(parsed["error"]["suggestion"], "Run `auths key list`");
         assert!(
             parsed["error"]["docs"]
                 .as_str()
                 .unwrap()
-                .contains("AUTHS_KEY_NOT_FOUND")
+                .contains("AUTHS-E3001")
         );
     }
 

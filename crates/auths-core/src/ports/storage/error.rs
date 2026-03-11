@@ -50,6 +50,26 @@ pub enum StorageError {
     Internal(Box<dyn std::error::Error + Send + Sync>),
 }
 
+impl auths_crypto::AuthsErrorInfo for StorageError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::NotFound { .. } => "AUTHS-E3501",
+            Self::AlreadyExists { .. } => "AUTHS-E3502",
+            Self::CasConflict => "AUTHS-E3503",
+            Self::Io(_) => "AUTHS-E3504",
+            Self::Internal(_) => "AUTHS-E3505",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::CasConflict => Some("Retry the operation — another process made a concurrent change"),
+            Self::Io(_) => Some("Check file permissions and disk space"),
+            _ => None,
+        }
+    }
+}
+
 impl StorageError {
     /// Convenience constructor for `NotFound`.
     pub fn not_found(path: impl fmt::Display) -> Self {

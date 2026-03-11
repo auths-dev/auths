@@ -65,6 +65,28 @@ pub enum NetworkError {
     Internal(Box<dyn std::error::Error + Send + Sync>),
 }
 
+impl auths_crypto::AuthsErrorInfo for NetworkError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Unreachable { .. } => "AUTHS-E3601",
+            Self::Timeout { .. } => "AUTHS-E3602",
+            Self::NotFound { .. } => "AUTHS-E3603",
+            Self::Unauthorized => "AUTHS-E3604",
+            Self::InvalidResponse { .. } => "AUTHS-E3605",
+            Self::Internal(_) => "AUTHS-E3606",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Unreachable { .. } => Some("Check your internet connection"),
+            Self::Timeout { .. } => Some("The server may be overloaded — retry later"),
+            Self::Unauthorized => Some("Check your authentication credentials"),
+            _ => None,
+        }
+    }
+}
+
 /// Domain error for identity resolution operations.
 ///
 /// Distinguishes resolution-specific failures (unknown DID, revoked key)
@@ -112,6 +134,26 @@ pub enum ResolutionError {
     /// A network error occurred during resolution.
     #[error("network error: {0}")]
     Network(#[from] NetworkError),
+}
+
+impl auths_crypto::AuthsErrorInfo for ResolutionError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::DidNotFound { .. } => "AUTHS-E3701",
+            Self::InvalidDid { .. } => "AUTHS-E3702",
+            Self::KeyRevoked { .. } => "AUTHS-E3703",
+            Self::Network(_) => "AUTHS-E3704",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::DidNotFound { .. } => Some("Verify the DID is correct and the identity exists"),
+            Self::InvalidDid { .. } => Some("Check the DID format (e.g., did:key:z6Mk... or did:keri:E...)"),
+            Self::KeyRevoked { .. } => Some("This key has been revoked — contact the identity owner"),
+            Self::Network(_) => Some("Check your internet connection"),
+        }
+    }
 }
 
 /// Cryptographic material resolved from a decentralized identifier.

@@ -37,6 +37,24 @@ pub enum SshAgentError {
     IoError(String),
 }
 
+impl auths_crypto::AuthsErrorInfo for SshAgentError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::CommandFailed(_) => "AUTHS-E3901",
+            Self::NotAvailable(_) => "AUTHS-E3902",
+            Self::IoError(_) => "AUTHS-E3903",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::NotAvailable(_) => Some("Start the SSH agent: eval $(ssh-agent -s)"),
+            Self::CommandFailed(_) => Some("Check that the key file exists and has correct permissions"),
+            Self::IoError(_) => Some("Check file permissions"),
+        }
+    }
+}
+
 /// Registers key files with the system SSH agent.
 ///
 /// Implementations wrap platform-specific mechanisms (e.g., `ssh-add` on

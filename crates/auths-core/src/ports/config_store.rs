@@ -27,6 +27,22 @@ pub enum ConfigStoreError {
     },
 }
 
+impl auths_crypto::AuthsErrorInfo for ConfigStoreError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Read { .. } => "AUTHS-E3951",
+            Self::Write { .. } => "AUTHS-E3952",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Read { .. } => Some("Check that ~/.auths/config.toml exists and is readable"),
+            Self::Write { .. } => Some("Check file permissions for ~/.auths/config.toml"),
+        }
+    }
+}
+
 /// Abstracts filesystem access for config file operations.
 ///
 /// Args:
