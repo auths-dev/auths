@@ -1,7 +1,12 @@
-# AUTHS-E3305: Invalid Key Format
+# AUTHS-E3305
 
-The key format is invalid.
+**Crate:** `auths-core`  
+**Type:** `CryptoError::InvalidKeyFormat`
 
-## Resolution
+## Message
+
+invalid key format: {0}
+
+## Suggestion
 
 Check that the key file is a valid Ed25519 key

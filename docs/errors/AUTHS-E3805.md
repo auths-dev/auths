@@ -1,7 +1,12 @@
-# AUTHS-E3805: Platform Network Error
+# AUTHS-E3805
 
-A network error occurred during platform operations.
+**Crate:** `auths-core`  
+**Type:** `PlatformError::Network`
 
-## Resolution
+## Message
+
+network error: {0}
+
+## Suggestion
 
 Check your internet connection

@@ -1,11 +1,12 @@
-# AUTHS-E3002: Incorrect Passphrase
+# AUTHS-E3002
 
-The passphrase provided to decrypt the key is incorrect.
+**Crate:** `auths-core`  
+**Type:** `AgentError::IncorrectPassphrase`
 
-## Resolution
+## Message
 
-1. Check your passphrase and try again.
-2. If you forgot your passphrase, reset the key:
-   ```bash
-   auths key reset <ALIAS>
-   ```
+Incorrect passphrase
+
+## Suggestion
+
+Check your passphrase and try again

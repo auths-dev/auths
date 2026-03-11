@@ -1,7 +1,8 @@
-# AUTHS-E3005: Crypto Error
+# AUTHS-E3005
 
-A cryptographic operation failed in the core layer.
+**Crate:** `auths-core`  
+**Type:** `AgentError::CryptoError`
 
-## Resolution
+## Message
 
-Check that your key material is not corrupted
+Crypto error: {0}

@@ -1,7 +1,8 @@
-# AUTHS-E3014: User Input Cancelled
+# AUTHS-E3014
 
-The user cancelled an interactive prompt before providing the required input.
+**Crate:** `auths-core`  
+**Type:** `AgentError::UserInputCancelled`
 
-## Resolution
+## Message
 
-Run the command again and provide the required input when prompted.
+User input cancelled

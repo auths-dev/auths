@@ -1,7 +1,12 @@
-# AUTHS-E3207: LAN Pairing Timeout
+# AUTHS-E3207
 
-LAN pairing timed out waiting for a response.
+**Crate:** `auths-core`  
+**Type:** `PairingError::LanTimeout`
 
-## Resolution
+## Message
+
+LAN pairing timed out
+
+## Suggestion
 
 Check your network and try again

@@ -1,7 +1,12 @@
-# AUTHS-E3106: Trust Lock Failed
+# AUTHS-E3106
 
-Advisory file lock could not be acquired.
+**Crate:** `auths-core`  
+**Type:** `TrustError::Lock`
 
-## Resolution
+## Message
+
+lock acquisition failed: {0}
+
+## Suggestion
 
 Check file permissions and try again

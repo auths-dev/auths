@@ -1,7 +1,8 @@
-# AUTHS-E3008: Protocol Error
+# AUTHS-E3008
 
-A protocol-level error occurred.
+**Crate:** `auths-core`  
+**Type:** `AgentError::Proto`
 
-## Resolution
+## Message
 
-Check the protocol version and retry
+Protocol error: {0}

@@ -1,7 +1,12 @@
-# AUTHS-E3901: SSH Agent Command Failed
+# AUTHS-E3901
 
-The ssh-add command returned a failure.
+**Crate:** `auths-core`  
+**Type:** `SshAgentError::CommandFailed`
 
-## Resolution
+## Message
+
+ssh-add command failed: {0}
+
+## Suggestion
 
 Check that the key file exists and has correct permissions

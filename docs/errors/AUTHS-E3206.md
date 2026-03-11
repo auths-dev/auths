@@ -1,7 +1,12 @@
-# AUTHS-E3206: No Peer Found
+# AUTHS-E3206
 
-No peer found on the local network.
+**Crate:** `auths-core`  
+**Type:** `PairingError::NoPeerFound`
 
-## Resolution
+## Message
+
+No peer found on local network
+
+## Suggestion
 
 Ensure both devices are on the same network

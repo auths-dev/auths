@@ -1,7 +1,8 @@
-# AUTHS-E3606: Network Internal Error
+# AUTHS-E3606
 
-An unexpected internal network error.
+**Crate:** `auths-core`  
+**Type:** `NetworkError::Internal`
 
-## Resolution
+## Message
 
-Report this as a bug
+internal network error: {0}

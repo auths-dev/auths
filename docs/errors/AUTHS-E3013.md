@@ -1,7 +1,12 @@
-# AUTHS-E3013: Storage Error
+# AUTHS-E3013
 
-A storage operation failed.
+**Crate:** `auths-core`  
+**Type:** `AgentError::StorageError`
 
-## Resolution
+## Message
+
+Storage error: {0}
+
+## Suggestion
 
 Check file permissions and disk space

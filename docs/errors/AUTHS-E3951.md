@@ -1,7 +1,12 @@
-# AUTHS-E3951: Config Read Error
+# AUTHS-E3951
 
-Failed to read the config file.
+**Crate:** `auths-core`  
+**Type:** `ConfigStoreError::Read`
 
-## Resolution
+## Message
+
+failed to read config from {path}
+
+## Suggestion
 
 Check that ~/.auths/config.toml exists and is readable

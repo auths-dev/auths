@@ -1,7 +1,8 @@
-# AUTHS-E3408: Witness Storage Error
+# AUTHS-E3408
 
-Storage error during witness operation.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::Storage`
 
-## Resolution
+## Message
 
-Check file permissions
+storage error: {0}

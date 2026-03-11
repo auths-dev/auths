@@ -1,7 +1,12 @@
-# AUTHS-E3704: Resolution Network Error
+# AUTHS-E3704
 
-A network error occurred during DID resolution.
+**Crate:** `auths-core`  
+**Type:** `ResolutionError::Network`
 
-## Resolution
+## Message
+
+network error: {0}
+
+## Suggestion
 
 Check your internet connection

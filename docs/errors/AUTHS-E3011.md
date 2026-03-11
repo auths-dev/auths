@@ -1,7 +1,8 @@
-# AUTHS-E3011: Invalid Input
+# AUTHS-E3011
 
-Invalid input was provided to a core operation.
+**Crate:** `auths-core`  
+**Type:** `AgentError::InvalidInput`
 
-## Resolution
+## Message
 
-Check command arguments and try again
+Invalid input: {0}

@@ -1,7 +1,12 @@
-# AUTHS-E3902: SSH Agent Not Available
+# AUTHS-E3902
 
-The system SSH agent is not available.
+**Crate:** `auths-core`  
+**Type:** `SshAgentError::NotAvailable`
 
-## Resolution
+## Message
 
-Start the SSH agent with eval $(ssh-agent -s)
+SSH agent not available: {0}
+
+## Suggestion
+
+Start the SSH agent: eval $(ssh-agent -s)

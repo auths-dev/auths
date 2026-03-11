@@ -1,7 +1,8 @@
-# AUTHS-E3403: Witness Rejected Event
+# AUTHS-E3403
 
-The witness rejected the event.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::Rejected`
 
-## Resolution
+## Message
 
-Check that the event is correctly formatted
+event rejected: {reason}

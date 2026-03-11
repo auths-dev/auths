@@ -1,7 +1,12 @@
-# AUTHS-E3103: Trust Not Found
+# AUTHS-E3103
 
-A required trust entry was not found.
+**Crate:** `auths-core`  
+**Type:** `TrustError::NotFound`
 
-## Resolution
+## Message
 
-Run auths trust list to see pinned identities
+not found: {0}
+
+## Suggestion
+
+Run `auths trust list` to see pinned identities

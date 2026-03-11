@@ -1,7 +1,12 @@
-# AUTHS-E3503: Storage CAS Conflict
+# AUTHS-E3503
 
-Optimistic concurrency conflict.
+**Crate:** `auths-core`  
+**Type:** `StorageError::CasConflict`
 
-## Resolution
+## Message
 
-Retry the operation
+compare-and-swap conflict
+
+## Suggestion
+
+Retry the operation — another process made a concurrent change

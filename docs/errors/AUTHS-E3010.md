@@ -1,7 +1,12 @@
-# AUTHS-E3010: Git Error
+# AUTHS-E3010
 
-A Git operation failed.
+**Crate:** `auths-core`  
+**Type:** `AgentError::GitError`
 
-## Resolution
+## Message
 
-Ensure you are in a valid Git repository
+git error: {0}
+
+## Suggestion
+
+Ensure you're in a Git repository

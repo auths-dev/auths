@@ -1,7 +1,8 @@
-# AUTHS-E3102: Trust Invalid Data
+# AUTHS-E3102
 
-Invalid data encountered in trust store (corrupt pin, bad hex).
+**Crate:** `auths-core`  
+**Type:** `TrustError::InvalidData`
 
-## Resolution
+## Message
 
-Re-pin the identity with auths trust add
+{0}

@@ -1,7 +1,8 @@
-# AUTHS-E3004: Security Error
+# AUTHS-E3004
 
-A platform security framework error occurred.
+**Crate:** `auths-core`  
+**Type:** `AgentError::SecurityError`
 
-## Resolution
+## Message
 
-Run auths doctor to diagnose platform issues
+Security error: {0}

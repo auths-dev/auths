@@ -1,7 +1,12 @@
-# AUTHS-E3107: Trust Policy Rejected
+# AUTHS-E3107
 
-Trust policy rejected the identity.
+**Crate:** `auths-core`  
+**Type:** `TrustError::PolicyRejected`
 
-## Resolution
+## Message
 
-Run auths trust add to pin this identity
+policy rejected: {0}
+
+## Suggestion
+
+Run `auths trust add` to pin this identity

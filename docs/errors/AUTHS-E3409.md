@@ -1,7 +1,8 @@
-# AUTHS-E3409: Witness Serialization Error
+# AUTHS-E3409
 
-Serialization error during witness operation.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::Serialization`
 
-## Resolution
+## Message
 
-This may indicate corrupted data
+serialization error: {0}

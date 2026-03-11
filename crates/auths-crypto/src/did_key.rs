@@ -24,6 +24,25 @@ pub enum DidKeyError {
     InvalidKeyLength(usize),
 }
 
+impl crate::AuthsErrorInfo for DidKeyError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidPrefix(_) => "AUTHS-E1101",
+            Self::Base58DecodeFailed(_) => "AUTHS-E1102",
+            Self::UnsupportedMulticodec => "AUTHS-E1103",
+            Self::InvalidKeyLength(_) => "AUTHS-E1104",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidPrefix(_) => Some("DID must start with 'did:key:z'"),
+            Self::UnsupportedMulticodec => Some("Only Ed25519 keys are supported"),
+            _ => None,
+        }
+    }
+}
+
 /// Decode a `did:key:z...` string into a 32-byte Ed25519 public key.
 ///
 /// Args:

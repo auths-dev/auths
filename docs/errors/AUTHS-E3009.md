@@ -1,7 +1,8 @@
-# AUTHS-E3009: IO Error
+# AUTHS-E3009
 
-A filesystem I/O error occurred.
+**Crate:** `auths-core`  
+**Type:** `AgentError::IO`
 
-## Resolution
+## Message
 
-Check file permissions and disk space
+IO error: {0}

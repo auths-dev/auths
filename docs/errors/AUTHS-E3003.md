@@ -1,7 +1,8 @@
-# AUTHS-E3003: Missing Passphrase
+# AUTHS-E3003
 
-A passphrase is required but was not provided.
+**Crate:** `auths-core`  
+**Type:** `AgentError::MissingPassphrase`
 
-## Resolution
+## Message
 
-Provide a passphrase with --passphrase or set AUTHS_PASSPHRASE
+Missing Passphrase

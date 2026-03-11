@@ -1,7 +1,8 @@
-# AUTHS-E3603: Network Not Found
+# AUTHS-E3603
 
-The requested resource was not found.
+**Crate:** `auths-core`  
+**Type:** `NetworkError::NotFound`
 
-## Resolution
+## Message
 
-Verify the URL or resource identifier
+resource not found: {resource}

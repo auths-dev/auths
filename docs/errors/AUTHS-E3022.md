@@ -1,7 +1,12 @@
-# AUTHS-E3022: HSM Device Removed
+# AUTHS-E3022
 
-HSM device was removed during operation.
+**Crate:** `auths-core`  
+**Type:** `AgentError::HsmDeviceRemoved`
 
-## Resolution
+## Message
+
+HSM device removed
+
+## Suggestion
 
 Reconnect the HSM device and try again

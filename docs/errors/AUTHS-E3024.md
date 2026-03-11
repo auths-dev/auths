@@ -1,7 +1,8 @@
-# AUTHS-E3024: HSM Unsupported Mechanism
+# AUTHS-E3024
 
-HSM does not support the requested cryptographic mechanism.
+**Crate:** `auths-core`  
+**Type:** `AgentError::HsmUnsupportedMechanism`
 
-## Resolution
+## Message
 
-Check that your HSM supports Ed25519 (CKM_EDDSA)
+HSM does not support mechanism: {0}

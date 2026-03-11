@@ -1,7 +1,12 @@
-# AUTHS-E3023: HSM Session Expired
+# AUTHS-E3023
 
-HSM session expired or was closed unexpectedly.
+**Crate:** `auths-core`  
+**Type:** `AgentError::HsmSessionExpired`
 
-## Resolution
+## Message
+
+HSM session expired
+
+## Suggestion
 
 Retry the operation — a new session will be opened

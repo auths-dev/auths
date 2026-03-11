@@ -1,7 +1,12 @@
-# AUTHS-E3601: Network Unreachable
+# AUTHS-E3601
 
-The endpoint could not be reached.
+**Crate:** `auths-core`  
+**Type:** `NetworkError::Unreachable`
 
-## Resolution
+## Message
+
+endpoint unreachable: {endpoint}
+
+## Suggestion
 
 Check your internet connection

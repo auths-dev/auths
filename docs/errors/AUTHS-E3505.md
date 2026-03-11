@@ -1,7 +1,8 @@
-# AUTHS-E3505: Storage Internal Error
+# AUTHS-E3505
 
-An unexpected internal storage error.
+**Crate:** `auths-core`  
+**Type:** `StorageError::Internal`
 
-## Resolution
+## Message
 
-Report this as a bug
+internal storage error: {0}

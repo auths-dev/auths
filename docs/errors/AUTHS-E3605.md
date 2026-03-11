@@ -1,7 +1,8 @@
-# AUTHS-E3605: Invalid Response
+# AUTHS-E3605
 
-The server returned an unexpected response.
+**Crate:** `auths-core`  
+**Type:** `NetworkError::InvalidResponse`
 
-## Resolution
+## Message
 
-The server may be running an incompatible version
+invalid response: {detail}

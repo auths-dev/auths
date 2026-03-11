@@ -1,7 +1,12 @@
-# AUTHS-E3016: Storage Locked
+# AUTHS-E3016
 
-Storage is locked and requires authentication.
+**Crate:** `auths-core`  
+**Type:** `AgentError::StorageLocked`
 
-## Resolution
+## Message
+
+Storage is locked, authentication required
+
+## Suggestion
 
 Authenticate with your platform keychain

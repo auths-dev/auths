@@ -1,7 +1,8 @@
-# AUTHS-E3201: Pairing Protocol Error
+# AUTHS-E3201
 
-A protocol-level error during device pairing.
+**Crate:** `auths-core`  
+**Type:** `PairingError::Protocol`
 
-## Resolution
+## Message
 
-Check the pairing token and try again
+_(transparent — see inner error)_

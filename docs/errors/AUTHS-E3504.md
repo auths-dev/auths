@@ -1,7 +1,12 @@
-# AUTHS-E3504: Storage IO Error
+# AUTHS-E3504
 
-An I/O error occurred in storage.
+**Crate:** `auths-core`  
+**Type:** `StorageError::Io`
 
-## Resolution
+## Message
+
+storage I/O error: {0}
+
+## Suggestion
 
 Check file permissions and disk space

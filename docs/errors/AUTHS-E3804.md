@@ -1,7 +1,12 @@
-# AUTHS-E3804: Device Code Expired
+# AUTHS-E3804
 
-The device code has expired.
+**Crate:** `auths-core`  
+**Type:** `PlatformError::ExpiredToken`
 
-## Resolution
+## Message
 
-Restart the authorization flow
+device code expired
+
+## Suggestion
+
+The device code expired — restart the flow

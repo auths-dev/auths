@@ -1,7 +1,8 @@
-# AUTHS-E3802: OAuth Slow Down
+# AUTHS-E3802
 
-OAuth server requested slower polling.
+**Crate:** `auths-core`  
+**Type:** `PlatformError::SlowDown`
 
-## Resolution
+## Message
 
-Waiting automatically
+OAuth slow down

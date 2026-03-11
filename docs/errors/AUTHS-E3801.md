@@ -1,7 +1,8 @@
-# AUTHS-E3801: OAuth Authorization Pending
+# AUTHS-E3801
 
-OAuth authorization is pending.
+**Crate:** `auths-core`  
+**Type:** `PlatformError::AuthorizationPending`
 
-## Resolution
+## Message
 
-Complete the authorization in your browser
+OAuth authorization pending

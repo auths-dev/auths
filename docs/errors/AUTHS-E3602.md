@@ -1,7 +1,12 @@
-# AUTHS-E3602: Network Timeout
+# AUTHS-E3602
 
-The request timed out.
+**Crate:** `auths-core`  
+**Type:** `NetworkError::Timeout`
 
-## Resolution
+## Message
+
+request timed out: {endpoint}
+
+## Suggestion
 
 The server may be overloaded — retry later

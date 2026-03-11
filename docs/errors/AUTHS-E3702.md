@@ -1,7 +1,12 @@
-# AUTHS-E3702: Invalid DID
+# AUTHS-E3702
 
-The DID is malformed.
+**Crate:** `auths-core`  
+**Type:** `ResolutionError::InvalidDid`
 
-## Resolution
+## Message
 
-Check the DID format
+invalid DID {did}: {reason}
+
+## Suggestion
+
+Check the DID format (e.g., did:key:z6Mk... or did:keri:E...)

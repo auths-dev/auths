@@ -1,7 +1,8 @@
-# AUTHS-E3019: Agent Locked
+# AUTHS-E3019
 
-Agent is locked due to idle timeout.
+**Crate:** `auths-core`  
+**Type:** `AgentError::AgentLocked`
 
-## Resolution
+## Message
 
-Run auths agent unlock or restart with auths agent start
+Agent is locked. Unlock with 'auths agent unlock' or restart the agent.

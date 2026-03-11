@@ -1,7 +1,8 @@
-# AUTHS-E3018: Credential Too Large
+# AUTHS-E3018
 
-Credential size exceeds platform limit.
+**Crate:** `auths-core`  
+**Type:** `AgentError::CredentialTooLarge`
 
-## Resolution
+## Message
 
-Split the credential or use the file backend
+Credential too large for backend (max {max_bytes} bytes, got {actual_bytes})

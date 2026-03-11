@@ -1,7 +1,8 @@
-# AUTHS-E3302: SSH Signing Failed
+# AUTHS-E3302
 
-SSH signing operation failed.
+**Crate:** `auths-core`  
+**Type:** `CryptoError::SigningFailed`
 
-## Resolution
+## Message
 
-Ensure the key is accessible
+signing failed: {0}

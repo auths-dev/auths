@@ -1,7 +1,8 @@
-# AUTHS-E3012: Mutex Error
+# AUTHS-E3012
 
-A mutex lock was poisoned.
+**Crate:** `auths-core`  
+**Type:** `AgentError::MutexError`
 
-## Resolution
+## Message
 
-Restart the agent process
+Mutex lock poisoned: {0}

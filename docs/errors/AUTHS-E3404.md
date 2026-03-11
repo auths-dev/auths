@@ -1,7 +1,12 @@
-# AUTHS-E3404: Witness Timeout
+# AUTHS-E3404
 
-Witness operation timed out.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::Timeout`
 
-## Resolution
+## Message
+
+timeout after {0}ms
+
+## Suggestion
 
 Check witness endpoint availability and retry

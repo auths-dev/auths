@@ -1,7 +1,12 @@
-# AUTHS-E3105: Trust Already Exists
+# AUTHS-E3105
 
-Attempted to create a trust entry that already exists.
+**Crate:** `auths-core`  
+**Type:** `TrustError::AlreadyExists`
 
-## Resolution
+## Message
 
-Run auths trust list to see existing entries
+already exists: {0}
+
+## Suggestion
+
+Run `auths trust list` to see existing entries

@@ -1,7 +1,8 @@
-# AUTHS-E3007: Signing Failed
+# AUTHS-E3007
 
-A signing operation failed.
+**Crate:** `auths-core`  
+**Type:** `AgentError::SigningFailed`
 
-## Resolution
+## Message
 
-Ensure the key exists and is accessible
+Signing failed: {0}

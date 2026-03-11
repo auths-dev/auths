@@ -1,7 +1,8 @@
-# AUTHS-E3204: Local Server Error
+# AUTHS-E3204
 
-Local LAN pairing server error.
+**Crate:** `auths-core`  
+**Type:** `PairingError::LocalServerError`
 
-## Resolution
+## Message
 
-Check your local network configuration
+Local server error: {0}

@@ -1,7 +1,8 @@
-# AUTHS-E3104: Trust Serialization Error
+# AUTHS-E3104
 
-JSON serialization/deserialization failed in trust store.
+**Crate:** `auths-core`  
+**Type:** `TrustError::Serialization`
 
-## Resolution
+## Message
 
-The trust store may be corrupted
+serialization error: {0}

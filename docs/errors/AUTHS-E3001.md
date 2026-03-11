@@ -1,18 +1,12 @@
-# AUTHS-E3001: Key Not Found
+# AUTHS-E3001
 
-The requested key alias does not exist in the keychain.
+**Crate:** `auths-core`  
+**Type:** `AgentError::KeyNotFound`
 
-## Resolution
+## Message
 
-1. List available keys:
-   ```bash
-   auths key list
-   ```
-2. If the key was deleted, import from a backup:
-   ```bash
-   auths key import --alias <ALIAS> --file <BACKUP_PATH>
-   ```
-3. Or create a new key:
-   ```bash
-   auths init
-   ```
+Key not found
+
+## Suggestion
+
+Run `auths key list` to see available keys

@@ -1,7 +1,8 @@
-# AUTHS-E3301: SSH Key Construction Failed
+# AUTHS-E3301
 
-SSH key construction failed.
+**Crate:** `auths-core`  
+**Type:** `CryptoError::SshKeyConstruction`
 
-## Resolution
+## Message
 
-Check that the key material is valid
+SSH key construction failed: {0}

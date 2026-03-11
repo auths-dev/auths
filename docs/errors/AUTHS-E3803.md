@@ -1,7 +1,12 @@
-# AUTHS-E3803: OAuth Access Denied
+# AUTHS-E3803
 
-The user denied the OAuth authorization request.
+**Crate:** `auths-core`  
+**Type:** `PlatformError::AccessDenied`
 
-## Resolution
+## Message
 
-Re-run the command and approve the request
+OAuth access denied
+
+## Suggestion
+
+Re-run the command and approve the authorization request

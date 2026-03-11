@@ -1,7 +1,12 @@
-# AUTHS-E3203: Relay Error
+# AUTHS-E3203
 
-Network error during relay communication.
+**Crate:** `auths-core`  
+**Type:** `PairingError::RelayError`
 
-## Resolution
+## Message
+
+Relay error: {0}
+
+## Suggestion
 
 Check your internet connection

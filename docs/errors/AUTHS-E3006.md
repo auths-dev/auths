@@ -1,7 +1,8 @@
-# AUTHS-E3006: Key Deserialization Error
+# AUTHS-E3006
 
-Failed to deserialize a key from stored data.
+**Crate:** `auths-core`  
+**Type:** `AgentError::KeyDeserializationError`
 
-## Resolution
+## Message
 
-The key file may be corrupted — try re-importing
+Key deserialization error: {0}

@@ -1,7 +1,8 @@
-# AUTHS-E3202: QR Code Generation Failed
+# AUTHS-E3202
 
-Failed to generate QR code for pairing.
+**Crate:** `auths-core`  
+**Type:** `PairingError::QrCodeFailed`
 
-## Resolution
+## Message
 
-Retry the pairing command
+QR code generation failed: {0}

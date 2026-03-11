@@ -1,15 +1,12 @@
-# AUTHS-E2002: Device Signature Verification Failed
+# AUTHS-E2002
 
-The device's Ed25519 signature on the attestation did not verify. The device key in the attestation does not match the key that produced the signature.
+**Crate:** `auths-verifier`  
+**Type:** `AttestationError::DeviceSignatureFailed`
 
-## Resolution
+## Message
 
-1. Verify the device key matches the attestation:
-   ```bash
-   auths id show --alias <ALIAS>
-   ```
-2. If the device key has changed, request a new attestation from the issuer.
+Device signature verification failed: {0}
 
-## Related
+## Suggestion
 
-- `AUTHS-E2001` — Issuer signature verification failed
+Verify the device key matches the attestation

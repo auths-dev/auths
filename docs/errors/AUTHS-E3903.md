@@ -1,7 +1,12 @@
-# AUTHS-E3903: SSH Agent IO Error
+# AUTHS-E3903
 
-A filesystem or process I/O error with SSH agent.
+**Crate:** `auths-core`  
+**Type:** `SshAgentError::IoError`
 
-## Resolution
+## Message
+
+I/O error: {0}
+
+## Suggestion
 
 Check file permissions

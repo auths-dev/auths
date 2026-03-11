@@ -1,7 +1,12 @@
-# AUTHS-E3703: Key Revoked
+# AUTHS-E3703
 
-The key for this DID has been revoked.
+**Crate:** `auths-core`  
+**Type:** `ResolutionError::KeyRevoked`
 
-## Resolution
+## Message
 
-Contact the identity owner
+key revoked for DID: {did}
+
+## Suggestion
+
+This key has been revoked — contact the identity owner

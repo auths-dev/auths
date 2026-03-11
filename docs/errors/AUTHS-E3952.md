@@ -1,7 +1,12 @@
-# AUTHS-E3952: Config Write Error
+# AUTHS-E3952
 
-Failed to write the config file.
+**Crate:** `auths-core`  
+**Type:** `ConfigStoreError::Write`
 
-## Resolution
+## Message
+
+failed to write config to {path}
+
+## Suggestion
 
 Check file permissions for ~/.auths/config.toml

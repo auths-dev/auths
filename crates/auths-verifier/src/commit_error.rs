@@ -64,15 +64,15 @@ pub enum CommitVerificationError {
 impl AuthsErrorInfo for CommitVerificationError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::UnsignedCommit => "AUTHS_UNSIGNED_COMMIT",
-            Self::GpgNotSupported => "AUTHS_GPG_NOT_SUPPORTED",
-            Self::SshSigParseFailed(_) => "AUTHS_SSHSIG_PARSE_FAILED",
-            Self::UnsupportedKeyType { .. } => "AUTHS_UNSUPPORTED_KEY_TYPE",
-            Self::NamespaceMismatch { .. } => "AUTHS_NAMESPACE_MISMATCH",
-            Self::HashAlgorithmUnsupported(_) => "AUTHS_HASH_UNSUPPORTED",
-            Self::SignatureInvalid => "AUTHS_SIGNATURE_INVALID",
-            Self::UnknownSigner => "AUTHS_UNKNOWN_SIGNER",
-            Self::CommitParseFailed(_) => "AUTHS_COMMIT_PARSE_FAILED",
+            Self::UnsignedCommit => "AUTHS-E2101",
+            Self::GpgNotSupported => "AUTHS-E2102",
+            Self::SshSigParseFailed(_) => "AUTHS-E2103",
+            Self::UnsupportedKeyType { .. } => "AUTHS-E2104",
+            Self::NamespaceMismatch { .. } => "AUTHS-E2105",
+            Self::HashAlgorithmUnsupported(_) => "AUTHS-E2106",
+            Self::SignatureInvalid => "AUTHS-E2107",
+            Self::UnknownSigner => "AUTHS-E2108",
+            Self::CommitParseFailed(_) => "AUTHS-E2109",
         }
     }
 

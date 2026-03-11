@@ -1,7 +1,12 @@
-# AUTHS-E3021: HSM PIN Locked
+# AUTHS-E3021
 
-HSM PIN is locked after too many failed attempts.
+**Crate:** `auths-core`  
+**Type:** `AgentError::HsmPinLocked`
 
-## Resolution
+## Message
 
-Reset the HSM PIN using your vendor admin tools
+HSM PIN is locked — reset required
+
+## Suggestion
+
+Reset the HSM PIN using your HSM vendor's admin tools

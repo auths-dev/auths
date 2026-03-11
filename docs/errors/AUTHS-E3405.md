@@ -1,7 +1,8 @@
-# AUTHS-E3405: Witness Invalid Signature
+# AUTHS-E3405
 
-Invalid receipt signature from witness.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::InvalidSignature`
 
-## Resolution
+## Message
 
-The witness may be compromised
+invalid receipt signature from witness {witness_id}

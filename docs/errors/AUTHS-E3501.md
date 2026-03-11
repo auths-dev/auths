@@ -1,7 +1,8 @@
-# AUTHS-E3501: Storage Not Found
+# AUTHS-E3501
 
-The requested item was not found in storage.
+**Crate:** `auths-core`  
+**Type:** `StorageError::NotFound`
 
-## Resolution
+## Message
 
-Verify the path or identifier exists
+not found: {path}

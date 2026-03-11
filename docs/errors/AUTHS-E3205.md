@@ -1,7 +1,8 @@
-# AUTHS-E3205: mDNS Error
+# AUTHS-E3205
 
-mDNS advertisement or discovery error.
+**Crate:** `auths-core`  
+**Type:** `PairingError::MdnsError`
 
-## Resolution
+## Message
 
-Ensure mDNS is not blocked on your network
+mDNS error: {0}

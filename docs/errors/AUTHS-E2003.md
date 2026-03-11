@@ -1,14 +1,12 @@
-# AUTHS-E2003: Attestation Expired
+# AUTHS-E2003
 
-The attestation's `expires_at` timestamp is in the past. Expired attestations are no longer valid for verification.
+**Crate:** `auths-verifier`  
+**Type:** `AttestationError::AttestationExpired`
 
-## Resolution
+## Message
 
-Request a new attestation from the issuer:
-```bash
-auths id attest --alias <ALIAS>
-```
+Attestation expired on {at}
 
-## Related
+## Suggestion
 
-- `AUTHS-E2005` — Timestamp in the future (clock skew)
+Request a new attestation from the issuer

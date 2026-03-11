@@ -19,6 +19,25 @@ pub enum KeriDecodeError {
     InvalidLength(usize),
 }
 
+impl crate::AuthsErrorInfo for KeriDecodeError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::InvalidPrefix(_) => "AUTHS-E1201",
+            Self::EmptyInput => "AUTHS-E1202",
+            Self::DecodeError(_) => "AUTHS-E1203",
+            Self::InvalidLength(_) => "AUTHS-E1204",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidPrefix(_) => Some("KERI Ed25519 keys must start with 'D' prefix"),
+            Self::EmptyInput => Some("Provide a non-empty KERI-encoded key string"),
+            _ => None,
+        }
+    }
+}
+
 /// A validated KERI Ed25519 public key (32 bytes).
 ///
 /// Args:

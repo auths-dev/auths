@@ -1,7 +1,8 @@
-# AUTHS-E3017: Backend Init Failed
+# AUTHS-E3017
 
-Failed to initialize keychain backend.
+**Crate:** `auths-core`  
+**Type:** `AgentError::BackendInitFailed`
 
-## Resolution
+## Message
 
-Run auths doctor to diagnose keychain issues
+Failed to initialize keychain backend: {backend} - {error}

@@ -1,7 +1,12 @@
-# AUTHS-E3304: Invalid Seed Length
+# AUTHS-E3304
 
-The seed has an unexpected length (expected 32 bytes).
+**Crate:** `auths-core`  
+**Type:** `CryptoError::InvalidSeedLength`
 
-## Resolution
+## Message
+
+invalid seed length: expected 32, got {0}
+
+## Suggestion
 
 Ensure the seed is exactly 32 bytes

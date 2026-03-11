@@ -1,7 +1,8 @@
-# AUTHS-E3806: Platform Error
+# AUTHS-E3806
 
-A platform-specific error occurred.
+**Crate:** `auths-core`  
+**Type:** `PlatformError::Platform`
 
-## Resolution
+## Message
 
-Check the platform API status
+platform error: {message}

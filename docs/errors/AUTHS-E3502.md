@@ -1,7 +1,8 @@
-# AUTHS-E3502: Storage Already Exists
+# AUTHS-E3502
 
-An item already exists at this path.
+**Crate:** `auths-core`  
+**Type:** `StorageError::AlreadyExists`
 
-## Resolution
+## Message
 
-Choose a different name or delete the existing item
+already exists: {path}

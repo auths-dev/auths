@@ -1,7 +1,12 @@
-# AUTHS-E3101: Trust IO Error
+# AUTHS-E3101
 
-An I/O error occurred during trust operations.
+**Crate:** `auths-core`  
+**Type:** `TrustError::Io`
 
-## Resolution
+## Message
+
+I/O error: {0}
+
+## Suggestion
 
 Check disk space and file permissions

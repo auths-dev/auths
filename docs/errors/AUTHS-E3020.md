@@ -1,7 +1,8 @@
-# AUTHS-E3020: Weak Passphrase
+# AUTHS-E3020
 
-The passphrase does not meet strength requirements.
+**Crate:** `auths-core`  
+**Type:** `AgentError::WeakPassphrase`
 
-## Resolution
+## Message
 
-Use at least 12 characters with mixed case and symbols
+Passphrase too weak: {0}

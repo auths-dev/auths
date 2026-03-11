@@ -1,7 +1,12 @@
-# AUTHS-E3406: Insufficient Receipts
+# AUTHS-E3406
 
-Not enough witness receipts to meet threshold.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::InsufficientReceipts`
 
-## Resolution
+## Message
+
+insufficient receipts: got {got}, need {required}
+
+## Suggestion
 
 Ensure enough witnesses are online

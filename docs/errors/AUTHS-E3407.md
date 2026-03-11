@@ -1,7 +1,8 @@
-# AUTHS-E3407: Receipt SAID Mismatch
+# AUTHS-E3407
 
-Receipt is for wrong event.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::SaidMismatch`
 
-## Resolution
+## Message
 
-Retry the witness operation
+receipt SAID mismatch: expected {expected}, got {got}

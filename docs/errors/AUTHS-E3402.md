@@ -1,7 +1,12 @@
-# AUTHS-E3402: Duplicity Detected
+# AUTHS-E3402
 
-A split-view attack was detected by witnesses.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::Duplicity`
 
-## Resolution
+## Message
+
+duplicity detected: {0}
+
+## Suggestion
 
 This identity may be compromised — investigate immediately

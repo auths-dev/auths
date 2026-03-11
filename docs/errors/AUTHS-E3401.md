@@ -1,7 +1,12 @@
-# AUTHS-E3401: Witness Network Error
+# AUTHS-E3401
 
-Network error communicating with witness.
+**Crate:** `auths-core`  
+**Type:** `WitnessError::Network`
 
-## Resolution
+## Message
+
+network error: {0}
+
+## Suggestion
 
 Check your internet connection

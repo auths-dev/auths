@@ -1,7 +1,12 @@
-# AUTHS-E3701: DID Not Found
+# AUTHS-E3701
 
-The DID was not found.
+**Crate:** `auths-core`  
+**Type:** `ResolutionError::DidNotFound`
 
-## Resolution
+## Message
+
+DID not found: {did}
+
+## Suggestion
 
 Verify the DID is correct and the identity exists

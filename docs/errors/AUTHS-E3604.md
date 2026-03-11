@@ -1,7 +1,12 @@
-# AUTHS-E3604: Network Unauthorized
+# AUTHS-E3604
 
-Authentication or authorization failed.
+**Crate:** `auths-core`  
+**Type:** `NetworkError::Unauthorized`
 
-## Resolution
+## Message
 
-Check your credentials
+unauthorized
+
+## Suggestion
+
+Check your authentication credentials

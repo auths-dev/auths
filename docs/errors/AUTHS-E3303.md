@@ -1,7 +1,8 @@
-# AUTHS-E3303: PEM Encoding Failed
+# AUTHS-E3303
 
-PEM encoding failed during key export.
+**Crate:** `auths-core`  
+**Type:** `CryptoError::PemEncoding`
 
-## Resolution
+## Message
 
-Check that the key is not corrupted
+PEM encoding failed: {0}
