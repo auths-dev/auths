@@ -180,6 +180,8 @@ impl TestIdentityBuilder {
     /// - Temporary directory creation fails
     /// - Git repository initialization fails
     /// - Key generation or storage fails
+    #[allow(clippy::disallowed_methods)] // INVARIANT: test helper — needs real git init and temp dirs
+    #[allow(clippy::disallowed_types)]
     pub fn build(self) -> Result<TestIdentity, AgentError> {
         // Create temp directory for Git repo
         let temp_dir = TempDir::new().map_err(|e| {

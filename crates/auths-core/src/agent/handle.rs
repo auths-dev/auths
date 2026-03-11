@@ -240,6 +240,7 @@ impl AgentHandle {
     /// 1. Clears all keys from the agent core (zeroizing sensitive data)
     /// 2. Marks the agent as not running
     /// 3. Optionally removes the socket file and PID file
+    #[allow(clippy::disallowed_methods)] // INVARIANT: daemon lifecycle — socket/PID cleanup is inherently I/O
     pub fn shutdown(&self) -> Result<(), AgentError> {
         log::info!("Shutting down agent at {:?}", self.socket_path);
 

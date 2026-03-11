@@ -100,6 +100,8 @@ pub struct PinnedIdentityStore {
     path: PathBuf,
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: PinnedIdentityStore is a file-backed adapter — I/O is its purpose
+#[allow(clippy::disallowed_types)]
 impl PinnedIdentityStore {
     /// Create a store at the given path.
     pub fn new(path: PathBuf) -> Self {
@@ -107,6 +109,7 @@ impl PinnedIdentityStore {
     }
 
     /// Default path: `~/.auths/known_identities.json`
+    #[allow(clippy::disallowed_methods)] // INVARIANT: designated home-dir resolution for pin store default
     pub fn default_path() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -237,6 +240,8 @@ struct LockGuard {
     _file: fs::File,
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: file locking is inherently I/O
+#[allow(clippy::disallowed_types)]
 impl LockGuard {
     fn acquire(path: PathBuf) -> Result<Self, TrustError> {
         let file = fs::OpenOptions::new()

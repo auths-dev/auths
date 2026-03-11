@@ -64,6 +64,8 @@ struct AliasIndex {
     aliases: HashMap<String, AliasEntry>,
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: Windows credential adapter — file-based alias index and dirs are inherently I/O
+#[allow(clippy::disallowed_types)]
 impl WindowsCredentialStorage {
     /// Create a new WindowsCredentialStorage with the given service name.
     ///

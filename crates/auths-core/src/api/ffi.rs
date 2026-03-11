@@ -67,6 +67,7 @@ static FFI_AGENT: LazyLock<RwLock<Option<Arc<AgentHandle>>>> = LazyLock::new(|| 
 /// - 1 if the socket path is invalid
 /// - FFI_ERR_PANIC (-127) if a panic occurred
 #[unsafe(no_mangle)]
+#[allow(clippy::disallowed_methods)] // INVARIANT: FFI boundary — home-dir fallback for default socket path
 pub unsafe extern "C" fn ffi_init_agent(socket_path: *const c_char) -> c_int {
     let result = panic::catch_unwind(|| {
         let path_str = match unsafe { c_str_to_str_safe(socket_path) } {

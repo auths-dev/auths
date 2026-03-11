@@ -65,6 +65,8 @@ pub struct EncryptedFileStorage {
     password: Mutex<Option<Zeroizing<String>>>,
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: file-backed keychain adapter — I/O is its purpose
+#[allow(clippy::disallowed_types)]
 impl EncryptedFileStorage {
     /// Create a new EncryptedFileStorage with default path (`<home>/keys.enc`).
     ///
@@ -283,6 +285,8 @@ impl EncryptedFileStorage {
     }
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: file-backed keychain adapter
+#[allow(clippy::disallowed_types)]
 impl KeyStorage for EncryptedFileStorage {
     fn store_key(
         &self,
