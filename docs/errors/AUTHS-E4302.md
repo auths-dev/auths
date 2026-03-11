@@ -6,7 +6,3 @@
 ## Message
 
 identity creation failed: {0}
-
-## Suggestion
-
-Identity creation failed; check keychain and backend

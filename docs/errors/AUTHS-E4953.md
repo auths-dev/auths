@@ -6,7 +6,3 @@
 ## Message
 
 Sequence error: expected {expected}, got {actual}
-
-## Suggestion
-
-The KEL has sequence gaps; re-sync from a trusted source

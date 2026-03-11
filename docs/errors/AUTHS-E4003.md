@@ -6,7 +6,3 @@
 ## Message
 
 invalid duration format: {0}
-
-## Suggestion
-
-Use a valid duration format (e.g. '30m', '2h', '7d')

@@ -6,7 +6,3 @@
 ## Message
 
 compare-and-swap conflict
-
-## Suggestion
-
-Retry the operation — another process made a concurrent change

@@ -6,7 +6,3 @@
 ## Message
 
 key revoked for DID: {did}
-
-## Suggestion
-
-This key has been revoked — contact the identity owner

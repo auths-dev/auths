@@ -6,7 +6,3 @@
 ## Message
 
 Operation not supported on current compilation target
-
-## Suggestion
-
-This operation is not available on the current platform

@@ -6,7 +6,3 @@
 ## Message
 
 Identity is abandoned (cannot rotate)
-
-## Suggestion
-
-This identity has been abandoned and cannot be rotated

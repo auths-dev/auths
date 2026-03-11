@@ -6,7 +6,3 @@
 ## Message
 
 failed to parse freeze state: {0}
-
-## Suggestion
-
-The freeze state file may be corrupted; try deleting it

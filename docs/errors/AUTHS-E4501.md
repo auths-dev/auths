@@ -6,7 +6,3 @@
 ## Message
 
 Invalid SAID: expected {expected}, got {actual}
-
-## Suggestion
-
-The KEL may have been tampered with; re-sync from a trusted source

@@ -6,7 +6,3 @@
 ## Message
 
 I/O error: {0}
-
-## Suggestion
-
-Check cache directory permissions; the cache is optional and can be cleared

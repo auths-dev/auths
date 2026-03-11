@@ -6,7 +6,3 @@
 ## Message
 
 Commitment mismatch: next key does not match previous commitment
-
-## Suggestion
-
-The provided next key does not match the pre-rotation commitment

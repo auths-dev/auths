@@ -6,7 +6,3 @@
 ## Message
 
 approval request not found: {hash}
-
-## Suggestion
-
-Run `auths approval list` to see pending requests

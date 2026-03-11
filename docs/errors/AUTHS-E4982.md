@@ -6,7 +6,3 @@
 ## Message
 
 JSON serialization error: {0}
-
-## Suggestion
-
-The cache file may be corrupted; try clearing it with 'auths cache clear'
