@@ -32,7 +32,7 @@ pub fn sign_as_identity(
 ) -> napi::Result<NapiCommitSignResult> {
     let passphrase_str = resolve_passphrase(passphrase);
     let (signer, provider) = make_signer(&passphrase_str, &repo_path)?;
-    let did = IdentityDID::new(&identity_did);
+    let did = IdentityDID::new_unchecked(&identity_did);
 
     let sig_bytes = signer
         .sign_for_identity(&did, &provider, message.as_ref())
@@ -85,7 +85,7 @@ pub fn sign_action_as_identity(
 
     let passphrase_str = resolve_passphrase(passphrase);
     let (signer, provider) = make_signer(&passphrase_str, &repo_path)?;
-    let did = IdentityDID::new(&identity_did);
+    let did = IdentityDID::new_unchecked(&identity_did);
 
     let sig_bytes = signer
         .sign_for_identity(&did, &provider, canonical.as_bytes())

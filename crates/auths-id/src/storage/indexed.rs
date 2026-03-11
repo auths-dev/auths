@@ -153,9 +153,9 @@ impl AttestationSource for IndexedAttestationStorage {
         // Collect unique device DIDs from the index
         let mut dids: Vec<DeviceDID> = active
             .into_iter()
-            .map(|a| DeviceDID::new(&a.device_did))
+            .map(|a| DeviceDID::new_unchecked(&a.device_did))
             .collect();
-        dids.sort_by(|a, b| a.0.cmp(&b.0));
+        dids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         dids.dedup();
         Ok(dids)
     }

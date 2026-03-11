@@ -227,7 +227,7 @@ impl KeyStorage for Pkcs11KeyRef {
             })
             .ok_or(AgentError::KeyNotFound)?;
 
-        let identity_did = IdentityDID::new(
+        let identity_did = IdentityDID::new_unchecked(
             String::from_utf8(id_bytes)
                 .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?,
         );
@@ -317,9 +317,10 @@ impl KeyStorage for Pkcs11KeyRef {
             })
             .ok_or(AgentError::KeyNotFound)?;
 
-        Ok(IdentityDID::new(String::from_utf8(id_bytes).map_err(
-            |e| AgentError::KeyDeserializationError(e.to_string()),
-        )?))
+        Ok(IdentityDID::new_unchecked(
+            String::from_utf8(id_bytes)
+                .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?,
+        ))
     }
 
     fn backend_name(&self) -> &'static str {

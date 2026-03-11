@@ -349,7 +349,8 @@ fn handle_revoke_device(cmd: RevokeDeviceCommand) -> Result<()> {
     let controller_did = managed_identity.controller_did;
     let rid = managed_identity.storage_id;
 
-    let device_did_obj = DeviceDID::new(device_did.clone());
+    #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from managed identity storage
+    let device_did_obj = DeviceDID::new_unchecked(device_did.clone());
 
     // Look up the device's public key from existing attestations
     let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());

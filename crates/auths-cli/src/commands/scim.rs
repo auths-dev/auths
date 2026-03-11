@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
+use auths_utils::url::mask_url;
+
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
@@ -395,15 +397,6 @@ fn generate_token_b64() -> String {
         .fill(&mut bytes)
         .expect("random bytes");
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
-}
-
-fn mask_url(url: &str) -> String {
-    if let Some(at_pos) = url.find('@')
-        && let Some(scheme_end) = url.find("://")
-    {
-        return format!("{}://***@{}", &url[..scheme_end], &url[at_pos + 1..]);
-    }
-    url.to_string()
 }
 
 impl ExecutableCommand for ScimCommand {

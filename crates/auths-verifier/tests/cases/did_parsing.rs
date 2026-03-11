@@ -1,4 +1,5 @@
 use auths_verifier::{DeviceDID, DidParseError, IdentityDID};
+use std::convert::TryFrom;
 
 // ============================================================================
 // DeviceDID::parse()
@@ -182,4 +183,129 @@ fn did_parse_error_display_is_useful() {
 
     let err = DidParseError::EmptyIdentifier;
     assert!(err.to_string().contains("empty"));
+}
+
+// ============================================================================
+// TryFrom round-trips
+// ============================================================================
+
+#[test]
+fn device_did_try_from_string_matches_parse() {
+    let s = "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK".to_string();
+    let from_parse = DeviceDID::parse(&s).unwrap();
+    let from_try: DeviceDID = DeviceDID::try_from(s).unwrap();
+    assert_eq!(from_parse, from_try);
+}
+
+#[test]
+fn device_did_try_from_str_matches_parse() {
+    let s = "did:key:z6MkTest";
+    let from_parse = DeviceDID::parse(s).unwrap();
+    let from_try: DeviceDID = DeviceDID::try_from(s).unwrap();
+    assert_eq!(from_parse, from_try);
+}
+
+#[test]
+fn device_did_try_from_invalid_returns_error() {
+    assert!(DeviceDID::try_from("garbage".to_string()).is_err());
+    assert!(DeviceDID::try_from("garbage").is_err());
+}
+
+#[test]
+fn identity_did_try_from_string_matches_parse() {
+    let s = "did:keri:ETest123".to_string();
+    let from_parse = IdentityDID::parse(&s).unwrap();
+    let from_try: IdentityDID = IdentityDID::try_from(s).unwrap();
+    assert_eq!(from_parse, from_try);
+}
+
+#[test]
+fn identity_did_try_from_str_matches_parse() {
+    let s = "did:keri:ETest123";
+    let from_parse = IdentityDID::parse(s).unwrap();
+    let from_try: IdentityDID = IdentityDID::try_from(s).unwrap();
+    assert_eq!(from_parse, from_try);
+}
+
+#[test]
+fn identity_did_try_from_invalid_returns_error() {
+    assert!(IdentityDID::try_from("did:key:z6Mk".to_string()).is_err());
+    assert!(IdentityDID::try_from("garbage").is_err());
+}
+
+// ============================================================================
+// Serde round-trips
+// ============================================================================
+
+#[test]
+fn device_did_serde_roundtrip() {
+    let did = DeviceDID::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
+    let json = serde_json::to_string(&did).unwrap();
+    assert_eq!(
+        json,
+        "\"did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK\""
+    );
+    let parsed: DeviceDID = serde_json::from_str(&json).unwrap();
+    assert_eq!(did, parsed);
+}
+
+#[test]
+fn identity_did_serde_roundtrip() {
+    let did = IdentityDID::parse("did:keri:EOrg123").unwrap();
+    let json = serde_json::to_string(&did).unwrap();
+    assert_eq!(json, "\"did:keri:EOrg123\"");
+    let parsed: IdentityDID = serde_json::from_str(&json).unwrap();
+    assert_eq!(did, parsed);
+}
+
+#[test]
+fn device_did_serde_rejects_invalid() {
+    let result: Result<DeviceDID, _> = serde_json::from_str("\"garbage\"");
+    assert!(result.is_err());
+}
+
+#[test]
+fn device_did_serde_rejects_wrong_prefix() {
+    let result: Result<DeviceDID, _> = serde_json::from_str("\"did:keri:EPrefix\"");
+    assert!(result.is_err());
+}
+
+#[test]
+fn identity_did_serde_rejects_invalid() {
+    let result: Result<IdentityDID, _> = serde_json::from_str("\"garbage\"");
+    assert!(result.is_err());
+}
+
+#[test]
+fn identity_did_serde_rejects_did_key() {
+    let result: Result<IdentityDID, _> = serde_json::from_str("\"did:key:z6MkTest\"");
+    assert!(result.is_err());
+}
+
+// ============================================================================
+// as_str() accessor
+// ============================================================================
+
+#[test]
+fn device_did_as_str_matches_original() {
+    let s = "did:key:z6MkTest";
+    let did = DeviceDID::parse(s).unwrap();
+    assert_eq!(did.as_str(), s);
+}
+
+#[test]
+fn identity_did_as_str_matches_original() {
+    let s = "did:keri:ETest";
+    let did = IdentityDID::parse(s).unwrap();
+    assert_eq!(did.as_str(), s);
+}
+
+// ============================================================================
+// DidParseError implements std::error::Error
+// ============================================================================
+
+#[test]
+fn did_parse_error_is_std_error() {
+    let err = DidParseError::InvalidDevicePrefix("bad".to_string());
+    let _: &dyn std::error::Error = &err;
 }

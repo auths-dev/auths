@@ -13,7 +13,7 @@ fn test_default_layout() {
 
     assert_eq!(identity_ref(&config), "refs/auths/identity");
 
-    let device_did = DeviceDID::new("did:key:z6MkTest123");
+    let device_did = DeviceDID::new_unchecked("did:key:z6MkTest123");
     let attestation_ref = attestation_ref_for_device(&config, &device_did);
     assert!(
         attestation_ref.starts_with("refs/auths/keys/"),
@@ -31,7 +31,7 @@ fn test_radicle_preset() {
 
     assert_eq!(identity_ref(&config), "refs/rad/id");
 
-    let device_did = DeviceDID::new("did:key:z6MkTest123");
+    let device_did = DeviceDID::new_unchecked("did:key:z6MkTest123");
     let attestation_ref = attestation_ref_for_device(&config, &device_did);
     assert!(
         attestation_ref.starts_with("refs/keys/"),
@@ -49,7 +49,7 @@ fn test_gitoxide_preset_ref_paths() {
 
     assert_eq!(identity_ref(&config), "refs/auths/id");
 
-    let device_did = DeviceDID::new("did:key:z6MkTest789");
+    let device_did = DeviceDID::new_unchecked("did:key:z6MkTest789");
     let attestation_ref = attestation_ref_for_device(&config, &device_did);
     assert!(
         attestation_ref.starts_with("refs/auths/devices/"),

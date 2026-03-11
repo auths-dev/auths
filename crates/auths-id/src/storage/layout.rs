@@ -268,30 +268,15 @@ pub fn sanitize_did_for_ref(did: &str) -> String {
 #[allow(clippy::disallowed_methods)] // INVARIANT: designated home-dir resolution for repo path
 pub fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf, StorageError> {
     match repo_arg {
-        Some(pathbuf) if !pathbuf.as_os_str().is_empty() => Ok(expand_tilde(&pathbuf)?),
+        Some(pathbuf) if !pathbuf.as_os_str().is_empty() => {
+            auths_utils::path::expand_tilde(&pathbuf)
+                .map_err(|e| StorageError::NotFound(e.to_string()))
+        }
         _ => {
             let home = dirs::home_dir()
                 .ok_or_else(|| StorageError::NotFound("Could not find HOME directory".into()))?;
             Ok(home.join(TOOL_PATH))
         }
-    }
-}
-
-/// Expand a leading `~/` or bare `~` to the user's home directory.
-#[cfg(feature = "git-storage")]
-#[allow(clippy::disallowed_methods)] // INVARIANT: tilde expansion requires OS home-dir lookup
-fn expand_tilde(path: &std::path::Path) -> Result<PathBuf, StorageError> {
-    let s = path.to_string_lossy();
-    if s.starts_with("~/") || s == "~" {
-        let home = dirs::home_dir()
-            .ok_or_else(|| StorageError::NotFound("Could not find HOME directory".into()))?;
-        if s == "~" {
-            Ok(home)
-        } else {
-            Ok(home.join(&s[2..]))
-        }
-    } else {
-        Ok(path.to_path_buf())
     }
 }
 
@@ -388,44 +373,14 @@ mod tests {
     }
 
     #[cfg(feature = "git-storage")]
-    mod tilde_expansion {
+    mod repo_path {
         use super::super::*;
         use std::path::PathBuf;
 
         #[test]
-        fn expand_tilde_expands_home_prefix() {
-            let path = PathBuf::from("~/.auths");
-            let result = expand_tilde(&path).unwrap();
-            let home = dirs::home_dir().unwrap();
-            assert_eq!(result, home.join(".auths"));
-            assert!(!result.to_string_lossy().contains('~'));
-        }
-
-        #[test]
-        fn expand_tilde_expands_bare_tilde() {
-            let path = PathBuf::from("~");
-            let result = expand_tilde(&path).unwrap();
-            let home = dirs::home_dir().unwrap();
-            assert_eq!(result, home);
-        }
-
-        #[test]
-        fn expand_tilde_leaves_absolute_paths_unchanged() {
-            let path = PathBuf::from("/tmp/auths");
-            let result = expand_tilde(&path).unwrap();
-            assert_eq!(result, PathBuf::from("/tmp/auths"));
-        }
-
-        #[test]
-        fn expand_tilde_leaves_relative_paths_unchanged() {
-            let path = PathBuf::from("some/relative/path");
-            let result = expand_tilde(&path).unwrap();
-            assert_eq!(result, PathBuf::from("some/relative/path"));
-        }
-
-        #[test]
         fn resolve_repo_path_expands_tilde_in_override() {
             let result = resolve_repo_path(Some(PathBuf::from("~/.auths"))).unwrap();
+            #[allow(clippy::disallowed_methods)]
             let home = dirs::home_dir().unwrap();
             assert_eq!(result, home.join(".auths"));
         }
@@ -433,6 +388,7 @@ mod tests {
         #[test]
         fn resolve_repo_path_defaults_to_home_auths() {
             let result = resolve_repo_path(None).unwrap();
+            #[allow(clippy::disallowed_methods)]
             let home = dirs::home_dir().unwrap();
             assert_eq!(result, home.join(".auths"));
         }

@@ -34,7 +34,7 @@ fn admin_pubkey_hex() -> String {
 }
 
 fn org_issuer() -> IdentityDID {
-    IdentityDID::new(format!("did:keri:{ORG}"))
+    IdentityDID::new_unchecked(format!("did:keri:{ORG}"))
 }
 
 fn base_admin_attestation() -> Attestation {
@@ -42,7 +42,7 @@ fn base_admin_attestation() -> Attestation {
         version: 1,
         rid: ResourceId::new("admin-rid-001"),
         issuer: org_issuer(),
-        subject: DeviceDID::new(ADMIN_DID),
+        subject: DeviceDID::new_unchecked(ADMIN_DID),
         device_public_key: Ed25519PublicKey::from_bytes(ADMIN_PUBKEY),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),
@@ -64,7 +64,7 @@ fn base_member_attestation() -> Attestation {
         version: 1,
         rid: ResourceId::new("member-rid-001"),
         issuer: org_issuer(),
-        subject: DeviceDID::new(MEMBER_DID),
+        subject: DeviceDID::new_unchecked(MEMBER_DID),
         device_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),
@@ -75,7 +75,7 @@ fn base_member_attestation() -> Attestation {
         payload: None,
         role: Some(Role::Member),
         capabilities: vec![Capability::sign_commit()],
-        delegated_by: Some(IdentityDID::new(ADMIN_DID)),
+        delegated_by: Some(IdentityDID::new_unchecked(ADMIN_DID)),
         signer_type: None,
         environment_claim: None,
     }

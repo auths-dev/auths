@@ -188,6 +188,7 @@ dependencies = [
  "auths-core",
  "auths-crypto",
  "auths-policy",
+ "auths-utils",
  "auths-verifier",
  "base64",
  "bs58",
@@ -365,6 +366,14 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "auths-utils"
+version = "0.0.1-rc.8"
+dependencies = [
+ "dirs",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

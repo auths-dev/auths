@@ -22,11 +22,11 @@ fn create_signed_attestation(
     let mut att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new(format!(
+        issuer: IdentityDID::new_unchecked(format!(
             "did:key:{}",
             hex::encode(issuer_kp.public_key().as_ref())
         )),
-        subject: DeviceDID::new(format!(
+        subject: DeviceDID::new_unchecked(format!(
             "did:key:{}",
             hex::encode(device_kp.public_key().as_ref())
         )),

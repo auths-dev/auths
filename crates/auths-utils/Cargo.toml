@@ -1,0 +1,15 @@
+[package]
+name = "auths-utils"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+license.workspace = true
+publish = false
+description = "Internal shared utilities for the Auths workspace"
+
+[dependencies]
+dirs = "6.0.0"
+thiserror.workspace = true
+
+[lints]
+workspace = true

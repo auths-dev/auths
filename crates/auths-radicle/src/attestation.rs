@@ -227,8 +227,8 @@ impl TryFrom<RadAttestation> for Attestation {
         Ok(Attestation {
             version: 1,
             rid: ResourceId::new(rad.canonical_payload.rid.to_string()),
-            issuer: IdentityDID::new(rad.canonical_payload.did.to_string()),
-            subject: DeviceDID::new(rad.device_did.to_string()),
+            issuer: IdentityDID::new_unchecked(rad.canonical_payload.did.to_string()),
+            subject: DeviceDID::new_unchecked(rad.device_did.to_string()),
             device_public_key: Ed25519PublicKey::try_from_slice(rad.device_public_key.as_ref())
                 .map_err(|_e| {
                     AttestationConversionError::InvalidPublicKeyLength(
@@ -494,8 +494,8 @@ mod tests {
         let core = Attestation {
             version: 1,
             rid: ResourceId::new("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5"),
-            issuer: IdentityDID::new("did:keri:EXq5abc"),
-            subject: DeviceDID::new(device_did.to_string()),
+            issuer: IdentityDID::new_unchecked("did:keri:EXq5abc"),
+            subject: DeviceDID::new_unchecked(device_did.to_string()),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk_bytes),
             identity_signature: Ed25519Signature::from_bytes([0xCD; 64]),
             device_signature: Ed25519Signature::from_bytes([0xEF; 64]),

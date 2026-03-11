@@ -21,7 +21,7 @@
 //!     agent_name: "ci-bot".to_string(),
 //!     capabilities: vec!["sign_commit".to_string()],
 //!     expires_in_secs: Some(86400),
-//!     delegated_by: Some(IdentityDID::new("did:keri:Eabc123")),
+//!     delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eabc123")),
 //!     storage_mode: AgentStorageMode::Persistent { repo_path: None },
 //! };
 //!
@@ -228,7 +228,7 @@ fn get_or_create_identity(
 ) -> Result<IdentityDID, AgentProvisioningError> {
     let mut existing_did: Option<IdentityDID> = None;
     let _ = backend.visit_identities(&mut |prefix| {
-        existing_did = Some(IdentityDID::new(format!("did:keri:{}", prefix)));
+        existing_did = Some(IdentityDID::new_unchecked(format!("did:keri:{}", prefix)));
         std::ops::ControlFlow::Break(())
     });
     if let Some(did) = existing_did {
@@ -396,7 +396,7 @@ mod tests {
             agent_name: "ci-bot".to_string(),
             capabilities: vec!["sign_commit".to_string(), "pr:create".to_string()],
             expires_in_secs: Some(86400),
-            delegated_by: Some(IdentityDID::new("did:keri:Eabc123")),
+            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eabc123")),
             storage_mode: AgentStorageMode::Persistent { repo_path: None },
         };
         let toml = format_agent_toml("did:keri:Eagent", "agent-key", &config);

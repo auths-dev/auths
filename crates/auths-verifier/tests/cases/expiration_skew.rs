@@ -21,8 +21,8 @@ fn create_signed_attestation(
     let mut att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new(issuer_did),
-        subject: DeviceDID::new(subject_did),
+        issuer: IdentityDID::new_unchecked(issuer_did),
+        subject: DeviceDID::new_unchecked(subject_did),
         device_public_key: Ed25519PublicKey::from_bytes(device_pk),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),

@@ -310,12 +310,12 @@ pub fn verify_receipts(
                     Ok(true) => continue,
                     Ok(false) => {
                         return ReceiptVerificationResult::InvalidSignature {
-                            witness_did: DeviceDID::new(&receipt.i),
+                            witness_did: DeviceDID::new_unchecked(&receipt.i),
                         };
                     }
                     Err(_) => {
                         return ReceiptVerificationResult::InvalidSignature {
-                            witness_did: DeviceDID::new(&receipt.i),
+                            witness_did: DeviceDID::new_unchecked(&receipt.i),
                         };
                     }
                 }
@@ -441,8 +441,8 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new("test"),
-            issuer: IdentityDID::new(issuer),
-            subject: DeviceDID::new("did:key:subject"),
+            issuer: IdentityDID::new_unchecked(issuer),
+            subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),

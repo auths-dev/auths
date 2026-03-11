@@ -66,7 +66,7 @@ impl IdentityStorage for GitIdentityStorage {
 
         let stored_data = StoredIdentityData {
             version: 1,
-            controller_did: IdentityDID::new(controller_did),
+            controller_did: IdentityDID::new_unchecked(controller_did),
             metadata,
         };
         let json_bytes = serde_json::to_vec_pretty(&stored_data)?;

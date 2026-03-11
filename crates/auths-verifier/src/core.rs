@@ -661,8 +661,8 @@ impl From<Capability> for String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct IdentityBundle {
-    /// The DID of the identity (e.g., "did:keri:...")
-    pub identity_did: String,
+    /// The DID of the identity (e.g., `"did:keri:..."`)
+    pub identity_did: IdentityDID,
     /// The public key in hex format for signature verification
     pub public_key_hex: String,
     /// Chain of attestations linking the signing key to the identity
@@ -1297,8 +1297,8 @@ mod tests {
         let old_json = r#"{
             "version": 1,
             "rid": "test-rid",
-            "issuer": "did:key:issuer",
-            "subject": "did:key:subject",
+            "issuer": "did:keri:Eissuer",
+            "subject": "did:key:zSubject",
             "device_public_key": "0102030405060708091011121314151617181920212223242526272829303132",
             "identity_signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
             "device_signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
@@ -1321,8 +1321,8 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new("did:key:issuer"),
-            subject: DeviceDID::new("did:key:subject".to_string()),
+            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1333,7 +1333,7 @@ mod tests {
             payload: None,
             role: Some(Role::Admin),
             capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
-            delegated_by: Some(IdentityDID::new("did:key:delegator")),
+            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Edelegator")),
             signer_type: None,
             environment_claim: None,
         };
@@ -1344,7 +1344,7 @@ mod tests {
         assert_eq!(parsed["role"], "admin");
         assert_eq!(parsed["capabilities"][0], "sign_commit");
         assert_eq!(parsed["capabilities"][1], "manage_members");
-        assert_eq!(parsed["delegated_by"], "did:key:delegator");
+        assert_eq!(parsed["delegated_by"], "did:keri:Edelegator");
     }
 
     #[test]
@@ -1354,8 +1354,8 @@ mod tests {
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new("did:key:issuer"),
-            subject: DeviceDID::new("did:key:subject".to_string()),
+            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1387,8 +1387,8 @@ mod tests {
         let original = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new("did:key:issuer"),
-            subject: DeviceDID::new("did:key:subject".to_string()),
+            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1399,7 +1399,7 @@ mod tests {
             payload: None,
             role: Some(Role::Member),
             capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
-            delegated_by: Some(IdentityDID::new("did:key:admin")),
+            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eadmin")),
             signer_type: None,
             environment_claim: None,
         };
@@ -1533,7 +1533,7 @@ mod tests {
     #[test]
     fn identity_bundle_serializes_correctly() {
         let bundle = IdentityBundle {
-            identity_did: "did:keri:test123".to_string(),
+            identity_did: IdentityDID::new_unchecked("did:keri:test123"),
             public_key_hex: "aabbccdd".to_string(),
             attestation_chain: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
@@ -1562,7 +1562,7 @@ mod tests {
 
         let bundle: IdentityBundle = serde_json::from_str(json).unwrap();
 
-        assert_eq!(bundle.identity_did, "did:keri:abc123");
+        assert_eq!(bundle.identity_did.as_str(), "did:keri:abc123");
         assert_eq!(bundle.public_key_hex, "112233");
         assert!(bundle.attestation_chain.is_empty());
     }
@@ -1574,8 +1574,8 @@ mod tests {
         let attestation = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new("did:key:issuer"),
-            subject: DeviceDID::new("did:key:subject".to_string()),
+            issuer: IdentityDID::new_unchecked("did:keri:Eissuer"),
+            subject: DeviceDID::new_unchecked("did:key:zSubject"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1592,7 +1592,7 @@ mod tests {
         };
 
         let original = IdentityBundle {
-            identity_did: "did:keri:example".to_string(),
+            identity_did: IdentityDID::new_unchecked("did:keri:Eexample"),
             public_key_hex: "deadbeef".to_string(),
             attestation_chain: vec![attestation],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")

@@ -135,26 +135,22 @@ use std::str::FromStr;
 /// Strongly-typed wrapper for identity DIDs (e.g., `"did:keri:E..."`).
 ///
 /// Usage:
-/// ```ignore
-/// let did = IdentityDID::new("did:keri:Eabc123");
+/// ```rust
+/// # use auths_verifier::IdentityDID;
+/// let did = IdentityDID::parse("did:keri:Eabc123").unwrap();
 /// assert_eq!(did.as_str(), "did:keri:Eabc123");
 ///
 /// let s: String = did.into_inner();
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
-pub struct IdentityDID(pub String);
+pub struct IdentityDID(String);
 
 impl IdentityDID {
-    /// Create a new `IdentityDID` from a raw string.
-    pub fn new<S: Into<String>>(s: S) -> Self {
-        Self(s.into())
-    }
-
     /// Wraps a DID string without validation (for trusted internal paths).
-    pub fn new_unchecked(s: String) -> Self {
-        Self(s)
+    pub fn new_unchecked<S: Into<String>>(s: S) -> Self {
+        Self(s.into())
     }
 
     /// Validates and parses a `did:keri:` string into an `IdentityDID`.
@@ -231,21 +227,35 @@ impl FromStr for IdentityDID {
     }
 }
 
-impl From<&str> for IdentityDID {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
+impl TryFrom<&str> for IdentityDID {
+    type Error = DidParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
     }
 }
 
-impl From<String> for IdentityDID {
-    fn from(s: String) -> Self {
-        Self(s)
+impl TryFrom<String> for IdentityDID {
+    type Error = DidParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
     }
 }
 
 impl From<IdentityDID> for String {
     fn from(did: IdentityDID) -> String {
         did.0
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for IdentityDID {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -298,13 +308,13 @@ impl PartialEq<IdentityDID> for &str {
 // ============================================================================
 
 /// Wrapper around a device DID string that ensures Git-safe ref formatting.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct DeviceDID(pub String);
+pub struct DeviceDID(String);
 
 impl DeviceDID {
-    /// Create a new `DeviceDID` from a raw string.
-    pub fn new<S: Into<String>>(s: S) -> Self {
+    /// Wraps a DID string without validation (for trusted internal paths).
+    pub fn new_unchecked<S: Into<String>>(s: S) -> Self {
         DeviceDID(s.into())
     }
 
@@ -382,20 +392,38 @@ impl FromStr for DeviceDID {
     }
 }
 
-// Allow `DeviceDID::from("did:key:abc")` and vice versa
-impl From<&str> for DeviceDID {
-    fn from(s: &str) -> Self {
-        DeviceDID(s.to_string())
+impl TryFrom<&str> for DeviceDID {
+    type Error = DidParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
     }
 }
 
-impl From<String> for DeviceDID {
-    fn from(s: String) -> Self {
-        DeviceDID(s)
+impl TryFrom<String> for DeviceDID {
+    type Error = DidParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
     }
 }
 
-// Optionally deref to &str
+impl From<DeviceDID> for String {
+    fn from(did: DeviceDID) -> String {
+        did.0
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for DeviceDID {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
 impl Deref for DeviceDID {
     type Target = str;
 

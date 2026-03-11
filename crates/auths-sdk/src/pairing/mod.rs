@@ -275,7 +275,7 @@ pub fn verify_device_did(device_pubkey: &[u8; 32], claimed_did: &str) -> Result<
     use auths_verifier::types::DeviceDID;
 
     let derived = DeviceDID::from_ed25519(device_pubkey);
-    let claimed = DeviceDID::new(claimed_did.to_string());
+    let claimed = DeviceDID::new_unchecked(claimed_did.to_string());
 
     if derived != claimed {
         return Err(PairingError::DidMismatch {
@@ -343,7 +343,7 @@ pub fn create_pairing_attestation(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let target_did = DeviceDID::new(params.device_did_str.to_string());
+    let target_did = DeviceDID::new_unchecked(params.device_did_str.to_string());
     let secure_signer = StorageSigner::new(Arc::clone(&params.key_storage));
 
     let attestation = create_signed_attestation(

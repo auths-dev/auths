@@ -110,7 +110,7 @@ fn test_pkcs11_key_generate_and_load() {
     let keyref = Pkcs11KeyRef::new(&fixture.config).unwrap();
 
     let alias = KeyAlias::new("test-key-1").unwrap();
-    let did = IdentityDID::new("did:keri:ETEST123");
+    let did = IdentityDID::new_unchecked("did:keri:ETEST123");
 
     keyref
         .store_key(&alias, &did, KeyRole::Primary, &[])
@@ -126,7 +126,7 @@ fn test_pkcs11_list_aliases() {
     let fixture = skip_without_softhsm!();
     let keyref = Pkcs11KeyRef::new(&fixture.config).unwrap();
 
-    let did = IdentityDID::new("did:keri:ELIST");
+    let did = IdentityDID::new_unchecked("did:keri:ELIST");
     for i in 0..3 {
         let alias = KeyAlias::new(format!("list-key-{i}")).unwrap();
         keyref
@@ -151,7 +151,7 @@ fn test_pkcs11_delete_key() {
     let keyref = Pkcs11KeyRef::new(&fixture.config).unwrap();
 
     let alias = KeyAlias::new("delete-me").unwrap();
-    let did = IdentityDID::new("did:keri:EDELETE");
+    let did = IdentityDID::new_unchecked("did:keri:EDELETE");
     keyref
         .store_key(&alias, &did, KeyRole::Primary, &[])
         .unwrap();
@@ -171,7 +171,7 @@ fn test_pkcs11_sign_and_verify() {
     let keyref = Pkcs11KeyRef::new(&fixture.config).unwrap();
 
     let alias = KeyAlias::new("sign-key").unwrap();
-    let did = IdentityDID::new("did:keri:ESIGN");
+    let did = IdentityDID::new_unchecked("did:keri:ESIGN");
     keyref
         .store_key(&alias, &did, KeyRole::Primary, &[])
         .unwrap();
@@ -195,7 +195,7 @@ fn test_pkcs11_wrong_pin() {
     // but operations should fail
     if let Ok(keyref) = result {
         let alias = KeyAlias::new("should-fail").unwrap();
-        let did = IdentityDID::new("did:keri:EFAIL");
+        let did = IdentityDID::new_unchecked("did:keri:EFAIL");
         let store_result = keyref.store_key(&alias, &did, KeyRole::Primary, &[]);
         assert!(store_result.is_err());
     }
@@ -225,8 +225,8 @@ fn test_pkcs11_list_aliases_for_identity() {
     let fixture = skip_without_softhsm!();
     let keyref = Pkcs11KeyRef::new(&fixture.config).unwrap();
 
-    let did_a = IdentityDID::new("did:keri:EALICE");
-    let did_b = IdentityDID::new("did:keri:EBOB");
+    let did_a = IdentityDID::new_unchecked("did:keri:EALICE");
+    let did_b = IdentityDID::new_unchecked("did:keri:EBOB");
 
     keyref
         .store_key(

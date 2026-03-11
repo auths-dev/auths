@@ -456,7 +456,8 @@ fn handle_extend(
 
 fn resolve_device(repo_path: &Path, device_did_str: &str) -> Result<()> {
     let attestation_storage = RegistryAttestationStorage::new(repo_path.to_path_buf());
-    let device_did = auths_verifier::types::DeviceDID::new(device_did_str);
+    #[allow(clippy::disallowed_methods)] // INVARIANT: device_did_str from attestation storage
+    let device_did = auths_verifier::types::DeviceDID::new_unchecked(device_did_str);
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .with_context(|| format!("Failed to load attestations for device {device_did_str}"))?;

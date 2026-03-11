@@ -21,6 +21,7 @@ members = [
   "crates/auths-pairing-protocol",
   "crates/auths-radicle",
   "crates/auths-scim",
+  "crates/auths-utils",
   "crates/xtask",
 ]
 
@@ -60,6 +61,7 @@ auths-jwt = { path = "crates/auths-jwt", version = "0.0.1-rc.7" }
 auths-pairing-daemon = { path = "crates/auths-pairing-daemon", version = "0.0.1-rc.8" }
 auths-pairing-protocol = { path = "crates/auths-pairing-protocol", version = "0.0.1-rc.7" }
 auths-storage = { path = "crates/auths-storage", version = "0.0.1-rc.4" }
+auths-utils = { path = "crates/auths-utils" }
 insta = { version = "1", features = ["json"] }
 
 # Compile crypto-heavy crates with optimizations even in dev/test builds.

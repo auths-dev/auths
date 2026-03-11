@@ -436,7 +436,7 @@ mod tests {
     fn test_store_and_load_key() {
         let (storage, _temp) = create_test_storage();
         let alias = KeyAlias::new("test-alias").unwrap();
-        let identity_did = IdentityDID::new("did:keri:test123");
+        let identity_did = IdentityDID::new_unchecked("did:keri:test123");
         let encrypted_data = b"encrypted_key_bytes";
 
         storage
@@ -452,7 +452,7 @@ mod tests {
     #[test]
     fn test_list_aliases() {
         let (storage, _temp) = create_test_storage();
-        let did = IdentityDID::new("did:keri:test");
+        let did = IdentityDID::new_unchecked("did:keri:test");
 
         storage
             .store_key(
@@ -485,8 +485,8 @@ mod tests {
     #[test]
     fn test_list_aliases_for_identity() {
         let (storage, _temp) = create_test_storage();
-        let did1 = IdentityDID::new("did:keri:one");
-        let did2 = IdentityDID::new("did:keri:two");
+        let did1 = IdentityDID::new_unchecked("did:keri:one");
+        let did2 = IdentityDID::new_unchecked("did:keri:two");
 
         storage
             .store_key(
@@ -524,7 +524,7 @@ mod tests {
     #[test]
     fn test_delete_key() {
         let (storage, _temp) = create_test_storage();
-        let did = IdentityDID::new("did:keri:test");
+        let did = IdentityDID::new_unchecked("did:keri:test");
         let alias = KeyAlias::new("alias").unwrap();
 
         storage
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn test_get_identity_for_alias() {
         let (storage, _temp) = create_test_storage();
-        let did = IdentityDID::new("did:keri:test123");
+        let did = IdentityDID::new_unchecked("did:keri:test123");
         let alias = KeyAlias::new("alias").unwrap();
 
         storage
@@ -562,7 +562,7 @@ mod tests {
     #[test]
     fn test_file_format_version() {
         let (storage, _temp) = create_test_storage();
-        let did = IdentityDID::new("did:keri:test");
+        let did = IdentityDID::new_unchecked("did:keri:test");
 
         storage
             .store_key(

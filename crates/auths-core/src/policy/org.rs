@@ -18,6 +18,8 @@
 //! with filtering (role, capabilities), use the registry's `list_org_members()`
 //! with `MemberFilter`, then apply this policy to each result.
 
+#[cfg(test)]
+use auths_verifier::IdentityDID;
 use auths_verifier::core::{Attestation, Capability};
 use auths_verifier::keri::Prefix;
 use chrono::{DateTime, Utc};
@@ -64,7 +66,7 @@ use super::device::Action;
 ///     version: 1,
 ///     rid: "member".into(),
 ///     issuer: "did:keri:EOrg123".into(),
-///     subject: DeviceDID::new("did:key:z6MkAlice"),
+///     subject: DeviceDID::new_unchecked("did:key:z6MkAlice"),
 ///     device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
 ///     identity_signature: Ed25519Signature::empty(),
 ///     device_signature: Ed25519Signature::empty(),
@@ -186,8 +188,8 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new("membership"),
-            issuer: issuer.into(),
-            subject: DeviceDID::new("did:key:z6MkMember"),
+            issuer: IdentityDID::new_unchecked(issuer),
+            subject: DeviceDID::new_unchecked("did:key:z6MkMember"),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),

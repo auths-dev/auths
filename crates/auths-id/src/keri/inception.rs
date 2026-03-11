@@ -339,7 +339,7 @@ pub fn prefix_to_did(prefix: &str) -> String {
 
 /// Extract the prefix from a did:keri DID.
 ///
-/// Prefer [`auths_core::validated_identity_did::ValidatedIdentityDID`] at API boundaries for type safety.
+/// Prefer [`auths_verifier::IdentityDID`] at API boundaries for type safety.
 pub fn did_to_prefix(did: &str) -> Option<&str> {
     did.strip_prefix("did:keri:")
 }

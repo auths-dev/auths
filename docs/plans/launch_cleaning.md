@@ -257,7 +257,7 @@ These are the features that separate "impressive developer tool" from "enterpris
 
 ---
 
-#### Epic 2: `Utc::now()` Injection — Complete Clock Discipline
+~~#### Epic 2: `Utc::now()` Injection — Complete Clock Discipline~~
 **Why it matters:** Every expiry check, freeze check, and token validity check in the CLI is currently untestable. This is a launch blocker for the freeze/revocation path and a pre-condition for writing meaningful integration tests.
 
 **Scope:**
@@ -299,7 +299,7 @@ These are the features that separate "impressive developer tool" from "enterpris
 
 ---
 
-#### Epic 4: `expand_tilde` Consolidation and `auths-utils` Crate
+~~#### Epic 4: `expand_tilde` Consolidation and `auths-utils` Crate~~
 **Why it matters:** Three implementations of the same function is a maintenance hazard. The right fix is a micro-crate or a shared module that all layers can depend on without introducing circular dependencies.
 
 **Scope:**
@@ -311,15 +311,16 @@ These are the features that separate "impressive developer tool" from "enterpris
 - The crate should be `publish = false` — it is an internal utility, not a public API surface.
 
 **Files to touch:**
-- New: `crates/auths-utils/Cargo.toml`, `crates/auths-utils/src/lib.rs`, `crates/auths-utils/src/path.rs`, `crates/auths-utils/src/url.rs`
+- New: `crates/auths-utils/Cargo.toml` (model after other crates), `crates/auths-utils/src/lib.rs`, `crates/auths-utils/src/path.rs`, `crates/auths-utils/src/url.rs`, `README.md`
 - `crates/auths-cli/src/commands/git.rs:8977` — delete `expand_tilde`, add `use auths_utils::path::expand_tilde`
 - `crates/auths-cli/src/commands/witness.rs:19704` — same
 - `crates/auths-storage/src/git/config.rs:56667` — delete `expand_tilde`, adapt error type
 - `Cargo.toml` (workspace) — add `auths-utils` member and workspace dependency
+- `auths/scripts/releases/2_crates.py` - add `crates/auths-utils` to the correct release ordering
 
 ---
 
-#### Epic 5: `DeviceDID` and `IdentityDID` Validation at Construction
+~~#### Epic 5: `DeviceDID` and `IdentityDID` Validation at Construction~~
 **Why it matters:** A DID newtype that accepts arbitrary strings provides false safety. Any malformed DID that reaches the KEL resolver or storage layer can cause confusing errors deep in the stack.
 
 **Scope:**

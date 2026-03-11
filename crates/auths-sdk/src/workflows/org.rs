@@ -335,7 +335,7 @@ pub fn add_organization_member(
     let now = ctx.clock.now();
     let rid = ctx.uuid_provider.new_id().to_string();
 
-    let member_did = DeviceDID::new(&cmd.member_did);
+    let member_did = DeviceDID::new_unchecked(&cmd.member_did);
     let meta = AttestationMetadata {
         note: cmd
             .note
@@ -361,7 +361,7 @@ pub fn add_organization_member(
         None,
         parsed_caps,
         Some(cmd.role),
-        Some(IdentityDID::new(admin_att.subject.to_string())),
+        Some(IdentityDID::new_unchecked(admin_att.subject.to_string())),
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 
@@ -408,7 +408,7 @@ pub fn revoke_organization_member(
     }
 
     let now = ctx.clock.now();
-    let member_did = DeviceDID::new(&cmd.member_did);
+    let member_did = DeviceDID::new_unchecked(&cmd.member_did);
 
     let revocation = create_signed_revocation(
         admin_att.rid.as_str(),

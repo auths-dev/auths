@@ -439,7 +439,7 @@ pub fn delegate_agent(
             ))
         })?;
 
-        let device_did = DeviceDID(result.device_did.to_string());
+        let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
         let attestations = attestation_storage
             .load_attestations_for_device(&device_did)
             .map_err(|e| {

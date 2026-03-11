@@ -64,7 +64,7 @@ impl AuthsStorage for MockStorage {
             .get(identity_did)
             .cloned()
             .ok_or_else(|| BridgeError::IdentityLoad {
-                did: IdentityDID::new(identity_did.to_string()),
+                did: IdentityDID::new_unchecked(identity_did.to_string()),
                 reason: "Not found".into(),
             })
     }
@@ -78,7 +78,7 @@ impl AuthsStorage for MockStorage {
             .get(&(device_did.clone(), identity_did.clone()))
             .cloned()
             .ok_or_else(|| BridgeError::AttestationLoad {
-                device_did: DeviceDID::new(device_did.to_string()),
+                device_did: DeviceDID::new_unchecked(device_did.to_string()),
                 reason: "Not found".into(),
             })
     }
@@ -127,8 +127,8 @@ pub fn make_test_attestation(
     Attestation {
         version: 1,
         rid: auths_verifier::core::ResourceId::new(rid.to_string()),
-        issuer: IdentityDID::new(issuer.to_string()),
-        subject: DeviceDID::new(device_did.to_string()),
+        issuer: IdentityDID::new_unchecked(issuer.to_string()),
+        subject: DeviceDID::new_unchecked(device_did.to_string()),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),

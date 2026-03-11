@@ -260,8 +260,8 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new(format!("test-rid-{}", seq)),
-            issuer: IdentityDID::new("did:keri:ETestIssuer"),
-            subject: DeviceDID::new(subject),
+            issuer: IdentityDID::new_unchecked("did:keri:ETestIssuer"),
+            subject: DeviceDID::new_unchecked(subject),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -325,7 +325,7 @@ mod tests {
     fn test_attestation_history() {
         let (_dir, storage) = setup_test_repo();
 
-        let device_did = DeviceDID::new("did:key:zHistoryDevice");
+        let device_did = DeviceDID::new_unchecked("did:key:zHistoryDevice");
 
         // Store first attestation
         let att1 = create_test_attestation("did:key:zHistoryDevice", None);

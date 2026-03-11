@@ -161,7 +161,7 @@ pub fn get_latest_attestation(
             ))
         })?;
         let group = AttestationGroup::from_list(all);
-        let did = DeviceDID(device_did.to_string());
+        let did = DeviceDID::new_unchecked(device_did.to_string());
         Ok(group.latest(&did).map(attestation_to_py))
     })
 }

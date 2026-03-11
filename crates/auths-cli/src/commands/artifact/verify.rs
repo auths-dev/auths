@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use auths_verifier::core::Attestation;
 use auths_verifier::witness::{WitnessQuorum, WitnessReceipt, WitnessVerifyConfig};
 use auths_verifier::{
-    Capability, IdentityBundle, VerificationReport, verify_chain, verify_chain_with_capability,
-    verify_chain_with_witnesses,
+    Capability, IdentityBundle, IdentityDID, VerificationReport, verify_chain,
+    verify_chain_with_capability, verify_chain_with_witnesses,
 };
 
 use super::core::{ArtifactMetadata, ArtifactSource};
@@ -199,7 +199,7 @@ pub async fn handle_verify(
             chain_report,
             capability_valid,
             witness_quorum,
-            issuer: Some(identity_did),
+            issuer: Some(identity_did.to_string()),
             error: None,
         },
     )
@@ -209,7 +209,7 @@ pub async fn handle_verify(
 fn resolve_identity_key(
     identity_bundle: &Option<PathBuf>,
     attestation: &Attestation,
-) -> Result<(Vec<u8>, String)> {
+) -> Result<(Vec<u8>, IdentityDID)> {
     if let Some(bundle_path) = identity_bundle {
         let bundle_content = fs::read_to_string(bundle_path)
             .with_context(|| format!("Failed to read identity bundle: {:?}", bundle_path))?;
@@ -222,7 +222,7 @@ fn resolve_identity_key(
         let issuer = &attestation.issuer;
         let pk = resolve_pk_from_did(issuer)
             .with_context(|| format!("Failed to resolve public key from issuer DID '{}'. Use --identity-bundle for stateless verification.", issuer))?;
-        Ok((pk, issuer.to_string()))
+        Ok((pk, issuer.clone()))
     }
 }
 

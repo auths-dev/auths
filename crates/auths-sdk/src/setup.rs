@@ -105,7 +105,7 @@ fn initialize_developer(
     let registered = submit_registration(&config);
 
     Ok(DeveloperIdentityResult {
-        identity_did: IdentityDID::new(controller_did),
+        identity_did: IdentityDID::new_unchecked(controller_did),
         device_did,
         key_alias,
         platform_claim,
@@ -128,7 +128,7 @@ fn initialize_ci(
         generate_ci_env_block(&key_alias, &config.registry_path, &config.ci_environment);
 
     Ok(CiIdentityResult {
-        identity_did: IdentityDID::new(controller_did),
+        identity_did: IdentityDID::new_unchecked(controller_did),
         device_did,
         env_block,
     })
@@ -147,7 +147,10 @@ fn initialize_agent(
         agent_name: config.alias.to_string(),
         capabilities: cap_strings,
         expires_in_secs: config.expires_in_secs,
-        delegated_by: config.parent_identity_did.clone().map(IdentityDID::new),
+        delegated_by: config
+            .parent_identity_did
+            .clone()
+            .map(IdentityDID::new_unchecked),
         storage_mode: AgentStorageMode::Persistent {
             repo_path: Some(config.registry_path.clone()),
         },
@@ -167,7 +170,7 @@ fn initialize_agent(
 
         return Ok(AgentIdentityResult {
             agent_did: bundle.agent_did,
-            parent_did: IdentityDID::new(config.parent_identity_did.unwrap_or_default()),
+            parent_did: IdentityDID::new_unchecked(config.parent_identity_did.unwrap_or_default()),
             capabilities: config.capabilities,
         });
     }
@@ -464,8 +467,10 @@ fn build_agent_identity_proposal(
     config: &CreateAgentIdentityConfig,
 ) -> Result<AgentIdentityResult, SetupError> {
     Ok(AgentIdentityResult {
-        agent_did: IdentityDID::new(format!("did:keri:E<pending:{}>", config.alias)),
-        parent_did: IdentityDID::new(config.parent_identity_did.clone().unwrap_or_default()),
+        agent_did: IdentityDID::new_unchecked(format!("did:keri:E<pending:{}>", config.alias)),
+        parent_did: IdentityDID::new_unchecked(
+            config.parent_identity_did.clone().unwrap_or_default(),
+        ),
         capabilities: config.capabilities.clone(),
     })
 }

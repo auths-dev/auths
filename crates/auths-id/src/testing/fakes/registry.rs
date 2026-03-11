@@ -255,8 +255,8 @@ impl RegistryBackend for FakeRegistryBackend {
                 continue;
             }
             let entry = OrgMemberEntry {
-                org: IdentityDID::new(format!("did:keri:{}", org)),
-                did: DeviceDID::new(member_did_str.clone()),
+                org: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
+                did: DeviceDID::new_unchecked(member_did_str.clone()),
                 filename: format!("{}.json", member_did_str.replace(':', "_")),
                 attestation: validate_org_member(org, member_did_str, att),
             };
@@ -293,13 +293,13 @@ fn validate_org_member(
     let expected_issuer = format!("did:keri:{}", org);
     if att.issuer.as_str() != expected_issuer {
         return Err(MemberInvalidReason::IssuerMismatch {
-            expected_issuer: IdentityDID::new(expected_issuer),
+            expected_issuer: IdentityDID::new_unchecked(expected_issuer),
             actual_issuer: att.issuer.clone(),
         });
     }
     if att.subject.as_str() != member_did_str {
         return Err(MemberInvalidReason::SubjectMismatch {
-            filename_did: DeviceDID::new(member_did_str),
+            filename_did: DeviceDID::new_unchecked(member_did_str),
             attestation_subject: att.subject.clone(),
         });
     }

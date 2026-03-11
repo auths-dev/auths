@@ -158,7 +158,7 @@ macro_rules! registry_backend_contract_tests {
                 use auths_verifier::types::DeviceDID;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new("did:key:zContractStoreLoad1");
+                let did = DeviceDID::new_unchecked("did:key:zContractStoreLoad1");
                 let att = $crate::testing::fixtures::test_attestation(&did, "did:keri:EIssuer1");
                 store.store_attestation(&att).unwrap();
                 let loaded = store.load_attestation(&did).unwrap();
@@ -174,7 +174,7 @@ macro_rules! registry_backend_contract_tests {
                 use auths_verifier::types::DeviceDID;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new("did:key:zNotStored99");
+                let did = DeviceDID::new_unchecked("did:key:zNotStored99");
                 let result = store.load_attestation(&did).unwrap();
                 assert!(result.is_none(), "missing attestation should return None");
             }
@@ -184,7 +184,7 @@ macro_rules! registry_backend_contract_tests {
                 use auths_verifier::types::DeviceDID;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new("did:key:zContractOverwrite1");
+                let did = DeviceDID::new_unchecked("did:key:zContractOverwrite1");
                 let att1 = $crate::testing::fixtures::test_attestation(&did, "did:keri:EIssuer1");
                 let mut att2 =
                     $crate::testing::fixtures::test_attestation(&did, "did:keri:EIssuer1");
@@ -205,7 +205,7 @@ macro_rules! registry_backend_contract_tests {
                 use auths_verifier::types::DeviceDID;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new("did:key:zContractHistory1");
+                let did = DeviceDID::new_unchecked("did:key:zContractHistory1");
 
                 for i in 0..3u32 {
                     let mut att =
@@ -232,7 +232,7 @@ macro_rules! registry_backend_contract_tests {
                 use auths_verifier::types::DeviceDID;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new("did:key:zContractHistExit1");
+                let did = DeviceDID::new_unchecked("did:key:zContractHistExit1");
                 for i in 0..3u32 {
                     let mut att =
                         $crate::testing::fixtures::test_attestation(&did, "did:keri:EIssuer1");
@@ -255,8 +255,8 @@ macro_rules! registry_backend_contract_tests {
                 use auths_verifier::types::DeviceDID;
 
                 let (store, _guard) = $setup;
-                let did1 = DeviceDID::new("did:key:zContractDev1");
-                let did2 = DeviceDID::new("did:key:zContractDev2");
+                let did1 = DeviceDID::new_unchecked("did:key:zContractDev1");
+                let did2 = DeviceDID::new_unchecked("did:key:zContractDev2");
                 store
                     .store_attestation(&$crate::testing::fixtures::test_attestation(
                         &did1,
@@ -286,7 +286,7 @@ macro_rules! registry_backend_contract_tests {
 
                 let (store, _guard) = $setup;
                 let org = "ETestOrgPrefix";
-                let did = DeviceDID::new("did:key:zMemberContract1");
+                let did = DeviceDID::new_unchecked("did:key:zMemberContract1");
                 let mut att =
                     $crate::testing::fixtures::test_attestation(&did, "did:keri:ETestOrgPrefix");
                 att.rid = auths_verifier::core::ResourceId::new("org-rid");
@@ -314,7 +314,7 @@ macro_rules! registry_backend_contract_tests {
                 let prefix = event.prefix().clone();
                 store.append_event(&prefix, &event).unwrap();
 
-                let did = DeviceDID::new("did:key:zContractMeta1");
+                let did = DeviceDID::new_unchecked("did:key:zContractMeta1");
                 store
                     .store_attestation(&$crate::testing::fixtures::test_attestation(
                         &did,

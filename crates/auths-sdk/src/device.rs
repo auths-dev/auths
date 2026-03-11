@@ -182,7 +182,7 @@ pub fn extend_device(
             .map_err(|e| DeviceExtensionError::StorageError(e.into()))?,
     );
 
-    let device_did_obj = DeviceDID(config.device_did.clone());
+    let device_did_obj = DeviceDID::new_unchecked(config.device_did.clone());
     let latest =
         group
             .latest(&device_did_obj)
@@ -231,7 +231,7 @@ pub fn extend_device(
     ctx.attestation_sink.sync_index(&extended);
 
     Ok(DeviceExtensionResult {
-        device_did: DeviceDID::new(config.device_did),
+        device_did: DeviceDID::new_unchecked(config.device_did),
         new_expires_at,
         previous_expires_at,
     })
