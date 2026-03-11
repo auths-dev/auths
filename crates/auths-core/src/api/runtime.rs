@@ -526,6 +526,9 @@ pub fn get_agent_key_count_with_handle(handle: &AgentHandle) -> Result<usize, Ag
 /// let statuses = register_keys_with_macos_agent_with_handle(&handle, None, &adapter)?;
 /// ```
 #[cfg(target_os = "macos")]
+#[allow(clippy::disallowed_methods)]
+// INVARIANT: macOS SSH agent registration — temp file creation and permissions are inherently I/O
+#[allow(clippy::disallowed_types)]
 pub fn register_keys_with_macos_agent_with_handle(
     handle: &AgentHandle,
     ssh_agent_socket: Option<&std::path::Path>,
@@ -723,6 +726,7 @@ fn register_keys_with_macos_agent_internal(
 /// - `Ok(())` if the listener starts successfully (runs indefinitely).
 /// - `Err(AgentError)` if binding/setup fails or the listener loop exits with an error.
 #[cfg(unix)]
+#[allow(clippy::disallowed_methods)] // INVARIANT: Unix socket lifecycle — socket dir creation and cleanup is inherently I/O
 pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Result<(), AgentError> {
     let socket_path = handle.socket_path();
     info!("Attempting to start agent listener at {:?}", socket_path);

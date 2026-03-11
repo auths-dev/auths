@@ -47,7 +47,8 @@ fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
     result.key_alias
 }
 
-/// A `KeyStorage` implementation that always fails on `store_key`.
+/// Test-local: failure-mode `KeyStorage` for testing error paths.
+/// Not shared because no other test file needs a universally-failing keychain.
 struct FailingKeyStorage;
 
 impl KeyStorage for FailingKeyStorage {

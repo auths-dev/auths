@@ -308,7 +308,10 @@ fn check_allowed_signers_file() -> Check {
         Some(path_str) => {
             let file_path = std::path::Path::new(&path_str);
             if file_path.exists() {
-                match AllowedSigners::load(file_path) {
+                match AllowedSigners::load(
+                    file_path,
+                    &crate::adapters::allowed_signers_store::FileAllowedSignersStore,
+                ) {
                     Ok(signers) => {
                         let entries = signers.list();
                         let attestation_count = entries

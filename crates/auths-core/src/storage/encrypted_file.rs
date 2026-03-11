@@ -13,6 +13,8 @@ use chacha20poly1305::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[allow(clippy::disallowed_types)]
+// INVARIANT: file-backed keychain adapter — these types are its core purpose
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -65,6 +67,8 @@ pub struct EncryptedFileStorage {
     password: Mutex<Option<Zeroizing<String>>>,
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: file-backed keychain adapter — I/O is its purpose
+#[allow(clippy::disallowed_types)]
 impl EncryptedFileStorage {
     /// Create a new EncryptedFileStorage with default path (`<home>/keys.enc`).
     ///
@@ -283,6 +287,8 @@ impl EncryptedFileStorage {
     }
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: file-backed keychain adapter
+#[allow(clippy::disallowed_types)]
 impl KeyStorage for EncryptedFileStorage {
     fn store_key(
         &self,
@@ -386,6 +392,8 @@ impl KeyStorage for EncryptedFileStorage {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+#[allow(clippy::disallowed_types)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

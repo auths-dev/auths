@@ -1,11 +1,11 @@
-use auths_core::AgentError;
 use auths_core::ports::id::UuidProvider;
-use auths_core::signing::{PassphraseProvider, SecureSigner};
+use auths_core::signing::{PassphraseProvider, PrefilledPassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::KeyAlias;
 use auths_core::testing::DeterministicUuidProvider;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
 use auths_sdk::error::OrgError;
+use auths_sdk::testing::fakes::FakeSecureSigner;
 use auths_sdk::workflows::org::{
     AddMemberCommand, OrgContext, RevokeMemberCommand, Role, UpdateCapabilitiesCommand,
     add_organization_member, revoke_organization_member, update_member_capabilities,
@@ -35,36 +35,6 @@ fn admin_pubkey_hex() -> String {
 
 fn org_issuer() -> IdentityDID {
     IdentityDID::new(format!("did:keri:{ORG}"))
-}
-
-struct FakeSecureSigner;
-
-impl SecureSigner for FakeSecureSigner {
-    fn sign_with_alias(
-        &self,
-        _alias: &KeyAlias,
-        _passphrase_provider: &dyn PassphraseProvider,
-        _message: &[u8],
-    ) -> Result<Vec<u8>, AgentError> {
-        Ok(vec![1u8; 64])
-    }
-
-    fn sign_for_identity(
-        &self,
-        _identity_did: &auths_core::storage::keychain::IdentityDID,
-        _passphrase_provider: &dyn PassphraseProvider,
-        _message: &[u8],
-    ) -> Result<Vec<u8>, AgentError> {
-        Ok(vec![1u8; 64])
-    }
-}
-
-struct FakePassphraseProvider;
-
-impl PassphraseProvider for FakePassphraseProvider {
-    fn get_passphrase(&self, _prompt: &str) -> Result<zeroize::Zeroizing<String>, AgentError> {
-        Ok(zeroize::Zeroizing::new("test".to_string()))
-    }
 }
 
 fn base_admin_attestation() -> Attestation {
@@ -146,7 +116,7 @@ fn find_admin_returns_attestation_when_admin_exists() {
     let backend = FakeRegistryBackend::new();
     seed_admin(&backend);
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
@@ -176,7 +146,7 @@ fn find_admin_returns_not_found_when_pubkey_mismatch() {
     let backend = FakeRegistryBackend::new();
     seed_admin(&backend);
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
@@ -206,7 +176,7 @@ fn find_admin_returns_not_found_when_no_manage_members_capability() {
     backend.store_org_member(ORG, &att).unwrap();
 
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
@@ -239,7 +209,7 @@ fn add_member_stores_signed_attestation_with_injected_clock_and_uuid() {
     let id_provider = DeterministicUuidProvider::new();
     let expected_rid = "00000000-0000-0000-0000-000000000000";
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let ctx = make_ctx(&backend, &clock, &id_provider, &signer, &pp);
 
     let result = add_organization_member(
@@ -268,7 +238,7 @@ fn add_member_creates_attestation_with_signatures() {
     seed_admin(&backend);
 
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
@@ -300,7 +270,7 @@ fn add_member_creates_attestation_with_signatures() {
 fn add_member_fails_when_admin_not_found() {
     let backend = FakeRegistryBackend::new();
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
@@ -327,7 +297,7 @@ fn add_member_fails_with_invalid_capability() {
     let backend = FakeRegistryBackend::new();
     seed_admin(&backend);
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
@@ -360,7 +330,7 @@ fn revoke_member_creates_signed_revocation_with_injected_clock() {
     let fixed_time = chrono::Utc.with_ymd_and_hms(2025, 6, 2, 12, 0, 0).unwrap();
     let clock = MockClock(fixed_time);
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
 
@@ -389,7 +359,7 @@ fn revoke_member_fails_when_member_not_found() {
     let backend = FakeRegistryBackend::new();
     seed_admin(&backend);
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
@@ -419,7 +389,7 @@ fn revoke_member_fails_when_already_revoked() {
     backend.store_org_member(ORG, &att).unwrap();
 
     let signer = FakeSecureSigner;
-    let pp = FakePassphraseProvider;
+    let pp = PrefilledPassphraseProvider::new("test");
     let uuid = DeterministicUuidProvider::new();
     let clock = MockClock(chrono::Utc::now());
     let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);

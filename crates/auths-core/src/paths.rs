@@ -23,6 +23,7 @@ use crate::config::EnvironmentConfig;
 /// let env = auths_core::config::EnvironmentConfig::from_env();
 /// let dir = auths_core::paths::auths_home_with_config(&env)?;
 /// ```
+#[allow(clippy::disallowed_methods)] // INVARIANT: designated home-dir resolution boundary — dirs::home_dir is the OS-level fallback
 pub fn auths_home_with_config(config: &EnvironmentConfig) -> Result<PathBuf, AuthsHomeError> {
     if let Some(ref home) = config.auths_home {
         return Ok(home.clone());

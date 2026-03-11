@@ -3,6 +3,8 @@
 //! Concrete Git/Postgres implementations have moved to `auths-storage`.
 
 pub mod backend;
+#[allow(clippy::disallowed_methods)]
+// INVARIANT: entire module is an I/O adapter — installs Git hooks to disk
 pub mod hooks;
 pub mod org_member;
 pub mod schemas;

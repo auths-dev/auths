@@ -674,6 +674,7 @@ dependencies = [
  "auths-id",
  "auths-pairing-daemon",
  "auths-policy",
+ "auths-sdk",
  "auths-storage",
  "auths-telemetry",
  "auths-verifier",

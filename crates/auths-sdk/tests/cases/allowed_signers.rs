@@ -1,3 +1,4 @@
+use auths_sdk::testing::fakes::FakeAllowedSignersStore;
 use auths_sdk::workflows::allowed_signers::*;
 use auths_verifier::core::Ed25519PublicKey;
 use auths_verifier::types::DeviceDID;
@@ -42,7 +43,8 @@ fn signer_principal_display_did() {
 
 #[test]
 fn load_nonexistent_file_returns_empty() {
-    let signers = AllowedSigners::load("/tmp/auths-test-nonexistent-12345").unwrap();
+    let store = FakeAllowedSignersStore::new();
+    let signers = AllowedSigners::load("/tmp/auths-test-nonexistent-12345", &store).unwrap();
     assert!(signers.list().is_empty());
 }
 
@@ -123,9 +125,10 @@ fn save_and_load_roundtrip() {
             SignerSource::Attestation,
         )
         .unwrap();
-    signers.save().unwrap();
+    let store = FakeAllowedSignersStore::new();
+    signers.save(&store).unwrap();
 
-    let loaded = AllowedSigners::load(&path).unwrap();
+    let loaded = AllowedSigners::load(&path, &store).unwrap();
     assert_eq!(loaded.list().len(), 2);
 
     let manual = loaded
@@ -152,9 +155,9 @@ fn load_unmarked_file_treats_as_manual() {
     let key = Ed25519PublicKey::from_bytes([1u8; 32]);
     let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(key.as_bytes()).unwrap();
     let content = format!("user@example.com namespaces=\"git\" {}\n", ssh_key);
-    std::fs::write(&path, content).unwrap();
+    let store = FakeAllowedSignersStore::new().with_file(&path, &content);
 
-    let loaded = AllowedSigners::load(&path).unwrap();
+    let loaded = AllowedSigners::load(&path, &store).unwrap();
     assert_eq!(loaded.list().len(), 1);
     assert_eq!(loaded.list()[0].source, SignerSource::Manual);
 }

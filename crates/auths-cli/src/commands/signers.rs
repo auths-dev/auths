@@ -11,6 +11,7 @@ use ssh_key::PublicKey as SshPublicKey;
 use std::path::PathBuf;
 
 use super::git::expand_tilde;
+use crate::adapters::allowed_signers_store::FileAllowedSignersStore;
 
 #[derive(Parser, Debug, Clone)]
 #[command(about = "Manage allowed signers for Git commit verification.")]
@@ -98,7 +99,7 @@ fn resolve_signers_path() -> Result<PathBuf> {
 
 fn handle_list(args: &SignersListArgs) -> Result<()> {
     let path = resolve_signers_path()?;
-    let signers = AllowedSigners::load(&path)
+    let signers = AllowedSigners::load(&path, &FileAllowedSignersStore)
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
     if args.json {
@@ -134,7 +135,7 @@ fn handle_list(args: &SignersListArgs) -> Result<()> {
 
 fn handle_add(args: &SignersAddArgs) -> Result<()> {
     let path = resolve_signers_path()?;
-    let mut signers = AllowedSigners::load(&path)
+    let mut signers = AllowedSigners::load(&path, &FileAllowedSignersStore)
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
     let principal = SignerPrincipal::Email(
@@ -147,7 +148,7 @@ fn handle_add(args: &SignersAddArgs) -> Result<()> {
         .add(principal, pubkey, SignerSource::Manual)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     signers
-        .save()
+        .save(&FileAllowedSignersStore)
         .with_context(|| format!("Failed to write {}", path.display()))?;
 
     println!("Added {} to {}", args.email, path.display());
@@ -156,7 +157,7 @@ fn handle_add(args: &SignersAddArgs) -> Result<()> {
 
 fn handle_remove(args: &SignersRemoveArgs) -> Result<()> {
     let path = resolve_signers_path()?;
-    let mut signers = AllowedSigners::load(&path)
+    let mut signers = AllowedSigners::load(&path, &FileAllowedSignersStore)
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
     let principal = SignerPrincipal::Email(
@@ -166,7 +167,7 @@ fn handle_remove(args: &SignersRemoveArgs) -> Result<()> {
     match signers.remove(&principal) {
         Ok(true) => {
             signers
-                .save()
+                .save(&FileAllowedSignersStore)
                 .with_context(|| format!("Failed to write {}", path.display()))?;
             println!("Removed {} from {}", args.email, path.display());
         }
@@ -196,7 +197,7 @@ fn handle_sync(args: &SignersSyncArgs) -> Result<()> {
         resolve_signers_path()?
     };
 
-    let mut signers = AllowedSigners::load(&path)
+    let mut signers = AllowedSigners::load(&path, &FileAllowedSignersStore)
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
     let report = signers
@@ -204,7 +205,7 @@ fn handle_sync(args: &SignersSyncArgs) -> Result<()> {
         .context("Failed to sync attestations")?;
 
     signers
-        .save()
+        .save(&FileAllowedSignersStore)
         .with_context(|| format!("Failed to write {}", path.display()))?;
 
     println!(
@@ -244,7 +245,7 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
     }
 
     let path = resolve_signers_path()?;
-    let mut signers = AllowedSigners::load(&path)
+    let mut signers = AllowedSigners::load(&path, &FileAllowedSignersStore)
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
     let email = format!("{}@github.com", args.username);
@@ -282,7 +283,7 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
 
     if added > 0 {
         signers
-            .save()
+            .save(&FileAllowedSignersStore)
             .with_context(|| format!("Failed to write {}", path.display()))?;
         println!(
             "Added {} key(s) for {} to {}",

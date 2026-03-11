@@ -43,13 +43,14 @@ impl DiagnosticFix for AllowedSignersFix {
         let signers_path = ssh_dir.join("allowed_signers");
 
         let storage = RegistryAttestationStorage::new(&self.repo_path);
-        let mut signers = AllowedSigners::load(&signers_path)
+        let store = super::allowed_signers_store::FileAllowedSignersStore;
+        let mut signers = AllowedSigners::load(&signers_path, &store)
             .unwrap_or_else(|_| AllowedSigners::new(&signers_path));
         let report = signers
             .sync(&storage)
             .map_err(|e| DiagnosticError::ExecutionFailed(format!("sync signers: {e}")))?;
         signers
-            .save()
+            .save(&store)
             .map_err(|e| DiagnosticError::ExecutionFailed(format!("save signers: {e}")))?;
 
         let signers_str = signers_path

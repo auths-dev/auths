@@ -15,6 +15,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+#[allow(clippy::disallowed_types)]
+// INVARIANT: file-based cache adapter — fs types are core to this module
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};

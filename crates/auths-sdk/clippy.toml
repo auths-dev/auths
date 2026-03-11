@@ -1,0 +1,49 @@
+# Duplicated from workspace clippy.toml — keep in sync
+# Clippy does NOT merge per-crate configs with workspace config.
+# Any changes to the workspace clippy.toml must be replicated here.
+
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+disallowed-methods = [
+  # === Workspace rules (duplicated from root clippy.toml) ===
+  { path = "chrono::offset::Utc::now", reason = "inject ClockProvider instead of calling Utc::now() directly", allow-invalid = true },
+  { path = "std::time::SystemTime::now", reason = "inject ClockProvider instead of calling SystemTime::now() directly", allow-invalid = true },
+  { path = "std::env::var", reason = "use EnvironmentConfig abstraction instead of reading env vars directly", allow-invalid = true },
+  { path = "uuid::Uuid::new_v4", reason = "Use UuidProvider::new_id() instead. Inject SystemUuidProvider in production and DeterministicUuidProvider in tests." },
+
+  # === Sans-IO: filesystem ===
+  { path = "std::fs::read", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::read_to_string", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::write", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::create_dir", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::create_dir_all", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::remove_file", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::remove_dir", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::remove_dir_all", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::copy", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::rename", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::metadata", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::read_dir", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::canonicalize", reason = "sans-IO crate — use a port trait" },
+
+  # === Sans-IO: process ===
+  { path = "std::process::Command::new", reason = "sans-IO crate — use a port trait" },
+  { path = "std::process::exit", reason = "sans-IO crate — return errors instead" },
+
+  # === Sans-IO: dirs ===
+  { path = "dirs::home_dir", reason = "sans-IO crate — inject paths via config", allow-invalid = true },
+  { path = "dirs::config_dir", reason = "sans-IO crate — inject paths via config", allow-invalid = true },
+  { path = "dirs::data_dir", reason = "sans-IO crate — inject paths via config", allow-invalid = true },
+
+  # === Sans-IO: network ===
+  { path = "reqwest::Client::new", reason = "sans-IO crate — use a port trait for HTTP", allow-invalid = true },
+  { path = "reqwest::get", reason = "sans-IO crate — use a port trait for HTTP", allow-invalid = true },
+]
+
+disallowed-types = [
+  { path = "std::fs::File", reason = "sans-IO crate — use a port trait" },
+  { path = "std::process::Command", reason = "sans-IO crate — use a port trait" },
+  { path = "std::net::TcpStream", reason = "sans-IO crate — use a port trait" },
+  { path = "std::net::TcpListener", reason = "sans-IO crate — use a port trait" },
+]

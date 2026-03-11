@@ -72,6 +72,7 @@ pub fn freeze_file_path(repo_path: &Path) -> PathBuf {
 /// Args:
 /// * `repo_path`: Path to the identity repository.
 /// * `now`: The reference time used to check if the freeze is still active.
+#[allow(clippy::disallowed_methods)] // INVARIANT: freeze state is a simple file — extracting a port adds complexity for 2 lines of I/O
 pub fn load_active_freeze(
     repo_path: &Path,
     now: DateTime<Utc>,
@@ -93,6 +94,7 @@ pub fn load_active_freeze(
 }
 
 /// Write a freeze state to disk.
+#[allow(clippy::disallowed_methods)] // INVARIANT: freeze file write — simple file persistence
 pub fn store_freeze(repo_path: &Path, state: &FreezeState) -> Result<(), FreezeError> {
     let path = freeze_file_path(repo_path);
     let json = serde_json::to_string_pretty(state)?;
@@ -101,6 +103,7 @@ pub fn store_freeze(repo_path: &Path, state: &FreezeState) -> Result<(), FreezeE
 }
 
 /// Remove the freeze file (unfreeze).
+#[allow(clippy::disallowed_methods)] // INVARIANT: freeze file removal — simple file cleanup
 pub fn remove_freeze(repo_path: &Path) -> Result<bool, FreezeError> {
     let path = freeze_file_path(repo_path);
     if path.exists() {

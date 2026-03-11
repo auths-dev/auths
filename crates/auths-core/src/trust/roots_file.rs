@@ -56,19 +56,11 @@ pub struct RootEntry {
 }
 
 impl RootsFile {
-    /// Load and validate a roots.json file.
+    /// Parse roots from a JSON string (pure — no I/O).
     ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The file cannot be read
-    /// - The JSON is malformed
-    /// - The version is not 1
-    /// - Any public_key_hex is invalid (not valid hex, wrong length)
-    pub fn load(path: &Path) -> Result<Self, TrustError> {
-        let content = std::fs::read_to_string(path)?;
-
-        let file: Self = serde_json::from_str(&content)?;
+    /// Prefer this over `load` when the caller already has the content.
+    pub fn parse(content: &str) -> Result<Self, TrustError> {
+        let file: Self = serde_json::from_str(content)?;
 
         if file.version != 1 {
             return Err(TrustError::InvalidData(format!(
@@ -96,6 +88,13 @@ impl RootsFile {
         Ok(file)
     }
 
+    /// Load and validate a roots.json file.
+    #[allow(clippy::disallowed_methods)] // INVARIANT: convenience wrapper; prefer parse() for sans-IO callers
+    pub fn load(path: &Path) -> Result<Self, TrustError> {
+        let content = std::fs::read_to_string(path)?;
+        Self::parse(&content)
+    }
+
     /// Find a root entry by DID.
     pub fn find(&self, did: &str) -> Option<&RootEntry> {
         self.roots.iter().find(|r| r.did == did)
@@ -116,6 +115,8 @@ impl RootEntry {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+#[allow(clippy::disallowed_types)]
 mod tests {
     use super::*;
     use std::io::Write;

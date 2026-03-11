@@ -132,7 +132,9 @@ fn handle_install_hooks(
     let mut signers = AllowedSigners::new(&cmd.allowed_signers_path);
     match signers.sync(&storage) {
         Ok(report) => {
-            if let Err(e) = signers.save() {
+            if let Err(e) =
+                signers.save(&crate::adapters::allowed_signers_store::FileAllowedSignersStore)
+            {
                 eprintln!("Warning: Could not write allowed_signers: {}", e);
             } else {
                 println!(
