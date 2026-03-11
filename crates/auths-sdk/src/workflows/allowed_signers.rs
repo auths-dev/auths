@@ -265,70 +265,48 @@ impl AllowedSigners {
         }
     }
 
-    /// Loads and parses an allowed_signers file.
+    /// Loads and parses an allowed_signers file via the given store.
     ///
     /// If the file doesn't exist, returns an empty instance.
     /// Files without section markers are treated as all-manual entries.
     ///
     /// Args:
     /// * `path`: Path to the allowed_signers file.
+    /// * `store`: I/O backend for reading the file.
     ///
     /// Usage:
     /// ```ignore
-    /// let signers = AllowedSigners::load("~/.ssh/allowed_signers")?;
+    /// let signers = AllowedSigners::load("~/.ssh/allowed_signers", &store)?;
     /// ```
-    #[allow(clippy::disallowed_methods)] // TODO(fn-61.4): extract AllowedSignersStore port trait
-    pub fn load(path: impl Into<PathBuf>) -> Result<Self, AllowedSignersError> {
+    pub fn load(
+        path: impl Into<PathBuf>,
+        store: &dyn crate::ports::allowed_signers::AllowedSignersStore,
+    ) -> Result<Self, AllowedSignersError> {
         let path = path.into();
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Self::new(path));
-            }
-            Err(e) => {
-                return Err(AllowedSignersError::FileRead { path, source: e });
-            }
+        let content = match store.read(&path)? {
+            Some(c) => c,
+            None => return Ok(Self::new(path)),
         };
         let mut signers = Self::new(path);
         signers.parse_content(&content)?;
         Ok(signers)
     }
 
-    /// Atomically writes the allowed_signers file with section markers.
+    /// Atomically writes the allowed_signers file via the given store.
+    ///
+    /// Args:
+    /// * `store`: I/O backend for writing the file.
     ///
     /// Usage:
     /// ```ignore
-    /// signers.save()?;
+    /// signers.save(&store)?;
     /// ```
-    #[allow(clippy::disallowed_methods)] // TODO(fn-61.4): extract AllowedSignersStore port trait
-    pub fn save(&self) -> Result<(), AllowedSignersError> {
+    pub fn save(
+        &self,
+        store: &dyn crate::ports::allowed_signers::AllowedSignersStore,
+    ) -> Result<(), AllowedSignersError> {
         let content = self.format_content();
-        if let Some(parent) = self.file_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| AllowedSignersError::FileWrite {
-                path: self.file_path.clone(),
-                source: e,
-            })?;
-        }
-
-        use std::io::Write;
-        let dir = self.file_path.parent().unwrap_or_else(|| Path::new("."));
-        let tmp =
-            tempfile::NamedTempFile::new_in(dir).map_err(|e| AllowedSignersError::FileWrite {
-                path: self.file_path.clone(),
-                source: e,
-            })?;
-        (&tmp)
-            .write_all(content.as_bytes())
-            .map_err(|e| AllowedSignersError::FileWrite {
-                path: self.file_path.clone(),
-                source: e,
-            })?;
-        tmp.persist(&self.file_path)
-            .map_err(|e| AllowedSignersError::FileWrite {
-                path: self.file_path.clone(),
-                source: e.error,
-            })?;
-        Ok(())
+        store.write(&self.file_path, &content)
     }
 
     /// Returns all signer entries.

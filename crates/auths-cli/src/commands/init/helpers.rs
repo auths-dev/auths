@@ -107,13 +107,14 @@ pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()>
     std::fs::create_dir_all(&ssh_dir)?;
     let signers_path = ssh_dir.join("allowed_signers");
 
-    let mut signers =
-        AllowedSigners::load(&signers_path).unwrap_or_else(|_| AllowedSigners::new(&signers_path));
+    let store = crate::adapters::allowed_signers_store::FileAllowedSignersStore;
+    let mut signers = AllowedSigners::load(&signers_path, &store)
+        .unwrap_or_else(|_| AllowedSigners::new(&signers_path));
     let report = signers
         .sync(&storage)
         .map_err(|e| anyhow!("Failed to sync allowed signers: {}", e))?;
     signers
-        .save()
+        .save(&store)
         .map_err(|e| anyhow!("Failed to write allowed signers: {}", e))?;
 
     let signers_str = signers_path

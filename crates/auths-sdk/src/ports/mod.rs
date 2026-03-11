@@ -1,5 +1,7 @@
 /// Agent-based signing port for delegating operations to a running agent process.
 pub mod agent;
+/// Allowed signers file I/O port for reading and writing SSH allowed_signers files.
+pub mod allowed_signers;
 /// Artifact source port for computing digests and metadata.
 pub mod artifact;
 /// Diagnostic provider ports for system health checks.

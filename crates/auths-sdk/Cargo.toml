@@ -38,6 +38,7 @@ mcp = ["dep:reqwest"]
 lan-pairing = ["dep:auths-pairing-daemon"]
 
 [dev-dependencies]
+auths-sdk = { path = ".", features = ["test-utils"] }
 auths-core = { workspace = true, features = ["test-utils"] }
 auths-id = { workspace = true, features = ["test-utils"] }
 auths-verifier = { workspace = true, features = ["test-utils"] }
