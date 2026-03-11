@@ -1,5 +1,7 @@
 # Auths
 
+[![Verify Commits](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml)
+
 Decentralized identity for individuals, AI agents, and their organizations.
 
 One identity, multiple devices, Git-native storage.
