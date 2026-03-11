@@ -88,8 +88,8 @@ impl IndexedAttestationStorage {
     ) -> Result<(), StorageError> {
         let indexed = IndexedAttestation {
             rid: att.rid.clone(),
-            issuer_did: att.issuer.to_string(),
-            device_did: att.subject.to_string(),
+            issuer_did: att.issuer.clone(),
+            device_did: att.subject.clone(),
             git_ref: git_ref.to_string(),
             commit_oid: CommitOid::new_unchecked(commit_oid),
             revoked_at: att.revoked_at,
@@ -153,7 +153,7 @@ impl AttestationSource for IndexedAttestationStorage {
         // Collect unique device DIDs from the index
         let mut dids: Vec<DeviceDID> = active
             .into_iter()
-            .map(|a| DeviceDID::new_unchecked(&a.device_did))
+            .map(|a| a.device_did.clone())
             .collect();
         dids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         dids.dedup();

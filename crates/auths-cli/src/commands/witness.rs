@@ -78,7 +78,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                     };
 
                     WitnessServerState::new(WitnessServerConfig {
-                        witness_did,
+                        witness_did: auths_verifier::types::DeviceDID::new_unchecked(witness_did),
                         keypair_seed: seed,
                         keypair_pubkey: pubkey,
                         db_path,

@@ -433,7 +433,7 @@ fn handle_extend(
 ) -> Result<()> {
     let config = auths_sdk::types::DeviceExtensionConfig {
         repo_path: repo_path.to_path_buf(),
-        device_did: device_did.to_string(),
+        device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did),
         days: days as u32,
         identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
         device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),

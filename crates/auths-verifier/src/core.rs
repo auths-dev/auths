@@ -1056,6 +1056,7 @@ pub enum CommitOidError {
 ///
 /// Accepts exactly 40 lowercase hex characters (SHA-1) or 64 (SHA-256).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 #[serde(try_from = "String")]
 pub struct CommitOid(String);
@@ -1276,6 +1277,7 @@ impl<'de> Deserialize<'de> for PublicKeyHex {
 /// No validation — wraps any `String`. Use where policy IDs are passed around
 /// without needing to inspect their content.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct PolicyId(String);
 
