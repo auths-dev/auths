@@ -173,19 +173,21 @@ pub struct EventInfo {
 }
 
 /// Handle the emergency command.
-pub fn handle_emergency(cmd: EmergencyCommand) -> Result<()> {
+pub fn handle_emergency(cmd: EmergencyCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     match cmd.command {
-        Some(EmergencySubcommand::RevokeDevice(c)) => handle_revoke_device(c),
-        Some(EmergencySubcommand::RotateNow(c)) => handle_rotate_now(c),
-        Some(EmergencySubcommand::Freeze(c)) => handle_freeze(c),
-        Some(EmergencySubcommand::Unfreeze(c)) => handle_unfreeze(c),
-        Some(EmergencySubcommand::Report(c)) => handle_report(c),
+        Some(EmergencySubcommand::RevokeDevice(c)) => handle_revoke_device(c, now),
+        Some(EmergencySubcommand::RotateNow(c)) => handle_rotate_now(c, now),
+        Some(EmergencySubcommand::Freeze(c)) => handle_freeze(c, now),
+        Some(EmergencySubcommand::Unfreeze(c)) => handle_unfreeze(c, now),
+        Some(EmergencySubcommand::Report(c)) => handle_report(c, now),
         None => handle_interactive_flow(),
     }
 }
 
 /// Handle interactive emergency flow.
 fn handle_interactive_flow() -> Result<()> {
+    #[allow(clippy::disallowed_methods)]
+    let now = chrono::Utc::now();
     let out = Output::new();
 
     if !std::io::stdin().is_terminal() {
@@ -227,7 +229,7 @@ fn handle_interactive_flow() -> Result<()> {
                 yes: false,
                 dry_run: false,
                 repo: None,
-            })
+            }, now)
         }
         1 => {
             // Key exposed
@@ -239,7 +241,7 @@ fn handle_interactive_flow() -> Result<()> {
                 dry_run: false,
                 reason: Some("Potential key exposure".to_string()),
                 repo: None,
-            })
+            }, now)
         }
         2 => {
             // Freeze everything
@@ -249,7 +251,7 @@ fn handle_interactive_flow() -> Result<()> {
                 yes: false,
                 dry_run: false,
                 repo: None,
-            })
+            }, now)
         }
         3 => {
             // Generate report
@@ -257,7 +259,7 @@ fn handle_interactive_flow() -> Result<()> {
                 events: 100,
                 output_file: None,
                 repo: None,
-            })
+            }, now)
         }
         _ => {
             out.println("Cancelled.");
@@ -267,7 +269,7 @@ fn handle_interactive_flow() -> Result<()> {
 }
 
 /// Handle device revocation using the real revocation code path.
-fn handle_revoke_device(cmd: RevokeDeviceCommand) -> Result<()> {
+fn handle_revoke_device(cmd: RevokeDeviceCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_core::signing::{PassphraseProvider, StorageSigner};
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::attestation::export::AttestationSink;
@@ -368,7 +370,7 @@ fn handle_revoke_device(cmd: RevokeDeviceCommand) -> Result<()> {
 
     let secure_signer = StorageSigner::new(get_platform_keychain()?);
 
-    let revocation_timestamp = chrono::Utc::now();
+    let revocation_timestamp = now;
 
     out.print_info("Creating signed revocation attestation...");
     let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias);
@@ -403,7 +405,7 @@ fn handle_revoke_device(cmd: RevokeDeviceCommand) -> Result<()> {
 }
 
 /// Handle emergency key rotation using the real rotation code path.
-fn handle_rotate_now(cmd: RotateNowCommand) -> Result<()> {
+fn handle_rotate_now(cmd: RotateNowCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::identity::rotate::rotate_keri_identity;
     use auths_id::storage::layout::{self, StorageLayoutConfig};
@@ -487,7 +489,7 @@ fn handle_rotate_now(cmd: RotateNowCommand) -> Result<()> {
         &config,
         keychain.as_ref(),
         None,
-        chrono::Utc::now(),
+        now,
     )
     .context("Key rotation failed")?;
 
@@ -505,7 +507,7 @@ fn handle_rotate_now(cmd: RotateNowCommand) -> Result<()> {
 }
 
 /// Handle freeze operation — temporarily disables all signing.
-fn handle_freeze(cmd: FreezeCommand) -> Result<()> {
+fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_id::freeze::{FreezeState, load_active_freeze, parse_duration, store_freeze};
     use auths_id::storage::layout;
 
@@ -516,7 +518,7 @@ fn handle_freeze(cmd: FreezeCommand) -> Result<()> {
 
     // Parse duration
     let duration = parse_duration(&cmd.duration)?;
-    let frozen_at = chrono::Utc::now();
+    let frozen_at = now;
     let frozen_until = frozen_at + duration;
 
     out.println(&format!(
@@ -530,7 +532,7 @@ fn handle_freeze(cmd: FreezeCommand) -> Result<()> {
     let repo_path = layout::resolve_repo_path(cmd.repo)?;
 
     // Check for existing freeze
-    if let Some(existing) = load_active_freeze(&repo_path, chrono::Utc::now())? {
+    if let Some(existing) = load_active_freeze(&repo_path, now)? {
         let existing_until = existing.frozen_until;
         if frozen_until > existing_until {
             out.print_warn(&format!(
@@ -593,7 +595,7 @@ fn handle_freeze(cmd: FreezeCommand) -> Result<()> {
     out.println("All signing operations are disabled.");
     out.println(&format!(
         "Freeze expires in: {}",
-        out.info(&state.expires_description(chrono::Utc::now()))
+        out.info(&state.expires_description(now))
     ));
     out.newline();
     out.println("To unfreeze early:");
@@ -603,7 +605,7 @@ fn handle_freeze(cmd: FreezeCommand) -> Result<()> {
 }
 
 /// Handle unfreeze — cancel an active freeze early.
-fn handle_unfreeze(cmd: UnfreezeCommand) -> Result<()> {
+fn handle_unfreeze(cmd: UnfreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_id::freeze::{load_active_freeze, remove_freeze};
     use auths_id::storage::layout;
 
@@ -611,7 +613,7 @@ fn handle_unfreeze(cmd: UnfreezeCommand) -> Result<()> {
 
     let repo_path = layout::resolve_repo_path(cmd.repo)?;
 
-    match load_active_freeze(&repo_path, chrono::Utc::now())? {
+    match load_active_freeze(&repo_path, now)? {
         Some(state) => {
             out.println(&format!(
                 "Active freeze until {}",
@@ -643,7 +645,7 @@ fn handle_unfreeze(cmd: UnfreezeCommand) -> Result<()> {
 }
 
 /// Handle incident report generation.
-fn handle_report(cmd: ReportCommand) -> Result<()> {
+fn handle_report(cmd: ReportCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_id::identity::helpers::ManagedIdentity;
     use auths_id::storage::attestation::AttestationSource;
     use auths_id::storage::identity::IdentityStorage;
@@ -675,7 +677,7 @@ fn handle_report(cmd: ReportCommand) -> Result<()> {
         if seen_devices.insert(did_str.clone()) {
             let status = if att.is_revoked() {
                 "revoked"
-            } else if att.expires_at.is_some_and(|exp| exp <= chrono::Utc::now()) {
+            } else if att.expires_at.is_some_and(|exp| exp <= now) {
                 "expired"
             } else {
                 "active"
@@ -736,7 +738,7 @@ fn handle_report(cmd: ReportCommand) -> Result<()> {
     recommendations.push("Check for any unexpected signing activity".to_string());
 
     let report = IncidentReport {
-        generated_at: chrono::Utc::now().to_rfc3339(),
+        generated_at: now.to_rfc3339(),
         identity_did: identity_did.map(|d| d.to_string()),
         devices,
         recent_events,
@@ -813,12 +815,14 @@ use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
 impl ExecutableCommand for EmergencyCommand {
+    #[allow(clippy::disallowed_methods)]
     fn execute(&self, _ctx: &CliConfig) -> Result<()> {
-        handle_emergency(self.clone())
+        handle_emergency(self.clone(), chrono::Utc::now())
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 
@@ -859,7 +863,7 @@ mod tests {
             yes: true,
             dry_run: true,
             repo: Some(dir.path().to_path_buf()),
-        });
+        }, chrono::Utc::now());
 
         assert!(result.is_ok());
         // Dry run should NOT create the freeze file
@@ -874,7 +878,7 @@ mod tests {
             yes: true,
             dry_run: false,
             repo: Some(dir.path().to_path_buf()),
-        });
+        }, chrono::Utc::now());
 
         assert!(result.is_ok());
         assert!(dir.path().join("freeze.json").exists());
@@ -892,7 +896,7 @@ mod tests {
             yes: true,
             dry_run: false,
             repo: Some(dir.path().to_path_buf()),
-        });
+        }, chrono::Utc::now());
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -913,7 +917,7 @@ mod tests {
             yes: true,
             dry_run: false,
             repo: Some(dir.path().to_path_buf()),
-        })
+        }, chrono::Utc::now())
         .unwrap();
         assert!(dir.path().join("freeze.json").exists());
 
@@ -921,7 +925,7 @@ mod tests {
         handle_unfreeze(UnfreezeCommand {
             yes: true,
             repo: Some(dir.path().to_path_buf()),
-        })
+        }, chrono::Utc::now())
         .unwrap();
         assert!(!dir.path().join("freeze.json").exists());
     }

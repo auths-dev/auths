@@ -14,6 +14,7 @@ mod online;
 
 use anyhow::Result;
 use auths_core::config::EnvironmentConfig;
+use chrono::Utc;
 use clap::Parser;
 
 /// Default registry URL for local development.
@@ -73,36 +74,39 @@ pub struct PairCommand {
 /// | `pair --join CODE --registry`| Online join (existing)                |
 /// | `pair --offline`             | Offline mode (no network)             |
 pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<()> {
+    #[allow(clippy::disallowed_methods)]
+    let now = Utc::now();
     match (&cmd.join, &cmd.registry, cmd.offline) {
         // Offline mode takes priority
         (None, _, true) => {
-            offline::handle_initiate_offline(cmd.no_qr, cmd.timeout, &cmd.capabilities)
+            offline::handle_initiate_offline(now, cmd.no_qr, cmd.timeout, &cmd.capabilities)
         }
 
         // Join with explicit registry -> online join
         (Some(code), Some(registry), _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(join::handle_join(code, registry, env_config))
+            rt.block_on(join::handle_join(now, code, registry, env_config))
         }
 
         // Join without registry -> LAN join via mDNS
         #[cfg(feature = "lan-pairing")]
         (Some(code), None, _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(lan::handle_join_lan(code, env_config))
+            rt.block_on(lan::handle_join_lan(now, code, env_config))
         }
 
         // Join without registry and no LAN feature -> use default registry
         #[cfg(not(feature = "lan-pairing"))]
         (Some(code), None, _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(join::handle_join(code, DEFAULT_REGISTRY, env_config))
+            rt.block_on(join::handle_join(now, code, DEFAULT_REGISTRY, env_config))
         }
 
         // Initiate with explicit registry -> online mode
         (None, Some(registry), _) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(online::handle_initiate_online(
+                now,
                 registry,
                 cmd.no_qr,
                 cmd.timeout,
@@ -116,6 +120,7 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
         (None, None, false) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(lan::handle_initiate_lan(
+                now,
                 cmd.no_qr,
                 cmd.no_mdns,
                 cmd.timeout,
@@ -129,6 +134,7 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
         (None, None, false) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(online::handle_initiate_online(
+                now,
                 DEFAULT_REGISTRY,
                 cmd.no_qr,
                 cmd.timeout,

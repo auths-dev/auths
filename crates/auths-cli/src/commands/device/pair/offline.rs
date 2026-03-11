@@ -11,6 +11,7 @@ use super::common::*;
 
 /// Initiate a pairing session without registry (for testing).
 pub(crate) fn handle_initiate_offline(
+    now: chrono::DateTime<chrono::Utc>,
     no_qr: bool,
     expiry_secs: u64,
     capabilities: &[String],
@@ -28,7 +29,7 @@ pub(crate) fn handle_initiate_offline(
 
     let expiry = chrono::Duration::seconds(expiry_secs as i64);
     let session = PairingToken::generate_with_expiry(
-        chrono::Utc::now(),
+        now,
         controller_did.clone(),
         "offline".to_string(),
         capabilities.to_vec(),

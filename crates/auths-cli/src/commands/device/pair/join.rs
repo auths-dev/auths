@@ -8,7 +8,6 @@ use auths_core::ports::pairing::PairingRelayClient;
 use auths_infra_http::HttpPairingRelayClient;
 use auths_pairing_protocol::sas;
 use auths_sdk::pairing::{load_device_signing_material, validate_short_code};
-use chrono::Utc;
 use console::style;
 
 use crate::core::provider::CliPassphraseProvider;
@@ -18,6 +17,7 @@ use super::common::*;
 
 /// Join an existing pairing session using a short code.
 pub(crate) async fn handle_join(
+    now: chrono::DateTime<chrono::Utc>,
     code: &str,
     registry: &str,
     env_config: &EnvironmentConfig,
@@ -84,11 +84,11 @@ pub(crate) async fn handle_join(
         short_code: normalized.clone(),
         ephemeral_pubkey: token_data.ephemeral_pubkey.to_string(),
         expires_at: chrono::DateTime::from_timestamp(token_data.expires_at, 0)
-            .unwrap_or_else(Utc::now),
+            .unwrap_or(now),
         capabilities: token_data.capabilities.clone(),
     };
 
-    if token.is_expired(Utc::now()) {
+    if token.is_expired(now) {
         anyhow::bail!("Session expired");
     }
 
@@ -96,7 +96,7 @@ pub(crate) async fn handle_join(
 
     // Create the response + ECDH
     let (pairing_response, shared_secret) = PairingResponse::create(
-        Utc::now(),
+        now,
         &token,
         &material.seed,
         &material.public_key,
