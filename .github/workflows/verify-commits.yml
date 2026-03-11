@@ -16,10 +16,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: auths-dev/auths-verify-github-action@v1.0.3
+      - uses: auths-dev/auths-verify-github-action@v1
         with:
           allowed-signers: .auths/allowed_signers
-          auths-version: '0.0.1-rc.8'
           fail-on-unsigned: true
           post-pr-comment: 'true'
           github-token: ${{ secrets.GITHUB_TOKEN }}
