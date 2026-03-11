@@ -8,6 +8,7 @@
 //! - [`did_key`] — DID:key ↔ Ed25519 encoding (`DidKeyError`, `did_key_to_ed25519`, etc.)
 
 pub mod did_key;
+pub mod error;
 pub mod keri;
 pub mod key_material;
 pub mod pkcs8;
@@ -21,6 +22,7 @@ pub mod webcrypto_provider;
 pub use did_key::{
     DidKeyError, did_key_to_ed25519, ed25519_pubkey_to_did_keri, ed25519_pubkey_to_did_key,
 };
+pub use error::AuthsErrorInfo;
 pub use keri::{KeriDecodeError, KeriPublicKey};
 pub use key_material::{build_ed25519_pkcs8_v2, parse_ed25519_key_material, parse_ed25519_seed};
 pub use pkcs8::Pkcs8Der;

@@ -2,26 +2,7 @@
 
 use thiserror::Error;
 
-/// Trait for error metadata providing structured error codes and actionable suggestions.
-///
-/// All Auths error types implement this trait to provide:
-/// - A unique error code for programmatic handling (e.g., "AUTHS_KEY_NOT_FOUND")
-/// - An optional human-readable suggestion for how to resolve the error
-pub trait AuthsErrorInfo {
-    /// Returns a unique error code string following the AUTHS_* naming convention.
-    ///
-    /// Error codes are stable identifiers that can be used for:
-    /// - Programmatic error handling in scripts
-    /// - Internationalization of error messages
-    /// - Logging and debugging
-    fn error_code(&self) -> &'static str;
-
-    /// Returns an optional actionable suggestion for resolving the error.
-    ///
-    /// Suggestions should be clear, concise commands or instructions
-    /// that help the user fix the problem.
-    fn suggestion(&self) -> Option<&'static str>;
-}
+pub use auths_crypto::AuthsErrorInfo;
 
 /// Errors from the Auths agent and core operations.
 #[derive(Debug, Error)]

@@ -3,18 +3,7 @@
 use crate::core::Capability;
 use thiserror::Error;
 
-/// Trait for error metadata providing structured error codes and actionable suggestions.
-///
-/// All Auths error types implement this trait to provide:
-/// - A unique error code for programmatic handling (e.g., "AUTHS_VERIFICATION_ERROR")
-/// - An optional human-readable suggestion for how to resolve the error
-pub trait AuthsErrorInfo {
-    /// Returns a unique error code string following the AUTHS_* naming convention.
-    fn error_code(&self) -> &'static str;
-
-    /// Returns an optional actionable suggestion for resolving the error.
-    fn suggestion(&self) -> Option<&'static str>;
-}
+pub use auths_crypto::AuthsErrorInfo;
 
 /// Errors returned by attestation signing, verification, and related operations.
 #[derive(Error, Debug)]

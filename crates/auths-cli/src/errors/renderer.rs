@@ -1,8 +1,8 @@
 use anyhow::Error;
-use auths_core::error::{AgentError, AuthsErrorInfo as CoreErrorInfo};
+use auths_core::error::{AgentError, AuthsErrorInfo};
 use auths_sdk::error::{DeviceError, SetupError};
 use auths_sdk::signing::SigningError;
-use auths_verifier::{AttestationError, AuthsErrorInfo as VerifierErrorInfo};
+use auths_verifier::AttestationError;
 use colored::Colorize;
 
 use crate::errors::cli_error::CliError;
@@ -62,44 +62,44 @@ fn render_text(err: &Error) {
     }
 
     if let Some(agent_err) = err.downcast_ref::<AgentError>() {
-        let code = CoreErrorInfo::error_code(agent_err);
+        let code = AuthsErrorInfo::error_code(agent_err);
         let message = format!("{agent_err}");
         out.print_error(&out.bold(&message));
         eprintln!();
-        if let Some(suggestion) = CoreErrorInfo::suggestion(agent_err) {
+        if let Some(suggestion) = AuthsErrorInfo::suggestion(agent_err) {
             eprintln!("  fix:  {suggestion}");
         }
         if let Some(url) = docs_url(code) {
             eprintln!("  docs: {url}");
         }
     } else if let Some(att_err) = err.downcast_ref::<AttestationError>() {
-        let code = VerifierErrorInfo::error_code(att_err);
+        let code = AuthsErrorInfo::error_code(att_err);
         let message = format!("{att_err}");
         out.print_error(&out.bold(&message));
         eprintln!();
-        if let Some(suggestion) = VerifierErrorInfo::suggestion(att_err) {
+        if let Some(suggestion) = AuthsErrorInfo::suggestion(att_err) {
             eprintln!("  fix:  {suggestion}");
         }
         if let Some(url) = docs_url(code) {
             eprintln!("  docs: {url}");
         }
     } else if let Some(setup_err) = err.downcast_ref::<SetupError>() {
-        let code = CoreErrorInfo::error_code(setup_err);
+        let code = AuthsErrorInfo::error_code(setup_err);
         let message = format!("{setup_err}");
         out.print_error(&out.bold(&message));
         eprintln!();
-        if let Some(suggestion) = CoreErrorInfo::suggestion(setup_err) {
+        if let Some(suggestion) = AuthsErrorInfo::suggestion(setup_err) {
             eprintln!("  fix:  {suggestion}");
         }
         if let Some(url) = docs_url(code) {
             eprintln!("  docs: {url}");
         }
     } else if let Some(device_err) = err.downcast_ref::<DeviceError>() {
-        let code = CoreErrorInfo::error_code(device_err);
+        let code = AuthsErrorInfo::error_code(device_err);
         let message = format!("{device_err}");
         out.print_error(&out.bold(&message));
         eprintln!();
-        if let Some(suggestion) = CoreErrorInfo::suggestion(device_err) {
+        if let Some(suggestion) = AuthsErrorInfo::suggestion(device_err) {
             eprintln!("  fix:  {suggestion}");
         }
         if let Some(url) = docs_url(code) {
@@ -156,35 +156,35 @@ fn render_json(err: &Error) {
         };
         build_json(None, &format!("{signing_err}"), suggestion.as_deref(), None)
     } else if let Some(agent_err) = err.downcast_ref::<AgentError>() {
-        let code = CoreErrorInfo::error_code(agent_err);
+        let code = AuthsErrorInfo::error_code(agent_err);
         build_json(
             Some(code),
             &format!("{agent_err}"),
-            CoreErrorInfo::suggestion(agent_err),
+            AuthsErrorInfo::suggestion(agent_err),
             docs_url(code),
         )
     } else if let Some(att_err) = err.downcast_ref::<AttestationError>() {
-        let code = VerifierErrorInfo::error_code(att_err);
+        let code = AuthsErrorInfo::error_code(att_err);
         build_json(
             Some(code),
             &format!("{att_err}"),
-            VerifierErrorInfo::suggestion(att_err),
+            AuthsErrorInfo::suggestion(att_err),
             docs_url(code),
         )
     } else if let Some(setup_err) = err.downcast_ref::<SetupError>() {
-        let code = CoreErrorInfo::error_code(setup_err);
+        let code = AuthsErrorInfo::error_code(setup_err);
         build_json(
             Some(code),
             &format!("{setup_err}"),
-            CoreErrorInfo::suggestion(setup_err),
+            AuthsErrorInfo::suggestion(setup_err),
             docs_url(code),
         )
     } else if let Some(device_err) = err.downcast_ref::<DeviceError>() {
-        let code = CoreErrorInfo::error_code(device_err);
+        let code = AuthsErrorInfo::error_code(device_err);
         build_json(
             Some(code),
             &format!("{device_err}"),
-            CoreErrorInfo::suggestion(device_err),
+            AuthsErrorInfo::suggestion(device_err),
             docs_url(code),
         )
     } else {
