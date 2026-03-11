@@ -10,8 +10,8 @@ use clap::{Parser, Subcommand};
 use ssh_key::PublicKey as SshPublicKey;
 use std::path::PathBuf;
 
-use super::git::expand_tilde;
 use crate::adapters::allowed_signers_store::FileAllowedSignersStore;
+use auths_utils::path::expand_tilde;
 
 #[derive(Parser, Debug, Clone)]
 #[command(about = "Manage allowed signers for Git commit verification.")]
@@ -89,7 +89,7 @@ fn resolve_signers_path() -> Result<PathBuf> {
         let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
         if !path_str.is_empty() {
             let path = PathBuf::from(&path_str);
-            return expand_tilde(&path);
+            return Ok(expand_tilde(&path)?);
         }
     }
 

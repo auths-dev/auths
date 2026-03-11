@@ -129,7 +129,7 @@ pub async fn verify_device_authorization(
     check_batch_size(&attestations_json)?;
     let identity_pk_bytes = decode_pk_hex(&identity_pk_hex, "identity public key")?;
     let attestations = parse_attestations(&attestations_json)?;
-    let device = DeviceDID::new(&device_did);
+    let device = DeviceDID::new_unchecked(&device_did);
 
     match rust_verify_device_authorization(
         &identity_did,

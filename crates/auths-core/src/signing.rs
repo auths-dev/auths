@@ -782,7 +782,7 @@ mod tests {
     fn test_sign_for_identity_success() {
         let (pkcs8_bytes, pubkey_bytes) = generate_test_keypair();
         let passphrase = "Test-P@ss12345";
-        let identity_did = IdentityDID::new("did:keri:ABC123");
+        let identity_did = IdentityDID::new_unchecked("did:keri:ABC123");
         let alias = KeyAlias::new_unchecked("test-key-alias");
 
         // Encrypt the key
@@ -815,7 +815,7 @@ mod tests {
         let signer = StorageSigner::new(storage);
         let passphrase_provider = MockPassphraseProvider::new("any-passphrase");
 
-        let identity_did = IdentityDID::new("did:keri:NONEXISTENT");
+        let identity_did = IdentityDID::new_unchecked("did:keri:NONEXISTENT");
         let message = b"test message";
 
         let result = signer.sign_for_identity(&identity_did, &passphrase_provider, message);
@@ -827,7 +827,7 @@ mod tests {
         // Test that sign_for_identity works when multiple aliases exist for an identity
         let (pkcs8_bytes, pubkey_bytes) = generate_test_keypair();
         let passphrase = "Test-P@ss12345";
-        let identity_did = IdentityDID::new("did:keri:MULTI123");
+        let identity_did = IdentityDID::new_unchecked("did:keri:MULTI123");
 
         let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase).expect("Failed to encrypt");
 

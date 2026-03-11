@@ -72,7 +72,7 @@ pub fn test_inception_event(key_seed: &str) -> Event {
 ///
 /// Usage:
 /// ```ignore
-/// let did = DeviceDID::new("did:key:zTest");
+/// let did = DeviceDID::new_unchecked("did:key:zTest");
 /// let att = test_attestation(&did, "did:keri:ETestOrg");
 /// backend.store_attestation(&att).unwrap();
 /// ```
@@ -80,7 +80,7 @@ pub fn test_attestation(device_did: &DeviceDID, issuer: &str) -> Attestation {
     Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new(issuer),
+        issuer: IdentityDID::new_unchecked(issuer),
         subject: device_did.clone(),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),

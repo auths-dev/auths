@@ -46,8 +46,8 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
-            subject: DeviceDID::new(subject),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
+            subject: DeviceDID::new_unchecked(subject),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),

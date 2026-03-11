@@ -23,12 +23,12 @@ fn arb_did() -> impl Strategy<Value = String> {
 
 /// Generate arbitrary IdentityDID
 fn arb_identity_did() -> impl Strategy<Value = IdentityDID> {
-    arb_did().prop_map(IdentityDID::new)
+    arb_did().prop_map(IdentityDID::new_unchecked)
 }
 
 /// Generate arbitrary DeviceDID
 fn arb_device_did() -> impl Strategy<Value = DeviceDID> {
-    arb_did().prop_map(DeviceDID::new)
+    arb_did().prop_map(DeviceDID::new_unchecked)
 }
 
 /// Generate arbitrary 32-byte public key
@@ -237,7 +237,7 @@ proptest! {
     /// Test that DID strings maintain format through DeviceDID
     #[test]
     fn device_did_preserves_string(did_str in arb_did()) {
-        let device_did = DeviceDID::new(did_str.clone());
+        let device_did = DeviceDID::new_unchecked(did_str.clone());
         prop_assert_eq!(device_did.as_str(), &did_str);
     }
 

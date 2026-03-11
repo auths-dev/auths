@@ -1,0 +1,18 @@
+# Duplicated from workspace clippy.toml — keep in sync
+# Clippy does NOT merge per-crate configs with workspace config.
+# Any changes to the workspace clippy.toml must be replicated here.
+
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+disallowed-methods = [
+  # === Workspace rules (duplicated from root clippy.toml) ===
+  { path = "chrono::offset::Utc::now", reason = "inject ClockProvider instead of calling Utc::now() directly", allow-invalid = true },
+  { path = "std::time::SystemTime::now", reason = "inject ClockProvider instead of calling SystemTime::now() directly", allow-invalid = true },
+  { path = "std::env::var", reason = "use EnvironmentConfig abstraction instead of reading env vars directly", allow-invalid = true },
+  { path = "uuid::Uuid::new_v4", reason = "Use UuidProvider::new_id() instead. Inject SystemUuidProvider in production and DeterministicUuidProvider in tests." },
+
+  # === DID construction: prefer parse() for user input ===
+  { path = "auths_verifier::types::DeviceDID::new_unchecked", reason = "CLI should use DeviceDID::parse() for user input. Use #[allow] with INVARIANT comment for internally-derived values.", allow-invalid = true },
+  { path = "auths_verifier::types::IdentityDID::new_unchecked", reason = "CLI should use IdentityDID::parse() for user input. Use #[allow] with INVARIANT comment for internally-derived values.", allow-invalid = true },
+]

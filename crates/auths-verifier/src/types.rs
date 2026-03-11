@@ -126,6 +126,7 @@ impl ChainLink {
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
+use std::str::FromStr;
 
 // ============================================================================
 // IdentityDID Type
@@ -134,26 +135,71 @@ use std::ops::Deref;
 /// Strongly-typed wrapper for identity DIDs (e.g., `"did:keri:E..."`).
 ///
 /// Usage:
-/// ```ignore
-/// let did = IdentityDID::new("did:keri:Eabc123");
+/// ```rust
+/// # use auths_verifier::IdentityDID;
+/// let did = IdentityDID::parse("did:keri:Eabc123").unwrap();
 /// assert_eq!(did.as_str(), "did:keri:Eabc123");
 ///
 /// let s: String = did.into_inner();
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
-pub struct IdentityDID(pub String);
+pub struct IdentityDID(String);
 
 impl IdentityDID {
-    /// Create a new `IdentityDID` from a raw string.
-    pub fn new<S: Into<String>>(s: S) -> Self {
+    /// Wraps a DID string without validation (for trusted internal paths).
+    pub fn new_unchecked<S: Into<String>>(s: S) -> Self {
         Self(s.into())
     }
 
-    /// Wraps a DID string without validation (for trusted internal paths).
-    pub fn new_unchecked(s: String) -> Self {
-        Self(s)
+    /// Validates and parses a `did:keri:` string into an `IdentityDID`.
+    ///
+    /// Args:
+    /// * `s`: A DID string that must start with `did:keri:` followed by a non-empty KERI prefix.
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::IdentityDID;
+    /// let did = IdentityDID::parse("did:keri:EPrefix123").unwrap();
+    /// assert_eq!(did.as_str(), "did:keri:EPrefix123");
+    /// ```
+    pub fn parse(s: &str) -> Result<Self, DidParseError> {
+        match s.strip_prefix("did:keri:") {
+            Some("") => Err(DidParseError::EmptyIdentifier),
+            Some(_) => Ok(Self(s.to_string())),
+            None => Err(DidParseError::InvalidIdentityPrefix(s.to_string())),
+        }
+    }
+
+    /// Builds an `IdentityDID` from a raw KERI prefix string.
+    ///
+    /// Args:
+    /// * `prefix`: The KERI prefix without the `did:keri:` scheme (e.g., `"EOrg123"`).
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::IdentityDID;
+    /// let did = IdentityDID::from_prefix("EOrg123").unwrap();
+    /// assert_eq!(did.as_str(), "did:keri:EOrg123");
+    /// ```
+    pub fn from_prefix(prefix: &str) -> Result<Self, DidParseError> {
+        if prefix.is_empty() {
+            return Err(DidParseError::EmptyIdentifier);
+        }
+        Ok(Self(format!("did:keri:{}", prefix)))
+    }
+
+    /// Returns the KERI prefix portion of the DID (after `did:keri:`).
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::IdentityDID;
+    /// let did = IdentityDID::parse("did:keri:EOrg123").unwrap();
+    /// assert_eq!(did.prefix(), "EOrg123");
+    /// ```
+    pub fn prefix(&self) -> &str {
+        self.0.strip_prefix("did:keri:").unwrap_or(&self.0)
     }
 
     /// Returns the DID as a string slice.
@@ -173,21 +219,43 @@ impl fmt::Display for IdentityDID {
     }
 }
 
-impl From<&str> for IdentityDID {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
+impl FromStr for IdentityDID {
+    type Err = DidParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
     }
 }
 
-impl From<String> for IdentityDID {
-    fn from(s: String) -> Self {
-        Self(s)
+impl TryFrom<&str> for IdentityDID {
+    type Error = DidParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
+    }
+}
+
+impl TryFrom<String> for IdentityDID {
+    type Error = DidParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
     }
 }
 
 impl From<IdentityDID> for String {
     fn from(did: IdentityDID) -> String {
         did.0
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for IdentityDID {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -240,14 +308,33 @@ impl PartialEq<IdentityDID> for &str {
 // ============================================================================
 
 /// Wrapper around a device DID string that ensures Git-safe ref formatting.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct DeviceDID(pub String);
+pub struct DeviceDID(String);
 
 impl DeviceDID {
-    /// Create a new `DeviceDID` from a raw string.
-    pub fn new<S: Into<String>>(s: S) -> Self {
+    /// Wraps a DID string without validation (for trusted internal paths).
+    pub fn new_unchecked<S: Into<String>>(s: S) -> Self {
         DeviceDID(s.into())
+    }
+
+    /// Validates and parses a `did:key:z` string into a `DeviceDID`.
+    ///
+    /// Args:
+    /// * `s`: A DID string that must start with `did:key:z` followed by non-empty base58 content.
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::DeviceDID;
+    /// let did = DeviceDID::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
+    /// assert_eq!(did.as_str(), "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
+    /// ```
+    pub fn parse(s: &str) -> Result<Self, DidParseError> {
+        match s.strip_prefix("did:key:z") {
+            Some("") => Err(DidParseError::EmptyIdentifier),
+            Some(_) => Ok(Self(s.to_string())),
+            None => Err(DidParseError::InvalidDevicePrefix(s.to_string())),
+        }
     }
 
     /// Constructs a `did:key:z...` identifier from a 32-byte Ed25519 public key.
@@ -291,27 +378,52 @@ impl DeviceDID {
     }
 }
 
-// Allow `.to_string()` and printing
 impl fmt::Display for DeviceDID {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-// Allow `DeviceDID::from("did:key:abc")` and vice versa
-impl From<&str> for DeviceDID {
-    fn from(s: &str) -> Self {
-        DeviceDID(s.to_string())
+impl FromStr for DeviceDID {
+    type Err = DidParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
     }
 }
 
-impl From<String> for DeviceDID {
-    fn from(s: String) -> Self {
-        DeviceDID(s)
+impl TryFrom<&str> for DeviceDID {
+    type Error = DidParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::parse(s)
     }
 }
 
-// Optionally deref to &str
+impl TryFrom<String> for DeviceDID {
+    type Error = DidParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Self::parse(&s)
+    }
+}
+
+impl From<DeviceDID> for String {
+    fn from(did: DeviceDID) -> String {
+        did.0
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for DeviceDID {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
+}
+
 impl Deref for DeviceDID {
     type Target = str;
 
@@ -363,6 +475,21 @@ pub enum DidConversionError {
     /// The decoded key is not 32 bytes.
     #[error("expected 32-byte Ed25519 key, got {0} bytes")]
     WrongKeyLength(usize),
+}
+
+/// Errors from DID string parsing and validation.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum DidParseError {
+    /// DeviceDID must start with `did:key:z`.
+    #[error("DeviceDID must start with 'did:key:z', got: {0}")]
+    InvalidDevicePrefix(String),
+    /// IdentityDID must start with `did:keri:`.
+    #[error("IdentityDID must start with 'did:keri:', got: {0}")]
+    InvalidIdentityPrefix(String),
+    /// The method-specific identifier portion is empty.
+    #[error("DID method-specific identifier is empty")]
+    EmptyIdentifier,
 }
 
 #[cfg(test)]

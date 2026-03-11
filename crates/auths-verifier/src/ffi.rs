@@ -497,7 +497,16 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
                 return ERR_VERIFY_JSON_PARSE;
             }
         };
-        let device_did = DeviceDID::new(device_did_str);
+        let device_did = match DeviceDID::parse(device_did_str) {
+            Ok(d) => d,
+            Err(e) => {
+                error!(
+                    "FFI verify_device_authorization_json: invalid device DID: {}",
+                    e
+                );
+                return ERR_VERIFY_JSON_PARSE;
+            }
+        };
 
         let attestations: Vec<Attestation> = match serde_json::from_slice(chain_json) {
             Ok(a) => a,

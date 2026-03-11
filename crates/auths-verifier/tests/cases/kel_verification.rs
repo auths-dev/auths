@@ -160,8 +160,8 @@ fn minimal_attestation(issuer: &str, subject: &str) -> auths_verifier::core::Att
     auths_verifier::core::Attestation {
         version: 1,
         rid: auths_verifier::ResourceId::new(""),
-        issuer: auths_verifier::IdentityDID(issuer.to_string()),
-        subject: auths_verifier::DeviceDID::new(subject),
+        issuer: auths_verifier::IdentityDID::new_unchecked(issuer.to_string()),
+        subject: auths_verifier::DeviceDID::new_unchecked(subject),
         device_public_key: auths_verifier::Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: auths_verifier::core::Ed25519Signature::empty(),
         device_signature: auths_verifier::core::Ed25519Signature::empty(),

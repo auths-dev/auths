@@ -542,14 +542,14 @@ fn parse_entry_line(
 fn parse_principal(s: &str) -> SignerPrincipal {
     if let Some(local) = s.strip_suffix("@auths.local") {
         let did_str = format!("did:key:{}", local);
-        return SignerPrincipal::DeviceDid(DeviceDID::new(did_str));
+        return SignerPrincipal::DeviceDid(DeviceDID::new_unchecked(did_str));
     }
     if s.starts_with("did:key:") {
-        return SignerPrincipal::DeviceDid(DeviceDID::new(s));
+        return SignerPrincipal::DeviceDid(DeviceDID::new_unchecked(s));
     }
     match EmailAddress::new(s) {
         Ok(addr) => SignerPrincipal::Email(addr),
-        Err(_) => SignerPrincipal::DeviceDid(DeviceDID::new(s)),
+        Err(_) => SignerPrincipal::DeviceDid(DeviceDID::new_unchecked(s)),
     }
 }
 
@@ -596,7 +596,7 @@ mod tests {
 
     #[test]
     fn principal_display_did() {
-        let did = DeviceDID::new("did:key:z6MkTest123");
+        let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
         let p = SignerPrincipal::DeviceDid(did);
         assert_eq!(p.to_string(), "z6MkTest123@auths.local");
     }
@@ -607,7 +607,7 @@ mod tests {
         let parsed = parse_principal(&email_p.to_string());
         assert_eq!(parsed, email_p);
 
-        let did = DeviceDID::new("did:key:z6MkTest123");
+        let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
         let did_p = SignerPrincipal::DeviceDid(did);
         let parsed = parse_principal(&did_p.to_string());
         assert_eq!(parsed, did_p);

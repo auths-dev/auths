@@ -249,6 +249,7 @@ pub(crate) fn handle_pairing_response(
     );
 
     let keychain = get_platform_keychain_with_config(env_config)?;
+    #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from managed identity
     let controller_identity_did =
         auths_core::storage::keychain::IdentityDID::new_unchecked(controller_did.clone());
     let aliases = keychain

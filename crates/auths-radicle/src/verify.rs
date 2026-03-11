@@ -269,7 +269,7 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
         // Step 6: Evaluate policy (revocation, expiry)
         let decision = evaluate_compiled(&attestation, &self.policy, request.now).map_err(|e| {
             BridgeError::PolicyEvaluation {
-                did: IdentityDID::new(identity_did.to_string()),
+                did: IdentityDID::new_unchecked(identity_did.to_string()),
                 reason: e.to_string(),
             }
         })?;
@@ -526,7 +526,7 @@ mod tests {
                 .get(identity_did)
                 .cloned()
                 .ok_or_else(|| BridgeError::IdentityLoad {
-                    did: IdentityDID::new(identity_did.to_string()),
+                    did: IdentityDID::new_unchecked(identity_did.to_string()),
                     reason: "Not found".into(),
                 })
         }
@@ -540,7 +540,7 @@ mod tests {
                 .get(&(device_did.clone(), identity_did.clone()))
                 .cloned()
                 .ok_or_else(|| BridgeError::AttestationLoad {
-                    device_did: VerifierDeviceDID::new(device_did.to_string()),
+                    device_did: VerifierDeviceDID::new_unchecked(device_did.to_string()),
                     reason: "Not found".into(),
                 })
         }
@@ -590,8 +590,8 @@ mod tests {
         Attestation {
             version: 1,
             rid: ResourceId::new("test"),
-            issuer: IdentityDID::new(issuer.to_string()),
-            subject: DeviceDID::new(device_did.to_string()),
+            issuer: IdentityDID::new_unchecked(issuer.to_string()),
+            subject: DeviceDID::new_unchecked(device_did.to_string()),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),

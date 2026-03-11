@@ -137,7 +137,7 @@ fn corrupt_identity_hard_rejected() {
         }
         fn load_key_state(&self, _: &Did) -> Result<KeyState, BridgeError> {
             Err(BridgeError::IdentityCorrupt {
-                did: auths_verifier::IdentityDID::new("unknown"),
+                did: auths_verifier::IdentityDID::new_unchecked("did:keri:Eunknown"),
                 reason: "broken chain".into(),
             })
         }

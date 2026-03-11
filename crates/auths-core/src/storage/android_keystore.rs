@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn test_store_key_returns_unavailable() {
         let storage = AndroidKeystoreStorage::new("test").unwrap();
-        let did = IdentityDID::new("did:keri:test");
+        let did = IdentityDID::new_unchecked("did:keri:test");
         let alias = KeyAlias::new("alias");
         let result = storage.store_key(&alias, &did, KeyRole::Primary, b"data");
         assert!(matches!(result, Err(AgentError::BackendUnavailable { .. })));
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn test_list_aliases_for_identity_returns_unavailable() {
         let storage = AndroidKeystoreStorage::new("test").unwrap();
-        let did = IdentityDID::new("did:keri:test");
+        let did = IdentityDID::new_unchecked("did:keri:test");
         let result = storage.list_aliases_for_identity(&did);
         assert!(matches!(result, Err(AgentError::BackendUnavailable { .. })));
     }

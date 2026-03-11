@@ -605,8 +605,8 @@ mod tests {
         let mut att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new(issuer_did),
-            subject: DeviceDID::new(subject_did),
+            issuer: IdentityDID::new_unchecked(issuer_did),
+            subject: DeviceDID::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1026,7 +1026,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1051,7 +1051,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (_, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         assert!(!is_device_listed(&root_did, &device_did, &[], fixed_now()));
     }
@@ -1062,7 +1062,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1087,7 +1087,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1112,7 +1112,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att_expired = verified(create_signed_attestation(
             &root_kp,
@@ -1155,7 +1155,7 @@ mod tests {
         let other_did = auths_crypto::ed25519_pubkey_to_did_key(&other_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &other_kp,
@@ -1181,7 +1181,7 @@ mod tests {
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
         let (_, other_device_pk) = create_test_keypair(&[4u8; 32]);
         let other_device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&other_device_pk);
-        let other_device_did = DeviceDID::new(&other_device_did_str);
+        let other_device_did = DeviceDID::new_unchecked(&other_device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1213,8 +1213,8 @@ mod tests {
         let mut att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new(issuer_did),
-            subject: DeviceDID::new(subject_did),
+            issuer: IdentityDID::new_unchecked(issuer_did),
+            subject: DeviceDID::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1519,7 +1519,7 @@ mod tests {
                 .is_ok()
         );
 
-        att.delegated_by = Some(IdentityDID::new("did:key:attacker"));
+        att.delegated_by = Some(IdentityDID::new_unchecked("did:keri:Eattacker"));
         let result = test_verifier().verify_with_keys(&att, &root_pk).await;
         assert!(
             result.is_err(),
@@ -1563,8 +1563,8 @@ mod tests {
         let mut att = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new(issuer_did),
-            subject: DeviceDID::new(subject_did),
+            issuer: IdentityDID::new_unchecked(issuer_did),
+            subject: DeviceDID::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1693,7 +1693,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1720,7 +1720,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (_, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let result = test_verifier()
             .verify_device_authorization(&root_did, &device_did, &[], &root_pk)
@@ -1742,7 +1742,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let mut att = create_signed_attestation(
             &root_kp,
@@ -1774,7 +1774,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
         let (_, wrong_pk) = create_test_keypair(&[99u8; 32]);
 
         let att = create_signed_attestation(
@@ -1804,7 +1804,7 @@ mod tests {
         let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
-        let device_did = DeviceDID::new(&device_did_str);
+        let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att_expired = create_signed_attestation(
             &root_kp,

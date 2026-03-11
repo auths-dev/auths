@@ -188,8 +188,8 @@ fn environment_claim_excluded_from_canonical_form() {
     let att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new("did:keri:ETest"),
-        subject: DeviceDID::new("did:key:z6Mk..."),
+        issuer: IdentityDID::new_unchecked("did:keri:ETest"),
+        subject: DeviceDID::new_unchecked("did:key:z6Mk..."),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),
@@ -262,8 +262,8 @@ fn environment_claim_roundtrips_through_json() {
     let att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: IdentityDID::new("did:keri:ETest"),
-        subject: DeviceDID::new("did:key:z6Mk..."),
+        issuer: IdentityDID::new_unchecked("did:keri:ETest"),
+        subject: DeviceDID::new_unchecked("did:key:z6Mk..."),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),

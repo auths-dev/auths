@@ -3,6 +3,7 @@
 use anyhow::{Context, Result, bail};
 use auths_sdk::workflows::allowed_signers::AllowedSigners;
 use auths_storage::git::RegistryAttestationStorage;
+use auths_utils::path::expand_tilde;
 use clap::{Parser, Subcommand};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -203,20 +204,6 @@ auths signers sync --repo "{}" --output "{}"
     )
 }
 
-pub(crate) fn expand_tilde(path: &Path) -> Result<PathBuf> {
-    let path_str = path.to_string_lossy();
-    if path_str.starts_with("~/") || path_str == "~" {
-        let home = dirs::home_dir().context("Failed to determine home directory")?;
-        if path_str == "~" {
-            Ok(home)
-        } else {
-            Ok(home.join(&path_str[2..]))
-        }
-    } else {
-        Ok(path.to_path_buf())
-    }
-}
-
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
@@ -230,37 +217,6 @@ impl ExecutableCommand for GitCommand {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-
-    #[test]
-    fn test_expand_tilde() {
-        let path = PathBuf::from("~/.auths");
-        let result = expand_tilde(&path);
-        assert!(result.is_ok());
-        let expanded = result.unwrap();
-        assert!(!expanded.to_string_lossy().contains("~"));
-        assert!(expanded.ends_with(".auths"));
-    }
-
-    #[test]
-    fn test_expand_tilde_bare() {
-        let path = PathBuf::from("~");
-        let result = expand_tilde(&path).unwrap();
-        assert_eq!(result, dirs::home_dir().unwrap());
-    }
-
-    #[test]
-    fn test_expand_tilde_absolute_path_unchanged() {
-        let path = PathBuf::from("/tmp/auths");
-        let result = expand_tilde(&path).unwrap();
-        assert_eq!(result, PathBuf::from("/tmp/auths"));
-    }
-
-    #[test]
-    fn test_expand_tilde_relative_path_unchanged() {
-        let path = PathBuf::from("relative/path");
-        let result = expand_tilde(&path).unwrap();
-        assert_eq!(result, PathBuf::from("relative/path"));
-    }
 
     #[test]
     fn test_find_git_dir() {

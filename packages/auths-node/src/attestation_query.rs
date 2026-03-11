@@ -99,6 +99,6 @@ pub fn get_latest_attestation(
         )
     })?;
     let group = AttestationGroup::from_list(all);
-    let did = DeviceDID(device_did);
+    let did = DeviceDID::new_unchecked(device_did);
     Ok(group.latest(&did).map(attestation_to_napi))
 }

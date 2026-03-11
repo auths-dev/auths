@@ -36,7 +36,7 @@ fn signer_principal_display_email() {
 
 #[test]
 fn signer_principal_display_did() {
-    let did = DeviceDID::new("did:key:z6MkTest123");
+    let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
     let p = SignerPrincipal::DeviceDid(did);
     assert_eq!(p.to_string(), "z6MkTest123@auths.local");
 }

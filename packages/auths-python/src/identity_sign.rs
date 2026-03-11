@@ -58,7 +58,7 @@ pub fn sign_as_identity(
     passphrase: Option<String>,
 ) -> PyResult<String> {
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
-    let did = IdentityDID::new(identity_did);
+    let did = IdentityDID::new_unchecked(identity_did);
 
     let msg = message.to_vec();
     py.allow_threads(move || {
@@ -123,7 +123,7 @@ pub fn sign_action_as_identity(
     })?;
 
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
-    let did = IdentityDID::new(identity_did);
+    let did = IdentityDID::new_unchecked(identity_did);
 
     let action_type_owned = action_type.to_string();
     let identity_did_owned = identity_did.to_string();
@@ -173,7 +173,7 @@ pub fn get_identity_public_key(
     passphrase: Option<String>,
 ) -> PyResult<String> {
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
-    let did = IdentityDID::new(identity_did);
+    let did = IdentityDID::new_unchecked(identity_did);
 
     py.allow_threads(move || {
         let aliases = signer

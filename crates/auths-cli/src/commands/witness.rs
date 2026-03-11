@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow};
+use auths_utils::path::expand_tilde;
 use clap::{Parser, Subcommand};
 
 use auths_core::witness::{WitnessServerConfig, WitnessServerState, run_server};
@@ -178,24 +179,10 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
 /// Expands leading `~/` so paths from clap defaults work correctly.
 fn resolve_repo_path(repo_opt: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(path) = repo_opt {
-        return expand_tilde(&path);
+        return Ok(expand_tilde(&path)?);
     }
     let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
     Ok(home.join(".auths"))
-}
-
-fn expand_tilde(path: &std::path::Path) -> Result<PathBuf> {
-    let s = path.to_string_lossy();
-    if s.starts_with("~/") || s == "~" {
-        let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
-        if s == "~" {
-            Ok(home)
-        } else {
-            Ok(home.join(&s[2..]))
-        }
-    } else {
-        Ok(path.to_path_buf())
-    }
 }
 
 /// Load witness config from identity metadata.

@@ -63,7 +63,7 @@ pub struct KeyImportResult {
 /// ```ignore
 /// let result = import_seed(
 ///     &seed, &passphrase, "my_key",
-///     &IdentityDID::new("did:keri:EXq5abc"),
+///     &IdentityDID::new_unchecked("did:keri:EXq5abc"),
 ///     keychain.as_ref(),
 /// )?;
 /// ```

@@ -13,7 +13,7 @@ use auths_core::{
     signing::PassphraseProvider,
     storage::keychain::{KeyAlias, get_platform_keychain},
 };
-use auths_verifier::{IdentityBundle, Prefix};
+use auths_verifier::{IdentityBundle, IdentityDID, Prefix};
 use clap::ValueEnum;
 
 use crate::commands::registry_overrides::RegistryOverrides;
@@ -602,7 +602,8 @@ pub fn handle_id(
 
             // Create the bundle
             let bundle = IdentityBundle {
-                identity_did: identity.controller_did.to_string(),
+                #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
+                identity_did: IdentityDID::new_unchecked(identity.controller_did.to_string()),
                 public_key_hex,
                 attestation_chain: attestations,
                 bundle_timestamp: Utc::now(),

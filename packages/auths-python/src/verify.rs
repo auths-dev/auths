@@ -178,7 +178,7 @@ pub fn verify_device_authorization(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
-    let device = DeviceDID::new(device_did);
+    let device = DeviceDID::new_unchecked(device_did);
 
     py.allow_threads(|| {
         match runtime().block_on(rust_verify_device_authorization(

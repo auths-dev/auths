@@ -331,7 +331,8 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             };
 
             let signer = StorageSigner::new(get_platform_keychain()?);
-            let org_did = DeviceDID::new(controller_did.to_string());
+            #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
+            let org_did = DeviceDID::new_unchecked(controller_did.to_string());
 
             let attestation = create_signed_attestation(
                 now,
@@ -432,7 +433,9 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let _pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase)
                 .context("Failed to decrypt signer key (invalid passphrase?)")?;
 
-            let subject_device_did = DeviceDID::new(subject_did.clone());
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: subject_did accepts both did:key and did:keri
+            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
 
             // --- Resolve device public key using the custom resolver IF did:key ---
             let device_resolved = resolver.resolve(&subject_did).with_context(|| {
@@ -519,8 +522,8 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let _pkcs8_bytes =
                 decrypt_keypair(&encrypted_key, &pass).context("Failed to decrypt identity key")?;
 
-            // Allow both did:key and did:keri as subject input
-            let subject_device_did = DeviceDID::new(subject_did.clone());
+            #[allow(clippy::disallowed_methods)] // INVARIANT: accepts both did:key and did:keri
+            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
             let now = Utc::now();
 
             // Look up the subject's public key from existing attestations
@@ -568,7 +571,9 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             let resolver = DefaultDidResolver::with_repo(&repo_path);
             let group = AttestationGroup::from_list(attestation_storage.load_all_attestations()?);
 
-            let subject_device_did = DeviceDID(subject_did.clone());
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: subject_did from CLI arg, used for lookup only
+            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
             if let Some(list) = group.by_device.get(subject_device_did.as_str()) {
                 for (i, att) in list.iter().enumerate() {
                     if !include_revoked
@@ -715,7 +720,8 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
             )
             .context("Failed to add member")?;
 
-            let member_did = DeviceDID::new(member.clone());
+            #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry
+            let member_did = DeviceDID::new_unchecked(member.clone());
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
             attestation_storage
                 .export(
@@ -803,7 +809,8 @@ pub fn handle_org(cmd: OrgCommand, ctx: &crate::config::CliConfig) -> Result<()>
                 passphrase_provider: passphrase_provider.as_ref(),
             };
 
-            let member_did = DeviceDID::new(member.clone());
+            #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry
+            let member_did = DeviceDID::new_unchecked(member.clone());
             let revocation = revoke_organization_member(
                 &org_ctx,
                 RevokeMemberCommand {

@@ -198,7 +198,7 @@ impl AttestationSource for GitAttestationStorage {
                                     sanitized_did,
                                     full_ref_name
                                 );
-                                discovered_dids.insert(DeviceDID::new(sanitized_did));
+                                discovered_dids.insert(DeviceDID::new_unchecked(sanitized_did));
                             }
                         }
                     }

@@ -13,7 +13,7 @@ categories = ["cryptography", "authentication"]
 
 [features]
 default = ["git-storage"]
-git-storage = ["dep:git2", "dep:dirs", "dep:tempfile", "dep:tokio"]
+git-storage = ["dep:git2", "dep:dirs", "dep:tempfile", "dep:tokio", "dep:auths-utils"]
 indexed-storage = ["auths-index"]
 witness-client = ["dep:auths-infra-http"]
 test-utils = ["auths-crypto/test-utils", "dep:mockall"]
@@ -53,6 +53,7 @@ mockall = { version = "0.13", optional = true }
 # Optional dependencies
 auths-index = { workspace = true, optional = true }
 auths-infra-http = { workspace = true, optional = true }
+auths-utils = { workspace = true, optional = true }
 
 [dev-dependencies]
 auths-core = { workspace = true, features = ["test-utils"] }

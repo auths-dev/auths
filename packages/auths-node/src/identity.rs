@@ -184,7 +184,7 @@ pub fn create_agent_identity(
         )
     })?;
 
-    let device_did = DeviceDID(result.device_did.to_string());
+    let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .map_err(|e| {
@@ -322,7 +322,7 @@ pub fn delegate_agent(
         )
     })?;
 
-    let device_did = DeviceDID(result.device_did.to_string());
+    let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .map_err(|e| {
@@ -435,7 +435,7 @@ pub fn get_identity_public_key(
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
 
-    let did = auths_verifier::types::IdentityDID::new(&identity_did);
+    let did = auths_verifier::types::IdentityDID::new_unchecked(&identity_did);
     let aliases = keychain
         .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key lookup failed: {e}")))?;

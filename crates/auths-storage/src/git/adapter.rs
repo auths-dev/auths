@@ -1330,7 +1330,7 @@ impl RegistryBackend for GitRegistryBackend {
                 if let Err(e) = navigator.visit_dir(&s2_parts, |sanitized_did| {
                     // Convert back to proper DID format
                     let did = unsanitize_did(sanitized_did);
-                    visitor(&DeviceDID::new(did))
+                    visitor(&DeviceDID::new_unchecked(did))
                 }) {
                     captured_error.set(Some(e));
                     return ControlFlow::Break(());
@@ -1434,7 +1434,7 @@ impl RegistryBackend for GitRegistryBackend {
 
             // Derive DID from filename
             let did_str = unsanitize_did(sanitized_did);
-            let did = DeviceDID::new(did_str.clone());
+            let did = DeviceDID::new_unchecked(did_str.clone());
 
             // Read blob and parse attestation
             let full_path = paths::child(&members_path, filename);
@@ -1452,7 +1452,9 @@ impl RegistryBackend for GitRegistryBackend {
                             // Validate issuer matches expected org issuer (hard invariant)
                             } else if att.issuer.as_str() != expected_issuer {
                                 Err(MemberInvalidReason::IssuerMismatch {
-                                    expected_issuer: IdentityDID::new(expected_issuer.clone()),
+                                    expected_issuer: IdentityDID::new_unchecked(
+                                        expected_issuer.clone(),
+                                    ),
                                     actual_issuer: att.issuer.clone(),
                                 })
                             } else {
@@ -1466,7 +1468,7 @@ impl RegistryBackend for GitRegistryBackend {
             };
 
             let entry = OrgMemberEntry {
-                org: IdentityDID::new(format!("did:keri:{}", org)),
+                org: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
                 did,
                 filename: filename.to_string(),
                 attestation,
@@ -1568,11 +1570,11 @@ impl RegistryBackend for GitRegistryBackend {
         let members: Vec<MemberView> = indexed
             .into_iter()
             .map(|m| MemberView {
-                did: auths_verifier::types::DeviceDID::new(&m.member_did),
+                did: auths_verifier::types::DeviceDID::new_unchecked(&m.member_did),
                 status: MemberStatus::Active,
                 role: None,
                 capabilities: vec![],
-                issuer: auths_core::storage::keychain::IdentityDID::new(m.issuer_did),
+                issuer: auths_core::storage::keychain::IdentityDID::new_unchecked(m.issuer_did),
                 rid: auths_verifier::core::ResourceId::new(m.rid),
                 revoked_at: m.revoked_at,
                 expires_at: m.expires_at,
@@ -2420,11 +2422,11 @@ mod tests {
     fn store_and_load_attestation() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new("did:key:z6MkTest123");
+        let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
         let attestation = Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2453,7 +2455,7 @@ mod tests {
     #[test]
     fn load_nonexistent_attestation() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new("did:key:z6MkNonexistent");
+        let did = DeviceDID::new_unchecked("did:key:z6MkNonexistent");
 
         let result = backend.load_attestation(&did).unwrap();
         assert!(result.is_none());
@@ -2463,13 +2465,13 @@ mod tests {
     fn store_attestation_overwrites_existing() {
         // Verify latest-view semantics: store_attestation overwrites existing
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new("did:key:z6MkTestDevice");
+        let did = DeviceDID::new_unchecked("did:key:z6MkTestDevice");
 
         // Store first attestation with rid="original"
         let original = Attestation {
             version: 1,
             rid: ResourceId::new("original"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2496,7 +2498,7 @@ mod tests {
         let updated = Attestation {
             version: 1,
             rid: ResourceId::new("updated"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2523,12 +2525,12 @@ mod tests {
     #[test]
     fn replay_same_attestation_rejected() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new("did:key:z6MkReplay1");
+        let did = DeviceDID::new_unchecked("did:key:z6MkReplay1");
 
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("same-rid"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2558,12 +2560,12 @@ mod tests {
     #[test]
     fn replay_older_attestation_rejected() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new("did:key:z6MkReplay2");
+        let did = DeviceDID::new_unchecked("did:key:z6MkReplay2");
 
         let newer = Attestation {
             version: 1,
             rid: ResourceId::new("rid-newer"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2583,7 +2585,7 @@ mod tests {
         let older = Attestation {
             version: 1,
             rid: ResourceId::new("rid-older"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2608,12 +2610,12 @@ mod tests {
     #[test]
     fn newer_attestation_accepted() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new("did:key:z6MkReplay3");
+        let did = DeviceDID::new_unchecked("did:key:z6MkReplay3");
 
         let older = Attestation {
             version: 1,
             rid: ResourceId::new("rid-old"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2633,7 +2635,7 @@ mod tests {
         let newer = Attestation {
             version: 1,
             rid: ResourceId::new("rid-new"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2660,12 +2662,12 @@ mod tests {
     #[test]
     fn replay_revoked_attestation_rejected() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new("did:key:z6MkReplay4");
+        let did = DeviceDID::new_unchecked("did:key:z6MkReplay4");
 
         let revoked = Attestation {
             version: 1,
             rid: ResourceId::new("rid-revoked"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2685,7 +2687,7 @@ mod tests {
         let unrevoked_old = Attestation {
             version: 1,
             rid: ResourceId::new("rid-unrevoked"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2710,12 +2712,12 @@ mod tests {
     #[test]
     fn first_attestation_always_accepted() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new("did:key:z6MkReplay5");
+        let did = DeviceDID::new_unchecked("did:key:z6MkReplay5");
 
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("first-ever"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2738,12 +2740,12 @@ mod tests {
     #[test]
     fn attestation_without_timestamp_rejected_when_existing_has_timestamp() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new("did:key:z6MkReplay6");
+        let did = DeviceDID::new_unchecked("did:key:z6MkReplay6");
 
         let with_ts = Attestation {
             version: 1,
             rid: ResourceId::new("rid-with-ts"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2763,7 +2765,7 @@ mod tests {
         let without_ts = Attestation {
             version: 1,
             rid: ResourceId::new("rid-no-ts"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2789,13 +2791,13 @@ mod tests {
     fn visit_devices() {
         let (_dir, backend) = setup_test_repo();
 
-        let did1 = DeviceDID::new("did:key:z6MkTest1");
-        let did2 = DeviceDID::new("did:key:z6MkTest2");
+        let did1 = DeviceDID::new_unchecked("did:key:z6MkTest1");
+        let did2 = DeviceDID::new_unchecked("did:key:z6MkTest2");
 
         let att1 = Attestation {
             version: 1,
             rid: ResourceId::new("rid1"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did1.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2815,7 +2817,7 @@ mod tests {
         let att2 = Attestation {
             version: 1,
             rid: ResourceId::new("rid2"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did2.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([1u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2859,12 +2861,12 @@ mod tests {
         assert_eq!(meta.device_count, 0);
 
         // Add device
-        let did = DeviceDID::new("did:key:z6MkTest");
+        let did = DeviceDID::new_unchecked("did:key:z6MkTest");
         backend
             .store_attestation(&Attestation {
                 version: 1,
                 rid: ResourceId::new("rid"),
-                issuer: IdentityDID::new("did:keri:EIssuer"),
+                issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
                 subject: did,
                 device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
                 identity_signature: Ed25519Signature::empty(),
@@ -2892,12 +2894,12 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
 
         let org = "EOrg1234567890";
-        let member_did = DeviceDID::new("did:key:z6MkMember1");
+        let member_did = DeviceDID::new_unchecked("did:key:z6MkMember1");
 
         let member_att = Attestation {
             version: 1,
             rid: ResourceId::new("org-member"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: member_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -2979,11 +2981,11 @@ mod tests {
         let base_tree = backend.current_tree(&repo).unwrap();
 
         // Create attestation with subject "did:key:z6MkCorrect"
-        let correct_did = DeviceDID::new("did:key:z6MkCorrect");
+        let correct_did = DeviceDID::new_unchecked("did:key:z6MkCorrect");
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("mismatch-test"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: correct_did,
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3043,11 +3045,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store attestation with WRONG issuer (but correct subject)
-        let member_did = DeviceDID::new("did:key:z6MkWrongIssuer");
+        let member_did = DeviceDID::new_unchecked("did:key:z6MkWrongIssuer");
         let att = Attestation {
             version: 1,
             rid: ResourceId::new("issuer-mismatch-test"),
-            issuer: IdentityDID::new("did:keri:EDifferentOrg"), // WRONG issuer
+            issuer: IdentityDID::new_unchecked("did:keri:EDifferentOrg"), // WRONG issuer
             subject: member_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3094,11 +3096,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store active member
-        let active_did = DeviceDID::new("did:key:z6MkActive1");
+        let active_did = DeviceDID::new_unchecked("did:key:z6MkActive1");
         let active_att = Attestation {
             version: 1,
             rid: ResourceId::new("active"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: active_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3117,11 +3119,11 @@ mod tests {
         backend.store_org_member(org, &active_att).unwrap();
 
         // Store revoked member
-        let revoked_did = DeviceDID::new("did:key:z6MkRevoked");
+        let revoked_did = DeviceDID::new_unchecked("did:key:z6MkRevoked");
         let revoked_att = Attestation {
             version: 1,
             rid: ResourceId::new("revoked"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: revoked_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3163,11 +3165,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store revoked member
-        let revoked_did = DeviceDID::new("did:key:z6MkRevoked");
+        let revoked_did = DeviceDID::new_unchecked("did:key:z6MkRevoked");
         let revoked_att = Attestation {
             version: 1,
             rid: ResourceId::new("revoked"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: revoked_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3205,11 +3207,11 @@ mod tests {
 
         // Store member with past expiry
         let past = Utc::now() - Duration::hours(1);
-        let expired_did = DeviceDID::new("did:key:z6MkExpired");
+        let expired_did = DeviceDID::new_unchecked("did:key:z6MkExpired");
         let expired_att = Attestation {
             version: 1,
             rid: ResourceId::new("expired"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: expired_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3249,12 +3251,12 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store member from correct org issuer
-        let org_member_did = DeviceDID::new("did:key:z6MkOrgMember");
+        let org_member_did = DeviceDID::new_unchecked("did:key:z6MkOrgMember");
         let org_issuer = format!("did:keri:{}", org);
         let org_att = Attestation {
             version: 1,
             rid: ResourceId::new("org"),
-            issuer: IdentityDID::new(org_issuer.clone()),
+            issuer: IdentityDID::new_unchecked(org_issuer.clone()),
             subject: org_member_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3273,11 +3275,11 @@ mod tests {
         backend.store_org_member(org, &org_att).unwrap();
 
         // Store member with WRONG issuer - should be marked Invalid
-        let wrong_did = DeviceDID::new("did:key:z6MkWrongIssuer");
+        let wrong_did = DeviceDID::new_unchecked("did:key:z6MkWrongIssuer");
         let wrong_att = Attestation {
             version: 1,
             rid: ResourceId::new("wrong"),
-            issuer: IdentityDID::new("did:keri:EDifferentIssuer"), // WRONG!
+            issuer: IdentityDID::new_unchecked("did:keri:EDifferentIssuer"), // WRONG!
             subject: wrong_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3331,11 +3333,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store admin
-        let admin_did = DeviceDID::new("did:key:z6MkAdminUser");
+        let admin_did = DeviceDID::new_unchecked("did:key:z6MkAdminUser");
         let admin_att = Attestation {
             version: 1,
             rid: ResourceId::new("admin"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: admin_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3354,11 +3356,11 @@ mod tests {
         backend.store_org_member(org, &admin_att).unwrap();
 
         // Store member
-        let member_did = DeviceDID::new("did:key:z6MkMemberUser");
+        let member_did = DeviceDID::new_unchecked("did:key:z6MkMemberUser");
         let member_att = Attestation {
             version: 1,
             rid: ResourceId::new("member"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: member_did,
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3399,11 +3401,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store member with sign_commit capability
-        let signer_did = DeviceDID::new("did:key:z6MkSigner1");
+        let signer_did = DeviceDID::new_unchecked("did:key:z6MkSigner1");
         let signer_att = Attestation {
             version: 1,
             rid: ResourceId::new("signer"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: signer_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3422,11 +3424,11 @@ mod tests {
         backend.store_org_member(org, &signer_att).unwrap();
 
         // Store member without capabilities
-        let nocap_did = DeviceDID::new("did:key:z6MkNoCaps1");
+        let nocap_did = DeviceDID::new_unchecked("did:key:z6MkNoCaps1");
         let nocap_att = Attestation {
             version: 1,
             rid: ResourceId::new("nocap"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: nocap_did,
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3467,11 +3469,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store member with both capabilities
-        let both_did = DeviceDID::new("did:key:z6MkBothCaps");
+        let both_did = DeviceDID::new_unchecked("did:key:z6MkBothCaps");
         let both_att = Attestation {
             version: 1,
             rid: ResourceId::new("both"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: both_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3490,11 +3492,11 @@ mod tests {
         backend.store_org_member(org, &both_att).unwrap();
 
         // Store member with only sign_commit
-        let one_did = DeviceDID::new("did:key:z6MkOneCap1");
+        let one_did = DeviceDID::new_unchecked("did:key:z6MkOneCap1");
         let one_att = Attestation {
             version: 1,
             rid: ResourceId::new("one"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: one_did,
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3534,11 +3536,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store valid member
-        let valid_did = DeviceDID::new("did:key:z6MkValid11");
+        let valid_did = DeviceDID::new_unchecked("did:key:z6MkValid11");
         let valid_att = Attestation {
             version: 1,
             rid: ResourceId::new("valid"),
-            issuer: IdentityDID::new(format!("did:keri:{}", org)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
             subject: valid_did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3620,11 +3622,11 @@ mod tests {
         ];
 
         for (did_str, revoked_at, expires_at) in &dids {
-            let did = DeviceDID::new(*did_str);
+            let did = DeviceDID::new_unchecked(*did_str);
             let att = Attestation {
                 version: 1,
                 rid: ResourceId::new("test"),
-                issuer: IdentityDID::new(format!("did:keri:{}", org)),
+                issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
                 subject: did,
                 device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
                 identity_signature: Ed25519Signature::empty(),
@@ -3670,11 +3672,11 @@ mod tests {
     fn attestation_source_load_for_device() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new("did:key:z6MkSourceTest");
+        let did = DeviceDID::new_unchecked("did:key:z6MkSourceTest");
         let attestation = Attestation {
             version: 1,
             rid: ResourceId::new("source-test"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3703,7 +3705,7 @@ mod tests {
     fn attestation_source_load_for_nonexistent() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new("did:key:z6MkNonexistent");
+        let did = DeviceDID::new_unchecked("did:key:z6MkNonexistent");
         let loaded = backend.load_attestations_for_device(&did).unwrap();
         assert!(loaded.is_empty());
     }
@@ -3714,11 +3716,11 @@ mod tests {
 
         // Store multiple attestations
         for i in 0..3 {
-            let did = DeviceDID::new(format!("did:key:z6MkDevice{}", i));
+            let did = DeviceDID::new_unchecked(format!("did:key:z6MkDevice{}", i));
             let attestation = Attestation {
                 version: 1,
                 rid: ResourceId::new(format!("rid-{}", i)),
-                issuer: IdentityDID::new("did:keri:EIssuer"),
+                issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
                 subject: did,
                 device_public_key: Ed25519PublicKey::from_bytes([i as u8; 32]),
                 identity_signature: Ed25519Signature::empty(),
@@ -3747,14 +3749,14 @@ mod tests {
 
         // Store attestations for multiple devices
         let dids: Vec<_> = (0..3)
-            .map(|i| DeviceDID::new(format!("did:key:z6MkDiscover{}", i)))
+            .map(|i| DeviceDID::new_unchecked(format!("did:key:z6MkDiscover{}", i)))
             .collect();
 
         for did in &dids {
             let attestation = Attestation {
                 version: 1,
                 rid: ResourceId::new("discover-test"),
-                issuer: IdentityDID::new("did:keri:EIssuer"),
+                issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
                 subject: did.clone(),
                 device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
                 identity_signature: Ed25519Signature::empty(),
@@ -3790,11 +3792,11 @@ mod tests {
     fn attestation_sink_export() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new("did:key:z6MkSinkTest");
+        let did = DeviceDID::new_unchecked("did:key:z6MkSinkTest");
         let attestation = Attestation {
             version: 1,
             rid: ResourceId::new("sink-test"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3826,13 +3828,13 @@ mod tests {
     fn attestation_sink_export_updates_existing() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new("did:key:z6MkUpdateTest");
+        let did = DeviceDID::new_unchecked("did:key:z6MkUpdateTest");
 
         // First export
         let attestation1 = Attestation {
             version: 1,
             rid: ResourceId::new("original"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -3856,7 +3858,7 @@ mod tests {
         let attestation2 = Attestation {
             version: 1,
             rid: ResourceId::new("updated"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did.clone(),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
@@ -4117,8 +4119,8 @@ mod index_consistency_tests {
         Attestation {
             version: 1,
             rid: ResourceId::new(rid),
-            issuer: IdentityDID::new(format!("did:keri:{}", org_prefix)),
-            subject: DeviceDID::new(format!("did:key:z6Mk{}", did_suffix)),
+            issuer: IdentityDID::new_unchecked(format!("did:keri:{}", org_prefix)),
+            subject: DeviceDID::new_unchecked(format!("did:key:z6Mk{}", did_suffix)),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -4362,11 +4364,11 @@ mod tenant_isolation_tests {
     }
 
     fn make_test_attestation(device_did: &str) -> Attestation {
-        let did = DeviceDID::new(device_did);
+        let did = DeviceDID::new_unchecked(device_did);
         Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
-            issuer: IdentityDID::new("did:keri:EIssuer"),
+            issuer: IdentityDID::new_unchecked("did:keri:EIssuer"),
             subject: did,
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),

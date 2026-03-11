@@ -74,7 +74,7 @@ fn test_export_ring_compatible_key() {
     let keychain = fresh_keychain();
     let alias = "test-ring-key";
     let passphrase = "Test-P@ss12345";
-    let identity_did = IdentityDID::new("did:keri:test123");
+    let identity_did = IdentityDID::new_unchecked("did:keri:test123");
 
     // Create and store a ring-compatible key
     let (pkcs8_bytes, _expected_pubkey) = create_ring_compatible_pkcs8();
@@ -112,7 +112,7 @@ fn test_export_non_ring_compatible_key() {
     let keychain = fresh_keychain();
     let alias = "test-nonring-key";
     let passphrase = "Test-P@ss12345";
-    let identity_did = IdentityDID::new("did:keri:test456");
+    let identity_did = IdentityDID::new_unchecked("did:keri:test456");
 
     // Create and store a key that ring can't parse
     let (pkcs8_bytes, _) = create_non_ring_pkcs8();
@@ -151,7 +151,7 @@ fn test_export_with_wrong_passphrase() {
     let alias = "test-wrong-pass";
     let passphrase = "Corr3ct-P@sswd!";
     let wrong_passphrase = "Wr0ng-P@ssword!";
-    let identity_did = IdentityDID::new("did:keri:test789");
+    let identity_did = IdentityDID::new_unchecked("did:keri:test789");
 
     let (pkcs8_bytes, _) = create_ring_compatible_pkcs8();
     let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase).expect("Failed to encrypt");

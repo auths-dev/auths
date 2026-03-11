@@ -125,7 +125,7 @@ fn corrupt_storage_hard_reject() {
             _repo_id: &RepoId,
         ) -> Result<Option<Did>, BridgeError> {
             Err(BridgeError::IdentityCorrupt {
-                did: auths_verifier::IdentityDID::new("unknown"),
+                did: auths_verifier::IdentityDID::new_unchecked("did:keri:Eunknown"),
                 reason: "damaged files".into(),
             })
         }

@@ -59,7 +59,6 @@ pub mod storage;
 pub mod testing;
 pub mod trust;
 pub mod utils;
-pub mod validated_identity_did;
 pub mod witness;
 
 pub use agent::{AgentCore, AgentHandle, AgentSession};

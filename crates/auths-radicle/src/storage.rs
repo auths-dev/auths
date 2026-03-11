@@ -184,7 +184,7 @@ impl AuthsStorage for GitRadicleStorage {
     }
 
     fn load_key_state(&self, identity_did: &Did) -> Result<KeyState, BridgeError> {
-        let did = IdentityDID::new(identity_did.to_string());
+        let did = IdentityDID::new_unchecked(identity_did.to_string());
         let repo = self.lock_repo();
         let events = self.read_kel_events(&repo, &did)?;
         if events.is_empty() {
@@ -204,7 +204,7 @@ impl AuthsStorage for GitRadicleStorage {
         device_did: &Did,
         identity_did: &Did,
     ) -> Result<Attestation, BridgeError> {
-        let dev_did = DeviceDID::new(device_did.to_string());
+        let dev_did = DeviceDID::new_unchecked(device_did.to_string());
         let nid = device_did_to_nid(device_did)?;
         let did_key_ref = self.layout.device_did_key_ref(&nid);
         let did_keri_ref = self.layout.device_did_keri_ref(&nid);
@@ -261,7 +261,7 @@ impl AuthsStorage for GitRadicleStorage {
         device_did: &Did,
         _repo_id: &RepoId,
     ) -> Result<Option<Did>, BridgeError> {
-        let did_context = IdentityDID::new(format!("lookup:{device_did}"));
+        let did_context = IdentityDID::new_unchecked(format!("lookup:{device_did}"));
         let nid = device_did_to_nid(device_did)?;
         let sig_ref = self.layout.device_signatures_ref(&nid);
 
