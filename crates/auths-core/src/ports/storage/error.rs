@@ -63,7 +63,9 @@ impl auths_crypto::AuthsErrorInfo for StorageError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::CasConflict => Some("Retry the operation — another process made a concurrent change"),
+            Self::CasConflict => {
+                Some("Retry the operation — another process made a concurrent change")
+            }
             Self::Io(_) => Some("Check file permissions and disk space"),
             _ => None,
         }

@@ -69,8 +69,12 @@ impl AuthsErrorInfo for FreezeError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::Io(_) => Some("Check file permissions and disk space"),
-            Self::Deserialization(_) => Some("The freeze state file may be corrupted; try deleting it"),
-            Self::InvalidDuration(_) => Some("Use a valid duration format (e.g. '30m', '2h', '7d')"),
+            Self::Deserialization(_) => {
+                Some("The freeze state file may be corrupted; try deleting it")
+            }
+            Self::InvalidDuration(_) => {
+                Some("Use a valid duration format (e.g. '30m', '2h', '7d')")
+            }
             Self::ZeroDuration => Some("Specify a positive duration"),
         }
     }

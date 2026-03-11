@@ -51,7 +51,9 @@ impl crate::AuthsErrorInfo for CryptoError {
         match self {
             Self::InvalidSignature => Some("The signature does not match the data or public key"),
             Self::InvalidKeyLength { .. } => Some("Ensure the key is exactly 32 bytes for Ed25519"),
-            Self::UnsupportedTarget => Some("This operation is not available on the current platform"),
+            Self::UnsupportedTarget => {
+                Some("This operation is not available on the current platform")
+            }
             _ => None,
         }
     }

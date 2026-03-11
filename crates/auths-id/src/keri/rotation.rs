@@ -72,8 +72,12 @@ impl auths_core::error::AuthsErrorInfo for RotationError {
             Self::Kel(_) => Some("Check the KEL state for the identity"),
             Self::Storage(_) => Some("Check storage backend connectivity"),
             Self::Validation(_) => None,
-            Self::IdentityAbandoned => Some("This identity has been abandoned and cannot be rotated"),
-            Self::CommitmentMismatch => Some("The provided next key does not match the pre-rotation commitment"),
+            Self::IdentityAbandoned => {
+                Some("This identity has been abandoned and cannot be rotated")
+            }
+            Self::CommitmentMismatch => {
+                Some("The provided next key does not match the pre-rotation commitment")
+            }
             Self::Serialization(_) => None,
             Self::InvalidKey(_) => Some("Provide a valid Ed25519 key in PKCS#8 format"),
         }

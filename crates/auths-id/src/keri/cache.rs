@@ -69,8 +69,12 @@ impl auths_core::error::AuthsErrorInfo for CacheError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::Io(_) => Some("Check cache directory permissions; the cache is optional and can be cleared"),
-            Self::Json(_) => Some("The cache file may be corrupted; try clearing it with 'auths cache clear'"),
+            Self::Io(_) => {
+                Some("Check cache directory permissions; the cache is optional and can be cleared")
+            }
+            Self::Json(_) => {
+                Some("The cache file may be corrupted; try clearing it with 'auths cache clear'")
+            }
         }
     }
 }

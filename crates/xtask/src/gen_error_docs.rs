@@ -116,12 +116,9 @@ fn scan_all_crates(workspace_root: &Path) -> Result<Vec<ErrorEntry>> {
     let crates_dir = workspace_root.join("crates");
     let mut all_entries: Vec<ErrorEntry> = Vec::new();
 
-    for dir_entry in WalkDir::new(&crates_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for dir_entry in WalkDir::new(&crates_dir).into_iter().filter_map(|e| e.ok()) {
         let path = dir_entry.path();
-        if !path.extension().is_some_and(|ext| ext == "rs") {
+        if path.extension().is_none_or(|ext| ext != "rs") {
             continue;
         }
         let path_str = path.to_string_lossy();
@@ -267,13 +264,9 @@ fn parse_enum_error_attrs(lines: &[&str]) -> BTreeMap<(String, String), String> 
 }
 
 fn extract_enum_name(line: &str) -> Option<String> {
-    let after = if line.starts_with("pub enum ") {
-        Some(&line[9..])
-    } else if line.starts_with("pub(crate) enum ") {
-        Some(&line[16..])
-    } else {
-        None
-    }?;
+    let after = line
+        .strip_prefix("pub enum ")
+        .or_else(|| line.strip_prefix("pub(crate) enum "))?;
 
     let name: String = after
         .chars()
@@ -425,7 +418,9 @@ fn parse_error_code_method(impl_lines: &[&str]) -> Vec<CodeMapping> {
                 }
             }
 
-            if brace_depth <= 0 && results.len() > 0 || trimmed.starts_with("fn ") && in_method && !trimmed.contains("fn error_code") {
+            if brace_depth <= 0 && !results.is_empty()
+                || trimmed.starts_with("fn ") && in_method && !trimmed.contains("fn error_code")
+            {
                 break;
             }
         }
@@ -476,7 +471,9 @@ fn parse_suggestion_method(impl_lines: &[&str]) -> Vec<SuggestionMapping> {
                 }
             }
 
-            if brace_depth <= 0 && results.len() > 0 || trimmed.starts_with("fn ") && in_method && !trimmed.contains("fn suggestion") {
+            if brace_depth <= 0 && !results.is_empty()
+                || trimmed.starts_with("fn ") && in_method && !trimmed.contains("fn suggestion")
+            {
                 break;
             }
         }
@@ -534,24 +531,24 @@ fn validate_unique_codes(entries: &[ErrorEntry]) -> Result<()> {
 fn generate_doc(entry: &ErrorEntry) -> String {
     let mut out = String::new();
     out.push_str(&format!("# {}\n", entry.code));
-    out.push_str("\n");
+    out.push('\n');
     out.push_str(&format!("**Crate:** `{}`  \n", entry.crate_name));
     out.push_str(&format!(
         "**Type:** `{}::{}`\n",
         entry.type_name, entry.variant
     ));
-    out.push_str("\n");
+    out.push('\n');
     out.push_str("## Message\n");
-    out.push_str("\n");
+    out.push('\n');
     if entry.message.is_empty() {
         out.push_str("_(transparent — see inner error)_\n");
     } else {
         out.push_str(&format!("{}\n", entry.message));
     }
     if let Some(ref suggestion) = entry.suggestion {
-        out.push_str("\n");
+        out.push('\n');
         out.push_str("## Suggestion\n");
-        out.push_str("\n");
+        out.push('\n');
         out.push_str(&format!("{}\n", suggestion));
     }
     out
@@ -584,7 +581,7 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
     out.push_str("//! | E4xxx   | auths-id         | 3     |\n");
     out.push_str("//! | E5xxx   | auths-sdk        | 3-4   |\n");
     out.push_str("//! | E6xxx   | auths-cli        | 6     |\n");
-    out.push_str("\n");
+    out.push('\n');
 
     // --- explain() ---
     out.push_str(
@@ -615,7 +612,7 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
     out.push_str("\n        _ => None,\n");
     out.push_str("    }\n");
     out.push_str("}\n");
-    out.push_str("\n");
+    out.push('\n');
 
     // --- all_codes() ---
     out.push_str("/// Returns a sorted slice of all registered error codes.\n");
@@ -627,13 +624,13 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
     out.push_str("    ];\n");
     out.push_str("    CODES\n");
     out.push_str("}\n");
-    out.push_str("\n");
+    out.push('\n');
 
     // --- Tests ---
     out.push_str("#[cfg(test)]\n");
     out.push_str("mod tests {\n");
     out.push_str("    use super::*;\n");
-    out.push_str("\n");
+    out.push('\n');
 
     out.push_str("    #[test]\n");
     out.push_str("    fn explain_returns_content_for_known_code() {\n");
@@ -644,13 +641,13 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
         ));
     }
     out.push_str("    }\n");
-    out.push_str("\n");
+    out.push('\n');
 
     out.push_str("    #[test]\n");
     out.push_str("    fn explain_returns_none_for_unknown_code() {\n");
     out.push_str("        assert!(explain(\"AUTHS-E9999\").is_none());\n");
     out.push_str("    }\n");
-    out.push_str("\n");
+    out.push('\n');
 
     out.push_str("    #[test]\n");
     out.push_str("    fn all_codes_is_sorted() {\n");
@@ -665,7 +662,7 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
     out.push_str("            );\n");
     out.push_str("        }\n");
     out.push_str("    }\n");
-    out.push_str("\n");
+    out.push('\n');
 
     out.push_str("    #[test]\n");
     out.push_str("    fn all_codes_count_matches_registry() {\n");

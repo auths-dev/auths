@@ -43,7 +43,9 @@ impl auths_core::error::AuthsErrorInfo for WitnessIntegrationError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::Collection(_) => Some("Check witness server connectivity and threshold configuration"),
+            Self::Collection(_) => {
+                Some("Check witness server connectivity and threshold configuration")
+            }
             Self::Storage(_) => Some("Check storage backend permissions"),
             Self::Runtime(_) => None,
         }

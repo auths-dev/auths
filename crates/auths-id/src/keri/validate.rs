@@ -105,11 +105,21 @@ impl auths_core::error::AuthsErrorInfo for ValidationError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::InvalidSaid { .. } => Some("The KEL may have been tampered with; re-sync from a trusted source"),
-            Self::BrokenChain { .. } => Some("The KEL chain is broken; re-sync from a trusted source"),
-            Self::InvalidSequence { .. } => Some("The KEL has sequence gaps; re-sync from a trusted source"),
-            Self::CommitmentMismatch { .. } => Some("The rotation key does not match the pre-rotation commitment"),
-            Self::SignatureFailed { .. } => Some("The event signature is invalid; the KEL may be corrupted"),
+            Self::InvalidSaid { .. } => {
+                Some("The KEL may have been tampered with; re-sync from a trusted source")
+            }
+            Self::BrokenChain { .. } => {
+                Some("The KEL chain is broken; re-sync from a trusted source")
+            }
+            Self::InvalidSequence { .. } => {
+                Some("The KEL has sequence gaps; re-sync from a trusted source")
+            }
+            Self::CommitmentMismatch { .. } => {
+                Some("The rotation key does not match the pre-rotation commitment")
+            }
+            Self::SignatureFailed { .. } => {
+                Some("The event signature is invalid; the KEL may be corrupted")
+            }
             Self::NotInception => Some("The first event in a KEL must be an inception event"),
             Self::EmptyKel => Some("No events found; initialize the identity first"),
             Self::MultipleInceptions => Some("A KEL must contain exactly one inception event"),

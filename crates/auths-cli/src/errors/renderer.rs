@@ -172,10 +172,7 @@ mod tests {
     #[test]
     fn docs_url_returns_some_for_known_codes() {
         let url = docs_url("AUTHS-E3001");
-        assert_eq!(
-            url,
-            Some(format!("{DOCS_BASE_URL}/errors/#AUTHS-E3001"))
-        );
+        assert_eq!(url, Some(format!("{DOCS_BASE_URL}/errors/#AUTHS-E3001")));
     }
 
     #[test]

@@ -136,7 +136,9 @@ impl auths_crypto::AuthsErrorInfo for WitnessError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::Duplicity(_) => Some("This identity may be compromised — investigate immediately"),
+            Self::Duplicity(_) => {
+                Some("This identity may be compromised — investigate immediately")
+            }
             Self::Timeout(_) => Some("Check witness endpoint availability and retry"),
             Self::InsufficientReceipts { .. } => Some("Ensure enough witnesses are online"),
             Self::Network(_) => Some("Check your internet connection"),

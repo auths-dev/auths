@@ -62,7 +62,9 @@ impl auths_core::error::AuthsErrorInfo for KelError {
             Self::NotFound(_) => Some("Initialize the identity first with 'auths init'"),
             Self::InvalidOperation(_) => None,
             Self::InvalidData(_) => Some("The KEL data may be corrupted; try re-syncing"),
-            Self::ChainIntegrity(_) => Some("The KEL has non-linear history; this indicates tampering"),
+            Self::ChainIntegrity(_) => {
+                Some("The KEL has non-linear history; this indicates tampering")
+            }
             Self::ValidationFailed(_) => None,
         }
     }

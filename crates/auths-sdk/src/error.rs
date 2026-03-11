@@ -456,7 +456,9 @@ impl AuthsErrorInfo for ApprovalError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::NotApprovalRequired => None,
-            Self::RequestNotFound { .. } => Some("Run `auths approval list` to see pending requests"),
+            Self::RequestNotFound { .. } => {
+                Some("Run `auths approval list` to see pending requests")
+            }
             Self::RequestExpired { .. } => Some("Submit a new approval request"),
             Self::ApprovalAlreadyUsed { .. } => Some("Submit a new approval request"),
             Self::PartialApproval(_) => Some("Check approval status and retry if needed"),

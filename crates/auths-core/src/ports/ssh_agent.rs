@@ -49,7 +49,9 @@ impl auths_crypto::AuthsErrorInfo for SshAgentError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::NotAvailable(_) => Some("Start the SSH agent: eval $(ssh-agent -s)"),
-            Self::CommandFailed(_) => Some("Check that the key file exists and has correct permissions"),
+            Self::CommandFailed(_) => {
+                Some("Check that the key file exists and has correct permissions")
+            }
             Self::IoError(_) => Some("Check file permissions"),
         }
     }

@@ -121,7 +121,9 @@ impl auths_core::error::AuthsErrorInfo for AgentProvisioningError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::RepoCreation(_) => Some("Check that the agent repo path is writable"),
-            Self::IdentityCreation(_) => Some("Identity creation failed; check keychain and backend"),
+            Self::IdentityCreation(_) => {
+                Some("Identity creation failed; check keychain and backend")
+            }
             Self::AttestationCreation(_) => Some("Attestation signing failed; verify key access"),
             Self::KeychainAccess(_) => Some("Check keychain permissions and passphrase"),
             Self::ConfigWrite(_) => Some("Check file permissions and disk space"),

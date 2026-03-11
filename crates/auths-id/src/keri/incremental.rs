@@ -109,11 +109,17 @@ impl auths_core::error::AuthsErrorInfo for IncrementalError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::Kel(_) => None,
-            Self::ChainContinuity { .. } => Some("The KEL chain is broken; clear the cache and retry"),
-            Self::SequenceError { .. } => Some("The KEL has sequence gaps; re-sync from a trusted source"),
+            Self::ChainContinuity { .. } => {
+                Some("The KEL chain is broken; clear the cache and retry")
+            }
+            Self::SequenceError { .. } => {
+                Some("The KEL has sequence gaps; re-sync from a trusted source")
+            }
             Self::MalformedSequence { .. } => None,
             Self::InvalidEventType(_) => None,
-            Self::NonLinearHistory { .. } => Some("The KEL has merge commits, indicating tampering"),
+            Self::NonLinearHistory { .. } => {
+                Some("The KEL has merge commits, indicating tampering")
+            }
             Self::MissingParent { .. } => Some("The KEL commit history is corrupted"),
         }
     }

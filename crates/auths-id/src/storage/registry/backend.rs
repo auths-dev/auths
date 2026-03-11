@@ -85,7 +85,9 @@ impl auths_core::error::AuthsErrorInfo for TenantIdError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::InvalidLength(_) => Some("Tenant ID must be between 1 and 64 characters"),
-            Self::InvalidCharacter(_) => Some("Only lowercase letters, digits, hyphens, and underscores are allowed"),
+            Self::InvalidCharacter(_) => {
+                Some("Only lowercase letters, digits, hyphens, and underscores are allowed")
+            }
             Self::Reserved(_) => Some("Choose a different tenant ID; this name is reserved"),
         }
     }
@@ -292,15 +294,21 @@ impl auths_core::error::AuthsErrorInfo for RegistryError {
             Self::SequenceGap { .. } => Some("Events must be appended in strict sequence order"),
             Self::NotFound { .. } => None,
             Self::Serialization(_) => None,
-            Self::ConcurrentModification(_) => Some("Retry the operation; another process modified the registry"),
+            Self::ConcurrentModification(_) => {
+                Some("Retry the operation; another process modified the registry")
+            }
             Self::SaidMismatch { .. } => Some("The event content does not match its declared SAID"),
             Self::InvalidEvent { .. } => None,
             Self::Io(_) => Some("Check file permissions and disk space"),
             Self::Internal(_) => None,
             Self::InvalidTenantId { .. } => None,
             Self::Attestation(_) => None,
-            Self::StaleAttestation(_) => Some("The attestation has been superseded by a newer version"),
-            Self::NotImplemented { .. } => Some("This operation is not supported by the current backend"),
+            Self::StaleAttestation(_) => {
+                Some("The attestation has been superseded by a newer version")
+            }
+            Self::NotImplemented { .. } => {
+                Some("This operation is not supported by the current backend")
+            }
             Self::BatchValidationFailed { .. } => None,
         }
     }

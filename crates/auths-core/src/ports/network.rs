@@ -149,8 +149,12 @@ impl auths_crypto::AuthsErrorInfo for ResolutionError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::DidNotFound { .. } => Some("Verify the DID is correct and the identity exists"),
-            Self::InvalidDid { .. } => Some("Check the DID format (e.g., did:key:z6Mk... or did:keri:E...)"),
-            Self::KeyRevoked { .. } => Some("This key has been revoked — contact the identity owner"),
+            Self::InvalidDid { .. } => {
+                Some("Check the DID format (e.g., did:key:z6Mk... or did:keri:E...)")
+            }
+            Self::KeyRevoked { .. } => {
+                Some("This key has been revoked — contact the identity owner")
+            }
             Self::Network(_) => Some("Check your internet connection"),
         }
     }
