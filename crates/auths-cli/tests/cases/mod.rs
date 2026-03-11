@@ -1,6 +1,7 @@
 mod doctor;
 mod helpers;
 mod init;
+mod json_output;
 mod key_rotation;
 mod preset;
 mod sign_verify;
