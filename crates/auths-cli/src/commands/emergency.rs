@@ -173,19 +173,23 @@ pub struct EventInfo {
 }
 
 /// Handle the emergency command.
-pub fn handle_emergency(cmd: EmergencyCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
+pub fn handle_emergency(
+    cmd: EmergencyCommand,
+    now: chrono::DateTime<chrono::Utc>,
+    ctx: &crate::config::CliConfig,
+) -> Result<()> {
     match cmd.command {
-        Some(EmergencySubcommand::RevokeDevice(c)) => handle_revoke_device(c, now),
-        Some(EmergencySubcommand::RotateNow(c)) => handle_rotate_now(c, now),
+        Some(EmergencySubcommand::RevokeDevice(c)) => handle_revoke_device(c, now, ctx),
+        Some(EmergencySubcommand::RotateNow(c)) => handle_rotate_now(c, now, ctx),
         Some(EmergencySubcommand::Freeze(c)) => handle_freeze(c, now),
         Some(EmergencySubcommand::Unfreeze(c)) => handle_unfreeze(c, now),
         Some(EmergencySubcommand::Report(c)) => handle_report(c, now),
-        None => handle_interactive_flow(),
+        None => handle_interactive_flow(ctx),
     }
 }
 
 /// Handle interactive emergency flow.
-fn handle_interactive_flow() -> Result<()> {
+fn handle_interactive_flow(ctx: &crate::config::CliConfig) -> Result<()> {
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();
     let out = Output::new();
@@ -232,6 +236,7 @@ fn handle_interactive_flow() -> Result<()> {
                     repo: None,
                 },
                 now,
+                ctx,
             )
         }
         1 => {
@@ -247,6 +252,7 @@ fn handle_interactive_flow() -> Result<()> {
                     repo: None,
                 },
                 now,
+                ctx,
             )
         }
         2 => {
@@ -284,8 +290,9 @@ fn handle_interactive_flow() -> Result<()> {
 fn handle_revoke_device(
     cmd: RevokeDeviceCommand,
     now: chrono::DateTime<chrono::Utc>,
+    ctx: &crate::config::CliConfig,
 ) -> Result<()> {
-    use auths_core::signing::{PassphraseProvider, StorageSigner};
+    use auths_core::signing::StorageSigner;
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::attestation::export::AttestationSink;
     use auths_id::attestation::revoke::create_signed_revocation;
@@ -380,9 +387,6 @@ fn handle_revoke_device(
         .map(|a| a.device_public_key)
         .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
 
-    // Create passphrase provider from terminal
-    let passphrase_provider = crate::core::provider::CliPassphraseProvider::new();
-
     let secure_signer = StorageSigner::new(get_platform_keychain()?);
 
     let revocation_timestamp = now;
@@ -398,7 +402,7 @@ fn handle_revoke_device(
         None,
         revocation_timestamp,
         &secure_signer,
-        &passphrase_provider as &dyn PassphraseProvider,
+        ctx.passphrase_provider.as_ref(),
         &identity_key_alias,
     )
     .map_err(anyhow::Error::from)
@@ -420,7 +424,11 @@ fn handle_revoke_device(
 }
 
 /// Handle emergency key rotation using the real rotation code path.
-fn handle_rotate_now(cmd: RotateNowCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
+fn handle_rotate_now(
+    cmd: RotateNowCommand,
+    now: chrono::DateTime<chrono::Utc>,
+    ctx: &crate::config::CliConfig,
+) -> Result<()> {
     use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
     use auths_id::identity::rotate::rotate_keri_identity;
     use auths_id::storage::layout::{self, StorageLayoutConfig};
@@ -489,8 +497,6 @@ fn handle_rotate_now(cmd: RotateNowCommand, now: chrono::DateTime<chrono::Utc>) 
     let repo_path = layout::resolve_repo_path(cmd.repo)?;
     let config = StorageLayoutConfig::default();
 
-    // Create passphrase provider from terminal
-    let passphrase_provider = crate::core::provider::CliPassphraseProvider::new();
     let keychain = get_platform_keychain()?;
 
     out.print_info("Rotating key...");
@@ -500,7 +506,7 @@ fn handle_rotate_now(cmd: RotateNowCommand, now: chrono::DateTime<chrono::Utc>) 
         &repo_path,
         &current_alias,
         &next_alias,
-        &passphrase_provider,
+        ctx.passphrase_provider.as_ref(),
         &config,
         keychain.as_ref(),
         None,
@@ -831,8 +837,8 @@ use crate::config::CliConfig;
 
 impl ExecutableCommand for EmergencyCommand {
     #[allow(clippy::disallowed_methods)]
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
-        handle_emergency(self.clone(), chrono::Utc::now())
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        handle_emergency(self.clone(), chrono::Utc::now(), ctx)
     }
 }
 

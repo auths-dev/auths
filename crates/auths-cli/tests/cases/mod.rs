@@ -3,6 +3,7 @@ mod helpers;
 mod init;
 mod json_output;
 mod key_rotation;
+mod key_rotation_cli;
 mod preset;
 mod sign_verify;
 mod sign_verify_roundtrip;
