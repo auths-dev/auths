@@ -12,6 +12,7 @@ mod gen_error_docs;
 mod gen_schema;
 mod schemas;
 mod shell;
+mod test_integration;
 
 use clap::{Parser, Subcommand};
 
@@ -46,6 +47,12 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Run CLI integration tests with environment isolation.
+    TestIntegration {
+        /// Run only tests matching this filter expression.
+        #[arg(long)]
+        filter: Option<String>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -63,5 +70,6 @@ fn main() -> anyhow::Result<()> {
         Command::GenerateSchemas => schemas::generate(workspace_root()),
         Command::ValidateSchemas => schemas::validate(workspace_root()),
         Command::GenErrorDocs { check } => gen_error_docs::run(workspace_root(), check),
+        Command::TestIntegration { filter } => test_integration::run(filter.as_deref()),
     }
 }
