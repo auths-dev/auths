@@ -345,8 +345,11 @@ impl IdentityStorage for RegistryIdentityStorage {
         // Load metadata
         let metadata = self.load_metadata(&prefix)?;
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: controller_did is derived from a validated KERI prefix via format!("did:keri:{}", prefix_str)
+        let controller_did = IdentityDID::new_unchecked(controller_did);
         Ok(ManagedIdentity {
-            controller_did: IdentityDID::new_unchecked(controller_did),
+            controller_did,
             storage_id: self.get_storage_id(),
             metadata,
         })

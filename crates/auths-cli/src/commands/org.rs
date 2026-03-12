@@ -662,6 +662,8 @@ pub fn handle_org(
             let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: hex::encode of resolved Ed25519 pubkey always produces valid hex
             let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
                 resolver
                     .resolve(stored_did.as_str())
@@ -776,6 +778,8 @@ pub fn handle_org(
             let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: hex::encode of resolved Ed25519 pubkey always produces valid hex
             let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
                 resolver
                     .resolve(stored_did.as_str())

@@ -184,6 +184,7 @@ impl AuthsStorage for GitRadicleStorage {
     }
 
     fn load_key_state(&self, identity_did: &Did) -> Result<KeyState, BridgeError> {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: identity_did is a validated radicle Did
         let did = IdentityDID::new_unchecked(identity_did.to_string());
         let repo = self.lock_repo();
         let events = self.read_kel_events(&repo, &did)?;
@@ -204,6 +205,7 @@ impl AuthsStorage for GitRadicleStorage {
         device_did: &Did,
         identity_did: &Did,
     ) -> Result<Attestation, BridgeError> {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: device_did is a validated radicle Did
         let dev_did = DeviceDID::new_unchecked(device_did.to_string());
         let nid = device_did_to_nid(device_did)?;
         let did_key_ref = self.layout.device_did_key_ref(&nid);
@@ -261,6 +263,8 @@ impl AuthsStorage for GitRadicleStorage {
         device_did: &Did,
         _repo_id: &RepoId,
     ) -> Result<Option<Did>, BridgeError> {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: synthetic DID used only as error context identifier
         let did_context = IdentityDID::new_unchecked(format!("lookup:{device_did}"));
         let nid = device_did_to_nid(device_did)?;
         let sig_ref = self.layout.device_signatures_ref(&nid);

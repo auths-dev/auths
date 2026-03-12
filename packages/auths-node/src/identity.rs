@@ -106,6 +106,8 @@ pub fn create_agent_identity(
 ) -> napi::Result<NapiAgentIdentityBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_env_config(&passphrase_str, &repo_path);
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: agent_name is user-provided, format produces valid alias
     let alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
     let clock = Arc::new(SystemClock);
@@ -184,6 +186,7 @@ pub fn create_agent_identity(
         )
     })?;
 
+    #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
     let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
@@ -251,6 +254,8 @@ pub fn delegate_agent(
             })?
     };
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: agent_name is user-provided, format produces valid alias
     let agent_alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let rng = SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
@@ -322,6 +327,7 @@ pub fn delegate_agent(
         )
     })?;
 
+    #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
     let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)

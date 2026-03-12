@@ -230,6 +230,7 @@ pub fn join_pairing_session_ffi(
             .load_identity()
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
 
+        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
         let controller_identity_did =
             IdentityDID::new_unchecked(managed.controller_did.to_string());
 
@@ -402,6 +403,7 @@ pub fn complete_pairing_ffi(
         let managed = identity_storage
             .load_identity()
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
+        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
         let controller_identity_did =
             IdentityDID::new_unchecked(managed.controller_did.to_string());
 
@@ -412,6 +414,7 @@ pub fn complete_pairing_ffi(
         let identity_key_alias_str = aliases.into_iter().next().ok_or_else(|| {
             PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
         })?;
+        #[allow(clippy::disallowed_methods)] // INVARIANT: alias from keychain storage
         let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
 
         let key_storage: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =

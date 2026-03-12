@@ -224,11 +224,16 @@ impl TryFrom<RadAttestation> for Attestation {
     type Error = AttestationConversionError;
 
     fn try_from(rad: RadAttestation) -> Result<Self, Self::Error> {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: rad.canonical_payload.did is a validated radicle Did
+        let issuer = CanonicalDid::new_unchecked(rad.canonical_payload.did.to_string());
+        #[allow(clippy::disallowed_methods)] // INVARIANT: rad.device_did is a validated radicle Did
+        let subject = DeviceDID::new_unchecked(rad.device_did.to_string());
         Ok(Attestation {
             version: 1,
             rid: ResourceId::new(rad.canonical_payload.rid.to_string()),
-            issuer: CanonicalDid::new_unchecked(rad.canonical_payload.did.to_string()),
-            subject: DeviceDID::new_unchecked(rad.device_did.to_string()),
+            issuer,
+            subject,
             device_public_key: Ed25519PublicKey::try_from_slice(rad.device_public_key.as_ref())
                 .map_err(|_e| {
                     AttestationConversionError::InvalidPublicKeyLength(
@@ -288,6 +293,7 @@ impl TryFrom<&Attestation> for RadAttestation {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

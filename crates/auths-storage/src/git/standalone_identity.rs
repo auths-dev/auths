@@ -64,9 +64,12 @@ impl IdentityStorage for GitIdentityStorage {
         let identity_ref_name = identity_ref(&self.config);
         let identity_blob_filename = identity_blob_name(&self.config);
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: controller_did is a validated DID string from the caller (SDK layer)
+        let controller_did = IdentityDID::new_unchecked(controller_did);
         let stored_data = StoredIdentityData {
             version: 1,
-            controller_did: IdentityDID::new_unchecked(controller_did),
+            controller_did,
             metadata,
         };
         let json_bytes = serde_json::to_vec_pretty(&stored_data)?;

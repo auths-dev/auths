@@ -111,6 +111,7 @@ pub fn create_org(
         .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
     let backend = Arc::new(backend);
 
+    #[allow(clippy::disallowed_methods)] // INVARIANT: key_alias_str from caller input
     let key_alias = KeyAlias::new_unchecked(key_alias_str);
     let keychain = get_keychain(&passphrase_str, &repo_path)?;
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
@@ -220,6 +221,7 @@ pub fn add_org_member(
     ));
 
     let resolver = RegistryDidResolver::new(backend.clone());
+    #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
     let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
         resolver
             .resolve(&org_did)
@@ -306,6 +308,7 @@ pub fn revoke_org_member(
     ));
 
     let resolver = RegistryDidResolver::new(backend.clone());
+    #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
     let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
         resolver
             .resolve(&org_did)

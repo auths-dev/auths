@@ -77,6 +77,7 @@ pub fn pin_identity(
                 format!("Cannot resolve public key for {did}: {e}"),
             )
         })?;
+    #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
     let public_key_hex = PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes()));
 
     #[allow(clippy::disallowed_methods)]

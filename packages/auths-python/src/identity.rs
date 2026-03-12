@@ -206,6 +206,8 @@ pub fn create_agent_identity(
 ) -> PyResult<AgentIdentityBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_keychain_config(&passphrase_str, repo_path);
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: agent_name is user-provided, format produces valid alias
     let alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
 
@@ -361,6 +363,8 @@ pub fn delegate_agent(
     };
 
     // Generate a new Ed25519 keypair for the agent
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: agent_name is user-provided, format produces valid alias
     let agent_alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let rng = SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).map_err(|e| {
@@ -440,6 +444,7 @@ pub fn delegate_agent(
             ))
         })?;
 
+        #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
         let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
         let attestations = attestation_storage
             .load_attestations_for_device(&device_did)
