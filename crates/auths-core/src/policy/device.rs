@@ -78,13 +78,13 @@ impl Action {
 /// ```rust
 /// use auths_core::policy::{Decision, device::{Action, authorize_device}};
 /// use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature};
-/// use auths_verifier::types::DeviceDID;
+/// use auths_verifier::types::{CanonicalDid, DeviceDID};
 /// use chrono::Utc;
 ///
 /// let attestation = Attestation {
 ///     version: 1,
 ///     rid: "test".into(),
-///     issuer: "did:keri:ETest".into(),
+///     issuer: CanonicalDid::new_unchecked("did:keri:ETest"),
 ///     subject: DeviceDID::new_unchecked("did:key:z6Mk..."),
 ///     device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
 ///     identity_signature: Ed25519Signature::empty(),
