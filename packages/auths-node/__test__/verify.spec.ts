@@ -52,7 +52,7 @@ describe('verifyChain', () => {
 describe('verifyDeviceAuthorization', () => {
   it('empty attestations returns report', async () => {
     const report = await verifyDeviceAuthorization(
-      'did:key:identity', 'did:key:device', [], 'a'.repeat(64),
+      'did:keri:Eidentity', 'did:key:zDevice', [], 'a'.repeat(64),
     )
     expect(report.status).toBeDefined()
     expect(report.status.statusType).not.toBe('Valid')

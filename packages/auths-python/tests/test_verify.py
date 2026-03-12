@@ -60,7 +60,7 @@ class TestVerifyDeviceAuthorization:
 
     def test_empty_attestations_returns_report(self):
         report = verify_device_authorization(
-            "did:key:identity", "did:key:device", [], "a" * 64,
+            "did:keri:Eidentity", "did:key:zDevice", [], "a" * 64,
         )
         assert isinstance(report, VerificationReport)
         assert not report.is_valid()
@@ -68,13 +68,13 @@ class TestVerifyDeviceAuthorization:
     def test_invalid_json_raises_value_error(self):
         with pytest.raises(ValueError):
             verify_device_authorization(
-                "did:key:identity", "did:key:device", ["not valid json"], "a" * 64,
+                "did:keri:Eidentity", "did:key:zDevice", ["not valid json"], "a" * 64,
             )
 
     def test_invalid_pk_hex_raises_value_error(self):
         with pytest.raises(ValueError):
             verify_device_authorization(
-                "did:key:identity", "did:key:device", [], "not-hex",
+                "did:keri:Eidentity", "did:key:zDevice", [], "not-hex",
             )
 
 
