@@ -20,8 +20,8 @@ pub struct IndexedAttestation {
     pub device_did: DeviceDID,
     /// Git ref path (e.g., refs/auths/devices/nodes/...)
     pub git_ref: String,
-    /// Git commit OID for loading full attestation
-    pub commit_oid: CommitOid,
+    /// Git commit OID for loading full attestation (None when OID is not yet known)
+    pub commit_oid: Option<CommitOid>,
     /// When this attestation was revoked, if applicable
     pub revoked_at: Option<DateTime<Utc>>,
     /// Optional expiration timestamp
@@ -107,7 +107,7 @@ impl AttestationIndex {
         stmt.bind((2, att.issuer_did.as_str()))?;
         stmt.bind((3, att.device_did.as_str()))?;
         stmt.bind((4, att.git_ref.as_str()))?;
-        stmt.bind((5, att.commit_oid.as_str()))?;
+        stmt.bind((5, att.commit_oid.as_ref().map(|c| c.as_str())))?;
         stmt.bind((6, revoked_at_str.as_deref()))?;
         stmt.bind((7, expires_at_str.as_deref()))?;
         stmt.bind((8, updated_at_str.as_str()))?;
@@ -259,7 +259,7 @@ impl AttestationIndex {
         let issuer_did: String = stmt.read(1)?;
         let device_did: String = stmt.read(2)?;
         let git_ref: String = stmt.read(3)?;
-        let commit_oid: String = stmt.read(4)?;
+        let commit_oid: Option<String> = stmt.read(4)?;
         let revoked_at_str: Option<String> = stmt.read(5)?;
         let expires_at_str: Option<String> = stmt.read(6)?;
         let updated_at_str: String = stmt.read(7)?;
@@ -281,7 +281,9 @@ impl AttestationIndex {
             issuer_did: IdentityDID::new_unchecked(issuer_did),
             device_did: DeviceDID::new_unchecked(device_did),
             git_ref,
-            commit_oid: CommitOid::new_unchecked(commit_oid),
+            commit_oid: commit_oid
+                .filter(|s| !s.is_empty())
+                .and_then(|s| CommitOid::parse(&s).ok()),
             revoked_at,
             expires_at,
             updated_at,
@@ -462,7 +464,7 @@ mod tests {
             issuer_did: IdentityDID::new_unchecked("did:key:issuer123"),
             device_did: DeviceDID::new_unchecked(device),
             git_ref: format!("refs/auths/devices/nodes/{}/signatures", device),
-            commit_oid: CommitOid::new_unchecked("abc123"),
+            commit_oid: None,
             revoked_at,
             expires_at: Some(Utc::now() + Duration::days(30)),
             updated_at: Utc::now(),

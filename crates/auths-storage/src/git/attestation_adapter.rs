@@ -218,7 +218,7 @@ impl AttestationSink for RegistryAttestationStorage {
                 issuer_did: IdentityDID::new_unchecked(attestation.issuer.as_str()),
                 device_did: attestation.subject.clone(),
                 git_ref,
-                commit_oid: auths_verifier::CommitOid::new_unchecked(""),
+                commit_oid: None,
                 revoked_at: attestation.revoked_at,
                 expires_at: attestation.expires_at,
                 updated_at: attestation.timestamp.unwrap_or_else(chrono::Utc::now),

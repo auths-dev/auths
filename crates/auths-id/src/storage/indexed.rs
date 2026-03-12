@@ -91,7 +91,7 @@ impl IndexedAttestationStorage {
             issuer_did: IdentityDID::new_unchecked(att.issuer.as_str()),
             device_did: att.subject.clone(),
             git_ref: git_ref.to_string(),
-            commit_oid: CommitOid::new_unchecked(commit_oid),
+            commit_oid: CommitOid::parse(commit_oid).ok(),
             revoked_at: att.revoked_at,
             expires_at: att.expires_at,
             updated_at: att.timestamp.unwrap_or(now),

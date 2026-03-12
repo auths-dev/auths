@@ -169,8 +169,10 @@ fn initialize_agent(
         .map_err(|e| SetupError::StorageError(e.into()))?;
 
         return Ok(AgentIdentityResult {
-            agent_did: bundle.agent_did,
-            parent_did: IdentityDID::new_unchecked(config.parent_identity_did.unwrap_or_default()),
+            agent_did: Some(bundle.agent_did),
+            parent_did: config
+                .parent_identity_did
+                .and_then(|s| IdentityDID::parse(&s).ok()),
             capabilities: config.capabilities,
         });
     }
@@ -467,10 +469,11 @@ fn build_agent_identity_proposal(
     config: &CreateAgentIdentityConfig,
 ) -> Result<AgentIdentityResult, SetupError> {
     Ok(AgentIdentityResult {
-        agent_did: IdentityDID::new_unchecked(format!("did:keri:E<pending:{}>", config.alias)),
-        parent_did: IdentityDID::new_unchecked(
-            config.parent_identity_did.clone().unwrap_or_default(),
-        ),
+        agent_did: None,
+        parent_did: config
+            .parent_identity_did
+            .as_deref()
+            .and_then(|s| IdentityDID::parse(s).ok()),
         capabilities: config.capabilities.clone(),
     })
 }
