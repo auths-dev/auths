@@ -530,7 +530,11 @@ fn parse_entry_line(
     };
 
     let public_key = Ed25519PublicKey::from_bytes(raw_bytes);
-    let principal = parse_principal(principal_str);
+    let principal =
+        parse_principal(principal_str).ok_or_else(|| AllowedSignersError::ParseError {
+            line: line_num,
+            detail: format!("unrecognized principal format: {}", principal_str),
+        })?;
 
     Ok(SignerEntry {
         principal,
@@ -539,18 +543,20 @@ fn parse_entry_line(
     })
 }
 
-fn parse_principal(s: &str) -> SignerPrincipal {
+fn parse_principal(s: &str) -> Option<SignerPrincipal> {
     if let Some(local) = s.strip_suffix("@auths.local") {
         let did_str = format!("did:key:{}", local);
-        return SignerPrincipal::DeviceDid(DeviceDID::new_unchecked(did_str));
+        if let Ok(did) = DeviceDID::parse(&did_str) {
+            return Some(SignerPrincipal::DeviceDid(did));
+        }
     }
-    if s.starts_with("did:key:") {
-        return SignerPrincipal::DeviceDid(DeviceDID::new_unchecked(s));
+    if let Ok(did) = DeviceDID::parse(s) {
+        return Some(SignerPrincipal::DeviceDid(did));
     }
-    match EmailAddress::new(s) {
-        Ok(addr) => SignerPrincipal::Email(addr),
-        Err(_) => SignerPrincipal::DeviceDid(DeviceDID::new_unchecked(s)),
+    if let Ok(addr) = EmailAddress::new(s) {
+        return Some(SignerPrincipal::Email(addr));
     }
+    None
 }
 
 fn format_entry(entry: &SignerEntry) -> String {
@@ -604,12 +610,12 @@ mod tests {
     #[test]
     fn principal_roundtrip() {
         let email_p = SignerPrincipal::Email(EmailAddress::new("user@example.com").unwrap());
-        let parsed = parse_principal(&email_p.to_string());
+        let parsed = parse_principal(&email_p.to_string()).unwrap();
         assert_eq!(parsed, email_p);
 
         let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
         let did_p = SignerPrincipal::DeviceDid(did);
-        let parsed = parse_principal(&did_p.to_string());
+        let parsed = parse_principal(&did_p.to_string()).unwrap();
         assert_eq!(parsed, did_p);
     }
 

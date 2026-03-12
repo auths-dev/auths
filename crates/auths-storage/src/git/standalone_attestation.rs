@@ -4,6 +4,7 @@ use auths_id::storage::layout::{
     StorageLayoutConfig, attestation_blob_name, attestation_ref_for_device,
     default_attestation_prefixes,
 };
+use auths_id::storage::registry::shard::unsanitize_did;
 use auths_verifier::core::Attestation;
 use auths_verifier::types::DeviceDID;
 use git2::{ErrorCode, Repository, Tree};
@@ -198,7 +199,12 @@ impl AttestationSource for GitAttestationStorage {
                                     sanitized_did,
                                     full_ref_name
                                 );
-                                discovered_dids.insert(DeviceDID::new_unchecked(sanitized_did));
+                                let did_str = unsanitize_did(sanitized_did);
+                                if let Ok(did) = DeviceDID::parse(&did_str) {
+                                    discovered_dids.insert(did);
+                                } else {
+                                    log::warn!("Skipping unparseable DID from ref: {}", did_str);
+                                }
                             }
                         }
                     }

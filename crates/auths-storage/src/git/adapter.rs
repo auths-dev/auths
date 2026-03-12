@@ -1328,9 +1328,15 @@ impl RegistryBackend for GitRegistryBackend {
 
                 // Level 3: device DIDs
                 if let Err(e) = navigator.visit_dir(&s2_parts, |sanitized_did| {
-                    // Convert back to proper DID format
-                    let did = unsanitize_did(sanitized_did);
-                    visitor(&DeviceDID::new_unchecked(did))
+                    let did_str = unsanitize_did(sanitized_did);
+                    let did = match DeviceDID::parse(&did_str) {
+                        Ok(d) => d,
+                        Err(_) => {
+                            log::warn!("Skipping unparseable DID from tree: {}", did_str);
+                            return ControlFlow::Continue(());
+                        }
+                    };
+                    visitor(&did)
                 }) {
                     captured_error.set(Some(e));
                     return ControlFlow::Break(());
@@ -1432,9 +1438,14 @@ impl RegistryBackend for GitRegistryBackend {
                 return ControlFlow::Continue(());
             };
 
-            // Derive DID from filename
             let did_str = unsanitize_did(sanitized_did);
-            let did = DeviceDID::new_unchecked(did_str.clone());
+            let did = match DeviceDID::parse(&did_str) {
+                Ok(d) => d,
+                Err(_) => {
+                    log::warn!("Skipping unparseable member DID: {}", did_str);
+                    return ControlFlow::Continue(());
+                }
+            };
 
             // Read blob and parse attestation
             let full_path = paths::child(&members_path, filename);

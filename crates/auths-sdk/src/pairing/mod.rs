@@ -275,7 +275,10 @@ pub fn verify_device_did(device_pubkey: &[u8; 32], claimed_did: &str) -> Result<
     use auths_verifier::types::DeviceDID;
 
     let derived = DeviceDID::from_ed25519(device_pubkey);
-    let claimed = DeviceDID::new_unchecked(claimed_did.to_string());
+    let claimed = DeviceDID::parse(claimed_did).map_err(|_| PairingError::DidMismatch {
+        response: claimed_did.to_string(),
+        derived: derived.to_string(),
+    })?;
 
     if derived != claimed {
         return Err(PairingError::DidMismatch {
@@ -343,7 +346,8 @@ pub fn create_pairing_attestation(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let target_did = DeviceDID::new_unchecked(params.device_did_str.to_string());
+    let target_did = DeviceDID::parse(params.device_did_str)
+        .map_err(|e| PairingError::AttestationFailed(format!("invalid device DID: {e}")))?;
     let secure_signer = StorageSigner::new(Arc::clone(&params.key_storage));
 
     let attestation = create_signed_attestation(
@@ -844,7 +848,9 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
 
     Ok(PairingCompletionResult::Success {
-        device_did: DeviceDID::new_unchecked(pairing_response.device_did),
+        device_did: DeviceDID::parse(&pairing_response.device_did).map_err(|e| {
+            PairingError::AttestationFailed(format!("invalid device DID in response: {e}"))
+        })?,
         device_name: None,
     })
 }
