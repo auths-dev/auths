@@ -437,7 +437,8 @@ mod tests {
             registry: DEFAULT_REGISTRY_URL.to_string(),
             skip_registration: false,
         };
-        // In test context, stdin is not a TTY
-        assert!(!resolve_interactive(&cmd).unwrap());
+        // Auto-detect returns is_terminal() — result depends on environment
+        let result = resolve_interactive(&cmd).unwrap();
+        assert_eq!(result, std::io::stdin().is_terminal());
     }
 }
