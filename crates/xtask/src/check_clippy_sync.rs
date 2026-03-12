@@ -1,10 +1,9 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-// DID/newtype rules (auths_verifier::*) require all call sites to be annotated
-// before they can be added to sans-IO crate clippy.toml files. Tracked by fn-70.3.
-// Once fn-70.3 completes, remove this filter and add DID rules to all crate configs.
-const DEFERRED_RULE_PREFIXES: &[&str] = &["auths_verifier::"];
+// All DID/newtype rules are now propagated to crate configs (fn-70.3 complete).
+// Keep this mechanism for any future rules that need staged rollout.
+const DEFERRED_RULE_PREFIXES: &[&str] = &[];
 
 pub fn run(workspace_root: &Path) -> anyhow::Result<()> {
     let workspace_toml = workspace_root.join("clippy.toml");

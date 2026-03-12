@@ -91,6 +91,8 @@ pub fn create_signed_attestation(
     }
 
     // Construct the canonical data to be signed
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: identity_did is an IdentityDID which guarantees valid DID format
     let issuer_canonical = CanonicalDid::new_unchecked(identity_did.as_str());
     let delegated_canonical = delegated_by.as_ref().map(|d| CanonicalDid::from(d.clone()));
     let data_to_canonicalize = CanonicalAttestationData {

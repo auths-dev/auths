@@ -227,6 +227,8 @@ impl KeyStorage for Pkcs11KeyRef {
             })
             .ok_or(AgentError::KeyNotFound)?;
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: loaded from PKCS#11 token which stores validated DIDs
         let identity_did = IdentityDID::new_unchecked(
             String::from_utf8(id_bytes)
                 .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?,
@@ -317,6 +319,8 @@ impl KeyStorage for Pkcs11KeyRef {
             })
             .ok_or(AgentError::KeyNotFound)?;
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: loaded from PKCS#11 token which stores validated DIDs
         Ok(IdentityDID::new_unchecked(
             String::from_utf8(id_bytes)
                 .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?,

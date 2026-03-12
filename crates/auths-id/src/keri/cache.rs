@@ -126,9 +126,11 @@ pub fn write_kel_cache(
 ) -> Result<(), CacheError> {
     let cache = CachedKelState {
         version: CACHE_VERSION,
+        #[allow(clippy::disallowed_methods)] // INVARIANT: callers pass a did:keri string that was resolved via parse_did_keri()
         did: IdentityDID::new_unchecked(did),
         sequence: state.sequence,
         validated_against_tip_said: Said::new_unchecked(tip_said.to_string()),
+        #[allow(clippy::disallowed_methods)] // INVARIANT: callers pass the hex-encoded Git commit OID read from the repository
         last_commit_oid: CommitOid::new_unchecked(commit_oid),
         state: state.clone(),
         cached_at: now,

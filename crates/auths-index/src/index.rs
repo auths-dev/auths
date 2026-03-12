@@ -276,10 +276,17 @@ impl AttestationIndex {
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: issuer_did was validated on insert via upsert_attestation and stored in SQLite
+        let issuer_did = IdentityDID::new_unchecked(issuer_did);
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: device_did was validated on insert via upsert_attestation and stored in SQLite
+        let device_did = DeviceDID::new_unchecked(device_did);
+
         Ok(IndexedAttestation {
             rid: ResourceId::new(rid),
-            issuer_did: IdentityDID::new_unchecked(issuer_did),
-            device_did: DeviceDID::new_unchecked(device_did),
+            issuer_did,
+            device_did,
             git_ref,
             commit_oid: commit_oid
                 .filter(|s| !s.is_empty())
@@ -408,10 +415,20 @@ impl AttestationIndex {
             let expires_str: Option<String> = stmt.read(5)?;
             let updated_str: String = stmt.read(6)?;
 
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: org_prefix was validated on insert via upsert_org_member and stored in SQLite
+            let org_prefix = Prefix::new_unchecked(org_prefix);
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: member_did was validated on insert via upsert_org_member and stored in SQLite
+            let member_did = DeviceDID::new_unchecked(member_did);
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: issuer_did was validated on insert via upsert_org_member and stored in SQLite
+            let issuer_did = IdentityDID::new_unchecked(issuer_did);
+
             members.push(IndexedOrgMember {
-                org_prefix: Prefix::new_unchecked(org_prefix),
-                member_did: DeviceDID::new_unchecked(member_did),
-                issuer_did: IdentityDID::new_unchecked(issuer_did),
+                org_prefix,
+                member_did,
+                issuer_did,
                 rid: ResourceId::new(rid),
                 revoked_at: parse_dt(revoked_str),
                 expires_at: parse_dt(expires_str),
@@ -459,10 +476,15 @@ mod tests {
         device: &str,
         revoked_at: Option<DateTime<Utc>>,
     ) -> IndexedAttestation {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literal
+        let issuer_did = IdentityDID::new_unchecked("did:key:issuer123");
+        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only DID string from caller
+        let device_did = DeviceDID::new_unchecked(device);
+
         IndexedAttestation {
             rid: ResourceId::new(rid),
-            issuer_did: IdentityDID::new_unchecked("did:key:issuer123"),
-            device_did: DeviceDID::new_unchecked(device),
+            issuer_did,
+            device_did,
             git_ref: format!("refs/auths/devices/nodes/{}/signatures", device),
             commit_oid: None,
             revoked_at,
@@ -642,6 +664,7 @@ mod tests {
     #[test]
     fn test_upsert_and_list_org_members() {
         let index = AttestationIndex::in_memory().unwrap();
+        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literals
         let member = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
             member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
@@ -663,6 +686,7 @@ mod tests {
     #[test]
     fn test_upsert_org_member_updates_existing() {
         let index = AttestationIndex::in_memory().unwrap();
+        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literals
         let member = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
             member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
@@ -674,6 +698,7 @@ mod tests {
         };
         index.upsert_org_member(&member).unwrap();
 
+        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literals
         let updated = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
             member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
@@ -697,17 +722,18 @@ mod tests {
         assert_eq!(index.count_org_members("did:keri:EOrg").unwrap(), 0);
 
         for i in 0..3 {
-            index
-                .upsert_org_member(&IndexedOrgMember {
-                    org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
-                    member_did: DeviceDID::new_unchecked(format!("did:key:z6MkMember{}", i)),
-                    issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
-                    rid: ResourceId::new(format!("rid-{}", i)),
-                    revoked_at: None,
-                    expires_at: None,
-                    updated_at: Utc::now(),
-                })
-                .unwrap();
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: test-only hardcoded DID string literals
+            let member = IndexedOrgMember {
+                org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
+                member_did: DeviceDID::new_unchecked(format!("did:key:z6MkMember{}", i)),
+                issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+                rid: ResourceId::new(format!("rid-{}", i)),
+                revoked_at: None,
+                expires_at: None,
+                updated_at: Utc::now(),
+            };
+            index.upsert_org_member(&member).unwrap();
         }
 
         assert_eq!(index.count_org_members("did:keri:EOrg").unwrap(), 3);

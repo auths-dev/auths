@@ -381,6 +381,8 @@ pub unsafe extern "C" fn ffi_import_key(
             }
         };
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: validated with starts_with("did:") guard above
         let did_string = IdentityDID::new_unchecked(did_str.to_string());
         let alias = KeyAlias::new_unchecked(alias_str);
 

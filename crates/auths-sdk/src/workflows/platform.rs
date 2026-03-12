@@ -211,6 +211,8 @@ fn resolve_signing_key_alias(
     ctx: &AuthsContext,
     controller_did: &str,
 ) -> Result<KeyAlias, PlatformError> {
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: controller_did comes from load_controller_did() which returns into_inner() of a validated IdentityDID from storage
     let identity_did = IdentityDID::new_unchecked(controller_did.to_string());
     let aliases = ctx
         .key_storage

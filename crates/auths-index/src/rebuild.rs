@@ -118,10 +118,17 @@ fn extract_attestation_from_ref(
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(Utc::now);
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: issuer_did extracted from attestation JSON stored in a signed Git commit
+    let issuer_did = IdentityDID::new_unchecked(&issuer_did);
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: device_did extracted from attestation JSON stored in a signed Git commit
+    let device_did = DeviceDID::new_unchecked(&device_did);
+
     Ok(IndexedAttestation {
         rid: ResourceId::new(rid),
-        issuer_did: IdentityDID::new_unchecked(&issuer_did),
-        device_did: DeviceDID::new_unchecked(&device_did),
+        issuer_did,
+        device_did,
         git_ref: ref_name.to_string(),
         commit_oid: CommitOid::parse(&commit.id().to_string()).ok(),
         revoked_at,

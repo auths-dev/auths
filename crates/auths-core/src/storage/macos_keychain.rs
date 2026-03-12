@@ -321,6 +321,8 @@ impl KeyStorage for MacOSKeychain {
             .unwrap_or(KeyRole::Primary);
 
         debug!("Successfully loaded key for alias '{}'", alias);
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: loaded from macOS Keychain which stores validated DIDs
         Ok((IdentityDID::new_unchecked(identity_did_str), role, key_data))
     }
 
@@ -659,6 +661,8 @@ impl KeyStorage for MacOSKeychain {
         }
 
         debug!("Found identity DID for alias '{}'", alias);
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: loaded from macOS Keychain which stores validated DIDs
         Ok(IdentityDID::new_unchecked(identity_did_str))
     }
 

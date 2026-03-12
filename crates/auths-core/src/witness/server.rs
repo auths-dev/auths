@@ -79,6 +79,8 @@ impl WitnessServerConfig {
         let (seed, public_key) = provider_bridge::generate_ed25519_keypair_sync()
             .map_err(|e| WitnessError::Network(format!("failed to generate keypair: {}", e)))?;
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: format! with "did:key:z6Mk" prefix guarantees valid did:key URI structure
         let witness_did =
             DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
 
@@ -184,6 +186,8 @@ impl WitnessServerState {
         let (seed, public_key) = provider_bridge::generate_ed25519_keypair_sync()
             .map_err(|e| WitnessError::Network(format!("failed to generate keypair: {}", e)))?;
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: format! with "did:key:z6Mk" prefix guarantees valid did:key URI structure
         let witness_did =
             DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
 

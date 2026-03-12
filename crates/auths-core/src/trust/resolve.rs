@@ -157,6 +157,7 @@ pub fn resolve_trust(
                 if prompt(&msg) {
                     let pin = PinnedIdentity {
                         did,
+                        #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode on line 151 guarantees valid hex output
                         public_key_hex: PublicKeyHex::new_unchecked(pk_hex),
                         kel_tip_said: None,
                         kel_sequence: None,
@@ -188,6 +189,7 @@ pub fn resolve_trust(
         TrustDecision::RotationVerified { old_pin, proof } => {
             let updated = PinnedIdentity {
                 did: old_pin.did,
+                #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid lowercase hex
                 public_key_hex: PublicKeyHex::new_unchecked(hex::encode(&proof.new_public_key)),
                 kel_tip_said: Some(proof.new_kel_tip),
                 kel_sequence: Some(proof.new_sequence),

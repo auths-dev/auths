@@ -310,11 +310,13 @@ pub fn verify_receipts(
                     Ok(true) => continue,
                     Ok(false) => {
                         return ReceiptVerificationResult::InvalidSignature {
+                            #[allow(clippy::disallowed_methods)] // INVARIANT: receipt.i is a witness DID from a deserialized KERI receipt
                             witness_did: DeviceDID::new_unchecked(&receipt.i),
                         };
                     }
                     Err(_) => {
                         return ReceiptVerificationResult::InvalidSignature {
+                            #[allow(clippy::disallowed_methods)] // INVARIANT: receipt.i is a witness DID from a deserialized KERI receipt
                             witness_did: DeviceDID::new_unchecked(&receipt.i),
                         };
                     }

@@ -623,6 +623,7 @@ pub trait RegistryBackend: Send + Sync {
                     status,
                     role: att.role,
                     capabilities: att.capabilities.clone(),
+                    #[allow(clippy::disallowed_methods)] // INVARIANT: att.issuer is a CanonicalDid parsed from validated attestation JSON
                     issuer: IdentityDID::new_unchecked(att.issuer.as_str()),
                     rid: att.rid.clone(),
                     revoked_at,
