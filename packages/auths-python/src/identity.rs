@@ -21,7 +21,7 @@ use auths_storage::git::RegistryIdentityStorage;
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
 use auths_verifier::types::DeviceDID;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -52,7 +52,8 @@ pub(crate) fn resolve_key_alias(
     keychain: &(dyn KeyStorage + Send + Sync),
 ) -> PyResult<KeyAlias> {
     if identity_ref.starts_with("did:") {
-        let did = IdentityDID::new_unchecked(identity_ref.to_string());
+        let did =
+            IdentityDID::parse(identity_ref).map_err(|e| PyValueError::new_err(format!("{e}")))?;
         let aliases = keychain
             .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
             .map_err(|e| {

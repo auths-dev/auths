@@ -41,7 +41,8 @@ fn find_signer_alias(
     org_did: &str,
     keychain: &(dyn auths_core::storage::keychain::KeyStorage + Send + Sync),
 ) -> napi::Result<KeyAlias> {
-    let identity_did = IdentityDID::new_unchecked(org_did.to_string());
+    let identity_did =
+        IdentityDID::parse(org_did).map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
     let aliases = keychain
         .list_aliases_for_identity(&identity_did)
         .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;

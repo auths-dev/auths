@@ -41,7 +41,8 @@ fn find_signer_alias(
     org_did: &str,
     keychain: &(dyn auths_core::storage::keychain::KeyStorage + Send + Sync),
 ) -> PyResult<KeyAlias> {
-    let identity_did = IdentityDID::new_unchecked(org_did.to_string());
+    let identity_did = IdentityDID::parse(org_did)
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
     let aliases = keychain
         .list_aliases_for_identity(&identity_did)
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
@@ -127,7 +128,7 @@ pub fn create_org(
         };
 
         let signer = StorageSigner::new(keychain);
-        let org_did_device = DeviceDID::new_unchecked(controller_did.to_string());
+        let org_did_device = DeviceDID::from_ed25519(org_pk_bytes.as_bytes());
 
         let attestation = create_signed_attestation(
             now,

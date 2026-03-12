@@ -435,7 +435,8 @@ pub fn get_identity_public_key(
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
 
-    let did = auths_verifier::types::IdentityDID::new_unchecked(&identity_did);
+    let did = auths_verifier::types::IdentityDID::parse(&identity_did)
+        .map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
     let aliases = keychain
         .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key lookup failed: {e}")))?;

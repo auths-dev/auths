@@ -99,6 +99,6 @@ pub fn get_latest_attestation(
         )
     })?;
     let group = AttestationGroup::from_list(all);
-    let did = DeviceDID::new_unchecked(device_did);
+    let did = DeviceDID::parse(&device_did).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
     Ok(group.latest(&did).map(attestation_to_napi))
 }

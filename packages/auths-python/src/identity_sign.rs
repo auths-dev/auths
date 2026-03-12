@@ -3,7 +3,7 @@ use auths_core::signing::{PrefilledPassphraseProvider, SecureSigner, StorageSign
 use auths_core::storage::keychain::{KeyAlias, KeyRole, get_platform_keychain_with_config};
 use auths_verifier::core::MAX_ATTESTATION_JSON_SIZE;
 use auths_verifier::types::IdentityDID;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
 fn make_signer(
@@ -58,7 +58,8 @@ pub fn sign_as_identity(
     passphrase: Option<String>,
 ) -> PyResult<String> {
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
-    let did = IdentityDID::new_unchecked(identity_did);
+    let did =
+        IdentityDID::parse(identity_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
 
     let msg = message.to_vec();
     py.allow_threads(move || {
@@ -123,7 +124,8 @@ pub fn sign_action_as_identity(
     })?;
 
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
-    let did = IdentityDID::new_unchecked(identity_did);
+    let did =
+        IdentityDID::parse(identity_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
 
     let action_type_owned = action_type.to_string();
     let identity_did_owned = identity_did.to_string();
@@ -173,7 +175,8 @@ pub fn get_identity_public_key(
     passphrase: Option<String>,
 ) -> PyResult<String> {
     let (signer, provider) = make_signer(Some(repo_path), passphrase)?;
-    let did = IdentityDID::new_unchecked(identity_did);
+    let did =
+        IdentityDID::parse(identity_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
 
     py.allow_threads(move || {
         let aliases = signer

@@ -178,7 +178,8 @@ pub fn extend_device_authorization(
 
     let ext_config = DeviceExtensionConfig {
         repo_path: repo,
-        device_did: DeviceDID::new_unchecked(&device_did),
+        device_did: DeviceDID::parse(&device_did)
+            .map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?,
         days,
         identity_key_alias: alias,
         device_key_alias: None,
