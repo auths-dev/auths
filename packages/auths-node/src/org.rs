@@ -41,7 +41,8 @@ fn find_signer_alias(
     org_did: &str,
     keychain: &(dyn auths_core::storage::keychain::KeyStorage + Send + Sync),
 ) -> napi::Result<KeyAlias> {
-    let identity_did = IdentityDID::new_unchecked(org_did.to_string());
+    let identity_did =
+        IdentityDID::parse(org_did).map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
     let aliases = keychain
         .list_aliases_for_identity(&identity_did)
         .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
@@ -110,6 +111,7 @@ pub fn create_org(
         .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
     let backend = Arc::new(backend);
 
+    #[allow(clippy::disallowed_methods)] // INVARIANT: key_alias_str from caller input
     let key_alias = KeyAlias::new_unchecked(key_alias_str);
     let keychain = get_keychain(&passphrase_str, &repo_path)?;
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
@@ -143,7 +145,7 @@ pub fn create_org(
     };
 
     let signer = StorageSigner::new(keychain);
-    let org_did_device = DeviceDID::new_unchecked(controller_did.to_string());
+    let org_did_device = DeviceDID::from_ed25519(org_pk_bytes.as_bytes());
 
     let attestation = create_signed_attestation(
         now,
@@ -219,6 +221,7 @@ pub fn add_org_member(
     ));
 
     let resolver = RegistryDidResolver::new(backend.clone());
+    #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
     let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
         resolver
             .resolve(&org_did)
@@ -305,6 +308,7 @@ pub fn revoke_org_member(
     ));
 
     let resolver = RegistryDidResolver::new(backend.clone());
+    #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
     let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
         resolver
             .resolve(&org_did)

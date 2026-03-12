@@ -123,7 +123,7 @@ fn extract_attestation_from_ref(
         issuer_did: IdentityDID::new_unchecked(&issuer_did),
         device_did: DeviceDID::new_unchecked(&device_did),
         git_ref: ref_name.to_string(),
-        commit_oid: CommitOid::new_unchecked(commit.id().to_string()),
+        commit_oid: CommitOid::parse(&commit.id().to_string()).ok(),
         revoked_at,
         expires_at,
         updated_at,

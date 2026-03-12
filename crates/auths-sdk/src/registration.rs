@@ -54,27 +54,22 @@ pub async fn register_identity(
 ) -> Result<RegistrationOutcome, RegistrationError> {
     let identity = identity_storage
         .load_identity()
-        .map_err(|e| RegistrationError::LocalDataError(e.to_string()))?;
+        .map_err(RegistrationError::IdentityLoadError)?;
 
     let did_prefix = identity
         .controller_did
         .as_str()
         .strip_prefix("did:keri:")
-        .ok_or_else(|| {
-            RegistrationError::LocalDataError(format!(
-                "Invalid DID format, expected 'did:keri:': {}",
-                identity.controller_did
-            ))
+        .ok_or_else(|| RegistrationError::InvalidDidFormat {
+            did: identity.controller_did.to_string(),
         })?;
 
     let prefix = Prefix::new_unchecked(did_prefix.to_string());
-    let inception = registry.get_event(&prefix, 0).map_err(|_| {
-        RegistrationError::LocalDataError(
-            "No KEL events found for identity. The identity may be corrupted.".to_string(),
-        )
-    })?;
-    let inception_event = serde_json::to_value(&inception)
-        .map_err(|e| RegistrationError::LocalDataError(e.to_string()))?;
+    let inception = registry
+        .get_event(&prefix, 0)
+        .map_err(RegistrationError::RegistryReadError)?;
+    let inception_event =
+        serde_json::to_value(&inception).map_err(RegistrationError::SerializationError)?;
 
     let attestations = attestation_source
         .load_all_attestations()
@@ -90,8 +85,7 @@ pub async fn register_identity(
         proof_url,
     };
 
-    let json_body = serde_json::to_vec(&payload)
-        .map_err(|e| RegistrationError::LocalDataError(e.to_string()))?;
+    let json_body = serde_json::to_vec(&payload).map_err(RegistrationError::SerializationError)?;
 
     let registry_url = registry_url.trim_end_matches('/');
     let response = registry_client

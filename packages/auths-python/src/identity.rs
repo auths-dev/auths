@@ -21,7 +21,7 @@ use auths_storage::git::RegistryIdentityStorage;
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
 use auths_verifier::types::DeviceDID;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -52,7 +52,8 @@ pub(crate) fn resolve_key_alias(
     keychain: &(dyn KeyStorage + Send + Sync),
 ) -> PyResult<KeyAlias> {
     if identity_ref.starts_with("did:") {
-        let did = IdentityDID::new_unchecked(identity_ref.to_string());
+        let did =
+            IdentityDID::parse(identity_ref).map_err(|e| PyValueError::new_err(format!("{e}")))?;
         let aliases = keychain
             .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
             .map_err(|e| {
@@ -205,6 +206,8 @@ pub fn create_agent_identity(
 ) -> PyResult<AgentIdentityBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_keychain_config(&passphrase_str, repo_path);
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: agent_name is user-provided, format produces valid alias
     let alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
 
@@ -360,6 +363,8 @@ pub fn delegate_agent(
     };
 
     // Generate a new Ed25519 keypair for the agent
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: agent_name is user-provided, format produces valid alias
     let agent_alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let rng = SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).map_err(|e| {
@@ -439,6 +444,7 @@ pub fn delegate_agent(
             ))
         })?;
 
+        #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
         let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
         let attestations = attestation_storage
             .load_attestations_for_device(&device_did)

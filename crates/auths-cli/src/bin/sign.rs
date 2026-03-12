@@ -87,6 +87,28 @@ struct Args {
     buffer_file: Option<PathBuf>,
 }
 
+fn validate_verify_option(opt: &str) -> Result<()> {
+    match opt {
+        "print-pubkey" => return Ok(()),
+        "hashalg=sha256" | "hashalg=sha512" => return Ok(()),
+        _ => {}
+    }
+
+    if let Some(value) = opt.strip_prefix("verify-time=")
+        && !value.is_empty()
+        && value.len() <= 14
+        && value.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Ok(());
+    }
+
+    bail!(
+        "disallowed verify option '-O {opt}'\n  \
+         Only these -O options are permitted: verify-time=<timestamp>, print-pubkey, hashalg=sha256, hashalg=sha512\n  \
+         [AUTHS-E0031]"
+    );
+}
+
 fn parse_key_identifier(key_file: &str) -> Result<String> {
     if let Some(alias) = key_file.strip_prefix("auths:") {
         if alias.is_empty() {
@@ -187,6 +209,7 @@ fn run_verify(args: &Args) -> Result<()> {
     ]);
     cmd.arg(sig_file);
     for opt in &args.verify_options {
+        validate_verify_option(opt)?;
         cmd.arg("-O").arg(opt);
     }
     let status = cmd
@@ -219,6 +242,7 @@ fn run_delegate_to_ssh_keygen(args: &Args) -> Result<()> {
         cmd.arg("-s").arg(sig);
     }
     for opt in &args.verify_options {
+        validate_verify_option(opt)?;
         cmd.arg("-O").arg(opt);
     }
     let status = cmd
@@ -483,5 +507,42 @@ mod tests {
         let bad_input = Pkcs8Der::new(vec![0u8; 50]);
         let result = extract_seed_from_pkcs8(&bad_input);
         assert!(result.is_err(), "must reject non-PKCS#8 input");
+    }
+
+    #[test]
+    fn test_validate_verify_option_valid() {
+        assert!(validate_verify_option("verify-time=1700000000").is_ok());
+        assert!(validate_verify_option("verify-time=20260218012319").is_ok());
+        assert!(validate_verify_option("verify-time=1").is_ok());
+        assert!(validate_verify_option("print-pubkey").is_ok());
+        assert!(validate_verify_option("hashalg=sha256").is_ok());
+        assert!(validate_verify_option("hashalg=sha512").is_ok());
+    }
+
+    #[test]
+    fn test_validate_verify_option_invalid() {
+        assert!(validate_verify_option("no-touch-required").is_err());
+        assert!(validate_verify_option("foo=bar").is_err());
+        assert!(validate_verify_option("random-option").is_err());
+        assert!(validate_verify_option("").is_err());
+    }
+
+    #[test]
+    fn test_validate_verify_option_edge_cases() {
+        assert!(validate_verify_option("verify-time=").is_err());
+        assert!(validate_verify_option("verify-time=abc").is_err());
+        assert!(validate_verify_option("VERIFY-TIME=123").is_err());
+        assert!(validate_verify_option("hashalg=sha384").is_err());
+        assert!(validate_verify_option("verify-time=123=456").is_err());
+        assert!(validate_verify_option(" verify-time=123").is_err());
+        assert!(validate_verify_option("verify-time=999999999999999").is_err());
+    }
+
+    #[test]
+    fn test_validate_verify_option_injection_attempts() {
+        assert!(validate_verify_option("-D /tmp/evil.so").is_err());
+        assert!(validate_verify_option("--help").is_err());
+        assert!(validate_verify_option("-t rsa").is_err());
+        assert!(validate_verify_option("-w /tmp/fido.so").is_err());
     }
 }

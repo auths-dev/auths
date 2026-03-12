@@ -65,7 +65,12 @@ pub fn handle_register(repo_path: &Path, registry: &str) -> Result<()> {
         Err(RegistrationError::NetworkError(e)) => {
             bail!("Failed to connect to registry server: {e}");
         }
-        Err(RegistrationError::LocalDataError(e)) => {
+        Err(
+            e @ (RegistrationError::InvalidDidFormat { .. }
+            | RegistrationError::IdentityLoadError(_)
+            | RegistrationError::RegistryReadError(_)
+            | RegistrationError::SerializationError(_)),
+        ) => {
             bail!("{e}");
         }
         Err(e) => {

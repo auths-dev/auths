@@ -268,8 +268,11 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
 
         // Step 6: Evaluate policy (revocation, expiry)
         let decision = evaluate_compiled(&attestation, &self.policy, request.now).map_err(|e| {
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: identity_did is a validated radicle Did
+            let did = IdentityDID::new_unchecked(identity_did.to_string());
             BridgeError::PolicyEvaluation {
-                did: IdentityDID::new_unchecked(identity_did.to_string()),
+                did,
                 reason: e.to_string(),
             }
         })?;

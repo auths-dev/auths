@@ -631,14 +631,13 @@ pub trait RegistryBackend: Send + Sync {
                     source_filename: entry.filename.clone(),
                 });
             } else {
-                // Invalid entry - include with minimal info for debugging
                 members.push(MemberView {
                     did: entry.did.clone(),
                     status,
                     role: None,
                     capabilities: vec![],
-                    issuer: IdentityDID::new_unchecked(String::new()),
-                    rid: ResourceId::new(String::new()),
+                    issuer: entry.org.clone(),
+                    rid: ResourceId::new(""),
                     revoked_at: None,
                     expires_at: None,
                     timestamp: None,

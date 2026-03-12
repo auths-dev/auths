@@ -287,7 +287,8 @@ pub fn verify_device_authorization(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let device = DeviceDID::new_unchecked(&device_did);
+    let device = DeviceDID::parse(&device_did)
+        .map_err(|e| VerifierError::InvalidInput(format!("Invalid device DID: {e}")))?;
 
     // Verify
     match rust_verify_device_authorization(&identity_did, &device, &attestations, &identity_pk_bytes) {

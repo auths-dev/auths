@@ -53,15 +53,15 @@ pub struct CiIdentityResult {
 /// ```ignore
 /// let result = initialize(IdentityConfig::agent(alias, path), &ctx, keychain, &signer, &provider, None)?;
 /// if let InitializeResult::Agent(r) = result {
-///     println!("Agent {} delegated by {}", r.agent_did, r.parent_did);
+///     println!("Agent {:?} delegated by {:?}", r.agent_did, r.parent_did);
 /// }
 /// ```
 #[derive(Debug, Clone)]
 pub struct AgentIdentityResult {
-    /// The DID of the newly created agent identity.
-    pub agent_did: IdentityDID,
-    /// The DID of the parent identity that delegated authority.
-    pub parent_did: IdentityDID,
+    /// The DID of the newly created agent identity (None for dry-run proposals).
+    pub agent_did: Option<IdentityDID>,
+    /// The DID of the parent identity that delegated authority (None if no parent).
+    pub parent_did: Option<IdentityDID>,
     /// The capabilities granted to the agent.
     pub capabilities: Vec<Capability>,
 }

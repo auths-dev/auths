@@ -120,13 +120,13 @@ Fuzz targets exist for `attestation_parse`, `did_parse`, and `verify_chain` in `
 
 **Issues requiring attention before launch:**
 
-**P0 — `verify-options` pass-through in `auths-sign`:**
+~~**P0 — `verify-options` pass-through in `auths-sign`:**~~
 In `bin/sign.rs`, `args.verify_options` (a `Vec<String>` populated from CLI `--verify-option` flags) is passed directly as arguments to `ssh-keygen` via `.arg("-O").arg(opt)` (lines ~198–199 and ~230–231). While `Command::new` with explicit `.arg()` calls is not shell injection, a crafted `-O` value like `no-touch-required` or a future `ssh-keygen` flag could alter verification semantics. These options should be validated against an allowlist of known-safe `verify-time=<timestamp>` patterns before being passed through. This binary is callable from CI environments with attacker-influenced inputs.
 
-**P1 — `DeviceDID` and `IdentityDID` inner values are publicly accessible:**
+~~**P1 — `DeviceDID` and `IdentityDID` inner values are publicly accessible:**~~
 `DeviceDID(pub String)` and `IdentityDID(pub String)` can be constructed with arbitrary strings without parsing. The DID format (`did:keri:...`) is not validated at construction. A malformed DID that bypasses newtypes can reach storage and the KEL resolver.
 
-**P2 — `commands/emergency.rs:8341` writes `frozen_at: chrono::Utc::now()` into a freeze record:**
+~~**P2 — `commands/emergency.rs:8341` writes `frozen_at: chrono::Utc::now()` into a freeze record:**~~
 This timestamp is written to the git ref store and is later used to compute `expires_description()`. Since the clock is not injected, replay or time-skew attacks on freeze state cannot be tested. This is lower severity but relevant for enterprise audit trail integrity.
 
 ---

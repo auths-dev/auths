@@ -56,7 +56,12 @@ pub(crate) fn display_ci_result(
 pub(crate) fn display_agent_result(out: &Output, result: &auths_sdk::result::AgentIdentityResult) {
     out.print_heading("Agent Setup Complete!");
     out.newline();
-    out.println(&format!("  Identity: {}", out.info(&result.agent_did)));
+    let did_display = result
+        .agent_did
+        .as_ref()
+        .map(|d| d.to_string())
+        .unwrap_or_else(|| "<pending>".to_string());
+    out.println(&format!("  Identity: {}", out.info(&did_display)));
     let cap_display: Vec<String> = result.capabilities.iter().map(|c| c.to_string()).collect();
     out.println(&format!("  Capabilities: {}", cap_display.join(", ")));
     out.newline();

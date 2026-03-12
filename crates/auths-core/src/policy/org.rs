@@ -57,13 +57,13 @@ use super::device::Action;
 /// ```rust
 /// use auths_core::policy::{Decision, device::Action, org::authorize_org_action};
 /// use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature, Role};
-/// use auths_verifier::types::DeviceDID;
+/// use auths_verifier::types::{CanonicalDid, DeviceDID};
 /// use chrono::Utc;
 ///
 /// let membership = Attestation {
 ///     version: 1,
 ///     rid: "member".into(),
-///     issuer: "did:keri:EOrg123".into(),
+///     issuer: CanonicalDid::new_unchecked("did:keri:EOrg123"),
 ///     subject: DeviceDID::new_unchecked("did:key:z6MkAlice"),
 ///     device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
 ///     identity_signature: Ed25519Signature::empty(),

@@ -32,7 +32,8 @@ pub fn sign_as_identity(
 ) -> napi::Result<NapiCommitSignResult> {
     let passphrase_str = resolve_passphrase(passphrase);
     let (signer, provider) = make_signer(&passphrase_str, &repo_path)?;
-    let did = IdentityDID::new_unchecked(&identity_did);
+    let did =
+        IdentityDID::parse(&identity_did).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
 
     let sig_bytes = signer
         .sign_for_identity(&did, &provider, message.as_ref())
@@ -85,7 +86,8 @@ pub fn sign_action_as_identity(
 
     let passphrase_str = resolve_passphrase(passphrase);
     let (signer, provider) = make_signer(&passphrase_str, &repo_path)?;
-    let did = IdentityDID::new_unchecked(&identity_did);
+    let did =
+        IdentityDID::parse(&identity_did).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
 
     let sig_bytes = signer
         .sign_for_identity(&did, &provider, canonical.as_bytes())

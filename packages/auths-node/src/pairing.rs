@@ -223,6 +223,7 @@ impl NapiPairingHandle {
         let managed = identity_storage
             .load_identity()
             .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
+        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
         let controller_identity_did =
             IdentityDID::new_unchecked(managed.controller_did.to_string());
 
@@ -234,6 +235,7 @@ impl NapiPairingHandle {
             .into_iter()
             .next()
             .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No primary signing key found"))?;
+        #[allow(clippy::disallowed_methods)] // INVARIANT: alias from keychain storage
         let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
 
         let key_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
@@ -312,6 +314,7 @@ pub async fn join_pairing_session(
         .load_identity()
         .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
+    #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
     let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
 
     let keychain = get_keychain(&env_config)?;

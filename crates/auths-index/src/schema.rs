@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS attestations (
     issuer_did TEXT NOT NULL,
     device_did TEXT NOT NULL,
     git_ref TEXT NOT NULL,
-    commit_oid TEXT NOT NULL,
+    commit_oid TEXT,
     revoked_at TEXT,
     expires_at TEXT,
     updated_at TEXT NOT NULL

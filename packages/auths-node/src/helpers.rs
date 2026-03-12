@@ -42,7 +42,8 @@ pub fn resolve_key_alias(
     keychain: &(dyn KeyStorage + Send + Sync),
 ) -> napi::Result<KeyAlias> {
     if identity_ref.starts_with("did:") {
-        let did = IdentityDID::new_unchecked(identity_ref.to_string());
+        let did =
+            IdentityDID::parse(identity_ref).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
         let aliases = keychain
             .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
             .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key lookup failed: {e}")))?;

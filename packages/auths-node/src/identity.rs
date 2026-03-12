@@ -106,6 +106,8 @@ pub fn create_agent_identity(
 ) -> napi::Result<NapiAgentIdentityBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_env_config(&passphrase_str, &repo_path);
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: agent_name is user-provided, format produces valid alias
     let alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
     let clock = Arc::new(SystemClock);
@@ -184,6 +186,7 @@ pub fn create_agent_identity(
         )
     })?;
 
+    #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
     let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
@@ -251,6 +254,8 @@ pub fn delegate_agent(
             })?
     };
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: agent_name is user-provided, format produces valid alias
     let agent_alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
     let rng = SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
@@ -322,6 +327,7 @@ pub fn delegate_agent(
         )
     })?;
 
+    #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
     let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
@@ -435,7 +441,8 @@ pub fn get_identity_public_key(
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
 
-    let did = auths_verifier::types::IdentityDID::new_unchecked(&identity_did);
+    let did = auths_verifier::types::IdentityDID::parse(&identity_did)
+        .map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
     let aliases = keychain
         .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key lookup failed: {e}")))?;

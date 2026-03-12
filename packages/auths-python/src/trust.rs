@@ -1,9 +1,11 @@
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use auths_core::trust::pinned::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
-use auths_id::identity::resolve::{DefaultDidResolver, DidResolver};
+use auths_id::identity::resolve::{DefaultDidResolver, DidResolver, RegistryDidResolver};
+use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 use auths_verifier::PublicKeyHex;
 use chrono::Utc;
 
@@ -53,17 +55,23 @@ pub fn pin_identity(
         let store = PinnedIdentityStore::new(store_path(&repo));
         let repo_path = resolve_repo(&repo);
 
-        let resolver = DefaultDidResolver::with_repo(&repo_path);
-        let public_key_hex = match resolver.resolve(&did) {
-            Ok(resolved) => {
-                PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes()))
-            }
-            Err(_) => {
-                // If DID can't be resolved, use a placeholder — the pin still works
-                // for trust-on-first-use patterns where the key isn't known yet
-                PublicKeyHex::new_unchecked("")
-            }
-        };
+        let resolved = DefaultDidResolver::with_repo(&repo_path)
+            .resolve(&did)
+            .or_else(|_| {
+                let backend: Arc<dyn auths_id::ports::registry::RegistryBackend + Send + Sync> =
+                    Arc::new(GitRegistryBackend::from_config_unchecked(
+                        RegistryConfig::single_tenant(&repo_path),
+                    ));
+                RegistryDidResolver::new(backend).resolve(&did)
+            })
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_TRUST_ERROR] Cannot resolve public key for {did}: {e}"
+                ))
+            })?;
+        #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
+        let public_key_hex =
+            PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes()));
 
         // Check if already pinned — if so, update label by remove + re-pin
         if let Ok(Some(existing)) = store.lookup(&did) {
