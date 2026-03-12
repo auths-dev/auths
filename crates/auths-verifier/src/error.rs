@@ -160,11 +160,21 @@ impl AuthsErrorInfo for AttestationError {
             Self::AttestationTooOld { .. } => {
                 Some("Request a fresh attestation or increase the max_age threshold")
             }
-            Self::SigningError(_)
-            | Self::SerializationError(_)
-            | Self::InvalidInput(_)
-            | Self::CryptoError(_)
-            | Self::InternalError(_) => None,
+            Self::SigningError(_) => {
+                Some("The cryptographic signing operation failed; verify key material is valid")
+            }
+            Self::SerializationError(_) => {
+                Some("Failed to serialize/deserialize attestation data; check JSON format")
+            }
+            Self::InvalidInput(_) => {
+                Some("Check the input parameters and ensure they match the expected format")
+            }
+            Self::CryptoError(_) => {
+                Some("A cryptographic operation failed; verify key material is valid")
+            }
+            Self::InternalError(_) => {
+                Some("An unexpected internal error occurred; please report this issue")
+            }
         }
     }
 }

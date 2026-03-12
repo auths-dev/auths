@@ -82,7 +82,15 @@ impl auths_crypto::AuthsErrorInfo for NetworkError {
             Self::Unreachable { .. } => Some("Check your internet connection"),
             Self::Timeout { .. } => Some("The server may be overloaded — retry later"),
             Self::Unauthorized => Some("Check your authentication credentials"),
-            _ => None,
+            Self::NotFound { .. } => Some(
+                "The requested resource was not found on the server; verify the URL or identifier",
+            ),
+            Self::InvalidResponse { .. } => {
+                Some("The server returned an unexpected response; check server compatibility")
+            }
+            Self::Internal(_) => Some(
+                "The server encountered an internal error; retry later or contact the server administrator",
+            ),
         }
     }
 }

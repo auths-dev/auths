@@ -98,7 +98,9 @@ impl AuthsErrorInfo for StorageError {
         match self {
             #[cfg(feature = "git-storage")]
             Self::Git(_) => Some("Check that the Git repository is not corrupted"),
-            Self::Serialization(_) => None,
+            Self::Serialization(_) => {
+                Some("Failed to serialize storage data; this may indicate a version mismatch")
+            }
             Self::Io(_) => Some("Check file permissions and disk space"),
             Self::NotFound(_) => Some("Verify the identity or resource exists"),
             Self::InvalidData(_) => Some("The stored data may be corrupted; try re-initializing"),
@@ -129,11 +131,17 @@ impl AuthsErrorInfo for InitError {
             Self::Git(_) => Some("Check that the Git repository is accessible"),
             Self::Keri(_) => Some("KERI event processing failed; check identity state"),
             Self::Key(_) => Some("Check keychain access and passphrase"),
-            Self::InvalidData(_) => None,
+            Self::InvalidData(_) => {
+                Some("Identity data is malformed; try re-initializing with `auths init`")
+            }
             Self::Storage(_) => Some("Check storage backend connectivity"),
             Self::Registry(_) => Some("Check registry backend configuration"),
-            Self::Crypto(_) => None,
-            Self::Identity(_) => None,
+            Self::Crypto(_) => Some(
+                "A cryptographic operation during initialization failed; check your keychain access",
+            ),
+            Self::Identity(_) => {
+                Some("Identity initialization failed; check storage and keychain configuration")
+            }
         }
     }
 }
