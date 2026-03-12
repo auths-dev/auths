@@ -255,7 +255,9 @@ impl RegistryBackend for FakeRegistryBackend {
                 continue;
             }
             let entry = OrgMemberEntry {
+                #[allow(clippy::disallowed_methods)] // INVARIANT: org is a KERI prefix from the org_members map key, format! produces a valid did:keri string
                 org: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
+                #[allow(clippy::disallowed_methods)] // INVARIANT: member_did_str is a DID string stored in the org_members map key
                 did: DeviceDID::new_unchecked(member_did_str.clone()),
                 filename: format!("{}.json", member_did_str.replace(':', "_")),
                 attestation: validate_org_member(org, member_did_str, att),
@@ -293,12 +295,15 @@ fn validate_org_member(
     let expected_issuer = format!("did:keri:{}", org);
     if att.issuer.as_str() != expected_issuer {
         return Err(MemberInvalidReason::IssuerMismatch {
+            #[allow(clippy::disallowed_methods)] // INVARIANT: format! with "did:keri:" prefix and org KERI prefix produces a valid did:keri string
             expected_issuer: IdentityDID::new_unchecked(expected_issuer),
+            #[allow(clippy::disallowed_methods)] // INVARIANT: att.issuer is a CanonicalDid from a deserialized Attestation
             actual_issuer: IdentityDID::new_unchecked(att.issuer.as_str()),
         });
     }
     if att.subject.as_str() != member_did_str {
         return Err(MemberInvalidReason::SubjectMismatch {
+            #[allow(clippy::disallowed_methods)] // INVARIANT: member_did_str is a DID string from the org_members map key
             filename_did: DeviceDID::new_unchecked(member_did_str),
             attestation_subject: att.subject.clone(),
         });

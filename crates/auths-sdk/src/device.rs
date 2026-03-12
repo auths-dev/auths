@@ -182,6 +182,8 @@ pub fn extend_device(
             .map_err(|e| DeviceExtensionError::StorageError(e.into()))?,
     );
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: config.device_did is a did:key string supplied by the CLI from an existing attestation
     let device_did_obj = DeviceDID::new_unchecked(config.device_did.clone());
     let latest =
         group
@@ -231,6 +233,7 @@ pub fn extend_device(
     ctx.attestation_sink.sync_index(&extended);
 
     Ok(DeviceExtensionResult {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: config.device_did was already validated above when constructing device_did_obj
         device_did: DeviceDID::new_unchecked(config.device_did),
         new_expires_at,
         previous_expires_at,

@@ -9,6 +9,9 @@ use url::Url;
 /// Configuration for witness receipts on an identity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WitnessConfig {
+    /// Schema version for forwards-compatible deserialization.
+    #[serde(default = "default_version")]
+    pub version: u8,
     /// Witness server URLs (e.g. `["http://w1:3333", "http://w2:3333"]`).
     pub witness_urls: Vec<Url>,
     /// Minimum receipts required (k-of-n threshold).
@@ -19,9 +22,14 @@ pub struct WitnessConfig {
     pub policy: WitnessPolicy,
 }
 
+fn default_version() -> u8 {
+    1
+}
+
 impl Default for WitnessConfig {
     fn default() -> Self {
         Self {
+            version: 1,
             witness_urls: vec![],
             threshold: 0,
             timeout_ms: 5000,
@@ -65,7 +73,7 @@ mod tests {
             witness_urls: vec!["http://w1:3333".parse().unwrap()],
             threshold: 1,
             timeout_ms: 5000,
-            policy: WitnessPolicy::Enforce,
+            ..Default::default()
         };
         assert!(config.is_enabled());
     }
@@ -77,6 +85,7 @@ mod tests {
             threshold: 1,
             timeout_ms: 5000,
             policy: WitnessPolicy::Skip,
+            ..Default::default()
         };
         assert!(!config.is_enabled());
     }
@@ -87,8 +96,33 @@ mod tests {
             witness_urls: vec!["http://w1:3333".parse().unwrap()],
             threshold: 0,
             timeout_ms: 5000,
-            policy: WitnessPolicy::Enforce,
+            ..Default::default()
         };
         assert!(!config.is_enabled());
+    }
+
+    #[test]
+    fn default_version_is_one() {
+        assert_eq!(WitnessConfig::default().version, 1);
+    }
+
+    #[test]
+    fn json_without_version_deserializes_to_v1() {
+        let json = r#"{
+            "witness_urls": [],
+            "threshold": 0,
+            "timeout_ms": 5000,
+            "policy": "Enforce"
+        }"#;
+        let config: WitnessConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.version, 1);
+    }
+
+    #[test]
+    fn json_with_version_roundtrips() {
+        let config = WitnessConfig::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let roundtripped: WitnessConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(roundtripped.version, 1);
     }
 }

@@ -602,6 +602,8 @@ mod tests {
 
     #[test]
     fn principal_display_did() {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: test-only literal with valid did:key: prefix
         let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
         let p = SignerPrincipal::DeviceDid(did);
         assert_eq!(p.to_string(), "z6MkTest123@auths.local");
@@ -613,6 +615,8 @@ mod tests {
         let parsed = parse_principal(&email_p.to_string()).unwrap();
         assert_eq!(parsed, email_p);
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: test-only literal with valid did:key: prefix
         let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
         let did_p = SignerPrincipal::DeviceDid(did);
         let parsed = parse_principal(&did_p.to_string()).unwrap();

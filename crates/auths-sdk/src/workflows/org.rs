@@ -336,6 +336,8 @@ pub fn add_organization_member(
     let now = ctx.clock.now();
     let rid = ctx.uuid_provider.new_id().to_string();
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: cmd.member_did is a did:key string from the CLI, validated by the caller
     let member_did = DeviceDID::new_unchecked(&cmd.member_did);
     let meta = AttestationMetadata {
         note: cmd
@@ -345,6 +347,8 @@ pub fn add_organization_member(
         expires_at: None,
     };
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: admin_att.issuer is a CanonicalDid from a verified attestation loaded by find_admin()
     let admin_issuer_did = IdentityDID::new_unchecked(admin_att.issuer.as_str());
     let attestation = create_signed_attestation(
         now,
@@ -363,7 +367,11 @@ pub fn add_organization_member(
         None,
         parsed_caps,
         Some(cmd.role),
-        Some(IdentityDID::new_unchecked(admin_att.subject.to_string())),
+        {
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: admin_att.subject is a CanonicalDid from a verified attestation loaded by find_admin()
+            Some(IdentityDID::new_unchecked(admin_att.subject.to_string()))
+        },
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 
@@ -410,8 +418,12 @@ pub fn revoke_organization_member(
     }
 
     let now = ctx.clock.now();
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: cmd.member_did is a did:key string from the CLI, validated by the caller
     let member_did = DeviceDID::new_unchecked(&cmd.member_did);
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: admin_att.issuer is a CanonicalDid from a verified attestation loaded by find_admin()
     let admin_issuer_did = IdentityDID::new_unchecked(admin_att.issuer.as_str());
     let revocation = create_signed_revocation(
         admin_att.rid.as_str(),

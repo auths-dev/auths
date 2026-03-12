@@ -117,6 +117,7 @@ pub fn resolve_did_keri(repo: &Repository, did: &str) -> Result<DidKeriResolutio
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 
     Ok(DidKeriResolution {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: parse_did_keri() above validated the did:keri format
         did: IdentityDID::new_unchecked(did),
         prefix,
         public_key,
@@ -169,6 +170,7 @@ pub fn resolve_did_keri_at_sequence(
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 
     Ok(DidKeriResolution {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: parse_did_keri() above validated the did:keri format
         did: IdentityDID::new_unchecked(did),
         prefix,
         public_key,

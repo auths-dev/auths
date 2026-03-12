@@ -42,8 +42,10 @@ impl IdentityStorage for FakeIdentityStorage {
             .as_ref()
             .ok_or_else(|| StorageError::NotFound("no identity stored".into()))?;
 
+        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only value with valid DID format
+        let controller_did = IdentityDID::new_unchecked(did.clone());
         Ok(ManagedIdentity {
-            controller_did: IdentityDID::new_unchecked(did.clone()),
+            controller_did,
             storage_id: "fake".to_string(),
             metadata: metadata.clone(),
         })

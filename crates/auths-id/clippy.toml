@@ -12,6 +12,13 @@ disallowed-methods = [
   { path = "std::env::var", reason = "use EnvironmentConfig abstraction instead of reading env vars directly", allow-invalid = true },
   { path = "uuid::Uuid::new_v4", reason = "Use UuidProvider::new_id() instead. Inject SystemUuidProvider in production and DeterministicUuidProvider in tests." },
 
+  # === DID/newtype construction: prefer parse() for external input ===
+  { path = "auths_verifier::types::IdentityDID::new_unchecked", reason = "Use IdentityDID::parse() for external input. Use #[allow(clippy::disallowed_methods)] with INVARIANT comment for proven-safe paths.", allow-invalid = true },
+  { path = "auths_verifier::types::DeviceDID::new_unchecked", reason = "Use DeviceDID::parse() for external input. Use #[allow(clippy::disallowed_methods)] with INVARIANT comment for proven-safe paths.", allow-invalid = true },
+  { path = "auths_verifier::types::CanonicalDid::new_unchecked", reason = "Use CanonicalDid::parse() for external input. Use #[allow(clippy::disallowed_methods)] with INVARIANT comment for proven-safe paths.", allow-invalid = true },
+  { path = "auths_verifier::core::CommitOid::new_unchecked", reason = "Use CommitOid::parse() for external input. Use #[allow(clippy::disallowed_methods)] with INVARIANT comment for proven-safe paths.", allow-invalid = true },
+  { path = "auths_verifier::core::PublicKeyHex::new_unchecked", reason = "Use PublicKeyHex::parse() for external input. Use #[allow(clippy::disallowed_methods)] with INVARIANT comment for proven-safe paths.", allow-invalid = true },
+
   # === Sans-IO: filesystem ===
   { path = "std::fs::read", reason = "sans-IO crate — use a port trait" },
   { path = "std::fs::read_to_string", reason = "sans-IO crate — use a port trait" },

@@ -82,7 +82,21 @@ impl AuthsErrorInfo for CommitVerificationError {
             Self::GpgNotSupported => Some("Configure SSH signing: git config gpg.format ssh"),
             Self::UnsupportedKeyType { .. } => Some("Use an Ed25519 SSH key for signing"),
             Self::UnknownSigner => Some("Add the signer's key to the allowed signers list"),
-            _ => None,
+            Self::SshSigParseFailed(_) => Some(
+                "The SSH signature could not be parsed; verify the commit was signed correctly",
+            ),
+            Self::NamespaceMismatch { .. } => Some(
+                "The signature namespace doesn't match; ensure git config gpg.ssh.defaultKeyCommand is set correctly",
+            ),
+            Self::HashAlgorithmUnsupported(_) => {
+                Some("Use SHA-256 or SHA-512 hash algorithm for signing")
+            }
+            Self::SignatureInvalid => Some(
+                "The commit signature does not match the signed data; the commit may have been modified after signing",
+            ),
+            Self::CommitParseFailed(_) => Some(
+                "The Git commit object is malformed; check repository integrity with `git fsck`",
+            ),
         }
     }
 }

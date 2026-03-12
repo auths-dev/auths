@@ -88,6 +88,7 @@ impl IndexedAttestationStorage {
     ) -> Result<(), StorageError> {
         let indexed = IndexedAttestation {
             rid: att.rid.clone(),
+            #[allow(clippy::disallowed_methods)] // INVARIANT: att.issuer is a CanonicalDid parsed from validated attestation JSON
             issuer_did: IdentityDID::new_unchecked(att.issuer.as_str()),
             device_did: att.subject.clone(),
             git_ref: git_ref.to_string(),

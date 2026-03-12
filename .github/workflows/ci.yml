@@ -52,6 +52,7 @@ jobs:
           key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-clippy-
       - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo run -p xtask -- check-clippy-sync
 
   schemas:
     name: Schema validation

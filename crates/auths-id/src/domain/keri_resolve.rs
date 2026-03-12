@@ -34,6 +34,7 @@ pub fn resolve_from_events(
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 
     Ok(DidKeriResolution {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: callers pass a did:keri string already validated by parse_did_keri()
         did: IdentityDID::new_unchecked(did),
         prefix: prefix.clone(),
         public_key,

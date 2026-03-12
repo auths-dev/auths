@@ -45,6 +45,8 @@ pub fn create_signed_revocation(
 
     // 1. Construct the revocation-specific canonical data
     let revoked_at_value = Some(timestamp_arg);
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: identity_did is an IdentityDID which guarantees valid DID format
     let issuer_canonical = CanonicalDid::new_unchecked(identity_did.as_str());
     let data_to_canonicalize_revocation = CanonicalRevocationData {
         version: REVOCATION_VERSION,
@@ -81,10 +83,13 @@ pub fn create_signed_revocation(
     debug!("Revocation signature obtained successfully");
 
     // 4. Return the final revocation attestation object
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: identity_did is an IdentityDID which guarantees valid DID format
+    let revocation_issuer = CanonicalDid::new_unchecked(identity_did.as_str());
     Ok(Attestation {
         version: REVOCATION_VERSION,
         subject: device_did.clone(),
-        issuer: CanonicalDid::new_unchecked(identity_did.as_str()),
+        issuer: revocation_issuer,
         rid: ResourceId::new(rid),
         payload: payload_arg.clone(),
         timestamp: Some(timestamp_arg),

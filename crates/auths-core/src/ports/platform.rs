@@ -62,7 +62,15 @@ impl auths_crypto::AuthsErrorInfo for PlatformError {
             Self::AccessDenied => Some("Re-run the command and approve the authorization request"),
             Self::ExpiredToken => Some("The device code expired — restart the flow"),
             Self::Network(_) => Some("Check your internet connection"),
-            _ => None,
+            Self::AuthorizationPending => Some(
+                "Complete the authorization on the linked device, then the CLI will continue automatically",
+            ),
+            Self::SlowDown => {
+                Some("The authorization server is rate-limiting; the CLI will retry automatically")
+            }
+            Self::Platform { .. } => {
+                Some("A platform-specific error occurred; run `auths doctor` to diagnose")
+            }
         }
     }
 }

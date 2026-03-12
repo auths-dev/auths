@@ -76,10 +76,12 @@ pub fn test_inception_event(key_seed: &str) -> Event {
 /// backend.store_attestation(&att).unwrap();
 /// ```
 pub fn test_attestation(device_did: &DeviceDID, issuer: &str) -> Attestation {
+    #[allow(clippy::disallowed_methods)] // INVARIANT: test-only literal with valid DID format
+    let issuer = CanonicalDid::new_unchecked(issuer);
     Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: CanonicalDid::new_unchecked(issuer),
+        issuer,
         subject: device_did.clone(),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
         identity_signature: Ed25519Signature::empty(),

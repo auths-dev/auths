@@ -77,9 +77,13 @@ impl auths_core::error::AuthsErrorInfo for SigningError {
         match self {
             Self::IdentityFrozen(_) => Some("To unfreeze: auths emergency unfreeze"),
             Self::KeyResolution(_) => Some("Run `auths key list` to check available keys"),
-            Self::SigningFailed(_) => None,
+            Self::SigningFailed(_) => Some(
+                "The signing operation failed; verify your key is accessible with `auths key list`",
+            ),
             Self::InvalidPassphrase => Some("Check your passphrase and try again"),
-            Self::PemEncoding(_) => None,
+            Self::PemEncoding(_) => {
+                Some("Failed to encode the key in PEM format; the key material may be corrupted")
+            }
             Self::AgentUnavailable(_) => Some("Start the agent with `auths agent start`"),
             Self::AgentSigningFailed(_) => Some("Check agent logs with `auths agent status`"),
             Self::PassphraseExhausted { .. } => {

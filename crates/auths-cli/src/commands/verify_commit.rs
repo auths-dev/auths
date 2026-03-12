@@ -919,6 +919,8 @@ mod tests {
 
     #[tokio::test]
     async fn verify_bundle_chain_empty_chain() {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: test-only hardcoded DID and hex string literals
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
             public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("aa".repeat(32)),
@@ -935,6 +937,8 @@ mod tests {
 
     #[tokio::test]
     async fn verify_bundle_chain_invalid_hex() {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: test-only hardcoded DID, hex, and canonical DID string literals
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
             public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("not_hex"),

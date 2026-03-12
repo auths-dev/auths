@@ -531,6 +531,8 @@ pub fn load_device_signing_material(
         .load_identity()
         .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: managed.controller_did is an IdentityDID loaded from IdentityStorage::load_identity(), already validated
     let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
     let aliases = ctx
         .key_storage
@@ -741,6 +743,8 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
         .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
 
     let controller_did = load_controller_did(ctx.identity_storage.as_ref())?;
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: controller_did comes from load_controller_did() which returns into_inner() of a validated IdentityDID from storage
     let controller_identity_did = IdentityDID::new_unchecked(controller_did.clone());
     let aliases = ctx
         .key_storage
@@ -756,6 +760,7 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
     let decrypted = DecryptedPairingResponse {
         auths_dir: PathBuf::new(),
         device_pubkey: device_signing_bytes,
+        #[allow(clippy::disallowed_methods)] // INVARIANT: response.device_did was verified by session.verify_response() which validated the Ed25519 signature against the device's signing key
         device_did: DeviceDID::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
         capabilities: session.token.capabilities.clone(),

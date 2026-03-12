@@ -178,5 +178,6 @@ fn build_witness_config(witness: Option<&WitnessOverride>) -> Option<WitnessConf
         threshold: w.threshold,
         timeout_ms: w.timeout_ms,
         policy,
+        ..Default::default()
     })
 }

@@ -319,7 +319,9 @@ impl AuthsErrorInfo for SetupError {
             }
             Self::InvalidSetupConfig(_) => Some("Check identity setup configuration parameters"),
             Self::RegistrationFailed(_) => Some("Check network connectivity and try again"),
-            Self::PlatformVerificationFailed(_) => None,
+            Self::PlatformVerificationFailed(_) => Some(
+                "Platform identity verification failed; check your platform credentials and network connectivity",
+            ),
         }
     }
 }
@@ -340,7 +342,9 @@ impl AuthsErrorInfo for DeviceError {
         match self {
             Self::IdentityNotFound { .. } => Some("Run `auths init` to create an identity first"),
             Self::DeviceNotFound { .. } => Some("Run `auths device list` to see linked devices"),
-            Self::AttestationError(_) => None,
+            Self::AttestationError(_) => Some(
+                "The attestation operation failed; run `auths device list` to check device status",
+            ),
             Self::DeviceDidMismatch { .. } => Some("Check that --device-did matches the key alias"),
             Self::CryptoError(e) => e.suggestion(),
             Self::StorageError(_) => Some("Check file permissions and disk space"),
@@ -365,8 +369,12 @@ impl AuthsErrorInfo for DeviceExtensionError {
             Self::NoAttestationFound { .. } => {
                 Some("Run `auths device link` to create an attestation for this device")
             }
-            Self::AlreadyRevoked { .. } => None,
-            Self::AttestationFailed(_) => None,
+            Self::AlreadyRevoked { .. } => Some(
+                "This device has been revoked and cannot be extended; link a new device with `auths device link`",
+            ),
+            Self::AttestationFailed(_) => {
+                Some("Failed to create the extension attestation; check key access and try again")
+            }
             Self::StorageError(_) => Some("Check file permissions and disk space"),
         }
     }
@@ -390,7 +398,9 @@ impl AuthsErrorInfo for RotationError {
             Self::KeyNotFound(_) => Some("Run `auths key list` to see available keys"),
             Self::KeyDecryptionFailed(_) => Some("Check your passphrase and try again"),
             Self::KelHistoryFailed(_) => Some("Run `auths doctor` to check KEL integrity"),
-            Self::RotationFailed(_) => None,
+            Self::RotationFailed(_) => Some(
+                "Key rotation failed; verify your current key is accessible with `auths key list`",
+            ),
             Self::PartialRotation(_) => {
                 Some("Re-run the rotation with the same new key to complete the keychain write")
             }
@@ -413,7 +423,9 @@ impl AuthsErrorInfo for RegistrationError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::AlreadyRegistered => None,
+            Self::AlreadyRegistered => Some(
+                "This identity is already registered; use `auths id show` to see registration details",
+            ),
             Self::QuotaExceeded => Some("Wait a few minutes and try again"),
             Self::NetworkError(e) => e.suggestion(),
             Self::InvalidDidFormat { .. } => {
@@ -440,7 +452,9 @@ impl AuthsErrorInfo for McpAuthError {
         match self {
             Self::BridgeUnreachable(_) => Some("Check network connectivity to the OIDC bridge"),
             Self::TokenExchangeFailed { .. } => Some("Verify your credentials and try again"),
-            Self::InvalidResponse(_) => None,
+            Self::InvalidResponse(_) => Some(
+                "The OIDC bridge returned an unexpected response; verify the bridge URL and try again",
+            ),
             Self::InsufficientCapabilities { .. } => {
                 Some("Request fewer capabilities or contact your administrator")
             }
@@ -472,11 +486,26 @@ impl AuthsErrorInfo for OrgError {
             Self::MemberNotFound { .. } => {
                 Some("Run `auths org list-members` to see current members")
             }
-            Self::AlreadyRevoked { .. } => None,
-            Self::InvalidCapability { .. } => None,
+            Self::AlreadyRevoked { .. } => {
+                Some("This member has already been revoked from the organization")
+            }
+            Self::InvalidCapability { .. } => {
+                Some("Use a valid capability (e.g., 'sign_commit', 'manage_members', 'admin')")
+            }
             Self::InvalidDid(_) => Some("Organization DIDs must be valid did:keri identifiers"),
             Self::InvalidPublicKey(_) => Some("Public keys must be hex-encoded Ed25519 keys"),
-            _ => None,
+            Self::Signing(_) => {
+                Some("The signing operation failed; check your key access with `auths key list`")
+            }
+            Self::Identity(_) => {
+                Some("Failed to load identity; run `auths id show` to check identity status")
+            }
+            Self::KeyStorage(_) => {
+                Some("Failed to access key storage; run `auths doctor` to diagnose")
+            }
+            Self::Storage(_) => {
+                Some("Failed to access organization storage; check repository permissions")
+            }
         }
     }
 }
@@ -495,7 +524,9 @@ impl AuthsErrorInfo for ApprovalError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::NotApprovalRequired => None,
+            Self::NotApprovalRequired => Some(
+                "This operation does not require approval; run it directly without the --approve flag",
+            ),
             Self::RequestNotFound { .. } => {
                 Some("Run `auths approval list` to see pending requests")
             }

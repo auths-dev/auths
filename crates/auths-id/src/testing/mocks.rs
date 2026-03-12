@@ -55,8 +55,11 @@ mod tests {
     fn mock_identity_storage_load_returns_configured_value() {
         let mut mock = MockIdentityStorage::new();
         mock.expect_load_identity().returning(|| {
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: test-only literal with valid DID format
+            let controller_did = IdentityDID::new_unchecked("did:keri:Etest".to_string());
             Ok(ManagedIdentity {
-                controller_did: IdentityDID::new_unchecked("did:keri:Etest".to_string()),
+                controller_did,
                 storage_id: "test-repo".to_string(),
                 metadata: None,
             })

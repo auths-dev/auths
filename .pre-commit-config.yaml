@@ -42,6 +42,13 @@ repos:
         files: (crates/auths-cli/src/|crates/xtask/src/gen_docs|docs/cli/commands/)
         pass_filenames: false
 
+      - id: check-clippy-sync
+        name: cargo xtask check-clippy-sync
+        entry: cargo run --package xtask -- check-clippy-sync
+        language: system
+        files: clippy\.toml$
+        pass_filenames: false
+
       - id: cargo-deny
         name: cargo deny (licenses + bans)
         entry: bash -c 'cargo deny check > .cargo/cargo-deny.log 2>&1; exit $?'

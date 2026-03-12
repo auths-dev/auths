@@ -252,7 +252,11 @@ fn get_or_create_identity(
 ) -> Result<IdentityDID, AgentProvisioningError> {
     let mut existing_did: Option<IdentityDID> = None;
     let _ = backend.visit_identities(&mut |prefix| {
-        existing_did = Some(IdentityDID::new_unchecked(format!("did:keri:{}", prefix)));
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: visit_identities yields KERI prefixes from the registry, format! produces a valid did:keri string
+        {
+            existing_did = Some(IdentityDID::new_unchecked(format!("did:keri:{}", prefix)));
+        }
         std::ops::ControlFlow::Break(())
     });
     if let Some(did) = existing_did {

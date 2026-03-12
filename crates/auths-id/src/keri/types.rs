@@ -17,6 +17,8 @@ use auths_core::storage::keychain::IdentityDID;
 /// assert_eq!(did.as_str(), "did:keri:ETest123abc");
 /// ```
 pub fn prefix_to_did(prefix: &Prefix) -> IdentityDID {
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: Prefix is validated on construction, did:keri:{prefix} is always valid
     IdentityDID::new_unchecked(format!("did:keri:{}", prefix.as_str()))
 }
 
@@ -55,6 +57,7 @@ mod tests {
 
     #[test]
     fn prefix_from_did_rejects_non_keri() {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only literal with valid DID format
         let did = IdentityDID::new_unchecked("did:key:z6Mk".to_string());
         let err = prefix_from_did(&did).unwrap_err();
         assert!(err.to_string().contains("Expected did:keri:"));

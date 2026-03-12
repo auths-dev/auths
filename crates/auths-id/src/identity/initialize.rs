@@ -55,6 +55,8 @@ pub fn initialize_keri_identity(
     let repo = Repository::open(repo_path)?;
     let result =
         create_keri_identity(&repo, None, now).map_err(|e| InitError::Keri(e.to_string()))?;
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: create_keri_identity returns a valid did:keri: DID
     let controller_did = IdentityDID::new_unchecked(result.did());
 
     let passphrase = passphrase_provider
@@ -163,6 +165,8 @@ pub fn initialize_registry_identity(
         .append_event(&prefix, &Event::Icp(finalized))
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format
     let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
 
     let passphrase = passphrase_provider

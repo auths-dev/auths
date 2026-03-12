@@ -340,7 +340,7 @@ These are the features that separate "impressive developer tool" from "enterpris
 
 ---
 
-#### Epic 6: `auths-sign` verify-options Allowlist (Security)
+~~#### Epic 6: `auths-sign` verify-options Allowlist (Security)~~
 **Why it matters:** The `verify-options` flags are passed directly to `ssh-keygen` with no validation. In a GitHub Actions context, these values can originate from PR metadata or environment variables, making this a potential vector for altering verification semantics.
 
 **Scope:**

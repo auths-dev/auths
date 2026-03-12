@@ -105,6 +105,7 @@ fn initialize_developer(
     let registered = submit_registration(&config);
 
     Ok(DeveloperIdentityResult {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did originates from initialize_registry_identity() which returns a validated IdentityDID; into_inner() only unwraps it
         identity_did: IdentityDID::new_unchecked(controller_did),
         device_did,
         key_alias,
@@ -128,6 +129,7 @@ fn initialize_ci(
         generate_ci_env_block(&key_alias, &config.registry_path, &config.ci_environment);
 
     Ok(CiIdentityResult {
+        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did originates from initialize_registry_identity() which returns a validated IdentityDID; into_inner() only unwraps it
         identity_did: IdentityDID::new_unchecked(controller_did),
         device_did,
         env_block,
@@ -147,10 +149,11 @@ fn initialize_agent(
         agent_name: config.alias.to_string(),
         capabilities: cap_strings,
         expires_in_secs: config.expires_in_secs,
-        delegated_by: config
-            .parent_identity_did
-            .clone()
-            .map(IdentityDID::new_unchecked),
+        delegated_by: config.parent_identity_did.clone().map(|did| {
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: parent_identity_did is supplied by the CLI after resolving from identity storage, which stores only validated did:keri: DIDs
+            IdentityDID::new_unchecked(did)
+        }),
         storage_mode: AgentStorageMode::Persistent {
             repo_path: Some(config.registry_path.clone()),
         },

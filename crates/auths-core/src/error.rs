@@ -174,16 +174,27 @@ impl AuthsErrorInfo for AgentError {
                 Some("Run the command again and provide the required input")
             }
             Self::StorageError(_) => Some("Check file permissions and disk space"),
-            // These errors typically don't have actionable suggestions
-            Self::SecurityError(_)
-            | Self::CryptoError(_)
-            | Self::KeyDeserializationError(_)
-            | Self::SigningFailed(_)
-            | Self::Proto(_)
-            | Self::IO(_)
-            | Self::InvalidInput(_)
-            | Self::MutexError(_)
-            | Self::CredentialTooLarge { .. } => None,
+            Self::SecurityError(_) => Some(
+                "Run `auths doctor` to check system keychain access and security configuration",
+            ),
+            Self::CryptoError(_) => {
+                Some("A cryptographic operation failed; check key material with `auths key list`")
+            }
+            Self::KeyDeserializationError(_) => {
+                Some("The stored key is corrupted; re-import with `auths key import`")
+            }
+            Self::SigningFailed(_) => Some(
+                "The signing operation failed; verify your key is accessible with `auths key list`",
+            ),
+            Self::Proto(_) => Some(
+                "A protocol error occurred; check that both sides are running compatible versions",
+            ),
+            Self::IO(_) => Some("Check file permissions and that the filesystem is not read-only"),
+            Self::InvalidInput(_) => Some("Check the command arguments and try again"),
+            Self::MutexError(_) => Some("A concurrency error occurred; restart the operation"),
+            Self::CredentialTooLarge { .. } => Some(
+                "Reduce the credential size or use file-based storage with AUTHS_KEYCHAIN_BACKEND=file",
+            ),
             Self::WeakPassphrase(_) => {
                 Some("Use at least 12 characters with uppercase, lowercase, and a digit or symbol")
             }
@@ -244,7 +255,12 @@ impl AuthsErrorInfo for TrustError {
             Self::Lock(_) => Some("Check file permissions and try again"),
             Self::Io(_) => Some("Check disk space and file permissions"),
             Self::AlreadyExists(_) => Some("Run `auths trust list` to see existing entries"),
-            Self::InvalidData(_) | Self::Serialization(_) => None,
+            Self::InvalidData(_) => {
+                Some("The trust store may be corrupted; delete and re-pin with `auths trust add`")
+            }
+            Self::Serialization(_) => {
+                Some("The trust store data is corrupted; delete and re-pin with `auths trust add`")
+            }
         }
     }
 }

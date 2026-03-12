@@ -619,6 +619,8 @@ mod tests {
 
         let (_, prefix, _) = resolve_rotation_context(&config, &ctx).unwrap();
         let state = ctx.registry.get_key_state(&prefix).unwrap();
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: test-only literal with valid did:keri: prefix
         let wrong_did = IdentityDID::new_unchecked("did:keri:EWrongDid".to_string());
 
         let result = retrieve_precommitted_key(&wrong_did, &key_alias, &state, &ctx);
@@ -629,6 +631,8 @@ mod tests {
     fn retrieve_precommitted_key_missing_key_returns_error() {
         let ctx = fake_ctx("Test-passphrase1!");
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: test-only literal with valid did:keri: prefix
         let did = IdentityDID::new_unchecked("did:keri:Etest".to_string());
         let state = KeyState {
             prefix: Prefix::new_unchecked("Etest".to_string()),
@@ -755,6 +759,8 @@ mod tests {
         }
 
         let prefix = Prefix::new_unchecked("ETestMismatch".to_string());
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: test-only literal with valid did:keri: prefix
         let did = IdentityDID::new_unchecked("did:keri:ETestMismatch".to_string());
 
         let state = KeyState {

@@ -24,8 +24,12 @@
       "format": "date-time"
     },
     "identity_did": {
-      "description": "The DID of the identity (e.g., \"did:keri:...\")",
-      "type": "string"
+      "description": "The DID of the identity (e.g., `\"did:keri:...\"`)",
+      "allOf": [
+        {
+          "$ref": "#/definitions/IdentityDID"
+        }
+      ]
     },
     "max_valid_for_secs": {
       "description": "Maximum age in seconds before this bundle is considered stale",
@@ -35,7 +39,11 @@
     },
     "public_key_hex": {
       "description": "The public key in hex format for signature verification",
-      "type": "string"
+      "allOf": [
+        {
+          "$ref": "#/definitions/PublicKeyHex"
+        }
+      ]
     }
   },
   "definitions": {
@@ -60,13 +68,9 @@
         },
         "delegated_by": {
           "description": "DID of the attestation that delegated authority (for chain tracking).",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/IdentityDID"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
           ]
         },
         "device_public_key": {
@@ -105,12 +109,8 @@
           ]
         },
         "issuer": {
-          "description": "DID of the issuing identity.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/IdentityDID"
-            }
-          ]
+          "description": "DID of the issuing identity (can be `did:keri:` or `did:key:`).",
+          "type": "string"
         },
         "note": {
           "description": "Optional human-readable note.",
@@ -199,7 +199,11 @@
       "format": "hex"
     },
     "IdentityDID": {
-      "description": "Strongly-typed wrapper for identity DIDs (e.g., `\"did:keri:E...\"`).\n\nUsage: ```ignore let did = IdentityDID::new(\"did:keri:Eabc123\"); assert_eq!(did.as_str(), \"did:keri:Eabc123\");\n\nlet s: String = did.into_inner(); ```",
+      "description": "Strongly-typed wrapper for identity DIDs (e.g., `\"did:keri:E...\"`).\n\nUsage: ```rust # use auths_verifier::IdentityDID; let did = IdentityDID::parse(\"did:keri:Eabc123\").unwrap(); assert_eq!(did.as_str(), \"did:keri:Eabc123\");\n\nlet s: String = did.into_inner(); ```",
+      "type": "string"
+    },
+    "PublicKeyHex": {
+      "description": "A validated hex-encoded Ed25519 public key (64 hex chars = 32 bytes).\n\nUse `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.",
       "type": "string"
     },
     "Role": {
