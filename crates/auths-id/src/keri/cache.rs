@@ -363,6 +363,8 @@ mod tests {
     use crate::keri::Prefix;
     use tempfile::TempDir;
 
+    const VALID_OID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
     fn create_test_state() -> KeyState {
         KeyState::from_inception(
             Prefix::new_unchecked("ETestPrefix".to_string()),
@@ -400,15 +402,7 @@ mod tests {
         let tip_said = "ELatestSaid";
 
         // Write cache
-        write_kel_cache(
-            dir.path(),
-            did,
-            &state,
-            tip_said,
-            "abc123def456",
-            Utc::now(),
-        )
-        .unwrap();
+        write_kel_cache(dir.path(), did, &state, tip_said, VALID_OID, Utc::now()).unwrap();
 
         // Read it back
         let loaded = try_load_cached_state(dir.path(), did, tip_said);
@@ -425,7 +419,7 @@ mod tests {
         let state = create_test_state();
 
         // Write cache with one SAID
-        write_kel_cache(dir.path(), did, &state, "EOldSaid", "commit123", Utc::now()).unwrap();
+        write_kel_cache(dir.path(), did, &state, "EOldSaid", VALID_OID, Utc::now()).unwrap();
 
         // Try to load with different SAID - should return None
         let result = try_load_cached_state(dir.path(), did, "ENewSaid");
@@ -444,15 +438,7 @@ mod tests {
         let tip_said = "ESaid";
 
         // Write cache
-        write_kel_cache(
-            dir.path(),
-            did,
-            &state,
-            tip_said,
-            "abc123def456",
-            Utc::now(),
-        )
-        .unwrap();
+        write_kel_cache(dir.path(), did, &state, tip_said, VALID_OID, Utc::now()).unwrap();
 
         // Manually corrupt the cache by writing wrong DID
         let path = cache_path_for_did(dir.path(), did);
@@ -496,15 +482,7 @@ mod tests {
         let tip_said = "ESaid";
 
         // Write cache
-        write_kel_cache(
-            dir.path(),
-            did,
-            &state,
-            tip_said,
-            "abc123def456",
-            Utc::now(),
-        )
-        .unwrap();
+        write_kel_cache(dir.path(), did, &state, tip_said, VALID_OID, Utc::now()).unwrap();
 
         // Manually change version
         let path = cache_path_for_did(dir.path(), did);
@@ -525,7 +503,7 @@ mod tests {
         let state = create_test_state();
 
         // Write and verify cache exists
-        write_kel_cache(dir.path(), did, &state, "ESaid", "commit123", Utc::now()).unwrap();
+        write_kel_cache(dir.path(), did, &state, "ESaid", VALID_OID, Utc::now()).unwrap();
         assert!(try_load_cached_state(dir.path(), did, "ESaid").is_some());
 
         // Invalidate
@@ -554,7 +532,7 @@ mod tests {
             "did:keri:ETest1",
             &state,
             "ESaid1",
-            "commit1",
+            VALID_OID,
             Utc::now(),
         )
         .unwrap();
@@ -563,7 +541,7 @@ mod tests {
             "did:keri:ETest2",
             &state,
             "ESaid2",
-            "commit2",
+            VALID_OID,
             Utc::now(),
         )
         .unwrap();
@@ -587,7 +565,7 @@ mod tests {
             "did:keri:EClear1",
             &state,
             "ESaid",
-            "commit1",
+            VALID_OID,
             Utc::now(),
         )
         .unwrap();
@@ -596,7 +574,7 @@ mod tests {
             "did:keri:EClear2",
             &state,
             "ESaid",
-            "commit2",
+            VALID_OID,
             Utc::now(),
         )
         .unwrap();
@@ -617,15 +595,7 @@ mod tests {
         let state = create_test_state();
         let tip_said = "ESaid";
 
-        write_kel_cache(
-            dir.path(),
-            did,
-            &state,
-            tip_said,
-            "abc123def456",
-            Utc::now(),
-        )
-        .unwrap();
+        write_kel_cache(dir.path(), did, &state, tip_said, VALID_OID, Utc::now()).unwrap();
 
         let inspected = inspect_cache(dir.path(), did).unwrap();
         assert!(inspected.is_some());

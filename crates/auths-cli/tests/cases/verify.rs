@@ -15,18 +15,16 @@ fn create_signed_attestation(
     device_kp: &ring::signature::Ed25519KeyPair,
 ) -> Attestation {
     let device_pk: [u8; 32] = device_kp.public_key().as_ref().try_into().unwrap();
+    let issuer_pk: [u8; 32] = issuer_kp.public_key().as_ref().try_into().unwrap();
+
+    let device_did = DeviceDID::from_ed25519(&device_pk);
+    let issuer_did = DeviceDID::from_ed25519(&issuer_pk);
 
     let mut att = Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
-        issuer: CanonicalDid::new_unchecked(format!(
-            "did:key:{}",
-            hex::encode(issuer_kp.public_key().as_ref())
-        )),
-        subject: DeviceDID::new_unchecked(format!(
-            "did:key:{}",
-            hex::encode(device_kp.public_key().as_ref())
-        )),
+        issuer: CanonicalDid::from(issuer_did),
+        subject: device_did,
         device_public_key: Ed25519PublicKey::from_bytes(device_pk),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),

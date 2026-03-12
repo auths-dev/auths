@@ -616,7 +616,7 @@ mod tests {
     #[test]
     fn error_codes_and_suggestions() {
         let err = AllowedSignersError::InvalidEmail("test".to_string());
-        assert_eq!(err.error_code(), "AUTHS_INVALID_EMAIL");
+        assert_eq!(err.error_code(), "AUTHS-E5801");
         assert!(err.suggestion().is_some());
     }
 }

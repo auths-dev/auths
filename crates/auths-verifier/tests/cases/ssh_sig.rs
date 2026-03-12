@@ -42,19 +42,19 @@ fn error_codes_are_correct() {
     use auths_verifier::error::AuthsErrorInfo;
 
     let err = CommitVerificationError::UnsignedCommit;
-    assert_eq!(err.error_code(), "AUTHS_UNSIGNED_COMMIT");
+    assert_eq!(err.error_code(), "AUTHS-E2101");
 
     let err = CommitVerificationError::GpgNotSupported;
-    assert_eq!(err.error_code(), "AUTHS_GPG_NOT_SUPPORTED");
+    assert_eq!(err.error_code(), "AUTHS-E2102");
 
     let err = CommitVerificationError::UnknownSigner;
-    assert_eq!(err.error_code(), "AUTHS_UNKNOWN_SIGNER");
+    assert_eq!(err.error_code(), "AUTHS-E2108");
 
     let err = CommitVerificationError::SignatureInvalid;
-    assert_eq!(err.error_code(), "AUTHS_SIGNATURE_INVALID");
+    assert_eq!(err.error_code(), "AUTHS-E2107");
 
     let err = CommitVerificationError::UnsupportedKeyType {
         found: "ssh-rsa".into(),
     };
-    assert_eq!(err.error_code(), "AUTHS_UNSUPPORTED_KEY_TYPE");
+    assert_eq!(err.error_code(), "AUTHS-E2104");
 }
