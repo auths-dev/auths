@@ -60,7 +60,7 @@ class DeviceService:
         self,
         identity_did: str,
         capabilities: list[str] | None = None,
-        expires_in_days: int | None = None,
+        expires_in: int | None = None,
         passphrase: str | None = None,
     ) -> Device:
         """Link a new device to an identity.
@@ -68,7 +68,7 @@ class DeviceService:
         Args:
             identity_did: The identity to link this device to.
             capabilities: Device capabilities (default: []).
-            expires_in_days: Optional expiry in days.
+            expires_in: Duration in seconds until expiration (per RFC 6749).
             passphrase: Key passphrase override.
 
         Returns:
@@ -80,7 +80,7 @@ class DeviceService:
 
         Examples:
             ```python
-            device = auths.devices.link(identity.did, capabilities=["sign"], expires_in_days=90)
+            device = auths.devices.link(identity.did, capabilities=["sign"], expires_in=7_776_000)
             ```
         """
         pp = passphrase or self._client._passphrase
@@ -89,7 +89,7 @@ class DeviceService:
             capabilities or [],
             self._client.repo_path,
             pp,
-            expires_in_days,
+            expires_in,
         )
         return Device(did=device_did, attestation_id=attestation_id)
 

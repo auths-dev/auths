@@ -158,7 +158,7 @@ pub fn create_agent_identity(
         device_key_alias: Some(result_alias.clone()),
         device_did: None,
         capabilities: parsed_caps,
-        expires_in_days: None,
+        expires_in: None,
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,
     };
@@ -226,7 +226,7 @@ pub fn delegate_agent(
     capabilities: Vec<String>,
     parent_repo_path: String,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<i64>,
     identity_did: Option<String>,
 ) -> napi::Result<NapiDelegatedAgentBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
@@ -300,7 +300,7 @@ pub fn delegate_agent(
         device_key_alias: Some(agent_alias.clone()),
         device_did: None,
         capabilities: parsed_caps,
-        expires_in_days,
+        expires_in: expires_in.map(|s| s as u64),
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,
     };

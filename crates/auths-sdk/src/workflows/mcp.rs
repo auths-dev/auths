@@ -26,6 +26,7 @@ struct McpTokenResponse {
     #[allow(dead_code)]
     token_type: String,
     #[allow(dead_code)]
+    /// Duration in seconds until expiration (per RFC 6749).
     expires_in: u64,
     #[allow(dead_code)]
     subject: String,

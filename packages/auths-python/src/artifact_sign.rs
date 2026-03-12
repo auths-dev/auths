@@ -128,7 +128,7 @@ fn build_context_and_sign(
     identity_key_alias: &str,
     repo_path: &str,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<u64>,
     note: Option<String>,
 ) -> PyResult<PyArtifactResult> {
     let passphrase_str = resolve_passphrase(passphrase);
@@ -175,7 +175,7 @@ fn build_context_and_sign(
         artifact,
         identity_key: Some(SigningKeyMaterial::Alias(alias.clone())),
         device_key: SigningKeyMaterial::Alias(alias),
-        expires_in_days,
+        expires_in,
         note,
     };
 
@@ -200,7 +200,7 @@ fn build_context_and_sign(
 /// * `identity_key_alias`: Keychain alias for the identity key.
 /// * `repo_path`: Path to the auths repository.
 /// * `passphrase`: Optional passphrase for the keychain.
-/// * `expires_in_days`: Optional expiry in days.
+/// * `expires_in`: Duration in seconds until expiration (per RFC 6749).
 /// * `note`: Optional human-readable note.
 ///
 /// Usage:
@@ -208,14 +208,14 @@ fn build_context_and_sign(
 /// let result = sign_artifact(py, "release.tar.gz", "main", "~/.auths", None, None, None)?;
 /// ```
 #[pyfunction]
-#[pyo3(signature = (file_path, identity_key_alias, repo_path, passphrase=None, expires_in_days=None, note=None))]
+#[pyo3(signature = (file_path, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None))]
 pub fn sign_artifact(
     py: Python<'_>,
     file_path: &str,
     identity_key_alias: &str,
     repo_path: &str,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<u64>,
     note: Option<String>,
 ) -> PyResult<PyArtifactResult> {
     let path = PathBuf::from(shellexpand::tilde(file_path).as_ref());
@@ -230,7 +230,7 @@ pub fn sign_artifact(
     let rp = repo_path.to_string();
 
     py.allow_threads(move || {
-        build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in_days, note)
+        build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note)
     })
 }
 
@@ -241,7 +241,7 @@ pub fn sign_artifact(
 /// * `identity_key_alias`: Keychain alias for the identity key.
 /// * `repo_path`: Path to the auths repository.
 /// * `passphrase`: Optional passphrase for the keychain.
-/// * `expires_in_days`: Optional expiry in days.
+/// * `expires_in`: Duration in seconds until expiration (per RFC 6749).
 /// * `note`: Optional human-readable note.
 ///
 /// Usage:
@@ -249,14 +249,14 @@ pub fn sign_artifact(
 /// let result = sign_artifact_bytes(py, b"manifest data", "main", "~/.auths", None, None, None)?;
 /// ```
 #[pyfunction]
-#[pyo3(signature = (data, identity_key_alias, repo_path, passphrase=None, expires_in_days=None, note=None))]
+#[pyo3(signature = (data, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None))]
 pub fn sign_artifact_bytes(
     py: Python<'_>,
     data: &[u8],
     identity_key_alias: &str,
     repo_path: &str,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<u64>,
     note: Option<String>,
 ) -> PyResult<PyArtifactResult> {
     let artifact = Arc::new(BytesArtifact {
@@ -266,6 +266,6 @@ pub fn sign_artifact_bytes(
     let rp = repo_path.to_string();
 
     py.allow_threads(move || {
-        build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in_days, note)
+        build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note)
     })
 }

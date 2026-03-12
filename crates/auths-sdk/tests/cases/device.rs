@@ -63,7 +63,7 @@ fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> St
         device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
         device_did: None,
         capabilities: vec![],
-        expires_in_days: Some(30),
+        expires_in: Some(2_592_000),
         note: Some("test device".into()),
         payload: None,
     };
@@ -99,7 +99,7 @@ fn extend_device_updates_expiry() {
     let config = DeviceExtensionConfig {
         repo_path: registry_path,
         device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did.clone()),
-        days: 365,
+        expires_in: 31_536_000,
         identity_key_alias: key_alias.clone(),
         device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
     };
@@ -134,7 +134,7 @@ fn extend_device_nonexistent_device_returns_error() {
     let config = DeviceExtensionConfig {
         repo_path: registry_path,
         device_did: auths_verifier::types::DeviceDID::new_unchecked("did:key:zDoesNotExist"),
-        days: 30,
+        expires_in: 2_592_000,
         identity_key_alias: key_alias,
         device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
     };

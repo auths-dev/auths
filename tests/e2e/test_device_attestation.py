@@ -5,7 +5,7 @@ import pytest
 from helpers.cli import export_attestation, get_device_did, run_auths
 
 
-def _link_device(auths_bin, env, *, capabilities=None, expires_in_days=None):
+def _link_device(auths_bin, env, *, capabilities=None, expires_in=None):
     """Link a device and return the CLI result."""
     did = get_device_did(auths_bin, env)
     args = [
@@ -20,8 +20,8 @@ def _link_device(auths_bin, env, *, capabilities=None, expires_in_days=None):
     ]
     if capabilities:
         args += ["--capabilities", capabilities]
-    if expires_in_days:
-        args += ["--expires-in-days", str(expires_in_days)]
+    if expires_in:
+        args += ["--expires-in", str(expires_in)]
     return run_auths(auths_bin, args, env=env)
 
 
@@ -91,7 +91,7 @@ class TestDeviceAttestation:
 
     def test_attest_with_expiry(self, auths_bin, init_identity):
         result = _link_device(
-            auths_bin, init_identity, expires_in_days=1
+            auths_bin, init_identity, expires_in=86_400
         )
         if result.returncode != 0:
             pytest.skip(f"device link with expiry not available: {result.stderr}")

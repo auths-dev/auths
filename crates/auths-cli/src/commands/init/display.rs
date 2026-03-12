@@ -78,7 +78,7 @@ pub(crate) fn display_agent_dry_run(
     out.newline();
     out.println(&format!("  Storage: {}", config.registry_path.display()));
     out.println(&format!("  Capabilities: {:?}", config.capabilities));
-    if let Some(secs) = config.expires_in_secs {
+    if let Some(secs) = config.expires_in {
         out.println(&format!("  Expires in: {}s", secs));
     }
     out.newline();
@@ -86,7 +86,7 @@ pub(crate) fn display_agent_dry_run(
     let provisioning_config = auths_id::agent_identity::AgentProvisioningConfig {
         agent_name: config.alias.to_string(),
         capabilities: config.capabilities.iter().map(|c| c.to_string()).collect(),
-        expires_in_secs: config.expires_in_secs,
+        expires_in: config.expires_in,
         delegated_by: None,
         storage_mode: auths_id::agent_identity::AgentStorageMode::Persistent { repo_path: None },
     };

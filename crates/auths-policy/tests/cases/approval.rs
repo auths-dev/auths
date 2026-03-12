@@ -27,16 +27,12 @@ fn approval_gate_expr(cap_name: &str, approver: &str) -> Expr {
     }
 }
 
-fn make_approval(
-    approver: &str,
-    request_hash: [u8; 32],
-    expires_in_secs: i64,
-) -> ApprovalAttestation {
+fn make_approval(approver: &str, request_hash: [u8; 32], expires_in: i64) -> ApprovalAttestation {
     ApprovalAttestation {
         jti: "test-jti-001".into(),
         approver_did: did(approver),
         request_hash,
-        expires_at: Utc::now() + Duration::seconds(expires_in_secs),
+        expires_at: Utc::now() + Duration::seconds(expires_in),
         approved_capabilities: vec![],
     }
 }

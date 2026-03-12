@@ -74,11 +74,11 @@ class TestRotationWithMultipleAgents:
 
             auths.identities.delegate_agent(
                 operator.did, name="agent-a",
-                capabilities=["deploy:staging"], expires_in_days=7,
+                capabilities=["deploy:staging"], expires_in=604_800,
             )
             auths.identities.delegate_agent(
                 operator.did, name="agent-b",
-                capabilities=["audit"], expires_in_days=90,
+                capabilities=["audit"], expires_in=7_776_000,
             )
 
             # Must NOT fail with "pre-committed next key '...-agent--next-0' not found"

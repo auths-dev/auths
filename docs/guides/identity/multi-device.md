@@ -135,7 +135,7 @@ auths device link \
   --device-key-alias laptop-key \
   --device-did "$DEVICE_DID" \
   --note "Work Laptop" \
-  --expires-in-days 90
+  --expires-in 7776000
 ```
 
 You will be prompted for passphrases for both the identity key and the device key, as the attestation requires dual signatures.
@@ -146,7 +146,7 @@ Optional flags for `device link`:
 |------|-------------|
 | `--payload <PATH>` | Path to a JSON file with arbitrary payload data |
 | `--schema <PATH>` | JSON schema to validate the payload (experimental) |
-| `--expires-in-days <DAYS>` | Attestation expiry |
+| `--expires-in <SECONDS>` | Attestation expiry |
 | `--note <TEXT>` | Description for this device authorization |
 | `--capabilities <LIST>` | Comma-separated permissions to grant |
 

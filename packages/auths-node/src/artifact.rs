@@ -99,7 +99,7 @@ fn build_context_and_sign(
     identity_key_alias: &str,
     repo_path: &str,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<i64>,
     note: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
     let passphrase_str = resolve_passphrase(passphrase);
@@ -145,7 +145,7 @@ fn build_context_and_sign(
         artifact,
         identity_key: Some(SigningKeyMaterial::Alias(alias.clone())),
         device_key: SigningKeyMaterial::Alias(alias),
-        expires_in_days,
+        expires_in: expires_in.map(|s| s as u64),
         note,
     };
 
@@ -170,7 +170,7 @@ pub fn sign_artifact(
     identity_key_alias: String,
     repo_path: String,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<i64>,
     note: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
     let path = PathBuf::from(shellexpand::tilde(&file_path).as_ref());
@@ -189,7 +189,7 @@ pub fn sign_artifact(
         &identity_key_alias,
         &repo_path,
         passphrase,
-        expires_in_days,
+        expires_in,
         note,
     )
 }
@@ -200,7 +200,7 @@ pub fn sign_artifact_bytes(
     identity_key_alias: String,
     repo_path: String,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<i64>,
     note: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
     let artifact = Arc::new(BytesArtifact {
@@ -211,7 +211,7 @@ pub fn sign_artifact_bytes(
         &identity_key_alias,
         &repo_path,
         passphrase,
-        expires_in_days,
+        expires_in,
         note,
     )
 }

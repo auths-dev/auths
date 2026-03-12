@@ -129,7 +129,7 @@ echo -e "$PASSPHRASE_DEV\n$PASSPHRASE_ID\n$PASSPHRASE_DEV" | auths --repo "$REPO
   --device-key-alias "$DEVICE_ALIAS" \
   --device-did "$DEVICE_DID" \
   --note "Default layout test device" \
-  --expires-in-days 30
+  --expires-in 2592000
 
 # --- Verification ---
 echo ""

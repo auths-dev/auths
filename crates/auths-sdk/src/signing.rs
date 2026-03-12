@@ -198,7 +198,7 @@ pub enum SigningKeyMaterial {
 ///     artifact: Arc::new(my_artifact),
 ///     identity_key: Some(SigningKeyMaterial::Alias("my-identity".into())),
 ///     device_key: SigningKeyMaterial::Direct(my_seed),
-///     expires_in_days: Some(365),
+///     expires_in: Some(31_536_000),
 ///     note: None,
 /// };
 /// ```
@@ -209,8 +209,8 @@ pub struct ArtifactSigningParams {
     pub identity_key: Option<SigningKeyMaterial>,
     /// Device key source. Required to produce a dual-signed attestation.
     pub device_key: SigningKeyMaterial,
-    /// Number of days until the attestation expires. `None` means no expiry.
-    pub expires_in_days: Option<u32>,
+    /// Duration in seconds until expiration (per RFC 6749).
+    pub expires_in: Option<u64>,
     /// Optional human-readable annotation embedded in the attestation.
     pub note: Option<String>,
 }
@@ -376,7 +376,7 @@ fn resolve_required_key(
 ///     artifact: Arc::new(FileArtifact::new(Path::new("release.tar.gz"))),
 ///     identity_key: Some(SigningKeyMaterial::Alias("my-key".into())),
 ///     device_key: SigningKeyMaterial::Direct(seed),
-///     expires_in_days: Some(365),
+///     expires_in: Some(31_536_000),
 ///     note: None,
 /// };
 /// let result = sign_artifact(params, &ctx)?;
@@ -434,8 +434,8 @@ pub fn sign_artifact(
     let meta = AttestationMetadata {
         timestamp: Some(now),
         expires_at: params
-            .expires_in_days
-            .map(|d| now + chrono::Duration::days(d as i64)),
+            .expires_in
+            .map(|s| now + chrono::Duration::seconds(s as i64)),
         note: params.note,
     };
 

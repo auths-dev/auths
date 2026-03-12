@@ -46,8 +46,8 @@ fn build_attestation_params(
         meta: AttestationMetadata {
             timestamp: Some(now),
             expires_at: config
-                .expires_in_days
-                .map(|d| now + chrono::Duration::days(d as i64)),
+                .expires_in
+                .map(|s| now + chrono::Duration::seconds(s as i64)),
             note: config.note.clone(),
         },
         capabilities: config.capabilities.clone(),
@@ -158,7 +158,7 @@ pub fn revoke_device(
 /// duration only, it does not change what the device is permitted to do.
 ///
 /// Args:
-/// * `config`: Extension parameters (device DID, days, key aliases, registry path).
+/// * `config`: Extension parameters (device DID, seconds until expiration, key aliases, registry path).
 /// * `ctx`: Runtime context providing storage adapters, key material, and passphrase provider.
 /// * `clock`: Clock provider for timestamp generation.
 ///
@@ -200,7 +200,7 @@ pub fn extend_device(
 
     let previous_expires_at = latest.expires_at;
     let now = clock.now();
-    let new_expires_at = now + chrono::Duration::days(config.days as i64);
+    let new_expires_at = now + chrono::Duration::seconds(config.expires_in as i64);
 
     let meta = AttestationMetadata {
         note: latest.note.clone(),

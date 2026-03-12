@@ -20,7 +20,7 @@
 //! let config = AgentProvisioningConfig {
 //!     agent_name: "ci-bot".to_string(),
 //!     capabilities: vec!["sign_commit".to_string()],
-//!     expires_in_secs: Some(86400),
+//!     expires_in: Some(86400),
 //!     delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eabc123")),
 //!     storage_mode: AgentStorageMode::Persistent { repo_path: None },
 //! };
@@ -70,8 +70,8 @@ pub struct AgentProvisioningConfig {
     pub agent_name: String,
     /// Capabilities to grant (e.g., `["sign_commit", "pr:create"]`).
     pub capabilities: Vec<String>,
-    /// Optional expiry in seconds from now.
-    pub expires_in_secs: Option<u64>,
+    /// Duration in seconds until expiration (per RFC 6749).
+    pub expires_in: Option<u64>,
     /// DID of the human who authorized this agent.
     pub delegated_by: Option<IdentityDID>,
     /// Storage mode (persistent or ephemeral).
@@ -355,7 +355,7 @@ fn build_attestation_meta(
     config: &AgentProvisioningConfig,
 ) -> AttestationMetadata {
     let expires_at = config
-        .expires_in_secs
+        .expires_in
         .map(|s| now + chrono::Duration::seconds(s as i64));
 
     AttestationMetadata {
@@ -404,8 +404,8 @@ pub fn format_agent_toml(did: &str, key_alias: &str, config: &AgentProvisioningC
 
     out.push_str(&format!("\n[capabilities]\ngranted = [{}]\n", caps));
 
-    if let Some(secs) = config.expires_in_secs {
-        out.push_str(&format!("\n[expiry]\nexpires_in_secs = {}\n", secs));
+    if let Some(secs) = config.expires_in {
+        out.push_str(&format!("\n[expiry]\nexpires_in = {}\n", secs));
     }
 
     out
@@ -423,7 +423,7 @@ mod tests {
         let config = AgentProvisioningConfig {
             agent_name: "ci-bot".to_string(),
             capabilities: vec!["sign_commit".to_string(), "pr:create".to_string()],
-            expires_in_secs: Some(86400),
+            expires_in: Some(86400),
             delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eabc123")),
             storage_mode: AgentStorageMode::Persistent { repo_path: None },
         };
@@ -432,7 +432,7 @@ mod tests {
         assert!(toml.contains("did = \"did:keri:Eagent\""));
         assert!(toml.contains("delegated_by = \"did:keri:Eabc123\""));
         assert!(toml.contains("\"sign_commit\", \"pr:create\""));
-        assert!(toml.contains("expires_in_secs = 86400"));
+        assert!(toml.contains("expires_in = 86400"));
     }
 
     #[test]
@@ -440,7 +440,7 @@ mod tests {
         let config = AgentProvisioningConfig {
             agent_name: "solo".to_string(),
             capabilities: vec![],
-            expires_in_secs: None,
+            expires_in: None,
             delegated_by: None,
             storage_mode: AgentStorageMode::InMemory,
         };

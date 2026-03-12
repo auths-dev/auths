@@ -25,7 +25,7 @@ print(result.signature_pem[:60] + "...")
 device = client.devices.link(
     identity.did,
     capabilities=["sign", "verify"],
-    expires_in_days=90,
+    expires_in=7_776_000,
 )
 print(f"Device: {device.did}")
 ```
@@ -81,7 +81,7 @@ policy = (
 signed = client.sign_artifact(
     "release.tar.gz",
     identity_did=identity.did,
-    expires_in_days=365,
+    expires_in=31_536_000,
 )
 print(f"RID: {signed.rid}")
 print(f"Digest: {signed.digest}")

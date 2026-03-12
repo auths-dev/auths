@@ -43,26 +43,26 @@ impl PyDeviceExtension {
 /// Args:
 /// * `device_did`: The DID of the device to extend.
 /// * `identity_key_alias`: Keychain alias for the identity key.
-/// * `days`: Number of days to extend from now.
+/// * `expires_in`: Duration in seconds until expiration (per RFC 6749).
 /// * `repo_path`: Path to the auths repository.
 /// * `passphrase`: Optional passphrase for the keychain.
 ///
 /// Usage:
 /// ```ignore
-/// let result = extend_device_authorization_ffi(py, "did:key:...", "main", 90, "~/.auths", None)?;
+/// let result = extend_device_authorization_ffi(py, "did:key:...", "main", 7_776_000, "~/.auths", None)?;
 /// ```
 #[pyfunction]
-#[pyo3(signature = (device_did, identity_key_alias, days, repo_path, passphrase=None))]
+#[pyo3(signature = (device_did, identity_key_alias, expires_in, repo_path, passphrase=None))]
 pub fn extend_device_authorization_ffi(
     py: Python<'_>,
     device_did: &str,
     identity_key_alias: &str,
-    days: u32,
+    expires_in: u64,
     repo_path: &str,
     passphrase: Option<String>,
 ) -> PyResult<PyDeviceExtension> {
-    if days == 0 {
-        return Err(PyValueError::new_err("days must be positive (> 0)"));
+    if expires_in == 0 {
+        return Err(PyValueError::new_err("expires_in must be positive (> 0)"));
     }
 
     let passphrase_str = resolve_passphrase(passphrase);
@@ -94,7 +94,7 @@ pub fn extend_device_authorization_ffi(
         repo_path: repo,
         device_did: DeviceDID::parse(device_did)
             .map_err(|e| PyValueError::new_err(format!("{e}")))?,
-        days,
+        expires_in,
         identity_key_alias: alias,
         device_key_alias: None,
     };

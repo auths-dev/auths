@@ -41,7 +41,7 @@ Sign a Git commit or artifact file.
 | `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
 | `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the identity key (for artifact signing) |
 | `--device-key-alias <DEVICE_KEY_ALIAS>` | — | Local alias of the device key (for artifact signing, required for files) |
-| `--expires-in-days <N>` | — | Number of days until the signature expires (for artifact signing) [aliases: --days] |
+| `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--note <NOTE>` | — | Optional note to embed in the attestation (for artifact signing) |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |

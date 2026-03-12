@@ -1,5 +1,6 @@
 ---
 source: crates/auths-cli/src/commands/status.rs
+assertion_line: 453
 expression: report
 ---
 {
@@ -18,7 +19,7 @@ expression: report
     "expiring_soon": [
       {
         "device_did": "did:key:zExpiringSoon",
-        "expires_in": 259200
+        "expires_in_days": 3
       }
     ],
     "devices_detail": [
@@ -27,21 +28,21 @@ expression: report
         "status": "active",
         "revoked_at": null,
         "expires_at": "2025-09-13T12:00:00Z",
-        "expires_in": 7776000
+        "expires_in_days": 90
       },
       {
         "device_did": "did:key:zExpiringSoon",
         "status": "expiring_soon",
         "revoked_at": null,
         "expires_at": "2025-06-18T12:00:00Z",
-        "expires_in": 259200
+        "expires_in_days": 3
       },
       {
         "device_did": "did:key:zRevokedDevice",
         "status": "revoked",
         "revoked_at": "2025-06-05T12:00:00Z",
         "expires_at": "2025-08-04T12:00:00Z",
-        "expires_in": null
+        "expires_in_days": null
       }
     ]
   }

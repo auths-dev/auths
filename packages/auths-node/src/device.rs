@@ -36,7 +36,7 @@ pub fn link_device_to_identity(
     capabilities: Vec<String>,
     repo_path: String,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<i64>,
 ) -> napi::Result<NapiLinkResult> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_env_config(&passphrase_str, &repo_path);
@@ -68,7 +68,7 @@ pub fn link_device_to_identity(
         device_key_alias: None,
         device_did: None,
         capabilities: parsed_caps,
-        expires_in_days,
+        expires_in: expires_in.map(|s| s as u64),
         note: None,
         payload: None,
     };
@@ -147,14 +147,14 @@ pub fn revoke_device_from_identity(
 pub fn extend_device_authorization(
     device_did: String,
     identity_key_alias: String,
-    days: u32,
+    expires_in: i64,
     repo_path: String,
     passphrase: Option<String>,
 ) -> napi::Result<NapiExtensionResult> {
-    if days == 0 {
+    if expires_in <= 0 {
         return Err(format_error(
             "AUTHS_INVALID_INPUT",
-            "days must be positive (> 0)",
+            "expires_in must be positive (> 0)",
         ));
     }
 
@@ -180,7 +180,7 @@ pub fn extend_device_authorization(
         repo_path: repo,
         device_did: DeviceDID::parse(&device_did)
             .map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?,
-        days,
+        expires_in: expires_in as u64,
         identity_key_alias: alias,
         device_key_alias: None,
     };

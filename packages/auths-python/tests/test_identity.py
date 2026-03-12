@@ -42,7 +42,7 @@ def test_device_lifecycle(tmp_path):
     device = auths.devices.link(
         identity_did=identity.did,
         capabilities=["sign"],
-        expires_in_days=90,
+        expires_in=7_776_000,
     )
     assert isinstance(device, Device)
     assert device.did.startswith("did:key:")
