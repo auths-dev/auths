@@ -121,8 +121,8 @@ pub mod witness_integration;
 
 #[cfg(feature = "git-storage")]
 pub use anchor::{
-    AnchorError, AnchorVerification, anchor_attestation, anchor_data, find_anchor_event,
-    verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
+    AnchorError, AnchorVerification, anchor_attestation, anchor_data, anchor_idp_binding,
+    find_anchor_event, verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
 };
 pub use event::{Event, EventReceipts, IcpEvent, IxnEvent, KeriSequence, RotEvent};
 #[cfg(feature = "git-storage")]

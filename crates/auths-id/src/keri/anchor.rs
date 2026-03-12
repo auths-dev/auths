@@ -160,6 +160,26 @@ pub fn anchor_attestation<T: serde::Serialize>(
     )
 }
 
+/// Anchor an IdP binding in the KEL.
+///
+/// This is a convenience wrapper for `anchor_data` with the "idp-binding" seal type.
+pub fn anchor_idp_binding<T: serde::Serialize>(
+    repo: &Repository,
+    prefix: &Prefix,
+    binding: &T,
+    current_keypair: &Ed25519KeyPair,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<Said, AnchorError> {
+    anchor_data(
+        repo,
+        prefix,
+        binding,
+        SealType::IdpBinding,
+        current_keypair,
+        now,
+    )
+}
+
 /// Find the IXN event that anchors a specific data digest.
 ///
 /// # Arguments

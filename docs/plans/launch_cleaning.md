@@ -354,7 +354,7 @@ These are the features that separate "impressive developer tool" from "enterpris
 
 ---
 
-#### Epic 7: Enterprise SAML/OIDC Identity Binding
+~~#### Epic 7: Enterprise SAML/OIDC Identity Binding~~
 **Why it matters:** A CISO cannot mandate Auths if device identity cannot be tied to the corporate IdP. This is the single most common enterprise procurement question for developer security tools.
 
 **Scope:**
