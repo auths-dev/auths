@@ -53,11 +53,11 @@ fn test_init_happy_path() {
     let signers = std::fs::read_to_string(&signers_path).unwrap();
     assert!(!signers.is_empty(), "allowed_signers should not be empty");
 
-    // Stdout should contain identity DID
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Output uses eprintln, so DID appears in stderr
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stdout.contains("did:keri:"),
-        "stdout should contain identity DID, got: {}",
-        stdout
+        stderr.contains("did:keri:"),
+        "output should contain identity DID, got: {}",
+        stderr
     );
 }

@@ -31,7 +31,7 @@ fn test_emergency_revoke_device() {
     assert!(init_output.status.success());
 
     let device_did =
-        extract_device_did(&init_output.stdout).expect("init output should contain device DID");
+        extract_device_did(&init_output.stderr).expect("init output should contain device DID");
 
     // Make a signed commit
     std::fs::write(env.repo_path.join("test.txt"), "before revocation").unwrap();
