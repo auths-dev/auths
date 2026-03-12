@@ -508,4 +508,41 @@ mod tests {
         let result = extract_seed_from_pkcs8(&bad_input);
         assert!(result.is_err(), "must reject non-PKCS#8 input");
     }
+
+    #[test]
+    fn test_validate_verify_option_valid() {
+        assert!(validate_verify_option("verify-time=1700000000").is_ok());
+        assert!(validate_verify_option("verify-time=20260218012319").is_ok());
+        assert!(validate_verify_option("verify-time=1").is_ok());
+        assert!(validate_verify_option("print-pubkey").is_ok());
+        assert!(validate_verify_option("hashalg=sha256").is_ok());
+        assert!(validate_verify_option("hashalg=sha512").is_ok());
+    }
+
+    #[test]
+    fn test_validate_verify_option_invalid() {
+        assert!(validate_verify_option("no-touch-required").is_err());
+        assert!(validate_verify_option("foo=bar").is_err());
+        assert!(validate_verify_option("random-option").is_err());
+        assert!(validate_verify_option("").is_err());
+    }
+
+    #[test]
+    fn test_validate_verify_option_edge_cases() {
+        assert!(validate_verify_option("verify-time=").is_err());
+        assert!(validate_verify_option("verify-time=abc").is_err());
+        assert!(validate_verify_option("VERIFY-TIME=123").is_err());
+        assert!(validate_verify_option("hashalg=sha384").is_err());
+        assert!(validate_verify_option("verify-time=123=456").is_err());
+        assert!(validate_verify_option(" verify-time=123").is_err());
+        assert!(validate_verify_option("verify-time=999999999999999").is_err());
+    }
+
+    #[test]
+    fn test_validate_verify_option_injection_attempts() {
+        assert!(validate_verify_option("-D /tmp/evil.so").is_err());
+        assert!(validate_verify_option("--help").is_err());
+        assert!(validate_verify_option("-t rsa").is_err());
+        assert!(validate_verify_option("-w /tmp/fido.so").is_err());
+    }
 }
