@@ -344,10 +344,10 @@ fn configure_git_signing(
         return Ok(false);
     }
     let git_config = git_config.ok_or_else(|| {
-        SetupError::GitConfigError("GitConfigProvider required for non-Skip scope".into())
+        SetupError::InvalidSetupConfig("GitConfigProvider required for non-Skip scope".into())
     })?;
     let sign_binary_path = sign_binary_path.ok_or_else(|| {
-        SetupError::GitConfigError("sign_binary_path required for non-Skip scope".into())
+        SetupError::InvalidSetupConfig("sign_binary_path required for non-Skip scope".into())
     })?;
     set_git_signing_config(key_alias, git_config, sign_binary_path)?;
     Ok(true)
@@ -358,9 +358,9 @@ fn set_git_signing_config(
     git_config: &dyn GitConfigProvider,
     sign_binary_path: &Path,
 ) -> Result<(), SetupError> {
-    let auths_sign_str = sign_binary_path
-        .to_str()
-        .ok_or_else(|| SetupError::GitConfigError("auths-sign path is not valid UTF-8".into()))?;
+    let auths_sign_str = sign_binary_path.to_str().ok_or_else(|| {
+        SetupError::InvalidSetupConfig("auths-sign path is not valid UTF-8".into())
+    })?;
     let signing_key = format!("auths:{}", key_alias);
     let configs: &[(&str, &str)] = &[
         ("gpg.format", "ssh"),
@@ -372,7 +372,7 @@ fn set_git_signing_config(
     for (key, val) in configs {
         git_config
             .set(key, val)
-            .map_err(|e| SetupError::GitConfigError(e.to_string()))?;
+            .map_err(SetupError::GitConfigError)?;
     }
     Ok(())
 }

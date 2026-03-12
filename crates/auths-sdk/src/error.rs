@@ -72,7 +72,11 @@ pub enum SetupError {
 
     /// Setting a git configuration key failed.
     #[error("git config error: {0}")]
-    GitConfigError(String),
+    GitConfigError(#[source] crate::ports::git_config::GitConfigError),
+
+    /// Setup configuration parameters are invalid.
+    #[error("invalid setup config: {0}")]
+    InvalidSetupConfig(String),
 
     /// Remote registry registration failed.
     #[error("registration failed: {0}")]
@@ -112,7 +116,16 @@ pub enum DeviceError {
 
     /// Attestation creation or validation failed.
     #[error("attestation error: {0}")]
-    AttestationError(String),
+    AttestationError(#[source] auths_verifier::error::AttestationError),
+
+    /// The device DID derived from the key does not match the expected DID.
+    #[error("device DID mismatch: expected {expected}, got {actual}")]
+    DeviceDidMismatch {
+        /// The expected device DID.
+        expected: String,
+        /// The actual device DID derived from the key.
+        actual: String,
+    },
 
     /// A cryptographic operation failed.
     #[error("crypto error: {0}")]
@@ -156,7 +169,7 @@ pub enum DeviceExtensionError {
 
     /// Creating a new attestation failed.
     #[error("attestation creation failed: {0}")]
-    AttestationFailed(String),
+    AttestationFailed(#[source] auths_verifier::error::AttestationError),
 
     /// A storage operation failed.
     #[error("storage error: {0}")]
@@ -233,9 +246,24 @@ pub enum RegistrationError {
     #[error("network error: {0}")]
     NetworkError(#[source] auths_core::ports::network::NetworkError),
 
-    /// Local identity or attestation data is invalid.
-    #[error("local data error: {0}")]
-    LocalDataError(String),
+    /// The local DID format is invalid.
+    #[error("invalid DID format: {did}")]
+    InvalidDidFormat {
+        /// The DID that failed validation.
+        did: String,
+    },
+
+    /// Loading the local identity failed.
+    #[error("identity load error: {0}")]
+    IdentityLoadError(#[source] auths_id::error::StorageError),
+
+    /// Reading from the local registry failed.
+    #[error("registry read error: {0}")]
+    RegistryReadError(#[source] auths_id::storage::registry::backend::RegistryError),
+
+    /// Serialization of identity data failed.
+    #[error("serialization error: {0}")]
+    SerializationError(#[source] serde_json::Error),
 }
 
 impl From<auths_core::AgentError> for SetupError {
@@ -270,6 +298,7 @@ impl AuthsErrorInfo for SetupError {
             Self::CryptoError(e) => e.error_code(),
             Self::StorageError(_) => "AUTHS-E5003",
             Self::GitConfigError(_) => "AUTHS-E5004",
+            Self::InvalidSetupConfig(_) => "AUTHS-E5007",
             Self::RegistrationFailed(_) => "AUTHS-E5005",
             Self::PlatformVerificationFailed(_) => "AUTHS-E5006",
         }
@@ -288,6 +317,7 @@ impl AuthsErrorInfo for SetupError {
             Self::GitConfigError(_) => {
                 Some("Ensure Git is configured: git config --global user.name/email")
             }
+            Self::InvalidSetupConfig(_) => Some("Check identity setup configuration parameters"),
             Self::RegistrationFailed(_) => Some("Check network connectivity and try again"),
             Self::PlatformVerificationFailed(_) => None,
         }
@@ -300,6 +330,7 @@ impl AuthsErrorInfo for DeviceError {
             Self::IdentityNotFound { .. } => "AUTHS-E5101",
             Self::DeviceNotFound { .. } => "AUTHS-E5102",
             Self::AttestationError(_) => "AUTHS-E5103",
+            Self::DeviceDidMismatch { .. } => "AUTHS-E5105",
             Self::CryptoError(e) => e.error_code(),
             Self::StorageError(_) => "AUTHS-E5104",
         }
@@ -310,6 +341,7 @@ impl AuthsErrorInfo for DeviceError {
             Self::IdentityNotFound { .. } => Some("Run `auths init` to create an identity first"),
             Self::DeviceNotFound { .. } => Some("Run `auths device list` to see linked devices"),
             Self::AttestationError(_) => None,
+            Self::DeviceDidMismatch { .. } => Some("Check that --device-did matches the key alias"),
             Self::CryptoError(e) => e.suggestion(),
             Self::StorageError(_) => Some("Check file permissions and disk space"),
         }
@@ -372,7 +404,10 @@ impl AuthsErrorInfo for RegistrationError {
             Self::AlreadyRegistered => "AUTHS-E5401",
             Self::QuotaExceeded => "AUTHS-E5402",
             Self::NetworkError(e) => e.error_code(),
-            Self::LocalDataError(_) => "AUTHS-E5403",
+            Self::InvalidDidFormat { .. } => "AUTHS-E5403",
+            Self::IdentityLoadError(_) => "AUTHS-E5404",
+            Self::RegistryReadError(_) => "AUTHS-E5405",
+            Self::SerializationError(_) => "AUTHS-E5406",
         }
     }
 
@@ -381,7 +416,12 @@ impl AuthsErrorInfo for RegistrationError {
             Self::AlreadyRegistered => None,
             Self::QuotaExceeded => Some("Wait a few minutes and try again"),
             Self::NetworkError(e) => e.suggestion(),
-            Self::LocalDataError(_) => Some("Run `auths doctor` to check local identity data"),
+            Self::InvalidDidFormat { .. } => {
+                Some("Run `auths doctor` to check local identity data")
+            }
+            Self::IdentityLoadError(_) => Some("Run `auths doctor` to check local identity data"),
+            Self::RegistryReadError(_) => Some("Run `auths doctor` to check local identity data"),
+            Self::SerializationError(_) => Some("Run `auths doctor` to check local identity data"),
         }
     }
 }
@@ -574,11 +614,9 @@ pub enum OrgError {
     #[error("key storage error: {0}")]
     KeyStorage(String),
 
-    // TECH-DEBT(fn-33): migrate Storage(String) to typed SdkStorageError variant
-    // (call sites in workflows/org.rs, not in the fn-33.1 scope)
     /// A storage operation failed.
     #[error("storage error: {0}")]
-    Storage(String),
+    Storage(#[source] auths_id::storage::registry::backend::RegistryError),
 }
 
 /// Re-export from `auths-core` — defined there to avoid a circular dependency with
@@ -618,8 +656,7 @@ pub enum ApprovalError {
     #[error("approval partially applied — attestation stored but nonce/cleanup failed: {0}")]
     PartialApproval(String),
 
-    // TECH-DEBT(fn-33): migrate ApprovalStorage(String) to typed SdkStorageError variant
     /// A storage operation failed.
     #[error("storage error: {0}")]
-    ApprovalStorage(String),
+    ApprovalStorage(#[source] SdkStorageError),
 }

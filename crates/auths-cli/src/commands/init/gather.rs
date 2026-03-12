@@ -182,7 +182,12 @@ pub(crate) fn submit_registration(
             out.println("  Run `auths id register` when you're back online.");
             None
         }
-        Err(auths_sdk::error::RegistrationError::LocalDataError(e)) => {
+        Err(
+            e @ (auths_sdk::error::RegistrationError::InvalidDidFormat { .. }
+            | auths_sdk::error::RegistrationError::IdentityLoadError(_)
+            | auths_sdk::error::RegistrationError::RegistryReadError(_)
+            | auths_sdk::error::RegistrationError::SerializationError(_)),
+        ) => {
             out.print_warn(&format!("Could not prepare registration payload: {e}"));
             out.println("  Run `auths id register` to retry.");
             None

@@ -110,7 +110,7 @@ pub(crate) fn find_admin(
             }
             ControlFlow::Continue(())
         })
-        .map_err(|e| OrgError::Storage(e.to_string()))?;
+        .map_err(OrgError::Storage)?;
 
     found.ok_or_else(|| OrgError::AdminNotFound {
         org: org_prefix.to_owned(),
@@ -145,7 +145,7 @@ pub(crate) fn find_member(
             }
             ControlFlow::Continue(())
         })
-        .map_err(|e| OrgError::Storage(e.to_string()))?;
+        .map_err(OrgError::Storage)?;
 
     Ok(found)
 }
@@ -369,7 +369,7 @@ pub fn add_organization_member(
 
     ctx.registry
         .store_org_member(&cmd.org_prefix, &attestation)
-        .map_err(|e| OrgError::Storage(e.to_string()))?;
+        .map_err(OrgError::Storage)?;
 
     Ok(attestation)
 }
@@ -429,7 +429,7 @@ pub fn revoke_organization_member(
 
     ctx.registry
         .store_org_member(&cmd.org_prefix, &revocation)
-        .map_err(|e| OrgError::Storage(e.to_string()))?;
+        .map_err(OrgError::Storage)?;
 
     Ok(revocation)
 }
@@ -475,7 +475,7 @@ pub fn update_member_capabilities(
 
     backend
         .store_org_member(&cmd.org_prefix, &updated)
-        .map_err(|e| OrgError::Storage(e.to_string()))?;
+        .map_err(OrgError::Storage)?;
 
     Ok(updated)
 }
@@ -516,7 +516,7 @@ pub fn update_organization_member(
 
     backend
         .store_org_member(&cmd.org_prefix, &updated)
-        .map_err(|e| OrgError::Storage(e.to_string()))?;
+        .map_err(OrgError::Storage)?;
 
     Ok(updated)
 }

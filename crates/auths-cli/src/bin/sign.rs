@@ -87,6 +87,28 @@ struct Args {
     buffer_file: Option<PathBuf>,
 }
 
+fn validate_verify_option(opt: &str) -> Result<()> {
+    match opt {
+        "print-pubkey" => return Ok(()),
+        "hashalg=sha256" | "hashalg=sha512" => return Ok(()),
+        _ => {}
+    }
+
+    if let Some(value) = opt.strip_prefix("verify-time=")
+        && !value.is_empty()
+        && value.len() <= 14
+        && value.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Ok(());
+    }
+
+    bail!(
+        "disallowed verify option '-O {opt}'\n  \
+         Only these -O options are permitted: verify-time=<timestamp>, print-pubkey, hashalg=sha256, hashalg=sha512\n  \
+         [AUTHS-E0031]"
+    );
+}
+
 fn parse_key_identifier(key_file: &str) -> Result<String> {
     if let Some(alias) = key_file.strip_prefix("auths:") {
         if alias.is_empty() {
@@ -187,6 +209,7 @@ fn run_verify(args: &Args) -> Result<()> {
     ]);
     cmd.arg(sig_file);
     for opt in &args.verify_options {
+        validate_verify_option(opt)?;
         cmd.arg("-O").arg(opt);
     }
     let status = cmd
@@ -219,6 +242,7 @@ fn run_delegate_to_ssh_keygen(args: &Args) -> Result<()> {
         cmd.arg("-s").arg(sig);
     }
     for opt in &args.verify_options {
+        validate_verify_option(opt)?;
         cmd.arg("-O").arg(opt);
     }
     let status = cmd

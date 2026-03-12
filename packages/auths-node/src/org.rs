@@ -143,7 +143,7 @@ pub fn create_org(
     };
 
     let signer = StorageSigner::new(keychain);
-    let org_did_device = DeviceDID::new_unchecked(controller_did.to_string());
+    let org_did_device = DeviceDID::from_ed25519(org_pk_bytes.as_bytes());
 
     let attestation = create_signed_attestation(
         now,

@@ -1,7 +1,9 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use auths_core::trust::pinned::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
-use auths_id::identity::resolve::{DefaultDidResolver, DidResolver};
+use auths_id::identity::resolve::{DefaultDidResolver, DidResolver, RegistryDidResolver};
+use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 use auths_verifier::PublicKeyHex;
 use napi_derive::napi;
 
@@ -60,11 +62,22 @@ pub fn pin_identity(
     let store = PinnedIdentityStore::new(store_path(&repo_path));
     let repo = resolve_repo(&repo_path);
 
-    let resolver = DefaultDidResolver::with_repo(&repo);
-    let public_key_hex = match resolver.resolve(&did) {
-        Ok(resolved) => PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes())),
-        Err(_) => PublicKeyHex::new_unchecked(""),
-    };
+    let resolved = DefaultDidResolver::with_repo(&repo)
+        .resolve(&did)
+        .or_else(|_| {
+            let backend: Arc<dyn auths_id::ports::registry::RegistryBackend + Send + Sync> =
+                Arc::new(GitRegistryBackend::from_config_unchecked(
+                    RegistryConfig::single_tenant(&repo),
+                ));
+            RegistryDidResolver::new(backend).resolve(&did)
+        })
+        .map_err(|e| {
+            format_error(
+                "AUTHS_TRUST_ERROR",
+                format!("Cannot resolve public key for {did}: {e}"),
+            )
+        })?;
+    let public_key_hex = PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes()));
 
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();

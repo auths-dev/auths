@@ -141,7 +141,7 @@ pub fn revoke_device(
         ctx.passphrase_provider.as_ref(),
         identity_key_alias,
     )
-    .map_err(|e| DeviceError::AttestationError(format!("revocation signing failed: {e}")))?;
+    .map_err(DeviceError::AttestationError)?;
 
     ctx.attestation_sink
         .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(revocation))
@@ -222,7 +222,7 @@ pub fn extend_device(
         None,
         None,
     )
-    .map_err(|e| DeviceExtensionError::AttestationFailed(e.to_string()))?;
+    .map_err(DeviceExtensionError::AttestationFailed)?;
 
     ctx.attestation_sink
         .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(extended.clone()))
@@ -280,10 +280,10 @@ fn extract_device_key(
     if let Some(ref expected) = config.device_did
         && expected != &device_did.to_string()
     {
-        return Err(DeviceError::AttestationError(format!(
-            "--device-did {} does not match key-derived DID {}",
-            expected, device_did
-        )));
+        return Err(DeviceError::DeviceDidMismatch {
+            expected: expected.clone(),
+            actual: device_did.to_string(),
+        });
     }
 
     Ok((device_did, pk_bytes))
@@ -313,7 +313,7 @@ fn sign_and_persist_attestation(
         None,
         None,
     )
-    .map_err(|e| DeviceError::AttestationError(format!("attestation creation failed: {e}")))?;
+    .map_err(DeviceError::AttestationError)?;
 
     let attestation_rid = attestation.rid.to_string();
 
