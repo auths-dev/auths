@@ -39,7 +39,7 @@ use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use auths_core::storage::keychain::IdentityDID;
-use auths_verifier::core::{Attestation, Capability};
+use auths_verifier::core::{Attestation, Capability, ResourceId};
 use auths_verifier::types::DeviceDID;
 use thiserror::Error;
 
@@ -631,10 +631,18 @@ pub trait RegistryBackend: Send + Sync {
                     source_filename: entry.filename.clone(),
                 });
             } else {
-                log::warn!(
-                    "Skipping invalid member entry '{}' (failed to parse attestation)",
-                    entry.filename
-                );
+                members.push(MemberView {
+                    did: entry.did.clone(),
+                    status,
+                    role: None,
+                    capabilities: vec![],
+                    issuer: entry.org.clone(),
+                    rid: ResourceId::new(""),
+                    revoked_at: None,
+                    expires_at: None,
+                    timestamp: None,
+                    source_filename: entry.filename.clone(),
+                });
             }
 
             ControlFlow::Continue(())
