@@ -210,6 +210,8 @@ impl KeyStorage for LinuxSecretServiceStorage {
                     3 => {
                         let role = parts[1].parse::<KeyRole>().unwrap_or(KeyRole::Primary);
                         (
+                            #[allow(clippy::disallowed_methods)]
+                            // INVARIANT: DID was stored by this keychain impl, already validated on write
                             IdentityDID::new_unchecked(parts[0].to_string()),
                             role,
                             parts[2],
@@ -218,6 +220,8 @@ impl KeyStorage for LinuxSecretServiceStorage {
                     2 => {
                         // Legacy format: did|base64_key_data
                         (
+                            #[allow(clippy::disallowed_methods)]
+                            // INVARIANT: DID was stored by this keychain impl, already validated on write
                             IdentityDID::new_unchecked(parts[0].to_string()),
                             KeyRole::Primary,
                             parts[1],

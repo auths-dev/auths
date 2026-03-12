@@ -21,13 +21,9 @@
     },
     "delegated_by": {
       "description": "DID of the attestation that delegated authority (for chain tracking).",
-      "anyOf": [
-        {
-          "$ref": "#/definitions/IdentityDID"
-        },
-        {
-          "type": "null"
-        }
+      "type": [
+        "string",
+        "null"
       ]
     },
     "device_public_key": {
@@ -66,12 +62,8 @@
       ]
     },
     "issuer": {
-      "description": "DID of the issuing identity.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/IdentityDID"
-        }
-      ]
+      "description": "DID of the issuing identity (can be `did:keri:` or `did:key:`).",
+      "type": "string"
     },
     "note": {
       "description": "Optional human-readable note.",
@@ -158,10 +150,6 @@
       "description": "Ed25519 signature (64 bytes, hex-encoded)",
       "type": "string",
       "format": "hex"
-    },
-    "IdentityDID": {
-      "description": "Strongly-typed wrapper for identity DIDs (e.g., `\"did:keri:E...\"`).\n\nUsage: ```ignore let did = IdentityDID::new(\"did:keri:Eabc123\"); assert_eq!(did.as_str(), \"did:keri:Eabc123\");\n\nlet s: String = did.into_inner(); ```",
-      "type": "string"
     },
     "Role": {
       "description": "Role classification for organization members.\n\nGoverns the default capability set assigned at member authorization time. Serializes as lowercase strings: `\"admin\"`, `\"member\"`, `\"readonly\"`.",
