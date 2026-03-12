@@ -28,12 +28,13 @@ pub fn render_error(err: &Error, json_mode: bool) {
 }
 
 /// Try to extract `AuthsErrorInfo` from an `anyhow::Error` by downcasting
-/// through all known error types.
+/// through all known error types. Walks the full error chain so that
+/// `.with_context()` wrapping doesn't hide typed errors.
 fn extract_error_info(err: &Error) -> Option<(&str, &str, Option<&str>)> {
     macro_rules! try_downcast {
-        ($err:expr, $($ty:ty),+ $(,)?) => {
+        ($source:expr, $($ty:ty),+ $(,)?) => {
             $(
-                if let Some(e) = $err.downcast_ref::<$ty>() {
+                if let Some(e) = $source.downcast_ref::<$ty>() {
                     let code = AuthsErrorInfo::error_code(e);
                     let msg = format!("{e}");
                     // SAFETY: we leak the String to get a &'static str because
@@ -46,21 +47,23 @@ fn extract_error_info(err: &Error) -> Option<(&str, &str, Option<&str>)> {
         };
     }
 
-    try_downcast!(
-        err,
-        AgentError,
-        AttestationError,
-        SetupError,
-        DeviceError,
-        DeviceExtensionError,
-        RotationError,
-        RegistrationError,
-        McpAuthError,
-        OrgError,
-        ApprovalError,
-        AllowedSignersError,
-        SigningError,
-    );
+    for cause in err.chain() {
+        try_downcast!(
+            cause,
+            AgentError,
+            AttestationError,
+            SetupError,
+            DeviceError,
+            DeviceExtensionError,
+            RotationError,
+            RegistrationError,
+            McpAuthError,
+            OrgError,
+            ApprovalError,
+            AllowedSignersError,
+            SigningError,
+        );
+    }
 
     None
 }
@@ -247,5 +250,12 @@ mod tests {
         let (code, _, suggestion) = extract_error_info(&err).unwrap();
         assert_eq!(code, "AUTHS-E3001");
         assert!(suggestion.is_some());
+    }
+
+    #[test]
+    fn extract_error_info_walks_chain_through_context() {
+        let err: Error = Error::new(AgentError::KeyNotFound).context("operation failed");
+        let (code, _, _) = extract_error_info(&err).unwrap();
+        assert_eq!(code, "AUTHS-E3001");
     }
 }

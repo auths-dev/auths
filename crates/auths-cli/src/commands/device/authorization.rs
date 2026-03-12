@@ -272,7 +272,7 @@ pub fn handle_device(
                 &ctx,
                 &auths_core::ports::clock::SystemClock,
             )
-            .map_err(|e| anyhow!("{e}"))?;
+            .map_err(anyhow::Error::new)?;
 
             display_link_result(&result, &device_did)
         }
@@ -301,7 +301,7 @@ pub fn handle_device(
                 note,
                 &auths_core::ports::clock::SystemClock,
             )
-            .map_err(|e| anyhow!("{e}"))?;
+            .map_err(anyhow::Error::new)?;
 
             display_revoke_result(&device_did, &repo_path)
         }
