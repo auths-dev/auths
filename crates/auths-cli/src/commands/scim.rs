@@ -96,9 +96,9 @@ pub struct ScimAddTenantCommand {
     /// PostgreSQL connection URL.
     #[arg(long)]
     pub database_url: String,
-    /// Token expiry duration (e.g., 90d, 365d). Omit for no expiry.
-    #[arg(long)]
-    pub expires_in: Option<String>,
+    /// Duration in seconds until expiration (per RFC 6749).
+    #[arg(long = "expires-in")]
+    pub expires_in: Option<u64>,
 }
 
 /// Rotate bearer token for an existing tenant.
@@ -110,9 +110,9 @@ pub struct ScimRotateTokenCommand {
     /// PostgreSQL connection URL.
     #[arg(long)]
     pub database_url: String,
-    /// Token expiry duration (e.g., 90d, 365d).
-    #[arg(long)]
-    pub expires_in: Option<String>,
+    /// Duration in seconds until expiration (per RFC 6749).
+    #[arg(long = "expires-in")]
+    pub expires_in: Option<u64>,
 }
 
 /// Show SCIM sync state statistics.

@@ -440,8 +440,8 @@ pub struct CreateAgentIdentityConfig {
     pub parent_identity_did: Option<String>,
     /// Path to the auths registry directory.
     pub registry_path: PathBuf,
-    /// Optional agent key expiration time in seconds.
-    pub expires_in_secs: Option<u64>,
+    /// Duration in seconds until expiration (per RFC 6749).
+    pub expires_in: Option<u64>,
     /// If true, construct state without persisting.
     pub dry_run: bool,
 }
@@ -466,7 +466,7 @@ impl CreateAgentIdentityConfig {
             capabilities: Vec::new(),
             parent_identity_did: None,
             registry_path: registry_path.into(),
-            expires_in_secs: None,
+            expires_in: None,
             dry_run: false,
         }
     }
@@ -479,7 +479,7 @@ pub struct CreateAgentIdentityConfigBuilder {
     capabilities: Vec<Capability>,
     parent_identity_did: Option<String>,
     registry_path: PathBuf,
-    expires_in_secs: Option<u64>,
+    expires_in: Option<u64>,
     dry_run: bool,
 }
 
@@ -528,7 +528,7 @@ impl CreateAgentIdentityConfigBuilder {
     ///     .build();
     /// ```
     pub fn with_expiry(mut self, secs: u64) -> Self {
-        self.expires_in_secs = Some(secs);
+        self.expires_in = Some(secs);
         self
     }
 
@@ -557,7 +557,7 @@ impl CreateAgentIdentityConfigBuilder {
             capabilities: self.capabilities,
             parent_identity_did: self.parent_identity_did,
             registry_path: self.registry_path,
-            expires_in_secs: self.expires_in_secs,
+            expires_in: self.expires_in,
             dry_run: self.dry_run,
         }
     }
@@ -568,7 +568,7 @@ impl CreateAgentIdentityConfigBuilder {
 /// Args:
 /// * `repo_path`: Path to the auths registry.
 /// * `device_did`: The DID of the device whose authorization to extend.
-/// * `days`: Number of days from now for the new expiration.
+/// * `expires_in`: Duration in seconds until expiration (per RFC 6749).
 /// * `identity_key_alias`: Keychain alias for the identity key (for re-signing).
 /// * `device_key_alias`: Keychain alias for the device key (for re-signing).
 ///
@@ -577,7 +577,7 @@ impl CreateAgentIdentityConfigBuilder {
 /// let config = DeviceExtensionConfig {
 ///     repo_path: PathBuf::from("/home/user/.auths"),
 ///     device_did: "did:key:z6Mk...".into(),
-///     days: 365,
+///     expires_in: 31_536_000,
 ///     identity_key_alias: "my-identity".into(),
 ///     device_key_alias: "my-device".into(),
 /// };
@@ -588,8 +588,8 @@ pub struct DeviceExtensionConfig {
     pub repo_path: PathBuf,
     /// DID of the device whose authorization to extend.
     pub device_did: DeviceDID,
-    /// Number of days from now for the new expiration.
-    pub days: u32,
+    /// Duration in seconds until expiration (per RFC 6749).
+    pub expires_in: u64,
     /// Keychain alias for the identity signing key.
     pub identity_key_alias: KeyAlias,
     /// Keychain alias for the device signing key (pass `None` to skip device co-signing).
@@ -635,7 +635,7 @@ pub struct IdentityRotationConfig {
 ///     device_key_alias: Some("macbook-pro".into()),
 ///     device_did: None,
 ///     capabilities: vec!["sign-commit".into()],
-///     expires_in_days: Some(365),
+///     expires_in: Some(31_536_000),
 ///     note: Some("Work laptop".into()),
 ///     payload: None,
 /// };
@@ -650,8 +650,8 @@ pub struct DeviceLinkConfig {
     pub device_did: Option<String>,
     /// Capabilities to grant to the linked device.
     pub capabilities: Vec<Capability>,
-    /// Optional expiration period in days.
-    pub expires_in_days: Option<u32>,
+    /// Duration in seconds until expiration (per RFC 6749).
+    pub expires_in: Option<u64>,
     /// Optional human-readable note for the attestation.
     pub note: Option<String>,
     /// Optional JSON payload to embed in the attestation.

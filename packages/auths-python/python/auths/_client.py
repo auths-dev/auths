@@ -541,7 +541,7 @@ class Auths:
         path: str,
         *,
         identity_did: str,
-        expires_in_days: int | None = None,
+        expires_in: int | None = None,
         note: str | None = None,
     ) -> ArtifactSigningResult:
         """Sign a file artifact, producing a dual-signed attestation.
@@ -552,7 +552,7 @@ class Auths:
         Args:
             path: Path to the file to sign.
             identity_did: The identity DID to sign with (used as key alias).
-            expires_in_days: Optional expiry for the attestation.
+            expires_in: Duration in seconds until expiration (per RFC 6749).
             note: Optional human-readable note.
 
         Returns:
@@ -573,7 +573,7 @@ class Auths:
         pp = self._passphrase
         try:
             raw = _sign_artifact(
-                path, identity_did, self.repo_path, pp, expires_in_days, note,
+                path, identity_did, self.repo_path, pp, expires_in, note,
             )
             return ArtifactSigningResult(
                 attestation_json=raw.attestation_json,
@@ -591,7 +591,7 @@ class Auths:
         data: bytes,
         *,
         identity_did: str,
-        expires_in_days: int | None = None,
+        expires_in: int | None = None,
         note: str | None = None,
     ) -> ArtifactSigningResult:
         """Sign raw bytes, producing a dual-signed attestation.
@@ -602,7 +602,7 @@ class Auths:
         Args:
             data: The raw bytes to sign.
             identity_did: The identity DID to sign with (used as key alias).
-            expires_in_days: Optional expiry for the attestation.
+            expires_in: Duration in seconds until expiration (per RFC 6749).
             note: Optional human-readable note.
 
         Returns:
@@ -622,7 +622,7 @@ class Auths:
         pp = self._passphrase
         try:
             raw = _sign_artifact_bytes(
-                data, identity_did, self.repo_path, pp, expires_in_days, note,
+                data, identity_did, self.repo_path, pp, expires_in, note,
             )
             return ArtifactSigningResult(
                 attestation_json=raw.attestation_json,

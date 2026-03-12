@@ -126,7 +126,7 @@ fn sign_artifact_with_alias_keys_produces_valid_json() {
         artifact,
         identity_key: Some(SigningKeyMaterial::Alias(key_alias.clone())),
         device_key: SigningKeyMaterial::Alias(key_alias),
-        expires_in_days: Some(365),
+        expires_in: Some(31_536_000),
         note: Some("integration test".into()),
     };
 
@@ -156,7 +156,7 @@ fn sign_artifact_with_direct_device_key_produces_valid_json() {
         artifact,
         identity_key: Some(SigningKeyMaterial::Alias(key_alias)),
         device_key: SigningKeyMaterial::Direct(device_seed),
-        expires_in_days: None,
+        expires_in: None,
         note: None,
     };
 
@@ -178,7 +178,7 @@ fn sign_artifact_identity_not_found_returns_error() {
         artifact,
         identity_key: None,
         device_key: SigningKeyMaterial::Direct(device_seed),
-        expires_in_days: None,
+        expires_in: None,
         note: None,
     };
 

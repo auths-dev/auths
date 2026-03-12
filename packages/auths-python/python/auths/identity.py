@@ -186,7 +186,7 @@ class IdentityService:
         identity_did: str,
         name: str,
         capabilities: list[str],
-        expires_in_days: int | None = None,
+        expires_in: int | None = None,
         passphrase: str | None = None,
     ) -> DelegatedAgent:
         """Delegate an agent under an identity (`did:key:`).
@@ -195,7 +195,7 @@ class IdentityService:
             identity_did: The parent identity's DID.
             name: Human-readable agent name.
             capabilities: List of capabilities (e.g., ["sign", "verify"]).
-            expires_in_days: Optional TTL in days.
+            expires_in: Duration in seconds until expiration (per RFC 6749).
             passphrase: Key passphrase override.
 
         Returns:
@@ -212,7 +212,7 @@ class IdentityService:
         """
         pp = passphrase or self._client._passphrase
         bundle = _delegate_agent(
-            name, capabilities, self._client.repo_path, pp, expires_in_days,
+            name, capabilities, self._client.repo_path, pp, expires_in,
             identity_did,
         )
         return DelegatedAgent(

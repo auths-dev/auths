@@ -5,4 +5,4 @@
 
 mod claims;
 
-pub use claims::{ActorClaim, OidcClaims, WitnessQuorumClaim};
+pub use claims::{ActorClaim, IdpBindingClaim, OidcClaims, WitnessQuorumClaim};

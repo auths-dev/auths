@@ -125,7 +125,7 @@ let config = DeviceLinkConfig {
     device_key_alias: Some("macbook-pro".into()),
     device_did: None,
     capabilities: vec!["sign-commit".into()],
-    expires_in_days: Some(365),
+    expires_in: Some(31_536_000),
     note: Some("Work laptop".into()),
     payload: None,
 };

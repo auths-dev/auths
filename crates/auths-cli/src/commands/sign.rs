@@ -110,9 +110,9 @@ pub struct SignCommand {
     #[arg(long)]
     pub device_key_alias: Option<String>,
 
-    /// Number of days until the signature expires (for artifact signing).
-    #[arg(long, visible_alias = "days", value_name = "N")]
-    pub expires_in_days: Option<i64>,
+    /// Duration in seconds until expiration (per RFC 6749).
+    #[arg(long = "expires-in", value_name = "N")]
+    pub expires_in: Option<u64>,
 
     /// Optional note to embed in the attestation (for artifact signing).
     #[arg(long)]
@@ -142,7 +142,7 @@ pub fn handle_sign_unified(
                 cmd.sig_output,
                 cmd.identity_key_alias.as_deref(),
                 &device_key_alias,
-                cmd.expires_in_days,
+                cmd.expires_in,
                 cmd.note,
                 repo_opt,
                 passphrase_provider,

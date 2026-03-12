@@ -148,7 +148,7 @@ fn initialize_agent(
     let provisioning_config = AgentProvisioningConfig {
         agent_name: config.alias.to_string(),
         capabilities: cap_strings,
-        expires_in_secs: config.expires_in_secs,
+        expires_in: config.expires_in,
         delegated_by: config.parent_identity_did.clone().map(|did| {
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: parent_identity_did is supplied by the CLI after resolving from identity storage, which stores only validated did:keri: DIDs

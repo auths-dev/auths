@@ -12,10 +12,12 @@ use super::types::Said;
 /// Type of data anchored by a seal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum SealType {
     DeviceAttestation,
     Revocation,
     Delegation,
+    IdpBinding,
 }
 
 impl fmt::Display for SealType {
@@ -24,6 +26,7 @@ impl fmt::Display for SealType {
             SealType::DeviceAttestation => write!(f, "device-attestation"),
             SealType::Revocation => write!(f, "revocation"),
             SealType::Delegation => write!(f, "delegation"),
+            SealType::IdpBinding => write!(f, "idp-binding"),
         }
     }
 }
@@ -68,6 +71,11 @@ impl Seal {
     pub fn delegation(delegation_digest: impl Into<String>) -> Self {
         Self::new(delegation_digest, SealType::Delegation)
     }
+
+    /// Create a seal for an IdP binding.
+    pub fn idp_binding(binding_digest: impl Into<String>) -> Self {
+        Self::new(binding_digest, SealType::IdpBinding)
+    }
 }
 
 #[cfg(test)]
@@ -103,5 +111,45 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         let parsed: Seal = serde_json::from_str(&json).unwrap();
         assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn seal_creates_idp_binding() {
+        let seal = Seal::idp_binding("EBindingDigest");
+        assert_eq!(seal.seal_type, SealType::IdpBinding);
+        assert_eq!(seal.d, "EBindingDigest");
+    }
+
+    #[test]
+    fn seal_idp_binding_serializes() {
+        let seal = Seal::idp_binding("ETest");
+        let json = serde_json::to_string(&seal).unwrap();
+        assert!(json.contains(r#""type":"idp-binding""#));
+    }
+
+    #[test]
+    fn seal_idp_binding_deserializes() {
+        let json = r#"{"d":"EDigest","type":"idp-binding"}"#;
+        let seal: Seal = serde_json::from_str(json).unwrap();
+        assert_eq!(seal.seal_type, SealType::IdpBinding);
+    }
+
+    #[test]
+    fn seal_idp_binding_roundtrips() {
+        let original = Seal::idp_binding("EBinding123");
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: Seal = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn seal_type_display() {
+        assert_eq!(
+            SealType::DeviceAttestation.to_string(),
+            "device-attestation"
+        );
+        assert_eq!(SealType::Revocation.to_string(), "revocation");
+        assert_eq!(SealType::Delegation.to_string(), "delegation");
+        assert_eq!(SealType::IdpBinding.to_string(), "idp-binding");
     }
 }

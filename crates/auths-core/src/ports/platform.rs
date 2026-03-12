@@ -87,7 +87,7 @@ pub struct DeviceCodeResponse {
     pub user_code: String,
     /// URL where the user enters `user_code`.
     pub verification_uri: String,
-    /// Lifetime of the device code in seconds.
+    /// Duration in seconds until expiration (per RFC 6749).
     pub expires_in: u64,
     /// Minimum polling interval in seconds.
     pub interval: u64,

@@ -17,7 +17,7 @@ pub fn handle_sign(
     output: Option<PathBuf>,
     identity_key_alias: Option<&str>,
     device_key_alias: &str,
-    expires_in_days: Option<i64>,
+    expires_in: Option<u64>,
     note: Option<String>,
     repo_opt: Option<PathBuf>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
@@ -32,7 +32,7 @@ pub fn handle_sign(
         identity_key: identity_key_alias
             .map(|a| SigningKeyMaterial::Alias(KeyAlias::new_unchecked(a))),
         device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(device_key_alias)),
-        expires_in_days: expires_in_days.map(|d| d as u32),
+        expires_in,
         note,
     };
 

@@ -312,7 +312,7 @@ pub fn create_agent_identity(
 /// * `capabilities`: Capabilities to grant.
 /// * `parent_repo_path`: Path to the parent identity's repository.
 /// * `passphrase`: Optional passphrase for the keychain.
-/// * `expires_in_days`: Optional expiry in days.
+/// * `expires_in`: Duration in seconds until expiration (per RFC 6749).
 /// * `identity_did`: DID of the parent identity (did:keri:...).
 ///
 /// Usage:
@@ -320,14 +320,14 @@ pub fn create_agent_identity(
 /// let bundle = delegate_agent(py, "ci-bot", vec!["sign".into()], "~/.auths", None, None, Some("did:keri:E..."))?;
 /// ```
 #[pyfunction]
-#[pyo3(signature = (agent_name, capabilities, parent_repo_path, passphrase=None, expires_in_days=None, identity_did=None))]
+#[pyo3(signature = (agent_name, capabilities, parent_repo_path, passphrase=None, expires_in=None, identity_did=None))]
 pub fn delegate_agent(
     py: Python<'_>,
     agent_name: &str,
     capabilities: Vec<String>,
     parent_repo_path: &str,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<u64>,
     identity_did: Option<String>,
 ) -> PyResult<DelegatedAgentBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
@@ -418,7 +418,7 @@ pub fn delegate_agent(
         device_key_alias: Some(agent_alias.clone()),
         device_did: None,
         capabilities: parsed_caps,
-        expires_in_days,
+        expires_in,
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,
     };
@@ -483,21 +483,21 @@ pub fn delegate_agent(
 /// * `capabilities`: Capabilities to grant to the device.
 /// * `passphrase`: Optional passphrase for the keychain.
 /// * `repo_path`: Path to the auths repository.
-/// * `expires_in_days`: Optional expiration period in days.
+/// * `expires_in`: Duration in seconds until expiration (per RFC 6749).
 ///
 /// Usage:
 /// ```ignore
 /// let (device_did, att_id) = link_device_ffi(py, "my-id", vec!["sign".into()], None, "~/.auths", None)?;
 /// ```
 #[pyfunction]
-#[pyo3(signature = (identity_key_alias, capabilities, repo_path, passphrase=None, expires_in_days=None))]
+#[pyo3(signature = (identity_key_alias, capabilities, repo_path, passphrase=None, expires_in=None))]
 pub fn link_device_to_identity(
     py: Python<'_>,
     identity_key_alias: &str,
     capabilities: Vec<String>,
     repo_path: &str,
     passphrase: Option<String>,
-    expires_in_days: Option<u32>,
+    expires_in: Option<u64>,
 ) -> PyResult<(String, String)> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_keychain_config(&passphrase_str, repo_path);
@@ -538,7 +538,7 @@ pub fn link_device_to_identity(
         device_key_alias: None,
         device_did: None,
         capabilities: parsed_caps,
-        expires_in_days,
+        expires_in,
         note: None,
         payload: None,
     };

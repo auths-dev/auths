@@ -64,14 +64,16 @@ pub struct DeviceStatus {
     pub status: String,
     pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
-    pub expires_in_days: Option<i64>,
+    /// Duration in seconds until expiration (per RFC 6749).
+    pub expires_in: Option<i64>,
 }
 
 /// Device that is expiring soon.
 #[derive(Debug, Serialize)]
 pub struct ExpiringDevice {
     pub device_did: String,
-    pub expires_in_days: i64,
+    /// Duration in seconds until expiration (per RFC 6749).
+    pub expires_in: i64,
 }
 
 /// Handle the status command.
@@ -145,20 +147,18 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
     }
     if !report.devices.expiring_soon.is_empty() {
         let expiring_count = report.devices.expiring_soon.len();
-        let min_days = report
+        let min_secs = report
             .devices
             .expiring_soon
             .iter()
-            .map(|e| e.expires_in_days)
+            .map(|e| e.expires_in)
             .min()
             .unwrap_or(0);
-        if min_days == 0 {
-            parts.push(format!("{} expiring today", expiring_count));
-        } else if min_days == 1 {
-            parts.push(format!("{} expiring in 1 day", expiring_count));
-        } else {
-            parts.push(format!("{} expiring in {} days", expiring_count, min_days));
-        }
+        parts.push(format!(
+            "{} expiring in {}",
+            expiring_count,
+            format_duration_human(min_secs)
+        ));
     }
 
     if parts.is_empty() {
@@ -180,6 +180,27 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
     }
 }
 
+/// Format seconds into a human-readable duration string.
+fn format_duration_human(secs: i64) -> String {
+    if secs < 0 {
+        return "expired".to_string();
+    }
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    let mins = (secs % 3600) / 60;
+    let remaining_secs = secs % 60;
+
+    if days > 0 {
+        format!("{}d {}h", days, hours)
+    } else if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else if mins > 0 {
+        format!("{}m {}s", mins, remaining_secs)
+    } else {
+        format!("{}s", remaining_secs)
+    }
+}
+
 /// Display color-coded device expiry information.
 fn display_device_expiry(expires_at: Option<DateTime<Utc>>, out: &Output, now: DateTime<Utc>) {
     let Some(expires_at) = expires_at else {
@@ -187,25 +208,24 @@ fn display_device_expiry(expires_at: Option<DateTime<Utc>>, out: &Output, now: D
         return;
     };
 
-    let remaining = expires_at - now;
-    let days = remaining.num_days();
+    let remaining_secs = (expires_at - now).num_seconds();
 
-    let (label, color_fn): (&str, fn(&Output, &str) -> String) = match days {
-        d if d < 0 => ("EXPIRED", Output::error),
-        0..=6 => ("expiring soon", Output::warn),
-        7..=29 => ("expiring", Output::warn),
+    let (label, color_fn): (&str, fn(&Output, &str) -> String) = match remaining_secs {
+        s if s < 0 => ("EXPIRED", Output::error),
+        0..=604_799 => ("expiring soon", Output::warn),
+        604_800..=2_591_999 => ("expiring", Output::warn),
         _ => ("active", Output::success),
     };
 
     let display = format!(
-        "{} ({}, {}d remaining)",
+        "{} ({}, {} remaining)",
         expires_at.format("%Y-%m-%d"),
         label,
-        days
+        format_duration_human(remaining_secs)
     );
     out.println(&format!("  Expires: {}", color_fn(out, &display)));
 
-    if (0..=7).contains(&days) {
+    if (0..=604_800).contains(&remaining_secs) {
         out.print_warn("  Run `auths device extend` to renew.");
     }
 }
@@ -305,14 +325,14 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
     let mut devices_detail = Vec::new();
 
     for (device_did, att) in &latest_by_device {
-        let (status, expires_in_days) = compute_device_status(att, now);
+        let (status, expires_in) = compute_device_status(att, now);
 
         devices_detail.push(DeviceStatus {
             device_did: device_did.clone(),
             status,
             revoked_at: att.revoked_at,
             expires_at: att.expires_at,
-            expires_in_days,
+            expires_in,
         });
 
         if att.is_revoked() {
@@ -323,16 +343,16 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
                 && expires_at <= threshold
                 && expires_at > now
             {
-                let days_left = (expires_at - now).num_days();
+                let secs_left = (expires_at - now).num_seconds();
                 expiring_soon.push(ExpiringDevice {
                     device_did: device_did.clone(),
-                    expires_in_days: days_left,
+                    expires_in: secs_left,
                 });
             }
         }
     }
 
-    expiring_soon.sort_by_key(|e| e.expires_in_days);
+    expiring_soon.sort_by_key(|e| e.expires_in);
 
     DevicesSummary {
         linked,
@@ -352,15 +372,15 @@ fn compute_device_status(
     match att.expires_at {
         None => ("active".to_string(), None),
         Some(expires_at) => {
-            let days = (expires_at - now).num_days();
+            let secs = (expires_at - now).num_seconds();
             let status = if expires_at < now {
                 "expired"
-            } else if days <= 7 {
+            } else if secs <= 7 * 86400 {
                 "expiring_soon"
             } else {
                 "active"
             };
-            (status.to_string(), Some(days))
+            (status.to_string(), Some(secs))
         }
     }
 }
@@ -422,7 +442,7 @@ mod tests {
                 revoked: 1,
                 expiring_soon: vec![ExpiringDevice {
                     device_did: "did:key:zExpiringSoon".to_string(),
-                    expires_in_days: 3,
+                    expires_in: 259_200,
                 }],
                 devices_detail: vec![
                     DeviceStatus {
@@ -430,21 +450,21 @@ mod tests {
                         status: "active".to_string(),
                         revoked_at: None,
                         expires_at: Some(now + Duration::days(90)),
-                        expires_in_days: Some(90),
+                        expires_in: Some(7_776_000),
                     },
                     DeviceStatus {
                         device_did: "did:key:zExpiringSoon".to_string(),
                         status: "expiring_soon".to_string(),
                         revoked_at: None,
                         expires_at: Some(now + Duration::days(3)),
-                        expires_in_days: Some(3),
+                        expires_in: Some(259_200),
                     },
                     DeviceStatus {
                         device_did: "did:key:zRevokedDevice".to_string(),
                         status: "revoked".to_string(),
                         revoked_at: Some(now - Duration::days(10)),
                         expires_at: Some(now + Duration::days(50)),
-                        expires_in_days: None,
+                        expires_in: None,
                     },
                 ],
             },

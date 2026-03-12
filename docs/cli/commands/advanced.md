@@ -18,7 +18,7 @@ Authorize a new device to act on behalf of the identity
 | `--device-did <DEVICE_DID>` | — | Identity ID of the new device being authorized (must match device-key-alias). [aliases: --device] |
 | `--payload <PAYLOAD_PATH>` | — | Optional path to a JSON file containing arbitrary payload data for the authorization. |
 | `--schema <SCHEMA_PATH>` | — | Optional path to a JSON schema for validating the payload (experimental). |
-| `--expires-in-days <DAYS>` | — | Optional number of days until this device authorization expires. [aliases: --days] |
+| `--expires-in <SECS>` | — | Optional number of seconds until this device authorization expires. |
 | `--note <NOTE>` | — | Optional description/note for this device authorization. |
 | `--capabilities <CAPABILITIES>` | — | Permissions to grant this device (comma-separated) |
 | `--json` | — | Emit machine-readable JSON |
@@ -62,7 +62,7 @@ Extend the expiration date of an existing device authorization
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--device-did <DEVICE_DID>` | — | Identity ID of the device authorization to extend. [aliases: --device] |
-| `--expires-in-days <DAYS>` | — | Number of days to extend the expiration by (from now). [aliases: --days] |
+| `--expires-in <SECS>` | — | Number of seconds to extend the expiration by (from now). |
 | `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the *identity's* key (required for re-signing). [aliases: --ika] |
 | `--device-key-alias <DEVICE_KEY_ALIAS>` | — | Local alias of the *device's* key (required for re-signing). [aliases: --dka] |
 | `--json` | — | Emit machine-readable JSON |
@@ -897,7 +897,7 @@ Generate a new bearer token for an IdP tenant
 |------|---------|-------------|
 | `--name <NAME>` | — | Tenant name |
 | `--database-url <DATABASE_URL>` | — | PostgreSQL connection URL |
-| `--expires-in <EXPIRES_IN>` | — | Token expiry duration (e.g., 90d, 365d). Omit for no expiry |
+| `--expires-in <EXPIRES_IN>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -918,7 +918,7 @@ Rotate bearer token for an existing tenant
 |------|---------|-------------|
 | `--name <NAME>` | — | Tenant name |
 | `--database-url <DATABASE_URL>` | — | PostgreSQL connection URL |
-| `--expires-in <EXPIRES_IN>` | — | Token expiry duration (e.g., 90d, 365d) |
+| `--expires-in <EXPIRES_IN>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1061,7 +1061,7 @@ Sign an artifact file with your Auths identity
 | `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
 | `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the identity key. Omit for device-only CI signing. [aliases: --ika] |
 | `--device-key-alias <DEVICE_KEY_ALIAS>` | — | Local alias of the device key (used for dual-signing). [aliases: --dka] |
-| `--expires-in-days <N>` | — | Number of days until the signature expires [aliases: --days] |
+| `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--note <NOTE>` | — | Optional note to embed in the attestation |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |

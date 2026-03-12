@@ -116,7 +116,7 @@ let params = ArtifactSigningParams {
     artifact: Arc::new(my_artifact_source),
     identity_key: Some(SigningKeyMaterial::Alias(KeyAlias::new("my-key")?)),
     device_key: SigningKeyMaterial::Direct(my_seed),
-    expires_in_days: Some(365),
+    expires_in: Some(31_536_000),
     note: Some("v1.0.0 release".into()),
 };
 

@@ -47,9 +47,9 @@ pub enum ArtifactSubcommand {
         )]
         device_key_alias: String,
 
-        /// Number of days until the signature expires.
-        #[arg(long, visible_alias = "days", value_name = "N")]
-        expires_in_days: Option<i64>,
+        /// Duration in seconds until expiration (per RFC 6749).
+        #[arg(long = "expires-in", value_name = "N")]
+        expires_in: Option<u64>,
 
         /// Optional note to embed in the attestation.
         #[arg(long)]
@@ -112,14 +112,14 @@ pub fn handle_artifact(
             sig_output,
             identity_key_alias,
             device_key_alias,
-            expires_in_days,
+            expires_in,
             note,
         } => sign::handle_sign(
             &file,
             sig_output,
             identity_key_alias.as_deref(),
             &device_key_alias,
-            expires_in_days,
+            expires_in,
             note,
             repo_opt,
             passphrase_provider,

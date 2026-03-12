@@ -97,13 +97,13 @@ pub enum DeviceSubcommand {
         )]
         schema: Option<PathBuf>,
 
+        /// Duration in seconds until expiration (per RFC 6749).
         #[arg(
-            long,
-            visible_alias = "days",
-            value_name = "DAYS",
-            help = "Optional number of days until this device authorization expires."
+            long = "expires-in",
+            value_name = "SECS",
+            help = "Optional number of seconds until this device authorization expires."
         )]
-        expires_in_days: Option<i64>,
+        expires_in: Option<u64>,
 
         #[arg(
             long,
@@ -167,13 +167,13 @@ pub enum DeviceSubcommand {
         )]
         device_did: String,
 
+        /// Duration in seconds until expiration (per RFC 6749).
         #[arg(
-            long = "expires-in-days",
-            visible_alias = "days",
-            value_name = "DAYS",
-            help = "Number of days to extend the expiration by (from now)."
+            long = "expires-in",
+            value_name = "SECS",
+            help = "Number of seconds to extend the expiration by (from now)."
         )]
-        expires_in_days: i64,
+        expires_in: u64,
 
         #[arg(
             long = "identity-key-alias",
@@ -236,7 +236,7 @@ pub fn handle_device(
             device_did,
             payload: payload_path_opt,
             schema: schema_path_opt,
-            expires_in_days,
+            expires_in,
             note,
             capabilities,
         } => {
@@ -254,7 +254,7 @@ pub fn handle_device(
                 device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
                 device_did: Some(device_did.clone()),
                 capabilities: caps,
-                expires_in_days: expires_in_days.map(|d| d as u32),
+                expires_in,
                 note,
                 payload,
             };
@@ -308,14 +308,14 @@ pub fn handle_device(
 
         DeviceSubcommand::Extend {
             device_did,
-            expires_in_days,
+            expires_in,
             identity_key_alias,
             device_key_alias,
         } => handle_extend(
             &repo_path,
             &config,
             &device_did,
-            expires_in_days,
+            expires_in,
             &identity_key_alias,
             &device_key_alias,
             passphrase_provider,
@@ -427,7 +427,7 @@ fn handle_extend(
     repo_path: &Path,
     _config: &StorageLayoutConfig,
     device_did: &str,
-    days: i64,
+    expires_in: u64,
     identity_key_alias: &str,
     device_key_alias: &str,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
@@ -437,7 +437,7 @@ fn handle_extend(
         repo_path: repo_path.to_path_buf(),
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from CLI arg validated upstream
         device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did),
-        days: days as u32,
+        expires_in,
         identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
         device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
     };
