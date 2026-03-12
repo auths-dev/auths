@@ -6,6 +6,7 @@
     clippy::unwrap_used,
     clippy::expect_used
 )]
+mod check_clippy_sync;
 mod ci_setup;
 mod gen_docs;
 mod gen_error_docs;
@@ -53,6 +54,8 @@ enum Command {
         #[arg(long)]
         filter: Option<String>,
     },
+    /// Check that crate-level clippy.toml files contain all workspace-root rules.
+    CheckClippySync,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -71,5 +74,6 @@ fn main() -> anyhow::Result<()> {
         Command::ValidateSchemas => schemas::validate(workspace_root()),
         Command::GenErrorDocs { check } => gen_error_docs::run(workspace_root(), check),
         Command::TestIntegration { filter } => test_integration::run(filter.as_deref()),
+        Command::CheckClippySync => check_clippy_sync::run(workspace_root()),
     }
 }

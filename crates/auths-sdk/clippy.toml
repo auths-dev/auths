@@ -35,6 +35,7 @@ disallowed-methods = [
   { path = "dirs::home_dir", reason = "sans-IO crate — inject paths via config", allow-invalid = true },
   { path = "dirs::config_dir", reason = "sans-IO crate — inject paths via config", allow-invalid = true },
   { path = "dirs::data_dir", reason = "sans-IO crate — inject paths via config", allow-invalid = true },
+  { path = "dirs::data_local_dir", reason = "sans-IO crate — inject paths via config", allow-invalid = true },
 
   # === Sans-IO: network ===
   { path = "reqwest::Client::new", reason = "sans-IO crate — use a port trait for HTTP", allow-invalid = true },
@@ -43,6 +44,7 @@ disallowed-methods = [
 
 disallowed-types = [
   { path = "std::fs::File", reason = "sans-IO crate — use a port trait" },
+  { path = "std::fs::OpenOptions", reason = "sans-IO crate — use a port trait" },
   { path = "std::process::Command", reason = "sans-IO crate — use a port trait" },
   { path = "std::net::TcpStream", reason = "sans-IO crate — use a port trait" },
   { path = "std::net::TcpListener", reason = "sans-IO crate — use a port trait" },
