@@ -99,6 +99,7 @@ fn run() -> Result<()> {
         RootCommand::Config(cmd) => cmd.execute(&ctx),
         RootCommand::Commit(cmd) => cmd.execute(&ctx),
         RootCommand::Debug(cmd) => cmd.execute(&ctx),
+        RootCommand::Log(cmd) => cmd.execute(&ctx),
     };
 
     if let Some(action) = action {

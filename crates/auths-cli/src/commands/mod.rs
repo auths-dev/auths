@@ -20,6 +20,7 @@ pub mod index;
 pub mod init;
 pub mod key;
 pub mod learn;
+pub mod log;
 pub mod org;
 pub mod policy;
 pub mod provision;

@@ -21,6 +21,7 @@ use crate::commands::id::IdCommand;
 use crate::commands::init::InitCommand;
 use crate::commands::key::KeyCommand;
 use crate::commands::learn::LearnCommand;
+use crate::commands::log::LogCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
 use crate::commands::scim::ScimCommand;
@@ -135,4 +136,6 @@ pub enum RootCommand {
     Commit(CommitCmd),
     #[command(hide = true)]
     Debug(DebugCmd),
+    #[command(hide = true)]
+    Log(LogCommand),
 }
