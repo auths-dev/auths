@@ -1,6 +1,6 @@
 //! Artifact digest computation and publishing workflow.
 
-use auths_core::ports::network::{NetworkError, RegistryClient};
+use auths_core::ports::network::{NetworkError, RateLimitInfo, RegistryClient};
 use auths_verifier::core::ResourceId;
 use serde::Deserialize;
 use thiserror::Error;
@@ -31,6 +31,9 @@ pub struct ArtifactPublishResult {
     pub package_name: Option<String>,
     /// DID of the identity that signed the attestation.
     pub signer_did: String,
+    /// Rate limit information from response headers, if the registry provides it.
+    #[serde(skip)]
+    pub rate_limit: Option<RateLimitInfo>,
 }
 
 /// Errors that can occur when publishing an artifact attestation.
@@ -89,8 +92,9 @@ pub async fn publish_artifact<R: RegistryClient>(
 
     match response.status {
         201 => {
-            let result: ArtifactPublishResult = serde_json::from_slice(&response.body)
+            let mut result: ArtifactPublishResult = serde_json::from_slice(&response.body)
                 .map_err(|e| ArtifactPublishError::Deserialize(e.to_string()))?;
+            result.rate_limit = response.rate_limit;
             Ok(result)
         }
         409 => Err(ArtifactPublishError::DuplicateAttestation),

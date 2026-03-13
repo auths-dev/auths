@@ -4,8 +4,9 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use auths_infra_http::HttpRegistryClient;
 use auths_sdk::workflows::artifact::{
-    ArtifactPublishConfig, ArtifactPublishError, publish_artifact,
+    ArtifactPublishConfig, ArtifactPublishError, ArtifactPublishResult, publish_artifact,
 };
+use auths_transparency::OfflineBundle;
 use auths_verifier::core::ResourceId;
 use serde::Serialize;
 
@@ -121,6 +122,9 @@ async fn handle_publish_async(
             other => anyhow::anyhow!("{}", other),
         })?;
 
+    // Cache checkpoint from bundle if present in the signature file
+    cache_checkpoint_from_sig(&sig_contents);
+
     if is_json_mode() {
         let json_resp = JsonResponse::success(
             "artifact publish",
@@ -150,7 +154,63 @@ async fn handle_publish_async(
                 registry_url, pkg
             );
         }
+        display_rate_limit(&out, &body);
     }
 
     Ok(())
+}
+
+fn display_rate_limit(out: &Output, result: &ArtifactPublishResult) {
+    let Some(ref rl) = result.rate_limit else {
+        return;
+    };
+    println!();
+    if let Some(tier) = &rl.tier {
+        println!("  Tier:      {}", out.info(tier));
+    }
+    if let (Some(remaining), Some(limit)) = (rl.remaining, rl.limit) {
+        println!(
+            "  Quota:     {}/{} requests remaining today",
+            out.bold(&remaining.to_string()),
+            limit
+        );
+    }
+    if let Some(reset) = rl.reset
+        && let Some(dt) = chrono::DateTime::from_timestamp(reset, 0)
+    {
+        let human = dt.format("%Y-%m-%d %H:%M UTC");
+        println!("  Resets at: {human}");
+    }
+}
+
+/// Best-effort checkpoint caching after publish, using the bundle in the sig file.
+#[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
+fn cache_checkpoint_from_sig(sig_contents: &str) {
+    let sig_value: serde_json::Value = match serde_json::from_str(sig_contents) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    if sig_value.get("offline_bundle").is_none() {
+        return;
+    }
+
+    let bundle: OfflineBundle = match serde_json::from_value(sig_value["offline_bundle"].clone()) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+
+    let cache_path = match dirs::home_dir() {
+        Some(home) => home.join(".auths").join("log_checkpoint.json"),
+        None => return,
+    };
+
+    if let Err(e) = auths_sdk::workflows::transparency::try_cache_checkpoint(
+        &cache_path,
+        &bundle.signed_checkpoint,
+        None,
+    ) && !is_json_mode()
+    {
+        eprintln!("Warning: checkpoint cache update failed: {e}");
+    }
 }

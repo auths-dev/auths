@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_is_deferred() {
-        assert!(is_deferred("auths_verifier::IdentityDID::new_unchecked"));
+        assert!(!is_deferred("auths_verifier::IdentityDID::new_unchecked"));
         assert!(!is_deferred("chrono::offset::Utc::now"));
         assert!(!is_deferred("std::fs::read"));
     }

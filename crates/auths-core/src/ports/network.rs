@@ -306,6 +306,22 @@ pub trait WitnessClient: Send + Sync {
     ) -> impl Future<Output = Result<Vec<Vec<u8>>, NetworkError>> + Send;
 }
 
+/// Rate limit information extracted from HTTP response headers.
+///
+/// Populated from standard `X-RateLimit-*` headers when present in the
+/// registry response.
+#[derive(Debug, Clone, Default)]
+pub struct RateLimitInfo {
+    /// Maximum requests allowed in the current window.
+    pub limit: Option<i32>,
+    /// Remaining requests in the current window.
+    pub remaining: Option<i32>,
+    /// Unix timestamp when the rate limit window resets.
+    pub reset: Option<i64>,
+    /// The access tier for this identity (e.g., "free", "team").
+    pub tier: Option<String>,
+}
+
 /// Response from a registry POST operation.
 ///
 /// Carries the HTTP status code and body so callers can dispatch on
@@ -316,6 +332,8 @@ pub struct RegistryResponse {
     pub status: u16,
     /// Response body bytes.
     pub body: Vec<u8>,
+    /// Rate limit information extracted from response headers, if present.
+    pub rate_limit: Option<RateLimitInfo>,
 }
 
 /// Fetches and pushes data to a remote registry service.

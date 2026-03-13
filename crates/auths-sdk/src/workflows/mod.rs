@@ -6,9 +6,11 @@ pub mod diagnostics;
 pub mod git_integration;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub mod namespace;
 pub mod org;
 pub mod platform;
 pub mod policy_diff;
 pub mod provision;
 pub mod rotation;
 pub mod signing;
+pub mod transparency;

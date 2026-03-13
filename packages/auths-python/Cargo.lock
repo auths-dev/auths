@@ -315,6 +315,7 @@ dependencies = [
  "auths-id",
  "auths-policy",
  "auths-telemetry",
+ "auths-transparency",
  "auths-verifier",
  "base64",
  "chrono",
@@ -367,6 +368,26 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "auths-transparency"
+version = "0.0.1-rc.8"
+dependencies = [
+ "async-trait",
+ "auths-crypto",
+ "auths-verifier",
+ "base64",
+ "chrono",
+ "futures",
+ "hex",
+ "json-canon",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

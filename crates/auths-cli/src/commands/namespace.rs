@@ -1,0 +1,367 @@
+use anyhow::{Context, Result, anyhow};
+use clap::{Parser, Subcommand};
+
+use auths_core::signing::StorageSigner;
+use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
+use auths_id::storage::identity::IdentityStorage;
+use auths_id::storage::layout;
+use auths_sdk::registration::DEFAULT_REGISTRY_URL;
+use auths_sdk::workflows::namespace::{
+    ClaimNamespaceCommand, DelegateNamespaceCommand, TransferNamespaceCommand,
+    parse_claim_response, parse_lookup_response, sign_namespace_claim, sign_namespace_delegate,
+    sign_namespace_transfer,
+};
+use auths_storage::git::RegistryIdentityStorage;
+
+use crate::commands::executable::ExecutableCommand;
+use crate::config::CliConfig;
+
+/// Manage namespace claims in package ecosystems.
+#[derive(Parser, Debug, Clone)]
+pub struct NamespaceCommand {
+    #[clap(subcommand)]
+    pub subcommand: NamespaceSubcommand,
+}
+
+/// Subcommands for managing namespace claims and delegations.
+#[derive(Subcommand, Debug, Clone)]
+pub enum NamespaceSubcommand {
+    /// Claim a namespace in a package ecosystem
+    Claim {
+        /// Package ecosystem (e.g. npm, crates.io, pypi)
+        #[arg(long)]
+        ecosystem: String,
+
+        /// Package name to claim
+        #[arg(long)]
+        package_name: String,
+
+        /// Registry URL (defaults to the public registry)
+        #[arg(long)]
+        registry_url: Option<String>,
+
+        /// Alias of the signing key in keychain
+        #[arg(long)]
+        signer_alias: Option<String>,
+    },
+
+    /// Delegate namespace authority to another identity
+    Delegate {
+        /// Package ecosystem (e.g. npm, crates.io, pypi)
+        #[arg(long)]
+        ecosystem: String,
+
+        /// Package name
+        #[arg(long)]
+        package_name: String,
+
+        /// DID of the identity to delegate to
+        #[arg(long)]
+        delegate_did: String,
+
+        /// Registry URL (defaults to the public registry)
+        #[arg(long)]
+        registry_url: Option<String>,
+
+        /// Alias of the signing key in keychain
+        #[arg(long)]
+        signer_alias: Option<String>,
+    },
+
+    /// Transfer namespace ownership to another identity
+    Transfer {
+        /// Package ecosystem (e.g. npm, crates.io, pypi)
+        #[arg(long)]
+        ecosystem: String,
+
+        /// Package name
+        #[arg(long)]
+        package_name: String,
+
+        /// DID of the new owner
+        #[arg(long)]
+        new_owner_did: String,
+
+        /// Registry URL (defaults to the public registry)
+        #[arg(long)]
+        registry_url: Option<String>,
+
+        /// Alias of the signing key in keychain
+        #[arg(long)]
+        signer_alias: Option<String>,
+    },
+
+    /// Look up namespace information
+    Lookup {
+        /// Package ecosystem (e.g. npm, crates.io, pypi)
+        #[arg(long)]
+        ecosystem: String,
+
+        /// Package name
+        #[arg(long)]
+        package_name: String,
+
+        /// Registry URL (defaults to the public registry)
+        #[arg(long)]
+        registry_url: Option<String>,
+    },
+}
+
+impl ExecutableCommand for NamespaceCommand {
+    #[allow(clippy::disallowed_methods)]
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        handle_namespace(self.clone(), ctx)
+    }
+}
+
+fn resolve_registry_url(registry_url: Option<String>) -> String {
+    registry_url.unwrap_or_else(|| DEFAULT_REGISTRY_URL.to_string())
+}
+
+fn load_identity_and_alias(
+    ctx: &CliConfig,
+    signer_alias: Option<String>,
+) -> Result<(auths_verifier::types::IdentityDID, KeyAlias)> {
+    let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
+    let identity_storage = RegistryIdentityStorage::new(repo_path);
+    let managed_identity = identity_storage
+        .load_identity()
+        .context("Failed to load identity. Run `auths init` first.")?;
+
+    let controller_did = managed_identity.controller_did;
+
+    let alias_str = signer_alias.unwrap_or_else(|| {
+        let prefix = controller_did
+            .as_str()
+            .strip_prefix("did:keri:")
+            .unwrap_or(controller_did.as_str());
+        format!(
+            "ns-{}",
+            prefix
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .take(20)
+                .collect::<String>()
+                .to_lowercase()
+        )
+    });
+
+    let key_alias = KeyAlias::new_unchecked(alias_str);
+    Ok((controller_did, key_alias))
+}
+
+fn post_signed_entry(registry_url: &str, body: serde_json::Value) -> Result<serde_json::Value> {
+    let url = format!("{}/v1/log/entries", registry_url.trim_end_matches('/'));
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .with_context(|| format!("Failed to POST to {url}"))?;
+
+    let status = response.status();
+    let response_text = response
+        .text()
+        .context("Failed to read registry response")?;
+
+    if !status.is_success() {
+        return Err(anyhow!(
+            "Registry returned HTTP {}: {}",
+            status,
+            response_text
+        ));
+    }
+
+    serde_json::from_str(&response_text).context("Failed to parse registry response")
+}
+
+/// Handles `namespace` commands for managing package namespace claims.
+pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
+    match cmd.subcommand {
+        NamespaceSubcommand::Claim {
+            ecosystem,
+            package_name,
+            registry_url,
+            signer_alias,
+        } => {
+            let registry_url = resolve_registry_url(registry_url);
+            let (controller_did, key_alias) = load_identity_and_alias(ctx, signer_alias)?;
+            let signer = StorageSigner::new(get_platform_keychain()?);
+            let passphrase_provider = ctx.passphrase_provider.clone();
+
+            println!("Claiming namespace {}/{}...", ecosystem, package_name);
+
+            let sdk_cmd = ClaimNamespaceCommand {
+                ecosystem: ecosystem.clone(),
+                package_name: package_name.clone(),
+                registry_url: registry_url.clone(),
+            };
+
+            let signed = sign_namespace_claim(
+                &sdk_cmd,
+                &controller_did,
+                &signer,
+                passphrase_provider.as_ref(),
+                &key_alias,
+            )
+            .context("Failed to sign namespace claim")?;
+
+            let response = post_signed_entry(&registry_url, signed.to_request_body())?;
+
+            let result = parse_claim_response(
+                &ecosystem,
+                &package_name,
+                controller_did.as_str(),
+                &response,
+            );
+
+            println!("\nNamespace claimed successfully!");
+            println!("   Ecosystem:    {}", result.ecosystem);
+            println!("   Package:      {}", result.package_name);
+            println!("   Owner:        {}", result.owner_did);
+            println!("   Log Sequence: {}", result.log_sequence);
+
+            Ok(())
+        }
+
+        NamespaceSubcommand::Delegate {
+            ecosystem,
+            package_name,
+            delegate_did,
+            registry_url,
+            signer_alias,
+        } => {
+            let registry_url = resolve_registry_url(registry_url);
+            let (controller_did, key_alias) = load_identity_and_alias(ctx, signer_alias)?;
+            let signer = StorageSigner::new(get_platform_keychain()?);
+            let passphrase_provider = ctx.passphrase_provider.clone();
+
+            println!(
+                "Delegating namespace {}/{} to {}...",
+                ecosystem, package_name, delegate_did
+            );
+
+            let sdk_cmd = DelegateNamespaceCommand {
+                ecosystem: ecosystem.clone(),
+                package_name: package_name.clone(),
+                delegate_did: delegate_did.clone(),
+                registry_url: registry_url.clone(),
+            };
+
+            let signed = sign_namespace_delegate(
+                &sdk_cmd,
+                &controller_did,
+                &signer,
+                passphrase_provider.as_ref(),
+                &key_alias,
+            )
+            .context("Failed to sign namespace delegation")?;
+
+            post_signed_entry(&registry_url, signed.to_request_body())?;
+
+            println!("\nNamespace delegation successful!");
+            println!("   Ecosystem:  {}", ecosystem);
+            println!("   Package:    {}", package_name);
+            println!("   Delegate:   {}", delegate_did);
+
+            Ok(())
+        }
+
+        NamespaceSubcommand::Transfer {
+            ecosystem,
+            package_name,
+            new_owner_did,
+            registry_url,
+            signer_alias,
+        } => {
+            let registry_url = resolve_registry_url(registry_url);
+            let (controller_did, key_alias) = load_identity_and_alias(ctx, signer_alias)?;
+            let signer = StorageSigner::new(get_platform_keychain()?);
+            let passphrase_provider = ctx.passphrase_provider.clone();
+
+            println!(
+                "Transferring namespace {}/{} to {}...",
+                ecosystem, package_name, new_owner_did
+            );
+
+            let sdk_cmd = TransferNamespaceCommand {
+                ecosystem: ecosystem.clone(),
+                package_name: package_name.clone(),
+                new_owner_did: new_owner_did.clone(),
+                registry_url: registry_url.clone(),
+            };
+
+            let signed = sign_namespace_transfer(
+                &sdk_cmd,
+                &controller_did,
+                &signer,
+                passphrase_provider.as_ref(),
+                &key_alias,
+            )
+            .context("Failed to sign namespace transfer")?;
+
+            post_signed_entry(&registry_url, signed.to_request_body())?;
+
+            println!("\nNamespace transfer successful!");
+            println!("   Ecosystem:  {}", ecosystem);
+            println!("   Package:    {}", package_name);
+            println!("   New Owner:  {}", new_owner_did);
+
+            Ok(())
+        }
+
+        NamespaceSubcommand::Lookup {
+            ecosystem,
+            package_name,
+            registry_url,
+        } => {
+            let registry_url = resolve_registry_url(registry_url);
+
+            println!("Looking up namespace {}/{}...", ecosystem, package_name);
+
+            let url = format!(
+                "{}/v1/namespaces/{}/{}",
+                registry_url.trim_end_matches('/'),
+                ecosystem,
+                package_name
+            );
+
+            let client = reqwest::blocking::Client::new();
+            let response = client
+                .get(&url)
+                .send()
+                .with_context(|| format!("Failed to GET {url}"))?;
+
+            if response.status() == reqwest::StatusCode::NOT_FOUND {
+                println!("\nNamespace {}/{} is not claimed.", ecosystem, package_name);
+                return Ok(());
+            }
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().unwrap_or_default();
+                return Err(anyhow!("Registry returned HTTP {}: {}", status, body));
+            }
+
+            let body: serde_json::Value = response
+                .json()
+                .context("Failed to parse registry response")?;
+
+            let info = parse_lookup_response(&ecosystem, &package_name, &body);
+
+            println!("\nNamespace: {}/{}", info.ecosystem, info.package_name);
+            println!("   Owner: {}", info.owner_did);
+            if info.delegates.is_empty() {
+                println!("   Delegates: (none)");
+            } else {
+                println!("   Delegates:");
+                for d in &info.delegates {
+                    println!("     - {}", d);
+                }
+            }
+
+            Ok(())
+        }
+    }
+}

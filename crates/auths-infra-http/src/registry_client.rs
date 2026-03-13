@@ -1,4 +1,4 @@
-use auths_core::ports::network::{NetworkError, RegistryClient, RegistryResponse};
+use auths_core::ports::network::{NetworkError, RateLimitInfo, RegistryClient, RegistryResponse};
 use std::future::Future;
 use std::time::Duration;
 
@@ -113,12 +113,48 @@ impl RegistryClient for HttpRegistryClient {
                 .await
                 .map_err(|e| map_reqwest_error(e, &endpoint))?;
             let status = response.status().as_u16();
+            let rate_limit = extract_rate_limit_headers(&response);
             let body = response.bytes().await.map(|b| b.to_vec()).map_err(|e| {
                 NetworkError::InvalidResponse {
                     detail: e.to_string(),
                 }
             })?;
-            Ok(RegistryResponse { status, body })
+            Ok(RegistryResponse {
+                status,
+                body,
+                rate_limit,
+            })
         }
+    }
+}
+
+fn extract_rate_limit_headers(response: &reqwest::Response) -> Option<RateLimitInfo> {
+    let headers = response.headers();
+    let limit = headers
+        .get("x-ratelimit-limit")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<i32>().ok());
+    let remaining = headers
+        .get("x-ratelimit-remaining")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<i32>().ok());
+    let reset = headers
+        .get("x-ratelimit-reset")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<i64>().ok());
+    let tier = headers
+        .get("x-ratelimit-tier")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+
+    if limit.is_some() || remaining.is_some() || reset.is_some() || tier.is_some() {
+        Some(RateLimitInfo {
+            limit,
+            remaining,
+            reset,
+            tier,
+        })
+    } else {
+        None
     }
 }
