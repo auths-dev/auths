@@ -321,6 +321,7 @@ dependencies = [
  "auths-sdk",
  "auths-storage",
  "auths-telemetry",
+ "auths-transparency",
  "auths-utils",
  "auths-verifier",
  "axum",
@@ -681,6 +682,7 @@ dependencies = [
  "auths-sdk",
  "auths-storage",
  "auths-telemetry",
+ "auths-transparency",
  "auths-verifier",
  "base64",
  "chrono",
@@ -752,6 +754,27 @@ dependencies = [
  "git2",
  "ring",
  "tempfile",
+]
+
+[[package]]
+name = "auths-transparency"
+version = "0.0.1-rc.8"
+dependencies = [
+ "async-trait",
+ "auths-crypto",
+ "auths-verifier",
+ "base64",
+ "chrono",
+ "hex",
+ "json-canon",
+ "proptest",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

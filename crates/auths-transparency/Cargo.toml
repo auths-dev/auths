@@ -1,0 +1,42 @@
+[package]
+name = "auths-transparency"
+version.workspace = true
+edition = "2024"
+description = "Append-only transparency log types, Merkle math, and tile storage for Auths"
+publish = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["transparency", "merkle", "tlog", "verification"]
+categories = ["cryptography", "data-structures"]
+
+[dependencies]
+auths-crypto = { workspace = true, default-features = false }
+auths-verifier = { workspace = true, default-features = false }
+base64.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+hex = { version = "0.4.3", features = ["serde"] }
+json-canon.workspace = true
+ring = { workspace = true, optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10"
+thiserror.workspace = true
+
+# native-only deps
+async-trait = { version = "0.1", optional = true }
+tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+auths-crypto = { workspace = true, features = ["test-utils"] }
+proptest = "1.4"
+ring.workspace = true
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[features]
+default = ["native"]
+native = ["dep:async-trait", "dep:tokio", "dep:ring", "auths-verifier/native", "auths-crypto/native"]
+
+[lints]
+workspace = true

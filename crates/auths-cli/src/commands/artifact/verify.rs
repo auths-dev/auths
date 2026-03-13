@@ -3,6 +3,10 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use auths_transparency::{
+    BundleVerificationReport, CheckpointStatus, DelegationStatus, InclusionStatus, NamespaceStatus,
+    OfflineBundle, SignatureStatus, TrustRoot, WitnessStatus,
+};
 use auths_verifier::core::Attestation;
 use auths_verifier::witness::{WitnessQuorum, WitnessReceipt, WitnessVerifyConfig};
 use auths_verifier::{
@@ -70,6 +74,16 @@ pub async fn handle_verify(
             );
         }
     };
+
+    let sig_value: serde_json::Value = match serde_json::from_str(&sig_content) {
+        Ok(v) => v,
+        Err(e) => {
+            return output_error(&file_str, 2, &format!("Failed to parse .auths.json: {}", e));
+        }
+    };
+    if sig_value.get("offline_bundle").is_some() {
+        return handle_bundle_verify(file, &sig_content);
+    }
 
     // 2. Parse attestation
     let attestation: Attestation = match serde_json::from_str(&sig_content) {
@@ -336,4 +350,117 @@ fn output_result(exit_code: i32, result: VerifyArtifactResult) -> Result<()> {
         std::process::exit(exit_code);
     }
     Ok(())
+}
+
+fn handle_bundle_verify(file: &Path, sig_content: &str) -> Result<()> {
+    let file_str = file.to_string_lossy().to_string();
+
+    let sig_value: serde_json::Value =
+        serde_json::from_str(sig_content).with_context(|| "Failed to parse .auths.json")?;
+    let bundle: OfflineBundle = serde_json::from_value(sig_value["offline_bundle"].clone())
+        .with_context(|| "Failed to parse offline_bundle from .auths.json")?;
+
+    let trust_root: TrustRoot = serde_json::from_str(&default_trust_root_json())
+        .with_context(|| "Failed to parse default trust root")?;
+
+    #[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
+    let now = chrono::Utc::now();
+
+    let report = auths_transparency::verify_bundle(&bundle, &trust_root, now);
+
+    if is_json_mode() {
+        println!(
+            "{}",
+            serde_json::to_string(&report).with_context(|| "Failed to serialize bundle report")?
+        );
+    } else {
+        render_bundle_report(&report);
+    }
+
+    if report.is_valid() {
+        Ok(())
+    } else {
+        output_error(&file_str, 1, "Bundle verification failed")
+    }
+}
+
+fn render_bundle_report(report: &BundleVerificationReport) {
+    println!("Bundle Verification:");
+
+    match &report.signature {
+        SignatureStatus::Verified => println!("  Signature:    \u{2713} Verified"),
+        SignatureStatus::Failed { reason } => {
+            println!("  Signature:    \u{2717} Failed: {reason}")
+        }
+        SignatureStatus::NotProvided => println!("  Signature:    - Not provided"),
+        _ => println!("  Signature:    ? Unknown status"),
+    }
+
+    match &report.inclusion {
+        InclusionStatus::Verified => println!("  Inclusion:    \u{2713} Verified"),
+        InclusionStatus::Failed { reason } => {
+            println!("  Inclusion:    \u{2717} Failed: {reason}")
+        }
+        InclusionStatus::NotProvided => println!("  Inclusion:    - Not provided"),
+        _ => println!("  Inclusion:    ? Unknown status"),
+    }
+
+    match &report.checkpoint {
+        CheckpointStatus::Verified => println!("  Checkpoint:   \u{2713} Verified"),
+        CheckpointStatus::InvalidSignature => {
+            println!("  Checkpoint:   \u{2717} Invalid signature")
+        }
+        CheckpointStatus::NotProvided => println!("  Checkpoint:   - Not provided"),
+        _ => println!("  Checkpoint:   ? Unknown status"),
+    }
+
+    match &report.witnesses {
+        WitnessStatus::Quorum { verified, required } => {
+            println!("  Witnesses:    \u{2713} Quorum ({verified}/{required} verified)");
+        }
+        WitnessStatus::Insufficient { verified, required } => {
+            println!("  Witnesses:    \u{2717} Insufficient ({verified}/{required} verified)");
+        }
+        WitnessStatus::NotProvided => println!("  Witnesses:    - Not provided"),
+        _ => println!("  Witnesses:    ? Unknown status"),
+    }
+
+    match &report.namespace {
+        NamespaceStatus::Authorized => println!("  Namespace:    \u{2713} Authorized"),
+        NamespaceStatus::Owned => println!("  Namespace:    \u{2713} Owned"),
+        NamespaceStatus::Unowned => println!("  Namespace:    - Unowned"),
+        NamespaceStatus::Unauthorized => println!("  Namespace:    \u{2717} Unauthorized"),
+        _ => println!("  Namespace:    ? Unknown status"),
+    }
+
+    match &report.delegation {
+        DelegationStatus::Direct => println!("  Delegation:   \u{2713} Direct"),
+        DelegationStatus::ChainVerified {
+            org_did,
+            member_did,
+            ..
+        } => {
+            println!("  Delegation:   \u{2713} Chain verified ({org_did} \u{2192} {member_did})");
+        }
+        DelegationStatus::ChainBroken { reason } => {
+            println!("  Delegation:   \u{2717} Chain broken: {reason}");
+        }
+        DelegationStatus::NoDelegationData => println!("  Delegation:   - No delegation data"),
+        _ => println!("  Delegation:   ? Unknown status"),
+    }
+
+    for warning in &report.warnings {
+        println!("  Warning:      \u{26a0} {warning}");
+    }
+}
+
+fn default_trust_root_json() -> String {
+    // Epic 1 hardcoded trust root: no witnesses, placeholder log key.
+    // Will be replaced by TUF-distributed trust root in fn-76.
+    serde_json::json!({
+        "log_public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+        "log_origin": "auths.dev/log",
+        "witnesses": []
+    })
+    .to_string()
 }

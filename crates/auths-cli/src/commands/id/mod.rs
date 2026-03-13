@@ -1,3 +1,4 @@
+pub mod bind_idp;
 pub mod claim;
 pub mod identity;
 pub mod migrate;

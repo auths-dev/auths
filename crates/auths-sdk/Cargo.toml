@@ -17,6 +17,7 @@ auths-telemetry.workspace = true
 auths-policy.workspace = true
 auths-crypto.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
+auths-transparency = { workspace = true, features = ["native"] }
 ring.workspace = true
 thiserror.workspace = true
 serde = { version = "1", features = ["derive"] }

@@ -188,6 +188,12 @@ pub enum IdSubcommand {
 
     /// Import existing GPG or SSH keys into Auths.
     Migrate(super::migrate::MigrateCommand),
+
+    /// Bind this identity to an enterprise IdP (Okta, Entra ID, Google Workspace, SAML).
+    ///
+    /// Requires the `auths-cloud` binary on $PATH. If not installed,
+    /// prints information about Auths Cloud.
+    BindIdp(super::bind_idp::BindIdpStubCommand),
 }
 
 fn display_dry_run_rotate(
@@ -641,5 +647,7 @@ pub fn handle_id(
         }
 
         IdSubcommand::Migrate(migrate_cmd) => super::migrate::handle_migrate(migrate_cmd, now),
+
+        IdSubcommand::BindIdp(bind_cmd) => super::bind_idp::handle_bind_idp(bind_cmd),
     }
 }
