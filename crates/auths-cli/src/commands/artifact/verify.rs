@@ -378,9 +378,39 @@ fn handle_bundle_verify(file: &Path, sig_content: &str) -> Result<()> {
     }
 
     if report.is_valid() {
+        cache_checkpoint_from_bundle(&bundle);
         Ok(())
     } else {
         output_error(&file_str, 1, "Bundle verification failed")
+    }
+}
+
+/// Best-effort checkpoint caching after bundle verification.
+#[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
+fn cache_checkpoint_from_bundle(bundle: &OfflineBundle) {
+    let cache_path = match dirs::home_dir() {
+        Some(home) => home.join(".auths").join("log_checkpoint.json"),
+        None => return,
+    };
+
+    match auths_sdk::workflows::transparency::try_cache_checkpoint(
+        &cache_path,
+        &bundle.signed_checkpoint,
+        None,
+    ) {
+        Ok(report) => {
+            if report.old_size == 0 && !is_json_mode() {
+                eprintln!(
+                    "Cached transparency checkpoint (tree size: {})",
+                    report.new_size
+                );
+            }
+        }
+        Err(e) => {
+            if !is_json_mode() {
+                eprintln!("Warning: checkpoint cache update failed: {e}");
+            }
+        }
     }
 }
 

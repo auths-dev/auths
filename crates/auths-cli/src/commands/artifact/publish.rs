@@ -6,6 +6,7 @@ use auths_infra_http::HttpRegistryClient;
 use auths_sdk::workflows::artifact::{
     ArtifactPublishConfig, ArtifactPublishError, publish_artifact,
 };
+use auths_transparency::OfflineBundle;
 use auths_verifier::core::ResourceId;
 use serde::Serialize;
 
@@ -121,6 +122,9 @@ async fn handle_publish_async(
             other => anyhow::anyhow!("{}", other),
         })?;
 
+    // Cache checkpoint from bundle if present in the signature file
+    cache_checkpoint_from_sig(&sig_contents);
+
     if is_json_mode() {
         let json_resp = JsonResponse::success(
             "artifact publish",
@@ -153,4 +157,36 @@ async fn handle_publish_async(
     }
 
     Ok(())
+}
+
+/// Best-effort checkpoint caching after publish, using the bundle in the sig file.
+#[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
+fn cache_checkpoint_from_sig(sig_contents: &str) {
+    let sig_value: serde_json::Value = match serde_json::from_str(sig_contents) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    if sig_value.get("offline_bundle").is_none() {
+        return;
+    }
+
+    let bundle: OfflineBundle = match serde_json::from_value(sig_value["offline_bundle"].clone()) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+
+    let cache_path = match dirs::home_dir() {
+        Some(home) => home.join(".auths").join("log_checkpoint.json"),
+        None => return,
+    };
+
+    if let Err(e) = auths_sdk::workflows::transparency::try_cache_checkpoint(
+        &cache_path,
+        &bundle.signed_checkpoint,
+        None,
+    ) && !is_json_mode()
+    {
+        eprintln!("Warning: checkpoint cache update failed: {e}");
+    }
 }

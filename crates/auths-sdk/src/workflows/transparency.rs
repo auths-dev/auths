@@ -37,6 +37,7 @@ pub struct BundleVerifyConfig {
 }
 
 /// Result of a consistency check between cached and new checkpoints.
+#[derive(Debug)]
 pub struct ConsistencyReport {
     /// Tree size of the previously cached checkpoint (0 if none).
     pub old_size: u64,
@@ -135,6 +136,101 @@ pub fn update_checkpoint_cache(
             &new_checkpoint.checkpoint.root,
         )
         .map_err(|e| TransparencyWorkflowError::CheckpointInconsistent(e.to_string()))?;
+    }
+
+    let json = serde_json::to_string_pretty(new_checkpoint)
+        .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string()))?;
+
+    if let Some(parent) = cache_path.parent() {
+        std::fs::create_dir_all(parent).map_err(TransparencyWorkflowError::CacheError)?;
+    }
+    std::fs::write(cache_path, json.as_bytes()).map_err(TransparencyWorkflowError::CacheError)?;
+
+    let old_size = old_checkpoint.map(|c| c.checkpoint.size).unwrap_or(0);
+
+    Ok(ConsistencyReport {
+        old_size,
+        new_size: new_checkpoint.checkpoint.size,
+        consistent: true,
+    })
+}
+
+/// Cache a checkpoint using trust-on-first-use (TOFU) semantics.
+///
+/// If no cached checkpoint exists, the new checkpoint is accepted and written.
+/// If a cached checkpoint exists with the same or smaller tree size and matching
+/// root, the cache is left unchanged. If the cached checkpoint has the same size
+/// but a different root, this is equivocation — returns a hard error.
+/// If a consistency proof is provided, full Merkle consistency is verified.
+///
+/// Args:
+/// * `cache_path` — Path to the cached checkpoint JSON file (`~/.auths/log_checkpoint.json`).
+/// * `new_checkpoint` — The checkpoint to cache.
+/// * `consistency_proof` — Optional consistency proof for cache-hit cases.
+///
+/// Usage:
+/// ```ignore
+/// try_cache_checkpoint(
+///     &Path::new("~/.auths/log_checkpoint.json"),
+///     &bundle.signed_checkpoint,
+///     None,
+/// )?;
+/// ```
+#[allow(clippy::disallowed_methods)] // Filesystem I/O is intentional — top-level SDK workflow
+pub fn try_cache_checkpoint(
+    cache_path: &Path,
+    new_checkpoint: &SignedCheckpoint,
+    consistency_proof: Option<&ConsistencyProof>,
+) -> Result<ConsistencyReport, TransparencyWorkflowError> {
+    let old_checkpoint = match std::fs::read_to_string(cache_path) {
+        Ok(json) => {
+            let cp: SignedCheckpoint = serde_json::from_str(&json)
+                .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string()))?;
+            Some(cp)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(TransparencyWorkflowError::CacheError(e)),
+    };
+
+    if let Some(ref old) = old_checkpoint {
+        // Equivocation: same size, different root
+        if old.checkpoint.size == new_checkpoint.checkpoint.size
+            && old.checkpoint.root != new_checkpoint.checkpoint.root
+        {
+            return Err(TransparencyWorkflowError::CheckpointInconsistent(format!(
+                "equivocation detected: same tree size {} but different roots",
+                old.checkpoint.size
+            )));
+        }
+
+        // New checkpoint must not be smaller
+        if new_checkpoint.checkpoint.size < old.checkpoint.size {
+            return Err(TransparencyWorkflowError::CheckpointInconsistent(format!(
+                "new checkpoint size {} is smaller than cached size {}",
+                new_checkpoint.checkpoint.size, old.checkpoint.size
+            )));
+        }
+
+        // Same checkpoint — no update needed
+        if old.checkpoint.size == new_checkpoint.checkpoint.size {
+            return Ok(ConsistencyReport {
+                old_size: old.checkpoint.size,
+                new_size: new_checkpoint.checkpoint.size,
+                consistent: true,
+            });
+        }
+
+        // If we have a consistency proof, verify it
+        if let Some(proof) = consistency_proof {
+            auths_transparency::verify_consistency(
+                old.checkpoint.size,
+                new_checkpoint.checkpoint.size,
+                &proof.hashes,
+                &old.checkpoint.root,
+                &new_checkpoint.checkpoint.root,
+            )
+            .map_err(|e| TransparencyWorkflowError::CheckpointInconsistent(e.to_string()))?;
+        }
     }
 
     let json = serde_json::to_string_pretty(new_checkpoint)
@@ -314,5 +410,69 @@ mod tests {
 
         assert!(report.consistent);
         assert!(cache_path.exists());
+    }
+
+    #[test]
+    fn try_cache_checkpoint_tofu_writes_new_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("log_checkpoint.json");
+
+        let root = MerkleHash::from_bytes([0xaa; 32]);
+        let cp = dummy_signed_checkpoint(10, root);
+
+        let report = try_cache_checkpoint(&cache_path, &cp, None).unwrap();
+        assert_eq!(report.old_size, 0);
+        assert_eq!(report.new_size, 10);
+        assert!(report.consistent);
+        assert!(cache_path.exists());
+    }
+
+    #[test]
+    fn try_cache_checkpoint_same_checkpoint_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("log_checkpoint.json");
+
+        let root = MerkleHash::from_bytes([0xaa; 32]);
+        let cp = dummy_signed_checkpoint(10, root);
+
+        try_cache_checkpoint(&cache_path, &cp, None).unwrap();
+        let report = try_cache_checkpoint(&cache_path, &cp, None).unwrap();
+        assert_eq!(report.old_size, 10);
+        assert_eq!(report.new_size, 10);
+        assert!(report.consistent);
+    }
+
+    #[test]
+    fn try_cache_checkpoint_detects_equivocation() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("log_checkpoint.json");
+
+        let root1 = MerkleHash::from_bytes([0xaa; 32]);
+        let cp1 = dummy_signed_checkpoint(10, root1);
+        try_cache_checkpoint(&cache_path, &cp1, None).unwrap();
+
+        let root2 = MerkleHash::from_bytes([0xbb; 32]);
+        let cp2 = dummy_signed_checkpoint(10, root2);
+        let err = try_cache_checkpoint(&cache_path, &cp2, None).unwrap_err();
+        assert!(matches!(
+            err,
+            TransparencyWorkflowError::CheckpointInconsistent(_)
+        ));
+    }
+
+    #[test]
+    fn try_cache_checkpoint_rejects_smaller_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("log_checkpoint.json");
+
+        let cp1 = dummy_signed_checkpoint(10, MerkleHash::from_bytes([0xaa; 32]));
+        try_cache_checkpoint(&cache_path, &cp1, None).unwrap();
+
+        let cp2 = dummy_signed_checkpoint(5, MerkleHash::from_bytes([0xbb; 32]));
+        let err = try_cache_checkpoint(&cache_path, &cp2, None).unwrap_err();
+        assert!(matches!(
+            err,
+            TransparencyWorkflowError::CheckpointInconsistent(_)
+        ));
     }
 }
