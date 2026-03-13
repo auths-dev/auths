@@ -33,7 +33,12 @@ pub struct Checkpoint {
 impl Checkpoint {
     /// Serialize to the C2SP checkpoint body format (three lines: origin, size, base64 hash).
     pub fn to_note_body(&self) -> String {
-        format!("{}\n{}\n{}\n", self.origin, self.size, self.root.to_base64())
+        format!(
+            "{}\n{}\n{}\n",
+            self.origin,
+            self.size,
+            self.root.to_base64()
+        )
     }
 
     /// Parse from C2SP checkpoint body lines.

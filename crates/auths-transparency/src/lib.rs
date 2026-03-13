@@ -32,6 +32,9 @@ pub mod types;
 /// Offline bundle verification (requires `native` feature for Ed25519).
 #[cfg(feature = "native")]
 pub mod verify;
+/// Witness protocol for split-view protection (requires `native` feature).
+#[cfg(feature = "native")]
+pub mod witness;
 
 // Re-export core types
 pub use bundle::{
@@ -58,6 +61,13 @@ pub use fs_store::FsTileStore;
 pub use store::TileStore;
 #[cfg(feature = "native")]
 pub use verify::verify_bundle;
+
+#[cfg(feature = "native")]
+pub use witness::{
+    ALG_COSIGNATURE_V1, CosignRequest, CosignResponse, DEFAULT_WITNESS_TIMEOUT, WitnessClient,
+    WitnessResult, build_cosignature_line, collect_witness_cosignatures, compute_witness_key_id,
+    cosignature_signed_message, extract_cosignatures, parse_cosignature, serialize_cosignature,
+};
 
 use auths_verifier::DeviceDID;
 

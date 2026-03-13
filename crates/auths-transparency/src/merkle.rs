@@ -204,8 +204,7 @@ pub fn verify_consistency(
     // Reconstruct new root from the consistency proof while implicitly verifying old root.
     // For power-of-2 old_size, old_root is used directly as the starting hash.
     // For non-power-of-2, proof elements reconstruct old_root via the bit-walking algorithm.
-    let new_computed =
-        new_root_from_consistency_proof(old_size, new_size, proof, old_root)?;
+    let new_computed = new_root_from_consistency_proof(old_size, new_size, proof, old_root)?;
 
     if new_computed != *new_root {
         return Err(TransparencyError::RootMismatch {
@@ -563,7 +562,10 @@ mod tests {
     }
 
     /// Build a consistency proof using RFC 6962 SUBPROOF decomposition. Test-only.
-    fn build_consistency_proof(old_leaves: &[MerkleHash], new_leaves: &[MerkleHash]) -> Vec<MerkleHash> {
+    fn build_consistency_proof(
+        old_leaves: &[MerkleHash],
+        new_leaves: &[MerkleHash],
+    ) -> Vec<MerkleHash> {
         assert!(old_leaves.len() <= new_leaves.len());
         subproof(old_leaves.len() as u64, new_leaves, true)
     }

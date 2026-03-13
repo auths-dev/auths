@@ -765,6 +765,7 @@ dependencies = [
  "auths-verifier",
  "base64",
  "chrono",
+ "futures",
  "hex",
  "json-canon",
  "proptest",

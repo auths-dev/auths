@@ -68,10 +68,8 @@ fn verify_bundle_end_to_end_single_entry() {
         timestamp: fixed_ts(),
     };
     let note_body = checkpoint.to_note_body();
-    let log_sig = Ed25519Signature::try_from_slice(
-        log_kp.sign(note_body.as_bytes()).as_ref(),
-    )
-    .unwrap();
+    let log_sig =
+        Ed25519Signature::try_from_slice(log_kp.sign(note_body.as_bytes()).as_ref()).unwrap();
 
     let bundle = OfflineBundle {
         entry,
@@ -154,10 +152,8 @@ fn verify_bundle_multi_leaf_tree() {
         timestamp: fixed_ts(),
     };
     let note_body = checkpoint.to_note_body();
-    let log_sig = Ed25519Signature::try_from_slice(
-        log_kp.sign(note_body.as_bytes()).as_ref(),
-    )
-    .unwrap();
+    let log_sig =
+        Ed25519Signature::try_from_slice(log_kp.sign(note_body.as_bytes()).as_ref()).unwrap();
 
     let bundle = OfflineBundle {
         entry: entries[2].clone(),
@@ -231,14 +227,10 @@ fn verify_bundle_with_witnesses() {
         timestamp: fixed_ts(),
     };
     let note_body = checkpoint.to_note_body();
-    let log_sig = Ed25519Signature::try_from_slice(
-        log_kp.sign(note_body.as_bytes()).as_ref(),
-    )
-    .unwrap();
-    let w1_sig = Ed25519Signature::try_from_slice(
-        w1_kp.sign(note_body.as_bytes()).as_ref(),
-    )
-    .unwrap();
+    let log_sig =
+        Ed25519Signature::try_from_slice(log_kp.sign(note_body.as_bytes()).as_ref()).unwrap();
+    let w1_sig =
+        Ed25519Signature::try_from_slice(w1_kp.sign(note_body.as_bytes()).as_ref()).unwrap();
 
     let bundle = OfflineBundle {
         entry,
@@ -275,7 +267,10 @@ fn verify_bundle_with_witnesses() {
     let report = verify_bundle(&bundle, &trust_root, fixed_now());
     assert!(matches!(
         report.witnesses,
-        WitnessStatus::Quorum { verified: 1, required: 1 }
+        WitnessStatus::Quorum {
+            verified: 1,
+            required: 1
+        }
     ));
     assert!(report.is_valid());
 }
