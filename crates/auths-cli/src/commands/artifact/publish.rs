@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use auths_infra_http::HttpRegistryClient;
 use auths_sdk::workflows::artifact::{
-    ArtifactPublishConfig, ArtifactPublishError, publish_artifact,
+    ArtifactPublishConfig, ArtifactPublishError, ArtifactPublishResult, publish_artifact,
 };
 use auths_transparency::OfflineBundle;
 use auths_verifier::core::ResourceId;
@@ -154,9 +154,33 @@ async fn handle_publish_async(
                 registry_url, pkg
             );
         }
+        display_rate_limit(&out, &body);
     }
 
     Ok(())
+}
+
+fn display_rate_limit(out: &Output, result: &ArtifactPublishResult) {
+    let Some(ref rl) = result.rate_limit else {
+        return;
+    };
+    println!();
+    if let Some(tier) = &rl.tier {
+        println!("  Tier:      {}", out.info(tier));
+    }
+    if let (Some(remaining), Some(limit)) = (rl.remaining, rl.limit) {
+        println!(
+            "  Quota:     {}/{} requests remaining today",
+            out.bold(&remaining.to_string()),
+            limit
+        );
+    }
+    if let Some(reset) = rl.reset
+        && let Some(dt) = chrono::DateTime::from_timestamp(reset, 0)
+    {
+        let human = dt.format("%Y-%m-%d %H:%M UTC");
+        println!("  Resets at: {human}");
+    }
 }
 
 /// Best-effort checkpoint caching after publish, using the bundle in the sig file.

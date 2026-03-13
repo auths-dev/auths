@@ -39,6 +39,18 @@ pub enum AccessTier {
     Enterprise,
 }
 
+impl AccessTier {
+    /// Returns the tier as a lowercase string matching the serde serialization.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Anonymous => "anonymous",
+            Self::Free => "free",
+            Self::Team => "team",
+            Self::Enterprise => "enterprise",
+        }
+    }
+}
+
 /// The body of a log entry, specific to each [`EntryType`].
 ///
 /// Designed so adding new entry types in future epics is a mechanical

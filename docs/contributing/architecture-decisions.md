@@ -11,6 +11,7 @@ This page summarizes the key architectural decisions in Auths and links to the f
 | [ADR-003](#adr-003-tiered-cache-and-write-contention) | Tiered cache and write-contention mitigation | Accepted | 2026-02-27 |
 | [ADR-004](#adr-004-async-executor-protection) | Async executor protection | Accepted | 2026-02-27 |
 | [ADR-005](#adr-005-ed25519-only-for-hsm) | Ed25519-only for HSM | Accepted | 2026-03-05 |
+| [ADR-006](#adr-006-c2sp-tlog-tiles-transparency-log) | C2SP tlog-tiles transparency log | Accepted | 2026-03-13 |
 
 ## ADR format
 
@@ -154,6 +155,94 @@ KERI events are stored as Git commits (ADR-002), giving the KEL content-addresse
 - Apple Secure Enclave adapter gated behind multi-curve.
 - Cloud HSM adapters (AWS CloudHSM, Azure, GCP) also gated behind multi-curve.
 - Monitor Apple exposing Ed25519 Secure Enclave APIs publicly (Platform SSO already uses it internally).
+
+## ADR-006: C2SP tlog-tiles transparency log
+
+**Status:** Accepted
+
+**Context:**
+
+KERI Key Event Logs stored in Git (ADR-002) provide per-identity tamper evidence, but they don't answer a global question: "has the registry ever presented different views of the same identity to different parties?" This is the split-view attack — the log operator shows one version of history to the verifier and a different version to the auditor. [Certificate Transparency](https://certificate.transparency.dev/) solved this for TLS with append-only Merkle trees and independent witnesses. Auths needed the same guarantee for identity operations.
+
+Three options were evaluated:
+
+1. **Rekor (Sigstore's log).** Production-proven, but introduces a Sigstore infrastructure dependency and an OIDC trust requirement — contradicting the self-sovereign design.
+2. **Custom append-only log.** Full control, but requires designing a tile format, proof serialization, witness protocol, and client caching from scratch.
+3. **C2SP tlog-tiles specification.** An open spec on [Tiled Transparency Logs](https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md) from the C2SP (Cryptographic Specification Project) that defines Merkle tree tiling, checkpoint signed notes, and witness cosignature formats. Already used by Go's `sumdb` and Sigsum.
+
+**Decision:** Implement C2SP tlog-tiles as the `auths-transparency` crate. Use the spec's tile layout, signed note format, and witness cosignature protocol. Build the Merkle tree using [RFC 6962](https://www.rfc-editor.org/rfc/rfc6962.html) hash functions ([SHA-256 with domain-separated leaf/node prefixes](https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md#merkle-tree)).
+
+**Architecture:**
+
+The crate is split into two feature tiers:
+
+- **No features (WASM-safe):** Core types (`MerkleHash`, `LogOrigin`), Merkle math (`hash_leaf`, `hash_children`, `compute_root`), proof verification (`verify_inclusion`, `verify_consistency`), signed note parsing, tile path encoding. This compiles to WASM for in-browser verification.
+- **`native` feature:** `TileStore` trait, `FsTileStore` implementation, `WitnessClient` trait, cosignature collection, offline bundle verification. This runs in the registry server and CLI.
+
+Key types:
+
+```
+Checkpoint { origin, size, root, timestamp }
+    → SignedCheckpoint { checkpoint, log_signature, log_public_key, witnesses[] }
+        → WitnessCosignature { witness_key_id, witness_name, signature, timestamp }
+
+Entry { sequence, entry_type, content, actor_did, timestamp, signature }
+    → EntryType: Register | Rotate | DeviceBind | DeviceRevoke | Attest | NamespaceClaim | OrgAddMember | ...
+    → EntryContent: typed body specific to each EntryType
+
+InclusionProof { leaf_index, tree_size, hashes[] }
+ConsistencyProof { old_size, new_size, hashes[] }
+```
+
+The Merkle tree uses tiles — fixed-size blocks of 256 hashes (2^8, per C2SP `TILE_HEIGHT=8`). Tile paths follow C2SP encoding: `tile/{level}/{index}` with 3-digit zero-padded segments. Full tiles are immutable and cached aggressively; partial tiles have short TTLs.
+
+**Witness protocol:**
+
+Witnesses are independent servers that verify checkpoint consistency before cosigning. The protocol:
+
+1. Sequencer produces a new `SignedCheckpoint` after appending entries.
+2. Background task fans out `CosignRequest` to configured witness endpoints.
+3. Each witness verifies the consistency proof from its last-seen size to the new size.
+4. Witnesses return `CosignResponse` with a timestamped Ed25519 cosignature (algorithm byte `0x04`).
+5. When quorum is met, the witnessed checkpoint is cached for serving via `GET /v1/log/checkpoint`.
+
+The witness quorum, endpoint list, and per-witness timeout are configurable. Witnesses that fail or timeout are skipped — the system degrades gracefully to log-signed-only checkpoints.
+
+**Entry signing:**
+
+Every mutation to registry state is recorded as a log entry. The sequencer:
+
+1. Receives the entry content and actor signature.
+2. Validates the entry (signature, authorization, deduplication).
+3. Computes the leaf hash: `SHA-256(0x00 || canonical_json(entry))`.
+4. Appends the leaf to the Merkle tree, updates tiles.
+5. Signs a new checkpoint over the updated root.
+6. Materializes the entry to Postgres for query serving.
+
+Deduplication uses an in-memory LRU cache keyed by `(actor_did, content_hash)` with a 60-second TTL.
+
+**Consequences:**
+
+Positive:
+- Split-view attacks are detectable by any party that monitors checkpoints from multiple vantage points.
+- The WASM-safe core means browsers can verify inclusion proofs without trusting the server.
+- C2SP compatibility means existing tlog tooling (Go's `tlog` package, Sigsum monitors) can audit the Auths log with minimal adaptation.
+- Tile-based storage enables efficient CDN caching — full tiles are immutable, so `Cache-Control: immutable` applies.
+
+Negative:
+- SHA-256 for Merkle hashing (required by RFC 6962 / C2SP) differs from Blake3 used in KERI SAIDs. Two hash functions in the system, requiring `blake3` and `sha2` crates. That's ~50KB of compiled code, so treating it as negligible bloat.
+- The sequencer is a single-writer bottleneck. Horizontal scaling requires a distributed sequencer (future work).
+- Witness liveness affects checkpoint freshness but not correctness — a distinction that requires documentation for operators.
+
+**Trade-offs vs. alternatives:**
+
+| | C2SP tlog-tiles (chosen) | Rekor | Custom log |
+|---|---|---|---|
+| Spec compliance | C2SP, RFC 6962 | Sigstore-specific | None |
+| WASM verification | Yes | No (gRPC client) | Depends on impl |
+| Infrastructure dependency | None (self-hosted) | Sigstore infra | None |
+| Witness protocol | C2SP cosignature | N/A (centralized) | Custom |
+| Ecosystem tooling | Go sumdb, Sigsum | Sigstore clients | None |
 
 ---
 
