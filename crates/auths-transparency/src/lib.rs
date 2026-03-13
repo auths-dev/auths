@@ -57,6 +57,12 @@ mod fs_store;
 #[cfg(feature = "native")]
 pub use fs_store::FsTileStore;
 
+#[cfg(feature = "s3")]
+/// S3-compatible tile store (Tigris, AWS S3, MinIO).
+pub mod s3_store;
+#[cfg(feature = "s3")]
+pub use s3_store::S3TileStore;
+
 #[cfg(feature = "native")]
 pub use store::TileStore;
 #[cfg(feature = "native")]

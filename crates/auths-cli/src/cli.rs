@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::{Parser, Subcommand};
 
+use crate::commands::account::AccountCommand;
 use crate::commands::agent::AgentCommand;
 use crate::commands::approval::ApprovalCommand;
 use crate::commands::artifact::ArtifactCommand;
@@ -22,6 +23,7 @@ use crate::commands::init::InitCommand;
 use crate::commands::key::KeyCommand;
 use crate::commands::learn::LearnCommand;
 use crate::commands::log::LogCommand;
+use crate::commands::namespace::NamespaceCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
 use crate::commands::scim::ScimCommand;
@@ -120,6 +122,8 @@ pub enum RootCommand {
     #[command(hide = true)]
     Trust(TrustCommand),
     #[command(hide = true)]
+    Namespace(NamespaceCommand),
+    #[command(hide = true)]
     Org(OrgCommand),
     #[command(hide = true)]
     Audit(AuditCommand),
@@ -138,4 +142,6 @@ pub enum RootCommand {
     Debug(DebugCmd),
     #[command(hide = true)]
     Log(LogCommand),
+    #[command(hide = true)]
+    Account(AccountCommand),
 }

@@ -91,6 +91,7 @@ fn run() -> Result<()> {
         RootCommand::Policy(cmd) => cmd.execute(&ctx),
         RootCommand::Git(cmd) => cmd.execute(&ctx),
         RootCommand::Trust(cmd) => cmd.execute(&ctx),
+        RootCommand::Namespace(cmd) => cmd.execute(&ctx),
         RootCommand::Org(cmd) => cmd.execute(&ctx),
         RootCommand::Audit(cmd) => cmd.execute(&ctx),
         RootCommand::Agent(cmd) => cmd.execute(&ctx),
@@ -100,6 +101,7 @@ fn run() -> Result<()> {
         RootCommand::Commit(cmd) => cmd.execute(&ctx),
         RootCommand::Debug(cmd) => cmd.execute(&ctx),
         RootCommand::Log(cmd) => cmd.execute(&ctx),
+        RootCommand::Account(cmd) => cmd.execute(&ctx),
     };
 
     if let Some(action) = action {

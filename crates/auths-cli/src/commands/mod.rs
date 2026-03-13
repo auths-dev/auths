@@ -1,6 +1,7 @@
 pub mod executable;
 pub mod registry_overrides;
 
+pub mod account;
 pub mod agent;
 pub mod approval;
 pub mod artifact;
@@ -21,6 +22,7 @@ pub mod init;
 pub mod key;
 pub mod learn;
 pub mod log;
+pub mod namespace;
 pub mod org;
 pub mod policy;
 pub mod provision;

@@ -2,9 +2,12 @@
 
 use std::path::Path;
 
+use auths_core::ports::network::{NetworkError, RegistryClient};
 use auths_transparency::{
-    BundleVerificationReport, ConsistencyProof, OfflineBundle, SignedCheckpoint, TrustRoot,
+    BundleVerificationReport, ConsistencyProof, LogOrigin, OfflineBundle, SignedCheckpoint,
+    TrustRoot, TrustRootWitness,
 };
+use auths_verifier::Ed25519PublicKey;
 use chrono::{DateTime, Utc};
 use thiserror::Error;
 
@@ -26,6 +29,94 @@ pub enum TransparencyWorkflowError {
     /// JSON deserialization error.
     #[error("deserialization error: {0}")]
     DeserializationError(String),
+
+    /// Network error fetching trust root or other remote data.
+    #[error("network error: {0}")]
+    NetworkError(#[source] NetworkError),
+}
+
+/// Wire-format response from the registry trust-root endpoint.
+#[derive(Debug, serde::Deserialize)]
+struct TrustRootResponse {
+    log_origin: String,
+    log_public_key: String,
+    witnesses: Vec<TrustRootWitnessResponse>,
+    #[allow(dead_code)]
+    version: u32,
+}
+
+/// Wire-format witness entry from the trust-root response.
+#[derive(Debug, serde::Deserialize)]
+struct TrustRootWitnessResponse {
+    name: String,
+    public_key: String,
+    #[allow(dead_code)]
+    url: String,
+}
+
+/// Fetch the trust root from a registry URL.
+///
+/// Issues a GET to `{registry_url}/v1/trust-root`, parses the JSON
+/// response, and converts it into a domain [`TrustRoot`].
+///
+/// Args:
+/// * `registry_url` — Base URL of the auths registry.
+/// * `client` — Network client for HTTP communication.
+///
+/// Usage:
+/// ```ignore
+/// let trust_root = fetch_trust_root("https://registry.auths.dev", &http_client).await?;
+/// ```
+pub async fn fetch_trust_root(
+    registry_url: &str,
+    client: &impl RegistryClient,
+) -> Result<TrustRoot, TransparencyWorkflowError> {
+    let bytes = client
+        .fetch_registry_data(registry_url, "v1/trust-root")
+        .await
+        .map_err(TransparencyWorkflowError::NetworkError)?;
+
+    let resp: TrustRootResponse = serde_json::from_slice(&bytes)
+        .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string()))?;
+
+    let log_public_key_bytes: [u8; 32] = hex::decode(&resp.log_public_key)
+        .map_err(|e| {
+            TransparencyWorkflowError::DeserializationError(format!(
+                "invalid hex in log_public_key: {e}"
+            ))
+        })?
+        .try_into()
+        .map_err(|_| {
+            TransparencyWorkflowError::DeserializationError(
+                "log_public_key must be exactly 32 bytes".into(),
+            )
+        })?;
+
+    let log_origin = LogOrigin::new(&resp.log_origin).map_err(|e| {
+        TransparencyWorkflowError::DeserializationError(format!("invalid log origin: {e}"))
+    })?;
+
+    let witnesses = resp
+        .witnesses
+        .into_iter()
+        .filter(|w| !w.public_key.is_empty())
+        .filter_map(|w| {
+            let pk_bytes: [u8; 32] = hex::decode(&w.public_key).ok()?.try_into().ok()?;
+            let public_key = Ed25519PublicKey::from_bytes(pk_bytes);
+            let witness_did = auths_verifier::DeviceDID::from_ed25519(public_key.as_bytes());
+            Some(TrustRootWitness {
+                witness_did,
+                name: w.name,
+                public_key,
+            })
+        })
+        .collect();
+
+    Ok(TrustRoot {
+        log_public_key: Ed25519PublicKey::from_bytes(log_public_key_bytes),
+        log_origin,
+        witnesses,
+    })
 }
 
 /// Configuration for bundle verification.

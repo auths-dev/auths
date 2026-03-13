@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// A base64url-encoded (no padding) byte string.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(transparent)]
 pub struct Base64UrlEncoded(String);
 
@@ -39,6 +40,7 @@ impl std::fmt::Display for Base64UrlEncoded {
 
 /// Session status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
     Pending,
@@ -52,6 +54,7 @@ pub enum SessionStatus {
 
 /// Request to create a new pairing session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CreateSessionRequest {
     pub session_id: String,
     pub controller_did: String,
@@ -64,6 +67,7 @@ pub struct CreateSessionRequest {
 
 /// Response to session creation.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CreateSessionResponse {
     pub session_id: String,
     pub status: SessionStatus,
@@ -74,6 +78,7 @@ pub struct CreateSessionResponse {
 
 /// Request to submit a pairing response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SubmitResponseRequest {
     pub device_x25519_pubkey: Base64UrlEncoded,
     pub device_signing_pubkey: Base64UrlEncoded,
@@ -86,6 +91,7 @@ pub struct SubmitResponseRequest {
 
 /// Response when getting session status.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct GetSessionResponse {
     pub session_id: String,
     pub status: SessionStatus,
@@ -98,6 +104,7 @@ pub struct GetSessionResponse {
 
 /// Response for successful operations.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SuccessResponse {
     pub success: bool,
     pub message: String,
@@ -105,6 +112,7 @@ pub struct SuccessResponse {
 
 /// Request to submit a SAS confirmation (or abort).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SubmitConfirmationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encrypted_attestation: Option<String>,
@@ -114,6 +122,7 @@ pub struct SubmitConfirmationRequest {
 
 /// Response when polling for confirmation.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct GetConfirmationResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encrypted_attestation: Option<String>,

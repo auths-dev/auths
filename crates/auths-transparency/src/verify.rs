@@ -14,7 +14,7 @@ use crate::checkpoint::SignedCheckpoint;
 use crate::entry::{EntryBody, EntryType};
 use crate::merkle::hash_leaf;
 use crate::{OfflineBundle, TrustRoot};
-use auths_verifier::IdentityDID;
+use auths_verifier::{Capability, IdentityDID};
 
 const STALE_BUNDLE_DAYS: i64 = 90;
 
@@ -209,58 +209,92 @@ fn check_staleness(signed: &SignedCheckpoint, now: DateTime<Utc>, warnings: &mut
     }
 }
 
-fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
-    if bundle.delegation_chain.is_empty() {
-        return DelegationStatus::NoDelegationData;
+fn validate_chain_link_order(
+    chain: &[crate::bundle::DelegationChainLink],
+) -> Option<DelegationStatus> {
+    if chain[0].link_type != EntryType::DeviceBind {
+        return Some(DelegationStatus::ChainBroken {
+            reason: format!(
+                "link[0] expected type {:?}, got {:?}",
+                EntryType::DeviceBind,
+                chain[0].link_type
+            ),
+        });
     }
 
-    let chain = &bundle.delegation_chain;
-
-    // Epic 1 scope: only the standard 3-link delegation chain is supported:
-    // [DeviceBind, OrgAddMember, NamespaceClaim]. Epic 3 (fn-74) will extend
-    // this to support direct namespace ownership (no org), NamespaceDelegate
-    // chains (4+ links), and variable chain lengths.
-    if chain.len() != 3 {
-        return DelegationStatus::ChainBroken {
-            reason: format!("expected 3 delegation links, got {}", chain.len()),
-        };
-    }
-
-    let expected_types = [
-        EntryType::DeviceBind,
+    let allowed_order = [
         EntryType::OrgAddMember,
         EntryType::NamespaceClaim,
+        EntryType::NamespaceDelegate,
     ];
-    for (i, expected) in expected_types.iter().enumerate() {
-        if &chain[i].link_type != expected {
-            return DelegationStatus::ChainBroken {
+
+    let mut order_idx = 0;
+    for (i, link) in chain.iter().enumerate().skip(1) {
+        while order_idx < allowed_order.len() && link.link_type != allowed_order[order_idx] {
+            order_idx += 1;
+        }
+        if order_idx >= allowed_order.len() {
+            return Some(DelegationStatus::ChainBroken {
                 reason: format!(
-                    "link[{i}] expected type {:?}, got {:?}",
-                    expected, chain[i].link_type
+                    "link[{i}] unexpected type {:?} at this position",
+                    link.link_type
                 ),
-            };
+            });
+        }
+        if link.link_type == EntryType::NamespaceDelegate {
+            // NamespaceDelegate can repeat (multi-hop delegation)
+        } else {
+            order_idx += 1;
         }
     }
 
-    // Check for duplicate sequence numbers
+    let has_namespace_claim = chain
+        .iter()
+        .any(|l| l.link_type == EntryType::NamespaceClaim);
+    let has_namespace_delegate = chain
+        .iter()
+        .any(|l| l.link_type == EntryType::NamespaceDelegate);
+    if has_namespace_delegate && !has_namespace_claim {
+        return Some(DelegationStatus::ChainBroken {
+            reason: "NamespaceDelegate requires a preceding NamespaceClaim".into(),
+        });
+    }
+
+    if !has_namespace_claim
+        && !chain
+            .iter()
+            .skip(1)
+            .any(|l| l.link_type == EntryType::OrgAddMember)
+    {
+        return Some(DelegationStatus::ChainBroken {
+            reason: "chain must contain at least OrgAddMember or NamespaceClaim after DeviceBind"
+                .into(),
+        });
+    }
+
+    None
+}
+
+fn verify_link_inclusion_proofs(
+    chain: &[crate::bundle::DelegationChainLink],
+    checkpoint_root: &crate::types::MerkleHash,
+) -> Option<DelegationStatus> {
     let mut sequences: Vec<u64> = chain.iter().map(|l| l.entry.sequence).collect();
     sequences.sort_unstable();
     sequences.dedup();
     if sequences.len() != chain.len() {
-        return DelegationStatus::ChainBroken {
+        return Some(DelegationStatus::ChainBroken {
             reason: "duplicate sequence numbers in delegation chain".into(),
-        };
+        });
     }
 
-    // Verify each link's inclusion proof against the checkpoint root
-    let checkpoint_root = &bundle.signed_checkpoint.checkpoint.root;
     for (i, link) in chain.iter().enumerate() {
         let leaf_data = match link.entry.leaf_data() {
             Ok(d) => d,
             Err(e) => {
-                return DelegationStatus::ChainBroken {
+                return Some(DelegationStatus::ChainBroken {
                     reason: format!("link[{i}] leaf data failed: {e}"),
-                };
+                });
             }
         };
         let leaf_hash = hash_leaf(&leaf_data);
@@ -272,18 +306,62 @@ fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
             &proof.hashes,
             &proof.root,
         ) {
-            return DelegationStatus::ChainBroken {
+            return Some(DelegationStatus::ChainBroken {
                 reason: format!("link[{i}] inclusion proof failed: {e}"),
-            };
+            });
         }
         if &proof.root != checkpoint_root {
-            return DelegationStatus::ChainBroken {
+            return Some(DelegationStatus::ChainBroken {
                 reason: format!("link[{i}] proof root does not match checkpoint"),
-            };
+            });
         }
     }
 
-    // Extract DID connectivity
+    None
+}
+
+fn extract_namespace_from_entry(body: &EntryBody) -> Option<(&str, &str)> {
+    match body {
+        EntryBody::NamespaceClaim {
+            ecosystem,
+            package_name,
+        }
+        | EntryBody::NamespaceDelegate {
+            ecosystem,
+            package_name,
+            ..
+        }
+        | EntryBody::NamespaceTransfer {
+            ecosystem,
+            package_name,
+            ..
+        } => Some((ecosystem.as_str(), package_name.as_str())),
+        _ => None,
+    }
+}
+
+fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
+    if bundle.delegation_chain.is_empty() {
+        return DelegationStatus::NoDelegationData;
+    }
+
+    let chain = &bundle.delegation_chain;
+
+    if chain.len() < 2 {
+        return DelegationStatus::ChainBroken {
+            reason: format!("chain must have at least 2 links, got {}", chain.len()),
+        };
+    }
+
+    if let Some(broken) = validate_chain_link_order(chain) {
+        return broken;
+    }
+
+    let checkpoint_root = &bundle.signed_checkpoint.checkpoint.root;
+    if let Some(broken) = verify_link_inclusion_proofs(chain, checkpoint_root) {
+        return broken;
+    }
+
     let device_did = match &chain[0].entry.content.body {
         EntryBody::DeviceBind { device_did, .. } => device_did.clone(),
         _ => {
@@ -297,23 +375,53 @@ fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
     // INVARIANT: actor_did from a parsed Entry is already valid
     let identity_did = IdentityDID::new_unchecked(chain[0].entry.content.actor_did.as_str());
 
-    let (member_did, member_role, org_did) = match &chain[1].entry.content.body {
-        EntryBody::OrgAddMember {
-            member_did, role, ..
-        } => {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: actor_did from a parsed Entry is already valid
-            let org = IdentityDID::new_unchecked(chain[1].entry.content.actor_did.as_str());
-            (member_did.clone(), *role, org)
+    let org_add_member = chain
+        .iter()
+        .enumerate()
+        .find(|(_, l)| l.link_type == EntryType::OrgAddMember);
+
+    let namespace_claim = chain
+        .iter()
+        .enumerate()
+        .find(|(_, l)| l.link_type == EntryType::NamespaceClaim);
+
+    let (member_did, member_role, org_did) = if let Some((idx, link)) = org_add_member {
+        match &link.entry.content.body {
+            EntryBody::OrgAddMember {
+                member_did,
+                role,
+                capabilities,
+                ..
+            } => {
+                let bundle_is_namespace_op =
+                    extract_namespace_from_entry(&bundle.entry.content.body).is_some();
+                if bundle_is_namespace_op && !capabilities.contains(&Capability::sign_release()) {
+                    return DelegationStatus::ChainBroken {
+                        reason: format!(
+                            "link[{idx}] OrgAddMember lacks sign_release capability required for namespace operations"
+                        ),
+                    };
+                }
+
+                #[allow(clippy::disallowed_methods)]
+                // INVARIANT: actor_did from a parsed Entry is already valid
+                let org = IdentityDID::new_unchecked(link.entry.content.actor_did.as_str());
+                (member_did.clone(), *role, org)
+            }
+            _ => {
+                return DelegationStatus::ChainBroken {
+                    reason: format!("link[{idx}] body is not OrgAddMember"),
+                };
+            }
         }
-        _ => {
-            return DelegationStatus::ChainBroken {
-                reason: "link[1] body is not OrgAddMember".into(),
-            };
-        }
+    } else {
+        // 2-link chain: [DeviceBind, NamespaceClaim] — direct ownership, no org
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: actor_did from a parsed Entry is already valid
+        let owner_did = IdentityDID::new_unchecked(chain[0].entry.content.actor_did.as_str());
+        (owner_did.clone(), auths_verifier::Role::Admin, owner_did)
     };
 
-    // Verify DID connectivity: the member added in OrgAddMember should match the identity that bound the device
     if member_did.as_str() != identity_did.as_str() {
         return DelegationStatus::ChainBroken {
             reason: format!(
@@ -321,6 +429,45 @@ fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
                 member_did, identity_did
             ),
         };
+    }
+
+    if let Some((ns_idx, ns_link)) = namespace_claim {
+        if let EntryBody::NamespaceClaim {
+            ecosystem: claim_ecosystem,
+            package_name: claim_package,
+        } = &ns_link.entry.content.body
+        {
+            if org_add_member.is_some() {
+                #[allow(clippy::disallowed_methods)]
+                // INVARIANT: actor_did from a parsed Entry is already valid
+                let claim_actor =
+                    IdentityDID::new_unchecked(ns_link.entry.content.actor_did.as_str());
+                if claim_actor.as_str() != org_did.as_str() {
+                    return DelegationStatus::ChainBroken {
+                        reason: format!(
+                            "link[{ns_idx}] NamespaceClaim actor_did ({}) != org_did ({})",
+                            claim_actor, org_did
+                        ),
+                    };
+                }
+            }
+
+            if let Some((bundle_ecosystem, bundle_package)) =
+                extract_namespace_from_entry(&bundle.entry.content.body)
+                && (claim_ecosystem != bundle_ecosystem || claim_package != bundle_package)
+            {
+                return DelegationStatus::ChainBroken {
+                    reason: format!(
+                        "link[{ns_idx}] NamespaceClaim namespace ({}/{}) does not match bundle entry ({}/{})",
+                        claim_ecosystem, claim_package, bundle_ecosystem, bundle_package
+                    ),
+                };
+            }
+        } else {
+            return DelegationStatus::ChainBroken {
+                reason: format!("link[{ns_idx}] body is not NamespaceClaim"),
+            };
+        }
     }
 
     DelegationStatus::ChainVerified {
@@ -337,18 +484,21 @@ fn derive_namespace_status(
 ) -> NamespaceStatus {
     match delegation {
         DelegationStatus::ChainVerified { .. } => {
+            let has_namespace_delegate = bundle
+                .delegation_chain
+                .iter()
+                .any(|link| link.link_type == EntryType::NamespaceDelegate);
             let has_namespace_claim = bundle
                 .delegation_chain
                 .iter()
                 .any(|link| link.link_type == EntryType::NamespaceClaim);
-            if has_namespace_claim {
+            if has_namespace_delegate || has_namespace_claim {
                 NamespaceStatus::Authorized
             } else {
                 NamespaceStatus::Owned
             }
         }
         DelegationStatus::Direct => NamespaceStatus::Owned,
-        // No delegation data: assume direct ownership (weaker trust signal)
         DelegationStatus::NoDelegationData => NamespaceStatus::Owned,
         DelegationStatus::ChainBroken { .. } => NamespaceStatus::Unauthorized,
     }
