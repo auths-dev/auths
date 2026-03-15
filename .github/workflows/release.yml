@@ -156,3 +156,84 @@ jobs:
         with:
           files: artifacts/**/*
           generate_release_notes: true
+
+  update-homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download attestations and extract hashes
+        id: hashes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BASE="https://github.com/auths-dev/auths/releases/download/v${VERSION}"
+          for asset in auths-macos-aarch64 auths-linux-x86_64 auths-linux-aarch64; do
+            curl -sL "${BASE}/${asset}.tar.gz.auths.json" -o "${asset}.auths.json"
+          done
+          extract_hash() { python3 -c "import json; d=json.load(open('$1')); print(d['payload']['digest']['hex'])"; }
+          {
+            echo "version=${VERSION}"
+            echo "macos_aarch64=$(extract_hash auths-macos-aarch64.auths.json)"
+            echo "linux_x86_64=$(extract_hash auths-linux-x86_64.auths.json)"
+            echo "linux_aarch64=$(extract_hash auths-linux-aarch64.auths.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: auths-dev/homebrew-auths-cli
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        run: |
+          VERSION="${{ steps.hashes.outputs.version }}"
+          cat > homebrew-tap/Formula/auths.rb << FORMULA
+          class Auths < Formula
+            desc "Cryptographic identity for developers — sign artifacts, replace API keys"
+            homepage "https://auths.dev"
+            version "${VERSION}"
+            license "Apache-2.0"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/auths-dev/auths/releases/download/v#{version}/auths-macos-aarch64.tar.gz"
+                sha256 "${{ steps.hashes.outputs.macos_aarch64 }}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/auths-dev/auths/releases/download/v#{version}/auths-linux-x86_64.tar.gz"
+                sha256 "${{ steps.hashes.outputs.linux_x86_64 }}"
+              end
+              on_arm do
+                url "https://github.com/auths-dev/auths/releases/download/v#{version}/auths-linux-aarch64.tar.gz"
+                sha256 "${{ steps.hashes.outputs.linux_aarch64 }}"
+              end
+            end
+
+            def install
+              bin.install "auths"
+              bin.install "auths-sign" if File.exist?("auths-sign")
+              bin.install "auths-verify" if File.exist?("auths-verify")
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/auths --version")
+            end
+          end
+          FORMULA
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          commit-message: "auths ${{ steps.hashes.outputs.version }}"
+          title: "auths ${{ steps.hashes.outputs.version }}"
+          body: |
+            Automated formula update from [release v${{ steps.hashes.outputs.version }}](https://github.com/auths-dev/auths/releases/tag/v${{ steps.hashes.outputs.version }}).
+
+            SHA256 hashes extracted from `.auths.json` attestation files (dogfooding).
+          branch: "update-${{ steps.hashes.outputs.version }}"
+          base: main
