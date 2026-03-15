@@ -7,9 +7,6 @@ use std::sync::Arc;
 
 use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
-use auths_core::storage::keychain::KeyStorage;
-use auths_id::storage::identity::IdentityStorage;
-use auths_storage::git::RegistryIdentityStorage;
 
 use super::artifact::sign::handle_sign as handle_artifact_sign;
 
@@ -135,7 +132,7 @@ pub fn handle_sign_unified(
         SignTarget::Artifact(path) => {
             let device_key_alias = match cmd.device_key_alias.as_deref() {
                 Some(alias) => alias.to_string(),
-                None => auto_detect_device_key(repo_opt.as_deref(), env_config)?,
+                None => super::key_detect::auto_detect_device_key(repo_opt.as_deref(), env_config)?,
             };
             handle_artifact_sign(
                 &path,
@@ -150,44 +147,6 @@ pub fn handle_sign_unified(
             )
         }
         SignTarget::CommitRange(range) => sign_commit_range(&range),
-    }
-}
-
-/// Auto-detect the device key alias when not explicitly provided.
-///
-/// Loads the identity from the registry, then lists all key aliases associated
-/// with that identity. If exactly one alias exists, it is returned. Otherwise,
-/// an error with actionable guidance is returned.
-fn auto_detect_device_key(
-    repo_opt: Option<&Path>,
-    env_config: &EnvironmentConfig,
-) -> Result<String> {
-    let repo_path =
-        auths_id::storage::layout::resolve_repo_path(repo_opt.map(|p| p.to_path_buf()))?;
-    let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
-    let identity = identity_storage
-        .load_identity()
-        .map_err(|_| anyhow!("No identity found. Run `auths init` to get started."))?;
-
-    let keychain = auths_core::storage::keychain::get_platform_keychain_with_config(env_config)
-        .context("Failed to access keychain")?;
-    let aliases = keychain
-        .list_aliases_for_identity(&identity.controller_did)
-        .map_err(|e| anyhow!("Failed to list key aliases: {e}"))?;
-
-    match aliases.len() {
-        0 => Err(anyhow!(
-            "No device keys found for identity {}.\n\nRun `auths device link` to authorize a device.",
-            identity.controller_did
-        )),
-        1 => Ok(aliases[0].as_str().to_string()),
-        _ => {
-            let alias_list: Vec<&str> = aliases.iter().map(|a| a.as_str()).collect();
-            Err(anyhow!(
-                "Multiple device keys found. Specify with --device-key-alias.\n\nAvailable aliases: {}",
-                alias_list.join(", ")
-            ))
-        }
     }
 }
 

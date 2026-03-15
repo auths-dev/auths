@@ -4,7 +4,7 @@ use auths_sdk::error::{
     ApprovalError, DeviceError, DeviceExtensionError, McpAuthError, OrgError, RegistrationError,
     RotationError, SetupError,
 };
-use auths_sdk::signing::SigningError;
+use auths_sdk::signing::{ArtifactSigningError, SigningError};
 use auths_sdk::workflows::allowed_signers::AllowedSignersError;
 use auths_verifier::AttestationError;
 use colored::Colorize;
@@ -61,6 +61,7 @@ fn extract_error_info(err: &Error) -> Option<(&str, &str, Option<&str>)> {
             OrgError,
             ApprovalError,
             AllowedSignersError,
+            ArtifactSigningError,
             SigningError,
         );
     }
@@ -86,7 +87,7 @@ fn render_text(err: &Error) {
         out.print_error(&format!("{prefix} {}", out.bold(message)));
         eprintln!();
         if let Some(suggestion) = suggestion {
-            eprintln!("  fix:  {suggestion}");
+            eprintln!("  fix:  {}", suggestion.blue());
         }
         if let Some(url) = docs_url(code) {
             eprintln!("  docs: {url}");

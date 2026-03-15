@@ -102,6 +102,7 @@ fn run() -> Result<()> {
         RootCommand::Debug(cmd) => cmd.execute(&ctx),
         RootCommand::Log(cmd) => cmd.execute(&ctx),
         RootCommand::Account(cmd) => cmd.execute(&ctx),
+        RootCommand::Auth(cmd) => cmd.execute(&ctx),
     };
 
     if let Some(action) = action {

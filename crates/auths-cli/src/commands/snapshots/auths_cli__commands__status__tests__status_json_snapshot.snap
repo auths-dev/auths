@@ -5,7 +5,10 @@ expression: report
 {
   "identity": {
     "controller_did": "did:keri:ETestController123",
-    "alias": "dev-machine"
+    "alias": "dev-machine",
+    "key_aliases": [
+      "main"
+    ]
   },
   "agent": {
     "running": true,

@@ -2,6 +2,8 @@ pub mod allowed_signers;
 pub mod approval;
 pub mod artifact;
 pub mod audit;
+/// DID-based authentication challenge signing workflow.
+pub mod auth;
 pub mod diagnostics;
 pub mod git_integration;
 #[cfg(feature = "mcp")]

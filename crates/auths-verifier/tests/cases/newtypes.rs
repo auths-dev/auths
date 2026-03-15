@@ -1,4 +1,6 @@
-use auths_verifier::{CommitOid, CommitOidError, PolicyId, PublicKeyHex, PublicKeyHexError};
+use auths_verifier::{
+    CommitOid, CommitOidError, IdentityDID, PolicyId, PublicKeyHex, PublicKeyHexError, keri::Prefix,
+};
 
 // =============================================================================
 // CommitOid tests
@@ -89,6 +91,25 @@ fn commit_oid_normalizes_to_lowercase() {
     let upper = "A".repeat(40);
     let oid = CommitOid::parse(&upper).unwrap();
     assert_eq!(oid.as_str(), "a".repeat(40));
+}
+
+// =============================================================================
+// Prefix::from_did tests
+// =============================================================================
+
+#[test]
+fn prefix_from_did_extracts_keri_prefix() {
+    let did = IdentityDID::parse("did:keri:ETest123abc").unwrap();
+    let prefix = Prefix::from_did(&did).unwrap();
+    assert_eq!(prefix.as_str(), "ETest123abc");
+}
+
+#[test]
+fn prefix_from_did_roundtrips_with_identity_did() {
+    let did = IdentityDID::parse("did:keri:EMyPrefix456").unwrap();
+    let prefix = Prefix::from_did(&did).unwrap();
+    let reconstructed = IdentityDID::from_prefix(prefix.as_str()).unwrap();
+    assert_eq!(did, reconstructed);
 }
 
 // =============================================================================

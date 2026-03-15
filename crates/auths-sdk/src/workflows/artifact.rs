@@ -87,7 +87,7 @@ pub async fn publish_artifact<R: RegistryClient>(
         serde_json::to_vec(&body).map_err(|e| ArtifactPublishError::Serialize(e.to_string()))?;
 
     let response = registry
-        .post_json(&config.registry_url, "v1/artifacts/publish", &json_bytes)
+        .post_json(&config.registry_url, "v1/artifacts", &json_bytes)
         .await?;
 
     match response.status {

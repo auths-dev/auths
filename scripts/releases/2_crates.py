@@ -20,8 +20,9 @@ Requires:
     - git tag v{version} must exist (run github.py --push first)
 
 Publish order (dependency layers):
-    Batch 1: auths, auths-crypto, auths-jwt, auths-policy, auths-telemetry
-    Batch 2: auths-verifier, auths-keri, auths-pairing-protocol
+    Batch 1: auths, auths-crypto, auths-jwt, auths-verifier, auths-telemetry, auths-utils
+    Batch 2: auths-policy
+    Batch 3: auths-keri, auths-pairing-protocol
     Batch 3: auths-core, auths-index
     Batch 4: auths-infra-http, auths-mcp-server
     Batch 5: auths-id  (depends on core, crypto, policy, verifier, infra-http)
@@ -42,12 +43,14 @@ CARGO_TOML = Path(__file__).resolve().parents[2] / "Cargo.toml"
 CRATES_IO_API = "https://crates.io/api/v1/crates"
 
 PUBLISH_BATCHES: list[list[str]] = [
-    ["auths", "auths-crypto", "auths-jwt", "auths-policy", "auths-telemetry"],
-    ["auths-verifier", "auths-keri", "auths-pairing-protocol"],
+    ["auths", "auths-crypto", "auths-jwt", "auths-verifier", "auths-telemetry", "auths-utils"],
+    ["auths-policy"],
+    ["auths-keri", "auths-pairing-protocol"],
     ["auths-core", "auths-index"],
     ["auths-infra-http", "auths-mcp-server"],
     ["auths-id"],
-    ["auths-storage", "auths-sdk", "auths-radicle", "auths-pairing-daemon"],
+    ["auths-storage", "auths-pairing-daemon"],
+    ["auths-sdk"],
     ["auths-infra-git"],
     ["auths-cli"],
 ]
@@ -121,10 +124,16 @@ def publish_crate(crate_name: str) -> bool:
     print(f"  Publishing {crate_name}...", flush=True)
     result = subprocess.run(
         ["cargo", "publish", "-p", crate_name],
+        capture_output=True,
+        text=True,
         cwd=CARGO_TOML.parent,
     )
     if result.returncode != 0:
+        if "already exists" in result.stderr:
+            print(f"  {crate_name} already published — skipping.", flush=True)
+            return True
         print(f"  ERROR: cargo publish -p {crate_name} failed (exit {result.returncode})", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
         return False
     print(f"  {crate_name} published.", flush=True)
     return True
@@ -140,16 +149,23 @@ def main() -> None:
     print(f"Workspace version: {version}")
     print(f"Crates to publish: {len(all_crates)}")
 
-    # Check that the auths root crate isn't already at this version
-    published = get_crate_published_version("auths")
-    if published:
-        print(f"crates.io version: {published}")
-        if published == version:
-            print(f"\nERROR: Version {version} is already published on crates.io.", file=sys.stderr)
-            print("Bump the version in Cargo.toml before publishing.", file=sys.stderr)
-            sys.exit(1)
-    else:
-        print("crates.io version: (not found or not published yet)")
+    # Check which crates still need publishing
+    already_published = []
+    needs_publish = []
+    for crate_name in all_crates:
+        pub_ver = get_crate_published_version(crate_name)
+        if pub_ver == version:
+            already_published.append(crate_name)
+        else:
+            needs_publish.append(crate_name)
+
+    print(f"Already at {version}: {len(already_published)}")
+    print(f"Need publishing:    {len(needs_publish)}")
+    if already_published:
+        print(f"  Skipping: {', '.join(already_published)}")
+    if not needs_publish:
+        print(f"\nAll {len(all_crates)} crates are already published at {version}. Nothing to do.")
+        return
 
     # Check git tag exists (should run github.py --push first)
     if not tag_exists(tag):

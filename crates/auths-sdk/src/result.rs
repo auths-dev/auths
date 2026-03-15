@@ -161,13 +161,13 @@ pub struct PlatformClaimResult {
 /// Usage:
 /// ```ignore
 /// if let Some(reg) = result.registered {
-///     println!("Registered {} at {}", reg.did_prefix, reg.registry);
+///     println!("Registered {} at {}", reg.did, reg.registry);
 /// }
 /// ```
 #[derive(Debug, Clone)]
 pub struct RegistrationOutcome {
-    /// The KERI prefix portion of the registered DID.
-    pub did_prefix: String,
+    /// The DID returned by the registry (e.g. `did:keri:EABC...`).
+    pub did: IdentityDID,
     /// The registry URL where the identity was registered.
     pub registry: String,
     /// Number of platform claims indexed by the registry.

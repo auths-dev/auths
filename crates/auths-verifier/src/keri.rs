@@ -77,6 +77,24 @@ impl Prefix {
         Self(s)
     }
 
+    /// Extracts the KERI prefix from an `IdentityDID`.
+    ///
+    /// Args:
+    /// * `did`: A validated `IdentityDID` (e.g., `did:keri:ETest123`).
+    ///
+    /// Usage:
+    /// ```rust
+    /// # use auths_verifier::{IdentityDID, keri::Prefix};
+    /// let did = IdentityDID::parse("did:keri:ETest123").unwrap();
+    /// let prefix = Prefix::from_did(&did).unwrap();
+    /// assert_eq!(prefix.as_str(), "ETest123");
+    /// ```
+    pub fn from_did(did: &crate::types::IdentityDID) -> Result<Self, KeriTypeError> {
+        let raw = did.prefix();
+        validate_keri_derivation_code(raw, "Prefix")?;
+        Ok(Self(raw.to_string()))
+    }
+
     /// Returns the inner string slice.
     pub fn as_str(&self) -> &str {
         &self.0

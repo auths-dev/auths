@@ -40,12 +40,13 @@ pub enum ArtifactSubcommand {
         identity_key_alias: Option<String>,
 
         /// Local alias of the device key (used for dual-signing).
+        /// Auto-detected when only one key exists for the identity.
         #[arg(
             long,
             visible_alias = "dka",
-            help = "Local alias of the device key (used for dual-signing)."
+            help = "Local alias of the device key. Auto-detected when only one key exists."
         )]
-        device_key_alias: String,
+        device_key_alias: Option<String>,
 
         /// Duration in seconds until expiration (per RFC 6749).
         #[arg(long = "expires-in", value_name = "N")]
@@ -114,17 +115,26 @@ pub fn handle_artifact(
             device_key_alias,
             expires_in,
             note,
-        } => sign::handle_sign(
-            &file,
-            sig_output,
-            identity_key_alias.as_deref(),
-            &device_key_alias,
-            expires_in,
-            note,
-            repo_opt,
-            passphrase_provider,
-            env_config,
-        ),
+        } => {
+            let resolved_alias = match device_key_alias {
+                Some(alias) => alias,
+                None => crate::commands::key_detect::auto_detect_device_key(
+                    repo_opt.as_deref(),
+                    env_config,
+                )?,
+            };
+            sign::handle_sign(
+                &file,
+                sig_output,
+                identity_key_alias.as_deref(),
+                &resolved_alias,
+                expires_in,
+                note,
+                repo_opt,
+                passphrase_provider,
+                env_config,
+            )
+        }
         ArtifactSubcommand::Publish {
             signature,
             package,

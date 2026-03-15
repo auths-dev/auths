@@ -8,6 +8,7 @@ use crate::commands::agent::AgentCommand;
 use crate::commands::approval::ApprovalCommand;
 use crate::commands::artifact::ArtifactCommand;
 use crate::commands::audit::AuditCommand;
+use crate::commands::auth::AuthCommand;
 use crate::commands::commit::CommitCmd;
 use crate::commands::completions::CompletionsCommand;
 use crate::commands::config::ConfigCommand;
@@ -144,4 +145,5 @@ pub enum RootCommand {
     Log(LogCommand),
     #[command(hide = true)]
     Account(AccountCommand),
+    Auth(AuthCommand),
 }

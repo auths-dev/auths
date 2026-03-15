@@ -1,0 +1,11 @@
+name = "get-auths-dev"
+main = "src/worker.js"
+compatibility_date = "2024-12-01"
+
+# After deploying, add a custom domain in the Cloudflare dashboard:
+#   Workers & Pages → get-auths-dev → Settings → Triggers → Custom Domains
+#   Add: get.auths.dev
+#
+# Or via wrangler (requires auths.dev zone on your Cloudflare account):
+# [routes]
+# routes = [{ pattern = "get.auths.dev", zone_name = "auths.dev" }]

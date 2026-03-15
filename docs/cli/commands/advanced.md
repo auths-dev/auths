@@ -1060,7 +1060,7 @@ Sign an artifact file with your Auths identity
 | `<FILE>` | — | Path to the artifact file to sign. |
 | `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
 | `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the identity key. Omit for device-only CI signing. [aliases: --ika] |
-| `--device-key-alias <DEVICE_KEY_ALIAS>` | — | Local alias of the device key (used for dual-signing). [aliases: --dka] |
+| `--device-key-alias <DEVICE_KEY_ALIAS>` | — | Local alias of the device key. Auto-detected when only one key exists. [aliases: --dka] |
 | `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--note <NOTE>` | — | Optional note to embed in the attestation |
 | `--json` | — | Emit machine-readable JSON |

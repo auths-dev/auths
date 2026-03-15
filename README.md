@@ -10,7 +10,8 @@ One identity, multiple devices, Git-native storage.
 
 Homebrew:
 ```bash
-brew install auths-dev/auths-cli/auths
+brew tap auths-dev/auths-cli
+brew install auths
 ```
 
 Install from source:
