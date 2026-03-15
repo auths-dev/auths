@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
+use auths_verifier::IdentityDID;
 use serde::Serialize;
 
 use auths_id::ports::registry::RegistryBackend;
@@ -19,7 +20,7 @@ use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
 #[derive(Serialize)]
 struct RegisterJsonResponse {
-    did_prefix: String,
+    did: IdentityDID,
     registry: String,
     platform_claims_indexed: usize,
 }
@@ -84,7 +85,7 @@ fn display_registration_result(outcome: &RegistrationOutcome) -> Result<()> {
         let json_resp = JsonResponse::success(
             "id register",
             RegisterJsonResponse {
-                did_prefix: outcome.did_prefix.clone(),
+                did: outcome.did.clone(),
                 registry: outcome.registry.clone(),
                 platform_claims_indexed: outcome.platform_claims_indexed,
             },
@@ -97,7 +98,7 @@ fn display_registration_result(outcome: &RegistrationOutcome) -> Result<()> {
             out.success("Success!"),
             out.bold(&outcome.registry)
         );
-        println!("DID: {}", out.info(&outcome.did_prefix));
+        println!("DID: {}", out.info(&outcome.did));
         if outcome.platform_claims_indexed > 0 {
             println!(
                 "Platform claims indexed: {}",

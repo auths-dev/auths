@@ -262,6 +262,36 @@ pub enum ArtifactSigningError {
     ResignFailed(String),
 }
 
+impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::IdentityNotFound => "AUTHS-E5801",
+            Self::KeyResolutionFailed(_) => "AUTHS-E5802",
+            Self::KeyDecryptionFailed(_) => "AUTHS-E5803",
+            Self::DigestFailed(_) => "AUTHS-E5804",
+            Self::AttestationFailed(_) => "AUTHS-E5805",
+            Self::ResignFailed(_) => "AUTHS-E5806",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::IdentityNotFound => {
+                Some("Run `auths init` to create an identity, or `auths key import` to restore one")
+            }
+            Self::KeyResolutionFailed(_) => {
+                Some("Run `auths status` to see available device aliases")
+            }
+            Self::KeyDecryptionFailed(_) => Some("Check your passphrase and try again"),
+            Self::DigestFailed(_) => Some("Verify the file exists and is readable"),
+            Self::AttestationFailed(_) => Some("Check identity storage with `auths status`"),
+            Self::ResignFailed(_) => {
+                Some("Verify your device key is accessible with `auths status`")
+            }
+        }
+    }
+}
+
 /// A `SecureSigner` backed by pre-resolved in-memory seeds.
 ///
 /// Seeds are keyed by alias. The passphrase provider is never called because

@@ -2,6 +2,8 @@
 
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::{Result, anyhow};
+use auths_core::config::EnvironmentConfig;
+use auths_core::storage::keychain::KeyStorage;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::storage::layout;
@@ -36,6 +38,7 @@ pub struct IdentityStatus {
     pub controller_did: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alias: Option<String>,
+    pub key_aliases: Vec<String>,
 }
 
 /// Agent status information.
@@ -78,10 +81,14 @@ pub struct ExpiringDevice {
 
 /// Handle the status command.
 #[allow(clippy::disallowed_methods)]
-pub fn handle_status(_cmd: StatusCommand, repo: Option<PathBuf>) -> Result<()> {
+pub fn handle_status(
+    _cmd: StatusCommand,
+    repo: Option<PathBuf>,
+    env_config: &EnvironmentConfig,
+) -> Result<()> {
     let now = Utc::now();
     let repo_path = resolve_repo_path(repo)?;
-    let identity = load_identity_status(&repo_path);
+    let identity = load_identity_status(&repo_path, env_config);
     let agent = get_agent_status();
     let devices = load_devices_summary(&repo_path, now);
 
@@ -106,12 +113,17 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
 
     // Identity
     if let Some(ref id) = report.identity {
-        out.println(&format!("Identity:   {}", out.info(&id.controller_did)));
+        out.println(&format!("Identity:    {}", out.info(&id.controller_did)));
         if let Some(ref alias) = id.alias {
-            out.println(&format!("Alias:      {}", alias));
+            out.println(&format!("Alias:       {}", alias));
+        }
+        if id.key_aliases.is_empty() {
+            out.println(&format!("Key aliases: {}", out.dim("none")));
+        } else {
+            out.println(&format!("Key aliases: {}", id.key_aliases.join(", ")));
         }
     } else {
-        out.println(&format!("Identity:   {}", out.dim("not initialized")));
+        out.println(&format!("Identity:    {}", out.dim("not initialized")));
     }
 
     // Agent
@@ -230,18 +242,35 @@ fn display_device_expiry(expires_at: Option<DateTime<Utc>>, out: &Output, now: D
     }
 }
 
-/// Load identity status from the repository.
-fn load_identity_status(repo_path: &PathBuf) -> Option<IdentityStatus> {
+/// Load identity status from the repository, including key aliases from the keychain.
+fn load_identity_status(
+    repo_path: &PathBuf,
+    env_config: &EnvironmentConfig,
+) -> Option<IdentityStatus> {
     if crate::factories::storage::open_git_repo(repo_path).is_err() {
         return None;
     }
 
     let storage = RegistryIdentityStorage::new(repo_path);
     match storage.load_identity() {
-        Ok(identity) => Some(IdentityStatus {
-            controller_did: identity.controller_did.to_string(),
-            alias: None, // Would need to look up from keychain
-        }),
+        Ok(identity) => {
+            let key_aliases =
+                auths_core::storage::keychain::get_platform_keychain_with_config(env_config)
+                    .ok()
+                    .and_then(|keychain| {
+                        keychain
+                            .list_aliases_for_identity(&identity.controller_did)
+                            .ok()
+                    })
+                    .map(|aliases| aliases.iter().map(|a| a.as_str().to_string()).collect())
+                    .unwrap_or_default();
+
+            Some(IdentityStatus {
+                controller_did: identity.controller_did.to_string(),
+                alias: None,
+                key_aliases,
+            })
+        }
         Err(_) => None,
     }
 }
@@ -408,7 +437,7 @@ fn is_process_running(_pid: u32) -> bool {
 
 impl crate::commands::executable::ExecutableCommand for StatusCommand {
     fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
-        handle_status(self.clone(), ctx.repo_path.clone())
+        handle_status(self.clone(), ctx.repo_path.clone(), &ctx.env_config)
     }
 }
 
@@ -431,6 +460,7 @@ mod tests {
             identity: Some(IdentityStatus {
                 controller_did: "did:keri:ETestController123".to_string(),
                 alias: Some("dev-machine".to_string()),
+                key_aliases: vec!["main".to_string()],
             }),
             agent: AgentStatusInfo {
                 running: true,

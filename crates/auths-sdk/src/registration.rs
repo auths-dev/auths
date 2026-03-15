@@ -3,10 +3,11 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use auths_core::ports::network::{NetworkError, RegistryClient};
-use auths_id::keri::Prefix;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
+use auths_verifier::IdentityDID;
+use auths_verifier::keri::Prefix;
 
 use crate::error::RegistrationError;
 use crate::result::RegistrationOutcome;
@@ -23,7 +24,7 @@ struct RegistryOnboardingPayload {
 
 #[derive(Deserialize)]
 struct RegistrationResponse {
-    did_prefix: String,
+    did: IdentityDID,
     platform_claims_indexed: usize,
 }
 
@@ -56,15 +57,11 @@ pub async fn register_identity(
         .load_identity()
         .map_err(RegistrationError::IdentityLoadError)?;
 
-    let did_prefix = identity
-        .controller_did
-        .as_str()
-        .strip_prefix("did:keri:")
-        .ok_or_else(|| RegistrationError::InvalidDidFormat {
+    let prefix = Prefix::from_did(&identity.controller_did).map_err(|_| {
+        RegistrationError::InvalidDidFormat {
             did: identity.controller_did.to_string(),
-        })?;
-
-    let prefix = Prefix::new_unchecked(did_prefix.to_string());
+        }
+    })?;
     let inception = registry
         .get_event(&prefix, 0)
         .map_err(RegistrationError::RegistryReadError)?;
@@ -103,7 +100,7 @@ pub async fn register_identity(
                 })?;
 
             Ok(RegistrationOutcome {
-                did_prefix: body.did_prefix,
+                did: body.did,
                 registry: registry_url.to_string(),
                 platform_claims_indexed: body.platform_claims_indexed,
             })
