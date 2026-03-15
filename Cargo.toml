@@ -27,7 +27,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.1-rc.8"
+version = "0.0.1-rc.9"
 license = "Apache-2.0"
 rust-version = "1.93"
 repository = "https://github.com/auths-dev/auths"
