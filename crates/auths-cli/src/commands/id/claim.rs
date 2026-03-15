@@ -26,15 +26,16 @@ fn github_client_id() -> String {
 pub struct ClaimCommand {
     #[command(subcommand)]
     pub platform: ClaimPlatform,
-
-    #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
-    pub registry: String,
 }
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum ClaimPlatform {
     /// Link your GitHub account to your identity.
-    Github,
+    Github {
+        /// Registry URL to publish the claim to.
+        #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
+        registry: String,
+    },
 }
 
 pub fn handle_claim(
@@ -44,6 +45,10 @@ pub fn handle_claim(
     env_config: &EnvironmentConfig,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
+    let registry_url = match &cmd.platform {
+        ClaimPlatform::Github { registry } => registry.clone(),
+    };
+
     let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))
         .context("Failed to build auths context")?;
 
@@ -53,7 +58,7 @@ pub fn handle_claim(
 
     let config = GitHubClaimConfig {
         client_id: github_client_id(),
-        registry_url: cmd.registry.clone(),
+        registry_url,
         scopes: "read:user gist".to_string(),
     };
 
