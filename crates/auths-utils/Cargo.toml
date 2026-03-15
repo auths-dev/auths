@@ -4,7 +4,7 @@ version.workspace = true
 edition = "2024"
 rust-version = "1.93"
 license.workspace = true
-publish = false
+publish = true
 description = "Internal shared utilities for the Auths workspace"
 
 [dependencies]
