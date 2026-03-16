@@ -173,6 +173,17 @@ pub enum OrgSubcommand {
         #[arg(long, action = ArgAction::SetTrue)]
         include_revoked: bool,
     },
+
+    /// Join an organization using an invite code
+    Join {
+        /// Invite code (e.g. from `auths org join --code C23BD59F`)
+        #[arg(long)]
+        code: String,
+
+        /// Registry URL to contact
+        #[arg(long, default_value = "https://auths-registry.fly.dev")]
+        registry: String,
+    },
 }
 
 /// Handles `org` commands for issuing or revoking member authorizations.
@@ -943,7 +954,120 @@ pub fn handle_org(
 
             Ok(())
         }
+
+        OrgSubcommand::Join { code, registry } => handle_join(&code, &registry),
     }
+}
+
+/// Handles the `org join` subcommand by looking up and accepting an invite
+/// via the registry HTTP API.
+fn handle_join(code: &str, registry: &str) -> Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    let client = reqwest::Client::new();
+    let base = registry.trim_end_matches('/');
+
+    // 1. Look up invite details.
+    let details_url = format!("{}/v1/invites/{}", base, code);
+    let details_resp = rt
+        .block_on(async { client.get(&details_url).send().await })
+        .context("failed to contact registry")?;
+
+    if details_resp.status() == reqwest::StatusCode::NOT_FOUND {
+        anyhow::bail!(
+            "Invite code '{}' not found. Check the code and try again.",
+            code
+        );
+    }
+    if !details_resp.status().is_success() {
+        let status = details_resp.status();
+        let body = rt.block_on(details_resp.text()).unwrap_or_default();
+        anyhow::bail!("Failed to look up invite ({}): {}", status, body);
+    }
+
+    let details: serde_json::Value = rt
+        .block_on(details_resp.json())
+        .context("invalid response from registry")?;
+
+    let org_name = details["display_name"].as_str().unwrap_or("Unknown");
+    let role = details["role"].as_str().unwrap_or("member");
+    let status = details["status"].as_str().unwrap_or("unknown");
+
+    if status == "expired" {
+        anyhow::bail!("This invite has expired. Ask the org admin for a new one.");
+    }
+    if status == "accepted" {
+        anyhow::bail!("This invite has already been accepted.");
+    }
+
+    println!("Organization: {}", org_name);
+    println!("Role:         {}", role);
+    println!("Status:       {}", status);
+    println!();
+
+    // 2. Accept the invite. This requires auth — build a signed bearer token.
+    let repo_path = layout::resolve_repo_path(None)?;
+    let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
+    let managed_identity = identity_storage
+        .load_identity()
+        .context("no local identity found — run `auths init` first")?;
+    let did = managed_identity.controller_did.to_string();
+
+    let key_storage = get_platform_keychain()?;
+    let primary_alias = KeyAlias::new_unchecked("main");
+    let (_stored_did, _role, encrypted_key) = key_storage
+        .load_key(&primary_alias)
+        .context("failed to load signing key — run `auths init` first")?;
+
+    let passphrase =
+        rpassword::prompt_password("Enter passphrase: ").context("failed to read passphrase")?;
+    let pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase).context("wrong passphrase")?;
+
+    let pkcs8 = auths_crypto::Pkcs8Der::new(&pkcs8_bytes[..]);
+    let seed = auths_core::crypto::ssh::extract_seed_from_pkcs8(&pkcs8)
+        .context("failed to extract seed from key material")?;
+
+    // Create a signed bearer payload: { did, timestamp, signature }
+    #[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
+    let timestamp = Utc::now().to_rfc3339();
+    let message = format!("{}\n{}", did, timestamp);
+    let signature = {
+        use ring::signature::Ed25519KeyPair;
+        let kp = Ed25519KeyPair::from_seed_unchecked(seed.as_bytes())
+            .map_err(|e| anyhow!("invalid key: {e}"))?;
+        let sig = kp.sign(message.as_bytes());
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(sig.as_ref())
+    };
+
+    let bearer_payload = serde_json::json!({
+        "did": did,
+        "timestamp": timestamp,
+        "signature": signature,
+    });
+    let bearer_token = serde_json::to_string(&bearer_payload)?;
+
+    let accept_url = format!("{}/v1/invites/{}/accept", base, code);
+    let accept_resp = rt
+        .block_on(async {
+            client
+                .post(&accept_url)
+                .header("Authorization", format!("Bearer {}", bearer_token))
+                .header("Content-Type", "application/json")
+                .send()
+                .await
+        })
+        .context("failed to contact registry")?;
+
+    if !accept_resp.status().is_success() {
+        let status = accept_resp.status();
+        let body = rt.block_on(accept_resp.text()).unwrap_or_default();
+        anyhow::bail!("Failed to accept invite ({}): {}", status, body);
+    }
+
+    println!("✅ Successfully joined {} as {}", org_name, role);
+    println!("   Your DID: {}", did);
+
+    Ok(())
 }
 
 fn display_dry_run_revoke_member(org: &str, member: &str, invoker_did: &str) -> Result<()> {

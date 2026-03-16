@@ -127,6 +127,8 @@ RustAgentDemo/*.a
 concat_output.txt
 CLAUDE.md
 .cargo/
+my-artifact.txt
+my-artifact.txt.auths.json
 
 # Git worktrees
 .worktrees/
