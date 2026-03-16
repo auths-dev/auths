@@ -416,6 +416,7 @@ dependencies = [
  "toml 1.0.6+spec-1.1.0",
  "tower",
  "tower-http",
+ "url",
  "uuid",
  "windows",
  "x25519-dalek",
@@ -525,8 +526,10 @@ dependencies = [
  "auths-core",
  "auths-verifier",
  "axum",
+ "chrono",
  "futures-util",
  "hex",
+ "rand 0.8.5",
  "reqwest 0.13.2",
  "ring",
  "serde",
@@ -534,6 +537,8 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite",
+ "url",
+ "urlencoding",
 ]
 
 [[package]]
@@ -675,9 +680,11 @@ dependencies = [
 name = "auths-sdk"
 version = "0.0.1-rc.9"
 dependencies = [
+ "async-trait",
  "auths-core",
  "auths-crypto",
  "auths-id",
+ "auths-infra-http",
  "auths-pairing-daemon",
  "auths-policy",
  "auths-sdk",
@@ -699,6 +706,7 @@ dependencies = [
  "ssh-key",
  "tempfile",
  "thiserror 2.0.18",
+ "url",
  "zeroize",
 ]
 

@@ -18,6 +18,8 @@ mod error;
 mod github_gist;
 mod github_oauth;
 mod identity_resolver;
+/// Namespace verification adapters for package ecosystem ownership proofs.
+pub mod namespace;
 mod pairing_client;
 mod registry_client;
 mod request;

@@ -40,7 +40,10 @@ impl crate::AuthsErrorInfo for CryptoError {
     fn error_code(&self) -> &'static str {
         match self {
             Self::InvalidSignature => "AUTHS-E1001",
-            Self::InvalidKeyLength { .. } => "AUTHS-E1002",
+            Self::InvalidKeyLength { .. } => {
+                "
+            "
+            }
             Self::InvalidPrivateKey(_) => "AUTHS-E1003",
             Self::OperationFailed(_) => "AUTHS-E1004",
             Self::UnsupportedTarget => "AUTHS-E1005",

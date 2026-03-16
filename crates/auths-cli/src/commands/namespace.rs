@@ -1,17 +1,22 @@
+use std::io::{self, Write};
+
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 
+use auths_core::ports::namespace::{Ecosystem, PackageName, PlatformContext};
 use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
+use auths_crypto::AuthsErrorInfo;
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::storage::layout;
+use auths_sdk::namespace_registry::NamespaceVerifierRegistry;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::workflows::namespace::{
-    ClaimNamespaceCommand, DelegateNamespaceCommand, TransferNamespaceCommand,
-    parse_claim_response, parse_lookup_response, sign_namespace_claim, sign_namespace_delegate,
-    sign_namespace_transfer,
+    DelegateNamespaceCommand, TransferNamespaceCommand, initiate_namespace_claim,
+    parse_claim_response, parse_lookup_response, sign_namespace_delegate, sign_namespace_transfer,
 };
 use auths_storage::git::RegistryIdentityStorage;
+use auths_verifier::CanonicalDid;
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
@@ -43,6 +48,18 @@ pub enum NamespaceSubcommand {
         /// Alias of the signing key in keychain
         #[arg(long)]
         signer_alias: Option<String>,
+
+        /// GitHub username for cross-referencing ownership
+        #[arg(long)]
+        github_username: Option<String>,
+
+        /// npm username for cross-referencing ownership
+        #[arg(long)]
+        npm_username: Option<String>,
+
+        /// PyPI username for cross-referencing ownership
+        #[arg(long)]
+        pypi_username: Option<String>,
     },
 
     /// Delegate namespace authority to another identity
@@ -177,6 +194,7 @@ fn post_signed_entry(registry_url: &str, body: serde_json::Value) -> Result<serd
 }
 
 /// Handles `namespace` commands for managing package namespace claims.
+#[allow(clippy::disallowed_methods)] // CLI boundary: Utc::now() injected here
 pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
     match cmd.subcommand {
         NamespaceSubcommand::Claim {
@@ -184,43 +202,116 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             package_name,
             registry_url,
             signer_alias,
+            github_username,
+            npm_username,
+            pypi_username,
         } => {
             let registry_url = resolve_registry_url(registry_url);
             let (controller_did, key_alias) = load_identity_and_alias(ctx, signer_alias)?;
             let signer = StorageSigner::new(get_platform_keychain()?);
             let passphrase_provider = ctx.passphrase_provider.clone();
 
-            println!("Claiming namespace {}/{}...", ecosystem, package_name);
+            let eco = Ecosystem::parse(&ecosystem).context("Failed to parse ecosystem")?;
+            let pkg = PackageName::parse(&package_name).context("Failed to parse package name")?;
 
-            let sdk_cmd = ClaimNamespaceCommand {
-                ecosystem: ecosystem.clone(),
-                package_name: package_name.clone(),
-                registry_url: registry_url.clone(),
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: controller_did from storage is always valid
+            let canonical_did = CanonicalDid::new_unchecked(controller_did.as_str());
+
+            let platform = PlatformContext {
+                github_username,
+                npm_username,
+                pypi_username,
             };
 
-            let signed = sign_namespace_claim(
-                &sdk_cmd,
-                &controller_did,
-                &signer,
-                passphrase_provider.as_ref(),
-                &key_alias,
-            )
-            .context("Failed to sign namespace claim")?;
+            let registry = NamespaceVerifierRegistry::with_defaults();
+            let verifier = registry
+                .require(eco)
+                .context("No verifier available for this ecosystem")?;
 
-            let response = post_signed_entry(&registry_url, signed.to_request_body())?;
+            println!("Verifying ownership of {}/{}...\n", eco, package_name);
 
-            let result = parse_claim_response(
-                &ecosystem,
+            let rt = tokio::runtime::Runtime::new().context("Failed to create async runtime")?;
+
+            let session = rt
+                .block_on(initiate_namespace_claim(
+                    chrono::Utc::now(),
+                    verifier.as_ref(),
+                    eco,
+                    pkg,
+                    canonical_did,
+                    platform,
+                ))
+                .context("Failed to initiate namespace verification")?;
+
+            println!("To prove you control this package:\n");
+            println!("  {}\n", session.challenge.instructions);
+            print!("Press Enter when done, or Ctrl+C to cancel...");
+            io::stdout().flush().ok();
+            let _ = io::stdin().read_line(&mut String::new());
+
+            let max_retries = 3;
+            let mut result = None;
+
+            for attempt in 0..max_retries {
+                match rt.block_on(session.complete_ref(
+                    chrono::Utc::now(),
+                    verifier.as_ref(),
+                    &signer,
+                    passphrase_provider.as_ref(),
+                    &key_alias,
+                )) {
+                    Ok(r) => {
+                        result = Some(r);
+                        break;
+                    }
+                    Err(auths_sdk::workflows::namespace::NamespaceError::VerificationFailed(
+                        ref verify_err,
+                    )) => {
+                        use auths_core::ports::namespace::NamespaceVerifyError;
+                        match verify_err {
+                            NamespaceVerifyError::OwnershipNotConfirmed { .. }
+                                if attempt + 1 < max_retries =>
+                            {
+                                eprintln!(
+                                    "\nVerification not confirmed yet. Did you complete the step above?"
+                                );
+                                print!("Press Enter to retry, or Ctrl+C to cancel...");
+                                io::stdout().flush().ok();
+                                let _ = io::stdin().read_line(&mut String::new());
+                                continue;
+                            }
+                            _ => {
+                                eprintln!("\n✗ Verification failed [{}]", verify_err.error_code());
+                                eprintln!("  {verify_err}");
+                                if let Some(hint) = verify_err.suggestion() {
+                                    eprintln!("\n  Hint: {hint}");
+                                }
+                                return Err(anyhow!("{}", verify_err));
+                            }
+                        }
+                    }
+                    Err(e) => return Err(e).context("Namespace verification failed"),
+                }
+            }
+
+            let result = result
+                .ok_or_else(|| anyhow!("Verification failed after {max_retries} attempts"))?;
+
+            println!("\nChecking... ✓ Verified!\n");
+            println!("Claiming namespace {}/{}...", eco, package_name);
+
+            let response = post_signed_entry(&registry_url, result.signed_entry.to_request_body())?;
+
+            let claim_result = parse_claim_response(
+                eco.as_str(),
                 &package_name,
                 controller_did.as_str(),
                 &response,
             );
 
-            println!("\nNamespace claimed successfully!");
-            println!("   Ecosystem:    {}", result.ecosystem);
-            println!("   Package:      {}", result.package_name);
-            println!("   Owner:        {}", result.owner_did);
-            println!("   Log Sequence: {}", result.log_sequence);
+            println!("\n✓ Namespace {}/{} claimed", eco, package_name);
+            println!("  Log sequence: {}", claim_result.log_sequence);
 
             Ok(())
         }

@@ -4,6 +4,8 @@ pub mod clock;
 /// Config file I/O port for reading and writing `config.toml`.
 pub mod config_store;
 pub mod id;
+/// Namespace verification port traits for proof-of-ownership across package ecosystems.
+pub mod namespace;
 pub mod network;
 /// Pairing relay client port for session-based device pairing.
 pub mod pairing;

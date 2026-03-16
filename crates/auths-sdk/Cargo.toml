@@ -11,8 +11,10 @@ keywords = ["sdk", "identity", "did", "cryptography", "attestation"]
 categories = ["cryptography", "authentication"]
 
 [dependencies]
+async-trait = "0.1"
 auths-core.workspace = true
 auths-id.workspace = true
+auths-infra-http.workspace = true
 auths-telemetry.workspace = true
 auths-policy.workspace = true
 auths-crypto.workspace = true
@@ -30,6 +32,7 @@ hex = "0.4"
 html-escape = "0.2"
 ssh-key = "0.6"
 tempfile = "3"
+url = { version = "2", features = ["serde"] }
 zeroize = "1.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 auths-pairing-daemon = { workspace = true, optional = true }
