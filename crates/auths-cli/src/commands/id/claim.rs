@@ -64,11 +64,15 @@ pub fn handle_claim(
 
     let on_device_code = |code: &auths_core::ports::platform::DeviceCodeResponse| {
         println!();
-        println!(
-            "  Enter this code: {}",
-            style(&code.user_code).bold().cyan()
-        );
+        println!("  Copy this code: {}", style(&code.user_code).bold().cyan());
         println!("  At: {}", style(&code.verification_uri).cyan());
+        println!();
+        println!(
+            "  {}",
+            style("Press 'enter' to open GitHub after copying the code above").blue()
+        );
+        // Wait for the user to press Enter before opening the browser.
+        let _ = std::io::stdin().read_line(&mut String::new());
         println!();
         if let Err(e) = open::that(&code.verification_uri) {
             println!(
