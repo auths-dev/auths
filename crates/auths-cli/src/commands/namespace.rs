@@ -233,7 +233,7 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
 
             let rt = tokio::runtime::Runtime::new().context("Failed to create async runtime")?;
 
-            let session = rt
+            let mut session = rt
                 .block_on(initiate_namespace_claim(
                     chrono::Utc::now(),
                     verifier.as_ref(),
@@ -244,12 +244,10 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
                 ))
                 .context("Failed to initiate namespace verification")?;
 
-            println!("To prove you control this package:\n");
             println!("  {}\n", session.challenge.instructions);
-            print!("Press Enter when done, or Ctrl+C to cancel...");
-            io::stdout().flush().ok();
-            let _ = io::stdin().read_line(&mut String::new());
 
+            // Try verification — on OwnershipNotConfirmed, progressively
+            // prompt for additional credentials (e.g. PyPI username)
             let max_retries = 3;
             let mut result = None;
 
@@ -270,16 +268,53 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
                     )) => {
                         use auths_core::ports::namespace::NamespaceVerifyError;
                         match verify_err {
-                            NamespaceVerifyError::OwnershipNotConfirmed { .. }
+                            NamespaceVerifyError::OwnershipNotConfirmed { ecosystem, .. }
                                 if attempt + 1 < max_retries =>
                             {
-                                eprintln!(
-                                    "\nVerification not confirmed yet. Did you complete the step above?"
-                                );
-                                print!("Press Enter to retry, or Ctrl+C to cancel...");
-                                io::stdout().flush().ok();
-                                let _ = io::stdin().read_line(&mut String::new());
-                                continue;
+                                // Progressive prompting: ask for ecosystem-specific username
+                                match *ecosystem {
+                                    Ecosystem::Pypi if session.platform.pypi_username.is_none() => {
+                                        eprintln!(
+                                            "\nAutomatic verification didn't match. \
+                                             Let's try your PyPI username."
+                                        );
+                                        print!("What's your PyPI username? ");
+                                        io::stdout().flush().ok();
+                                        let mut username = String::new();
+                                        let _ = io::stdin().read_line(&mut username);
+                                        let username = username.trim().to_string();
+                                        if !username.is_empty() {
+                                            session.platform.pypi_username = Some(username);
+                                            eprintln!("Retrying with PyPI username...\n");
+                                        }
+                                        continue;
+                                    }
+                                    Ecosystem::Npm if session.platform.npm_username.is_none() => {
+                                        eprintln!(
+                                            "\nAutomatic verification didn't match. \
+                                             Let's try your npm username."
+                                        );
+                                        print!("What's your npm username? ");
+                                        io::stdout().flush().ok();
+                                        let mut username = String::new();
+                                        let _ = io::stdin().read_line(&mut username);
+                                        let username = username.trim().to_string();
+                                        if !username.is_empty() {
+                                            session.platform.npm_username = Some(username);
+                                            eprintln!("Retrying with npm username...\n");
+                                        }
+                                        continue;
+                                    }
+                                    _ => {
+                                        eprintln!(
+                                            "\nVerification not confirmed. Did you complete the step above?"
+                                        );
+                                        print!("Press Enter to retry, or Ctrl+C to cancel...");
+                                        io::stdout().flush().ok();
+                                        let _ = io::stdin().read_line(&mut String::new());
+                                        continue;
+                                    }
+                                }
                             }
                             _ => {
                                 eprintln!("\n✗ Verification failed [{}]", verify_err.error_code());

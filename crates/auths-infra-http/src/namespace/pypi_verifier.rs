@@ -118,34 +118,50 @@ impl NamespaceVerifier for PypiVerifier {
         did: &CanonicalDid,
         platform: &PlatformContext,
     ) -> Result<VerificationChallenge, NamespaceVerifyError> {
-        self.fetch_metadata(package_name.as_str()).await?;
-
-        if platform.github_username.is_none() && platform.pypi_username.is_none() {
-            return Err(NamespaceVerifyError::OwnershipNotConfirmed {
-                ecosystem: Ecosystem::Pypi,
-                package_name: package_name.as_str().to_string(),
-            });
-        }
+        // Check package exists — fail fast on 404
+        let response = self.fetch_metadata(package_name.as_str()).await?;
 
         let token = generate_verification_token();
         let expires_at = now + Duration::hours(1);
 
-        let identity_desc = platform
-            .github_username
-            .as_deref()
-            .map(|u| format!("GitHub account ({u})"))
-            .unwrap_or_else(|| "your verified identity".to_string());
+        // Preview what verification paths are available
+        let github_owner = extract_github_owner_from_pypi(&response.info);
+        let has_roles = response
+            .ownership
+            .as_ref()
+            .is_some_and(|o| !o.roles.is_empty());
+
+        let instructions = match (
+            platform.github_username.as_deref(),
+            &github_owner,
+            has_roles,
+        ) {
+            (Some(gh), Some(owner), _) => format!(
+                "Checking GitHub account ({gh}) against repo owner ({owner}) for '{}'",
+                package_name.as_str()
+            ),
+            (Some(_), None, true) => format!(
+                "No GitHub repo link found for '{}'. Will check PyPI ownership roles. \
+                 If that fails, you'll be asked for your PyPI username.",
+                package_name.as_str()
+            ),
+            (_, _, true) => format!(
+                "Will check PyPI ownership roles for '{}'. \
+                 You may be asked for your PyPI username.",
+                package_name.as_str()
+            ),
+            _ => format!(
+                "Verifying ownership of '{}'. You may be asked for your PyPI username.",
+                package_name.as_str()
+            ),
+        };
 
         Ok(VerificationChallenge {
             ecosystem: Ecosystem::Pypi,
             package_name: package_name.clone(),
             did: did.clone(),
             token,
-            instructions: format!(
-                "Your {identity_desc} will be verified against the package's \
-                 repository link for '{}'",
-                package_name.as_str()
-            ),
+            instructions,
             expires_at,
         })
     }
