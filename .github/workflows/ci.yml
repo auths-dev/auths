@@ -162,6 +162,7 @@ jobs:
         with:
           only: auths-core,auths-id
           fail-on: high
+          diff: 'true'
           upload-sarif: true
           sarif-category: capsec-audit-dirty
           comment-on-pr: true
