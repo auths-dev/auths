@@ -1,0 +1,14 @@
+# capsec audit configuration for auths workspace
+#
+# Two-tier enforcement:
+# - Clean crates (crypto, verifier, policy, keri): --fail-on low (zero findings expected)
+# - Dirty crates (core, id): --diff --fail-on high (baseline + regression detection)
+
+[analysis]
+exclude = ["tests/**", "benches/**"]
+
+# auths-verifier's WASM extern block is expected — it's a minimal FFI binding
+# for console.log in wasm32 targets, not a security concern.
+[[allow]]
+crate = "auths-verifier"
+function = "extern \"C\""

@@ -1,0 +1,514 @@
+[
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/witness/server.rs",
+    "function": "run_server",
+    "call_text": "tokio::net::TcpListener::bind",
+    "category": "NET"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/config.rs",
+    "function": "from_env",
+    "call_text": "std::env::var",
+    "category": "ENV"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/agent/handle.rs",
+    "function": "shutdown",
+    "call_text": "std::fs::remove_file",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/agent/handle.rs",
+    "function": "shutdown",
+    "call_text": "std::fs::remove_file",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/agent/handle.rs",
+    "function": "test_agent_handle_shutdown",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/storage/windows_credential.rs",
+    "function": "new",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/storage/windows_credential.rs",
+    "function": "load_index",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/storage/windows_credential.rs",
+    "function": "save_index",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/storage/encrypted_file.rs",
+    "function": "read_data",
+    "call_text": "std::fs::File::open",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/testing/builder.rs",
+    "function": "build",
+    "call_text": "std::process::Command::new",
+    "category": "PROC"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/testing/builder.rs",
+    "function": "build",
+    "call_text": "output",
+    "category": "PROC"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/api/runtime.rs",
+    "function": "start_agent_listener_with_handle",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/api/runtime.rs",
+    "function": "start_agent_listener_with_handle",
+    "call_text": "std::fs::remove_file",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/trust/roots_file.rs",
+    "function": "load",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/trust/roots_file.rs",
+    "function": "create_temp_roots_file",
+    "call_text": "std::fs::File::create",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/trust/pinned.rs",
+    "function": "read_all",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/trust/pinned.rs",
+    "function": "write_all",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/trust/pinned.rs",
+    "function": "write_all",
+    "call_text": "std::fs::File::create",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/trust/pinned.rs",
+    "function": "write_all",
+    "call_text": "std::fs::rename",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/trust/pinned.rs",
+    "function": "lock",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-core",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-core/src/trust/pinned.rs",
+    "function": "test_concurrent_access_no_corruption",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "install_cache_hooks",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "install_hook",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "install_hook",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "install_hook",
+    "call_text": "std::fs::metadata",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "find_git_dir",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "uninstall_cache_hooks",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "uninstall_cache_hooks",
+    "call_text": "std::fs::remove_file",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "uninstall_cache_hooks",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "install_linearity_hook",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "install_linearity_hook",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "install_linearity_hook",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "install_linearity_hook",
+    "call_text": "std::fs::metadata",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "uninstall_linearity_hook",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "uninstall_linearity_hook",
+    "call_text": "std::fs::remove_file",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "uninstall_linearity_hook",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_new_hooks",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_appends_to_existing",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_appends_to_existing",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_appends_to_existing",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_idempotent",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_linearity_hook_new",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_linearity_hook_idempotent",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_linearity_hook_appends_to_existing",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_linearity_hook_appends_to_existing",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_install_linearity_hook_appends_to_existing",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_uninstall_linearity_hook_preserves_other_content",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_uninstall_linearity_hook_preserves_other_content",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/storage/registry/hooks.rs",
+    "function": "test_uninstall_linearity_hook_preserves_other_content",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/agent_identity.rs",
+    "function": "ensure_git_repo",
+    "call_text": "std::fs::create_dir_all",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/agent_identity.rs",
+    "function": "write_agent_toml",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/freeze.rs",
+    "function": "load_active_freeze",
+    "call_text": "std::fs::read_to_string",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/freeze.rs",
+    "function": "load_active_freeze",
+    "call_text": "std::fs::remove_file",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/freeze.rs",
+    "function": "store_freeze",
+    "call_text": "std::fs::write",
+    "category": "FS"
+  },
+  {
+    "crate_name": "auths-id",
+    "crate_version": "0.0.1-rc.9",
+    "file": "/Users/bordumb/workspace/repositories/auths-base/auths/crates/auths-id/src/freeze.rs",
+    "function": "remove_freeze",
+    "call_text": "std::fs::remove_file",
+    "category": "FS"
+  }
+]
