@@ -163,6 +163,7 @@ jobs:
           only: auths-core,auths-id
           fail-on: high
           upload-sarif: true
+          sarif-category: capsec-audit-dirty
           comment-on-pr: true
 
   msrv:
