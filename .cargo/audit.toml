@@ -12,4 +12,9 @@ ignore = [
     # Only affects the optional witness-server feature, not core signing or
     # verification paths.
     "RUSTSEC-2025-0134",
+
+    # rustls-webpki 0.101.7 CRL matching logic error (via aws-smithy-http-client
+    # -> hyper-rustls 0.24 -> rustls 0.21). Pinned by AWS SDK's legacy TLS stack.
+    # No update available until AWS SDK drops rustls 0.21 support.
+    "RUSTSEC-2026-0049",
 ]
