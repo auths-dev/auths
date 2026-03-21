@@ -141,22 +141,29 @@ jobs:
   capsec-audit:
     name: Capability Audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/bin/cargo-capsec
-            ~/.cargo/.crates.toml
-            ~/.cargo/.crates2.json
-          key: capsec-0.1.2
-      - name: Install cargo-capsec
-        run: cargo install cargo-capsec --version 0.1.2 --locked
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
       - name: Audit clean crates (zero I/O expected)
-        run: cargo capsec audit --only auths-crypto,auths-verifier,auths-policy,auths-keri --fail-on low
+        uses: bordumb/capsec-github-action@v1
+        with:
+          only: auths-crypto,auths-verifier,auths-policy,auths-keri
+          fail-on: low
+          upload-sarif: false
+          comment-on-pr: false
       - name: Audit dirty crates (no new high-risk I/O)
-        run: cargo capsec audit --only auths-core,auths-id --diff --fail-on high
+        uses: bordumb/capsec-github-action@v1
+        with:
+          only: auths-core,auths-id
+          fail-on: high
+          upload-sarif: true
+          comment-on-pr: true
 
   msrv:
     name: MSRV check (1.93)
