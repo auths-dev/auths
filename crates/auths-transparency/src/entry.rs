@@ -92,6 +92,8 @@ pub enum EntryBody {
     NamespaceClaim {
         ecosystem: String,
         package_name: String,
+        proof_url: String,
+        verification_method: String,
     },
     NamespaceDelegate {
         ecosystem: String,
@@ -235,5 +237,20 @@ mod tests {
         let json = serde_json::to_string(&entry).unwrap();
         let back: Entry = serde_json::from_str(&json).unwrap();
         assert_eq!(entry.sequence, back.sequence);
+    }
+
+    #[test]
+    fn namespace_claim_with_proof_roundtrips() {
+        let body = EntryBody::NamespaceClaim {
+            ecosystem: "npm".to_string(),
+            package_name: "left-pad".to_string(),
+            proof_url: "https://registry.npmjs.org/left-pad".to_string(),
+            verification_method: "ApiOwnership".to_string(),
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(json.contains("proof_url"));
+        assert!(json.contains("verification_method"));
+        let back: EntryBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(body, back);
     }
 }

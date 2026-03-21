@@ -28,6 +28,8 @@ pub mod device;
 pub mod error;
 /// Key import and management operations.
 pub mod keys;
+/// Namespace verifier adapter registry mapping ecosystems to implementations.
+pub mod namespace_registry;
 /// Device pairing orchestration over ephemeral ECDH sessions.
 pub mod pairing;
 /// Platform identity claim creation and verification.

@@ -325,6 +325,7 @@ fn extract_namespace_from_entry(body: &EntryBody) -> Option<(&str, &str)> {
         EntryBody::NamespaceClaim {
             ecosystem,
             package_name,
+            ..
         }
         | EntryBody::NamespaceDelegate {
             ecosystem,
@@ -435,6 +436,7 @@ fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
         if let EntryBody::NamespaceClaim {
             ecosystem: claim_ecosystem,
             package_name: claim_package,
+            ..
         } = &ns_link.entry.content.body
         {
             if org_add_member.is_some() {

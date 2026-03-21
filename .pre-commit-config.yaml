@@ -35,12 +35,12 @@ repos:
         types: [rust]
         pass_filenames: false
 
-      - id: gen-docs
-        name: cargo xtask gen-docs (auto-fix)
-        entry: bash -c 'cargo run --package xtask -- gen-docs && git add docs/cli/commands/'
-        language: system
-        files: (crates/auths-cli/src/|crates/xtask/src/gen_docs|docs/cli/commands/)
-        pass_filenames: false
+      # - id: gen-docs
+      #   name: cargo xtask gen-docs (auto-fix)
+      #   entry: bash -c 'cargo run --package xtask -- gen-docs && git add docs/cli/commands/'
+      #   language: system
+      #   files: (crates/auths-cli/src/|crates/xtask/src/gen_docs|docs/cli/commands/)
+      #   pass_filenames: false
 
       - id: check-clippy-sync
         name: cargo xtask check-clippy-sync

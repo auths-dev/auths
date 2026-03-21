@@ -4,6 +4,12 @@
 //! canonicalize and sign them, and return the signed payload ready for
 //! submission to a registry server at `/v1/log/entries`.
 
+use chrono::{DateTime, Utc};
+
+use auths_core::ports::namespace::{
+    Ecosystem, NamespaceOwnershipProof, NamespaceVerifier, NamespaceVerifyError, PackageName,
+    PlatformContext, VerificationChallenge,
+};
 use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::KeyAlias;
 use auths_transparency::entry::{EntryBody, EntryContent, EntryType};
@@ -63,30 +69,10 @@ pub enum NamespaceError {
     /// Serialization or canonicalization failed.
     #[error("serialization error: {0}")]
     SerializationError(String),
-}
 
-/// Command to claim a namespace in a package ecosystem.
-///
-/// Args:
-/// * `ecosystem`: Package ecosystem identifier (e.g. "npm", "crates.io").
-/// * `package_name`: Package name to claim within the ecosystem.
-/// * `registry_url`: Base URL of the registry server.
-///
-/// Usage:
-/// ```ignore
-/// let cmd = ClaimNamespaceCommand {
-///     ecosystem: "npm".into(),
-///     package_name: "my-package".into(),
-///     registry_url: "https://registry.example.com".into(),
-/// };
-/// ```
-pub struct ClaimNamespaceCommand {
-    /// Package ecosystem identifier (e.g. "npm", "crates.io").
-    pub ecosystem: String,
-    /// Package name to claim within the ecosystem.
-    pub package_name: String,
-    /// Base URL of the registry server.
-    pub registry_url: String,
+    /// Namespace verification failed (wraps port-level error).
+    #[error("verification failed: {0}")]
+    VerificationFailed(#[from] NamespaceVerifyError),
 }
 
 /// Command to delegate namespace authority to another identity.
@@ -253,50 +239,6 @@ fn build_and_sign_entry(
     })
 }
 
-/// Build and sign a `NamespaceClaim` entry.
-///
-/// Creates an `EntryContent` with a `NamespaceClaim` body, canonicalizes
-/// it, and signs it with the caller's key. Returns a [`SignedEntry`]
-/// ready for submission to `POST /v1/log/entries`.
-///
-/// Args:
-/// * `cmd`: The claim command with ecosystem, package name, and registry URL.
-/// * `actor_did`: The DID of the claiming identity.
-/// * `signer`: Signing backend for creating the cryptographic signature.
-/// * `passphrase_provider`: Provider for obtaining key decryption passphrases.
-/// * `signer_alias`: Keychain alias of the signing key.
-///
-/// Usage:
-/// ```ignore
-/// let signed = sign_namespace_claim(cmd, &actor_did, &signer, provider, &alias)?;
-/// // POST signed.to_request_body() to registry
-/// ```
-pub fn sign_namespace_claim(
-    cmd: &ClaimNamespaceCommand,
-    actor_did: &IdentityDID,
-    signer: &dyn SecureSigner,
-    passphrase_provider: &dyn PassphraseProvider,
-    signer_alias: &KeyAlias,
-) -> Result<SignedEntry, NamespaceError> {
-    validate_ecosystem(&cmd.ecosystem)?;
-    validate_package_name(&cmd.package_name)?;
-
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: actor_did is an IdentityDID from storage, always valid
-    let canonical_actor = CanonicalDid::new_unchecked(actor_did.as_str());
-
-    let content = EntryContent {
-        entry_type: EntryType::NamespaceClaim,
-        body: EntryBody::NamespaceClaim {
-            ecosystem: cmd.ecosystem.clone(),
-            package_name: cmd.package_name.clone(),
-        },
-        actor_did: canonical_actor,
-    };
-
-    build_and_sign_entry(&content, signer, passphrase_provider, signer_alias)
-}
-
 /// Build and sign a `NamespaceDelegate` entry.
 ///
 /// Creates an `EntryContent` with a `NamespaceDelegate` body, canonicalizes
@@ -460,4 +402,126 @@ pub fn parse_lookup_response(
         owner_did,
         delegates,
     }
+}
+
+/// An in-progress namespace verification session.
+///
+/// Returned by [`initiate_namespace_claim`]. The CLI displays the challenge
+/// instructions, waits for user confirmation, then calls [`complete`](Self::complete).
+///
+/// Usage:
+/// ```ignore
+/// let session = initiate_namespace_claim(&verifier, eco, pkg, did, platform).await?;
+/// println!("{}", session.challenge.instructions);
+/// // wait for user...
+/// let result = session.complete(&verifier, &signer, &passphrase, &alias).await?;
+/// ```
+pub struct NamespaceVerificationSession {
+    /// The verification challenge issued by the adapter.
+    pub challenge: VerificationChallenge,
+    /// The ecosystem being verified.
+    pub ecosystem: Ecosystem,
+    /// The package being claimed.
+    pub package_name: PackageName,
+    /// The DID claiming ownership.
+    pub controller_did: CanonicalDid,
+    /// Platform identity context for cross-referencing.
+    pub platform: PlatformContext,
+}
+
+impl NamespaceVerificationSession {
+    /// Complete the verification after the user has performed the challenge.
+    ///
+    /// Borrows `self` so the caller can retry on transient failures.
+    /// Calls `verifier.verify()`, then signs the namespace claim entry
+    /// with the proof attached.
+    ///
+    /// Args:
+    /// * `now`: Current time (injected at presentation boundary).
+    /// * `verifier`: The namespace verifier adapter.
+    /// * `signer`: Signing backend for creating the cryptographic signature.
+    /// * `passphrase_provider`: Provider for obtaining key decryption passphrases.
+    /// * `signer_alias`: Keychain alias of the signing key.
+    pub async fn complete_ref(
+        &self,
+        now: DateTime<Utc>,
+        verifier: &dyn NamespaceVerifier,
+        signer: &dyn SecureSigner,
+        passphrase_provider: &dyn PassphraseProvider,
+        signer_alias: &KeyAlias,
+    ) -> Result<VerifiedClaimResult, NamespaceError> {
+        let proof = verifier
+            .verify(
+                now,
+                &self.package_name,
+                &self.controller_did,
+                &self.platform,
+                &self.challenge,
+            )
+            .await?;
+
+        let content = EntryContent {
+            entry_type: EntryType::NamespaceClaim,
+            body: EntryBody::NamespaceClaim {
+                ecosystem: self.ecosystem.as_str().to_string(),
+                package_name: self.package_name.as_str().to_string(),
+                proof_url: proof.proof_url.to_string(),
+                verification_method: format!("{:?}", proof.method),
+            },
+            actor_did: self.controller_did.clone(),
+        };
+
+        let signed = build_and_sign_entry(&content, signer, passphrase_provider, signer_alias)?;
+
+        Ok(VerifiedClaimResult {
+            signed_entry: signed,
+            proof,
+        })
+    }
+}
+
+/// Result of a successful verified namespace claim.
+pub struct VerifiedClaimResult {
+    /// The signed entry ready for submission to the registry.
+    pub signed_entry: SignedEntry,
+    /// The ownership proof from the verifier adapter.
+    pub proof: NamespaceOwnershipProof,
+}
+
+/// Phase 1: Initiate namespace verification.
+///
+/// Returns a [`NamespaceVerificationSession`] that the CLI can display
+/// (challenge instructions), then complete after user action.
+///
+/// Args:
+/// * `now`: Current time (injected at presentation boundary).
+/// * `verifier`: The namespace verifier adapter for the target ecosystem.
+/// * `ecosystem`: The ecosystem being claimed.
+/// * `package_name`: The package to claim.
+/// * `controller_did`: The DID making the claim.
+/// * `platform`: Verified platform identity context.
+///
+/// Usage:
+/// ```ignore
+/// let session = initiate_namespace_claim(now, &verifier, eco, pkg, did, ctx).await?;
+/// ```
+pub async fn initiate_namespace_claim(
+    now: DateTime<Utc>,
+    verifier: &dyn NamespaceVerifier,
+    ecosystem: Ecosystem,
+    package_name: PackageName,
+    controller_did: CanonicalDid,
+    platform: PlatformContext,
+) -> Result<NamespaceVerificationSession, NamespaceError> {
+    let challenge = verifier
+        .initiate(now, &package_name, &controller_did, &platform)
+        .await?;
+
+    Ok(NamespaceVerificationSession {
+        challenge,
+        ecosystem,
+        package_name,
+        controller_did,
+        platform,
+    })
 }
