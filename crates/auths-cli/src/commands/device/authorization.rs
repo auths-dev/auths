@@ -21,6 +21,7 @@ use auths_storage::git::{
 use chrono::Utc;
 
 use crate::commands::registry_overrides::RegistryOverrides;
+use crate::config::Capabilities;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
@@ -201,6 +202,7 @@ pub fn handle_device(
     attestation_blob_name_override: Option<String>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Result<()> {
     #[allow(clippy::disallowed_methods)]
     let now = Utc::now();
@@ -225,7 +227,7 @@ pub fn handle_device(
             list_devices(now, &repo_path, &config, include_revoked)
         }
         DeviceSubcommand::Resolve { device_did } => resolve_device(&repo_path, &device_did),
-        DeviceSubcommand::Pair(pair_cmd) => super::pair::handle_pair(pair_cmd, env_config),
+        DeviceSubcommand::Pair(pair_cmd) => super::pair::handle_pair(pair_cmd, env_config, caps),
         DeviceSubcommand::VerifyAttestation(verify_cmd) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(super::verify_attestation::handle_verify(verify_cmd))
@@ -243,7 +245,7 @@ pub fn handle_device(
             let payload = read_payload_file(payload_path_opt.as_deref())?;
             validate_payload_schema(schema_path_opt.as_deref(), &payload)?;
 
-            let caps: Vec<auths_verifier::Capability> = capabilities
+            let parsed_capabilities: Vec<auths_verifier::Capability> = capabilities
                 .unwrap_or_default()
                 .into_iter()
                 .filter_map(|s| auths_verifier::Capability::parse(&s).ok())
@@ -253,7 +255,7 @@ pub fn handle_device(
                 identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
                 device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
                 device_did: Some(device_did.clone()),
-                capabilities: caps,
+                capabilities: parsed_capabilities,
                 expires_in,
                 note,
                 payload,
@@ -265,6 +267,7 @@ pub fn handle_device(
                 &repo_path,
                 env_config,
                 Some(Arc::clone(&passphrase_provider)),
+                caps,
             )?;
 
             let result = auths_sdk::device::link_device(
@@ -291,6 +294,7 @@ pub fn handle_device(
                 &repo_path,
                 env_config,
                 Some(Arc::clone(&passphrase_provider)),
+                caps,
             )?;
 
             let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias);
@@ -320,6 +324,7 @@ pub fn handle_device(
             &device_key_alias,
             passphrase_provider,
             env_config,
+            caps,
         ),
     }
 }
@@ -432,6 +437,7 @@ fn handle_extend(
     device_key_alias: &str,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Result<()> {
     let config = auths_sdk::types::DeviceExtensionConfig {
         repo_path: repo_path.to_path_buf(),
@@ -441,7 +447,7 @@ fn handle_extend(
         identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
         device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
     };
-    let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))?;
+    let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider), caps)?;
 
     let result =
         auths_sdk::device::extend_device(config, &ctx, &auths_core::ports::clock::SystemClock)

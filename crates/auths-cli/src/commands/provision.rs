@@ -4,6 +4,7 @@
 //! to match. Secrets are handled via environment variable overrides layered
 //! automatically by the `config` crate, never passed as CLI arguments.
 
+use crate::config::Capabilities;
 use crate::ux::format::Output;
 use anyhow::{Context, Result, anyhow};
 use auths_core::signing::PassphraseProvider;
@@ -62,6 +63,7 @@ pub struct ProvisionCommand {
 pub fn handle_provision(
     cmd: ProvisionCommand,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
+    caps: &Capabilities,
 ) -> Result<()> {
     let out = Output::new();
     let config = load_node_config(&cmd.config)?;
@@ -74,7 +76,7 @@ pub fn handle_provision(
     out.println("================");
     out.newline();
 
-    validate_storage_perimeter(&config.identity, &out)?;
+    validate_storage_perimeter(&config.identity, &out, caps)?;
     out.print_info("Initializing identity...");
 
     let repo_path = Path::new(&config.identity.repo_path);
@@ -200,13 +202,17 @@ fn display_resolved_state(config: &NodeConfig, out: &Output) -> Result<()> {
 }
 
 /// Ensure the repo directory exists and contains a Git repository.
-fn validate_storage_perimeter(identity: &IdentityConfig, out: &Output) -> Result<()> {
+fn validate_storage_perimeter(
+    identity: &IdentityConfig,
+    out: &Output,
+    caps: &Capabilities,
+) -> Result<()> {
     use crate::factories::storage::{ensure_git_repo, open_git_repo};
 
     let repo_path = Path::new(&identity.repo_path);
 
     if repo_path.exists() {
-        match open_git_repo(repo_path) {
+        match open_git_repo(repo_path, caps) {
             Ok(_) => {
                 out.println(&format!(
                     "  Repository: {} ({})",
@@ -216,7 +222,7 @@ fn validate_storage_perimeter(identity: &IdentityConfig, out: &Output) -> Result
             }
             Err(_) => {
                 out.print_info("Initializing Git repository...");
-                ensure_git_repo(repo_path)
+                ensure_git_repo(repo_path, caps)
                     .with_context(|| format!("Failed to init Git repository at {:?}", repo_path))?;
                 out.println(&format!(
                     "  Repository: {} ({})",
@@ -227,7 +233,7 @@ fn validate_storage_perimeter(identity: &IdentityConfig, out: &Output) -> Result
         }
     } else {
         out.print_info("Creating directory and Git repository...");
-        ensure_git_repo(repo_path).with_context(|| {
+        ensure_git_repo(repo_path, caps).with_context(|| {
             format!(
                 "Failed to create and init Git repository at {:?}",
                 repo_path
@@ -279,7 +285,7 @@ fn print_provision_summary(config: &NodeConfig, out: &Output) {
 
 impl crate::commands::executable::ExecutableCommand for ProvisionCommand {
     fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
-        handle_provision(self.clone(), ctx.passphrase_provider.clone())
+        handle_provision(self.clone(), ctx.passphrase_provider.clone(), &ctx.caps)
     }
 }
 

@@ -1,6 +1,7 @@
 //! Local filesystem artifact adapter.
 
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
+use capsec::SendCap;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -9,16 +10,21 @@ use std::path::{Path, PathBuf};
 ///
 /// Usage:
 /// ```ignore
-/// let artifact = LocalFileArtifact::new("path/to/file.tar.gz");
+/// let cap_root = capsec::test_root();
+/// let artifact = LocalFileArtifact::new("path/to/file.tar.gz", cap_root.fs_read().make_send());
 /// let digest = artifact.digest()?;
 /// ```
 pub struct LocalFileArtifact {
     path: PathBuf,
+    fs_read: SendCap<capsec::FsRead>,
 }
 
 impl LocalFileArtifact {
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
+    pub fn new(path: impl Into<PathBuf>, fs_read: SendCap<capsec::FsRead>) -> Self {
+        Self {
+            path: path.into(),
+            fs_read,
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -28,7 +34,7 @@ impl LocalFileArtifact {
 
 impl ArtifactSource for LocalFileArtifact {
     fn digest(&self) -> Result<ArtifactDigest, ArtifactError> {
-        let mut file = std::fs::File::open(&self.path)
+        let mut file = capsec::fs::open(&self.path, &self.fs_read)
             .map_err(|e| ArtifactError::Io(format!("{}: {}", self.path.display(), e)))?;
 
         let mut hasher = Sha256::new();
@@ -52,7 +58,7 @@ impl ArtifactSource for LocalFileArtifact {
 
     fn metadata(&self) -> Result<ArtifactMetadata, ArtifactError> {
         let digest = self.digest()?;
-        let file_meta = std::fs::metadata(&self.path)
+        let file_meta = capsec::fs::metadata(&self.path, &self.fs_read)
             .map_err(|e| ArtifactError::Metadata(format!("{}: {}", self.path.display(), e)))?;
 
         Ok(ArtifactMetadata {

@@ -14,6 +14,7 @@ use auths_storage::git::RegistryIdentityStorage;
 use super::InitCommand;
 use super::InitProfile;
 use super::helpers::get_auths_repo_path;
+use crate::config::Capabilities;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::Output;
 
@@ -119,6 +120,7 @@ pub(crate) fn prompt_platform_verification(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &auths_core::config::EnvironmentConfig,
     now: chrono::DateTime<chrono::Utc>,
+    caps: &Capabilities,
 ) -> Result<Option<(String, String)>> {
     let items = [
         "GitHub — link your GitHub identity (recommended)",
@@ -133,7 +135,7 @@ pub(crate) fn prompt_platform_verification(
         .interact()?;
 
     match selection {
-        0 => run_github_verification(out, passphrase_provider, env_config, now),
+        0 => run_github_verification(out, passphrase_provider, env_config, now, caps),
         1 => {
             out.print_warn("GitLab integration is coming soon. Continuing as anonymous.");
             Ok(None)
@@ -147,6 +149,7 @@ fn run_github_verification(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &auths_core::config::EnvironmentConfig,
     now: chrono::DateTime<chrono::Utc>,
+    caps: &Capabilities,
 ) -> Result<Option<(String, String)>> {
     use std::time::Duration;
 
@@ -161,7 +164,7 @@ fn run_github_verification(
         std::env::var("AUTHS_GITHUB_CLIENT_ID").unwrap_or_else(|_| GITHUB_CLIENT_ID.to_string());
 
     let auths_dir = get_auths_repo_path()?;
-    let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider))?;
+    let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider), caps)?;
 
     let oauth = HttpGitHubOAuthProvider::new();
     let publisher = HttpGistPublisher::new();

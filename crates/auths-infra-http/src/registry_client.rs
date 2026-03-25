@@ -1,4 +1,5 @@
 use auths_core::ports::network::{NetworkError, RateLimitInfo, RegistryClient, RegistryResponse};
+use capsec::SendCap;
 use std::future::Future;
 use std::time::Duration;
 
@@ -13,21 +14,28 @@ use crate::{default_client_builder, default_http_client};
 /// Fetches and pushes data to a remote registry service for identity
 /// and attestation synchronization.
 ///
+/// Holds a `SendCap<NetConnect>` token to document that this adapter performs
+/// network I/O. The actual I/O is delegated to `reqwest`, which cannot be
+/// capsec-gated directly; the token enforces that only code granted network
+/// capabilities can construct an `HttpRegistryClient`.
+///
 /// Usage:
 /// ```ignore
 /// use auths_infra_http::HttpRegistryClient;
 ///
-/// let client = HttpRegistryClient::new();
-/// let data = client.fetch_registry_data("https://registry.example.com", "identities/abc").await?;
+/// let cap_root = capsec::test_root();
+/// let client = HttpRegistryClient::new(cap_root.net_connect().make_send());
 /// ```
 pub struct HttpRegistryClient {
     client: reqwest::Client,
+    _net_cap: SendCap<capsec::NetConnect>,
 }
 
 impl HttpRegistryClient {
-    pub fn new() -> Self {
+    pub fn new(net_cap: SendCap<capsec::NetConnect>) -> Self {
         Self {
             client: default_http_client(),
+            _net_cap: net_cap,
         }
     }
 
@@ -36,29 +44,33 @@ impl HttpRegistryClient {
     /// Args:
     /// * `connect_timeout`: Maximum time to establish a TCP connection.
     /// * `request_timeout`: Maximum total time for the request to complete.
+    /// * `net_cap`: Capability token proving the caller has network connect permission.
     ///
     /// Usage:
     /// ```ignore
+    /// let cap_root = capsec::test_root();
     /// let client = HttpRegistryClient::new_with_timeouts(
     ///     Duration::from_secs(30),
     ///     Duration::from_secs(60),
+    ///     cap_root.net_connect().make_send(),
     /// );
     /// ```
     // INVARIANT: reqwest builder with these settings cannot fail
     #[allow(clippy::expect_used)]
-    pub fn new_with_timeouts(connect_timeout: Duration, request_timeout: Duration) -> Self {
+    pub fn new_with_timeouts(
+        connect_timeout: Duration,
+        request_timeout: Duration,
+        net_cap: SendCap<capsec::NetConnect>,
+    ) -> Self {
         let client = default_client_builder()
             .connect_timeout(connect_timeout)
             .timeout(request_timeout)
             .build()
             .expect("failed to build HTTP client");
-        Self { client }
-    }
-}
-
-impl Default for HttpRegistryClient {
-    fn default() -> Self {
-        Self::new()
+        Self {
+            client,
+            _net_cap: net_cap,
+        }
     }
 }
 

@@ -36,17 +36,17 @@ pub enum ConfigAction {
 }
 
 impl ExecutableCommand for ConfigCommand {
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
         match &self.action {
-            ConfigAction::Set { key, value } => execute_set(key, value),
-            ConfigAction::Get { key } => execute_get(key),
-            ConfigAction::Show => execute_show(),
+            ConfigAction::Set { key, value } => execute_set(key, value, ctx),
+            ConfigAction::Get { key } => execute_get(key, ctx),
+            ConfigAction::Show => execute_show(ctx),
         }
     }
 }
 
-fn execute_set(key: &str, value: &str) -> Result<()> {
-    let store = FileConfigStore;
+fn execute_set(key: &str, value: &str, ctx: &CliConfig) -> Result<()> {
+    let store = FileConfigStore::new(ctx.caps.fs_read.clone(), ctx.caps.fs_write.clone());
     let mut config = load_config(&store);
 
     match key {
@@ -76,8 +76,9 @@ fn execute_set(key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-fn execute_get(key: &str) -> Result<()> {
-    let config = load_config(&FileConfigStore);
+fn execute_get(key: &str, ctx: &CliConfig) -> Result<()> {
+    let store = FileConfigStore::new(ctx.caps.fs_read.clone(), ctx.caps.fs_write.clone());
+    let config = load_config(&store);
 
     match key {
         "passphrase.cache" => {
@@ -102,8 +103,9 @@ fn execute_get(key: &str) -> Result<()> {
     Ok(())
 }
 
-fn execute_show() -> Result<()> {
-    let config = load_config(&FileConfigStore);
+fn execute_show(ctx: &CliConfig) -> Result<()> {
+    let store = FileConfigStore::new(ctx.caps.fs_read.clone(), ctx.caps.fs_write.clone());
+    let config = load_config(&store);
     let toml_str = toml::to_string_pretty(&config)
         .map_err(|e| anyhow::anyhow!("Failed to serialize config: {}", e))?;
     println!("{}", toml_str);
@@ -140,8 +142,8 @@ fn parse_bool(s: &str) -> Result<bool> {
     }
 }
 
-fn _ensure_default_config_exists() -> Result<AuthsConfig> {
-    let store = FileConfigStore;
+fn _ensure_default_config_exists(ctx: &CliConfig) -> Result<AuthsConfig> {
+    let store = FileConfigStore::new(ctx.caps.fs_read.clone(), ctx.caps.fs_write.clone());
     let config = load_config(&store);
     save_config(&config, &store)?;
     Ok(config)

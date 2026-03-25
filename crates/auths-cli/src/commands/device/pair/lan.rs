@@ -218,6 +218,7 @@ pub async fn handle_join_lan(
     now: chrono::DateTime<chrono::Utc>,
     code: &str,
     env_config: &EnvironmentConfig,
+    caps: &crate::config::Capabilities,
 ) -> Result<()> {
     use auths_core::pairing::normalize_short_code;
 
@@ -260,5 +261,5 @@ pub async fn handle_join_lan(
     let registry = format!("http://{}", addr);
 
     // Delegate to the standard join flow
-    super::join::handle_join(now, &normalized, &registry, env_config).await
+    super::join::handle_join(now, &normalized, &registry, env_config, caps).await
 }

@@ -16,6 +16,7 @@ use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 
+use crate::config::Capabilities;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
 #[derive(Serialize)]
@@ -35,7 +36,7 @@ struct RegisterJsonResponse {
 /// ```ignore
 /// handle_register(&repo_path, "https://public.auths.dev")?;
 /// ```
-pub fn handle_register(repo_path: &Path, registry: &str) -> Result<()> {
+pub fn handle_register(repo_path: &Path, registry: &str, caps: &Capabilities) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
 
     let backend: Arc<dyn RegistryBackend + Send + Sync> = Arc::new(
@@ -46,7 +47,7 @@ pub fn handle_register(repo_path: &Path, registry: &str) -> Result<()> {
     let attestation_store = Arc::new(RegistryAttestationStorage::new(repo_path));
     let attestation_source: Arc<dyn AttestationSource + Send + Sync> = attestation_store;
 
-    let registry_client = HttpRegistryClient::new();
+    let registry_client = HttpRegistryClient::new(caps.net_connect.clone());
 
     match rt.block_on(auths_sdk::registration::register_identity(
         identity_storage,

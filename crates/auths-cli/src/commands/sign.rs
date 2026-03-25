@@ -9,6 +9,7 @@ use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
 
 use super::artifact::sign::handle_sign as handle_artifact_sign;
+use crate::config::Capabilities;
 
 /// Represents the resolved target for a sign operation.
 pub enum SignTarget {
@@ -127,6 +128,7 @@ pub fn handle_sign_unified(
     repo_opt: Option<PathBuf>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Result<()> {
     match parse_sign_target(&cmd.target) {
         SignTarget::Artifact(path) => {
@@ -144,6 +146,7 @@ pub fn handle_sign_unified(
                 repo_opt,
                 passphrase_provider,
                 env_config,
+                caps,
             )
         }
         SignTarget::CommitRange(range) => sign_commit_range(&range),
@@ -157,6 +160,7 @@ impl crate::commands::executable::ExecutableCommand for SignCommand {
             ctx.repo_path.clone(),
             ctx.passphrase_provider.clone(),
             &ctx.env_config,
+            &ctx.caps,
         )
     }
 }

@@ -327,6 +327,7 @@ dependencies = [
  "axum",
  "base64",
  "bs58",
+ "capsec",
  "chrono",
  "clap",
  "clap_complete",
@@ -511,6 +512,7 @@ dependencies = [
  "auths-sdk",
  "auths-test-utils",
  "auths-verifier",
+ "capsec",
  "chrono",
  "git2",
  "log",
@@ -526,6 +528,7 @@ dependencies = [
  "auths-core",
  "auths-verifier",
  "axum",
+ "capsec",
  "chrono",
  "futures-util",
  "hex",
@@ -656,7 +659,7 @@ dependencies = [
  "git2",
  "json-canon",
  "radicle-core",
- "radicle-crypto",
+ "radicle-crypto 0.14.0",
  "ring",
  "serde",
  "serde_json",
@@ -760,6 +763,7 @@ name = "auths-test-utils"
 version = "0.0.1-rc.13"
 dependencies = [
  "auths-crypto",
+ "capsec",
  "git2",
  "ring",
  "tempfile",
@@ -1572,6 +1576,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "capsec"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33f46a167f8abcb16872b6ab918a53a565fa09f86e58d2269ef392e62e729dd4"
+dependencies = [
+ "capsec-core",
+ "capsec-macro",
+ "capsec-std",
+ "capsec-tokio",
+]
+
+[[package]]
+name = "capsec-core"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b849841dec32ff1bcd22ad5828ef69c501f0c2ef7a14d1a0a79ec7e6b78b396"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "capsec-macro"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50cc06cc5ccec28200116079e0304c5706306c47893292e3fc3cb303437c9c2f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "capsec-std"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95c2e28daa003c97c70d2cc0e28bf59c945a2be739dc59989dbc585de012b915"
+dependencies = [
+ "capsec-core",
+]
+
+[[package]]
+name = "capsec-tokio"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6db60f2882b53675e73a78b68f2062c0548c50432254d12e01a419b206705506"
+dependencies = [
+ "capsec-core",
+ "tokio",
+]
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1800,7 +1855,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4907,7 +4962,7 @@ name = "radicle-core"
 version = "0.1.0"
 dependencies = [
  "multibase",
- "radicle-crypto",
+ "radicle-crypto 0.15.0",
  "radicle-oid",
  "schemars 1.2.1",
  "serde",
@@ -4917,6 +4972,20 @@ dependencies = [
 [[package]]
 name = "radicle-crypto"
 version = "0.14.0"
+source = "git+https://github.com/bordumb/heartwood?branch=dev-authsIntegration-1.6.1#5e9bd04e830d2a7227e6133832b7ef9c4385492d"
+dependencies = [
+ "amplify",
+ "ec25519",
+ "multibase",
+ "serde",
+ "signature 2.2.0",
+ "thiserror 2.0.18",
+ "zeroize",
+]
+
+[[package]]
+name = "radicle-crypto"
+version = "0.15.0"
 dependencies = [
  "amplify",
  "ec25519",
@@ -7280,7 +7349,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

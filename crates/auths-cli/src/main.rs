@@ -32,6 +32,8 @@ fn audit_action(command: &RootCommand) -> Option<&'static str> {
 fn run() -> Result<()> {
     env_logger::init();
 
+    let cap_root = capsec::root();
+
     let _telemetry = init_audit_sinks();
 
     let cli = AuthsCli::parse();
@@ -57,7 +59,7 @@ fn run() -> Result<()> {
         set_json_mode(true);
     }
 
-    let ctx = build_config(&cli)?;
+    let ctx = build_config(&cli, &cap_root)?;
 
     let command = match cli.command {
         Some(cmd) => cmd,

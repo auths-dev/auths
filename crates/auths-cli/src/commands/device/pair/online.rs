@@ -9,6 +9,7 @@ use indicatif::ProgressBar;
 
 use auths_infra_http::HttpPairingRelayClient;
 
+use crate::config::Capabilities;
 use crate::core::provider::CliPassphraseProvider;
 use crate::factories::storage::build_auths_context;
 
@@ -22,6 +23,7 @@ pub(crate) async fn handle_initiate_online(
     expiry_secs: u64,
     capabilities: &[String],
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Result<()> {
     let auths_dir = auths_core::paths::auths_home_with_config(env_config).unwrap_or_default();
 
@@ -35,7 +37,7 @@ pub(crate) async fn handle_initiate_online(
         dyn auths_core::signing::PassphraseProvider + Send + Sync,
     > = std::sync::Arc::new(CliPassphraseProvider::new());
 
-    let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider))
+    let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider), caps)
         .context("Failed to build auths context")?;
 
     let relay = HttpPairingRelayClient::new();

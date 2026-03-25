@@ -39,6 +39,7 @@ use auths_core::storage::passphrase_cache::{get_passphrase_cache, parse_duration
 use auths_sdk::workflows::signing::{
     CommitSigningContext, CommitSigningParams, CommitSigningWorkflow,
 };
+use capsec::SendCap;
 
 /// Auths SSH signing program for Git integration.
 ///
@@ -125,7 +126,11 @@ fn parse_key_identifier(key_file: &str) -> Result<String> {
     }
 }
 
-fn build_signing_context(alias: &str) -> Result<CommitSigningContext> {
+fn build_signing_context(
+    alias: &str,
+    fs_read: SendCap<capsec::FsRead>,
+    fs_write: SendCap<capsec::FsWrite>,
+) -> Result<CommitSigningContext> {
     let env_config = EnvironmentConfig::from_env();
 
     let keychain =
@@ -135,7 +140,8 @@ fn build_signing_context(alias: &str) -> Result<CommitSigningContext> {
         if let Some(passphrase) = env_config.keychain.passphrase.clone() {
             Arc::new(auths_core::PrefilledPassphraseProvider::new(&passphrase))
         } else {
-            let config = load_config(&FileConfigStore);
+            let store = FileConfigStore::new(fs_read, fs_write);
+            let config = load_config(&store);
             let cache = get_passphrase_cache(config.passphrase.biometric);
             let ttl_secs = config
                 .passphrase
@@ -260,6 +266,8 @@ fn run_delegate_to_ssh_keygen(args: &Args) -> Result<()> {
 }
 
 fn run_sign(args: &Args) -> Result<()> {
+    let cap_root = capsec::root();
+
     let file_arg = args
         .file_arg
         .as_deref()
@@ -279,7 +287,11 @@ fn run_sign(args: &Args) -> Result<()> {
 
     let repo_path = auths_id::storage::layout::resolve_repo_path(None).ok();
 
-    let ctx = build_signing_context(&alias)?;
+    let ctx = build_signing_context(
+        &alias,
+        cap_root.fs_read().make_send(),
+        cap_root.fs_write().make_send(),
+    )?;
     let mut params = CommitSigningParams::new(&alias, namespace, data).with_pubkey(pubkey);
     if let Some(path) = repo_path {
         params = params.with_repo_path(path);

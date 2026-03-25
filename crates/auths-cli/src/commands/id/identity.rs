@@ -16,6 +16,7 @@ use auths_verifier::{IdentityBundle, IdentityDID, Prefix};
 use clap::ValueEnum;
 
 use crate::commands::registry_overrides::RegistryOverrides;
+use crate::config::Capabilities;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
 /// JSON response for id show command.
@@ -255,6 +256,7 @@ pub fn handle_id(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
     now: chrono::DateTime<chrono::Utc>,
+    caps: &Capabilities,
 ) -> Result<()> {
     // Determine repo path using the passed Option
     let repo_path = layout::resolve_repo_path(repo_opt)?;
@@ -310,7 +312,7 @@ pub fn handle_id(
 
             let identity_storage_check = RegistryIdentityStorage::new(repo_path.clone());
             if repo_path.exists() {
-                match open_git_repo(&repo_path) {
+                match open_git_repo(&repo_path, caps) {
                     Ok(_repo) => {
                         println!("   Git repository found at {:?}.", repo_path);
                         if identity_storage_check.load_identity().is_ok() {
@@ -331,7 +333,7 @@ pub fn handle_id(
                             "   Path {:?} exists but is not a Git repository. Initializing...",
                             repo_path
                         );
-                        ensure_git_repo(&repo_path).map_err(|e| {
+                        ensure_git_repo(&repo_path, caps).map_err(|e| {
                             anyhow!(
                                 "Path {:?} exists but failed to initialize as Git repository: {}",
                                 repo_path,
@@ -343,7 +345,7 @@ pub fn handle_id(
                 }
             } else {
                 println!("   Initializing Git repository at {:?}...", repo_path);
-                ensure_git_repo(&repo_path).map_err(|e| {
+                ensure_git_repo(&repo_path, caps).map_err(|e| {
                     anyhow!(
                         "Failed to initialize Git repository at {:?}: {}",
                         repo_path,
@@ -639,12 +641,17 @@ pub fn handle_id(
         }
 
         IdSubcommand::Register { registry } => {
-            super::register::handle_register(&repo_path, &registry)
+            super::register::handle_register(&repo_path, &registry, caps)
         }
 
-        IdSubcommand::Claim(claim_cmd) => {
-            super::claim::handle_claim(&claim_cmd, &repo_path, passphrase_provider, env_config, now)
-        }
+        IdSubcommand::Claim(claim_cmd) => super::claim::handle_claim(
+            &claim_cmd,
+            &repo_path,
+            passphrase_provider,
+            env_config,
+            now,
+            caps,
+        ),
 
         IdSubcommand::Migrate(migrate_cmd) => super::migrate::handle_migrate(migrate_cmd, now),
 

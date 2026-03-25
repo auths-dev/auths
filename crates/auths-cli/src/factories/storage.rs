@@ -17,32 +17,36 @@ use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 
+use crate::config::Capabilities;
+
 /// Opens an existing Git repository at the given path.
 ///
 /// Args:
 /// * `path`: Filesystem path to the repository root.
+/// * `caps`: Granted capability tokens for filesystem I/O.
 ///
 /// Usage:
 /// ```ignore
 /// use auths_cli::factories::storage::open_git_repo;
 ///
-/// let repo = open_git_repo(Path::new("/home/user/.auths"))?;
+/// let repo = open_git_repo(Path::new("/home/user/.auths"), &caps)?;
 /// ```
-pub fn open_git_repo(path: &Path) -> Result<GitRepo, StorageError> {
-    GitRepo::open(path)
+pub fn open_git_repo(path: &Path, caps: &Capabilities) -> Result<GitRepo, StorageError> {
+    GitRepo::open(path, caps.fs_read.clone(), caps.fs_write.clone())
 }
 
 /// Initializes a new Git repository at the given path.
 ///
 /// Args:
 /// * `path`: Filesystem path where the repository will be created.
+/// * `caps`: Granted capability tokens for filesystem I/O.
 ///
 /// Usage:
 /// ```ignore
-/// let repo = init_git_repo(Path::new("/tmp/new-repo"))?;
+/// let repo = init_git_repo(Path::new("/tmp/new-repo"), &caps)?;
 /// ```
-pub fn init_git_repo(path: &Path) -> Result<GitRepo, StorageError> {
-    GitRepo::init(path)
+pub fn init_git_repo(path: &Path, caps: &Capabilities) -> Result<GitRepo, StorageError> {
+    GitRepo::init(path, caps.fs_read.clone(), caps.fs_write.clone())
 }
 
 /// Opens an existing Git repository or initializes a new one.
@@ -53,21 +57,22 @@ pub fn init_git_repo(path: &Path) -> Result<GitRepo, StorageError> {
 ///
 /// Args:
 /// * `path`: Filesystem path to open or create a repository at.
+/// * `caps`: Granted capability tokens for filesystem I/O.
 ///
 /// Usage:
 /// ```ignore
-/// let repo = ensure_git_repo(Path::new("/data/auths"))?;
+/// let repo = ensure_git_repo(Path::new("/data/auths"), &caps)?;
 /// ```
-pub fn ensure_git_repo(path: &Path) -> Result<GitRepo, StorageError> {
+pub fn ensure_git_repo(path: &Path, caps: &Capabilities) -> Result<GitRepo, StorageError> {
     if path.exists() {
-        match GitRepo::open(path) {
+        match GitRepo::open(path, caps.fs_read.clone(), caps.fs_write.clone()) {
             Ok(repo) => Ok(repo),
-            Err(_) => GitRepo::init(path),
+            Err(_) => GitRepo::init(path, caps.fs_read.clone(), caps.fs_write.clone()),
         }
     } else {
-        std::fs::create_dir_all(path)
+        capsec::fs::create_dir_all(path, &caps.fs_write)
             .map_err(|e| StorageError::Io(format!("failed to create directory: {}", e)))?;
-        GitRepo::init(path)
+        GitRepo::init(path, caps.fs_read.clone(), caps.fs_write.clone())
     }
 }
 
@@ -102,15 +107,17 @@ pub fn discover_git_repo(start_path: &Path) -> Result<std::path::PathBuf, Storag
 /// * `repo_path`: Path to the auths registry Git repository.
 /// * `env_config`: Environment configuration used to select the keychain backend.
 /// * `passphrase_provider`: Optional passphrase provider; `None` uses the keychain default.
+/// * `_caps`: Granted capability tokens for adapter I/O (threaded to adapters in later tasks).
 ///
 /// Usage:
 /// ```ignore
-/// let ctx = build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
+/// let ctx = build_auths_context(&repo_path, &env_config, Some(passphrase_provider), &caps)?;
 /// ```
 pub fn build_auths_context(
     repo_path: &Path,
     env_config: &EnvironmentConfig,
     passphrase_provider: Option<Arc<dyn PassphraseProvider + Send + Sync>>,
+    _caps: &Capabilities,
 ) -> Result<AuthsContext> {
     let backend: Arc<dyn RegistryBackend + Send + Sync> = Arc::new(
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(repo_path)),

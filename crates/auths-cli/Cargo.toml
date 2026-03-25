@@ -72,6 +72,7 @@ url = "2.5"
 which = "8.0.0"
 open = "5"
 indicatif = "0.18.4"
+capsec.workspace = true
 
 # LAN pairing (optional, default-on)
 auths-pairing-daemon = { workspace = true, optional = true }

@@ -1,3 +1,4 @@
+use capsec::SendCap;
 use std::path::PathBuf;
 
 use auths_sdk::ports::git_config::{GitConfigError, GitConfigProvider};
@@ -5,25 +6,30 @@ use auths_sdk::ports::git_config::{GitConfigError, GitConfigProvider};
 /// System adapter for git signing configuration.
 ///
 /// Runs `git config <scope> <key> <value>` via `std::process::Command`.
-/// Construct with `SystemGitConfigProvider::global()` or
-/// `SystemGitConfigProvider::local(repo_path)`.
+/// Holds a `SendCap<Spawn>` to document subprocess execution.
 ///
 /// Usage:
 /// ```ignore
-/// let provider = SystemGitConfigProvider::global();
+/// let cap_root = capsec::test_root();
+/// let provider = SystemGitConfigProvider::global(cap_root.spawn().make_send());
 /// provider.set("gpg.format", "ssh")?;
 /// ```
 pub struct SystemGitConfigProvider {
     scope_flag: &'static str,
     working_dir: Option<PathBuf>,
+    _spawn_cap: SendCap<capsec::Spawn>,
 }
 
 impl SystemGitConfigProvider {
     /// Creates a provider that sets git config in global scope.
-    pub fn global() -> Self {
+    ///
+    /// Args:
+    /// * `spawn_cap`: Capability token proving the caller has subprocess execution permission.
+    pub fn global(spawn_cap: SendCap<capsec::Spawn>) -> Self {
         Self {
             scope_flag: "--global",
             working_dir: None,
+            _spawn_cap: spawn_cap,
         }
     }
 
@@ -31,10 +37,12 @@ impl SystemGitConfigProvider {
     ///
     /// Args:
     /// * `repo_path`: Path to the git repository to configure.
-    pub fn local(repo_path: PathBuf) -> Self {
+    /// * `spawn_cap`: Capability token proving the caller has subprocess execution permission.
+    pub fn local(repo_path: PathBuf, spawn_cap: SendCap<capsec::Spawn>) -> Self {
         Self {
             scope_flag: "--local",
             working_dir: Some(repo_path),
+            _spawn_cap: spawn_cap,
         }
     }
 }
