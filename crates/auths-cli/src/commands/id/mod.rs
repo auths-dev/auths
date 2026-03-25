@@ -25,6 +25,7 @@ impl ExecutableCommand for IdCommand {
             ctx.passphrase_provider.clone(),
             &ctx.env_config,
             chrono::Utc::now(),
+            &ctx.caps,
         )
     }
 }

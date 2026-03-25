@@ -9,6 +9,7 @@ use auths_sdk::workflows::platform::{GitHubClaimConfig, claim_github_identity};
 use clap::{Parser, Subcommand};
 use console::style;
 
+use crate::config::Capabilities;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
@@ -44,12 +45,13 @@ pub fn handle_claim(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
     now: chrono::DateTime<chrono::Utc>,
+    caps: &Capabilities,
 ) -> Result<()> {
     let registry_url = match &cmd.platform {
         ClaimPlatform::Github { registry } => registry.clone(),
     };
 
-    let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))
+    let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider), caps)
         .context("Failed to build auths context")?;
 
     let oauth = HttpGitHubOAuthProvider::new();

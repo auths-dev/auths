@@ -12,6 +12,8 @@ use anyhow::Result;
 use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
 
+use crate::config::Capabilities;
+
 #[derive(Args, Debug, Clone)]
 #[command(about = "Sign and verify arbitrary artifacts (tarballs, binaries, etc.).")]
 pub struct ArtifactCommand {
@@ -106,6 +108,7 @@ pub fn handle_artifact(
     repo_opt: Option<PathBuf>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Result<()> {
     match cmd.command {
         ArtifactSubcommand::Sign {
@@ -133,13 +136,14 @@ pub fn handle_artifact(
                 repo_opt,
                 passphrase_provider,
                 env_config,
+                caps,
             )
         }
         ArtifactSubcommand::Publish {
             signature,
             package,
             registry,
-        } => publish::handle_publish(&signature, package.as_deref(), &registry),
+        } => publish::handle_publish(&signature, package.as_deref(), &registry, caps),
         ArtifactSubcommand::Verify {
             file,
             signature,
@@ -156,6 +160,7 @@ pub fn handle_artifact(
                 witness_receipts,
                 &witness_keys,
                 witness_threshold,
+                caps,
             ))
         }
     }
@@ -168,6 +173,7 @@ impl crate::commands::executable::ExecutableCommand for ArtifactCommand {
             ctx.repo_path.clone(),
             ctx.passphrase_provider.clone(),
             &ctx.env_config,
+            &ctx.caps,
         )
     }
 }

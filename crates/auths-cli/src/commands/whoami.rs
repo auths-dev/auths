@@ -5,7 +5,7 @@ use auths_storage::git::RegistryIdentityStorage;
 use clap::Parser;
 use serde::Serialize;
 
-use crate::config::CliConfig;
+use crate::config::{Capabilities, CliConfig};
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
 /// Show the current identity on this machine.
@@ -20,10 +20,14 @@ struct WhoamiResponse {
     label: Option<String>,
 }
 
-pub fn handle_whoami(_cmd: WhoamiCommand, repo: Option<std::path::PathBuf>) -> Result<()> {
+pub fn handle_whoami(
+    _cmd: WhoamiCommand,
+    repo: Option<std::path::PathBuf>,
+    caps: &Capabilities,
+) -> Result<()> {
     let repo_path = layout::resolve_repo_path(repo).map_err(|e| anyhow!(e))?;
 
-    if crate::factories::storage::open_git_repo(&repo_path).is_err() {
+    if crate::factories::storage::open_git_repo(&repo_path, caps).is_err() {
         if is_json_mode() {
             JsonResponse::<()>::error(
                 "whoami",
@@ -71,6 +75,6 @@ pub fn handle_whoami(_cmd: WhoamiCommand, repo: Option<std::path::PathBuf>) -> R
 
 impl crate::commands::executable::ExecutableCommand for WhoamiCommand {
     fn execute(&self, ctx: &CliConfig) -> Result<()> {
-        handle_whoami(self.clone(), ctx.repo_path.clone())
+        handle_whoami(self.clone(), ctx.repo_path.clone(), &ctx.caps)
     }
 }

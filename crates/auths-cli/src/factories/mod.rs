@@ -14,27 +14,31 @@ use auths_telemetry::TelemetryShutdown;
 use auths_telemetry::config::{build_sinks_from_config, load_audit_config};
 use auths_telemetry::sinks::composite::CompositeSink;
 
+use capsec::CapRoot;
+
 use crate::cli::AuthsCli;
-use crate::config::{CliConfig, OutputFormat};
+use crate::config::{Capabilities, CliConfig, OutputFormat};
 use crate::core::provider::{CliPassphraseProvider, PrefilledPassphraseProvider};
 
 /// Builds the full CLI configuration from parsed arguments.
 ///
-/// Constructs the passphrase provider and output settings.
+/// Constructs the passphrase provider, output settings, and capability tokens.
 /// This is the composition root — the only place where concrete adapter
 /// types are instantiated.
 ///
 /// Args:
 /// * `cli`: The parsed CLI arguments.
+/// * `cap_root`: The capability root created at the CLI entry point.
 ///
 /// Usage:
 /// ```ignore
 /// use auths_cli::factories::build_config;
 ///
+/// let cap_root = capsec::root();
 /// let cli = AuthsCli::parse();
-/// let config = build_config(&cli)?;
+/// let config = build_config(&cli, &cap_root)?;
 /// ```
-pub fn build_config(cli: &AuthsCli) -> Result<CliConfig> {
+pub fn build_config(cli: &AuthsCli, cap_root: &CapRoot) -> Result<CliConfig> {
     let is_json = cli.json || matches!(cli.format, OutputFormat::Json);
     let output_format = if is_json {
         OutputFormat::Json
@@ -59,12 +63,20 @@ pub fn build_config(cli: &AuthsCli) -> Result<CliConfig> {
 
     let is_interactive = std::io::stdout().is_terminal();
 
+    let caps = Capabilities {
+        fs_read: cap_root.fs_read().make_send(),
+        fs_write: cap_root.fs_write().make_send(),
+        net_connect: cap_root.net_connect().make_send(),
+        spawn: cap_root.spawn().make_send(),
+    };
+
     Ok(CliConfig {
         repo_path: cli.repo.clone(),
         output_format,
         is_interactive,
         passphrase_provider,
         env_config,
+        caps,
     })
 }
 

@@ -18,6 +18,7 @@ use super::helpers::{
     check_git_version, detect_ci_environment, get_auths_repo_path, select_agent_capabilities,
 };
 use super::prompts::{prompt_for_alias, prompt_for_conflict_policy, prompt_for_git_scope};
+use crate::config::Capabilities;
 use crate::ux::format::Output;
 
 pub(crate) fn gather_developer_config(
@@ -130,6 +131,7 @@ pub(crate) fn submit_registration(
     proof_url: Option<String>,
     skip: bool,
     out: &Output,
+    caps: &Capabilities,
 ) -> Option<String> {
     if skip {
         out.print_info("Registration skipped (--skip-registration)");
@@ -153,7 +155,7 @@ pub(crate) fn submit_registration(
     let attestation_store = Arc::new(RegistryAttestationStorage::new(repo_path));
     let attestation_source: Arc<dyn AttestationSource + Send + Sync> = attestation_store;
 
-    let registry_client = HttpRegistryClient::new();
+    let registry_client = HttpRegistryClient::new(caps.net_connect.clone());
 
     match rt.block_on(auths_sdk::registration::register_identity(
         identity_storage,

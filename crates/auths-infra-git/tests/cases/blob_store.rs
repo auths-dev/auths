@@ -3,7 +3,8 @@ use auths_infra_git::{GitBlobStore, GitRepo};
 
 fn setup() -> (tempfile::TempDir, GitRepo) {
     let (dir, _repo) = auths_test_utils::git::init_test_repo();
-    let git_repo = GitRepo::open(dir.path()).unwrap();
+    let caps = auths_test_utils::caps::test_caps();
+    let git_repo = GitRepo::open(dir.path(), caps.fs_read, caps.fs_write).unwrap();
     (dir, git_repo)
 }
 

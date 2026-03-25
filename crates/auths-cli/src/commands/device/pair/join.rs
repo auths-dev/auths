@@ -10,6 +10,7 @@ use auths_pairing_protocol::sas;
 use auths_sdk::pairing::{load_device_signing_material, validate_short_code};
 use console::style;
 
+use crate::config::Capabilities;
 use crate::core::provider::CliPassphraseProvider;
 use crate::factories::storage::build_auths_context;
 
@@ -21,6 +22,7 @@ pub(crate) async fn handle_join(
     code: &str,
     registry: &str,
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Result<()> {
     let normalized = validate_short_code(code).map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -54,7 +56,7 @@ pub(crate) async fn handle_join(
 
     let key_spinner = create_wait_spinner(&format!("{GEAR}Loading local device key..."));
 
-    let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider))
+    let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider), caps)
         .context("Failed to build auths context")?;
 
     let material = load_device_signing_material(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;

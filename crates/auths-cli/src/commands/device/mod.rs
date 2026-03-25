@@ -12,7 +12,7 @@ use anyhow::Result;
 
 impl ExecutableCommand for PairCommand {
     fn execute(&self, ctx: &CliConfig) -> Result<()> {
-        handle_pair(self.clone(), &ctx.env_config)
+        handle_pair(self.clone(), &ctx.env_config, &ctx.caps)
     }
 }
 
@@ -27,6 +27,7 @@ impl ExecutableCommand for DeviceCommand {
             self.overrides.attestation_blob.clone(),
             ctx.passphrase_provider.clone(),
             &ctx.env_config,
+            &ctx.caps,
         )
     }
 }

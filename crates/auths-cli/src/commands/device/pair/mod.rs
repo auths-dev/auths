@@ -17,6 +17,8 @@ use auths_core::config::EnvironmentConfig;
 use chrono::Utc;
 use clap::Parser;
 
+use crate::config::Capabilities;
+
 /// Default registry URL for local development.
 #[cfg(not(feature = "lan-pairing"))]
 const DEFAULT_REGISTRY: &str = "http://localhost:3000";
@@ -73,7 +75,11 @@ pub struct PairCommand {
 /// | `pair --join CODE`           | LAN join: mDNS discover -> join       |
 /// | `pair --join CODE --registry`| Online join (existing)                |
 /// | `pair --offline`             | Offline mode (no network)             |
-pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<()> {
+pub fn handle_pair(
+    cmd: PairCommand,
+    env_config: &EnvironmentConfig,
+    caps: &Capabilities,
+) -> Result<()> {
     #[allow(clippy::disallowed_methods)]
     let now = Utc::now();
     match (&cmd.join, &cmd.registry, cmd.offline) {
@@ -85,21 +91,27 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
         // Join with explicit registry -> online join
         (Some(code), Some(registry), _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(join::handle_join(now, code, registry, env_config))
+            rt.block_on(join::handle_join(now, code, registry, env_config, caps))
         }
 
         // Join without registry -> LAN join via mDNS
         #[cfg(feature = "lan-pairing")]
         (Some(code), None, _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(lan::handle_join_lan(now, code, env_config))
+            rt.block_on(lan::handle_join_lan(now, code, env_config, caps))
         }
 
         // Join without registry and no LAN feature -> use default registry
         #[cfg(not(feature = "lan-pairing"))]
         (Some(code), None, _) => {
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(join::handle_join(now, code, DEFAULT_REGISTRY, env_config))
+            rt.block_on(join::handle_join(
+                now,
+                code,
+                DEFAULT_REGISTRY,
+                env_config,
+                caps,
+            ))
         }
 
         // Initiate with explicit registry -> online mode
@@ -112,6 +124,7 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,
+                caps,
             ))
         }
 
@@ -140,6 +153,7 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,
+                caps,
             ))
         }
     }

@@ -1,5 +1,6 @@
 //! Status overview command for Auths.
 
+use crate::config::Capabilities;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::{Result, anyhow};
 use auths_core::config::EnvironmentConfig;
@@ -85,12 +86,13 @@ pub fn handle_status(
     _cmd: StatusCommand,
     repo: Option<PathBuf>,
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Result<()> {
     let now = Utc::now();
     let repo_path = resolve_repo_path(repo)?;
-    let identity = load_identity_status(&repo_path, env_config);
+    let identity = load_identity_status(&repo_path, env_config, caps);
     let agent = get_agent_status();
-    let devices = load_devices_summary(&repo_path, now);
+    let devices = load_devices_summary(&repo_path, now, caps);
 
     let report = StatusReport {
         identity,
@@ -246,8 +248,9 @@ fn display_device_expiry(expires_at: Option<DateTime<Utc>>, out: &Output, now: D
 fn load_identity_status(
     repo_path: &PathBuf,
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Option<IdentityStatus> {
-    if crate::factories::storage::open_git_repo(repo_path).is_err() {
+    if crate::factories::storage::open_git_repo(repo_path, caps).is_err() {
         return None;
     }
 
@@ -312,7 +315,11 @@ fn get_agent_status() -> AgentStatusInfo {
 }
 
 /// Load devices summary from attestations.
-fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSummary {
+fn load_devices_summary(
+    repo_path: &PathBuf,
+    now: DateTime<Utc>,
+    caps: &Capabilities,
+) -> DevicesSummary {
     let empty = DevicesSummary {
         linked: 0,
         revoked: 0,
@@ -320,7 +327,7 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
         devices_detail: Vec::new(),
     };
 
-    if crate::factories::storage::open_git_repo(repo_path).is_err() {
+    if crate::factories::storage::open_git_repo(repo_path, caps).is_err() {
         return empty;
     }
 
@@ -437,7 +444,12 @@ fn is_process_running(_pid: u32) -> bool {
 
 impl crate::commands::executable::ExecutableCommand for StatusCommand {
     fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
-        handle_status(self.clone(), ctx.repo_path.clone(), &ctx.env_config)
+        handle_status(
+            self.clone(),
+            ctx.repo_path.clone(),
+            &ctx.env_config,
+            &ctx.caps,
+        )
     }
 }
 

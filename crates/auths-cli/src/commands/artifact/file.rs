@@ -15,11 +15,12 @@ mod tests {
 
     #[test]
     fn file_artifact_digest_is_deterministic() {
+        let cap_root = capsec::test_root();
         let mut tmp = NamedTempFile::new().unwrap();
         tmp.write_all(b"hello world").unwrap();
         tmp.flush().unwrap();
 
-        let a = FileArtifact::new(tmp.path());
+        let a = FileArtifact::new(tmp.path(), cap_root.fs_read().make_send());
         let d1 = a.digest().unwrap();
         let d2 = a.digest().unwrap();
 
@@ -33,11 +34,12 @@ mod tests {
 
     #[test]
     fn file_artifact_metadata_includes_name_and_size() {
+        let cap_root = capsec::test_root();
         let mut tmp = NamedTempFile::new().unwrap();
         tmp.write_all(b"some content").unwrap();
         tmp.flush().unwrap();
 
-        let a = FileArtifact::new(tmp.path());
+        let a = FileArtifact::new(tmp.path(), cap_root.fs_read().make_send());
         let meta = a.metadata().unwrap();
 
         assert_eq!(meta.artifact_type, "file");
@@ -47,7 +49,11 @@ mod tests {
 
     #[test]
     fn file_artifact_nonexistent_returns_error() {
-        let a = FileArtifact::new(Path::new("/nonexistent/path/to/file.txt"));
+        let cap_root = capsec::test_root();
+        let a = FileArtifact::new(
+            Path::new("/nonexistent/path/to/file.txt"),
+            cap_root.fs_read().make_send(),
+        );
         assert!(a.digest().is_err());
     }
 }

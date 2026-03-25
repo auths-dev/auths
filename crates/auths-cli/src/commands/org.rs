@@ -241,7 +241,7 @@ pub fn handle_org(
 
             let identity_storage_check = RegistryIdentityStorage::new(repo_path.clone());
             if repo_path.exists() {
-                match open_git_repo(&repo_path) {
+                match open_git_repo(&repo_path, &ctx.caps) {
                     Ok(_) => {
                         println!("   Git repository found.");
                         if identity_storage_check.load_identity().is_ok() {
@@ -253,13 +253,13 @@ pub fn handle_org(
                     }
                     Err(_) => {
                         println!("   Path exists but is not a Git repo. Initializing...");
-                        ensure_git_repo(&repo_path)
+                        ensure_git_repo(&repo_path, &ctx.caps)
                             .context("Failed to initialize Git repository")?;
                     }
                 }
             } else {
                 println!("   Creating Git repo directory...");
-                ensure_git_repo(&repo_path)
+                ensure_git_repo(&repo_path, &ctx.caps)
                     .context("Failed to create and initialize Git repository")?;
             }
 

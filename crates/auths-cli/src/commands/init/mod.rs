@@ -188,15 +188,18 @@ fn run_developer_setup(
     }
     let git_config_provider: Option<Box<dyn GitConfigProvider>> = match &config.git_signing_scope {
         GitSigningScope::Skip => None,
-        GitSigningScope::Global => Some(Box::new(SystemGitConfigProvider::global())),
-        GitSigningScope::Local { repo_path } => {
-            Some(Box::new(SystemGitConfigProvider::local(repo_path.clone())))
-        }
+        GitSigningScope::Global => Some(Box::new(SystemGitConfigProvider::global(
+            ctx.caps.spawn.clone(),
+        ))),
+        GitSigningScope::Local { repo_path } => Some(Box::new(SystemGitConfigProvider::local(
+            repo_path.clone(),
+            ctx.caps.spawn.clone(),
+        ))),
     };
 
     // EXECUTE
     guide.section("Creating Identity");
-    let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
+    let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None, &ctx.caps)?;
     let keychain_arc: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
     let signer = StorageSigner::new(Arc::clone(&keychain_arc));
     let result = initialize(
@@ -225,6 +228,7 @@ fn run_developer_setup(
             Arc::clone(&ctx.passphrase_provider),
             &ctx.env_config,
             now,
+            &ctx.caps,
         )? {
             Some((url, _username)) => {
                 out.print_success(&format!("Proof anchored: {}", url));
@@ -252,6 +256,7 @@ fn run_developer_setup(
         proof_url,
         cmd.skip_registration,
         out,
+        &ctx.caps,
     );
     display_developer_result(out, &result, registered.as_deref());
 
@@ -269,7 +274,7 @@ fn run_ci_setup(out: &Output, ctx: &CliConfig) -> Result<()> {
 
     // EXECUTE
     guide.section("Creating CI Identity");
-    let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
+    let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None, &ctx.caps)?;
     let keychain_arc: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
     let signer = StorageSigner::new(Arc::clone(&keychain_arc));
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
@@ -314,7 +319,7 @@ fn run_agent_setup(
     // EXECUTE
     guide.section("Creating Agent Identity");
     ensure_registry_dir(&registry_path)?;
-    let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
+    let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None, &ctx.caps)?;
     let keychain_arc: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
     let signer = StorageSigner::new(Arc::clone(&keychain_arc));
     let result = initialize(

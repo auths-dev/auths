@@ -8,6 +8,7 @@ use auths_core::storage::keychain::KeyAlias;
 use auths_sdk::signing::{ArtifactSigningParams, SigningKeyMaterial, sign_artifact};
 
 use super::file::FileArtifact;
+use crate::config::Capabilities;
 use crate::factories::storage::build_auths_context;
 
 /// Execute the `artifact sign` command.
@@ -22,13 +23,14 @@ pub fn handle_sign(
     repo_opt: Option<PathBuf>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    caps: &Capabilities,
 ) -> Result<()> {
     let repo_path = auths_id::storage::layout::resolve_repo_path(repo_opt)?;
 
-    let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
+    let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider), caps)?;
 
     let params = ArtifactSigningParams {
-        artifact: Arc::new(FileArtifact::new(file)),
+        artifact: Arc::new(FileArtifact::new(file, caps.fs_read.clone())),
         identity_key: identity_key_alias
             .map(|a| SigningKeyMaterial::Alias(KeyAlias::new_unchecked(a))),
         device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(device_key_alias)),

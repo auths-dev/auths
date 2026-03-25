@@ -17,6 +17,7 @@ use auths_verifier::{
 use super::core::{ArtifactMetadata, ArtifactSource};
 use super::file::FileArtifact;
 use crate::commands::verify_helpers::parse_witness_keys;
+use crate::config::Capabilities;
 use crate::ux::format::is_json_mode;
 
 /// JSON output for `artifact verify --json`.
@@ -50,6 +51,7 @@ pub async fn handle_verify(
     witness_receipts: Option<PathBuf>,
     witness_keys: &[String],
     witness_threshold: usize,
+    caps: &Capabilities,
 ) -> Result<()> {
     let file_str = file.to_string_lossy().to_string();
 
@@ -115,7 +117,7 @@ pub async fn handle_verify(
     };
 
     // 4. Compute file digest and compare
-    let file_artifact = FileArtifact::new(file);
+    let file_artifact = FileArtifact::new(file, caps.fs_read.clone());
     let file_digest = match file_artifact.digest() {
         Ok(d) => d,
         Err(e) => {

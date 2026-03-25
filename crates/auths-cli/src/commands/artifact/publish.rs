@@ -10,6 +10,7 @@ use auths_transparency::OfflineBundle;
 use auths_verifier::core::ResourceId;
 use serde::Serialize;
 
+use crate::config::Capabilities;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
 #[derive(Serialize)]
@@ -31,9 +32,19 @@ struct PublishJsonResponse {
 /// ```ignore
 /// handle_publish(Path::new("artifact.auths.json"), Some("npm:react@18.3.0"), "https://public.auths.dev")?;
 /// ```
-pub fn handle_publish(signature_path: &Path, package: Option<&str>, registry: &str) -> Result<()> {
+pub fn handle_publish(
+    signature_path: &Path,
+    package: Option<&str>,
+    registry: &str,
+    caps: &Capabilities,
+) -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("Failed to create async runtime")?;
-    rt.block_on(handle_publish_async(signature_path, package, registry))
+    rt.block_on(handle_publish_async(
+        signature_path,
+        package,
+        registry,
+        caps,
+    ))
 }
 
 fn validate_package_identifier(package: &str) -> Result<String> {
@@ -60,6 +71,7 @@ async fn handle_publish_async(
     signature_path: &Path,
     package: Option<&str>,
     registry: &str,
+    caps: &Capabilities,
 ) -> Result<()> {
     if !signature_path.exists() {
         bail!(
@@ -99,8 +111,11 @@ async fn handle_publish_async(
     };
 
     let registry_url = registry.trim_end_matches('/').to_string();
-    let registry_client =
-        HttpRegistryClient::new_with_timeouts(Duration::from_secs(30), Duration::from_secs(60));
+    let registry_client = HttpRegistryClient::new_with_timeouts(
+        Duration::from_secs(30),
+        Duration::from_secs(60),
+        caps.net_connect.clone(),
+    );
     let config = ArtifactPublishConfig {
         attestation,
         package_name,

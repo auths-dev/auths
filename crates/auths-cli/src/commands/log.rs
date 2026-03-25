@@ -8,7 +8,7 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use super::executable::ExecutableCommand;
-use crate::config::CliConfig;
+use crate::config::{Capabilities, CliConfig};
 use crate::ux::format::{JsonResponse, is_json_mode};
 
 #[derive(Args, Debug, Clone)]
@@ -53,21 +53,24 @@ struct VerifyResult {
 }
 
 impl ExecutableCommand for LogCommand {
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
         let rt = tokio::runtime::Runtime::new().context("Failed to create async runtime")?;
         rt.block_on(async {
             match &self.command {
-                LogSubcommand::Inspect(args) => handle_inspect(args).await,
-                LogSubcommand::Verify(args) => handle_verify(args).await,
+                LogSubcommand::Inspect(args) => handle_inspect(args, &ctx.caps).await,
+                LogSubcommand::Verify(args) => handle_verify(args, &ctx.caps).await,
             }
         })
     }
 }
 
-async fn handle_inspect(args: &InspectArgs) -> Result<()> {
+async fn handle_inspect(args: &InspectArgs, caps: &Capabilities) -> Result<()> {
     let registry_url = args.registry.trim_end_matches('/');
-    let client =
-        HttpRegistryClient::new_with_timeouts(Duration::from_secs(30), Duration::from_secs(60));
+    let client = HttpRegistryClient::new_with_timeouts(
+        Duration::from_secs(30),
+        Duration::from_secs(60),
+        caps.net_connect.clone(),
+    );
 
     let path = format!("v1/log/entries/{}", args.sequence);
     let response_bytes = client
@@ -120,7 +123,7 @@ async fn handle_inspect(args: &InspectArgs) -> Result<()> {
 }
 
 #[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
-async fn handle_verify(args: &VerifyArgs) -> Result<()> {
+async fn handle_verify(args: &VerifyArgs, caps: &Capabilities) -> Result<()> {
     let cache_path = dirs::home_dir()
         .map(|h| h.join(".auths").join("log_checkpoint.json"))
         .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
@@ -147,8 +150,11 @@ async fn handle_verify(args: &VerifyArgs) -> Result<()> {
     };
 
     let registry_url = args.registry.trim_end_matches('/');
-    let client =
-        HttpRegistryClient::new_with_timeouts(Duration::from_secs(30), Duration::from_secs(60));
+    let client = HttpRegistryClient::new_with_timeouts(
+        Duration::from_secs(30),
+        Duration::from_secs(60),
+        caps.net_connect.clone(),
+    );
 
     let response_bytes = client
         .fetch_registry_data(registry_url, "v1/log/checkpoint")
