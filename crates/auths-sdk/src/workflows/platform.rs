@@ -207,6 +207,58 @@ pub async fn claim_github_identity<
         .await
 }
 
+/// Configuration for claiming an npm platform identity.
+pub struct NpmClaimConfig {
+    /// Registry URL to submit the claim to.
+    pub registry_url: String,
+}
+
+/// Claims an npm platform identity by verifying an npm access token.
+///
+/// Args:
+/// * `npm_username`: The verified npm username (from `HttpNpmAuthProvider::verify_token`).
+/// * `registry_claim`: Client for submitting the claim to the auths registry.
+/// * `ctx`: Auths context with identity storage and signing keys.
+/// * `config`: npm claim configuration (registry URL).
+/// * `now`: Current time for timestamp in the claim.
+///
+/// Usage:
+/// ```ignore
+/// let response = claim_npm_identity("bordumb", &registry_client, &ctx, config, now).await?;
+/// ```
+pub async fn claim_npm_identity<C: RegistryClaimClient>(
+    npm_username: &str,
+    npm_token: &str,
+    registry_claim: &C,
+    ctx: &AuthsContext,
+    config: NpmClaimConfig,
+    now: DateTime<Utc>,
+) -> Result<ClaimResponse, PlatformError> {
+    let controller_did = crate::pairing::load_controller_did(ctx.identity_storage.as_ref())
+        .map_err(|e| PlatformError::Platform {
+            message: e.to_string(),
+        })?;
+
+    let key_alias = resolve_signing_key_alias(ctx, &controller_did)?;
+
+    let claim_json =
+        create_signed_platform_claim("npm", npm_username, &controller_did, &key_alias, ctx, now)
+            .map_err(|e| PlatformError::Platform {
+                message: e.to_string(),
+            })?;
+
+    // npm has no Gist equivalent. Encode both the npm token (for server-side
+    // verification via npm whoami) and the signed claim (for signature verification).
+    // The server detects the "npm-token:" prefix, verifies the token, then discards it.
+    let encoded_claim = URL_SAFE_NO_PAD.encode(claim_json.as_bytes());
+    let encoded_token = URL_SAFE_NO_PAD.encode(npm_token.as_bytes());
+    let proof_url = format!("npm-token:{encoded_token}:{encoded_claim}");
+
+    registry_claim
+        .submit_claim(&config.registry_url, &controller_did, &proof_url)
+        .await
+}
+
 fn resolve_signing_key_alias(
     ctx: &AuthsContext,
     controller_did: &str,

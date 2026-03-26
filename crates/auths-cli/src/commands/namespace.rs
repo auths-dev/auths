@@ -3,12 +3,15 @@ use std::io::{self, Write};
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 
-use auths_core::ports::namespace::{Ecosystem, PackageName, PlatformContext};
+use crate::commands::executable::ExecutableCommand;
+use crate::config::CliConfig;
+use auths_core::ports::namespace::{Ecosystem, PackageName};
 use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
 use auths_crypto::AuthsErrorInfo;
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::storage::layout;
+use auths_infra_http::resolve_verified_platform_context;
 use auths_sdk::namespace_registry::NamespaceVerifierRegistry;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::workflows::namespace::{
@@ -17,97 +20,6 @@ use auths_sdk::workflows::namespace::{
 };
 use auths_storage::git::RegistryIdentityStorage;
 use auths_verifier::CanonicalDid;
-
-use crate::commands::executable::ExecutableCommand;
-use crate::config::CliConfig;
-
-/// Fetches verified platform claims from the registry for the given DID.
-///
-/// Returns a `PlatformContext` built ONLY from server-verified claims
-/// (claims with `verified_at IS NOT NULL`). This prevents self-assertion attacks
-/// where a user claims a namespace using someone else's username.
-async fn fetch_verified_platform_context(registry_url: &str, did: &str) -> Result<PlatformContext> {
-    let client = reqwest::Client::new();
-    let encoded_did = did.replace(':', "%3A").replace('/', "%2F");
-    let url = format!(
-        "{}/v1/identities/{}",
-        registry_url.trim_end_matches('/'),
-        encoded_did
-    );
-    let resp = client
-        .get(&url)
-        .header("Accept", "application/json")
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-        .context("Failed to reach registry")?;
-
-    if !resp.status().is_success() {
-        return Err(anyhow!(
-            "Registry returned HTTP {}: identity not found or not registered",
-            resp.status()
-        ));
-    }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse identity response")?;
-
-    let status = body
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    if status == "unclaimed" || status == "unknown" {
-        return Err(anyhow!(
-            "Your identity is not fully registered on this registry.\n\n\
-             Run this first:\n\
-             \n  auths id register --registry {}\n\n\
-             Then verify your platform identity:\n\
-             \n  auths id claim github --registry {}",
-            registry_url,
-            registry_url
-        ));
-    }
-
-    let mut ctx = PlatformContext::default();
-    if let Some(claims) = body.get("platform_claims").and_then(|v| v.as_array()) {
-        for claim in claims {
-            let platform = claim.get("platform").and_then(|v| v.as_str()).unwrap_or("");
-            let namespace = claim
-                .get("namespace")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let verified = claim
-                .get("verified")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            if !verified || namespace.is_empty() {
-                continue;
-            }
-            match platform {
-                "github" => ctx.github_username = Some(namespace.to_string()),
-                "npm" => ctx.npm_username = Some(namespace.to_string()),
-                "pypi" => ctx.pypi_username = Some(namespace.to_string()),
-                _ => {}
-            }
-        }
-    }
-
-    if ctx.github_username.is_none() && ctx.npm_username.is_none() && ctx.pypi_username.is_none() {
-        return Err(anyhow!(
-            "No verified platform claims found for your identity.\n\n\
-             Namespace claims require a verified platform identity to prevent spoofing.\n\
-             Run this first:\n\
-             \n  auths id claim github --registry {}\n\n\
-             This connects your GitHub account to your Auths identity via OAuth.\n\
-             Once verified, re-run the namespace claim.",
-            registry_url
-        ));
-    }
-
-    Ok(ctx)
-}
 
 /// Manage namespace claims in package ecosystems.
 #[derive(Parser, Debug, Clone)]
@@ -298,10 +210,12 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             // Fetch verified platform claims from the registry — no self-asserted usernames.
             let rt_prefetch =
                 tokio::runtime::Runtime::new().context("Failed to create async runtime")?;
-            let platform = rt_prefetch.block_on(fetch_verified_platform_context(
-                &registry_url,
-                controller_did.as_str(),
-            ))?;
+            let platform = rt_prefetch
+                .block_on(resolve_verified_platform_context(
+                    &registry_url,
+                    controller_did.as_str(),
+                ))
+                .map_err(|e| anyhow!("{}", e))?;
 
             let registry = NamespaceVerifierRegistry::with_defaults();
             let verifier = registry

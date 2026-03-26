@@ -4,8 +4,12 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
-use auths_infra_http::{HttpGistPublisher, HttpGitHubOAuthProvider, HttpRegistryClaimClient};
-use auths_sdk::workflows::platform::{GitHubClaimConfig, claim_github_identity};
+use auths_infra_http::{
+    HttpGistPublisher, HttpGitHubOAuthProvider, HttpNpmAuthProvider, HttpRegistryClaimClient,
+};
+use auths_sdk::workflows::platform::{
+    GitHubClaimConfig, NpmClaimConfig, claim_github_identity, claim_npm_identity,
+};
 use clap::{Parser, Subcommand};
 use console::style;
 
@@ -16,7 +20,7 @@ use super::register::DEFAULT_REGISTRY_URL;
 
 const DEFAULT_GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";
 
-#[allow(clippy::disallowed_methods)] // CLI boundary: optional env override
+#[allow(clippy::disallowed_methods)]
 fn github_client_id() -> String {
     std::env::var("AUTHS_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_GITHUB_CLIENT_ID.to_string())
 }
@@ -30,8 +34,14 @@ pub struct ClaimCommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum ClaimPlatform {
-    /// Link your GitHub account to your identity.
+    /// Link your GitHub account to your identity via OAuth device flow.
     Github {
+        /// Registry URL to publish the claim to.
+        #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
+        registry: String,
+    },
+    /// Link your npm account to your identity via access token.
+    Npm {
         /// Registry URL to publish the claim to.
         #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
         registry: String,
@@ -46,64 +56,121 @@ pub fn handle_claim(
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
     let registry_url = match &cmd.platform {
-        ClaimPlatform::Github { registry } => registry.clone(),
+        ClaimPlatform::Github { registry } | ClaimPlatform::Npm { registry } => registry.clone(),
     };
 
     let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))
         .context("Failed to build auths context")?;
 
-    let oauth = HttpGitHubOAuthProvider::new();
-    let publisher = HttpGistPublisher::new();
     let registry_client = HttpRegistryClaimClient::new();
 
-    let config = GitHubClaimConfig {
-        client_id: github_client_id(),
-        registry_url,
-        scopes: "read:user gist".to_string(),
-    };
+    match &cmd.platform {
+        ClaimPlatform::Github { .. } => {
+            let oauth = HttpGitHubOAuthProvider::new();
+            let publisher = HttpGistPublisher::new();
 
-    let on_device_code = |code: &auths_core::ports::platform::DeviceCodeResponse| {
-        println!();
-        println!("  Copy this code: {}", style(&code.user_code).bold().cyan());
-        println!("  At: {}", style(&code.verification_uri).cyan());
-        println!();
-        println!(
-            "  {}",
-            style("Press 'enter' to open GitHub after copying the code above").blue()
-        );
-        // Wait for the user to press Enter before opening the browser.
-        let _ = std::io::stdin().read_line(&mut String::new());
-        println!();
-        if let Err(e) = open::that(&code.verification_uri) {
-            println!(
-                "  {}",
-                style(format!("Could not open browser: {e}")).yellow()
-            );
-            println!("  Please open the URL above manually.");
-        } else {
-            println!("  Browser opened — waiting for authorization...");
+            let config = GitHubClaimConfig {
+                client_id: github_client_id(),
+                registry_url,
+                scopes: "read:user gist".to_string(),
+            };
+
+            let on_device_code = |code: &auths_core::ports::platform::DeviceCodeResponse| {
+                println!();
+                println!("  Copy this code: {}", style(&code.user_code).bold().cyan());
+                println!("  At: {}", style(&code.verification_uri).cyan());
+                println!();
+                println!(
+                    "  {}",
+                    style("Press 'enter' to open GitHub after copying the code above").blue()
+                );
+                let _ = std::io::stdin().read_line(&mut String::new());
+                println!();
+                if let Err(e) = open::that(&code.verification_uri) {
+                    println!(
+                        "  {}",
+                        style(format!("Could not open browser: {e}")).yellow()
+                    );
+                    println!("  Please open the URL above manually.");
+                } else {
+                    println!("  Browser opened — waiting for authorization...");
+                }
+            };
+
+            let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
+            let response = rt
+                .block_on(claim_github_identity(
+                    &oauth,
+                    &publisher,
+                    &registry_client,
+                    &ctx,
+                    config,
+                    now,
+                    &on_device_code,
+                ))
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            print_response(&response.message)?;
         }
-    };
 
-    let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
-    let response = rt
-        .block_on(claim_github_identity(
-            &oauth,
-            &publisher,
-            &registry_client,
-            &ctx,
-            config,
-            now,
-            &on_device_code,
-        ))
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+        ClaimPlatform::Npm { .. } => {
+            println!();
+            println!("  {}", style("npm platform claim").bold());
+            println!();
+            println!(
+                "  Create a read-only access token at:\n  {}",
+                style("https://www.npmjs.com/settings/~/tokens").cyan()
+            );
+            println!();
 
-    if is_json_mode() {
-        let json_resp = JsonResponse::success("id claim", &response.message);
-        json_resp.print()?;
-    } else {
-        println!("  {}", style(&response.message).green());
+            let npm_token = rpassword::prompt_password("  Enter your npm access token: ")
+                .context("Failed to read npm token")?;
+
+            if npm_token.trim().is_empty() {
+                return Err(anyhow::anyhow!("npm access token cannot be empty"));
+            }
+
+            println!("  Verifying token...");
+
+            let npm_provider = HttpNpmAuthProvider::new();
+            let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
+
+            let profile = rt
+                .block_on(npm_provider.verify_token(npm_token.trim()))
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            println!(
+                "  {} Authenticated as {}",
+                style("✓").green(),
+                style(&profile.login).bold()
+            );
+
+            let config = NpmClaimConfig { registry_url };
+
+            let response = rt
+                .block_on(claim_npm_identity(
+                    &profile.login,
+                    npm_token.trim(),
+                    &registry_client,
+                    &ctx,
+                    config,
+                    now,
+                ))
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            print_response(&response.message)?;
+        }
     }
 
+    Ok(())
+}
+
+fn print_response(message: &str) -> Result<()> {
+    if is_json_mode() {
+        let json_resp = JsonResponse::success("id claim", message);
+        json_resp.print()?;
+    } else {
+        println!("  {}", style(message).green());
+    }
     Ok(())
 }

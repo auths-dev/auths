@@ -20,7 +20,9 @@ mod github_oauth;
 mod identity_resolver;
 /// Namespace verification adapters for package ecosystem ownership proofs.
 pub mod namespace;
+mod npm_auth;
 mod pairing_client;
+mod platform_context;
 mod registry_client;
 mod request;
 mod witness_client;
@@ -30,7 +32,9 @@ pub use claim_client::HttpRegistryClaimClient;
 pub use github_gist::HttpGistPublisher;
 pub use github_oauth::HttpGitHubOAuthProvider;
 pub use identity_resolver::HttpIdentityResolver;
+pub use npm_auth::HttpNpmAuthProvider;
 pub use pairing_client::HttpPairingRelayClient;
+pub use platform_context::resolve_verified_platform_context;
 pub use registry_client::HttpRegistryClient;
 pub use witness_client::HttpWitnessClient;
 
