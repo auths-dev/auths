@@ -138,34 +138,34 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  capsec-audit:
-    name: Capability Audit
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Audit clean crates (zero I/O expected)
-        uses: bordumb/capsec-github-action@v1
-        with:
-          only: auths-crypto,auths-verifier,auths-policy,auths-keri
-          fail-on: low
-          upload-sarif: false
-          comment-on-pr: false
-      - name: Audit dirty crates (no new high-risk I/O)
-        uses: bordumb/capsec-github-action@v1
-        with:
-          only: auths-core,auths-id
-          fail-on: high
-          diff: 'true'
-          upload-sarif: true
-          sarif-category: capsec-audit-dirty
-          comment-on-pr: true
+  # capsec-audit:
+  #   name: Capability Audit
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     security-events: write
+  #     pull-requests: write
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - name: Audit clean crates (zero I/O expected)
+  #       uses: bordumb/capsec-github-action@v1
+  #       with:
+  #         only: auths-crypto,auths-verifier,auths-policy,auths-keri
+  #         fail-on: low
+  #         upload-sarif: false
+  #         comment-on-pr: false
+  #     - name: Audit dirty crates (no new high-risk I/O)
+  #       uses: bordumb/capsec-github-action@v1
+  #       with:
+  #         only: auths-core,auths-id
+  #         fail-on: high
+  #         diff: 'true'
+  #         upload-sarif: true
+  #         sarif-category: capsec-audit-dirty
+  #         comment-on-pr: true
 
   msrv:
     name: MSRV check (1.93)

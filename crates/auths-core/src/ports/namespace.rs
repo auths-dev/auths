@@ -284,16 +284,25 @@ pub struct VerificationChallenge {
 
 /// Verified platform identity context for cross-referencing during namespace verification.
 ///
-/// Adapters that use `ApiOwnership` need to cross-reference the caller's upstream
-/// identity. The SDK populates this from verified platform claims before calling the adapter.
+/// SECURITY: This struct must ONLY be populated from server-verified platform claims
+/// (i.e., claims with `verified_at IS NOT NULL` in the registry). Never accept
+/// self-asserted usernames from CLI arguments — the CLI must fetch verified claims
+/// from the registry before building this context.
+///
+/// The verification chain is:
+/// 1. User runs `auths id claim github` → OAuth proves they control the GitHub account
+/// 2. Registry stores the verified claim with `verified_at`
+/// 3. User runs `auths namespace claim` → CLI fetches verified claims from registry
+/// 4. This context is built from those verified claims only
+/// 5. The namespace verifier cross-references against the ecosystem API (e.g., crates.io)
 ///
 /// Usage:
 /// ```ignore
-/// let ctx = PlatformContext {
-///     github_username: Some("octocat".to_string()),
-///     npm_username: None,
-///     pypi_username: None,
-/// };
+/// // CORRECT: populated from registry-verified claims
+/// let ctx = fetch_verified_platform_context(&registry_url, &did).await?;
+///
+/// // WRONG: self-asserted from CLI args (vulnerable to spoofing)
+/// // let ctx = PlatformContext { github_username: Some(cli_arg), .. };
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlatformContext {

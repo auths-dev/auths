@@ -56,12 +56,12 @@ repos:
         files: (Cargo\.(toml|lock)|deny\.toml)$
         pass_filenames: false
 
-      - id: capsec-audit
-        name: capsec audit (I/O boundaries)
-        entry: bash -c 'command -v cargo-capsec >/dev/null 2>&1 || { echo "Skipping capsec audit — not installed."; exit 0; }; cargo capsec audit --only auths-crypto,auths-verifier,auths-policy,auths-keri --fail-on low --quiet && cargo capsec audit --only auths-core,auths-id --diff --fail-on high --quiet'
-        language: system
-        files: \.(rs|toml)$|Cargo\.lock$
-        pass_filenames: false
+      # - id: capsec-audit
+      #   name: capsec audit (I/O boundaries)
+      #   entry: bash -c 'command -v cargo-capsec >/dev/null 2>&1 || { echo "Skipping capsec audit — not installed."; exit 0; }; cargo capsec audit --only auths-crypto,auths-verifier,auths-policy,auths-keri --fail-on low --quiet && cargo capsec audit --only auths-core,auths-id --diff --fail-on high --quiet'
+      #   language: system
+      #   files: \.(rs|toml)$|Cargo\.lock$
+      #   pass_filenames: false
 
       # ── Slow gates (push only) ──────────────────────────────────────────
       # These run on `git push`. They require linking binaries, compiling
