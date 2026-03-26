@@ -259,6 +259,67 @@ pub async fn claim_npm_identity<C: RegistryClaimClient>(
         .await
 }
 
+/// Configuration for claiming a PyPI platform identity.
+pub struct PypiClaimConfig {
+    /// Registry URL to submit the claim to.
+    pub registry_url: String,
+}
+
+/// Claims a PyPI platform identity via self-reported username + signed claim.
+///
+/// SECURITY: PyPI's token verification API (/danger-api/echo) is unreliable,
+/// so we don't verify tokens. Instead, the platform claim is a self-reported
+/// username backed by a DID-signed proof. The real security check happens at
+/// namespace claim time, when the PyPI verifier checks the public pypi.org
+/// JSON API to confirm the username is a maintainer of the target package.
+///
+/// This is equivalent to the GitHub flow's trust model: the claim is signed
+/// with the device key (stored in platform keychain, not in CI), so a stolen
+/// PyPI token alone cannot produce a valid claim.
+///
+/// Args:
+/// * `pypi_username`: The user's self-reported PyPI username.
+/// * `registry_claim`: Client for submitting the claim to the auths registry.
+/// * `ctx`: Auths context with identity storage and signing keys.
+/// * `config`: PyPI claim configuration (registry URL).
+/// * `now`: Current time for timestamp in the claim.
+///
+/// Usage:
+/// ```ignore
+/// let response = claim_pypi_identity("bordumb", &registry_client, &ctx, config, now).await?;
+/// ```
+pub async fn claim_pypi_identity<C: RegistryClaimClient>(
+    pypi_username: &str,
+    registry_claim: &C,
+    ctx: &AuthsContext,
+    config: PypiClaimConfig,
+    now: DateTime<Utc>,
+) -> Result<ClaimResponse, PlatformError> {
+    let controller_did = crate::pairing::load_controller_did(ctx.identity_storage.as_ref())
+        .map_err(|e| PlatformError::Platform {
+            message: e.to_string(),
+        })?;
+
+    let key_alias = resolve_signing_key_alias(ctx, &controller_did)?;
+
+    let claim_json =
+        create_signed_platform_claim("pypi", pypi_username, &controller_did, &key_alias, ctx, now)
+            .map_err(|e| PlatformError::Platform {
+                message: e.to_string(),
+            })?;
+
+    // PyPI's token verification API is unreliable. Submit the signed claim
+    // directly. The server verifies the Ed25519 signature but does not
+    // independently verify the username via PyPI. The real ownership check
+    // happens at namespace claim time via the public PyPI JSON API.
+    let encoded_claim = URL_SAFE_NO_PAD.encode(claim_json.as_bytes());
+    let proof_url = format!("pypi-claim:{encoded_claim}");
+
+    registry_claim
+        .submit_claim(&config.registry_url, &controller_did, &proof_url)
+        .await
+}
+
 fn resolve_signing_key_alias(
     ctx: &AuthsContext,
     controller_did: &str,

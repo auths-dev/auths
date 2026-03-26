@@ -8,7 +8,8 @@ use auths_infra_http::{
     HttpGistPublisher, HttpGitHubOAuthProvider, HttpNpmAuthProvider, HttpRegistryClaimClient,
 };
 use auths_sdk::workflows::platform::{
-    GitHubClaimConfig, NpmClaimConfig, claim_github_identity, claim_npm_identity,
+    GitHubClaimConfig, NpmClaimConfig, PypiClaimConfig, claim_github_identity, claim_npm_identity,
+    claim_pypi_identity,
 };
 use clap::{Parser, Subcommand};
 use console::style;
@@ -46,6 +47,12 @@ pub enum ClaimPlatform {
         #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
         registry: String,
     },
+    /// Link your PyPI account to your identity via API token.
+    Pypi {
+        /// Registry URL to publish the claim to.
+        #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
+        registry: String,
+    },
 }
 
 pub fn handle_claim(
@@ -56,7 +63,9 @@ pub fn handle_claim(
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
     let registry_url = match &cmd.platform {
-        ClaimPlatform::Github { registry } | ClaimPlatform::Npm { registry } => registry.clone(),
+        ClaimPlatform::Github { registry }
+        | ClaimPlatform::Npm { registry }
+        | ClaimPlatform::Pypi { registry } => registry.clone(),
     };
 
     let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))
@@ -151,6 +160,55 @@ pub fn handle_claim(
                 .block_on(claim_npm_identity(
                     &profile.login,
                     npm_token.trim(),
+                    &registry_client,
+                    &ctx,
+                    config,
+                    now,
+                ))
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            print_response(&response.message)?;
+        }
+
+        ClaimPlatform::Pypi { .. } => {
+            println!();
+            println!("  {}", style("PyPI platform claim").bold());
+            println!();
+            println!(
+                "  Enter your PyPI username (visible at {}):",
+                style("https://pypi.org/account/").cyan()
+            );
+            println!();
+            println!(
+                "  {}",
+                style("Note: ownership is verified when you claim a package namespace,").dim()
+            );
+            println!(
+                "  {}",
+                style("not at this step. The PyPI JSON API confirms you are a maintainer.").dim()
+            );
+            println!();
+
+            print!("  PyPI username: ");
+            std::io::Write::flush(&mut std::io::stdout()).context("flush")?;
+            let mut pypi_username = String::new();
+            std::io::stdin()
+                .read_line(&mut pypi_username)
+                .context("Failed to read PyPI username")?;
+
+            let trimmed = pypi_username.trim();
+            if trimmed.is_empty() {
+                return Err(anyhow::anyhow!("PyPI username cannot be empty"));
+            }
+
+            println!("  Claiming PyPI identity as {}...", style(trimmed).bold());
+
+            let config = PypiClaimConfig { registry_url };
+
+            let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
+            let response = rt
+                .block_on(claim_pypi_identity(
+                    trimmed,
                     &registry_client,
                     &ctx,
                     config,
