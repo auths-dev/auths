@@ -155,7 +155,9 @@ impl AuthsErrorInfo for AgentError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::KeyNotFound => Some("Run `auths key list` to see available keys"),
-            Self::IncorrectPassphrase => Some("Check your passphrase and try again"),
+            Self::IncorrectPassphrase => Some(
+                "Check your passphrase and try again. Set AUTHS_PASSPHRASE for automation, or run `auths agent start` for session caching",
+            ),
             Self::MissingPassphrase => {
                 Some("Provide a passphrase with --passphrase or set AUTHS_PASSPHRASE")
             }

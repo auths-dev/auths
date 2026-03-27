@@ -86,9 +86,9 @@ impl auths_core::error::AuthsErrorInfo for SigningError {
             }
             Self::AgentUnavailable(_) => Some("Start the agent with `auths agent start`"),
             Self::AgentSigningFailed(_) => Some("Check agent logs with `auths agent status`"),
-            Self::PassphraseExhausted { .. } => {
-                Some("Run `auths key reset <alias>` to reset your passphrase")
-            }
+            Self::PassphraseExhausted { .. } => Some(
+                "Run `auths key reset <alias>` to reset, or `auths agent start` to cache keys in memory",
+            ),
             Self::KeychainUnavailable(_) => Some("Run `auths doctor` to diagnose keychain issues"),
             Self::KeyDecryptionFailed(_) => Some("Check your passphrase and try again"),
         }
