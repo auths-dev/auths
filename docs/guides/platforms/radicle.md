@@ -51,7 +51,7 @@ Then initialize your identity:
 ```bash
 auths id create \
   --metadata-file ~/radicle_meta.json \
-  --local-key-alias radicle_id_key
+  --key radicle_id_key
 ```
 
 ### 2. View identity details
@@ -79,8 +79,8 @@ Then link the device:
 ```bash
 auths device link \
   --repo "$RAD_REPO_PATH" \
-  --identity-key-alias radicle_id_key \
-  --device-key-alias rad_device_key \
+  --key radicle_id_key \
+  --device-key rad_device_key \
   --device-did "$DEVICE_DID" \
   --note "Radicle Laptop Key"
 ```

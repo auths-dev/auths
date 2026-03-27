@@ -121,7 +121,7 @@ Options:
 
 ```bash
 # Custom key alias
-auths org init --name "my-org" --local-key-alias org-myorg
+auths org init --name "my-org" --key org-myorg
 
 # With additional metadata
 auths org init --name "my-org" --metadata-file org-metadata.json

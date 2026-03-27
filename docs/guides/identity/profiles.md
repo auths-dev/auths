@@ -126,7 +126,7 @@ Optionally provide a custom key alias or additional metadata:
 ```bash
 auths org init \
   --name "my-org" \
-  --local-key-alias org-myorg \
+  --key org-myorg \
   --metadata-file org-metadata.json
 ```
 

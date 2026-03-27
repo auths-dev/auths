@@ -52,7 +52,7 @@ pub struct RevokeDeviceCommand {
 
     /// Local alias of the identity's key (used for signing the revocation).
     #[arg(long)]
-    pub identity_key_alias: Option<String>,
+    pub key: Option<String>,
 
     /// Optional note explaining the revocation.
     #[arg(long)]
@@ -229,7 +229,7 @@ fn handle_interactive_flow(ctx: &crate::config::CliConfig) -> Result<()> {
             handle_revoke_device(
                 RevokeDeviceCommand {
                     device: None,
-                    identity_key_alias: None,
+                    key: None,
                     note: None,
                     yes: false,
                     dry_run: false,
@@ -321,16 +321,14 @@ fn handle_revoke_device(
     };
 
     // Get identity key alias
-    let identity_key_alias = if let Some(alias) = cmd.identity_key_alias {
+    let identity_key_alias = if let Some(alias) = cmd.key {
         alias
     } else if std::io::stdin().is_terminal() {
         Input::new()
             .with_prompt("Enter identity key alias")
             .interact_text()?
     } else {
-        return Err(anyhow!(
-            "--identity-key-alias is required in non-interactive mode"
-        ));
+        return Err(anyhow!("--key is required in non-interactive mode"));
     };
 
     out.println(&format!("Device to revoke: {}", out.info(&device_did)));

@@ -97,7 +97,7 @@ If you have another device linked to the same identity:
     ```bash
     auths device revoke \
       --device-did "did:key:z6Mk..." \
-      --identity-key-alias my-key \
+      --key my-key \
       --note "Device lost"
     ```
 

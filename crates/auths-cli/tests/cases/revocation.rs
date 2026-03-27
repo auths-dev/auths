@@ -73,7 +73,7 @@ fn test_emergency_revoke_device() {
             "revoke-device",
             "--device",
             &device_did,
-            "--identity-key-alias",
+            "--key",
             "main",
             "--yes",
         ])

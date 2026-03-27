@@ -129,7 +129,7 @@ jobs:
           fi
 
           auths artifact sign ${{ matrix.asset_name }}${{ matrix.ext }} \
-            --device-key-alias ci-release-device \
+            --device-key ci-release-device \
             --note "GitHub Actions release — ${{ github.ref_name }}" \
             --repo /tmp/auths-identity
 

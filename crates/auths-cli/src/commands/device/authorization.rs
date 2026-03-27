@@ -62,24 +62,19 @@ pub enum DeviceSubcommand {
     /// Authorize a new device to act on behalf of the identity.
     #[command(visible_alias = "add")]
     Link {
-        #[arg(
-            long,
-            visible_alias = "ika",
-            help = "Local alias of the *identity's* key (used for signing)."
-        )]
-        identity_key_alias: String,
+        #[arg(long, help = "Local alias of the *identity's* key (used for signing).")]
+        key: String,
 
         #[arg(
             long,
-            visible_alias = "dka",
             help = "Local alias of the *new device's* key (must be imported first)."
         )]
-        device_key_alias: String,
+        device_key: String,
 
         #[arg(
             long,
             visible_alias = "device",
-            help = "Identity ID of the new device being authorized (must match device-key-alias)."
+            help = "Identity ID of the new device being authorized (must match --device-key)."
         )]
         device_did: String,
 
@@ -132,7 +127,7 @@ pub enum DeviceSubcommand {
             long,
             help = "Local alias of the *identity's* key (required to authorize revocation)."
         )]
-        identity_key_alias: String,
+        key: String,
 
         #[arg(long, help = "Optional note explaining the revocation.")]
         note: Option<String>,
@@ -176,18 +171,16 @@ pub enum DeviceSubcommand {
         expires_in: u64,
 
         #[arg(
-            long = "identity-key-alias",
-            visible_alias = "ika",
+            long,
             help = "Local alias of the *identity's* key (required for re-signing)."
         )]
-        identity_key_alias: String,
+        key: String,
 
         #[arg(
-            long = "device-key-alias",
-            visible_alias = "dka",
+            long,
             help = "Local alias of the *device's* key (required for re-signing)."
         )]
-        device_key_alias: String,
+        device_key: String,
     },
 }
 
@@ -231,8 +224,8 @@ pub fn handle_device(
             rt.block_on(super::verify_attestation::handle_verify(verify_cmd))
         }
         DeviceSubcommand::Link {
-            identity_key_alias,
-            device_key_alias,
+            key,
+            device_key,
             device_did,
             payload: payload_path_opt,
             schema: schema_path_opt,
@@ -250,8 +243,8 @@ pub fn handle_device(
                 .collect();
 
             let link_config = auths_sdk::types::DeviceLinkConfig {
-                identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
-                device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
+                identity_key_alias: KeyAlias::new_unchecked(key),
+                device_key_alias: Some(KeyAlias::new_unchecked(device_key)),
                 device_did: Some(device_did.clone()),
                 capabilities: caps,
                 expires_in,
@@ -279,12 +272,12 @@ pub fn handle_device(
 
         DeviceSubcommand::Revoke {
             device_did,
-            identity_key_alias,
+            key,
             note,
             dry_run,
         } => {
             if dry_run {
-                return display_dry_run_revoke(&device_did, &identity_key_alias);
+                return display_dry_run_revoke(&device_did, &key);
             }
 
             let ctx = build_auths_context(
@@ -293,7 +286,7 @@ pub fn handle_device(
                 Some(Arc::clone(&passphrase_provider)),
             )?;
 
-            let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias);
+            let identity_key_alias = KeyAlias::new_unchecked(key);
             auths_sdk::device::revoke_device(
                 &device_did,
                 &identity_key_alias,
@@ -309,15 +302,15 @@ pub fn handle_device(
         DeviceSubcommand::Extend {
             device_did,
             expires_in,
-            identity_key_alias,
-            device_key_alias,
+            key,
+            device_key,
         } => handle_extend(
             &repo_path,
             &config,
             &device_did,
             expires_in,
-            &identity_key_alias,
-            &device_key_alias,
+            &key,
+            &device_key,
             passphrase_provider,
             env_config,
         ),
@@ -428,8 +421,8 @@ fn handle_extend(
     _config: &StorageLayoutConfig,
     device_did: &str,
     expires_in: u64,
-    identity_key_alias: &str,
-    device_key_alias: &str,
+    key: &str,
+    device_key: &str,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
@@ -438,8 +431,8 @@ fn handle_extend(
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from CLI arg validated upstream
         device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did),
         expires_in,
-        identity_key_alias: KeyAlias::new_unchecked(identity_key_alias),
-        device_key_alias: Some(KeyAlias::new_unchecked(device_key_alias)),
+        identity_key_alias: KeyAlias::new_unchecked(key),
+        device_key_alias: Some(KeyAlias::new_unchecked(device_key)),
     };
     let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))?;
 

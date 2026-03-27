@@ -79,7 +79,7 @@ pub fn auto_detect_device_key(
             } else {
                 let alias_list: Vec<&str> = signing_aliases.iter().map(|a| a.as_str()).collect();
                 Err(anyhow!(
-                    "Multiple device keys found. Specify with --device-key-alias.\n\n\
+                    "Multiple device keys found. Specify with --device-key.\n\n\
                      Available aliases: {}",
                     alias_list.join(", ")
                 ))

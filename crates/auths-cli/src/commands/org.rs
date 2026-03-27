@@ -77,7 +77,7 @@ pub enum OrgSubcommand {
 
         /// Alias for the local signing key (auto-generated if not provided)
         #[arg(long)]
-        local_key_alias: Option<String>,
+        key: Option<String>,
 
         /// Optional metadata file (if provided, merged with org metadata)
         #[arg(long)]
@@ -93,7 +93,7 @@ pub enum OrgSubcommand {
         #[arg(long)]
         expires_at: Option<String>,
         #[arg(long)]
-        signer_alias: Option<String>,
+        key: Option<String>,
     },
     Revoke {
         #[arg(long = "subject-did", visible_alias = "subject")]
@@ -101,7 +101,7 @@ pub enum OrgSubcommand {
         #[arg(long)]
         note: Option<String>,
         #[arg(long)]
-        signer_alias: Option<String>,
+        key: Option<String>,
     },
     Show {
         #[arg(long = "subject-did", visible_alias = "subject")]
@@ -133,7 +133,7 @@ pub enum OrgSubcommand {
 
         /// Alias of the signing key in keychain
         #[arg(long)]
-        signer_alias: Option<String>,
+        key: Option<String>,
 
         /// Optional note for the authorization
         #[arg(long)]
@@ -156,7 +156,7 @@ pub enum OrgSubcommand {
 
         /// Alias of the signing key in keychain
         #[arg(long)]
-        signer_alias: Option<String>,
+        key: Option<String>,
 
         /// Preview actions without making changes.
         #[arg(long)]
@@ -215,11 +215,11 @@ pub fn handle_org(
     match cmd.subcommand {
         OrgSubcommand::Create {
             name,
-            local_key_alias,
+            key,
             metadata_file,
         } => {
             // Generate a key alias if not provided
-            let key_alias = local_key_alias.unwrap_or_else(|| {
+            let key_alias = key.unwrap_or_else(|| {
                 format!(
                     "org-{}",
                     name.chars()
@@ -408,10 +408,10 @@ pub fn handle_org(
             payload_file, // Path to the JSON payload
             note,         // Optional note (String)
             expires_at,   // Optional RFC3339 expiration string
-            signer_alias, // Alias of the org's signing key in keychain
+            key,          // Alias of the org's signing key in keychain
         } => {
-            let signer_alias = signer_alias
-                .ok_or_else(|| anyhow!("Signer key alias must be provided with --signer-alias"))?;
+            let signer_alias =
+                key.ok_or_else(|| anyhow!("Signer key alias must be provided with --key"))?;
             let signer_alias = KeyAlias::new_unchecked(signer_alias);
 
             let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
@@ -503,7 +503,7 @@ pub fn handle_org(
         OrgSubcommand::Revoke {
             subject_did,
             note,
-            signer_alias,
+            key,
         } => {
             println!("🛑 Revoking org authorization for subject: {subject_did}");
             println!("   Using Repository:         {:?}", repo_path);
@@ -513,8 +513,8 @@ pub fn handle_org(
                 config.device_attestation_prefix
             );
 
-            let signer_alias = signer_alias
-                .ok_or_else(|| anyhow!("Signer key alias must be provided for revocation"))?;
+            let signer_alias =
+                key.ok_or_else(|| anyhow!("Signer key alias must be provided for revocation"))?;
             let signer_alias = KeyAlias::new_unchecked(signer_alias);
 
             let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
@@ -649,7 +649,7 @@ pub fn handle_org(
             member_did: member,
             role: cli_role,
             capabilities,
-            signer_alias,
+            key,
             note,
         } => {
             let role = Role::from(cli_role);
@@ -658,7 +658,7 @@ pub fn handle_org(
             println!("   Member: {}", member);
             println!("   Role:   {}", role);
 
-            let signer_alias = KeyAlias::new_unchecked(signer_alias.unwrap_or_else(|| {
+            let signer_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| {
                 format!(
                     "org-{}",
                     org.chars()
@@ -757,14 +757,14 @@ pub fn handle_org(
             org,
             member_did: member,
             note,
-            signer_alias,
+            key,
             dry_run,
         } => {
             println!("🛑 Revoking member from organization...");
             println!("   Org:    {}", org);
             println!("   Member: {}", member);
 
-            let signer_alias = KeyAlias::new_unchecked(signer_alias.unwrap_or_else(|| {
+            let signer_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| {
                 format!(
                     "org-{}",
                     org.chars()

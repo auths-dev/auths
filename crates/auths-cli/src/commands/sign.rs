@@ -101,11 +101,11 @@ pub struct SignCommand {
 
     /// Local alias of the identity key (for artifact signing).
     #[arg(long)]
-    pub identity_key_alias: Option<String>,
+    pub key: Option<String>,
 
     /// Local alias of the device key (for artifact signing, required for files).
     #[arg(long)]
-    pub device_key_alias: Option<String>,
+    pub device_key: Option<String>,
 
     /// Duration in seconds until expiration (per RFC 6749).
     #[arg(long = "expires-in", value_name = "N")]
@@ -130,14 +130,14 @@ pub fn handle_sign_unified(
 ) -> Result<()> {
     match parse_sign_target(&cmd.target) {
         SignTarget::Artifact(path) => {
-            let device_key_alias = match cmd.device_key_alias.as_deref() {
+            let device_key_alias = match cmd.device_key.as_deref() {
                 Some(alias) => alias.to_string(),
                 None => super::key_detect::auto_detect_device_key(repo_opt.as_deref(), env_config)?,
             };
             handle_artifact_sign(
                 &path,
                 cmd.sig_output,
-                cmd.identity_key_alias.as_deref(),
+                cmd.key.as_deref(),
                 &device_key_alias,
                 cmd.expires_in,
                 cmd.note,

@@ -51,7 +51,7 @@ pub enum NamespaceSubcommand {
 
         /// Alias of the signing key in keychain
         #[arg(long)]
-        signer_alias: Option<String>,
+        key: Option<String>,
     },
 
     /// Delegate namespace authority to another identity
@@ -74,7 +74,7 @@ pub enum NamespaceSubcommand {
 
         /// Alias of the signing key in keychain
         #[arg(long)]
-        signer_alias: Option<String>,
+        key: Option<String>,
     },
 
     /// Transfer namespace ownership to another identity
@@ -97,7 +97,7 @@ pub enum NamespaceSubcommand {
 
         /// Alias of the signing key in keychain
         #[arg(long)]
-        signer_alias: Option<String>,
+        key: Option<String>,
     },
 
     /// Look up namespace information
@@ -129,7 +129,7 @@ fn resolve_registry_url(registry_url: Option<String>) -> String {
 
 fn load_identity_and_alias(
     ctx: &CliConfig,
-    signer_alias: Option<String>,
+    key: Option<String>,
 ) -> Result<(auths_verifier::types::IdentityDID, KeyAlias)> {
     let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
     let identity_storage = RegistryIdentityStorage::new(repo_path);
@@ -139,7 +139,7 @@ fn load_identity_and_alias(
 
     let controller_did = managed_identity.controller_did;
 
-    let alias_str = signer_alias.unwrap_or_else(|| {
+    let alias_str = key.unwrap_or_else(|| {
         let prefix = controller_did
             .as_str()
             .strip_prefix("did:keri:")
@@ -193,10 +193,10 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             ecosystem,
             package_name,
             registry_url,
-            signer_alias,
+            key,
         } => {
             let registry_url = resolve_registry_url(registry_url);
-            let (controller_did, key_alias) = load_identity_and_alias(ctx, signer_alias)?;
+            let (controller_did, key_alias) = load_identity_and_alias(ctx, key)?;
             let signer = StorageSigner::new(get_platform_keychain()?);
             let passphrase_provider = ctx.passphrase_provider.clone();
 
@@ -349,10 +349,10 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             package_name,
             delegate_did,
             registry_url,
-            signer_alias,
+            key,
         } => {
             let registry_url = resolve_registry_url(registry_url);
-            let (controller_did, key_alias) = load_identity_and_alias(ctx, signer_alias)?;
+            let (controller_did, key_alias) = load_identity_and_alias(ctx, key)?;
             let signer = StorageSigner::new(get_platform_keychain()?);
             let passphrase_provider = ctx.passphrase_provider.clone();
 
@@ -392,10 +392,10 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             package_name,
             new_owner_did,
             registry_url,
-            signer_alias,
+            key,
         } => {
             let registry_url = resolve_registry_url(registry_url);
-            let (controller_did, key_alias) = load_identity_and_alias(ctx, signer_alias)?;
+            let (controller_did, key_alias) = load_identity_and_alias(ctx, key)?;
             let signer = StorageSigner::new(get_platform_keychain()?);
             let passphrase_provider = ctx.passphrase_provider.clone();
 
