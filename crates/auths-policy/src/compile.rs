@@ -5,7 +5,7 @@
 
 use crate::compiled::{CompiledExpr, CompiledPolicy};
 use crate::expr::Expr;
-use crate::types::{CanonicalCapability, CanonicalDid, ValidatedGlob};
+use crate::types::{AssuranceLevel, CanonicalCapability, CanonicalDid, ValidatedGlob};
 
 /// Maximum length for attribute keys.
 const MAX_ATTR_KEY_LEN: usize = 64;
@@ -449,6 +449,34 @@ fn compile_inner(
             }
             CompiledExpr::MaxChainDepth(*d)
         }
+
+        Expr::MinAssurance(s) => match s.parse::<AssuranceLevel>() {
+            Ok(level) => CompiledExpr::MinAssurance(level),
+            Err(_) => {
+                errors.push(CompileError {
+                    path: path.into(),
+                    message: format!(
+                        "invalid assurance level '{}': expected one of: sovereign, authenticated, token_verified, self_asserted",
+                        s
+                    ),
+                });
+                CompiledExpr::False
+            }
+        },
+
+        Expr::AssuranceLevelIs(s) => match s.parse::<AssuranceLevel>() {
+            Ok(level) => CompiledExpr::AssuranceLevelIs(level),
+            Err(_) => {
+                errors.push(CompileError {
+                    path: path.into(),
+                    message: format!(
+                        "invalid assurance level '{}': expected one of: sovereign, authenticated, token_verified, self_asserted",
+                        s
+                    ),
+                });
+                CompiledExpr::False
+            }
+        },
 
         Expr::ApprovalGate {
             inner,

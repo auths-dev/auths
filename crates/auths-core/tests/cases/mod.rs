@@ -1,3 +1,4 @@
+mod assurance_level;
 mod key_export;
 mod namespace;
 #[cfg(feature = "keychain-pkcs11")]

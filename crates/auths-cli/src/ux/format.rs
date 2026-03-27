@@ -7,6 +7,7 @@
 
 #![allow(dead_code)] // Some functions are for future use
 
+use auths_verifier::AssuranceLevel;
 use console::{Style, Term};
 use serde::Serialize;
 use std::io::IsTerminal;
@@ -270,6 +271,59 @@ impl Output {
         }
     }
 
+    /// Format an assurance level badge with a visual strength meter.
+    ///
+    /// With colors enabled:
+    ///   `████ Sovereign`     (green)
+    ///   `███░ Authenticated` (cyan)
+    ///   `██░░ Token-Verified`(yellow)
+    ///   `█░░░ Self-Asserted` (dim)
+    ///
+    /// Without colors: `[4/4 Sovereign]`, `[3/4 Authenticated]`, etc.
+    pub fn assurance_badge(&self, level: AssuranceLevel) -> String {
+        let score = level.score();
+        let label = level.label();
+
+        if !self.colors_enabled {
+            return format!("[{}/4 {}]", score, label);
+        }
+
+        let filled = "\u{2588}".repeat(score as usize);
+        let empty = "\u{2591}".repeat(4 - score as usize);
+        let bar = format!("{}{}", filled, empty);
+
+        match level {
+            AssuranceLevel::Sovereign => {
+                format!(
+                    "{} {}",
+                    self.success_style.apply_to(&bar),
+                    self.success_style.apply_to(label)
+                )
+            }
+            AssuranceLevel::Authenticated => {
+                format!(
+                    "{} {}",
+                    self.info_style.apply_to(&bar),
+                    self.info_style.apply_to(label)
+                )
+            }
+            AssuranceLevel::TokenVerified => {
+                format!(
+                    "{} {}",
+                    self.warn_style.apply_to(&bar),
+                    self.warn_style.apply_to(label)
+                )
+            }
+            AssuranceLevel::SelfAsserted | _ => {
+                format!(
+                    "{} {}",
+                    self.dim_style.apply_to(&bar),
+                    self.dim_style.apply_to(label)
+                )
+            }
+        }
+    }
+
     /// Format a status indicator.
     pub fn status(&self, passed: bool) -> &'static str {
         if passed {
@@ -338,5 +392,26 @@ mod tests {
         let output = Output::new_without_colors();
         let kv = output.key_value("name", "value");
         assert_eq!(kv, "name: value");
+    }
+
+    #[test]
+    fn test_assurance_badge_no_colors() {
+        let output = Output::new_without_colors();
+        assert_eq!(
+            output.assurance_badge(AssuranceLevel::Sovereign),
+            "[4/4 Sovereign]"
+        );
+        assert_eq!(
+            output.assurance_badge(AssuranceLevel::Authenticated),
+            "[3/4 Authenticated]"
+        );
+        assert_eq!(
+            output.assurance_badge(AssuranceLevel::TokenVerified),
+            "[2/4 Token-Verified]"
+        );
+        assert_eq!(
+            output.assurance_badge(AssuranceLevel::SelfAsserted),
+            "[1/4 Self-Asserted]"
+        );
     }
 }

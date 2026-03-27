@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::approval::ApprovalAttestation;
-use crate::types::{CanonicalCapability, CanonicalDid, SignerType};
+use crate::types::{AssuranceLevel, CanonicalCapability, CanonicalDid, SignerType};
 
 /// Typed evaluation context.
 ///
@@ -30,6 +30,10 @@ pub struct EvalContext {
     // ── Signer Type ───────────────────────────────────────────────────
     /// The type of entity that produced this signature (human, agent, workload).
     pub signer_type: Option<SignerType>,
+
+    // ── Assurance Level ─────────────────────────────────────────────
+    /// Cryptographic assurance level of the platform identity claim.
+    pub assurance_level: Option<AssuranceLevel>,
 
     // ── Attestation Identity ─────────────────────────────────────────
     /// The DID of the attestation issuer.
@@ -93,6 +97,7 @@ impl EvalContext {
         Self {
             now,
             signer_type: None,
+            assurance_level: None,
             issuer,
             subject,
             revoked: false,
@@ -134,6 +139,12 @@ impl EvalContext {
     /// Set the signer type.
     pub fn signer_type(mut self, signer_type: SignerType) -> Self {
         self.signer_type = Some(signer_type);
+        self
+    }
+
+    /// Set the assurance level.
+    pub fn assurance_level(mut self, level: AssuranceLevel) -> Self {
+        self.assurance_level = Some(level);
         self
     }
 

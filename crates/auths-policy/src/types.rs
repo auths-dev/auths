@@ -7,8 +7,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-// CanonicalDid lives in auths-verifier (Layer 1) so all DID types are co-located.
-pub use auths_verifier::types::CanonicalDid;
+// CanonicalDid and AssuranceLevel live in auths-verifier (Layer 1) so all shared types are co-located.
+pub use auths_verifier::types::{AssuranceLevel, AssuranceLevelParseError, CanonicalDid};
 
 /// Re-export DidParseError from auths-verifier for backwards compatibility.
 pub type DidParseError = auths_verifier::DidParseError;

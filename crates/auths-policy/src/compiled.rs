@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{CanonicalCapability, CanonicalDid, ValidatedGlob};
+use crate::types::{AssuranceLevel, CanonicalCapability, CanonicalDid, ValidatedGlob};
 
 /// Compiled policy expression — validated, canonical, ready to evaluate.
 ///
@@ -102,6 +102,11 @@ pub enum CompiledExpr {
         /// Allowed values.
         values: Vec<String>,
     },
+
+    /// Assurance level must be at least this level (uses `Ord` comparison).
+    MinAssurance(AssuranceLevel),
+    /// Assurance level must match exactly.
+    AssuranceLevelIs(AssuranceLevel),
 
     /// Approval gate: if inner evaluates to Allow, return RequiresApproval.
     ApprovalGate {
@@ -225,6 +230,12 @@ fn describe_expr(expr: &CompiledExpr, depth: usize) -> String {
         CompiledExpr::AttrEquals { key, value } => format!("{indent}attr {key} = {value}"),
         CompiledExpr::AttrIn { key, values } => {
             format!("{indent}attr {key} in: [{}]", values.join(", "))
+        }
+        CompiledExpr::MinAssurance(level) => {
+            format!("{indent}min assurance: {}", level.label())
+        }
+        CompiledExpr::AssuranceLevelIs(level) => {
+            format!("{indent}assurance must be: {}", level.label())
         }
         CompiledExpr::ApprovalGate {
             approvers,

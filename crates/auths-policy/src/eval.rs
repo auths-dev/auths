@@ -487,6 +487,35 @@ fn eval_expr(expr: &CompiledExpr, ctx: &EvalContext) -> Decision {
             ),
         },
 
+        // ── Assurance Level ──────────────────────────────────────────
+        CompiledExpr::MinAssurance(min) => match &ctx.assurance_level {
+            Some(level) if level >= min => Decision::allow(
+                ReasonCode::AssuranceMet,
+                format!("assurance {} >= {}", level, min),
+            ),
+            Some(level) => Decision::deny(
+                ReasonCode::AssuranceInsufficient,
+                format!("assurance {} < {}", level, min),
+            ),
+            None => {
+                Decision::indeterminate(ReasonCode::MissingField, "no assurance level in context")
+            }
+        },
+
+        CompiledExpr::AssuranceLevelIs(expected) => match &ctx.assurance_level {
+            Some(level) if level == expected => Decision::allow(
+                ReasonCode::AssuranceMet,
+                format!("assurance is {}", expected),
+            ),
+            Some(level) => Decision::deny(
+                ReasonCode::AssuranceInsufficient,
+                format!("assurance {} != {}", level, expected),
+            ),
+            None => {
+                Decision::indeterminate(ReasonCode::MissingField, "no assurance level in context")
+            }
+        },
+
         // ── Approval Gate ───────────────────────────────────────────
         CompiledExpr::ApprovalGate {
             inner,
@@ -860,5 +889,77 @@ mod tests {
             .signer_type(crate::types::SignerType::Human)
             .capability(cap("sign_commit"));
         assert!(evaluate3(&policy, &ctx).is_denied());
+    }
+
+    // ── Assurance Level tests ──────────────────────────────────────
+
+    #[test]
+    fn eval_min_assurance_sovereign_allows_sovereign() {
+        let policy = compile(&Expr::MinAssurance("sovereign".into())).unwrap();
+        let ctx = base_ctx().assurance_level(crate::types::AssuranceLevel::Sovereign);
+        assert!(evaluate3(&policy, &ctx).is_allowed());
+    }
+
+    #[test]
+    fn eval_min_assurance_authenticated_allows_sovereign() {
+        let policy = compile(&Expr::MinAssurance("authenticated".into())).unwrap();
+        let ctx = base_ctx().assurance_level(crate::types::AssuranceLevel::Sovereign);
+        assert!(evaluate3(&policy, &ctx).is_allowed());
+    }
+
+    #[test]
+    fn eval_min_assurance_authenticated_allows_authenticated() {
+        let policy = compile(&Expr::MinAssurance("authenticated".into())).unwrap();
+        let ctx = base_ctx().assurance_level(crate::types::AssuranceLevel::Authenticated);
+        assert!(evaluate3(&policy, &ctx).is_allowed());
+    }
+
+    #[test]
+    fn eval_min_assurance_authenticated_denies_token_verified() {
+        let policy = compile(&Expr::MinAssurance("authenticated".into())).unwrap();
+        let ctx = base_ctx().assurance_level(crate::types::AssuranceLevel::TokenVerified);
+        assert!(evaluate3(&policy, &ctx).is_denied());
+    }
+
+    #[test]
+    fn eval_min_assurance_authenticated_denies_self_asserted() {
+        let policy = compile(&Expr::MinAssurance("authenticated".into())).unwrap();
+        let ctx = base_ctx().assurance_level(crate::types::AssuranceLevel::SelfAsserted);
+        assert!(evaluate3(&policy, &ctx).is_denied());
+    }
+
+    #[test]
+    fn eval_min_assurance_missing_is_indeterminate() {
+        let policy = compile(&Expr::MinAssurance("authenticated".into())).unwrap();
+        let ctx = base_ctx();
+        assert!(evaluate3(&policy, &ctx).is_indeterminate());
+    }
+
+    #[test]
+    fn eval_min_assurance_strict_mode_denies_missing() {
+        let policy = compile(&Expr::MinAssurance("authenticated".into())).unwrap();
+        let ctx = base_ctx();
+        assert!(evaluate_strict(&policy, &ctx).is_denied());
+    }
+
+    #[test]
+    fn eval_assurance_level_is_exact_match() {
+        let policy = compile(&Expr::AssuranceLevelIs("token_verified".into())).unwrap();
+        let ctx = base_ctx().assurance_level(crate::types::AssuranceLevel::TokenVerified);
+        assert!(evaluate3(&policy, &ctx).is_allowed());
+    }
+
+    #[test]
+    fn eval_assurance_level_is_mismatch() {
+        let policy = compile(&Expr::AssuranceLevelIs("sovereign".into())).unwrap();
+        let ctx = base_ctx().assurance_level(crate::types::AssuranceLevel::Authenticated);
+        assert!(evaluate3(&policy, &ctx).is_denied());
+    }
+
+    #[test]
+    fn eval_assurance_level_is_missing_is_indeterminate() {
+        let policy = compile(&Expr::AssuranceLevelIs("sovereign".into())).unwrap();
+        let ctx = base_ctx();
+        assert!(evaluate3(&policy, &ctx).is_indeterminate());
     }
 }
