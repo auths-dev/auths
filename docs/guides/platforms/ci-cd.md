@@ -87,7 +87,7 @@ jobs:
       - name: Sign release artifact
         run: |
           auths sign myproject.tar.gz \
-            --device-key-alias ci-release-device
+            --device-key ci-release-device
 
       - name: Upload release
         uses: softprops/action-gh-release@v2
@@ -224,7 +224,7 @@ To revoke a CI device at any time:
 ```bash
 auths device revoke \
   --device-did <ci-device-did> \
-  --identity-key-alias <your-identity-key-alias>
+  --key <your-key>
 ```
 
 The device DID and identity key alias are printed by `cargo xt ci-setup` when the device is created. After revocation, the CI device key can no longer produce valid attestations, even if the secrets remain in GitHub.

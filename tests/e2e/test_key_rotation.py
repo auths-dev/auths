@@ -34,9 +34,9 @@ def _link_device(auths_bin, env, *, capabilities=None):
     args = [
         "device",
         "link",
-        "--identity-key-alias",
+        "--key",
         "main",
-        "--device-key-alias",
+        "--device-key",
         "main",
         "--device-did",
         did,

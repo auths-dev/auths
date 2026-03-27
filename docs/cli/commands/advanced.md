@@ -13,9 +13,9 @@ Authorize a new device to act on behalf of the identity
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the *identity's* key (used for signing). [aliases: --ika] |
-| `--device-key-alias <DEVICE_KEY_ALIAS>` | — | Local alias of the *new device's* key (must be imported first). [aliases: --dka] |
-| `--device-did <DEVICE_DID>` | — | Identity ID of the new device being authorized (must match device-key-alias). [aliases: --device] |
+| `--key <IDENTITY_KEY_ALIAS>` | — | Local alias of the *identity's* key (used for signing).  |
+| `--device-key <DEVICE_KEY_ALIAS>` | — | Local alias of the *new device's* key (must be imported first).  |
+| `--device-did <DEVICE_DID>` | — | Identity ID of the new device being authorized (must match device-key). [aliases: --device] |
 | `--payload <PAYLOAD_PATH>` | — | Optional path to a JSON file containing arbitrary payload data for the authorization. |
 | `--schema <SCHEMA_PATH>` | — | Optional path to a JSON schema for validating the payload (experimental). |
 | `--expires-in <SECS>` | — | Optional number of seconds until this device authorization expires. |
@@ -40,7 +40,7 @@ Revoke an existing device authorization using the identity key
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--device-did <DEVICE_DID>` | — | Identity ID of the device authorization to revoke. [aliases: --device] |
-| `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the *identity's* key (required to authorize revocation). |
+| `--key <IDENTITY_KEY_ALIAS>` | — | Local alias of the *identity's* key (required to authorize revocation). |
 | `--note <NOTE>` | — | Optional note explaining the revocation. |
 | `--dry-run` | — | Preview actions without making changes. |
 | `--json` | — | Emit machine-readable JSON |
@@ -63,8 +63,8 @@ Extend the expiration date of an existing device authorization
 |------|---------|-------------|
 | `--device-did <DEVICE_DID>` | — | Identity ID of the device authorization to extend. [aliases: --device] |
 | `--expires-in <SECS>` | — | Number of seconds to extend the expiration by (from now). |
-| `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the *identity's* key (required for re-signing). [aliases: --ika] |
-| `--device-key-alias <DEVICE_KEY_ALIAS>` | — | Local alias of the *device's* key (required for re-signing). [aliases: --dka] |
+| `--key <IDENTITY_KEY_ALIAS>` | — | Local alias of the *identity's* key (required for re-signing).  |
+| `--device-key <DEVICE_KEY_ALIAS>` | — | Local alias of the *device's* key (required for re-signing).  |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -252,7 +252,7 @@ Revoke a compromised device immediately
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--device <DEVICE>` | — | Device DID to revoke |
-| `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the identity's key (used for signing the revocation) |
+| `--key <IDENTITY_KEY_ALIAS>` | — | Local alias of the identity's key (used for signing the revocation) |
 | `--note <NOTE>` | — | Optional note explaining the revocation |
 | `-y, --yes` | — | Skip confirmation prompt |
 | `--dry-run` | — | Preview actions without making changes |
@@ -463,7 +463,7 @@ Create a new organization identity
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name <NAME>` | — | Organization name |
-| `--local-key-alias <LOCAL_KEY_ALIAS>` | — | Alias for the local signing key (auto-generated if not provided) |
+| `--key <LOCAL_KEY_ALIAS>` | — | Alias for the local signing key (auto-generated if not provided) |
 | `--metadata-file <METADATA_FILE>` | — | Optional metadata file (if provided, merged with org metadata) |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -487,7 +487,7 @@ Add a member to an organization
 | `--member-did <MEMBER_DID>` | — | Member identity ID to add [aliases: --member] |
 | `--role <ROLE>` | — | Role to assign (admin, member, readonly) |
 | `--capabilities <CAPABILITIES>` | — | Override default capabilities (comma-separated) |
-| `--signer-alias <SIGNER_ALIAS>` | — | Alias of the signing key in keychain |
+| `--key <SIGNER_ALIAS>` | — | Alias of the signing key in keychain |
 | `--note <NOTE>` | — | Optional note for the authorization |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -510,7 +510,7 @@ Revoke a member from an organization
 | `--org <ORG>` | — | Organization identity ID |
 | `--member-did <MEMBER_DID>` | — | Member identity ID to revoke [aliases: --member] |
 | `--note <NOTE>` | — | Reason for revocation |
-| `--signer-alias <SIGNER_ALIAS>` | — | Alias of the signing key in keychain |
+| `--key <SIGNER_ALIAS>` | — | Alias of the signing key in keychain |
 | `--dry-run` | — | Preview actions without making changes |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -1059,8 +1059,8 @@ Sign an artifact file with your Auths identity
 |------|---------|-------------|
 | `<FILE>` | — | Path to the artifact file to sign. |
 | `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
-| `--identity-key-alias <IDENTITY_KEY_ALIAS>` | — | Local alias of the identity key. Omit for device-only CI signing. [aliases: --ika] |
-| `--device-key-alias <DEVICE_KEY_ALIAS>` | — | Local alias of the device key. Auto-detected when only one key exists. [aliases: --dka] |
+| `--key <IDENTITY_KEY_ALIAS>` | — | Local alias of the identity key. Omit for device-only CI signing.  |
+| `--device-key <DEVICE_KEY_ALIAS>` | — | Local alias of the device key. Auto-detected when only one key exists.  |
 | `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--note <NOTE>` | — | Optional note to embed in the attestation |
 | `--json` | — | Emit machine-readable JSON |

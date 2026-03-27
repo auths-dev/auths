@@ -189,9 +189,9 @@ pub fn run() -> Result<()> {
             &[
                 "device",
                 "link",
-                "--identity-key-alias",
+                "--key",
                 &identity_key_alias,
-                "--device-key-alias",
+                "--device-key",
                 "ci-release-device",
                 "--device-did",
                 &device_did,
@@ -252,7 +252,7 @@ pub fn run() -> Result<()> {
 
     println!();
     println!("\x1b[1mTo revoke CI access at any time:\x1b[0m");
-    println!("  \x1b[0;36mauths device revoke --device-did {device_did} --identity-key-alias {identity_key_alias}\x1b[0m");
+    println!("  \x1b[0;36mauths device revoke --device-did {device_did} --key {identity_key_alias}\x1b[0m");
     println!();
 
     Ok(())

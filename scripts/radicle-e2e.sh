@@ -222,7 +222,7 @@ METAJSON
 info "Creating identity (RIP-X layout is the default)..."
 CREATE_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" id create \
     --metadata-file "$DEMO_DIR/metadata.json" \
-    --local-key-alias identity-key \
+    --key identity-key \
     2>&1) || true
 echo "$CREATE_OUTPUT" | sed 's/^/    /'
 
@@ -253,8 +253,8 @@ echo "$IMPORT1_OUTPUT" | sed 's/^/    /'
 
 info "Linking node 1 as a device..."
 LINK1_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device link \
-    --identity-key-alias identity-key \
-    --device-key-alias node1-key \
+    --key identity-key \
+    --device-key node1-key \
     --device-did "$NODE1_DID" \
     --note "Radicle Node 1" \
     2>&1) || { echo "$LINK1_OUTPUT" | sed 's/^/    /'; phase_fail "device link node1"; exit 1; }
@@ -281,8 +281,8 @@ echo "$IMPORT2_OUTPUT" | sed 's/^/    /'
 
 info "Linking node 2 as a device..."
 LINK2_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device link \
-    --identity-key-alias identity-key \
-    --device-key-alias node2-key \
+    --key identity-key \
+    --device-key node2-key \
     --device-did "$NODE2_DID" \
     --note "Radicle Node 2" \
     --capabilities sign_commit \
@@ -729,7 +729,7 @@ phase_start "Phase 8: Revoke device 2"
 info "Revoking node 2..."
 REVOKE_OUTPUT=$("$AUTHS_BIN" --repo "$AUTHS_HOME" device revoke \
     --device-did "$NODE2_DID" \
-    --identity-key-alias identity-key \
+    --key identity-key \
     --note "E2E revocation test" \
     2>&1) || { echo "$REVOKE_OUTPUT" | sed 's/^/    /'; phase_fail "device revoke node2"; exit 1; }
 echo "$REVOKE_OUTPUT" | sed 's/^/    /'

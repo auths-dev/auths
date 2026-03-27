@@ -34,19 +34,17 @@ pub enum ArtifactSubcommand {
         /// Local alias of the identity key (used for signing). Omit for CI device-only signing.
         #[arg(
             long,
-            visible_alias = "ika",
             help = "Local alias of the identity key. Omit for device-only CI signing."
         )]
-        identity_key_alias: Option<String>,
+        key: Option<String>,
 
         /// Local alias of the device key (used for dual-signing).
         /// Auto-detected when only one key exists for the identity.
         #[arg(
             long,
-            visible_alias = "dka",
             help = "Local alias of the device key. Auto-detected when only one key exists."
         )]
-        device_key_alias: Option<String>,
+        device_key: Option<String>,
 
         /// Duration in seconds until expiration (per RFC 6749).
         #[arg(long = "expires-in", value_name = "N")]
@@ -78,12 +76,12 @@ pub enum ArtifactSubcommand {
         registry: String,
 
         /// Local alias of the identity key. Omit for device-only CI signing.
-        #[arg(long, visible_alias = "ika")]
-        identity_key_alias: Option<String>,
+        #[arg(long)]
+        key: Option<String>,
 
         /// Local alias of the device key. Auto-detected when only one key exists.
-        #[arg(long, visible_alias = "dka")]
-        device_key_alias: Option<String>,
+        #[arg(long)]
+        device_key: Option<String>,
 
         /// Duration in seconds until expiration.
         #[arg(long = "expires-in", value_name = "N")]
@@ -133,12 +131,12 @@ pub fn handle_artifact(
         ArtifactSubcommand::Sign {
             file,
             sig_output,
-            identity_key_alias,
-            device_key_alias,
+            key,
+            device_key,
             expires_in,
             note,
         } => {
-            let resolved_alias = match device_key_alias {
+            let resolved_alias = match device_key {
                 Some(alias) => alias,
                 None => crate::commands::key_detect::auto_detect_device_key(
                     repo_opt.as_deref(),
@@ -148,7 +146,7 @@ pub fn handle_artifact(
             sign::handle_sign(
                 &file,
                 sig_output,
-                identity_key_alias.as_deref(),
+                key.as_deref(),
                 &resolved_alias,
                 expires_in,
                 note,
@@ -162,8 +160,8 @@ pub fn handle_artifact(
             signature,
             package,
             registry,
-            identity_key_alias,
-            device_key_alias,
+            key,
+            device_key,
             expires_in,
             note,
         } => {
@@ -174,7 +172,7 @@ pub fn handle_artifact(
                     if default_sig.exists() {
                         default_sig
                     } else {
-                        let resolved_alias = match device_key_alias {
+                        let resolved_alias = match device_key {
                             Some(alias) => alias,
                             None => crate::commands::key_detect::auto_detect_device_key(
                                 repo_opt.as_deref(),
@@ -184,7 +182,7 @@ pub fn handle_artifact(
                         sign::handle_sign(
                             artifact,
                             None,
-                            identity_key_alias.as_deref(),
+                            key.as_deref(),
                             &resolved_alias,
                             expires_in,
                             note,
@@ -348,14 +346,14 @@ mod tests {
         .unwrap();
         match cli.command {
             ArtifactSubcommand::Publish {
-                identity_key_alias,
-                device_key_alias,
+                key,
+                device_key,
                 expires_in,
                 note,
                 ..
             } => {
-                assert_eq!(identity_key_alias.as_deref(), Some("main"));
-                assert_eq!(device_key_alias.as_deref(), Some("device-1"));
+                assert_eq!(key.as_deref(), Some("main"));
+                assert_eq!(device_key.as_deref(), Some("device-1"));
                 assert_eq!(expires_in, Some(3600));
                 assert_eq!(note.as_deref(), Some("release build"));
             }

@@ -463,7 +463,7 @@ def phase_2_create_identity(ws: Workspace, bins: dict[str, Path]) -> None:
         [
             auths, "--repo", str(ws.auths_home), "id", "create",
             "--metadata-file", str(ws.metadata_file),
-            "--local-key-alias", "identity-key",
+            "--key", "identity-key",
         ],
         env=ws.auths_env(),
         check=False,
@@ -527,8 +527,8 @@ def phase_3_link_devices(ws: Workspace, bins: dict[str, Path]) -> None:
         run(
             [
                 auths, "--repo", str(ws.auths_home), "device", "link",
-                "--identity-key-alias", "identity-key",
-                "--device-key-alias", alias,
+                "--key", "identity-key",
+                "--device-key", alias,
                 "--device-did", did,
                 "--note", note,
             ],

@@ -131,8 +131,8 @@ The seed file must contain exactly 32 bytes of raw Ed25519 key material. You wil
 
 ```bash
 auths device link \
-  --identity-key-alias my-key \
-  --device-key-alias laptop-key \
+  --key my-key \
+  --device-key laptop-key \
   --device-did "$DEVICE_DID" \
   --note "Work Laptop" \
   --expires-in 7776000
@@ -189,8 +189,8 @@ auths device list --include-revoked
 auths device extend \
   --device-did "$DEVICE_DID" \
   --days 90 \
-  --identity-key-alias my-key \
-  --device-key-alias laptop-key
+  --key my-key \
+  --device-key laptop-key
 ```
 
 ### Revoke a device
@@ -198,7 +198,7 @@ auths device extend \
 ```bash
 auths device revoke \
   --device-did "$DEVICE_DID" \
-  --identity-key-alias my-key \
+  --key my-key \
   --note "Laptop retired"
 ```
 

@@ -126,14 +126,14 @@ def main() -> None:
 
     # Ask user which device key alias to use
     print()
-    device_alias = input(f"  {BOLD}Enter device-key-alias to use for signing:{RESET} ").strip()
+    device_alias = input(f"  {BOLD}Enter device-key to use for signing:{RESET} ").strip()
     if not device_alias:
         fail("No alias provided.")
         sys.exit(1)
 
     # Optionally ask for identity key alias
     identity_alias = input(
-        f"  {BOLD}Enter identity-key-alias (leave blank for device-only):{RESET} "
+        f"  {BOLD}Enter key (leave blank for device-only):{RESET} "
     ).strip()
 
     # ── Step 2: Build ──
@@ -195,11 +195,11 @@ def main() -> None:
     step(5, "Signing artifact with auths")
     sign_cmd = [
         "auths", "artifact", "sign", str(tarball),
-        "--device-key-alias", device_alias,
+        "--device-key", device_alias,
         "--note", "Local signing test",
     ]
     if identity_alias:
-        sign_cmd.extend(["--identity-key-alias", identity_alias])
+        sign_cmd.extend(["--key", identity_alias])
 
     result = run(sign_cmd, cwd=REPO_ROOT)
     if result.returncode != 0:

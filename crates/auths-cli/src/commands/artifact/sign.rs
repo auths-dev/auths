@@ -15,8 +15,8 @@ use crate::factories::storage::build_auths_context;
 pub fn handle_sign(
     file: &Path,
     output: Option<PathBuf>,
-    identity_key_alias: Option<&str>,
-    device_key_alias: &str,
+    key: Option<&str>,
+    device_key: &str,
     expires_in: Option<u64>,
     note: Option<String>,
     repo_opt: Option<PathBuf>,
@@ -29,9 +29,8 @@ pub fn handle_sign(
 
     let params = ArtifactSigningParams {
         artifact: Arc::new(FileArtifact::new(file)),
-        identity_key: identity_key_alias
-            .map(|a| SigningKeyMaterial::Alias(KeyAlias::new_unchecked(a))),
-        device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(device_key_alias)),
+        identity_key: key.map(|a| SigningKeyMaterial::Alias(KeyAlias::new_unchecked(a))),
+        device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(device_key)),
         expires_in,
         note,
     };
