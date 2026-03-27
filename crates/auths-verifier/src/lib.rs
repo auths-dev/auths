@@ -69,8 +69,9 @@ pub mod witness;
 
 // Re-export verification types for convenience
 pub use types::{
-    CanonicalDid, ChainLink, DeviceDID, DidConversionError, DidParseError, IdentityDID,
-    VerificationReport, VerificationStatus, signer_hex_to_did, validate_did,
+    AssuranceLevel, AssuranceLevelParseError, CanonicalDid, ChainLink, DeviceDID,
+    DidConversionError, DidParseError, IdentityDID, VerificationReport, VerificationStatus,
+    signer_hex_to_did, validate_did,
 };
 
 // Re-export action envelope

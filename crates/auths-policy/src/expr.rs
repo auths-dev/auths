@@ -121,6 +121,12 @@ pub enum Expr {
         values: Vec<String>,
     },
 
+    // ── Assurance Level ────────────────────────────────────────────
+    /// Assurance level must be at least this level (uses `Ord` comparison).
+    MinAssurance(String),
+    /// Assurance level must match exactly.
+    AssuranceLevelIs(String),
+
     // ── Approval Gate ─────────────────────────────────────────────
     /// Approval gate: if inner evaluates to Allow, return RequiresApproval instead.
     /// Transparent to Deny/Indeterminate — those pass through unchanged.
@@ -333,6 +339,8 @@ mod tests {
                 key: "k".into(),
                 values: vec!["v1".into(), "v2".into()],
             },
+            Expr::MinAssurance("authenticated".into()),
+            Expr::AssuranceLevelIs("sovereign".into()),
             Expr::ApprovalGate {
                 inner: Box::new(Expr::HasCapability("deploy".into())),
                 approvers: vec!["did:keri:EHuman123".into()],

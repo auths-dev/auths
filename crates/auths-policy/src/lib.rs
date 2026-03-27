@@ -60,6 +60,6 @@ pub use expr::Expr;
 pub use glob::glob_match;
 pub use trust::{TrustRegistry, TrustRegistryEntry, ValidatedIssuerUrl};
 pub use types::{
-    CanonicalCapability, CanonicalDid, CapabilityParseError, DidParseError, GlobParseError,
-    QuorumPolicy, SignerType, ValidatedGlob,
+    AssuranceLevel, AssuranceLevelParseError, CanonicalCapability, CanonicalDid,
+    CapabilityParseError, DidParseError, GlobParseError, QuorumPolicy, SignerType, ValidatedGlob,
 };

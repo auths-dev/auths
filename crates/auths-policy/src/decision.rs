@@ -103,6 +103,10 @@ pub enum ReasonCode {
     ApprovalAlreadyUsed,
     /// Approval scope hash doesn't match the current request.
     ApprovalRequestMismatch,
+    /// Assurance level meets or exceeds the minimum requirement.
+    AssuranceMet,
+    /// Assurance level is below the minimum requirement.
+    AssuranceInsufficient,
 }
 
 impl Decision {

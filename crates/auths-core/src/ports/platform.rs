@@ -3,9 +3,35 @@
 use std::future::Future;
 use std::time::Duration;
 
+use auths_verifier::AssuranceLevel;
 use thiserror::Error;
 
 use crate::ports::network::NetworkError;
+
+/// Derives the cryptographic assurance level for a platform identity claim.
+///
+/// Args:
+/// * `platform`: Platform identifier (e.g., `"github"`, `"npm"`, `"pypi"`, `"auths"`).
+/// * `cross_verified`: Whether the claim has been strengthened by cross-platform verification
+///   (e.g., PyPI namespace verified via GitHub repo ownership).
+///
+/// Usage:
+/// ```rust
+/// # use auths_core::ports::platform::derive_assurance_level;
+/// # use auths_verifier::AssuranceLevel;
+/// assert_eq!(derive_assurance_level("github", false), AssuranceLevel::Authenticated);
+/// assert_eq!(derive_assurance_level("pypi", true), AssuranceLevel::TokenVerified);
+/// ```
+pub fn derive_assurance_level(platform: &str, cross_verified: bool) -> AssuranceLevel {
+    match platform {
+        "auths" => AssuranceLevel::Sovereign,
+        "github" => AssuranceLevel::Authenticated,
+        "npm" => AssuranceLevel::TokenVerified,
+        "pypi" if cross_verified => AssuranceLevel::TokenVerified,
+        "pypi" => AssuranceLevel::SelfAsserted,
+        _ => AssuranceLevel::SelfAsserted,
+    }
+}
 
 /// Errors from platform identity claim operations (OAuth, proof publishing, registry submission).
 ///

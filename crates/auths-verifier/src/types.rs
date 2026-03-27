@@ -662,6 +662,84 @@ impl From<DeviceDID> for CanonicalDid {
     }
 }
 
+// ============================================================================
+// AssuranceLevel Type
+// ============================================================================
+
+/// Cryptographic assurance level of a platform identity claim.
+///
+/// Variants are ordered from weakest to strongest so that `Ord` comparisons
+/// reflect trust strength: `SelfAsserted < TokenVerified < Authenticated < Sovereign`.
+///
+/// Usage:
+/// ```rust
+/// # use auths_verifier::types::AssuranceLevel;
+/// assert!(AssuranceLevel::Sovereign > AssuranceLevel::Authenticated);
+/// assert!(AssuranceLevel::SelfAsserted < AssuranceLevel::TokenVerified);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum AssuranceLevel {
+    /// Self-reported identity, signed only by the claimant's own key (e.g., PyPI).
+    SelfAsserted,
+    /// Bearer token validated against a platform API at time of claim (e.g., npm).
+    TokenVerified,
+    /// OAuth/OIDC challenge-response proving account control (e.g., GitHub).
+    Authenticated,
+    /// End-to-end cryptographic identity chain with no third-party trust (auths native).
+    Sovereign,
+}
+
+/// Error returned when parsing an `AssuranceLevel` from a string fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "invalid assurance level '{0}': expected one of: sovereign, authenticated, token_verified, self_asserted"
+)]
+pub struct AssuranceLevelParseError(pub String);
+
+impl AssuranceLevel {
+    /// Human-readable label for display.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::SelfAsserted => "Self-Asserted",
+            Self::TokenVerified => "Token-Verified",
+            Self::Authenticated => "Authenticated",
+            Self::Sovereign => "Sovereign",
+        }
+    }
+
+    /// Numeric score (1–4) for the assurance level.
+    pub fn score(&self) -> u8 {
+        match self {
+            Self::SelfAsserted => 1,
+            Self::TokenVerified => 2,
+            Self::Authenticated => 3,
+            Self::Sovereign => 4,
+        }
+    }
+}
+
+impl fmt::Display for AssuranceLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
+impl FromStr for AssuranceLevel {
+    type Err = AssuranceLevelParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "sovereign" => Ok(Self::Sovereign),
+            "authenticated" => Ok(Self::Authenticated),
+            "token_verified" => Ok(Self::TokenVerified),
+            "self_asserted" => Ok(Self::SelfAsserted),
+            _ => Err(AssuranceLevelParseError(s.to_string())),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -736,5 +814,98 @@ mod tests {
         let json = serde_json::to_string(&report).unwrap();
         // witness_quorum should be omitted from JSON when None
         assert!(!json.contains("witness_quorum"));
+    }
+
+    // ── AssuranceLevel Tests ──────────────────────────────────────────
+
+    #[test]
+    fn assurance_level_ordering() {
+        assert!(AssuranceLevel::SelfAsserted < AssuranceLevel::TokenVerified);
+        assert!(AssuranceLevel::TokenVerified < AssuranceLevel::Authenticated);
+        assert!(AssuranceLevel::Authenticated < AssuranceLevel::Sovereign);
+    }
+
+    #[test]
+    fn assurance_level_serde_roundtrip() {
+        let variants = [
+            AssuranceLevel::SelfAsserted,
+            AssuranceLevel::TokenVerified,
+            AssuranceLevel::Authenticated,
+            AssuranceLevel::Sovereign,
+        ];
+        for level in variants {
+            let json = serde_json::to_string(&level).unwrap();
+            let parsed: AssuranceLevel = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, level);
+        }
+    }
+
+    #[test]
+    fn assurance_level_serde_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&AssuranceLevel::SelfAsserted).unwrap(),
+            "\"self_asserted\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AssuranceLevel::TokenVerified).unwrap(),
+            "\"token_verified\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AssuranceLevel::Authenticated).unwrap(),
+            "\"authenticated\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AssuranceLevel::Sovereign).unwrap(),
+            "\"sovereign\""
+        );
+    }
+
+    #[test]
+    fn assurance_level_from_str() {
+        assert_eq!(
+            "sovereign".parse::<AssuranceLevel>().unwrap(),
+            AssuranceLevel::Sovereign
+        );
+        assert_eq!(
+            "authenticated".parse::<AssuranceLevel>().unwrap(),
+            AssuranceLevel::Authenticated
+        );
+        assert_eq!(
+            "token_verified".parse::<AssuranceLevel>().unwrap(),
+            AssuranceLevel::TokenVerified
+        );
+        assert_eq!(
+            "self_asserted".parse::<AssuranceLevel>().unwrap(),
+            AssuranceLevel::SelfAsserted
+        );
+        assert!("invalid".parse::<AssuranceLevel>().is_err());
+    }
+
+    #[test]
+    fn assurance_level_from_str_case_insensitive() {
+        assert_eq!(
+            "SOVEREIGN".parse::<AssuranceLevel>().unwrap(),
+            AssuranceLevel::Sovereign
+        );
+        assert_eq!(
+            "Authenticated".parse::<AssuranceLevel>().unwrap(),
+            AssuranceLevel::Authenticated
+        );
+    }
+
+    #[test]
+    fn assurance_level_score() {
+        assert_eq!(AssuranceLevel::SelfAsserted.score(), 1);
+        assert_eq!(AssuranceLevel::TokenVerified.score(), 2);
+        assert_eq!(AssuranceLevel::Authenticated.score(), 3);
+        assert_eq!(AssuranceLevel::Sovereign.score(), 4);
+    }
+
+    #[test]
+    fn assurance_level_display() {
+        assert_eq!(AssuranceLevel::SelfAsserted.to_string(), "Self-Asserted");
+        assert_eq!(AssuranceLevel::TokenVerified.to_string(), "Token-Verified");
+        assert_eq!(AssuranceLevel::Authenticated.to_string(), "Authenticated");
+        assert_eq!(AssuranceLevel::Sovereign.to_string(), "Sovereign");
     }
 }
