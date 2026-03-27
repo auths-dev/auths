@@ -2,18 +2,19 @@ pub mod storage;
 
 use std::io::IsTerminal;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 
-use auths_core::config::EnvironmentConfig;
+use auths_core::config::{EnvironmentConfig, load_config};
 use auths_core::paths::auths_home;
-use auths_core::signing::{CachedPassphraseProvider, PassphraseProvider};
+use auths_core::signing::{KeychainPassphraseProvider, PassphraseProvider};
+use auths_core::storage::passphrase_cache::{get_passphrase_cache, parse_duration_str};
 use auths_sdk::ports::agent::AgentSigningPort;
 use auths_telemetry::TelemetryShutdown;
 use auths_telemetry::config::{build_sinks_from_config, load_audit_config};
 use auths_telemetry::sinks::composite::CompositeSink;
 
+use crate::adapters::config_store::FileConfigStore;
 use crate::cli::AuthsCli;
 use crate::config::{CliConfig, OutputFormat};
 use crate::core::provider::{CliPassphraseProvider, PrefilledPassphraseProvider};
@@ -50,10 +51,20 @@ pub fn build_config(cli: &AuthsCli) -> Result<CliConfig> {
                 passphrase,
             )))
         } else {
+            let config = load_config(&FileConfigStore);
+            let cache = get_passphrase_cache(config.passphrase.biometric);
+            let ttl_secs = config
+                .passphrase
+                .duration
+                .as_deref()
+                .and_then(parse_duration_str);
             let inner = Arc::new(CliPassphraseProvider::new());
-            Arc::new(CachedPassphraseProvider::new(
+            Arc::new(KeychainPassphraseProvider::new(
                 inner,
-                Duration::from_secs(3600),
+                cache,
+                "default".to_string(),
+                config.passphrase.cache,
+                ttl_secs,
             ))
         };
 

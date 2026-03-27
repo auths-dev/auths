@@ -131,6 +131,7 @@ pub fn build_auths_context(
         .identity_storage(identity_storage)
         .attestation_sink(attestation_sink)
         .attestation_source(attestation_source);
+    builder = builder.agent_signing(crate::factories::build_agent_provider());
     if let Some(pp) = passphrase_provider {
         builder = builder.passphrase_provider(pp);
     }
