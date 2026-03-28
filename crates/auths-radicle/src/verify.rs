@@ -604,6 +604,10 @@ mod tests {
             timestamp: None,
             note: None,
             payload: None,
+            commit_sha: None,
+            commit_message: None,
+            author: None,
+            oidc_binding: None,
             role: None,
             capabilities: capabilities
                 .into_iter()

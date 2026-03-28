@@ -59,12 +59,33 @@
         "version"
       ],
       "properties": {
+        "author": {
+          "description": "Git commit author (for commit signing attestations).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "capabilities": {
           "description": "Capabilities this attestation grants.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/Capability"
           }
+        },
+        "commit_message": {
+          "description": "Git commit message (for commit signing attestations).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commit_sha": {
+          "description": "Git commit SHA (for commit signing attestations).",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "delegated_by": {
           "description": "DID of the attestation that delegated authority (for chain tracking).",
@@ -117,6 +138,17 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "oidc_binding": {
+          "description": "OIDC binding information (issuer, subject, audience, expiration).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OidcBinding"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "payload": {
@@ -201,6 +233,57 @@
     "IdentityDID": {
       "description": "Strongly-typed wrapper for identity DIDs (e.g., `\"did:keri:E...\"`).\n\nUsage: ```rust # use auths_verifier::IdentityDID; let did = IdentityDID::parse(\"did:keri:Eabc123\").unwrap(); assert_eq!(did.as_str(), \"did:keri:Eabc123\");\n\nlet s: String = did.into_inner(); ```",
       "type": "string"
+    },
+    "OidcBinding": {
+      "description": "OIDC token binding information for machine identity attestations.\n\nProves that the attestation was created by a CI/CD workload with a specific OIDC token. Contains the issuer, subject, audience, and expiration so verifiers can reconstruct the identity without needing the ephemeral private key.",
+      "type": "object",
+      "required": [
+        "audience",
+        "issuer",
+        "subject",
+        "token_exp"
+      ],
+      "properties": {
+        "audience": {
+          "description": "Expected audience.",
+          "type": "string"
+        },
+        "issuer": {
+          "description": "OIDC token issuer (e.g., \"https://token.actions.githubusercontent.com\").",
+          "type": "string"
+        },
+        "jti": {
+          "description": "JTI for replay detection (if available).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "normalized_claims": {
+          "description": "Platform-normalized claims (e.g., repo, actor, run_id for GitHub).",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "platform": {
+          "description": "CI/CD platform (e.g., \"github\", \"gitlab\", \"circleci\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "description": "Token subject (unique workload identifier).",
+          "type": "string"
+        },
+        "token_exp": {
+          "description": "Token expiration timestamp (Unix timestamp).",
+          "type": "integer",
+          "format": "int64"
+        }
+      }
     },
     "PublicKeyHex": {
       "description": "A validated hex-encoded Ed25519 public key (64 hex chars = 32 bytes).\n\nUse `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.",

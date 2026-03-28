@@ -133,8 +133,7 @@ pub fn verify_with_resolver(
 mod tests {
     use super::*;
     use auths_core::signing::{DidResolverError, ResolvedDid};
-    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
-    use auths_verifier::types::{CanonicalDid, DeviceDID};
+    use auths_verifier::AttestationBuilder;
 
     struct StubResolver;
     impl DidResolver for StubResolver {
@@ -144,25 +143,11 @@ mod tests {
     }
 
     fn base_attestation() -> Attestation {
-        Attestation {
-            version: 1,
-            rid: ResourceId::new("test"),
-            issuer: CanonicalDid::new_unchecked("did:keri:Estub"),
-            subject: DeviceDID::new_unchecked("did:key:zDevice"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        }
+        AttestationBuilder::default()
+            .rid("test")
+            .issuer("did:keri:Estub")
+            .subject("did:key:zDevice")
+            .build()
     }
 
     #[test]

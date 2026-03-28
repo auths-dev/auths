@@ -234,8 +234,7 @@ pub fn expected_org_issuer(org: &str) -> String {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature};
-    use auths_verifier::types::CanonicalDid;
+    use auths_verifier::AttestationBuilder;
 
     #[test]
     fn member_filter_defaults_to_active_only() {
@@ -273,50 +272,23 @@ mod tests {
 
     #[test]
     fn compute_status_active() {
-        let att = Attestation {
-            version: 1,
-            rid: "test".into(),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("test")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .build();
         let now = Utc::now();
         assert_eq!(compute_status(&att, now), MemberStatus::Active);
     }
 
     #[test]
     fn compute_status_revoked() {
-        let att = Attestation {
-            version: 1,
-            rid: "test".into(),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: Some(Utc::now()),
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("test")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .revoked_at(Some(Utc::now()))
+            .build();
         let now = Utc::now();
         assert_eq!(compute_status(&att, now), MemberStatus::Revoked);
     }
@@ -324,25 +296,12 @@ mod tests {
     #[test]
     fn compute_status_expired() {
         let past = Utc::now() - chrono::Duration::hours(1);
-        let att = Attestation {
-            version: 1,
-            rid: "test".into(),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: Some(past),
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("test")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .expires_at(Some(past))
+            .build();
         let now = Utc::now();
         assert!(matches!(
             compute_status(&att, now),
@@ -353,25 +312,12 @@ mod tests {
     #[test]
     fn compute_status_not_expired_yet() {
         let future = Utc::now() + chrono::Duration::hours(1);
-        let att = Attestation {
-            version: 1,
-            rid: "test".into(),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: Some(future),
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("test")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .expires_at(Some(future))
+            .build();
         let now = Utc::now();
         assert_eq!(compute_status(&att, now), MemberStatus::Active);
     }
@@ -379,25 +325,12 @@ mod tests {
     #[test]
     fn compute_status_expired_at_boundary() {
         let now = Utc::now();
-        let att = Attestation {
-            version: 1,
-            rid: "test".into(),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: Some(now), // Exactly at boundary
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("test")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .expires_at(Some(now))
+            .build();
         // Uses <= for expiry, so exactly at boundary = expired
         assert!(matches!(
             compute_status(&att, now),
@@ -435,25 +368,12 @@ mod tests {
 
     #[test]
     fn attestation_capability_vec_matches_set() {
-        let att = Attestation {
-            version: 1,
-            rid: "test".into(),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("test")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .capabilities(vec![Capability::sign_commit(), Capability::sign_release()])
+            .build();
 
         let vec = attestation_capability_vec(&att);
         let set = attestation_capability_strings(&att);

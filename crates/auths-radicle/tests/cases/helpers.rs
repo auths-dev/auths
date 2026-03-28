@@ -4,10 +4,11 @@ use auths_id::keri::KeyState;
 use auths_radicle::bridge::BridgeError;
 use auths_radicle::refs::Layout;
 use auths_radicle::verify::AuthsStorage;
+use auths_verifier::AttestationBuilder;
 use auths_verifier::IdentityDID;
-use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature};
+use auths_verifier::core::{Attestation, Capability};
 use auths_verifier::keri::{Prefix, Said};
-use auths_verifier::types::{CanonicalDid, DeviceDID};
+use auths_verifier::types::DeviceDID;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 
@@ -122,27 +123,15 @@ pub fn make_test_attestation(
     rid: &RepoId,
     revoked: bool,
     capabilities: Vec<Capability>,
-) -> Attestation {
+) -> auths_verifier::core::Attestation {
     use chrono::Utc;
-    Attestation {
-        version: 1,
-        rid: auths_verifier::core::ResourceId::new(rid.to_string()),
-        issuer: CanonicalDid::new_unchecked(issuer.to_string()),
-        subject: DeviceDID::new_unchecked(device_did.to_string()),
-        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-        identity_signature: Ed25519Signature::empty(),
-        device_signature: Ed25519Signature::empty(),
-        revoked_at: if revoked { Some(Utc::now()) } else { None },
-        expires_at: None,
-        timestamp: None,
-        note: None,
-        payload: None,
-        role: None,
-        capabilities,
-        delegated_by: None,
-        signer_type: None,
-        environment_claim: None,
-    }
+    AttestationBuilder::default()
+        .rid(rid.to_string())
+        .issuer(&issuer.to_string())
+        .subject(&device_did.to_string())
+        .revoked_at(if revoked { Some(Utc::now()) } else { None })
+        .capabilities(capabilities)
+        .build()
 }
 
 pub struct DeviceFixture {

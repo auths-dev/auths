@@ -25,6 +25,9 @@ use chrono::{DateTime, Utc};
 use super::Decision;
 use super::device::Action;
 
+#[cfg(test)]
+use auths_verifier::AttestationBuilder;
+
 /// Authorize an org member to perform an action.
 ///
 /// # Sans-IO Design
@@ -56,29 +59,15 @@ use super::device::Action;
 ///
 /// ```rust
 /// use auths_core::policy::{Decision, device::Action, org::authorize_org_action};
-/// use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature, Role};
-/// use auths_verifier::types::{CanonicalDid, DeviceDID};
+/// use auths_verifier::{AttestationBuilder, core::{Capability, Role}};
 /// use chrono::Utc;
 ///
-/// let membership = Attestation {
-///     version: 1,
-///     rid: "member".into(),
-///     issuer: CanonicalDid::new_unchecked("did:keri:EOrg123"),
-///     subject: DeviceDID::new_unchecked("did:key:z6MkAlice"),
-///     device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-///     identity_signature: Ed25519Signature::empty(),
-///     device_signature: Ed25519Signature::empty(),
-///     revoked_at: None,
-///     expires_at: None,
-///     timestamp: None,
-///     note: None,
-///     payload: None,
-///     role: Some(Role::Admin),
-///     capabilities: vec![Capability::manage_members()],
-///     delegated_by: None,
-///     signer_type: None,
-///     environment_claim: None,
-/// };
+/// let membership = AttestationBuilder::default()
+///     .issuer("did:keri:EOrg123")
+///     .subject("did:key:z6MkAlice")
+///     .role(Some(Role::Admin))
+///     .capabilities(vec![Capability::manage_members()])
+///     .build();
 ///
 /// let decision = authorize_org_action(
 ///     &membership,
@@ -172,8 +161,7 @@ fn capability_name(cap: &Capability) -> &str {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
-    use auths_verifier::types::{CanonicalDid, DeviceDID};
+    use auths_verifier::core::Role;
     use chrono::Duration;
 
     fn make_membership(
@@ -183,25 +171,15 @@ mod tests {
         capabilities: Vec<Capability>,
         role: Option<Role>,
     ) -> Attestation {
-        Attestation {
-            version: 1,
-            rid: ResourceId::new("membership"),
-            issuer: CanonicalDid::new_unchecked(issuer),
-            subject: DeviceDID::new_unchecked("did:key:z6MkMember"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at,
-            expires_at,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role,
-            capabilities,
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        }
+        AttestationBuilder::default()
+            .rid("membership")
+            .issuer(issuer)
+            .subject("did:key:z6MkMember")
+            .revoked_at(revoked_at)
+            .expires_at(expires_at)
+            .role(role)
+            .capabilities(capabilities)
+            .build()
     }
 
     const ORG_ISSUER: &str = "did:keri:EOrg123";

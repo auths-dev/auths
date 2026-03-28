@@ -2,7 +2,7 @@ use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
 use auths_verifier::witness::{WitnessQuorum, WitnessReceipt, WitnessVerifyConfig};
 use auths_verifier::{
-    IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
+    Attestation, IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
 };
 use base64;
 use chrono::{DateTime, Duration, Utc};
@@ -63,9 +63,31 @@ struct VerifyCommitResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     signer: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    oidc_binding: Option<OidcBindingDisplay>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     warnings: Vec<String>,
+}
+
+/// Display representation of OIDC binding information.
+///
+/// Extracted from the attestation when available, shows CI/CD workload context
+/// that signed the commit (issuer, subject, platform, and normalized claims).
+#[derive(Serialize)]
+struct OidcBindingDisplay {
+    /// OIDC token issuer (e.g., "https://token.actions.githubusercontent.com").
+    issuer: String,
+    /// Token subject (unique workload identifier).
+    subject: String,
+    /// Expected audience.
+    audience: String,
+    /// CI/CD platform (e.g., "github", "gitlab", "circleci").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    platform: Option<String>,
+    /// Platform-normalized claims (e.g., repo, actor, run_id for GitHub).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    normalized_claims: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl VerifyCommitResult {
@@ -78,6 +100,7 @@ impl VerifyCommitResult {
             chain_report: None,
             witness_quorum: None,
             signer: None,
+            oidc_binding: None,
             error: Some(error),
             warnings: Vec::new(),
         }
@@ -202,6 +225,51 @@ fn resolve_commits(commit_spec: &str) -> Result<Vec<String>> {
     }
 }
 
+/// Load an attestation from git ref `refs/auths/commits/<sha>`.
+///
+/// Attestations are stored as JSON in git refs using the naming convention
+/// `refs/auths/commits/<commit-sha>`. This function reads the ref, parses the JSON,
+/// and returns the attestation if successful.
+///
+/// Returns None if the ref doesn't exist, can't be read, or the JSON is invalid.
+fn try_load_attestation_from_ref(commit_sha: &str) -> Option<Attestation> {
+    let ref_name = format!("refs/auths/commits/{}", commit_sha);
+
+    let output = Command::new("git")
+        .args(["show", &ref_name])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let attestation_json = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str(&attestation_json).ok()
+}
+
+/// Extract OIDC binding display from an attestation.
+///
+/// Converts the internal `OidcBinding` structure from an attestation into
+/// a display-friendly `OidcBindingDisplay` that includes issuer, subject,
+/// platform, and normalized claims from the CI/CD workload.
+///
+/// Returns None if the attestation has no OIDC binding, which is expected
+/// for non-OIDC attestations or older attestations created before OIDC binding
+/// was added.
+fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBindingDisplay> {
+    attestation
+        .oidc_binding
+        .as_ref()
+        .map(|binding| OidcBindingDisplay {
+            issuer: binding.issuer.clone(),
+            subject: binding.subject.clone(),
+            audience: binding.audience.clone(),
+            platform: binding.platform.clone(),
+            normalized_claims: binding.normalized_claims.clone(),
+        })
+}
+
 /// Verify all commits in the list.
 async fn verify_commits(
     cmd: &VerifyCommitCommand,
@@ -266,6 +334,7 @@ async fn verify_one_commit(
                         chain_report: None,
                         witness_quorum: None,
                         signer: None,
+                        oidc_binding: None,
                         error: Some(e.to_string()),
                         warnings: Vec::new(),
                     };
@@ -297,13 +366,18 @@ async fn verify_one_commit(
                 chain_report,
                 witness_quorum: None,
                 signer,
+                oidc_binding: None,
                 error: Some(format!("Witness verification error: {}", e)),
                 warnings,
             };
         }
     };
 
-    // 4. Compute overall verdict
+    // 4. Try to load attestation from git refs for OIDC binding info
+    let oidc_binding =
+        try_load_attestation_from_ref(&sha).and_then(|att| extract_oidc_binding_display(&att));
+
+    // 5. Compute overall verdict
     let mut valid = ssh_valid;
 
     if let Some(cv) = chain_valid
@@ -326,6 +400,7 @@ async fn verify_one_commit(
         chain_report,
         witness_quorum,
         signer,
+        oidc_binding,
         error: None,
         warnings,
     }
@@ -514,6 +589,10 @@ fn format_result_text(result: &VerifyCommitResult) -> String {
         parts.push(format!("witnesses: {}/{}", q.verified, q.required));
     }
 
+    if let Some(ref binding) = result.oidc_binding {
+        parts.push(format!("oidc: {}", binding.issuer));
+    }
+
     if let Some(ref error) = result.error
         && result.signer.is_none()
         && result.chain_valid.is_none()
@@ -554,18 +633,26 @@ fn format_chain_status(status: &auths_verifier::VerificationStatus) -> String {
 
 /// Print chain/witness summary to stdout (for valid single-commit output).
 fn print_chain_witness_summary(r: &VerifyCommitResult) {
+    let mut parts = Vec::new();
+
     if let Some(cv) = r.chain_valid {
         if cv {
-            print!(" (chain: valid");
+            parts.push("chain: valid".to_string());
         } else {
-            print!(" (chain: invalid");
+            parts.push("chain: invalid".to_string());
         }
-        if let Some(ref q) = r.witness_quorum {
-            print!(", witnesses: {}/{}", q.verified, q.required);
-        }
-        print!(")");
-    } else if let Some(ref q) = r.witness_quorum {
-        print!(" (witnesses: {}/{})", q.verified, q.required);
+    }
+
+    if let Some(ref q) = r.witness_quorum {
+        parts.push(format!("witnesses: {}/{}", q.verified, q.required));
+    }
+
+    if let Some(ref binding) = r.oidc_binding {
+        parts.push(format!("oidc: {} ({})", binding.issuer, binding.subject));
+    }
+
+    if !parts.is_empty() {
+        print!(" ({})", parts.join(", "));
     }
 }
 
@@ -822,6 +909,7 @@ impl crate::commands::executable::ExecutableCommand for VerifyCommitCommand {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+    use auths_verifier::AttestationBuilder;
 
     #[test]
     fn verify_commit_result_failure_helper() {
@@ -848,6 +936,7 @@ mod tests {
                 receipts: vec![],
             }),
             signer: Some("did:keri:test".into()),
+            oidc_binding: None,
             error: None,
             warnings: vec!["expiring soon".into()],
         };
@@ -879,6 +968,7 @@ mod tests {
             chain_report: None,
             witness_quorum: None,
             signer: Some("did:keri:test".into()),
+            oidc_binding: None,
             error: None,
             warnings: vec![],
         };
@@ -901,6 +991,7 @@ mod tests {
                 receipts: vec![],
             }),
             signer: Some("did:keri:test".into()),
+            oidc_binding: None,
             error: None,
             warnings: vec![],
         };
@@ -937,31 +1028,22 @@ mod tests {
 
     #[tokio::test]
     async fn verify_bundle_chain_invalid_hex() {
+        #[allow(clippy::disallowed_methods)] // test code
+        let bundle_timestamp = Utc::now();
+
         #[allow(clippy::disallowed_methods)]
         // INVARIANT: test-only hardcoded DID, hex, and canonical DID string literals
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
             public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("not_hex"),
-            attestation_chain: vec![auths_verifier::core::Attestation {
-                version: 1,
-                rid: "test".into(),
-                issuer: auths_verifier::CanonicalDid::new_unchecked("did:keri:test"),
-                subject: auths_verifier::DeviceDID::new_unchecked("did:key:zTest"),
-                device_public_key: auths_verifier::Ed25519PublicKey::from_bytes([0u8; 32]),
-                identity_signature: auths_verifier::core::Ed25519Signature::empty(),
-                device_signature: auths_verifier::core::Ed25519Signature::empty(),
-                revoked_at: None,
-                expires_at: None,
-                timestamp: None,
-                note: None,
-                payload: None,
-                role: None,
-                capabilities: vec![],
-                delegated_by: None,
-                signer_type: None,
-                environment_claim: None,
-            }],
-            bundle_timestamp: Utc::now(),
+            attestation_chain: vec![
+                AttestationBuilder::default()
+                    .rid("test")
+                    .issuer("did:keri:test")
+                    .subject("did:key:zTest")
+                    .build(),
+            ],
+            bundle_timestamp,
             max_valid_for_secs: 86400,
         };
         let (cv, _cr, warnings) = verify_bundle_chain(&bundle, Utc::now()).await;

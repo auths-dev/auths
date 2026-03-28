@@ -84,6 +84,7 @@ windows = { version = "0.58", features = ["Security_Credentials", "Foundation_Co
 ring.workspace = true
 anyhow = "1.0"
 assert_matches = "1.5.0"
+auths-verifier = { workspace = true, features = ["test-utils"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 mockall = "0.13.1"
 rand = "0.8"

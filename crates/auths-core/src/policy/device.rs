@@ -3,9 +3,9 @@
 //! This module implements the device authorization rules that determine
 //! whether a device attestation grants permission for a specific action.
 
-use auths_verifier::core::{Attestation, Capability};
 #[cfg(test)]
-use auths_verifier::types::CanonicalDid;
+use auths_verifier::AttestationBuilder;
+use auths_verifier::core::{Attestation, Capability};
 use chrono::{DateTime, Utc};
 
 use super::Decision;
@@ -77,29 +77,14 @@ impl Action {
 ///
 /// ```rust
 /// use auths_core::policy::{Decision, device::{Action, authorize_device}};
-/// use auths_verifier::core::{Attestation, Capability, Ed25519PublicKey, Ed25519Signature};
-/// use auths_verifier::types::{CanonicalDid, DeviceDID};
+/// use auths_verifier::{AttestationBuilder, core::Capability};
 /// use chrono::Utc;
 ///
-/// let attestation = Attestation {
-///     version: 1,
-///     rid: "test".into(),
-///     issuer: CanonicalDid::new_unchecked("did:keri:ETest"),
-///     subject: DeviceDID::new_unchecked("did:key:z6Mk..."),
-///     device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-///     identity_signature: Ed25519Signature::empty(),
-///     device_signature: Ed25519Signature::empty(),
-///     revoked_at: None,
-///     expires_at: None,
-///     timestamp: None,
-///     note: None,
-///     payload: None,
-///     role: None,
-///     capabilities: vec![Capability::sign_commit()],
-///     delegated_by: None,
-///     signer_type: None,
-///     environment_claim: None,
-/// };
+/// let attestation = AttestationBuilder::default()
+///     .issuer("did:keri:ETest")
+///     .subject("did:key:z6Mk...")
+///     .capabilities(vec![Capability::sign_commit()])
+///     .build();
 ///
 /// let decision = authorize_device(
 ///     &attestation,
@@ -173,8 +158,6 @@ fn capability_name(cap: &Capability) -> &str {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature};
-    use auths_verifier::types::DeviceDID;
     use chrono::Duration;
 
     fn make_attestation(
@@ -183,25 +166,13 @@ mod tests {
         issuer: &str,
         capabilities: Vec<Capability>,
     ) -> Attestation {
-        Attestation {
-            version: 1,
-            rid: "test-rid".into(),
-            issuer: CanonicalDid::new_unchecked(issuer),
-            subject: DeviceDID::new_unchecked("did:key:z6MkTest"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at,
-            expires_at,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities,
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        }
+        AttestationBuilder::default()
+            .issuer(issuer)
+            .subject("did:key:z6MkTest")
+            .revoked_at(revoked_at)
+            .expires_at(expires_at)
+            .capabilities(capabilities)
+            .build()
     }
 
     #[test]

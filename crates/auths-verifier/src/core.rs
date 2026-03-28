@@ -729,6 +729,22 @@ pub struct Attestation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
 
+    /// Git commit SHA (for commit signing attestations).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_sha: Option<String>,
+
+    /// Git commit message (for commit signing attestations).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_message: Option<String>,
+
+    /// Git commit author (for commit signing attestations).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+
+    /// OIDC binding information (issuer, subject, audience, expiration).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oidc_binding: Option<OidcBinding>,
+
     /// Role for org membership attestations.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,
@@ -750,6 +766,33 @@ pub struct Attestation {
     /// Excluded from `CanonicalAttestationData` — does not affect signatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment_claim: Option<Value>,
+}
+
+/// OIDC token binding information for machine identity attestations.
+///
+/// Proves that the attestation was created by a CI/CD workload with a specific
+/// OIDC token. Contains the issuer, subject, audience, and expiration so verifiers
+/// can reconstruct the identity without needing the ephemeral private key.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct OidcBinding {
+    /// OIDC token issuer (e.g., "https://token.actions.githubusercontent.com").
+    pub issuer: String,
+    /// Token subject (unique workload identifier).
+    pub subject: String,
+    /// Expected audience.
+    pub audience: String,
+    /// Token expiration timestamp (Unix timestamp).
+    pub token_exp: i64,
+    /// CI/CD platform (e.g., "github", "gitlab", "circleci").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    /// JTI for replay detection (if available).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jti: Option<String>,
+    /// Platform-normalized claims (e.g., repo, actor, run_id for GitHub).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalized_claims: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 /// The type of entity that produced a signature.
@@ -1334,6 +1377,7 @@ impl PartialEq<&str> for PolicyId {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+    use crate::AttestationBuilder;
 
     // ========================================================================
     // Capability serialization tests
@@ -1613,27 +1657,17 @@ mod tests {
 
     #[test]
     fn attestation_with_org_fields_serializes_correctly() {
-        use crate::types::DeviceDID;
-
-        let att = Attestation {
-            version: 1,
-            rid: ResourceId::new("test-rid"),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Admin),
-            capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
-            delegated_by: Some(CanonicalDid::new_unchecked("did:keri:Edelegator")),
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("test-rid")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .role(Some(Role::Admin))
+            .capabilities(vec![
+                Capability::sign_commit(),
+                Capability::manage_members(),
+            ])
+            .delegated_by(Some(CanonicalDid::new_unchecked("did:keri:Edelegator")))
+            .build();
 
         let json = serde_json::to_string(&att).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -1646,27 +1680,11 @@ mod tests {
 
     #[test]
     fn attestation_without_org_fields_omits_them_in_json() {
-        use crate::types::DeviceDID;
-
-        let att = Attestation {
-            version: 1,
-            rid: ResourceId::new("test-rid"),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("test-rid")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .build();
 
         let json = serde_json::to_string(&att).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -1679,27 +1697,14 @@ mod tests {
 
     #[test]
     fn attestation_with_org_fields_roundtrips() {
-        use crate::types::DeviceDID;
-
-        let original = Attestation {
-            version: 1,
-            rid: ResourceId::new("test-rid"),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
-            delegated_by: Some(CanonicalDid::new_unchecked("did:keri:Eadmin")),
-            signer_type: None,
-            environment_claim: None,
-        };
+        let original = AttestationBuilder::default()
+            .rid("test-rid")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .role(Some(Role::Member))
+            .capabilities(vec![Capability::sign_commit(), Capability::sign_release()])
+            .delegated_by(Some(CanonicalDid::new_unchecked("did:keri:Eadmin")))
+            .build();
 
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: Attestation = serde_json::from_str(&json).unwrap();
@@ -1869,27 +1874,11 @@ mod tests {
 
     #[test]
     fn identity_bundle_roundtrips() {
-        use crate::types::DeviceDID;
-
-        let attestation = Attestation {
-            version: 1,
-            rid: ResourceId::new("test-rid"),
-            issuer: CanonicalDid::new_unchecked("did:keri:Eissuer"),
-            subject: DeviceDID::new_unchecked("did:key:zSubject"),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let attestation = AttestationBuilder::default()
+            .rid("test-rid")
+            .issuer("did:keri:Eissuer")
+            .subject("did:key:zSubject")
+            .build();
 
         let original = IdentityBundle {
             identity_did: IdentityDID::new_unchecked("did:keri:Eexample"),

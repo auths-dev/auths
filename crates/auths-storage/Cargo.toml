@@ -42,6 +42,7 @@ indexed-storage = ["dep:auths-index"]
 [dev-dependencies]
 auths-id = { workspace = true, features = ["test-utils"] }
 auths-core = { workspace = true, features = ["test-utils"] }
+auths-verifier = { workspace = true, features = ["test-utils"] }
 criterion = { version = "0.8.2", features = ["html_reports"] }
 tempfile = "3"
 

@@ -178,6 +178,10 @@ pub fn create_signed_attestation(
         delegated_by: delegated_canonical,
         signer_type: None,
         environment_claim: None,
+        commit_sha: None,
+        commit_message: None,
+        author: None,
+        oidc_binding: None,
     })
 }
 

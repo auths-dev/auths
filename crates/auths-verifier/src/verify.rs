@@ -620,6 +620,10 @@ mod tests {
             delegated_by: None,
             signer_type: None,
             environment_claim: None,
+            commit_sha: None,
+            commit_message: None,
+            author: None,
+            oidc_binding: None,
         };
 
         let data = CanonicalAttestationData {
@@ -1228,6 +1232,10 @@ mod tests {
             delegated_by: None,
             signer_type: None,
             environment_claim: None,
+            commit_sha: None,
+            commit_message: None,
+            author: None,
+            oidc_binding: None,
         };
 
         let caps_ref = if att.capabilities.is_empty() {
@@ -1578,6 +1586,10 @@ mod tests {
             delegated_by: None,
             signer_type: None,
             environment_claim: None,
+            commit_sha: None,
+            commit_message: None,
+            author: None,
+            oidc_binding: None,
         };
 
         let data = CanonicalAttestationData {

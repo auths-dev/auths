@@ -29,6 +29,7 @@ use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
 use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
+use crate::commands::sign_commit::SignCommitCommand;
 use crate::commands::signers::SignersCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::trust::TrustCommand;
@@ -93,6 +94,7 @@ pub struct AuthsCli {
 pub enum RootCommand {
     Init(InitCommand),
     Sign(SignCommand),
+    SignCommit(SignCommitCommand),
     Verify(UnifiedVerifyCommand),
     Status(StatusCommand),
     Whoami(WhoamiCommand),

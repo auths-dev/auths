@@ -203,6 +203,10 @@ fn environment_claim_excluded_from_canonical_form() {
         delegated_by: None,
         signer_type: None,
         environment_claim: Some(serde_json::json!({"provider": "aws", "region": "us-east-1"})),
+        commit_sha: None,
+        commit_message: None,
+        author: None,
+        oidc_binding: None,
     };
 
     let data = CanonicalAttestationData {
@@ -277,6 +281,10 @@ fn environment_claim_roundtrips_through_json() {
         delegated_by: None,
         signer_type: None,
         environment_claim: Some(serde_json::json!({"provider": "aws"})),
+        commit_sha: None,
+        commit_message: None,
+        author: None,
+        oidc_binding: None,
     };
 
     let json = serde_json::to_string(&att).unwrap();

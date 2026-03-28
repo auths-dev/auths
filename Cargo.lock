@@ -525,11 +525,15 @@ version = "0.0.1-rc.9"
 dependencies = [
  "async-trait",
  "auths-core",
+ "auths-crypto",
+ "auths-oidc-port",
  "auths-verifier",
  "axum",
  "chrono",
  "futures-util",
  "hex",
+ "jsonwebtoken",
+ "parking_lot",
  "rand 0.8.5",
  "reqwest 0.13.2",
  "ring",
@@ -540,6 +544,7 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "urlencoding",
+ "zeroize",
 ]
 
 [[package]]
@@ -591,6 +596,19 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+]
+
+[[package]]
+name = "auths-oidc-port"
+version = "0.0.1-rc.9"
+dependencies = [
+ "async-trait",
+ "auths-crypto",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -686,6 +704,7 @@ dependencies = [
  "auths-crypto",
  "auths-id",
  "auths-infra-http",
+ "auths-oidc-port",
  "auths-pairing-daemon",
  "auths-policy",
  "auths-sdk",
@@ -699,6 +718,7 @@ dependencies = [
  "hex",
  "html-escape",
  "json-canon",
+ "parking_lot",
  "reqwest 0.12.28",
  "ring",
  "serde",
