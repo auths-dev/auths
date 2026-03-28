@@ -23,6 +23,23 @@ use auths_verifier::CanonicalDid;
 
 /// Manage namespace claims in package ecosystems.
 #[derive(Parser, Debug, Clone)]
+#[command(
+    about = "Manage namespace claims in package ecosystems",
+    after_help = "Examples:
+  auths namespace claim --ecosystem npm --package-name @myname/package
+                        # Claim a namespace in npm registry
+  auths namespace delegate --ecosystem crates.io --package-name mypackage \\
+                           --recipient did:keri:ETarget
+                        # Delegate authority to another identity
+  auths namespace transfer --ecosystem pypi --package-name mypackage \\
+                           --owner did:keri:ENewOwner
+                        # Transfer namespace to a new owner
+
+Related:
+  auths id       — Manage identities
+  auths policy   — Define capability policies
+  auths org      — Manage organization memberships"
+)]
 pub struct NamespaceCommand {
     #[clap(subcommand)]
     pub subcommand: NamespaceSubcommand,

@@ -12,7 +12,23 @@ use serde::Serialize;
 
 /// Manage trusted identity roots.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "trust", about = "Manage trusted identity roots")]
+#[command(
+    name = "trust",
+    about = "Manage trusted identity roots",
+    after_help = "Examples:
+  auths trust list          # Show all pinned trusted identities
+  auths trust pin --did did:keri:EExample --key 7f8c9d0e1a2b3c4d...
+                            # Pin an identity as trusted
+  auths trust remove --did did:keri:EExample
+                            # Remove a pinned identity
+  auths trust show --did did:keri:EExample
+                            # Show details of a trusted identity
+
+Related:
+  auths verify  — Verify signatures (uses trust store)
+  auths sign    — Create signatures
+  auths error   — Troubleshoot trust policy errors"
+)]
 pub struct TrustCommand {
     #[command(subcommand)]
     pub command: TrustSubcommand,

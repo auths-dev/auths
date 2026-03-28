@@ -14,7 +14,28 @@ use crate::adapters::allowed_signers_store::FileAllowedSignersStore;
 use auths_utils::path::expand_tilde;
 
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Manage allowed signers for Git commit verification.")]
+#[command(
+    about = "Manage allowed signers for Git commit verification.",
+    after_help = "Examples:
+  auths signers list        # Show all entries in allowed_signers file
+  auths signers add user@example.com 'ssh-ed25519 AAAA...'
+                            # Manually add a signer
+  auths signers remove user@example.com
+                            # Remove a signer entry
+  auths signers sync --repo ~/.auths
+                            # Sync attestations from Auths registry
+  auths signers add-from-github username
+                            # Import SSH keys from a GitHub user
+
+Configuration:
+  Git reads allowed_signers from: git config gpg.ssh.allowedSignersFile
+  Configure with: git config gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
+
+Related:
+  auths sign    — Sign commits with Auths
+  auths verify  — Verify signed commits
+  auths git     — Git integration hooks"
+)]
 pub struct SignersCommand {
     #[command(subcommand)]
     pub command: SignersSubcommand,
@@ -192,7 +213,7 @@ fn handle_sync(args: &SignersSyncArgs) -> Result<()> {
     let storage = RegistryAttestationStorage::new(&repo_path);
 
     let path = if let Some(ref output) = args.output_file {
-        expand_tilde(output)?
+        expand_tilde(output).map_err(|e| anyhow::anyhow!("{}", e))?
     } else {
         resolve_signers_path()?
     };

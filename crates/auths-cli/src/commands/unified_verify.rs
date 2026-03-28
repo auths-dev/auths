@@ -59,7 +59,27 @@ pub fn parse_verify_target(raw_target: &str) -> VerifyTarget {
 
 /// Unified verify command: verifies a signed commit or an attestation.
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Verify a signed commit or attestation.")]
+#[command(
+    about = "Verify a signed commit or attestation.",
+    after_help = "Examples:
+  auths verify HEAD                       # Verify current commit signature
+  auths verify main..HEAD                 # Verify range of commits
+  auths verify artifact.json              # Verify signed artifact
+  auths verify - < artifact.json          # Verify from stdin
+
+Trust Policies:
+  Defaults to TOFU (Trust-On-First-Use) on interactive terminals.
+  Use --trust explicit in CI/CD to reject unknown identities.
+
+Artifact Verification:
+  File signatures are stored as <file>.auths.json.
+  JSON attestations can be verified directly.
+
+Related:
+  auths trust add <did>     — Add an identity to your trust store
+  auths sign                — Create signatures
+  auths --help-all          — See all commands"
+)]
 pub struct UnifiedVerifyCommand {
     /// Git ref, commit hash, range (e.g. HEAD, abc1234, main..HEAD),
     /// or path to an attestation JSON file / "-" for stdin.

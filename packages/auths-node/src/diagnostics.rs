@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use auths_sdk::ports::diagnostics::{
-    CheckResult, CryptoDiagnosticProvider, DiagnosticError, GitDiagnosticProvider,
+    CheckCategory, CheckResult, CryptoDiagnosticProvider, DiagnosticError, GitDiagnosticProvider,
 };
 use auths_sdk::workflows::diagnostics::DiagnosticsWorkflow;
 use napi_derive::napi;
@@ -25,6 +25,7 @@ impl GitDiagnosticProvider for FfiDiagnosticAdapter {
             passed,
             message,
             config_issues: vec![],
+            category: CheckCategory::Advisory,
         })
     }
 
@@ -59,6 +60,7 @@ impl CryptoDiagnosticProvider for FfiDiagnosticAdapter {
             passed,
             message,
             config_issues: vec![],
+            category: CheckCategory::Advisory,
         })
     }
 }

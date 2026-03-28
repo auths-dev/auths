@@ -1,8 +1,8 @@
 //! Diagnostics workflow — orchestrates system health checks via injected providers.
 
 use crate::ports::diagnostics::{
-    CheckResult, ConfigIssue, CryptoDiagnosticProvider, DiagnosticError, DiagnosticReport,
-    GitDiagnosticProvider,
+    CheckCategory, CheckResult, ConfigIssue, CryptoDiagnosticProvider, DiagnosticError,
+    DiagnosticReport, GitDiagnosticProvider,
 };
 
 /// Orchestrates diagnostic checks without subprocess calls.
@@ -111,6 +111,7 @@ impl<G: GitDiagnosticProvider, C: CryptoDiagnosticProvider> DiagnosticsWorkflow<
             passed,
             message: None,
             config_issues: issues,
+            category: CheckCategory::Critical,
         });
 
         Ok(())

@@ -118,6 +118,9 @@ fn render_text(err: &Error) {
         for cause in err.chain().skip(1) {
             eprintln!("  caused by: {cause}");
         }
+        eprintln!(
+            "\nhint: Run 'auths doctor' to check your setup, or 'auths error list' to browse known issues."
+        );
     }
 }
 

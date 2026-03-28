@@ -2,6 +2,8 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::Capability;
 use auths_verifier::core::ResourceId;
 use auths_verifier::types::DeviceDID;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Outcome of a successful developer identity setup.
 ///
@@ -172,4 +174,91 @@ pub struct RegistrationOutcome {
     pub registry: String,
     /// Number of platform claims indexed by the registry.
     pub platform_claims_indexed: usize,
+}
+
+/// Device readiness status for diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeviceReadiness {
+    /// Device is valid and not expiring soon.
+    Ok,
+    /// Device is expiring within 7 days.
+    ExpiringSoon,
+    /// Device authorization has expired.
+    Expired,
+    /// Device has been revoked.
+    Revoked,
+}
+
+/// Per-device status for reporting.
+///
+/// Usage:
+/// ```ignore
+/// for device in report.devices {
+///     println!("{}: {}", device.device_did, device.readiness);
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceStatus {
+    /// The device DID.
+    pub device_did: DeviceDID,
+    /// Current device readiness status.
+    pub readiness: DeviceReadiness,
+    /// Expiration timestamp, if set.
+    pub expires_at: Option<DateTime<Utc>>,
+    /// Seconds until expiration (RFC 6749 format).
+    pub expires_in: Option<i64>,
+    /// Revocation timestamp, if revoked.
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+/// Identity status for status report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentityStatus {
+    /// The controller DID.
+    pub controller_did: IdentityDID,
+    /// Key aliases available in keychain.
+    pub key_aliases: Vec<KeyAlias>,
+}
+
+/// Agent status for status report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentStatus {
+    /// Whether the agent is currently running.
+    pub running: bool,
+    /// Process ID if running.
+    pub pid: Option<u32>,
+    /// Socket path if running.
+    pub socket_path: Option<String>,
+}
+
+/// Next step recommendation for users.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NextStep {
+    /// Summary of what to do.
+    pub summary: String,
+    /// Command to run.
+    pub command: String,
+}
+
+/// Full status report combining identity, devices, and agent state.
+///
+/// Usage:
+/// ```ignore
+/// let report = StatusWorkflow::query(&ctx, now)?;
+/// println!("Identity: {}", report.identity.controller_did);
+/// println!("Devices: {} linked", report.devices.len());
+/// for step in report.next_steps {
+///     println!("Try: {}", step.command);
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusReport {
+    /// Current identity status, if initialized.
+    pub identity: Option<IdentityStatus>,
+    /// Per-device authorization status.
+    pub devices: Vec<DeviceStatus>,
+    /// Agent/SSH-agent status.
+    pub agent: AgentStatus,
+    /// Suggested next steps for the user.
+    pub next_steps: Vec<NextStep>,
 }

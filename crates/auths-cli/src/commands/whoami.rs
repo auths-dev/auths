@@ -10,7 +10,17 @@ use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
 /// Show the current identity on this machine.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "whoami", about = "Show the current identity on this machine")]
+#[command(
+    name = "whoami",
+    about = "Show the current identity on this machine",
+    after_help = "Examples:
+  auths whoami              # Show the current identity
+  auths whoami --json       # JSON output
+
+Related:
+  auths status  — Show full identity and device status
+  auths init    — Initialize a new identity"
+)]
 pub struct WhoamiCommand {}
 
 #[derive(Debug, Serialize)]

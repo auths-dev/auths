@@ -5,6 +5,17 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Category of a diagnostic check — determines exit code behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CheckCategory {
+    /// Critical: if this check fails, Auths is non-functional.
+    /// Doctor should exit 1 if any Critical check fails.
+    Critical,
+    /// Advisory: if this check fails, Auths works but environment is not ideal.
+    /// Doctor exits 2 if all Critical checks pass but some Advisory checks fail.
+    Advisory,
+}
+
 /// A structured issue found during git signing configuration checks.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConfigIssue {
@@ -33,6 +44,15 @@ pub struct CheckResult {
     /// Structured config issues — populated only by config checks.
     #[serde(default)]
     pub config_issues: Vec<ConfigIssue>,
+    /// Category of this check (Critical vs Advisory).
+    /// Critical checks failing means Auths is non-functional.
+    /// Advisory checks failing means environment is suboptimal.
+    #[serde(default = "default_check_category")]
+    pub category: CheckCategory,
+}
+
+fn default_check_category() -> CheckCategory {
+    CheckCategory::Advisory
 }
 
 /// Aggregated diagnostic report.

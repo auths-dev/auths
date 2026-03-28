@@ -11,7 +11,22 @@ use std::path::PathBuf;
 use std::{fs, path::Path};
 
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Git integration commands.")]
+#[command(
+    about = "Git integration commands.",
+    after_help = "Examples:
+  auths git install-hooks  # Install post-commit hooks for allowed_signers sync
+  auths git install-hooks --repo ~/my-project --force
+                           # Force hook installation in a specific repo
+
+Configuration:
+  Hooks sync allowed_signers from the Auths registry after each commit.
+  Configure git signing with: git config gpg.format ssh
+
+Related:
+  auths sign      — Sign commits and artifacts
+  auths signers   — Manage allowed signers file
+  auths verify    — Verify signed commits"
+)]
 pub struct GitCommand {
     #[command(subcommand)]
     pub command: GitSubcommand,

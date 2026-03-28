@@ -135,3 +135,4 @@ my-artifact.txt.auths.json
 
 # Stale E2E test artifacts (nested git repos created by test runs)
 tests/e2e/.auths-ci/
+.capsec-cache

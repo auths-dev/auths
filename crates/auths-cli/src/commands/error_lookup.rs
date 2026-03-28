@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 use crate::config::CliConfig;
 use crate::errors::registry;
@@ -7,29 +7,62 @@ use crate::errors::registry;
 ///
 /// Usage:
 /// ```ignore
-/// auths error AUTHS-E3001
-/// auths error --list
+/// auths error show AUTHS-E3001
+/// auths error list
 /// ```
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Look up an error code or list all known codes")]
+#[command(
+    about = "Look up an error code or list all known codes",
+    after_help = "Examples:
+  auths error list          # List all known error codes
+  auths error show AUTHS-E3001  # Show details for a specific code
+  auths error AUTHS-E3001   # Short form (same as show)
+
+Related:
+  auths doctor  — Run health checks to diagnose issues
+  auths status  — Check your identity and device status"
+)]
 pub struct ErrorLookupCommand {
-    /// The error code to look up (e.g. AUTHS-E3001).
+    #[command(subcommand)]
+    pub subcommand: Option<ErrorSubcommand>,
+
+    /// The error code to look up (e.g. AUTHS-E3001). Deprecated: use `auths error show CODE`.
     pub code: Option<String>,
 
-    /// List all known error codes.
+    /// List all known error codes. Deprecated: use `auths error list`.
     #[arg(long)]
     pub list: bool,
 }
 
+#[derive(Subcommand, Debug, Clone)]
+pub enum ErrorSubcommand {
+    /// List all known error codes
+    List,
+    /// Show explanation for an error code
+    Show { code: String },
+}
+
 impl ErrorLookupCommand {
     pub fn execute(&self, ctx: &CliConfig) -> anyhow::Result<()> {
+        // Handle new subcommand path
+        if let Some(ref subcommand) = self.subcommand {
+            match subcommand {
+                ErrorSubcommand::List => return list_codes(ctx),
+                ErrorSubcommand::Show { code } => return explain_code(code, ctx),
+            }
+        }
+
+        // Handle legacy flag/positional path
         if self.list {
             return list_codes(ctx);
         }
 
         match &self.code {
             Some(code) => explain_code(code, ctx),
-            None => list_codes(ctx),
+            None => {
+                // No subcommand, no flag, no code → show help
+                list_codes(ctx)
+            }
         }
     }
 }
@@ -59,7 +92,12 @@ fn explain_code(code: &str, ctx: &CliConfig) -> anyhow::Result<()> {
             None => {
                 eprintln!("Unknown error code: {normalized}");
                 eprintln!();
-                eprintln!("Run `auths error --list` to see all known codes.");
+                // Provide helpful suggestion if they try to use the old --list flag
+                if normalized == "LIST" {
+                    eprintln!("Did you mean: auths error list");
+                } else {
+                    eprintln!("Run `auths error list` to see all known codes.");
+                }
                 std::process::exit(1);
             }
         }
@@ -78,6 +116,7 @@ fn list_codes(ctx: &CliConfig) -> anyhow::Result<()> {
             println!("{code}");
         }
         eprintln!("\n{} error codes registered", codes.len());
+        eprintln!("Run `auths error show CODE` to see details for a specific code.");
     }
     Ok(())
 }

@@ -1,7 +1,7 @@
 //! POSIX-based diagnostic adapter — subprocess calls live here, nowhere else.
 
 use auths_sdk::ports::diagnostics::{
-    CheckResult, CryptoDiagnosticProvider, DiagnosticError, GitDiagnosticProvider,
+    CheckCategory, CheckResult, CryptoDiagnosticProvider, DiagnosticError, GitDiagnosticProvider,
 };
 use std::process::Command;
 
@@ -23,6 +23,7 @@ impl GitDiagnosticProvider for PosixDiagnosticAdapter {
             passed,
             message,
             config_issues: vec![],
+            category: CheckCategory::Advisory,
         })
     }
 
@@ -57,6 +58,7 @@ impl CryptoDiagnosticProvider for PosixDiagnosticAdapter {
             passed,
             message,
             config_issues: vec![],
+            category: CheckCategory::Advisory,
         })
     }
 }

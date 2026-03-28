@@ -1,5 +1,5 @@
 use crate::ports::diagnostics::{
-    CheckResult, CryptoDiagnosticProvider, DiagnosticError, GitDiagnosticProvider,
+    CheckCategory, CheckResult, CryptoDiagnosticProvider, DiagnosticError, GitDiagnosticProvider,
 };
 
 /// Configurable fake for [`GitDiagnosticProvider`].
@@ -36,6 +36,7 @@ impl GitDiagnosticProvider for FakeGitDiagnosticProvider {
                 Some("git not found".to_string())
             },
             config_issues: vec![],
+            category: CheckCategory::Advisory,
         })
     }
 
@@ -70,6 +71,7 @@ impl CryptoDiagnosticProvider for FakeCryptoDiagnosticProvider {
             passed: self.ssh_keygen_passes,
             message: None,
             config_issues: vec![],
+            category: CheckCategory::Advisory,
         })
     }
 }

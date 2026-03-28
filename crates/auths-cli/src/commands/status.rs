@@ -21,7 +21,23 @@ use nix::unistd::Pid;
 
 /// Show identity and agent status overview.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "status", about = "Show identity and agent status overview")]
+#[command(
+    name = "status",
+    about = "Show identity and agent status overview",
+    after_help = "Output:
+  Shows your identity DID, linked devices, key aliases, and agent status.
+  Recommended after auths init to verify setup.
+
+Next Steps:
+  If no identity: run `auths init`
+  If no devices: run `auths pair` to link this machine
+  If agent not running: run `auths agent start`
+
+Related:
+  auths init   — Initialize your identity
+  auths doctor — Run comprehensive health checks
+  auths --json status — Machine-readable output"
+)]
 pub struct StatusCommand {}
 
 /// Full status report.
@@ -30,6 +46,15 @@ pub struct StatusReport {
     pub identity: Option<IdentityStatus>,
     pub agent: AgentStatusInfo,
     pub devices: DevicesSummary,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub next_steps: Vec<NextStep>,
+}
+
+/// Suggested next action for the user.
+#[derive(Debug, Serialize)]
+pub struct NextStep {
+    pub summary: String,
+    pub command: String,
 }
 
 /// Identity status information.
@@ -92,10 +117,13 @@ pub fn handle_status(
     let agent = get_agent_status();
     let devices = load_devices_summary(&repo_path, now);
 
+    let next_steps = compute_next_steps(&identity, &agent, &devices);
+
     let report = StatusReport {
         identity,
         agent,
         devices,
+        next_steps,
     };
 
     if is_json_mode() {
@@ -188,6 +216,16 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
             }
             out.println(&format!("  {}", out.dim(&device.device_did)));
             display_device_expiry(device.expires_at, &out, now);
+        }
+    }
+
+    // Next steps
+    if !report.next_steps.is_empty() {
+        out.newline();
+        out.print_heading("Next steps:");
+        for step in &report.next_steps {
+            out.println(&format!("  • {}", step.summary));
+            out.println(&format!("    {}", out.dim(&format!("→ {}", step.command))));
         }
     }
 }
@@ -424,6 +462,50 @@ fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf> {
     layout::resolve_repo_path(repo_arg).map_err(|e| anyhow!(e))
 }
 
+/// Compute suggested next steps based on current state.
+fn compute_next_steps(
+    identity: &Option<IdentityStatus>,
+    agent: &AgentStatusInfo,
+    devices: &DevicesSummary,
+) -> Vec<NextStep> {
+    let mut steps = Vec::new();
+
+    // No identity
+    if identity.is_none() {
+        steps.push(NextStep {
+            summary: "Initialize your identity".to_string(),
+            command: "auths init".to_string(),
+        });
+        return steps;
+    }
+
+    // No devices linked
+    if devices.linked == 0 {
+        steps.push(NextStep {
+            summary: "Link your first device".to_string(),
+            command: "auths pair".to_string(),
+        });
+    }
+
+    // Agent not running
+    if !agent.running {
+        steps.push(NextStep {
+            summary: "Start the agent service".to_string(),
+            command: "auths agent start".to_string(),
+        });
+    }
+
+    // Devices expiring soon
+    if !devices.expiring_soon.is_empty() {
+        steps.push(NextStep {
+            summary: "Renew devices expiring soon".to_string(),
+            command: "auths device extend".to_string(),
+        });
+    }
+
+    steps
+}
+
 /// Check if a process with the given PID is running.
 #[cfg(unix)]
 fn is_process_running(pid: u32) -> bool {
@@ -498,6 +580,7 @@ mod tests {
                     },
                 ],
             },
+            next_steps: vec![],
         };
 
         insta::assert_json_snapshot!(report);

@@ -77,7 +77,20 @@ impl std::fmt::Display for InitProfile {
 #[derive(Args, Debug, Clone)]
 #[command(
     name = "init",
-    about = "Set up your cryptographic identity and Git signing"
+    about = "Set up your cryptographic identity and Git signing",
+    after_help = "Examples:
+  auths init                              # Interactive setup wizard
+  auths init --profile developer          # Developer profile with prompts
+  auths init --profile ci --non-interactive # Automated CI setup
+
+Profiles:
+  developer — Full development environment: local keys, device linking, Git signing
+  ci        — Ephemeral identity for CI/CD pipelines with environment variables
+  agent     — Scoped identity for AI agents with capability restrictions
+
+Related:
+  auths status  — Check setup completion
+  auths doctor  — Run health checks"
 )]
 pub struct InitCommand {
     /// Force interactive prompts (errors if not a TTY)
