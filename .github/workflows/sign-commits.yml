@@ -38,7 +38,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build auths-cli
-        run: cargo build --release -p auths_cli
+        run: cargo build --release -p auths-cli
         continue-on-error: false
 
       - name: Configure Git
