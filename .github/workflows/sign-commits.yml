@@ -11,7 +11,7 @@ on:
 
 permissions:
   contents: write
-  id-token: read
+  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
