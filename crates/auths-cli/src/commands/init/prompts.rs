@@ -150,9 +150,11 @@ fn run_github_verification(
 ) -> Result<Option<(String, String)>> {
     use std::time::Duration;
 
+    use crate::constants::GITHUB_SSH_UPLOAD_SCOPES;
     use auths_core::ports::platform::OAuthDeviceFlowProvider;
     use auths_core::ports::platform::PlatformProofPublisher;
-    use auths_infra_http::{HttpGistPublisher, HttpGitHubOAuthProvider};
+    use auths_core::storage::keychain::extract_public_key_bytes;
+    use auths_infra_http::{HttpGistPublisher, HttpGitHubOAuthProvider, HttpGitHubSshKeyUploader};
     use auths_sdk::workflows::platform::create_signed_platform_claim;
 
     const GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";
@@ -161,15 +163,16 @@ fn run_github_verification(
         std::env::var("AUTHS_GITHUB_CLIENT_ID").unwrap_or_else(|_| GITHUB_CLIENT_ID.to_string());
 
     let auths_dir = get_auths_repo_path()?;
-    let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider))?;
+    let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider.clone()))?;
 
     let oauth = HttpGitHubOAuthProvider::new();
     let publisher = HttpGistPublisher::new();
+    let ssh_uploader = HttpGitHubSshKeyUploader::new();
 
     let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
 
     let device_code = rt
-        .block_on(oauth.request_device_code(&client_id, "read:user gist"))
+        .block_on(oauth.request_device_code(&client_id, GITHUB_SSH_UPLOAD_SCOPES))
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     out.println(&format!(
@@ -229,6 +232,61 @@ fn run_github_verification(
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     out.print_success(&format!("Published proof Gist: {}", out.info(&proof_url)));
+
+    // Try to upload SSH signing key to GitHub (non-fatal if it fails)
+    #[allow(clippy::disallowed_methods)]
+    let hostname = gethostname::gethostname();
+    let hostname_str = hostname.to_string_lossy().to_string();
+
+    // Get the device public key and encode in OpenSSH format
+    let device_key_result = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        &key_alias,
+        passphrase_provider.as_ref(),
+    );
+
+    if let Ok(pk_bytes) = device_key_result {
+        // Encode 32-byte Ed25519 public key as OpenSSH wire format
+        // GitHub expects the standard SSH public key blob format
+        use base64::Engine;
+
+        let key_type = b"ssh-ed25519";
+        let mut wire_format = Vec::new();
+        wire_format.extend_from_slice(&(key_type.len() as u32).to_be_bytes());
+        wire_format.extend_from_slice(key_type);
+        wire_format.extend_from_slice(&(pk_bytes.len() as u32).to_be_bytes());
+        wire_format.extend_from_slice(&pk_bytes);
+
+        let b64_key = base64::engine::general_purpose::STANDARD.encode(&wire_format);
+        let public_key = format!("ssh-ed25519 {}", b64_key);
+
+        out.println("  Uploading SSH signing key...");
+        #[allow(clippy::disallowed_methods)]
+        let now = chrono::Utc::now();
+        let result = rt.block_on(
+            auths_sdk::workflows::platform::upload_github_ssh_signing_key(
+                &ssh_uploader,
+                &access_token,
+                &public_key,
+                &key_alias,
+                &hostname_str,
+                ctx.identity_storage.as_ref(),
+                now,
+            ),
+        );
+
+        match result {
+            Ok(()) => {
+                out.print_success("SSH signing key uploaded to GitHub");
+                out.println("  View at: https://github.com/settings/keys");
+            }
+            Err(e) => {
+                // Non-fatal: SSH upload failure doesn't block init
+                out.print_warn(&format!("SSH key upload failed: {e}"));
+                out.println("  Run 'auths init' again to retry, or upload manually at https://github.com/settings/keys");
+            }
+        }
+    }
 
     Ok(Some((proof_url, profile.login)))
 }

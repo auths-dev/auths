@@ -12,10 +12,11 @@ use serde::{Deserialize, Serialize};
 
 use auths_core::ports::platform::{
     ClaimResponse, DeviceCodeResponse, OAuthDeviceFlowProvider, PlatformError,
-    PlatformProofPublisher, RegistryClaimClient,
+    PlatformProofPublisher, PlatformUserProfile, RegistryClaimClient, SshSigningKeyUploader,
 };
 use auths_core::signing::{SecureSigner, StorageSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
+use auths_id::storage::identity::IdentityStorage;
 
 use crate::context::AuthsContext;
 use crate::pairing::PairingError;
@@ -340,4 +341,150 @@ fn resolve_signing_key_alias(
         .ok_or_else(|| PlatformError::Platform {
             message: format!("no signing key found for identity {controller_did}"),
         })
+}
+
+/// Upload the SSH signing key for the identity to GitHub.
+///
+/// Stores metadata about the uploaded key (key ID, GitHub username, timestamp)
+/// in the identity metadata for future reference and idempotency.
+///
+/// Args:
+/// * `uploader`: HTTP implementation of SSH key uploader.
+/// * `access_token`: GitHub OAuth access token with `write:ssh_signing_key` scope.
+/// * `public_key`: SSH public key in OpenSSH format (ssh-ed25519 AAAA...).
+/// * `key_alias`: Keychain alias for the device key.
+/// * `hostname`: Machine hostname for the key title.
+/// * `identity_storage`: Storage backend for persisting metadata.
+/// * `now`: Current time (injected by caller; SDK does not call Utc::now()).
+///
+/// Returns: Ok(()) on success, PlatformError on failure (non-fatal; init continues).
+///
+/// Usage:
+/// ```ignore
+/// upload_github_ssh_signing_key(
+///     &uploader,
+///     "ghu_token...",
+///     "ssh-ed25519 AAAA...",
+///     "main",
+///     "MacBook-Pro.local",
+///     &identity_storage,
+///     Utc::now(),
+/// ).await?;
+/// ```
+pub async fn upload_github_ssh_signing_key<U: SshSigningKeyUploader + ?Sized>(
+    uploader: &U,
+    access_token: &str,
+    public_key: &str,
+    key_alias: &str,
+    hostname: &str,
+    identity_storage: &(dyn IdentityStorage + Send + Sync),
+    now: DateTime<Utc>,
+) -> Result<(), PlatformError> {
+    let title = format!("auths/{key_alias} ({hostname})");
+
+    let key_id = uploader
+        .upload_signing_key(access_token, public_key, &title)
+        .await?;
+
+    // Load existing identity to get the controller DID
+    let existing = identity_storage
+        .load_identity()
+        .map_err(|e| PlatformError::Platform {
+            message: format!("failed to load identity: {e}"),
+        })?;
+
+    let metadata = serde_json::json!({
+        "github_ssh_key": {
+            "key_id": key_id,
+            "uploaded_at": now.to_rfc3339(),
+        }
+    });
+
+    identity_storage
+        .create_identity(existing.controller_did.as_ref(), Some(metadata))
+        .map_err(|e| PlatformError::Platform {
+            message: format!("failed to store SSH key metadata: {e}"),
+        })?;
+
+    Ok(())
+}
+
+/// Re-authorize with GitHub and optionally upload the SSH signing key.
+///
+/// Re-runs the OAuth device flow to obtain a fresh token with potentially
+/// new scopes, then attempts to upload the SSH signing key if provided.
+///
+/// Args:
+/// * `oauth`: OAuth device flow provider.
+/// * `uploader`: SSH key uploader.
+/// * `identity_storage`: Storage backend for identity and metadata.
+/// * `ctx`: Runtime context (key storage, passphrase provider).
+/// * `config`: GitHub OAuth client ID and registry URL.
+/// * `key_alias`: Keychain alias for the device key.
+/// * `hostname`: Machine hostname for the key title.
+/// * `public_key`: SSH public key in OpenSSH format (optional).
+/// * `now`: Current time (injected by caller).
+/// * `on_device_code`: Callback fired after device code is obtained.
+///
+/// Usage:
+/// ```ignore
+/// update_github_ssh_scopes(
+///     &oauth_provider,
+///     &uploader,
+///     &identity_storage,
+///     &ctx,
+///     &config,
+///     "main",
+///     "MacBook.local",
+///     Some("ssh-ed25519 AAAA..."),
+///     Utc::now(),
+///     &|code| { println!("Authorize at: {}", code.verification_uri); },
+/// ).await?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub async fn update_github_ssh_scopes<
+    O: OAuthDeviceFlowProvider + ?Sized,
+    U: SshSigningKeyUploader + ?Sized,
+>(
+    oauth: &O,
+    uploader: &U,
+    identity_storage: &(dyn IdentityStorage + Send + Sync),
+    _ctx: &AuthsContext,
+    config: &GitHubClaimConfig,
+    key_alias: &str,
+    hostname: &str,
+    public_key: Option<&str>,
+    now: DateTime<Utc>,
+    on_device_code: &dyn Fn(&DeviceCodeResponse),
+) -> Result<PlatformUserProfile, PlatformError> {
+    let resp = oauth
+        .request_device_code(&config.client_id, &config.scopes)
+        .await?;
+    on_device_code(&resp);
+
+    let access_token = oauth
+        .poll_for_token(
+            &config.client_id,
+            &resp.device_code,
+            Duration::from_secs(resp.interval),
+            Duration::from_secs(resp.expires_in),
+        )
+        .await?;
+
+    let profile = oauth.fetch_user_profile(&access_token).await?;
+
+    if let Some(key) = public_key {
+        let _ = upload_github_ssh_signing_key(
+            uploader,
+            &access_token,
+            key,
+            key_alias,
+            hostname,
+            identity_storage,
+            now,
+        )
+        .await;
+    }
+
+    Ok(profile)
 }

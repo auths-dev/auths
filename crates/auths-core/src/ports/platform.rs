@@ -230,3 +230,31 @@ pub trait RegistryClaimClient: Send + Sync {
         proof_url: &str,
     ) -> impl Future<Output = Result<ClaimResponse, PlatformError>> + Send;
 }
+
+/// Upload an SSH signing key to a platform (e.g., GitHub) for commit verification.
+///
+/// Usage:
+/// ```ignore
+/// let key_id = uploader.upload_signing_key(
+///     &access_token,
+///     "ssh-ed25519 AAAA...",
+///     "auths/main (device-abc123 MacBook)"
+/// ).await?;
+/// println!("Uploaded key: {}", key_id);
+/// ```
+pub trait SshSigningKeyUploader: Send + Sync {
+    /// Upload an SSH signing key to GitHub.
+    ///
+    /// Args:
+    /// * `access_token`: OAuth token with `write:ssh_signing_key` scope
+    /// * `public_key`: SSH public key in OpenSSH format (ssh-ed25519 AAAA...)
+    /// * `title`: Human-readable title for the key in GitHub UI (e.g., "auths/main (MacBook)")
+    ///
+    /// Returns: Key ID from GitHub on success, or PlatformError on failure
+    fn upload_signing_key(
+        &self,
+        access_token: &str,
+        public_key: &str,
+        title: &str,
+    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+}
