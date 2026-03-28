@@ -10,12 +10,13 @@ use auths_sdk::workflows::org::{
     AddMemberCommand, OrgContext, RevokeMemberCommand, Role, UpdateCapabilitiesCommand,
     add_organization_member, revoke_organization_member, update_member_capabilities,
 };
+use auths_verifier::AttestationBuilder;
 use auths_verifier::Capability;
 use auths_verifier::PublicKeyHex;
 use auths_verifier::clock::ClockProvider;
-use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
+use auths_verifier::core::{Attestation, Ed25519PublicKey, ResourceId};
 use auths_verifier::testing::MockClock;
-use auths_verifier::types::{CanonicalDid, DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, IdentityDID};
 use chrono::TimeZone;
 
 const ORG: &str = "ETestOrg0001";
@@ -39,47 +40,29 @@ fn org_issuer() -> IdentityDID {
 }
 
 fn base_admin_attestation() -> Attestation {
-    Attestation {
-        version: 1,
-        rid: ResourceId::new("admin-rid-001"),
-        issuer: org_issuer().into(),
-        subject: DeviceDID::new_unchecked(ADMIN_DID),
-        device_public_key: Ed25519PublicKey::from_bytes(ADMIN_PUBKEY),
-        identity_signature: Ed25519Signature::empty(),
-        device_signature: Ed25519Signature::empty(),
-        revoked_at: None,
-        expires_at: None,
-        timestamp: None,
-        note: None,
-        payload: None,
-        role: Some(Role::Admin),
-        capabilities: vec![Capability::sign_commit(), Capability::manage_members()],
-        delegated_by: None,
-        signer_type: None,
-        environment_claim: None,
-    }
+    AttestationBuilder::default()
+        .rid("admin-rid-001")
+        .issuer(org_issuer().as_ref())
+        .subject(ADMIN_DID)
+        .device_public_key(Ed25519PublicKey::from_bytes(ADMIN_PUBKEY))
+        .role(Some(Role::Admin))
+        .capabilities(vec![
+            Capability::sign_commit(),
+            Capability::manage_members(),
+        ])
+        .build()
 }
 
 fn base_member_attestation() -> Attestation {
-    Attestation {
-        version: 1,
-        rid: ResourceId::new("member-rid-001"),
-        issuer: org_issuer().into(),
-        subject: DeviceDID::new_unchecked(MEMBER_DID),
-        device_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
-        identity_signature: Ed25519Signature::empty(),
-        device_signature: Ed25519Signature::empty(),
-        revoked_at: None,
-        expires_at: None,
-        timestamp: None,
-        note: None,
-        payload: None,
-        role: Some(Role::Member),
-        capabilities: vec![Capability::sign_commit()],
-        delegated_by: Some(CanonicalDid::new_unchecked(ADMIN_DID)),
-        signer_type: None,
-        environment_claim: None,
-    }
+    AttestationBuilder::default()
+        .rid("member-rid-001")
+        .issuer(org_issuer().as_ref())
+        .subject(MEMBER_DID)
+        .device_public_key(Ed25519PublicKey::from_bytes(MEMBER_PUBKEY))
+        .role(Some(Role::Member))
+        .capabilities(vec![Capability::sign_commit()])
+        .delegated_by(Some(CanonicalDid::new_unchecked(ADMIN_DID)))
+        .build()
 }
 
 fn seed_admin(backend: &FakeRegistryBackend) {

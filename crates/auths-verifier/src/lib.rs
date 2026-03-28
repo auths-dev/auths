@@ -79,11 +79,18 @@ pub use action::ActionEnvelope;
 
 // Re-export core types
 pub use core::{
-    Capability, CapabilityError, CommitOid, CommitOidError, Ed25519KeyError, Ed25519PublicKey,
-    Ed25519Signature, IdentityBundle, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE, PolicyId,
-    PublicKeyHex, PublicKeyHexError, ResourceId, Role, RoleParseError, SignatureLengthError,
-    ThresholdPolicy, VerifiedAttestation,
+    Attestation, Capability, CapabilityError, CommitOid, CommitOidError, Ed25519KeyError,
+    Ed25519PublicKey, Ed25519Signature, IdentityBundle, MAX_ATTESTATION_JSON_SIZE,
+    MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyHex, PublicKeyHexError, ResourceId, Role,
+    RoleParseError, SignatureLengthError, ThresholdPolicy, VerifiedAttestation,
 };
+
+// Re-export test utilities
+#[cfg(any(test, feature = "test-utils"))]
+pub use testing::AttestationBuilder;
+
+#[cfg(any(test, feature = "test-utils"))]
+pub use testing::MockClock;
 
 // Re-export error types
 pub use commit_error::CommitVerificationError;

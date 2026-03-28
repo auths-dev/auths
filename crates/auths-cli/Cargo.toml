@@ -88,6 +88,7 @@ nix = { version = "0.29", features = ["signal", "process"] }
 
 [dev-dependencies]
 auths-crypto = { workspace = true, features = ["test-utils"] }
+auths-verifier = { workspace = true, features = ["test-utils"] }
 assert_cmd = "2"
 tempfile = "3"
 predicates = "2"

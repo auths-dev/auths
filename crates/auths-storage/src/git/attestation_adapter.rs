@@ -239,8 +239,6 @@ impl AttestationSink for RegistryAttestationStorage {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
-    use auths_verifier::types::CanonicalDid;
     use git2::Repository;
     use tempfile::TempDir;
 
@@ -256,28 +254,18 @@ mod tests {
         subject: &str,
         revoked_at: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Attestation {
+        use auths_verifier::AttestationBuilder;
         use std::sync::atomic::{AtomicU64, Ordering};
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-        Attestation {
-            version: 1,
-            rid: ResourceId::new(format!("test-rid-{}", seq)),
-            issuer: CanonicalDid::new_unchecked("did:keri:ETestIssuer"),
-            subject: DeviceDID::new_unchecked(subject),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at,
-            expires_at: None,
-            timestamp: Some(chrono::Utc::now() + chrono::Duration::seconds(seq as i64)),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        }
+        AttestationBuilder::default()
+            .rid(format!("test-rid-{}", seq))
+            .subject(subject)
+            .revoked_at(revoked_at)
+            .timestamp(Some(
+                chrono::Utc::now() + chrono::Duration::seconds(seq as i64),
+            ))
+            .build()
     }
 
     #[test]

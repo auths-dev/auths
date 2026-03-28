@@ -1,9 +1,9 @@
 use auths_crypto::testing::create_test_keypair;
+use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
+    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature,
     canonicalize_attestation_data,
 };
-use auths_verifier::types::{CanonicalDid, DeviceDID};
 use auths_verifier::verify::verify_with_keys;
 use chrono::{DateTime, Duration, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -21,25 +21,15 @@ fn create_signed_attestation(
 ) -> Attestation {
     let device_pk: [u8; 32] = device_kp.public_key().as_ref().try_into().unwrap();
 
-    let mut att = Attestation {
-        version: 1,
-        rid: ResourceId::new("test-rid"),
-        issuer: CanonicalDid::new_unchecked(issuer_did),
-        subject: DeviceDID::new_unchecked(subject_did),
-        device_public_key: Ed25519PublicKey::from_bytes(device_pk),
-        identity_signature: Ed25519Signature::empty(),
-        device_signature: Ed25519Signature::empty(),
-        revoked_at,
-        expires_at: Some(expires_at),
-        timestamp: Some(timestamp),
-        note: None,
-        payload: None,
-        role: None,
-        capabilities: vec![],
-        delegated_by: None,
-        signer_type: None,
-        environment_claim: None,
-    };
+    let mut att = AttestationBuilder::default()
+        .rid("test-rid")
+        .issuer(issuer_did)
+        .subject(subject_did)
+        .device_public_key(Ed25519PublicKey::from_bytes(device_pk))
+        .revoked_at(revoked_at)
+        .expires_at(Some(expires_at))
+        .timestamp(Some(timestamp))
+        .build();
 
     let data = CanonicalAttestationData {
         version: att.version,

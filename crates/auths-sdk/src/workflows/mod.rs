@@ -6,6 +6,8 @@ pub mod audit;
 pub mod auth;
 pub mod diagnostics;
 pub mod git_integration;
+/// Machine identity creation from OIDC tokens for ephemeral CI/CD identities.
+pub mod machine_identity;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod namespace;

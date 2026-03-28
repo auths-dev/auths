@@ -179,3 +179,249 @@ mod tests {
         assert!(!json.contains("auth_context_class"));
     }
 }
+
+/// OIDC claims from CI/CD platform (GitHub Actions, GitLab CI, CircleCI).
+///
+/// # Usage
+///
+/// ```ignore
+/// let workload_claims = WorkloadClaims {
+///     issuer: "https://token.actions.githubusercontent.com".to_string(),
+///     sub: "repo:owner/repo:ref:refs/heads/main".to_string(),
+///     aud: "sigstore".to_string(),
+///     jti: "unique-id-123".to_string(),
+///     exp: 1699998000,
+///     iat: 1699997400,
+///     nbf: Some(1699997400),
+///     actor: Some("alice".to_string()),
+///     repository: Some("owner/repo".to_string()),
+///     workflow: Some("publish".to_string()),
+///     ci_config_ref: None,
+///     run_id: Some("run-123".to_string()),
+///     raw_claims: serde_json::json!({}),
+/// };
+/// ```
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WorkloadClaims {
+    /// OIDC issuer (e.g., https://token.actions.githubusercontent.com for GitHub)
+    pub issuer: String,
+    /// Subject claim (platform-specific, e.g., repo:owner/repo:ref:... for GitHub)
+    pub sub: String,
+    /// Audience claim (CI platform specific)
+    pub aud: String,
+    /// JWT ID for replay detection
+    pub jti: String,
+    /// Expiration time (Unix timestamp)
+    pub exp: i64,
+    /// Issued-at time (Unix timestamp)
+    pub iat: i64,
+    /// Not-before time (Unix timestamp)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nbf: Option<i64>,
+    /// Actor (user/service that triggered the job)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+    /// Repository name (for GitHub/GitLab)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    /// Workflow name (for GitHub Actions)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<String>,
+    /// CI config reference (for GitLab: ci_config_ref_uri)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ci_config_ref: Option<String>,
+    /// Run/pipeline identifier
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// Platform-specific claims (passed through)
+    #[serde(flatten)]
+    pub raw_claims: serde_json::Value,
+}
+
+/// OIDC validation configuration for CI/CD platforms.
+///
+/// # Usage
+///
+/// ```ignore
+/// let config = PlatformOidcConfig::github()
+///     .with_custom_issuer("https://custom-idp.example.com");
+/// ```
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PlatformOidcConfig {
+    /// Platform identifier (github, gitlab, circleci)
+    pub platform: String,
+    /// Expected JWT issuer
+    pub issuer: String,
+    /// Expected JWT audience
+    pub audience: String,
+    /// Allowed JWT algorithms
+    pub allowed_algorithms: Vec<String>,
+    /// Maximum clock skew tolerance (seconds)
+    pub max_clock_skew: u64,
+    /// JWKS cache TTL (seconds)
+    pub jwks_cache_ttl: u64,
+}
+
+#[allow(dead_code)]
+impl PlatformOidcConfig {
+    /// Create a configuration for GitHub Actions OIDC.
+    fn github() -> Self {
+        Self {
+            platform: "github".to_string(),
+            issuer: "https://token.actions.githubusercontent.com".to_string(),
+            audience: "sigstore".to_string(),
+            allowed_algorithms: vec!["RS256".to_string()],
+            max_clock_skew: 60,
+            jwks_cache_ttl: 3600,
+        }
+    }
+
+    /// Create a configuration for GitLab CI OIDC.
+    fn gitlab() -> Self {
+        Self {
+            platform: "gitlab".to_string(),
+            issuer: "https://gitlab.com".to_string(),
+            audience: "sigstore".to_string(),
+            allowed_algorithms: vec!["RS256".to_string(), "ES256".to_string()],
+            max_clock_skew: 60,
+            jwks_cache_ttl: 3600,
+        }
+    }
+
+    /// Create a configuration for CircleCI OIDC.
+    fn circleci() -> Self {
+        Self {
+            platform: "circleci".to_string(),
+            issuer: "https://oidc.circleci.com/org".to_string(),
+            audience: "sigstore".to_string(),
+            allowed_algorithms: vec!["RS256".to_string()],
+            max_clock_skew: 60,
+            jwks_cache_ttl: 3600,
+        }
+    }
+
+    /// Set a custom issuer URL.
+    fn with_custom_issuer(mut self, issuer: impl Into<String>) -> Self {
+        self.issuer = issuer.into();
+        self
+    }
+
+    /// Set a custom audience.
+    fn with_custom_audience(mut self, audience: impl Into<String>) -> Self {
+        self.audience = audience.into();
+        self
+    }
+
+    /// Set custom allowed algorithms.
+    fn with_allowed_algorithms(mut self, algorithms: Vec<String>) -> Self {
+        self.allowed_algorithms = algorithms;
+        self
+    }
+
+    /// Set maximum clock skew tolerance.
+    fn with_max_clock_skew(mut self, seconds: u64) -> Self {
+        self.max_clock_skew = seconds;
+        self
+    }
+
+    /// Set JWKS cache TTL.
+    fn with_jwks_cache_ttl(mut self, seconds: u64) -> Self {
+        self.jwks_cache_ttl = seconds;
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests_workload_claims {
+    use super::*;
+
+    #[test]
+    fn test_workload_claims_roundtrip() {
+        let claims = WorkloadClaims {
+            issuer: "https://token.actions.githubusercontent.com".to_string(),
+            sub: "repo:owner/repo:ref:refs/heads/main".to_string(),
+            aud: "sigstore".to_string(),
+            jti: "unique-123".to_string(),
+            exp: 1699998000,
+            iat: 1699997400,
+            nbf: Some(1699997400),
+            actor: Some("alice".to_string()),
+            repository: Some("owner/repo".to_string()),
+            workflow: Some("publish".to_string()),
+            ci_config_ref: None,
+            run_id: Some("run-123".to_string()),
+            raw_claims: serde_json::json!({"custom": "field"}),
+        };
+
+        let json = serde_json::to_string(&claims).unwrap();
+        let parsed: WorkloadClaims = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.issuer, claims.issuer);
+        assert_eq!(parsed.sub, claims.sub);
+        assert_eq!(parsed.actor, claims.actor);
+    }
+
+    #[test]
+    fn test_workload_claims_optional_fields() {
+        let claims = WorkloadClaims {
+            issuer: "https://token.actions.githubusercontent.com".to_string(),
+            sub: "repo:owner/repo:ref:refs/heads/main".to_string(),
+            aud: "sigstore".to_string(),
+            jti: "unique-123".to_string(),
+            exp: 1699998000,
+            iat: 1699997400,
+            nbf: None,
+            actor: None,
+            repository: None,
+            workflow: None,
+            ci_config_ref: None,
+            run_id: None,
+            raw_claims: serde_json::json!({}),
+        };
+
+        let json = serde_json::to_string(&claims).unwrap();
+        assert!(!json.contains("nbf"));
+        assert!(!json.contains("actor"));
+        assert!(!json.contains("workflow"));
+    }
+
+    #[test]
+    fn test_platform_config_github() {
+        let config = PlatformOidcConfig::github();
+        assert_eq!(config.platform, "github");
+        assert_eq!(config.issuer, "https://token.actions.githubusercontent.com");
+        assert_eq!(config.audience, "sigstore");
+        assert!(config.allowed_algorithms.contains(&"RS256".to_string()));
+    }
+
+    #[test]
+    fn test_platform_config_gitlab() {
+        let config = PlatformOidcConfig::gitlab();
+        assert_eq!(config.platform, "gitlab");
+        assert!(config.allowed_algorithms.contains(&"RS256".to_string()));
+        assert!(config.allowed_algorithms.contains(&"ES256".to_string()));
+    }
+
+    #[test]
+    fn test_platform_config_circleci() {
+        let config = PlatformOidcConfig::circleci();
+        assert_eq!(config.platform, "circleci");
+        assert_eq!(config.issuer, "https://oidc.circleci.com/org");
+    }
+
+    #[test]
+    fn test_platform_config_builder() {
+        let config = PlatformOidcConfig::github()
+            .with_custom_issuer("https://custom.example.com")
+            .with_custom_audience("my-app")
+            .with_max_clock_skew(120)
+            .with_jwks_cache_ttl(7200);
+
+        assert_eq!(config.issuer, "https://custom.example.com");
+        assert_eq!(config.audience, "my-app");
+        assert_eq!(config.max_clock_skew, 120);
+        assert_eq!(config.jwks_cache_ttl, 7200);
+    }
+}

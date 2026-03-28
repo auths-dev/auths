@@ -49,6 +49,7 @@ wasm-bindgen = { version = "0.2", optional = true }
 [dev-dependencies]
 auths-id.workspace = true
 auths-crypto.workspace = true
+auths-verifier = { workspace = true, features = ["test-utils"] }
 chrono = { version = "0.4", features = ["serde"] }
 ring.workspace = true
 tempfile = "3.19.1"

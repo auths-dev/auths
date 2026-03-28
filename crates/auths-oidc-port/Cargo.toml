@@ -1,0 +1,18 @@
+[package]
+name = "auths-oidc-port"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+auths-crypto = { path = "../auths-crypto", version = "0.0.1-rc.9" }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-trait = "0.1"
+
+[dev-dependencies]

@@ -1,6 +1,6 @@
 use auths_verifier::{
-    DeviceLinkVerification, KeriKeyState, KeriVerifyError, Prefix, Said, parse_kel_json,
-    verify_device_link, verify_kel,
+    AttestationBuilder, DeviceLinkVerification, KeriKeyState, KeriVerifyError, Prefix, Said,
+    parse_kel_json, verify_device_link, verify_kel,
 };
 
 use auths_crypto::RingCryptoProvider;
@@ -157,23 +157,9 @@ fn device_link_verification_failure_serializes_correctly() {
 }
 
 fn minimal_attestation(issuer: &str, subject: &str) -> auths_verifier::core::Attestation {
-    auths_verifier::core::Attestation {
-        version: 1,
-        rid: auths_verifier::ResourceId::new(""),
-        issuer: auths_verifier::CanonicalDid::new_unchecked(issuer.to_string()),
-        subject: auths_verifier::DeviceDID::new_unchecked(subject),
-        device_public_key: auths_verifier::Ed25519PublicKey::from_bytes([0u8; 32]),
-        identity_signature: auths_verifier::core::Ed25519Signature::empty(),
-        device_signature: auths_verifier::core::Ed25519Signature::empty(),
-        revoked_at: None,
-        expires_at: None,
-        timestamp: None,
-        note: None,
-        payload: None,
-        role: None,
-        capabilities: vec![],
-        delegated_by: None,
-        signer_type: None,
-        environment_claim: None,
-    }
+    AttestationBuilder::default()
+        .rid("")
+        .issuer(issuer)
+        .subject(subject)
+        .build()
 }

@@ -2095,8 +2095,8 @@ mod tests {
     use auths_id::keri::seal::Seal;
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{compute_event_said, finalize_icp_event, serialize_for_signing};
-    use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
-    use auths_verifier::types::CanonicalDid;
+    use auths_verifier::AttestationBuilder;
+    use auths_verifier::core::{Ed25519PublicKey, Role};
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use chrono::{DateTime, Utc};
@@ -2462,25 +2462,11 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
 
         let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
-        let attestation = Attestation {
-            version: 1,
-            rid: ResourceId::new("test-rid"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let attestation = AttestationBuilder::default()
+            .rid("test-rid")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .build();
 
         backend.store_attestation(&attestation).unwrap();
 
@@ -2507,25 +2493,12 @@ mod tests {
         let did = DeviceDID::new_unchecked("did:key:z6MkTestDevice");
 
         // Store first attestation with rid="original"
-        let original = Attestation {
-            version: 1,
-            rid: ResourceId::new("original"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: Some("original note".to_string()),
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let original = AttestationBuilder::default()
+            .rid("original")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .note(Some("original note".to_string()))
+            .build();
         backend.store_attestation(&original).unwrap();
 
         // Verify original was stored
@@ -2534,25 +2507,12 @@ mod tests {
         assert_eq!(loaded.note, Some("original note".to_string()));
 
         // Store updated attestation with same DID but different data
-        let updated = Attestation {
-            version: 1,
-            rid: ResourceId::new("updated"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: Some("updated note".to_string()),
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let updated = AttestationBuilder::default()
+            .rid("updated")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .note(Some("updated note".to_string()))
+            .build();
         backend.store_attestation(&updated).unwrap();
 
         // Verify updated attestation overwrote original
@@ -2566,25 +2526,12 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
         let did = DeviceDID::new_unchecked("did:key:z6MkReplay1");
 
-        let att = Attestation {
-            version: 1,
-            rid: ResourceId::new("same-rid"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: Some(Utc::now()),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("same-rid")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .timestamp(Some(Utc::now()))
+            .build();
 
         backend.store_attestation(&att).unwrap();
         let result = backend.store_attestation(&att);
@@ -2601,45 +2548,19 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
         let did = DeviceDID::new_unchecked("did:key:z6MkReplay2");
 
-        let newer = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid-newer"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: Some(Utc::now()),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let newer = AttestationBuilder::default()
+            .rid("rid-newer")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .timestamp(Some(Utc::now()))
+            .build();
 
-        let older = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid-older"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: Some(Utc::now() - chrono::Duration::hours(1)),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let older = AttestationBuilder::default()
+            .rid("rid-older")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .timestamp(Some(Utc::now() - chrono::Duration::hours(1)))
+            .build();
 
         backend.store_attestation(&newer).unwrap();
         let result = backend.store_attestation(&older);
@@ -2651,45 +2572,19 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
         let did = DeviceDID::new_unchecked("did:key:z6MkReplay3");
 
-        let older = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid-old"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: Some(Utc::now() - chrono::Duration::hours(1)),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let older = AttestationBuilder::default()
+            .rid("rid-old")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .timestamp(Some(Utc::now() - chrono::Duration::hours(1)))
+            .build();
 
-        let newer = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid-new"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: Some(Utc::now()),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let newer = AttestationBuilder::default()
+            .rid("rid-new")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .timestamp(Some(Utc::now()))
+            .build();
 
         backend.store_attestation(&older).unwrap();
         backend.store_attestation(&newer).unwrap();
@@ -2703,45 +2598,20 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
         let did = DeviceDID::new_unchecked("did:key:z6MkReplay4");
 
-        let revoked = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid-revoked"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: Some(Utc::now()),
-            expires_at: None,
-            timestamp: Some(Utc::now()),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let revoked = AttestationBuilder::default()
+            .rid("rid-revoked")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .revoked_at(Some(Utc::now()))
+            .timestamp(Some(Utc::now()))
+            .build();
 
-        let unrevoked_old = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid-unrevoked"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: Some(Utc::now() - chrono::Duration::hours(1)),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let unrevoked_old = AttestationBuilder::default()
+            .rid("rid-unrevoked")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .timestamp(Some(Utc::now() - chrono::Duration::hours(1)))
+            .build();
 
         backend.store_attestation(&revoked).unwrap();
         let result = backend.store_attestation(&unrevoked_old);
@@ -2753,25 +2623,12 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
         let did = DeviceDID::new_unchecked("did:key:z6MkReplay5");
 
-        let att = Attestation {
-            version: 1,
-            rid: ResourceId::new("first-ever"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: Some(Utc::now()),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("first-ever")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .timestamp(Some(Utc::now()))
+            .build();
 
         assert!(backend.store_attestation(&att).is_ok());
     }
@@ -2781,45 +2638,18 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
         let did = DeviceDID::new_unchecked("did:key:z6MkReplay6");
 
-        let with_ts = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid-with-ts"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: Some(Utc::now()),
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let with_ts = AttestationBuilder::default()
+            .rid("rid-with-ts")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .timestamp(Some(Utc::now()))
+            .build();
 
-        let without_ts = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid-no-ts"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let without_ts = AttestationBuilder::default()
+            .rid("rid-no-ts")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .build();
 
         backend.store_attestation(&with_ts).unwrap();
         let result = backend.store_attestation(&without_ts);
@@ -2833,45 +2663,18 @@ mod tests {
         let did1 = DeviceDID::new_unchecked("did:key:z6MkTest1");
         let did2 = DeviceDID::new_unchecked("did:key:z6MkTest2");
 
-        let att1 = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid1"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did1.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att1 = AttestationBuilder::default()
+            .rid("rid1")
+            .issuer("did:keri:EIssuer")
+            .subject(&did1.to_string())
+            .build();
 
-        let att2 = Attestation {
-            version: 1,
-            rid: ResourceId::new("rid2"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did2.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([1u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att2 = AttestationBuilder::default()
+            .rid("rid2")
+            .issuer("did:keri:EIssuer")
+            .subject(&did2.to_string())
+            .device_public_key(Ed25519PublicKey::from_bytes([1u8; 32]))
+            .build();
 
         backend.store_attestation(&att1).unwrap();
         backend.store_attestation(&att2).unwrap();
@@ -2901,27 +2704,12 @@ mod tests {
 
         // Add device
         let did = DeviceDID::new_unchecked("did:key:z6MkTest");
-        backend
-            .store_attestation(&Attestation {
-                version: 1,
-                rid: ResourceId::new("rid"),
-                issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-                subject: did,
-                device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-                identity_signature: Ed25519Signature::empty(),
-                device_signature: Ed25519Signature::empty(),
-                revoked_at: None,
-                expires_at: None,
-                timestamp: None,
-                note: None,
-                payload: None,
-                role: None,
-                capabilities: vec![],
-                delegated_by: None,
-                signer_type: None,
-                environment_claim: None,
-            })
-            .unwrap();
+        let att = AttestationBuilder::default()
+            .rid("rid")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .build();
+        backend.store_attestation(&att).unwrap();
 
         let meta = backend.metadata().unwrap();
         assert_eq!(meta.identity_count, 1);
@@ -2935,25 +2723,12 @@ mod tests {
         let org = "EOrg1234567890";
         let member_did = DeviceDID::new_unchecked("did:key:z6MkMember1");
 
-        let member_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("org-member"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: member_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let member_att = AttestationBuilder::default()
+            .rid("org-member")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&member_did.to_string())
+            .role(Some(Role::Member))
+            .build();
 
         backend.store_org_member(org, &member_att).unwrap();
 
@@ -3021,25 +2796,11 @@ mod tests {
 
         // Create attestation with subject "did:key:z6MkCorrect"
         let correct_did = DeviceDID::new_unchecked("did:key:z6MkCorrect");
-        let att = Attestation {
-            version: 1,
-            rid: ResourceId::new("mismatch-test"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: correct_did,
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("mismatch-test")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&correct_did.to_string())
+            .build();
 
         // But store it under a WRONG filename
         let org_base = org_path(&Prefix::new_unchecked(org.to_string())).unwrap();
@@ -3085,25 +2846,11 @@ mod tests {
 
         // Store attestation with WRONG issuer (but correct subject)
         let member_did = DeviceDID::new_unchecked("did:key:z6MkWrongIssuer");
-        let att = Attestation {
-            version: 1,
-            rid: ResourceId::new("issuer-mismatch-test"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EDifferentOrg"), // WRONG issuer
-            subject: member_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let att = AttestationBuilder::default()
+            .rid("issuer-mismatch-test")
+            .issuer("did:keri:EDifferentOrg") // WRONG issuer
+            .subject(&member_did.to_string())
+            .build();
 
         backend.store_org_member(org, &att).unwrap();
 
@@ -3136,48 +2883,23 @@ mod tests {
 
         // Store active member
         let active_did = DeviceDID::new_unchecked("did:key:z6MkActive1");
-        let active_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("active"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: active_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let active_att = AttestationBuilder::default()
+            .rid("active")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&active_did.to_string())
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &active_att).unwrap();
 
         // Store revoked member
         let revoked_did = DeviceDID::new_unchecked("did:key:z6MkRevoked");
-        let revoked_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("revoked"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: revoked_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: Some(Utc::now()), // REVOKED
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let revoked_att = AttestationBuilder::default()
+            .rid("revoked")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&revoked_did.to_string())
+            .revoked_at(Some(Utc::now()))
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &revoked_att).unwrap();
 
         // Backend returns ALL valid members (no status filtering - that's policy)
@@ -3205,25 +2927,13 @@ mod tests {
 
         // Store revoked member
         let revoked_did = DeviceDID::new_unchecked("did:key:z6MkRevoked");
-        let revoked_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("revoked"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: revoked_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: Some(Utc::now()),
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let revoked_att = AttestationBuilder::default()
+            .rid("revoked")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&revoked_did.to_string())
+            .revoked_at(Some(Utc::now()))
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &revoked_att).unwrap();
 
         // Backend returns member with revoked_at set
@@ -3247,25 +2957,13 @@ mod tests {
         // Store member with past expiry
         let past = Utc::now() - Duration::hours(1);
         let expired_did = DeviceDID::new_unchecked("did:key:z6MkExpired");
-        let expired_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("expired"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: expired_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: Some(past),
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let expired_att = AttestationBuilder::default()
+            .rid("expired")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&expired_did.to_string())
+            .expires_at(Some(past))
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &expired_att).unwrap();
 
         // Backend returns member with expires_at field set
@@ -3292,48 +2990,22 @@ mod tests {
         // Store member from correct org issuer
         let org_member_did = DeviceDID::new_unchecked("did:key:z6MkOrgMember");
         let org_issuer = format!("did:keri:{}", org);
-        let org_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("org"),
-            issuer: CanonicalDid::new_unchecked(org_issuer.clone()),
-            subject: org_member_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let org_att = AttestationBuilder::default()
+            .rid("org")
+            .issuer(&org_issuer)
+            .subject(&org_member_did.to_string())
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &org_att).unwrap();
 
         // Store member with WRONG issuer - should be marked Invalid
         let wrong_did = DeviceDID::new_unchecked("did:key:z6MkWrongIssuer");
-        let wrong_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("wrong"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EDifferentIssuer"), // WRONG!
-            subject: wrong_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let wrong_att = AttestationBuilder::default()
+            .rid("wrong")
+            .issuer("did:keri:EDifferentIssuer") // WRONG!
+            .subject(&wrong_did.to_string())
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &wrong_att).unwrap();
 
         // Backend returns ALL members (no status filtering - that's policy)
@@ -3373,48 +3045,22 @@ mod tests {
 
         // Store admin
         let admin_did = DeviceDID::new_unchecked("did:key:z6MkAdminUser");
-        let admin_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("admin"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: admin_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Admin),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let admin_att = AttestationBuilder::default()
+            .rid("admin")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&admin_did.to_string())
+            .role(Some(Role::Admin))
+            .build();
         backend.store_org_member(org, &admin_att).unwrap();
 
         // Store member
         let member_did = DeviceDID::new_unchecked("did:key:z6MkMemberUser");
-        let member_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("member"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: member_did,
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let member_att = AttestationBuilder::default()
+            .rid("member")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&member_did.to_string())
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &member_att).unwrap();
 
         // Filter by admin role
@@ -3441,48 +3087,23 @@ mod tests {
 
         // Store member with sign_commit capability
         let signer_did = DeviceDID::new_unchecked("did:key:z6MkSigner1");
-        let signer_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("signer"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: signer_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![Capability::sign_commit()],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let signer_att = AttestationBuilder::default()
+            .rid("signer")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&signer_did.to_string())
+            .role(Some(Role::Member))
+            .capabilities(vec![Capability::sign_commit()])
+            .build();
         backend.store_org_member(org, &signer_att).unwrap();
 
         // Store member without capabilities
         let nocap_did = DeviceDID::new_unchecked("did:key:z6MkNoCaps1");
-        let nocap_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("nocap"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: nocap_did,
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let nocap_att = AttestationBuilder::default()
+            .rid("nocap")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&nocap_did.to_string())
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &nocap_att).unwrap();
 
         // Filter by sign_commit capability
@@ -3509,48 +3130,24 @@ mod tests {
 
         // Store member with both capabilities
         let both_did = DeviceDID::new_unchecked("did:key:z6MkBothCaps");
-        let both_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("both"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: both_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let both_att = AttestationBuilder::default()
+            .rid("both")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&both_did.to_string())
+            .role(Some(Role::Member))
+            .capabilities(vec![Capability::sign_commit(), Capability::sign_release()])
+            .build();
         backend.store_org_member(org, &both_att).unwrap();
 
         // Store member with only sign_commit
         let one_did = DeviceDID::new_unchecked("did:key:z6MkOneCap1");
-        let one_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("one"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: one_did,
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![Capability::sign_commit()],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let one_att = AttestationBuilder::default()
+            .rid("one")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&one_did.to_string())
+            .role(Some(Role::Member))
+            .capabilities(vec![Capability::sign_commit()])
+            .build();
         backend.store_org_member(org, &one_att).unwrap();
 
         // Filter requires both capabilities
@@ -3576,25 +3173,12 @@ mod tests {
 
         // Store valid member
         let valid_did = DeviceDID::new_unchecked("did:key:z6MkValid11");
-        let valid_att = Attestation {
-            version: 1,
-            rid: ResourceId::new("valid"),
-            issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-            subject: valid_did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: Some(Role::Member),
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let valid_att = AttestationBuilder::default()
+            .rid("valid")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(&valid_did.to_string())
+            .role(Some(Role::Member))
+            .build();
         backend.store_org_member(org, &valid_att).unwrap();
 
         // Write invalid JSON directly
@@ -3662,25 +3246,14 @@ mod tests {
 
         for (did_str, revoked_at, expires_at) in &dids {
             let did = DeviceDID::new_unchecked(*did_str);
-            let att = Attestation {
-                version: 1,
-                rid: ResourceId::new("test"),
-                issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org)),
-                subject: did,
-                device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-                identity_signature: Ed25519Signature::empty(),
-                device_signature: Ed25519Signature::empty(),
-                revoked_at: *revoked_at,
-                expires_at: *expires_at,
-                timestamp: None,
-                note: None,
-                payload: None,
-                role: Some(Role::Member),
-                capabilities: vec![],
-                delegated_by: None,
-                signer_type: None,
-                environment_claim: None,
-            };
+            let att = AttestationBuilder::default()
+                .rid("test")
+                .issuer(&format!("did:keri:{}", org))
+                .subject(&did.to_string())
+                .revoked_at(*revoked_at)
+                .expires_at(*expires_at)
+                .role(Some(Role::Member))
+                .build();
             backend.store_org_member(org, &att).unwrap();
         }
 
@@ -3712,25 +3285,11 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
 
         let did = DeviceDID::new_unchecked("did:key:z6MkSourceTest");
-        let attestation = Attestation {
-            version: 1,
-            rid: ResourceId::new("source-test"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let attestation = AttestationBuilder::default()
+            .rid("source-test")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .build();
 
         backend.store_attestation(&attestation).unwrap();
 
@@ -3756,25 +3315,12 @@ mod tests {
         // Store multiple attestations
         for i in 0..3 {
             let did = DeviceDID::new_unchecked(format!("did:key:z6MkDevice{}", i));
-            let attestation = Attestation {
-                version: 1,
-                rid: ResourceId::new(format!("rid-{}", i)),
-                issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-                subject: did,
-                device_public_key: Ed25519PublicKey::from_bytes([i as u8; 32]),
-                identity_signature: Ed25519Signature::empty(),
-                device_signature: Ed25519Signature::empty(),
-                revoked_at: None,
-                expires_at: None,
-                timestamp: None,
-                note: None,
-                payload: None,
-                role: None,
-                capabilities: vec![],
-                delegated_by: None,
-                signer_type: None,
-                environment_claim: None,
-            };
+            let attestation = AttestationBuilder::default()
+                .rid(format!("rid-{}", i))
+                .issuer("did:keri:EIssuer")
+                .subject(&did.to_string())
+                .device_public_key(Ed25519PublicKey::from_bytes([i as u8; 32]))
+                .build();
             backend.store_attestation(&attestation).unwrap();
         }
 
@@ -3792,25 +3338,11 @@ mod tests {
             .collect();
 
         for did in &dids {
-            let attestation = Attestation {
-                version: 1,
-                rid: ResourceId::new("discover-test"),
-                issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-                subject: did.clone(),
-                device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-                identity_signature: Ed25519Signature::empty(),
-                device_signature: Ed25519Signature::empty(),
-                revoked_at: None,
-                expires_at: None,
-                timestamp: None,
-                note: None,
-                payload: None,
-                role: None,
-                capabilities: vec![],
-                delegated_by: None,
-                signer_type: None,
-                environment_claim: None,
-            };
+            let attestation = AttestationBuilder::default()
+                .rid("discover-test")
+                .issuer("did:keri:EIssuer")
+                .subject(&did.to_string())
+                .build();
             backend.store_attestation(&attestation).unwrap();
         }
 
@@ -3832,25 +3364,11 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
 
         let did = DeviceDID::new_unchecked("did:key:z6MkSinkTest");
-        let attestation = Attestation {
-            version: 1,
-            rid: ResourceId::new("sink-test"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let attestation = AttestationBuilder::default()
+            .rid("sink-test")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .build();
 
         // Test AttestationSink trait
         backend
@@ -3870,49 +3388,22 @@ mod tests {
         let did = DeviceDID::new_unchecked("did:key:z6MkUpdateTest");
 
         // First export
-        let attestation1 = Attestation {
-            version: 1,
-            rid: ResourceId::new("original"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: None,
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let attestation1 = AttestationBuilder::default()
+            .rid("original")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .build();
         backend
             .export(&VerifiedAttestation::dangerous_from_unchecked(attestation1))
             .unwrap();
 
         // Second export (update)
-        let attestation2 = Attestation {
-            version: 1,
-            rid: ResourceId::new("updated"),
-            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did.clone(),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
-            identity_signature: Ed25519Signature::empty(),
-            device_signature: Ed25519Signature::empty(),
-            revoked_at: Some(Utc::now()), // Changed!
-            expires_at: None,
-            timestamp: None,
-            note: None,
-            payload: None,
-            role: None,
-            capabilities: vec![],
-            delegated_by: None,
-            signer_type: None,
-            environment_claim: None,
-        };
+        let attestation2 = AttestationBuilder::default()
+            .rid("updated")
+            .issuer("did:keri:EIssuer")
+            .subject(&did.to_string())
+            .revoked_at(Some(Utc::now())) // Changed!
+            .build();
         backend
             .export(&VerifiedAttestation::dangerous_from_unchecked(attestation2))
             .unwrap();
@@ -4173,6 +3664,10 @@ mod index_consistency_tests {
             ),
             note: None,
             payload: None,
+            commit_sha: None,
+            commit_message: None,
+            author: None,
+            oidc_binding: None,
             role: None,
             capabilities: vec![],
             delegated_by: None,
@@ -4418,6 +3913,10 @@ mod tenant_isolation_tests {
             timestamp: None,
             note: None,
             payload: None,
+            commit_sha: None,
+            commit_message: None,
+            author: None,
+            oidc_binding: None,
             role: None,
             capabilities: vec![],
             delegated_by: None,

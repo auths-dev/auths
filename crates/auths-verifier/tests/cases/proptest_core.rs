@@ -1,3 +1,4 @@
+use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{
     Attestation, Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role, ThresholdPolicy,
 };
@@ -139,25 +140,21 @@ fn arb_attestation() -> impl Strategy<Value = Attestation> {
             ),
             (expires_at, timestamp, note, role, capabilities, delegated_by),
         )| {
-            Attestation {
-                version: 1,
-                rid,
-                issuer,
-                subject,
-                device_public_key,
-                identity_signature,
-                device_signature,
-                revoked_at,
-                expires_at,
-                timestamp,
-                note,
-                payload: None,
-                role,
-                capabilities,
-                delegated_by,
-                signer_type: None,
-                environment_claim: None,
-            }
+            AttestationBuilder::default()
+                .rid(rid.as_str())
+                .issuer(issuer.as_str())
+                .subject(subject.as_str())
+                .device_public_key(device_public_key)
+                .identity_signature(identity_signature)
+                .device_signature(device_signature)
+                .revoked_at(revoked_at)
+                .expires_at(expires_at)
+                .timestamp(timestamp)
+                .note(note)
+                .role(role)
+                .capabilities(capabilities)
+                .delegated_by(delegated_by)
+                .build()
         },
     )
 }

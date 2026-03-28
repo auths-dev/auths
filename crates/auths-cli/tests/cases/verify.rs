@@ -1,7 +1,8 @@
 use assert_cmd::Command;
 use auths_crypto::testing::gen_keypair;
+use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
+    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature,
     canonicalize_attestation_data,
 };
 use auths_verifier::types::{CanonicalDid, DeviceDID};
@@ -20,25 +21,14 @@ fn create_signed_attestation(
     let device_did = DeviceDID::from_ed25519(&device_pk);
     let issuer_did = DeviceDID::from_ed25519(&issuer_pk);
 
-    let mut att = Attestation {
-        version: 1,
-        rid: ResourceId::new("test-rid"),
-        issuer: CanonicalDid::from(issuer_did),
-        subject: device_did,
-        device_public_key: Ed25519PublicKey::from_bytes(device_pk),
-        identity_signature: Ed25519Signature::empty(),
-        device_signature: Ed25519Signature::empty(),
-        revoked_at: None,
-        expires_at: Some(Utc::now() + Duration::days(365)),
-        timestamp: Some(Utc::now()),
-        note: None,
-        payload: None,
-        role: None,
-        capabilities: vec![],
-        delegated_by: None,
-        signer_type: None,
-        environment_claim: None,
-    };
+    let mut att = AttestationBuilder::default()
+        .rid("test-rid")
+        .issuer(CanonicalDid::from(issuer_did).as_str())
+        .subject(&device_did.to_string())
+        .device_public_key(Ed25519PublicKey::from_bytes(device_pk))
+        .expires_at(Some(Utc::now() + Duration::days(365)))
+        .timestamp(Some(Utc::now()))
+        .build();
 
     // Create canonical data for signing (includes org fields)
     let data = CanonicalAttestationData {

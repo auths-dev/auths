@@ -15,9 +15,11 @@ async-trait = "0.1"
 auths-core.workspace = true
 auths-id.workspace = true
 auths-infra-http.workspace = true
+auths-oidc-port = { path = "../auths-oidc-port", version = "0.0.1-rc.9" }
 auths-telemetry.workspace = true
 auths-policy.workspace = true
 auths-crypto.workspace = true
+parking_lot.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
 auths-transparency = { workspace = true, features = ["native"] }
 ring.workspace = true

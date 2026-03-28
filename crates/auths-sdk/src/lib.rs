@@ -30,6 +30,8 @@ pub mod error;
 pub mod keys;
 /// Namespace verifier adapter registry mapping ecosystems to implementations.
 pub mod namespace_registry;
+/// OIDC JWT ID (jti) registry for token replay detection.
+pub mod oidc_jti_registry;
 /// Device pairing orchestration over ephemeral ECDH sessions.
 pub mod pairing;
 /// Platform identity claim creation and verification.

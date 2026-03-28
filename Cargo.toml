@@ -23,6 +23,7 @@ members = [
   "crates/auths-radicle",
   "crates/auths-scim",
   "crates/auths-utils",
+  "crates/auths-oidc-port",
   "crates/xtask",
 ]
 

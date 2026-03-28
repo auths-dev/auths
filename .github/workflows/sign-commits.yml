@@ -1,0 +1,131 @@
+name: Sign Commits with OIDC Machine Identity
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE*'
+      - '.gitignore'
+
+permissions:
+  contents: write
+  id-token: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  sign-commits:
+    name: Sign Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build auths-cli
+        run: cargo build --release -p auths_cli
+        continue-on-error: false
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "auths-ci"
+          git config --global user.email "auths-ci@example.com"
+
+      - name: Sign commits with OIDC machine identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e  # Don't exit on error; we want to log and continue
+
+          # Build auths binary path
+          AUTHS_BIN="./target/release/auths"
+
+          # Get the list of new commits in this push
+          # For the first push (no HEAD@{1}), use all commits in main
+          if git rev-parse "HEAD@{1}" >/dev/null 2>&1; then
+            COMMIT_RANGE="HEAD@{1}..HEAD"
+          else
+            COMMIT_RANGE="HEAD"
+          fi
+
+          echo "Commits to sign:"
+          git rev-list $COMMIT_RANGE
+
+          # For each commit, initialize OIDC machine identity and sign
+          while IFS= read -r commit_sha; do
+            echo ""
+            echo "=========================================="
+            echo "Signing commit: $commit_sha"
+            echo "=========================================="
+
+            # Initialize machine identity from OIDC token
+            echo "Setting up OIDC machine identity..."
+            if ! $AUTHS_BIN init --profile ci 2>/dev/null; then
+              echo "⚠️  Warning: Failed to initialize OIDC machine identity for $commit_sha"
+              continue
+            fi
+
+            # Sign the commit
+            echo "Signing commit with machine identity..."
+            if ! $AUTHS_BIN sign-commit "$commit_sha" 2>&1 | tee sign-output.txt; then
+              echo "⚠️  Warning: Failed to sign commit $commit_sha"
+              echo "Continuing with next commit..."
+              continue
+            fi
+
+            # Display attestation for debugging
+            echo ""
+            echo "Attestation structure:"
+            if git show "refs/auths/commits/$commit_sha" 2>/dev/null; then
+              echo "✓ Attestation stored successfully"
+            else
+              echo "⚠️  Warning: Could not retrieve attestation for $commit_sha"
+            fi
+
+          done < <(git rev-list $COMMIT_RANGE)
+
+          echo ""
+          echo "=========================================="
+          echo "Commit signing complete"
+          echo "=========================================="
+
+      - name: Push attestation refs
+        if: always()
+        run: |
+          set +e
+
+          # Push all attestation refs to origin
+          echo "Pushing attestation refs to origin..."
+          if git push origin 'refs/auths/commits/*:refs/auths/commits/*' 2>&1; then
+            echo "✓ Attestation refs pushed successfully"
+          else
+            echo "⚠️  Warning: Failed to push attestation refs (may not exist yet)"
+          fi
+
+          # Also push KERI refs if they exist
+          if git show-ref | grep -q "refs/keri"; then
+            git push origin 'refs/keri/*:refs/keri/*' 2>&1 || echo "⚠️  Failed to push KERI refs"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "Commit signing workflow completed"
+          echo "View signed commits: git log --oneline -10"
+          echo "View attestations: git show refs/auths/commits/<commit-sha>"
+          echo "Verify attestation: ./target/release/auths verify-commit <commit-sha>"
