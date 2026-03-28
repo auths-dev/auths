@@ -260,7 +260,6 @@ If you need to add fields to the attestation:
 
 - **[OIDC_INIT_INTEGRATION.md](./OIDC_INIT_INTEGRATION.md)** — How `auths init --profile ci` auto-detects and acquires tokens
 - **[OIDC_MACHINE_IDENTITY.md](./OIDC_MACHINE_IDENTITY.md)** — Machine identity creation and signing workflow
-- **[CLAUDE.md](./.claude/CLAUDE.md)** — Auths architecture and development guidelines
 
 ## Glossary
 

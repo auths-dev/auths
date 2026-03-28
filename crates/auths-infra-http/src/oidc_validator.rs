@@ -79,8 +79,19 @@ impl JwtValidator for HttpJwtValidator {
     ) -> Result<serde_json::Value, OidcError> {
         let mut token_mut = token.to_string();
 
-        let header = decode_header(&token_mut)
-            .map_err(|e| OidcError::JwtDecode(format!("failed to decode JWT header: {}", e)))?;
+        let header = decode_header(&token_mut).map_err(|e| {
+            let error_msg = format!("{}", e);
+            // Check if the error is due to an unknown algorithm variant
+            if error_msg.contains("unknown variant") && error_msg.contains("expected one of") {
+                OidcError::AlgorithmMismatch {
+                    expected: "RS256, RS384, RS512, ES256, ES384, PS256, PS384, PS512, or EdDSA"
+                        .to_string(),
+                    got: "unsupported algorithm".to_string(),
+                }
+            } else {
+                OidcError::JwtDecode(format!("failed to decode JWT header: {}", e))
+            }
+        })?;
 
         let kid = header
             .kid
