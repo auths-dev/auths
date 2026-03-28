@@ -12,12 +12,33 @@
     "version"
   ],
   "properties": {
+    "author": {
+      "description": "Git commit author (for commit signing attestations).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "capabilities": {
       "description": "Capabilities this attestation grants.",
       "type": "array",
       "items": {
         "$ref": "#/definitions/Capability"
       }
+    },
+    "commit_message": {
+      "description": "Git commit message (for commit signing attestations).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "commit_sha": {
+      "description": "Git commit SHA (for commit signing attestations).",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "delegated_by": {
       "description": "DID of the attestation that delegated authority (for chain tracking).",
@@ -70,6 +91,17 @@
       "type": [
         "string",
         "null"
+      ]
+    },
+    "oidc_binding": {
+      "description": "OIDC binding information (issuer, subject, audience, expiration).",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/OidcBinding"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "payload": {
@@ -150,6 +182,57 @@
       "description": "Ed25519 signature (64 bytes, hex-encoded)",
       "type": "string",
       "format": "hex"
+    },
+    "OidcBinding": {
+      "description": "OIDC token binding information for machine identity attestations.\n\nProves that the attestation was created by a CI/CD workload with a specific OIDC token. Contains the issuer, subject, audience, and expiration so verifiers can reconstruct the identity without needing the ephemeral private key.",
+      "type": "object",
+      "required": [
+        "audience",
+        "issuer",
+        "subject",
+        "token_exp"
+      ],
+      "properties": {
+        "audience": {
+          "description": "Expected audience.",
+          "type": "string"
+        },
+        "issuer": {
+          "description": "OIDC token issuer (e.g., \"https://token.actions.githubusercontent.com\").",
+          "type": "string"
+        },
+        "jti": {
+          "description": "JTI for replay detection (if available).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "normalized_claims": {
+          "description": "Platform-normalized claims (e.g., repo, actor, run_id for GitHub).",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "platform": {
+          "description": "CI/CD platform (e.g., \"github\", \"gitlab\", \"circleci\").",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "description": "Token subject (unique workload identifier).",
+          "type": "string"
+        },
+        "token_exp": {
+          "description": "Token expiration timestamp (Unix timestamp).",
+          "type": "integer",
+          "format": "int64"
+        }
+      }
     },
     "Role": {
       "description": "Role classification for organization members.\n\nGoverns the default capability set assigned at member authorization time. Serializes as lowercase strings: `\"admin\"`, `\"member\"`, `\"readonly\"`.",
