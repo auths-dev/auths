@@ -5,7 +5,9 @@ use crate::adapters::system_diagnostic::PosixDiagnosticAdapter;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::Result;
 use auths_core::storage::keychain;
-use auths_sdk::ports::diagnostics::{CheckResult, ConfigIssue, DiagnosticFix, FixApplied};
+use auths_sdk::ports::diagnostics::{
+    CheckCategory, CheckResult, ConfigIssue, DiagnosticFix, FixApplied,
+};
 use auths_sdk::workflows::diagnostics::DiagnosticsWorkflow;
 use clap::Parser;
 use serde::Serialize;
@@ -13,7 +15,23 @@ use std::io::IsTerminal;
 
 /// Health check command.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "doctor", about = "Run comprehensive health checks")]
+#[command(
+    name = "doctor",
+    about = "Run comprehensive health checks",
+    after_help = "Examples:
+  auths doctor              # Check all health aspects
+  auths doctor --fix        # Auto-fix identified issues
+  auths doctor --json       # JSON output
+
+Exit Codes:
+  0 — All checks pass
+  1 — Critical check failed (Auths is non-functional)
+  2 — Critical checks pass, advisory checks fail (environment could be better)
+
+Related:
+  auths status  — Show identity and device status
+  auths init    — Initialize a new identity"
+)]
 pub struct DoctorCommand {
     /// Auto-fix issues where possible
     #[clap(long)]
@@ -27,6 +45,12 @@ pub struct Check {
     passed: bool,
     detail: String,
     suggestion: Option<String>,
+    #[serde(skip_serializing_if = "is_advisory")]
+    category: CheckCategory,
+}
+
+fn is_advisory(cat: &CheckCategory) -> bool {
+    *cat == CheckCategory::Advisory
 }
 
 /// Overall doctor report.
@@ -63,6 +87,9 @@ pub fn handle_doctor(cmd: DoctorCommand) -> Result<()> {
 
     let all_pass = final_checks.iter().all(|c| c.passed);
 
+    // Compute exit code based on check categories
+    let exit_code = compute_exit_code(&final_checks);
+
     let report = DoctorReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
         checks: final_checks,
@@ -86,11 +113,37 @@ pub fn handle_doctor(cmd: DoctorCommand) -> Result<()> {
         print_report(&report);
     }
 
-    if !all_pass {
-        std::process::exit(1);
+    if exit_code != 0 {
+        std::process::exit(exit_code);
     }
 
     Ok(())
+}
+
+/// Compute exit code based on check categories.
+///
+/// Returns:
+/// * 0 — all checks pass
+/// * 1 — at least one Critical check fails (Auths is non-functional)
+/// * 2 — all Critical checks pass, at least one Advisory check fails
+fn compute_exit_code(checks: &[Check]) -> i32 {
+    let critical_failures = checks
+        .iter()
+        .any(|c| !c.passed && c.category == CheckCategory::Critical);
+
+    if critical_failures {
+        return 1;
+    }
+
+    let advisory_failures = checks
+        .iter()
+        .any(|c| !c.passed && c.category == CheckCategory::Advisory);
+
+    if advisory_failures {
+        return 2;
+    }
+
+    0
 }
 
 /// Run all prerequisite checks.
@@ -102,6 +155,13 @@ fn run_checks() -> Vec<Check> {
 
     if let Ok(report) = workflow.run() {
         for cr in report.checks {
+            // Categorize SDK checks: system tools are Advisory, git signing is Critical
+            let category = if cr.name == "Git signing config" {
+                CheckCategory::Critical
+            } else {
+                CheckCategory::Advisory
+            };
+
             let suggestion = if cr.passed {
                 None
             } else {
@@ -112,10 +172,12 @@ fn run_checks() -> Vec<Check> {
                 passed: cr.passed,
                 detail: format_check_detail(&cr),
                 suggestion,
+                category,
             });
         }
     }
 
+    // Domain checks are all Critical
     checks.push(check_keychain_accessible());
     checks.push(check_identity_exists());
     checks.push(check_allowed_signers_file());
@@ -132,6 +194,7 @@ fn apply_fixes(checks: &[Check], out: Option<&Output>) -> Vec<FixApplied> {
             passed: c.passed,
             message: Some(c.detail.clone()),
             config_issues: Vec::new(),
+            category: c.category,
         })
         .collect();
 
@@ -265,6 +328,7 @@ fn check_keychain_accessible() -> Check {
         passed,
         detail,
         suggestion,
+        category: CheckCategory::Critical,
     }
 }
 
@@ -294,6 +358,7 @@ fn check_identity_exists() -> Check {
         passed,
         detail,
         suggestion,
+        category: CheckCategory::Critical,
     }
 }
 
@@ -365,6 +430,7 @@ fn check_allowed_signers_file() -> Check {
         passed,
         detail,
         suggestion,
+        category: CheckCategory::Critical,
     }
 }
 

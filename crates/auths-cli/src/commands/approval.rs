@@ -11,7 +11,20 @@ use crate::config::CliConfig;
 pub const EXIT_APPROVAL_REQUIRED: i32 = 75;
 
 #[derive(Parser, Debug)]
-#[command(about = "Manage approval gates")]
+#[command(
+    about = "Manage approval gates",
+    after_help = "Examples:
+  auths approval list       # Show pending approval requests
+  auths approval grant --request <hash> --note 'Reviewed and approved'
+                            # Grant approval for a request
+
+Exit Codes:
+  75 — Approval required (TEMPFAIL) — operation needs authorization
+
+Related:
+  auths policy  — Manage capability policies
+  auths status  — Check system status"
+)]
 pub struct ApprovalCommand {
     #[command(subcommand)]
     pub command: ApprovalSubcommand,

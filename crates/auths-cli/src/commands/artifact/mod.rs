@@ -13,7 +13,26 @@ use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
 
 #[derive(Args, Debug, Clone)]
-#[command(about = "Sign and verify arbitrary artifacts (tarballs, binaries, etc.).")]
+#[command(
+    about = "Sign and verify arbitrary artifacts (tarballs, binaries, etc.).",
+    after_help = "Examples:
+  auths artifact sign package.tar.gz     # Sign an artifact
+  auths artifact sign package.tar.gz --expires-in 2592000
+                                         # Sign with 30-day expiry
+  auths artifact verify package.tar.gz.auths.json
+                                         # Verify artifact signature
+  auths artifact publish package.tar.gz --package npm:react@18.3.0
+                                         # Sign and publish to registry
+
+Signature Files:
+  Signatures are stored as <file>.auths.json next to the artifact.
+  Contains identity, device, and signature information.
+
+Related:
+  auths sign    — Sign commits and other files
+  auths verify  — Verify signatures
+  auths trust   — Manage trusted identities"
+)]
 pub struct ArtifactCommand {
     #[command(subcommand)]
     pub command: ArtifactSubcommand,
@@ -334,9 +353,9 @@ mod tests {
             "test",
             "publish",
             "my-file.tar.gz",
-            "--ika",
+            "--key",
             "main",
-            "--dka",
+            "--device-key",
             "device-1",
             "--expires-in",
             "3600",

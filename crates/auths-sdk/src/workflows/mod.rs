@@ -15,4 +15,5 @@ pub mod policy_diff;
 pub mod provision;
 pub mod rotation;
 pub mod signing;
+pub mod status;
 pub mod transparency;

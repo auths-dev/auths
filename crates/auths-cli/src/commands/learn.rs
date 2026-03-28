@@ -8,7 +8,27 @@ use std::process::Command as ProcessCommand;
 
 /// Interactive tutorial for learning Auths concepts.
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Interactive tutorial for learning Auths concepts")]
+#[command(
+    about = "Interactive tutorial for learning Auths concepts",
+    after_help = "Examples:
+  auths tutorial              # Start the interactive tutorial from the beginning
+  auths tutorial --skip 3     # Skip to section 3 (Signing a Commit)
+  auths tutorial --list       # List all tutorial sections
+  auths tutorial --reset      # Reset progress and start over
+
+Sections:
+  1. What is a Cryptographic Identity?
+  2. Creating Your Identity
+  3. Signing a Commit
+  4. Verifying a Signature
+  5. Linking a Second Device
+  6. Revoking Access
+
+Related:
+  auths init    — Set up your identity
+  auths help    — Show command help
+  auths doctor  — Check your setup"
+)]
 pub struct LearnCommand {
     /// Skip to a specific section (1-6).
     #[clap(long, short, value_name = "SECTION")]

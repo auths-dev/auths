@@ -17,7 +17,23 @@ use std::path::PathBuf;
 
 /// Manage authorization policies.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "policy", about = "Manage authorization policies")]
+#[command(
+    name = "policy",
+    about = "Manage authorization policies",
+    after_help = "Examples:
+  auths policy lint policy.json           # Validate policy syntax
+  auths policy compile policy.json        # Full compilation with validation
+  auths policy explain --policy policy.json --context context.json
+                                          # Evaluate policy against context
+  auths policy test policy.json test-suite.json
+                                          # Run policy against test cases
+  auths policy diff old-policy.json new-policy.json
+                                          # Compare policies and show diff
+
+Related:
+  auths approval  — Manage approval gates
+  auths device    — Check device capabilities"
+)]
 pub struct PolicyCommand {
     #[command(subcommand)]
     pub command: PolicySubcommand,

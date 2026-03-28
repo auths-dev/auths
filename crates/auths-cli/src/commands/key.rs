@@ -19,7 +19,20 @@ use crate::ux::format::{JsonResponse, is_json_mode};
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "key",
-    about = "Manage local cryptographic keys in secure storage (list, import, export, delete)."
+    about = "Manage local cryptographic keys in secure storage (list, import, export, delete).",
+    after_help = "Examples:
+  auths key list            # List all stored key aliases
+  auths key import --key-alias mykey --seed seed.bin
+                            # Import an Ed25519 key from a 32-byte seed
+  auths key export --key-alias mykey --format pub --passphrase <pass>
+                            # Export a public key in OpenSSH format
+  auths key delete --key-alias mykey
+                            # Remove a key from secure storage
+
+Related:
+  auths id     — Manage identities
+  auths device — Manage linked devices
+  auths sign   — Sign commits and artifacts using keys"
 )]
 pub struct KeyCommand {
     #[command(subcommand)]

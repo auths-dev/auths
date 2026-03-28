@@ -17,6 +17,24 @@ use crate::ux::format::{JsonResponse, is_json_mode};
 
 /// Authenticate with external services using your auths identity.
 #[derive(Parser, Debug, Clone)]
+#[command(
+    about = "Authenticate with external services using your auths identity",
+    after_help = "Examples:
+  auths auth challenge --nonce abc123def456 --domain example.com
+                        # Sign an authentication challenge
+  auths auth challenge --nonce abc123def456
+                        # Sign challenge for default domain (auths.dev)
+
+Flow:
+  1. Service sends you a nonce
+  2. Run: auths auth challenge --nonce <nonce> --domain <domain>
+  3. Service verifies your signature against your DID
+
+Related:
+  auths id     — Manage your identity
+  auths sign   — Sign files and commits
+  auths verify — Verify signatures"
+)]
 pub struct AuthCommand {
     #[clap(subcommand)]
     pub subcommand: AuthSubcommand,

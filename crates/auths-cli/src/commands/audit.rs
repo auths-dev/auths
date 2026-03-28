@@ -17,7 +17,24 @@ use std::path::PathBuf;
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "audit",
-    about = "Generate signing audit reports for compliance"
+    about = "Generate signing audit reports for compliance",
+    after_help = "Examples:
+  auths audit --repo ~/myproject         # Audit commits in a repo
+  auths audit --since 2026-01-01 --until 2026-03-31
+                                         # Audit a specific date range
+  auths audit --format html -o report.html
+                                         # Generate HTML report
+  auths audit --require-all-signed --exit-code
+                                         # Exit 1 if any unsigned commits found
+
+Output Formats:
+  table — Human-readable table (default)
+  json  — Machine-readable JSON
+  html  — Interactive HTML report
+
+Related:
+  auths verify  — Verify signatures on commits
+  auths status  — Check device status"
 )]
 pub struct AuditCommand {
     /// Path to the Git repository to audit (defaults to current directory).

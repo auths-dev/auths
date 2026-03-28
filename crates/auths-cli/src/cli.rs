@@ -101,42 +101,29 @@ pub enum RootCommand {
     Signers(SignersCommand),
     Pair(PairCommand),
     Error(ErrorLookupCommand),
-    #[command(hide = true)]
     Completions(CompletionsCommand),
     #[command(hide = true)]
     Emergency(EmergencyCommand),
 
-    #[command(hide = true)]
     Id(IdCommand),
-    #[command(hide = true)]
     Device(DeviceCommand),
-    #[command(hide = true)]
     Key(KeyCommand),
-    #[command(hide = true)]
     Approval(ApprovalCommand),
-    #[command(hide = true)]
     Artifact(ArtifactCommand),
-    #[command(hide = true)]
     Policy(PolicyCommand),
-    #[command(hide = true)]
     Git(GitCommand),
-    #[command(hide = true)]
     Trust(TrustCommand),
-    #[command(hide = true)]
     Namespace(NamespaceCommand),
-    #[command(hide = true)]
     Org(OrgCommand),
-    #[command(hide = true)]
     Audit(AuditCommand),
+    Config(ConfigCommand),
+
     #[command(hide = true)]
     Agent(AgentCommand),
     #[command(hide = true)]
     Witness(WitnessCommand),
     #[command(hide = true)]
     Scim(ScimCommand),
-    #[command(hide = true)]
-    Config(ConfigCommand),
-
     #[command(hide = true)]
     Commit(CommitCmd),
     #[command(hide = true)]

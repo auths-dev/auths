@@ -89,7 +89,25 @@ fn sign_commit_range(range: &str) -> Result<()> {
 
 /// Sign a Git commit or artifact file.
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Sign a Git commit or artifact file.")]
+#[command(
+    about = "Sign a Git commit or artifact file.",
+    after_help = "Examples:
+  auths sign README.md                    # Sign a file → README.md.auths.json
+  auths sign HEAD                         # Sign the current commit
+  auths sign main..HEAD                   # Re-sign commits after main
+
+Artifacts:
+  Signing files creates a .auths.json attestation with your identity and device.
+  Use `auths verify` to check the signature.
+
+Commits:
+  Commit signing requires a linked device and Git configuration.
+  Verify with `auths verify HEAD` or `git log --show-signature`.
+
+Related:
+  auths verify      — Verify signatures
+  auths device list — Check linked devices"
+)]
 pub struct SignCommand {
     /// Git ref, commit range (e.g. HEAD, main..HEAD), or path to an artifact file.
     #[arg(help = "Commit ref, range, or artifact file path")]

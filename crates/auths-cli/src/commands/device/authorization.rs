@@ -38,7 +38,20 @@ struct DeviceEntry {
 }
 
 #[derive(Args, Debug, Clone)]
-#[command(about = "Manage device authorizations within an identity repository.")]
+#[command(
+    about = "Manage device authorizations within an identity repository.",
+    after_help = "Examples:
+  auths device list         # List all linked devices
+  auths device link --key identity-key --device-key device-key --device-did did:key:...
+                            # Link a new device to your identity
+  auths device revoke       # Revoke a device authorization
+  auths device extend       # Extend device expiry
+
+Related:
+  auths pair    — Pair a new device with your identity
+  auths status  — Show device status and expiry
+  auths init    — Set up identity and linking"
+)]
 pub struct DeviceCommand {
     #[command(subcommand)]
     pub command: DeviceSubcommand,

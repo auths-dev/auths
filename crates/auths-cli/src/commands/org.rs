@@ -57,6 +57,21 @@ impl From<CliRole> for Role {
 
 /// The `org` subcommand, handling member authorizations.
 #[derive(Parser, Debug, Clone)]
+#[command(
+    about = "Manage organization identities and memberships",
+    after_help = "Examples:
+  auths org create --name 'My Organization'
+                        # Create a new org identity
+  auths org add-member --org-key orgkey --subject did:keri:EMember --role admin
+                        # Add a member with admin role
+  auths org revoke-member --org-key orgkey --subject did:keri:EMember
+                        # Revoke a member's access
+
+Related:
+  auths id        — Manage individual identities
+  auths namespace — Claim and manage package namespaces
+  auths policy    — Define capability policies"
+)]
 pub struct OrgCommand {
     #[clap(subcommand)]
     pub subcommand: OrgSubcommand,

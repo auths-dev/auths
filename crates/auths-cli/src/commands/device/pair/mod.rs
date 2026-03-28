@@ -22,7 +22,24 @@ use clap::Parser;
 const DEFAULT_REGISTRY: &str = "http://localhost:3000";
 
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Link devices to your identity")]
+#[command(
+    about = "Link devices to your identity",
+    after_help = "Examples:
+  auths pair                # Start LAN pairing session (shows QR code)
+  auths pair --join CODE    # Join an existing pairing session using short code
+  auths pair --registry URL # Pair via relay server
+  auths pair --offline      # Offline mode (for testing, no network)
+
+Modes:
+  LAN mode (default)  — Local pairing via mDNS, fastest and most secure
+  Online mode         — Via relay server, works across networks
+  Offline mode        — For testing, no network required
+
+Related:
+  auths status  — Check linked devices
+  auths device  — Manage device authorizations
+  auths init    — Initial setup wizard"
+)]
 pub struct PairCommand {
     /// Join an existing pairing session using a short code
     #[clap(long, value_name = "CODE")]

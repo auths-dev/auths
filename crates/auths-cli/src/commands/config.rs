@@ -10,7 +10,24 @@ use clap::{Parser, Subcommand};
 
 /// Manage Auths configuration.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "config", about = "View and modify Auths configuration")]
+#[command(
+    name = "config",
+    about = "View and modify Auths configuration",
+    after_help = "Configuration file: ~/.auths/config.toml
+
+Examples:
+  auths config show                               # View all settings
+  auths config get passphrase.cache               # Check caching status
+  auths config set passphrase.cache always        # Cache passphrases
+
+Valid Keys:
+  passphrase.cache       — 'never', 'session', 'always'
+  passphrase.duration    — seconds until cache expires
+  passphrase.biometric   — 'enabled', 'disabled' (macOS)
+
+Related:
+  auths doctor  — Check system configuration"
+)]
 pub struct ConfigCommand {
     #[command(subcommand)]
     pub action: ConfigAction,

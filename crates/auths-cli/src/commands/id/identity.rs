@@ -64,7 +64,19 @@ impl LayoutPreset {
 }
 
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Manage identities stored in Git repositories.")]
+#[command(
+    about = "Manage identities stored in Git repositories.",
+    after_help = "Examples:
+  auths id show             # Show current identity details
+  auths id list             # List identities (same as show)
+  auths id create           # Create a new identity
+  auths id export-bundle    # Export identity bundle for verification
+
+Related:
+  auths init    — Initialize identity with setup wizard
+  auths device  — Manage linked devices
+  auths key     — Manage cryptographic keys"
+)]
 pub struct IdCommand {
     #[clap(subcommand)]
     pub subcommand: IdSubcommand,
@@ -107,6 +119,9 @@ pub enum IdSubcommand {
 
     /// Show primary identity details (identity ID, metadata) from the Git repository.
     Show,
+
+    /// List identities (currently same as show, forward-compatible for future multi-identity support).
+    List,
 
     /// Rotate identity keys. Stores the new key under a new alias.
     Rotate {
@@ -422,16 +437,21 @@ pub fn handle_id(
             }
         }
 
-        IdSubcommand::Show => {
+        IdSubcommand::Show | IdSubcommand::List => {
             let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
 
             let identity = identity_storage
                 .load_identity()
                 .with_context(|| format!("Failed to load identity from {:?}", repo_path))?;
 
+            let cmd_name = match cmd.subcommand {
+                IdSubcommand::List => "id list",
+                _ => "id show",
+            };
+
             if is_json_mode() {
                 let response = JsonResponse::success(
-                    "id show",
+                    cmd_name,
                     IdShowResponse {
                         controller_did: identity.controller_did.to_string(),
                         storage_id: identity.storage_id.clone(),
