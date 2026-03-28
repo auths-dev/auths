@@ -17,8 +17,8 @@ use crate::factories::storage::build_auths_context;
 #[command(
     about = "Sign a Git commit with machine identity.",
     after_help = "Examples:
-  auths sign-commit abc123def456...        # Sign a specific commit
-  auths sign-commit HEAD                   # Sign the current commit
+  auths signcommit abc123def456...        # Sign a specific commit
+  auths signcommit HEAD                   # Sign the current commit
 
 Output:
   Displays the signed attestation with commit metadata and OIDC binding (if available).

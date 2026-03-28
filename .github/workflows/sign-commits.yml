@@ -82,7 +82,7 @@ jobs:
 
             # Sign the commit
             echo "Signing commit with machine identity..."
-            if ! $AUTHS_BIN sign-commit "$commit_sha" 2>&1 | tee sign-output.txt; then
+            if ! $AUTHS_BIN signcommit "$commit_sha" 2>&1; then
               echo "⚠️  Warning: Failed to sign commit $commit_sha"
               echo "Continuing with next commit..."
               continue
