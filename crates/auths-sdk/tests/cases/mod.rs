@@ -10,3 +10,4 @@ mod pairing;
 mod rotation;
 mod setup;
 mod signing;
+mod ssh_key_upload;

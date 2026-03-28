@@ -209,6 +209,18 @@ pub enum IdSubcommand {
     /// Requires the `auths-cloud` binary on $PATH. If not installed,
     /// prints information about Auths Cloud.
     BindIdp(super::bind_idp::BindIdpStubCommand),
+
+    /// Re-authorize with a platform and optionally upload SSH signing key.
+    ///
+    /// Use this when you need to update OAuth scopes or re-authenticate
+    /// with a platform (e.g., GitHub). Automatically uploads the SSH signing key
+    /// if the `write:ssh_signing_key` scope is included.
+    #[command(name = "update-scope")]
+    UpdateScope {
+        /// Platform to re-authorize with (e.g., github).
+        #[arg(help = "Platform name (currently supports 'github')")]
+        platform: String,
+    },
 }
 
 fn display_dry_run_rotate(
@@ -669,5 +681,154 @@ pub fn handle_id(
         IdSubcommand::Migrate(migrate_cmd) => super::migrate::handle_migrate(migrate_cmd, now),
 
         IdSubcommand::BindIdp(bind_cmd) => super::bind_idp::handle_bind_idp(bind_cmd),
+
+        IdSubcommand::UpdateScope { platform } => {
+            if platform.to_lowercase() != "github" {
+                return Err(anyhow!(
+                    "Platform '{}' is not supported yet. Currently only 'github' is available.",
+                    platform
+                ));
+            }
+
+            use crate::constants::GITHUB_SSH_UPLOAD_SCOPES;
+            use auths_core::ports::platform::OAuthDeviceFlowProvider;
+            use auths_core::storage::keychain::extract_public_key_bytes;
+            use auths_infra_http::{HttpGitHubOAuthProvider, HttpGitHubSshKeyUploader};
+            use std::time::Duration;
+
+            const GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";
+            #[allow(clippy::disallowed_methods)]
+            let client_id = std::env::var("AUTHS_GITHUB_CLIENT_ID")
+                .unwrap_or_else(|_| GITHUB_CLIENT_ID.to_string());
+
+            // Get ~/.auths directory
+            let home =
+                dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
+            let auths_dir = home.join(".auths");
+            let ctx = crate::factories::storage::build_auths_context(
+                &auths_dir,
+                env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+
+            let oauth = HttpGitHubOAuthProvider::new();
+            let ssh_uploader = HttpGitHubSshKeyUploader::new();
+
+            let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
+
+            let out = crate::ux::format::Output::new();
+            out.print_info(&format!("Re-authorizing with {}", platform));
+
+            let device_code = rt
+                .block_on(oauth.request_device_code(&client_id, GITHUB_SSH_UPLOAD_SCOPES))
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            out.println(&format!(
+                "  Enter this code: {}",
+                out.bold(&device_code.user_code)
+            ));
+            out.println(&format!(
+                "  At: {}",
+                out.info(&device_code.verification_uri)
+            ));
+            if let Err(e) = open::that(&device_code.verification_uri) {
+                out.print_warn(&format!("Could not open browser automatically: {e}"));
+                out.println("  Please open the URL above manually.");
+            } else {
+                out.println("  Browser opened — waiting for authorization...");
+            }
+
+            let expires_in = Duration::from_secs(device_code.expires_in);
+            let interval = Duration::from_secs(device_code.interval);
+
+            let access_token = rt
+                .block_on(oauth.poll_for_token(
+                    &client_id,
+                    &device_code.device_code,
+                    interval,
+                    expires_in,
+                ))
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            let profile = rt
+                .block_on(oauth.fetch_user_profile(&access_token))
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            out.print_success(&format!("Re-authenticated as @{}", profile.login));
+
+            // Try to get device public key and upload SSH key
+            let controller_did =
+                auths_sdk::pairing::load_controller_did(ctx.identity_storage.as_ref())
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            #[allow(clippy::disallowed_methods)]
+            let identity_did = IdentityDID::new_unchecked(controller_did.clone());
+            let aliases = ctx
+                .key_storage
+                .list_aliases_for_identity(&identity_did)
+                .context("failed to list key aliases")?;
+            let key_alias = aliases
+                .into_iter()
+                .find(|a| !a.contains("--next-"))
+                .ok_or_else(|| anyhow::anyhow!("no signing key found for {controller_did}"))?;
+
+            // Get device public key and encode
+            let device_key_result = extract_public_key_bytes(
+                ctx.key_storage.as_ref(),
+                &key_alias,
+                passphrase_provider.as_ref(),
+            );
+
+            if let Ok(pk_bytes) = device_key_result {
+                use base64::Engine;
+
+                // Build OpenSSH wire format for public key blob
+                let key_type = b"ssh-ed25519";
+                let mut wire_format = Vec::new();
+                wire_format.extend_from_slice(&(key_type.len() as u32).to_be_bytes());
+                wire_format.extend_from_slice(key_type);
+                wire_format.extend_from_slice(&(pk_bytes.len() as u32).to_be_bytes());
+                wire_format.extend_from_slice(&pk_bytes);
+
+                let b64_key = base64::engine::general_purpose::STANDARD.encode(&wire_format);
+                let public_key = format!("ssh-ed25519 {}", b64_key);
+
+                out.println("  Uploading SSH signing key...");
+                #[allow(clippy::disallowed_methods)]
+                let now = chrono::Utc::now();
+                #[allow(clippy::disallowed_methods)]
+                let hostname = gethostname::gethostname();
+                let hostname_str = hostname.to_string_lossy().to_string();
+                let result = rt.block_on(
+                    auths_sdk::workflows::platform::upload_github_ssh_signing_key(
+                        &ssh_uploader,
+                        &access_token,
+                        &public_key,
+                        &key_alias,
+                        &hostname_str,
+                        ctx.identity_storage.as_ref(),
+                        now,
+                    ),
+                );
+
+                match result {
+                    Ok(()) => {
+                        out.print_success("SSH signing key uploaded to GitHub");
+                        out.println("  View at: https://github.com/settings/keys");
+                    }
+                    Err(e) => {
+                        out.print_warn(&format!("SSH key upload failed: {e}"));
+                        out.println(
+                            "  You can upload manually at https://github.com/settings/keys",
+                        );
+                    }
+                }
+            } else {
+                out.print_warn("Could not extract device public key for SSH upload");
+            }
+
+            out.print_success("Scope update complete");
+            Ok(())
+        }
     }
 }
