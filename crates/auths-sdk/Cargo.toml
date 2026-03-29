@@ -36,6 +36,8 @@ ssh-key = "0.6"
 tempfile = "3"
 url = { version = "2", features = ["serde"] }
 zeroize = "1.8"
+uuid = { workspace = true, features = ["serde", "v4"] }
+dashmap = "6"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
 auths-pairing-daemon = { workspace = true, optional = true }
 

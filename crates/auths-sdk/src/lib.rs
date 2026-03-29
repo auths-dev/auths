@@ -24,6 +24,8 @@ pub mod audit;
 pub mod context;
 /// Device linking, revocation, and authorization extension operations.
 pub mod device;
+/// Domain services for specialized business logic.
+pub mod domains;
 /// Domain error types for all SDK operations.
 pub mod error;
 /// Key import and management operations.
