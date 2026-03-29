@@ -9,9 +9,9 @@ use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 use auths_infra_http::HttpRegistryClient;
-use auths_sdk::error::RegistrationError;
-pub use auths_sdk::registration::DEFAULT_REGISTRY_URL;
-use auths_sdk::result::RegistrationOutcome;
+use auths_sdk::domains::identity::error::RegistrationError;
+pub use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
+use auths_sdk::domains::identity::types::RegistrationOutcome;
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
@@ -48,14 +48,16 @@ pub fn handle_register(repo_path: &Path, registry: &str) -> Result<()> {
 
     let registry_client = HttpRegistryClient::new();
 
-    match rt.block_on(auths_sdk::registration::register_identity(
-        identity_storage,
-        backend,
-        attestation_source,
-        registry,
-        None,
-        &registry_client,
-    )) {
+    match rt.block_on(
+        auths_sdk::domains::identity::registration::register_identity(
+            identity_storage,
+            backend,
+            attestation_source,
+            registry,
+            None,
+            &registry_client,
+        ),
+    ) {
         Ok(outcome) => display_registration_result(&outcome),
         Err(RegistrationError::AlreadyRegistered) => {
             bail!("Identity already registered at this registry.");

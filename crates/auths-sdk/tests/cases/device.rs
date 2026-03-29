@@ -5,14 +5,13 @@ use auths_core::ports::clock::SystemClock;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::KeyAlias;
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
-use auths_sdk::device::{extend_device, link_device};
-use auths_sdk::error::DeviceExtensionError;
-use auths_sdk::result::InitializeResult;
-use auths_sdk::setup::initialize;
-use auths_sdk::types::{
-    CreateDeveloperIdentityConfig, DeviceExtensionConfig, DeviceLinkConfig, GitSigningScope,
-    IdentityConfig,
-};
+use auths_sdk::domains::device::error::DeviceExtensionError;
+use auths_sdk::domains::device::service::{extend_device, link_device};
+use auths_sdk::domains::device::types::{DeviceExtensionConfig, DeviceLinkConfig};
+use auths_sdk::domains::identity::service::initialize;
+use auths_sdk::domains::identity::types::InitializeResult;
+use auths_sdk::domains::identity::types::{CreateDeveloperIdentityConfig, IdentityConfig};
+use auths_sdk::domains::signing::types::GitSigningScope;
 
 use crate::cases::helpers::{build_test_context, build_test_context_with_provider};
 
@@ -45,7 +44,7 @@ fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> St
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("device-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
-        .with_conflict_policy(auths_sdk::types::IdentityConflictPolicy::ForceNew)
+        .with_conflict_policy(auths_sdk::domains::identity::types::IdentityConflictPolicy::ForceNew)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
     initialize(

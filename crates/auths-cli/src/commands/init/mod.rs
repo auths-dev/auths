@@ -17,11 +17,12 @@ use std::sync::Arc;
 use auths_core::PrefilledPassphraseProvider;
 use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::KeyStorage;
+use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
+use auths_sdk::domains::identity::service::initialize;
+use auths_sdk::domains::identity::types::IdentityConfig;
+use auths_sdk::domains::identity::types::InitializeResult;
+use auths_sdk::domains::signing::types::GitSigningScope;
 use auths_sdk::ports::git_config::GitConfigProvider;
-use auths_sdk::registration::DEFAULT_REGISTRY_URL;
-use auths_sdk::result::InitializeResult;
-use auths_sdk::setup::initialize;
-use auths_sdk::types::{GitSigningScope, IdentityConfig};
 
 use crate::adapters::git_config::SystemGitConfigProvider;
 use crate::config::CliConfig;

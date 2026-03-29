@@ -4,11 +4,12 @@ use auths_core::PrefilledPassphraseProvider;
 use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::KeyAlias;
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
-use auths_sdk::result::InitializeResult;
-use auths_sdk::setup::initialize;
-use auths_sdk::types::{
-    CreateDeveloperIdentityConfig, GitSigningScope, IdentityConfig, IdentityConflictPolicy,
+use auths_sdk::domains::identity::service::initialize;
+use auths_sdk::domains::identity::types::InitializeResult;
+use auths_sdk::domains::identity::types::{
+    CreateDeveloperIdentityConfig, IdentityConfig, IdentityConflictPolicy,
 };
+use auths_sdk::domains::signing::types::GitSigningScope;
 
 use crate::cases::helpers::build_test_context;
 
@@ -21,7 +22,7 @@ fn dev_result(
     ctx: &auths_sdk::context::AuthsContext,
     signer: &dyn auths_core::signing::SecureSigner,
     provider: &dyn auths_core::signing::PassphraseProvider,
-) -> auths_sdk::result::DeveloperIdentityResult {
+) -> auths_sdk::domains::identity::types::DeveloperIdentityResult {
     match initialize(
         IdentityConfig::Developer(config),
         ctx,

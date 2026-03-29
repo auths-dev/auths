@@ -1,0 +1,1 @@
+//! types for auth domain

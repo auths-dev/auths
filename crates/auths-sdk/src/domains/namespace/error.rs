@@ -1,0 +1,1 @@
+//! error for namespace domain

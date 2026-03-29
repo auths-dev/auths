@@ -155,14 +155,16 @@ pub(crate) fn submit_registration(
 
     let registry_client = HttpRegistryClient::new();
 
-    match rt.block_on(auths_sdk::registration::register_identity(
-        identity_storage,
-        backend,
-        attestation_source,
-        registry_url,
-        proof_url,
-        &registry_client,
-    )) {
+    match rt.block_on(
+        auths_sdk::domains::identity::registration::register_identity(
+            identity_storage,
+            backend,
+            attestation_source,
+            registry_url,
+            proof_url,
+            &registry_client,
+        ),
+    ) {
         Ok(outcome) => {
             out.print_success(&format!("Identity registered at {}", outcome.registry));
             Some(outcome.registry)
@@ -216,7 +218,7 @@ pub(crate) fn ensure_registry_dir(registry_path: &Path) -> Result<()> {
             )
         })?;
     }
-    auths_sdk::setup::install_registry_hook(registry_path);
+    auths_sdk::domains::identity::service::install_registry_hook(registry_path);
     Ok(())
 }
 
