@@ -28,6 +28,7 @@ multiple-versions = "warn"
 deny = [
   { crate = "reqwest", wrappers = [
     "auths-infra-http",
+    "auths-api",
     "auths-cli",
     "auths-mcp-server",
     "auths-telemetry",
@@ -42,6 +43,7 @@ deny = [
   # axum is an HTTP framework — adapter crates only
   { crate = "axum", wrappers = [
     "auths-infra-http",
+    "auths-api",
     "auths-cli",
     "auths-core",
     "auths-mcp-server",

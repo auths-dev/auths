@@ -1,0 +1,62 @@
+[package]
+name = "auths-api"
+edition = "2021"
+version.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "auths-api"
+path = "src/main.rs"
+
+[dependencies]
+# Auths workspace crates
+auths-id = { workspace = true }
+auths-crypto = { workspace = true }
+auths-sdk = { workspace = true }
+auths-core = { workspace = true }
+auths-policy = { workspace = true }
+auths-storage = { workspace = true }
+
+# Domain services
+async-trait = "0.1"
+
+# HTTP & async
+axum = "0.8"
+tokio = { workspace = true, features = ["full"] }
+tower = "0.5"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { workspace = true, features = ["serde"] }
+
+# Crypto & hashing
+ring = { workspace = true }
+base64 = { workspace = true }
+sha2 = "0.10"
+subtle = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Concurrency
+dashmap = "6"
+
+# Persistence
+redis = { version = "0.26", features = ["aio", "tokio-comp"] }
+
+# Telemetry
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde_json = "1"
+
+[lints]
+workspace = true
