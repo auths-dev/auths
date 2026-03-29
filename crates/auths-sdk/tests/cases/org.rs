@@ -4,7 +4,7 @@ use auths_core::storage::keychain::KeyAlias;
 use auths_core::testing::DeterministicUuidProvider;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
-use auths_sdk::error::OrgError;
+use auths_sdk::domains::org::error::OrgError;
 use auths_sdk::testing::fakes::FakeSecureSigner;
 use auths_sdk::workflows::org::{
     AddMemberCommand, OrgContext, RevokeMemberCommand, Role, UpdateCapabilitiesCommand,

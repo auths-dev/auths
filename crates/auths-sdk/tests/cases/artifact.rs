@@ -1,8 +1,8 @@
 use auths_core::crypto::ssh::SecureSeed;
-use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
-use auths_sdk::signing::{
+use auths_sdk::domains::signing::service::{
     ArtifactSigningError, ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
 };
+use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
 use auths_sdk::testing::fakes::FakeArtifactSource;
 use auths_sdk::workflows::artifact::compute_digest;
 use std::sync::Arc;

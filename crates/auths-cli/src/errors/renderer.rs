@@ -1,10 +1,10 @@
 use anyhow::Error;
 use auths_core::error::{AgentError, AuthsErrorInfo};
+use auths_sdk::domains::signing::service::{ArtifactSigningError, SigningError};
 use auths_sdk::error::{
     ApprovalError, DeviceError, DeviceExtensionError, McpAuthError, OrgError, RegistrationError,
     RotationError, SetupError,
 };
-use auths_sdk::signing::{ArtifactSigningError, SigningError};
 use auths_sdk::workflows::allowed_signers::AllowedSignersError;
 use auths_verifier::AttestationError;
 use colored::Colorize;

@@ -273,7 +273,7 @@ pub fn handle_device(
                 Some(Arc::clone(&passphrase_provider)),
             )?;
 
-            let result = auths_sdk::device::link_device(
+            let result = auths_sdk::domains::device::service::link_device(
                 link_config,
                 &ctx,
                 &auths_core::ports::clock::SystemClock,
@@ -300,7 +300,7 @@ pub fn handle_device(
             )?;
 
             let identity_key_alias = KeyAlias::new_unchecked(key);
-            auths_sdk::device::revoke_device(
+            auths_sdk::domains::device::service::revoke_device(
                 &device_did,
                 &identity_key_alias,
                 &ctx,
@@ -449,11 +449,12 @@ fn handle_extend(
     };
     let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))?;
 
-    let result =
-        auths_sdk::device::extend_device(config, &ctx, &auths_core::ports::clock::SystemClock)
-            .with_context(|| {
-                format!("Failed to extend device authorization for '{}'", device_did)
-            })?;
+    let result = auths_sdk::domains::device::service::extend_device(
+        config,
+        &ctx,
+        &auths_core::ports::clock::SystemClock,
+    )
+    .with_context(|| format!("Failed to extend device authorization for '{}'", device_did))?;
 
     println!(
         "Successfully extended expiration for {} to {}",

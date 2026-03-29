@@ -12,8 +12,8 @@ use auths_crypto::AuthsErrorInfo;
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::storage::layout;
 use auths_infra_http::resolve_verified_platform_context;
+use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::namespace_registry::NamespaceVerifierRegistry;
-use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::workflows::namespace::{
     DelegateNamespaceCommand, TransferNamespaceCommand, initiate_namespace_claim,
     parse_claim_response, parse_lookup_response, sign_namespace_delegate, sign_namespace_transfer,

@@ -1,4 +1,4 @@
-use auths_sdk::signing::{self, SigningConfig, SigningError};
+use auths_sdk::domains::signing::service::{self as signing, SigningConfig, SigningError};
 use auths_sdk::workflows::signing::{
     CommitSigningContext, CommitSigningParams, CommitSigningWorkflow,
 };

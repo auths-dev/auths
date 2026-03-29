@@ -11,9 +11,10 @@ use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
 use auths_sdk::context::AuthsContext;
-use auths_sdk::result::InitializeResult;
-use auths_sdk::setup::initialize;
-use auths_sdk::types::{CreateDeveloperIdentityConfig, GitSigningScope, IdentityConfig};
+use auths_sdk::domains::identity::service::initialize;
+use auths_sdk::domains::identity::types::InitializeResult;
+use auths_sdk::domains::identity::types::{CreateDeveloperIdentityConfig, IdentityConfig};
+use auths_sdk::domains::signing::types::GitSigningScope;
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };

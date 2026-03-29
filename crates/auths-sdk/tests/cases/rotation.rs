@@ -10,11 +10,13 @@ use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
 use auths_id::keri::{KeyState, Prefix, Said};
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
-use auths_sdk::error::RotationError;
-use auths_sdk::result::InitializeResult;
-use auths_sdk::setup::initialize;
-use auths_sdk::types::IdentityConfig;
-use auths_sdk::types::{CreateDeveloperIdentityConfig, GitSigningScope, IdentityRotationConfig};
+use auths_sdk::domains::identity::error::RotationError;
+use auths_sdk::domains::identity::service::initialize;
+use auths_sdk::domains::identity::types::InitializeResult;
+use auths_sdk::domains::identity::types::{
+    CreateDeveloperIdentityConfig, IdentityConfig, IdentityRotationConfig,
+};
+use auths_sdk::domains::signing::types::GitSigningScope;
 use auths_sdk::workflows::rotation::{
     RotationKeyMaterial, apply_rotation, compute_rotation_event, rotate_identity,
 };

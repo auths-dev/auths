@@ -61,3 +61,14 @@ pub mod testing;
 
 pub use context::AuthsContext;
 pub use context::EventSink;
+
+// Re-export types and errors from domains for ease of access
+pub use domains::auth::error::*;
+pub use domains::compliance::error::*;
+pub use domains::device::error::*;
+pub use domains::device::types::*;
+pub use domains::diagnostics::types::*;
+pub use domains::identity::error::*;
+pub use domains::identity::types::*;
+pub use domains::org::error::*;
+pub use domains::signing::types::*;
