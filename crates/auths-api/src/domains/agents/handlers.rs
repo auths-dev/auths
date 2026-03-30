@@ -47,19 +47,20 @@ pub async fn authorize_operation(
     #[allow(clippy::disallowed_methods)] // INVARIANT: HTTP handler boundary
     let now = chrono::Utc::now();
 
-    // Validate clock skew (±5 minutes)
-    let time_diff = {
-        let duration = now.signed_duration_since(req.timestamp);
-        duration.num_seconds().unsigned_abs()
-    };
-    if time_diff > 300 {
-        return Err((StatusCode::BAD_REQUEST, "Clock skew too large".to_string()));
-    }
-
     let service = AgentService::new(state.registry, state.persistence);
     let resp = service
-        .authorize(&req.agent_did, &req.capability, now)
-        .map_err(|e| (StatusCode::UNAUTHORIZED, e))?;
+        .authorize(&req.agent_did, &req.capability, now, req.timestamp)
+        .map_err(|e| {
+            let error_msg = e.to_string();
+            // Clock skew is a request validation error (400)
+            // Authorization failures are authorization errors (401)
+            let status = if error_msg.contains("Clock skew") {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::UNAUTHORIZED
+            };
+            (status, error_msg)
+        })?;
 
     Ok((StatusCode::OK, Json(resp)))
 }

@@ -140,7 +140,17 @@ impl AgentService {
         agent_did: &str,
         capability: &str,
         now: chrono::DateTime<Utc>,
+        request_timestamp: chrono::DateTime<Utc>,
     ) -> Result<AuthorizeResponse, String> {
+        // Validate clock skew (±5 minutes)
+        let time_diff = {
+            let duration = now.signed_duration_since(request_timestamp);
+            duration.num_seconds().unsigned_abs()
+        };
+        if time_diff > 300 {
+            return Err("Clock skew too large".to_string());
+        }
+
         // Verify signature using IdentityResolver
         // TODO: Integrate with IdentityResolver when available
 
