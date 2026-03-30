@@ -1,6 +1,6 @@
-//! Identity domain services
+//! Identity domain types and errors.
 //!
-//! Provisions, rotates, and manages developer, CI, and agent identities.
+//! Manages developer, CI, and agent identities.
 
 /// Identity errors
 pub mod error;
@@ -10,7 +10,7 @@ pub mod provision;
 pub mod registration;
 /// Identity key rotation
 pub mod rotation;
-/// Identity services
+/// Identity service setup functions
 pub mod service;
 /// Identity types and configuration
 pub mod types;

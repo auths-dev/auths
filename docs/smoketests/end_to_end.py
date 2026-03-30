@@ -190,6 +190,16 @@ def run_command(
         return False, "", str(e)
 
 
+def print_result(result: CommandResult) -> None:
+    """Print a command result."""
+    if result.skipped:
+        print_warn(f"Skipped: {result.skip_reason}")
+    elif result.success:
+        print_success(f"{result.name} passed")
+    else:
+        print_failure(f"{result.name} failed")
+
+
 def test_command(
     name: str,
     cmd: list[str],
@@ -356,14 +366,14 @@ def run_tests(temp_dir: Path, report: TestReport) -> None:
         result = CommandResult(
             name="10. auths doctor",
             success=doctor_success,
-            stdout=doctor_result.stdout,
-            stderr=doctor_result.stderr,
+            output=doctor_result.stdout,
+            error=doctor_result.stderr,
         )
     except Exception as e:
         result = CommandResult(
             name="10. auths doctor",
             success=False,
-            stderr=str(e),
+            error=f"Exception: {str(e)}",
         )
     print_result(result)
     report.add(result)

@@ -22,8 +22,6 @@
 pub mod audit;
 /// Runtime dependency container (`AuthsContext`) for injecting infrastructure adapters.
 pub mod context;
-/// Device linking, revocation, and authorization extension operations.
-pub mod device;
 /// Domain services for specialized business logic.
 pub mod domains;
 /// Domain error types for all SDK operations.
@@ -46,14 +44,8 @@ pub mod presentation;
 pub mod registration;
 /// Return types for SDK workflow functions.
 pub mod result;
-/// Identity provisioning for developer, CI, and agent environments.
-pub mod setup;
-/// Artifact signing pipeline and attestation creation.
-pub mod signing;
 /// Plain-old-data config structs for all SDK workflows.
 pub mod types;
-/// Higher-level identity workflows (rotation, provisioning, auditing).
-pub mod workflows;
 
 /// Test utilities for auths-sdk consumers (behind `test-utils` feature).
 #[cfg(any(test, feature = "test-utils"))]

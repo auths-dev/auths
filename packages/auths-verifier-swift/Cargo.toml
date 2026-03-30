@@ -1,7 +1,7 @@
 [package]
 name = "auths-verifier-uniffi"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "UniFFI bindings for Auths attestation verification (Swift/Kotlin)"
 license = "MIT"
 

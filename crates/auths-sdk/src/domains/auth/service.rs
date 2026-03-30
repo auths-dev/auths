@@ -1,1 +1,0 @@
-//! service for auth domain

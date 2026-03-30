@@ -2,8 +2,7 @@
 
 use std::path::Path;
 
-use auths_sdk::ports::allowed_signers::AllowedSignersStore;
-use auths_sdk::workflows::allowed_signers::AllowedSignersError;
+use auths_sdk::ports::allowed_signers::{AllowedSignersError, AllowedSignersStore};
 
 /// Reads and writes allowed_signers files using the local filesystem.
 /// Uses atomic writes via `tempfile::NamedTempFile::persist`.

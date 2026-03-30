@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::process::{Command, Stdio};
 
 /// Run a command, return trimmed stdout. Fails with stderr in the error message.

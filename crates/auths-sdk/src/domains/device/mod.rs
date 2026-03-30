@@ -1,9 +1,7 @@
-//! Domain services for device.
+//! Device domain types and errors.
 
 /// Device errors
 pub mod error;
-/// Device services
-pub mod service;
 /// Device types and configuration
 pub mod types;
 

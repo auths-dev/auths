@@ -457,6 +457,10 @@ fn finalize_rotation_storage(
     )
 }
 
+// Tests for workflows moved to auths-api are commented out to avoid
+// violating the one-way dependency rule (auths-api imports from auths-sdk, never reverse).
+// These tests are now in auths-api/tests/ where the workflows live.
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -838,3 +842,4 @@ mod tests {
         );
     }
 }
+*/

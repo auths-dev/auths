@@ -4,11 +4,11 @@ use crate::adapters::doctor_fixes::{AllowedSignersFix, GitSigningConfigFix};
 use crate::adapters::system_diagnostic::PosixDiagnosticAdapter;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::Result;
+use auths_api::domains::diagnostics::workflows::DiagnosticsWorkflow;
 use auths_core::storage::keychain;
 use auths_sdk::ports::diagnostics::{
     CheckCategory, CheckResult, ConfigIssue, DiagnosticFix, FixApplied,
 };
-use auths_sdk::workflows::diagnostics::DiagnosticsWorkflow;
 use clap::Parser;
 use serde::Serialize;
 use std::io::IsTerminal;
@@ -363,7 +363,7 @@ fn check_identity_exists() -> Check {
 }
 
 fn check_allowed_signers_file() -> Check {
-    use auths_sdk::workflows::allowed_signers::{AllowedSigners, SignerSource};
+    use auths_api::domains::signing::workflows::{AllowedSigners, SignerSource};
 
     let path = crate::factories::storage::read_git_config("gpg.ssh.allowedSignersFile")
         .ok()

@@ -393,7 +393,7 @@ fn cache_checkpoint_from_bundle(bundle: &OfflineBundle) {
         None => return,
     };
 
-    match auths_sdk::workflows::transparency::try_cache_checkpoint(
+    match auths_api::domains::transparency::workflows::try_cache_checkpoint(
         &cache_path,
         &bundle.signed_checkpoint,
         None,

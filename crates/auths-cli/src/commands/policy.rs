@@ -4,11 +4,11 @@
 
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::{Context, Result, anyhow};
+use auths_api::domains::policy::workflows::{compute_policy_diff, overall_risk_score};
 use auths_policy::{
     CompileError, CompiledExpr, EvalContext, Expr, Outcome, PolicyLimits,
     compile_from_json_with_limits,
 };
-use auths_sdk::workflows::policy_diff::{compute_policy_diff, overall_risk_score};
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -690,7 +690,7 @@ impl ExecutableCommand for PolicyCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_sdk::workflows::policy_diff::{
+    use auths_api::domains::policy::workflows::{
         PolicyChange, compute_policy_diff, overall_risk_score,
     };
 

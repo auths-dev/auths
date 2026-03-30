@@ -218,7 +218,7 @@ pub(crate) fn ensure_registry_dir(registry_path: &Path) -> Result<()> {
             )
         })?;
     }
-    auths_sdk::domains::identity::service::install_registry_hook(registry_path);
+    auths_api::domains::identity::service::install_registry_hook(registry_path);
     Ok(())
 }
 

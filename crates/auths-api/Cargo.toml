@@ -1,6 +1,6 @@
 [package]
 name = "auths-api"
-edition = "2021"
+edition = "2024"
 version.workspace = true
 license.workspace = true
 rust-version.workspace = true
@@ -19,6 +19,10 @@ auths-sdk = { workspace = true }
 auths-core = { workspace = true }
 auths-policy = { workspace = true }
 auths-storage = { workspace = true }
+auths-verifier = { workspace = true, features = ["native"] }
+auths-transparency = { workspace = true, features = ["native"] }
+auths-oidc-port = { path = "../auths-oidc-port", version = "0.0.1-rc.9" }
+auths-infra-http = { workspace = true }
 
 # Domain services
 async-trait = "0.1"
@@ -33,18 +37,26 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { workspace = true, features = ["serde"] }
+json-canon = { workspace = true }
+html-escape = "0.2"
 
 # Crypto & hashing
 ring = { workspace = true }
 base64 = { workspace = true }
 sha2 = "0.10"
 subtle = { workspace = true }
+zeroize = "1.8"
+ssh-key = "0.6"
+hex = "0.4"
 
 # Error handling
 thiserror = { workspace = true }
 
 # Concurrency
 dashmap = "6"
+
+# Network
+url = { version = "2", features = ["serde"] }
 
 # Persistence
 redis = { version = "0.26", features = ["aio", "tokio-comp"] }
@@ -57,6 +69,9 @@ tracing-subscriber = "0.3"
 tokio = { version = "1", features = ["macros", "rt", "time"] }
 reqwest = { version = "0.12", features = ["json"] }
 serde_json = "1"
+tempfile = "3"
+auths-storage = { workspace = true, features = ["backend-git"] }
+git2 = { workspace = true }
 
 [lints]
 workspace = true

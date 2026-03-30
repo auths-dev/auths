@@ -32,8 +32,6 @@ deny = [
     "auths-cli",
     "auths-mcp-server",
     "auths-telemetry",
-    "auths-id",
-    "xtask",
     "jsonschema",
   ], reason = "HTTP clients must be confined to adapter layer" },
 
@@ -60,7 +58,8 @@ deny = [
     "auths-radicle",
     "auths-sdk",
     "auths-test-utils",
-  ], reason = "git2 must stay in storage/adapter layer; auths-sdk dev-dep only" },
+    "auths-api",
+  ], reason = "git2 must stay in storage/adapter layer; dev-dep only for testing" },
 ]
 
 [advisories]

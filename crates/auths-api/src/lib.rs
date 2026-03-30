@@ -22,7 +22,7 @@ pub mod app;
 pub mod domains;
 
 // Re-export public API
-pub use app::{build_router, AppState};
-pub use auths_sdk::domains::agents::{AgentRegistry, AgentService, AgentSession, AgentStatus};
+pub use app::{AppState, build_router};
+pub use auths_sdk::domains::agents::AgentRegistry;
 pub use error::ApiError;
 pub use persistence::AgentPersistence;

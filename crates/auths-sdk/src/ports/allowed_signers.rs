@@ -1,8 +1,31 @@
 //! Allowed signers file I/O port for reading and writing SSH allowed_signers files.
 
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
+use thiserror::Error;
 
-use crate::workflows::allowed_signers::AllowedSignersError;
+/// Error type for allowed_signers file operations.
+#[derive(Error, Debug)]
+pub enum AllowedSignersError {
+    /// File read operation failed
+    #[error("Failed to read allowed_signers file {path}: {source}")]
+    FileRead {
+        /// Path to the file
+        path: PathBuf,
+        /// Underlying I/O error
+        #[source]
+        source: io::Error,
+    },
+    /// File write operation failed
+    #[error("Failed to write allowed_signers file {path}: {source}")]
+    FileWrite {
+        /// Path to the file
+        path: PathBuf,
+        /// Underlying I/O error
+        #[source]
+        source: io::Error,
+    },
+}
 
 /// Abstracts filesystem access for allowed_signers file operations.
 ///

@@ -2,10 +2,10 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use auths_infra_http::HttpRegistryClient;
-use auths_sdk::workflows::artifact::{
+use auths_api::domains::signing::workflows::{
     ArtifactPublishConfig, ArtifactPublishError, ArtifactPublishResult, publish_artifact,
 };
+use auths_infra_http::HttpRegistryClient;
 use auths_transparency::OfflineBundle;
 use auths_verifier::core::ResourceId;
 use serde::Serialize;
@@ -205,7 +205,7 @@ fn cache_checkpoint_from_sig(sig_contents: &str) {
         None => return,
     };
 
-    if let Err(e) = auths_sdk::workflows::transparency::try_cache_checkpoint(
+    if let Err(e) = auths_api::domains::transparency::workflows::try_cache_checkpoint(
         &cache_path,
         &bundle.signed_checkpoint,
         None,

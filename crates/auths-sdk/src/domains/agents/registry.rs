@@ -1,4 +1,5 @@
 use super::types::{AgentSession, AgentStatus};
+use auths_verifier::IdentityDID;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use uuid::Uuid;
@@ -8,11 +9,11 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct AgentRegistry {
     // Primary index: agent_did → AgentSession
-    sessions: DashMap<String, AgentSession>,
+    sessions: DashMap<IdentityDID, AgentSession>,
     // Secondary index: session_id → agent_did (for reverse lookups)
-    by_session_id: DashMap<Uuid, String>,
+    by_session_id: DashMap<Uuid, IdentityDID>,
     // Tertiary index: delegator_did → Vec<agent_did> (for delegation tree queries)
-    by_delegator: DashMap<String, Vec<String>>,
+    by_delegator: DashMap<IdentityDID, Vec<IdentityDID>>,
 }
 
 impl AgentRegistry {
@@ -46,14 +47,21 @@ impl AgentRegistry {
         self.sessions.insert(agent_did, session)
     }
 
+    /// Get an agent session by DID without filtering
+    /// Returns the session regardless of expiry or revocation status
+    /// For authorization checks that need to differentiate between revoked/expired/notfound
+    pub fn get_raw(&self, agent_did: &IdentityDID) -> Option<AgentSession> {
+        self.sessions.get(agent_did).map(|entry| entry.clone())
+    }
+
     /// Get an agent session by DID
     /// Returns None if not found or expired
-    pub fn get(&self, agent_did: &str, now: DateTime<Utc>) -> Option<AgentSession> {
-        let session = self.sessions.get(agent_did)?;
+    pub fn get(&self, agent_did: &IdentityDID, now: DateTime<Utc>) -> Option<AgentSession> {
+        let session = self.get_raw(agent_did)?;
 
         // Check expiry and status
         if session.is_active(now) {
-            Some(session.clone())
+            Some(session)
         } else {
             None
         }
@@ -67,7 +75,7 @@ impl AgentRegistry {
 
     /// Revoke an agent (marks as Revoked, doesn't delete)
     /// Returns true if revoked, false if not found
-    pub fn revoke(&self, agent_did: &str) -> bool {
+    pub fn revoke(&self, agent_did: &IdentityDID) -> bool {
         if let Some(mut entry) = self.sessions.get_mut(agent_did) {
             entry.status = AgentStatus::Revoked;
             true
@@ -92,7 +100,11 @@ impl AgentRegistry {
     }
 
     /// List all agents delegated by a specific delegator (for tree traversal)
-    pub fn list_by_delegator(&self, delegator_did: &str, now: DateTime<Utc>) -> Vec<AgentSession> {
+    pub fn list_by_delegator(
+        &self,
+        delegator_did: &IdentityDID,
+        now: DateTime<Utc>,
+    ) -> Vec<AgentSession> {
         let Some(agent_dids) = self.by_delegator.get(delegator_did) else {
             return Vec::new();
         };
@@ -110,7 +122,7 @@ impl AgentRegistry {
         let mut count = 0;
 
         // Collect DIDs to remove (avoid holding locks during iteration)
-        let expired_dids: Vec<String> = self
+        let expired_dids: Vec<IdentityDID> = self
             .sessions
             .iter()
             .filter(|entry| entry.value().is_expired(now))
@@ -166,6 +178,7 @@ impl Default for AgentRegistry {
 #[allow(clippy::disallowed_methods)] // INVARIANT: test fixtures call Utc::now() and Uuid::new_v4()
 mod tests {
     use super::*;
+    use auths_verifier::Capability;
 
     #[test]
     fn test_insert_and_get() {
@@ -174,10 +187,10 @@ mod tests {
 
         let session = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:test1".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:test1"),
             agent_name: "test-agent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -187,7 +200,8 @@ mod tests {
 
         registry.insert(session.clone());
 
-        let retrieved = registry.get("did:keri:test1", now);
+        let agent_did = IdentityDID::new_unchecked("did:keri:test1");
+        let retrieved = registry.get(&agent_did, now);
         assert_eq!(retrieved, Some(session));
     }
 
@@ -199,10 +213,10 @@ mod tests {
 
         let session = AgentSession {
             session_id,
-            agent_did: "did:keri:test2".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:test2"),
             agent_name: "test-agent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -223,10 +237,10 @@ mod tests {
 
         let session = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:test3".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:test3"),
             agent_name: "test-agent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -235,8 +249,9 @@ mod tests {
         };
 
         registry.insert(session);
-        assert!(registry.revoke("did:keri:test3"));
-        assert!(registry.get("did:keri:test3", now).is_none());
+        let agent_did = IdentityDID::new_unchecked("did:keri:test3");
+        assert!(registry.revoke(&agent_did));
+        assert!(registry.get(&agent_did, now).is_none());
     }
 
     #[test]
@@ -246,10 +261,10 @@ mod tests {
 
         let expired_session = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:expired".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:expired"),
             agent_name: "expired-agent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now - chrono::Duration::hours(2),
             expires_at: now - chrono::Duration::seconds(1),
@@ -259,10 +274,10 @@ mod tests {
 
         let active_session = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:active".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:active"),
             agent_name: "active-agent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -282,14 +297,14 @@ mod tests {
     fn test_list_by_delegator() {
         let registry = AgentRegistry::new();
         let now = Utc::now();
-        let delegator_did = "did:keri:delegator".to_string();
+        let delegator_did = IdentityDID::new_unchecked("did:keri:delegator");
 
         let child1 = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:child1".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:child1"),
             agent_name: "child1".to_string(),
             delegator_did: Some(delegator_did.clone()),
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -299,10 +314,10 @@ mod tests {
 
         let child2 = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:child2".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:child2"),
             agent_name: "child2".to_string(),
             delegator_did: Some(delegator_did.clone()),
-            capabilities: vec!["write".to_string()],
+            capabilities: vec![Capability::sign_release()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),

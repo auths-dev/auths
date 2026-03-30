@@ -57,6 +57,7 @@ auths-index = { path = "crates/auths-index", version = "0.0.1-rc.9" }
 auths-telemetry = { path = "crates/auths-telemetry", version = "0.0.1-rc.9" }
 auths-crypto = { path = "crates/auths-crypto", version = "0.0.1-rc.9", default-features = false }
 auths-sdk = { path = "crates/auths-sdk", version = "0.0.1-rc.9" }
+auths-api = { path = "crates/auths-api", version = "0.0.1-rc.9" }
 auths-infra-git = { path = "crates/auths-infra-git", version = "0.0.1-rc.9" }
 auths-infra-http = { path = "crates/auths-infra-http", version = "0.0.1-rc.9" }
 auths-jwt = { path = "crates/auths-jwt", version = "0.0.1-rc.9" }

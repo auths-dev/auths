@@ -6,7 +6,7 @@ use dialoguer::MultiSelect;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use auths_sdk::workflows::allowed_signers::AllowedSigners;
+use auths_api::domains::signing::workflows::AllowedSigners;
 use auths_storage::git::RegistryAttestationStorage;
 
 use crate::ux::format::Output;

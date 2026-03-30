@@ -184,12 +184,27 @@ pub(crate) async fn handle_join(
         )
         .context("Invalid base64 in encrypted attestation")?;
 
-        let _attestation_json = sas::decrypt_from_transport(&ciphertext, transport_key.as_bytes())
-            .map_err(|e| anyhow::anyhow!("Failed to decrypt attestation: {}", e))?;
+        let attestation_json =
+            sas::decrypt_from_transport(&ciphertext, transport_key.as_bytes())
+                .map_err(|e| anyhow::anyhow!("Failed to decrypt attestation: {}", e))?;
 
         wait_spinner.finish_with_message(format!("{CHECK}Attestation received and decrypted"));
 
-        // TODO(fn-43.6): verify and store attestation locally
+        // Parse attestation from JSON
+        let attestation: auths_verifier::core::Attestation =
+            serde_json::from_slice(&attestation_json)
+                .context("Failed to parse attestation JSON from pairing session")?;
+
+        // TODO(fn-43.6): Full signature verification requires access to issuer's public key.
+        // For now, trust the pairing channel and mark as verified.
+        // TODO: Replace with full verify_with_resolver once we have a proper DID resolver for the identity.
+
+        // Store attestation in local registry
+        let verified =
+            auths_verifier::core::VerifiedAttestation::dangerous_from_unchecked(attestation);
+        ctx.attestation_sink
+            .export(&verified)
+            .context("Failed to store paired device attestation")?;
     } else {
         wait_spinner.finish_and_clear();
         println!();

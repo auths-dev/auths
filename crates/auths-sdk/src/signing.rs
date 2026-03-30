@@ -1,7 +1,0 @@
-//! Re-exports from the signing domain for backwards compatibility.
-
-pub use crate::domains::signing::service::{
-    ArtifactSigningError, ArtifactSigningParams, ArtifactSigningResult, SigningConfig,
-    SigningError, SigningKeyMaterial, construct_signature_payload, sign_artifact, sign_with_seed,
-    validate_freeze_state,
-};

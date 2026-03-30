@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 
+use auths_api::domains::auth::workflows::sign_auth_challenge;
 use auths_core::crypto::provider_bridge;
 use auths_core::crypto::signer::decrypt_keypair;
 use auths_core::crypto::ssh::extract_seed_from_pkcs8;
@@ -8,7 +9,6 @@ use auths_core::storage::keychain::{KeyStorage, get_platform_keychain_with_confi
 use auths_crypto::Pkcs8Der;
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::storage::layout;
-use auths_sdk::workflows::auth::sign_auth_challenge;
 use auths_storage::git::RegistryIdentityStorage;
 
 use crate::commands::executable::ExecutableCommand;

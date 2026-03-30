@@ -1,7 +1,7 @@
 //! HTML report rendering for audit data.
 
+use crate::domains::diagnostics::AuditSummary;
 use crate::ports::git::{CommitRecord, SignatureStatus};
-use crate::workflows::audit::AuditSummary;
 
 /// Render a full HTML audit report from structured data.
 ///

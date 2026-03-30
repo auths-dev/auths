@@ -2,14 +2,14 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use auths_api::domains::identity::workflows::{
+    GitHubClaimConfig, NpmClaimConfig, PypiClaimConfig, claim_github_identity, claim_npm_identity,
+    claim_pypi_identity,
+};
 use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
 use auths_infra_http::{
     HttpGistPublisher, HttpGitHubOAuthProvider, HttpNpmAuthProvider, HttpRegistryClaimClient,
-};
-use auths_sdk::workflows::platform::{
-    GitHubClaimConfig, NpmClaimConfig, PypiClaimConfig, claim_github_identity, claim_npm_identity,
-    claim_pypi_identity,
 };
 use clap::{Parser, Subcommand};
 use console::style;
@@ -112,7 +112,9 @@ pub fn handle_claim(
                     &oauth,
                     &publisher,
                     &registry_client,
-                    &ctx,
+                    ctx.key_storage.as_ref(),
+                    ctx.passphrase_provider.as_ref(),
+                    ctx.identity_storage.as_ref(),
                     config,
                     now,
                     &on_device_code,
@@ -161,7 +163,9 @@ pub fn handle_claim(
                     &profile.login,
                     npm_token.trim(),
                     &registry_client,
-                    &ctx,
+                    ctx.key_storage.as_ref(),
+                    ctx.passphrase_provider.as_ref(),
+                    ctx.identity_storage.as_ref(),
                     config,
                     now,
                 ))
@@ -210,7 +214,9 @@ pub fn handle_claim(
                 .block_on(claim_pypi_identity(
                     trimmed,
                     &registry_client,
-                    &ctx,
+                    ctx.key_storage.as_ref(),
+                    ctx.passphrase_provider.as_ref(),
+                    ctx.identity_storage.as_ref(),
                     config,
                     now,
                 ))

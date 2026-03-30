@@ -47,6 +47,21 @@ pub const FFI_ERR_AGENT_NOT_INITIALIZED: c_int = -2;
 /// Internal panic occurred
 pub const FFI_ERR_PANIC: c_int = -127;
 
+// --- FFI Configuration Cache ---
+
+/// Global keychain configuration cache to avoid repeated env var reads.
+static FFI_CONFIG: LazyLock<RwLock<Option<EnvironmentConfig>>> =
+    LazyLock::new(|| RwLock::new(None));
+
+/// Get the cached FFI configuration, or read from environment if not yet initialized.
+fn ffi_get_config() -> EnvironmentConfig {
+    let cached = FFI_CONFIG.read().clone();
+    match cached {
+        Some(config) => config,
+        None => EnvironmentConfig::from_env(),
+    }
+}
+
 // --- FFI Agent Handle ---
 
 /// Global FFI agent handle.
@@ -287,7 +302,7 @@ pub unsafe extern "C" fn ffi_key_exists(alias: *const c_char) -> bool {
             return false;
         }
         // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match get_platform_keychain_with_config(&ffi_get_config()) {
             Ok(kc) => kc,
             Err(e) => {
                 error!("FFI ffi_key_exists: Failed to get platform keychain: {}", e);
@@ -388,7 +403,7 @@ pub unsafe extern "C" fn ffi_import_key(
 
         // Store
         // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match get_platform_keychain_with_config(&ffi_get_config()) {
             Ok(kc) => kc,
             Err(e) => {
                 error!("FFI import failed: Failed to get platform keychain: {}", e);
@@ -441,7 +456,7 @@ pub unsafe extern "C" fn ffi_rotate_key(
 
         // Delegate to the runtime API function
         // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match get_platform_keychain_with_config(&ffi_get_config()) {
             Ok(kc) => kc,
             Err(e) => {
                 error!("FFI rotate_key: Failed to get platform keychain: {}", e);
@@ -500,7 +515,7 @@ pub unsafe extern "C" fn ffi_export_encrypted_key(
         unsafe { *out_len = 0 };
 
         // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match get_platform_keychain_with_config(&ffi_get_config()) {
             Ok(kc) => kc,
             Err(e) => {
                 error!(
@@ -570,7 +585,7 @@ pub unsafe extern "C" fn ffi_export_private_key_with_passphrase(
         unsafe { *out_len = 0 };
 
         // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match get_platform_keychain_with_config(&ffi_get_config()) {
             Ok(kc) => kc,
             Err(e) => {
                 error!(
@@ -646,7 +661,7 @@ pub unsafe extern "C" fn ffi_export_private_key_openssh(
         }
 
         // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match get_platform_keychain_with_config(&ffi_get_config()) {
             Ok(kc) => kc,
             Err(e) => {
                 error!("FFI export PEM: Failed to get platform keychain: {}", e);
@@ -697,7 +712,7 @@ pub unsafe extern "C" fn ffi_export_public_key_openssh(
         }
 
         // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match get_platform_keychain_with_config(&ffi_get_config()) {
             Ok(kc) => kc,
             Err(e) => {
                 error!(

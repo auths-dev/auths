@@ -1,10 +1,8 @@
-//! Namespace domain services
+//! Namespace domain types and errors.
 //!
 //! Multi-tenant namespace management and isolation.
 
 /// Namespace errors
 pub mod error;
-/// Namespace services
-pub mod service;
 /// Namespace types and configuration
 pub mod types;

@@ -1,7 +1,7 @@
 //! Git integration commands for Auths.
 
 use anyhow::{Context, Result, bail};
-use auths_sdk::workflows::allowed_signers::AllowedSigners;
+use auths_api::domains::signing::workflows::AllowedSigners;
 use auths_storage::git::RegistryAttestationStorage;
 use auths_utils::path::expand_tilde;
 use clap::{Parser, Subcommand};

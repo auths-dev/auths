@@ -1,25 +1,29 @@
-use base64::Engine;
-use chrono::Utc;
-use serde_json::json;
+use auths_verifier::{Capability, IdentityDID};
+use chrono::{DateTime, Duration, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::delegation::validate_delegation_constraints;
-use super::persistence::AgentPersistencePort;
-use super::registry::AgentRegistry;
-use super::types::{
-    AgentSession, AgentStatus, AuthorizeResponse, ProvisionRequest, ProvisionResponse,
+use super::{
+    AgentError, AgentPersistencePort, AgentRegistry,
+    delegation::validate_delegation_constraints,
+    types::{AgentSession, AgentStatus, AuthorizeResponse, ProvisionRequest, ProvisionResponse},
 };
 
-/// Business logic service for agent operations
-/// Separates HTTP concerns (handlers) from domain logic
+/// Orchestrates agent provisioning, authorization, and revocation.
+///
+/// Holds references to the in-memory registry and persistent storage backend.
+/// All methods are thread-safe due to interior mutability in AgentRegistry and Arc<dyn Port>.
 pub struct AgentService {
     registry: Arc<AgentRegistry>,
     persistence: Arc<dyn AgentPersistencePort>,
 }
 
 impl AgentService {
-    /// Create a new agent service with injected registry and persistence
+    /// Create a new agent service.
+    ///
+    /// Args:
+    /// * `registry` — In-memory cache for active agent sessions.
+    /// * `persistence` — Redis-backed persistence layer.
     pub fn new(registry: Arc<AgentRegistry>, persistence: Arc<dyn AgentPersistencePort>) -> Self {
         Self {
             registry,
@@ -27,174 +31,181 @@ impl AgentService {
         }
     }
 
-    /// Provision a new agent identity
-    /// Validates signature, delegates, provisions, and stores in registry + persistence
+    /// Provision a new agent.
+    ///
+    /// Validates delegation constraints (if delegating), creates a session in both
+    /// registry and persistence, and returns provisioning response.
+    ///
+    /// The agent DID is created server-side via KERI identity initialization
+    /// at the HTTP handler boundary.
+    ///
+    /// Args:
+    /// * `req` — Provisioning request with delegator, capabilities, TTL, etc.
+    /// * `session_id` — Pre-generated UUID (from HTTP handler boundary).
+    /// * `agent_did` — KERI identity created by handler via initialize_registry_identity.
+    /// * `now` — Current time for expiry calculations.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let session_id = Uuid::new_v4();
+    /// let (agent_did, _) = initialize_registry_identity(...)?;  // Handler creates identity
+    /// let response = service.provision(req, session_id, agent_did, Utc::now()).await?;
+    /// ```
     pub async fn provision(
         &self,
         req: ProvisionRequest,
-        now: chrono::DateTime<Utc>,
-    ) -> Result<ProvisionResponse, String> {
-        // Validate clock skew (±5 minutes)
-        let time_diff = {
-            let duration = now.signed_duration_since(req.timestamp);
-            duration.num_seconds().unsigned_abs()
-        };
-        if time_diff > 300 {
-            return Err("Clock skew too large".to_string());
-        }
+        session_id: Uuid,
+        agent_did: IdentityDID,
+        now: DateTime<Utc>,
+    ) -> Result<ProvisionResponse, AgentError> {
+        let expires_at = now + Duration::seconds(req.ttl_seconds as i64);
 
-        // Verify signature using IdentityResolver
-        // TODO: Integrate with IdentityResolver when available
+        // If delegating from an agent (not root), validate constraints
+        let delegation_depth = if let Some(delegator_did) = &req.delegator_did {
+            let parent_session =
+                self.registry
+                    .get(delegator_did, now)
+                    .ok_or_else(|| AgentError::AgentNotFound {
+                        agent_did: delegator_did.clone(),
+                    })?;
 
-        // Validate delegation constraints if delegator exists in registry
-        if !req.delegator_did.is_empty() {
-            let delegator_session = self
-                .registry
-                .get(&req.delegator_did, now)
-                .ok_or_else(|| format!("Delegator not found: {}", req.delegator_did))?;
+            validate_delegation_constraints(&parent_session, &req, now)
+                .map_err(AgentError::DelegationViolation)?;
 
-            validate_delegation_constraints(&delegator_session, &req, now)
-                .map_err(|e| e.to_string())?;
-        }
-
-        // Provision agent identity using auths-id
-        // TODO: Call provision_agent_identity() from auths-id crate
-        let agent_did = format!("did:keri:{}", {
-            #[allow(clippy::disallowed_methods)]
-            Uuid::new_v4()
-        });
-        let attestation = json!({
-            "version": "1.0",
-            "agent_did": agent_did,
-            "issuer": req.delegator_did,
-            "capabilities": req.capabilities,
-            "timestamp": now.to_rfc3339(),
-        })
-        .to_string();
-
-        // Generate optional bearer token
-        let bearer_token = {
-            let mut buf = [0u8; 32];
-            use ring::rand::SecureRandom;
-            ring::rand::SystemRandom::new()
-                .fill(&mut buf)
-                .map_err(|_| "RNG failed".to_string())?;
-
-            Some(base64::engine::general_purpose::STANDARD.encode(buf))
-        };
-
-        // Create session
-        let session_id = {
-            #[allow(clippy::disallowed_methods)]
-            Uuid::new_v4()
-        };
-        let expires_at = now + chrono::Duration::seconds(req.ttl_seconds as i64);
-        let delegation_depth = if req.delegator_did.is_empty() {
-            0
+            parent_session.delegation_depth + 1
         } else {
-            self.registry
-                .get(&req.delegator_did, now)
-                .map(|s| s.delegation_depth + 1)
-                .unwrap_or(1)
+            0 // Root agent
         };
 
         let session = AgentSession {
             session_id,
             agent_did: agent_did.clone(),
-            agent_name: req.agent_name,
-            delegator_did: if req.delegator_did.is_empty() {
-                None
-            } else {
-                Some(req.delegator_did)
-            },
-            capabilities: req.capabilities,
+            agent_name: req.agent_name.clone(),
+            delegator_did: req.delegator_did.clone(),
+            capabilities: req.capabilities.clone(),
             status: AgentStatus::Active,
             created_at: now,
             expires_at,
             delegation_depth,
-            max_delegation_depth: req.max_delegation_depth.unwrap_or(0),
+            max_delegation_depth: req.max_delegation_depth.unwrap_or(3),
         };
 
-        // Store in persistence first (source of truth), then DashMap cache
-        self.persistence.set_session(&session).await?;
+        // Persist to Redis
+        self.persistence
+            .set_session(&session)
+            .await
+            .map_err(AgentError::PersistenceError)?;
 
-        // Only update cache if persistence write succeeded
+        // Set expiry in Redis
+        self.persistence
+            .expire(&agent_did, expires_at)
+            .await
+            .map_err(AgentError::PersistenceError)?;
+
+        // Cache in registry
         self.registry.insert(session);
-
-        // Set expiry on persistence key
-        self.persistence.expire(&agent_did, expires_at).await?;
 
         Ok(ProvisionResponse {
             session_id,
             agent_did,
-            bearer_token,
-            attestation,
+            bearer_token: None,         // TODO: Generate JWT bearer token
+            attestation: String::new(), // TODO: Generate signed attestation
             expires_at,
         })
     }
 
-    /// Authorize an operation for an agent
-    /// Verifies signature, checks agent is active, evaluates capabilities
+    /// Check if an agent is authorized to use a capability.
+    ///
+    /// Validates that the agent exists, is active, and has the requested capability.
+    ///
+    /// Args:
+    /// * `agent_did` — The agent DID to authorize.
+    /// * `capability` — The capability being requested.
+    /// * `now` — Current time for expiry checks.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let resp = service.authorize(&agent_did, "sign:commit", Utc::now())?;
+    /// ```
     pub fn authorize(
         &self,
-        agent_did: &str,
+        agent_did: &IdentityDID,
         capability: &str,
-        now: chrono::DateTime<Utc>,
-    ) -> Result<AuthorizeResponse, String> {
-        // Verify signature using IdentityResolver
-        // TODO: Integrate with IdentityResolver when available
+        now: DateTime<Utc>,
+    ) -> Result<AuthorizeResponse, AgentError> {
+        // Get raw session without filtering to distinguish NotFound vs Revoked vs Expired
+        let session =
+            self.registry
+                .get_raw(agent_did)
+                .ok_or_else(|| AgentError::AgentNotFound {
+                    agent_did: agent_did.clone(),
+                })?;
 
-        // Get agent session from registry
-        let session = self
-            .registry
-            .get(agent_did, now)
-            .ok_or_else(|| "Agent not found or expired".to_string())?;
-
-        // Check if agent is active (not revoked, not expired)
-        if session.status != AgentStatus::Active {
-            return Err("Agent revoked".to_string());
+        // Check revocation first (revoked agents should error with 401, not NotFound)
+        if session.status == AgentStatus::Revoked {
+            return Err(AgentError::AgentRevoked {
+                agent_did: agent_did.clone(),
+            });
         }
 
-        // Evaluate capabilities (hierarchical matching)
-        let matched: Vec<String> = session
-            .capabilities
-            .iter()
-            .filter(|cap| *cap == capability || *cap == "*")
-            .cloned()
-            .collect();
+        // Then check expiry
+        if session.is_expired(now) {
+            return Err(AgentError::AgentExpired {
+                agent_did: agent_did.clone(),
+            });
+        }
 
-        let authorized = !matched.is_empty();
+        let requested_capability =
+            Capability::parse(capability).map_err(|_| AgentError::CapabilityNotGranted {
+                capability: capability.to_string(),
+            })?;
+
+        if !session.capabilities.contains(&requested_capability) {
+            return Err(AgentError::CapabilityNotGranted {
+                capability: capability.to_string(),
+            });
+        }
 
         Ok(AuthorizeResponse {
-            authorized,
-            message: if authorized {
-                format!("Capability '{}' granted", capability)
-            } else {
-                format!("Capability '{}' not granted", capability)
-            },
-            matched_capabilities: matched,
+            authorized: true,
+            message: "Agent authorized".to_string(),
+            matched_capabilities: vec![requested_capability],
         })
     }
 
-    /// Revoke an agent and all its children (cascading)
-    pub async fn revoke(&self, agent_did: &str, now: chrono::DateTime<Utc>) -> Result<(), String> {
-        // Check agent exists
-        if self.registry.get(agent_did, now).is_none() {
-            return Err("Agent not found".to_string());
-        }
-
-        // Revoke in memory
+    /// Revoke an agent and all its delegated children (cascading).
+    ///
+    /// Marks the agent as revoked in both registry and persistence, then
+    /// recursively revokes all child agents delegated from this agent.
+    ///
+    /// Args:
+    /// * `agent_did` — The agent DID to revoke.
+    /// * `now` — Current time for enumerating active children.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// service.revoke(&agent_did, Utc::now()).await?;
+    /// ```
+    pub async fn revoke(
+        &self,
+        agent_did: &IdentityDID,
+        now: DateTime<Utc>,
+    ) -> Result<(), AgentError> {
+        // Revoke in registry (in-memory)
         self.registry.revoke(agent_did);
 
-        // Revoke in persistence
-        self.persistence.revoke_agent(agent_did).await?;
+        // Revoke in persistence (Redis)
+        self.persistence
+            .revoke_agent(agent_did)
+            .await
+            .map_err(AgentError::PersistenceError)?;
 
-        // Cascade: revoke all children
+        // Find and revoke all children (delegated by this agent)
         let children = self.registry.list_by_delegator(agent_did, now);
-
         for child in children {
-            self.registry.revoke(&child.agent_did);
-            self.persistence.revoke_agent(&child.agent_did).await?;
+            // Collect child DIDs and revoke them sequentially to avoid recursive async
+            let child_did = child.agent_did.clone();
+            Box::pin(self.revoke(&child_did, now)).await?;
         }
 
         Ok(())

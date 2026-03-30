@@ -29,6 +29,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 
+use auths_api::domains::signing::workflows::{
+    CommitSigningContext, CommitSigningParams, CommitSigningWorkflow,
+};
 use auths_cli::adapters::config_store::FileConfigStore;
 use auths_cli::core::pubkey_cache::get_cached_pubkey;
 use auths_cli::factories::build_agent_provider;
@@ -36,9 +39,6 @@ use auths_core::config::{EnvironmentConfig, load_config};
 use auths_core::signing::{KeychainPassphraseProvider, PassphraseProvider};
 use auths_core::storage::keychain::get_platform_keychain;
 use auths_core::storage::passphrase_cache::{get_passphrase_cache, parse_duration_str};
-use auths_sdk::workflows::signing::{
-    CommitSigningContext, CommitSigningParams, CommitSigningWorkflow,
-};
 
 /// Auths SSH signing program for Git integration.
 ///

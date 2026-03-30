@@ -151,11 +151,11 @@ fn run_github_verification(
     use std::time::Duration;
 
     use crate::constants::GITHUB_SSH_UPLOAD_SCOPES;
+    use auths_api::domains::identity::workflows::create_signed_platform_claim;
     use auths_core::ports::platform::OAuthDeviceFlowProvider;
     use auths_core::ports::platform::PlatformProofPublisher;
     use auths_core::storage::keychain::extract_public_key_bytes;
     use auths_infra_http::{HttpGistPublisher, HttpGitHubOAuthProvider, HttpGitHubSshKeyUploader};
-    use auths_sdk::workflows::platform::create_signed_platform_claim;
 
     const GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";
     #[allow(clippy::disallowed_methods)] // CLI boundary: optional env override
@@ -222,7 +222,8 @@ fn run_github_verification(
         &profile.login,
         &controller_did,
         &key_alias,
-        &ctx,
+        ctx.key_storage.as_ref(),
+        ctx.passphrase_provider.as_ref(),
         now,
     )
     .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -264,7 +265,7 @@ fn run_github_verification(
         #[allow(clippy::disallowed_methods)]
         let now = chrono::Utc::now();
         let result = rt.block_on(
-            auths_sdk::workflows::platform::upload_github_ssh_signing_key(
+            auths_api::domains::identity::workflows::upload_github_ssh_signing_key(
                 &ssh_uploader,
                 &access_token,
                 &public_key,

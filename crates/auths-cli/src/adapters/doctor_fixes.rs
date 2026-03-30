@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use auths_api::domains::signing::workflows::AllowedSigners;
 use auths_sdk::ports::diagnostics::{CheckResult, DiagnosticError, DiagnosticFix};
-use auths_sdk::workflows::allowed_signers::AllowedSigners;
 use auths_storage::git::RegistryAttestationStorage;
 
 /// Regenerates the allowed_signers file from attestation storage.

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use auths_sdk::domains::agents::types::{AgentSession, AgentStatus};
 use auths_sdk::domains::agents::AgentPersistencePort;
+use auths_sdk::domains::agents::types::{AgentSession, AgentStatus};
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands;
 
@@ -128,6 +128,7 @@ impl AgentPersistence {
             let value: Option<String> = conn.get(&key).await?;
 
             if let Some(json) = value {
+                #[allow(clippy::collapsible_if)]
                 if let Ok(session) = serde_json::from_str::<AgentSession>(&json) {
                     sessions.push(session);
                 }

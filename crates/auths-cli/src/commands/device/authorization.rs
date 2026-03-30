@@ -273,7 +273,7 @@ pub fn handle_device(
                 Some(Arc::clone(&passphrase_provider)),
             )?;
 
-            let result = auths_sdk::domains::device::service::link_device(
+            let result = auths_api::domains::device::service::link_device(
                 link_config,
                 &ctx,
                 &auths_core::ports::clock::SystemClock,
@@ -300,8 +300,10 @@ pub fn handle_device(
             )?;
 
             let identity_key_alias = KeyAlias::new_unchecked(key);
-            auths_sdk::domains::device::service::revoke_device(
-                &device_did,
+            let device_did_typed = auths_verifier::types::DeviceDID::parse(&device_did)
+                .map_err(|e| anyhow::anyhow!("Invalid device DID: {}", e))?;
+            auths_api::domains::device::service::revoke_device(
+                &device_did_typed,
                 &identity_key_alias,
                 &ctx,
                 note,
@@ -449,7 +451,7 @@ fn handle_extend(
     };
     let ctx = build_auths_context(repo_path, env_config, Some(passphrase_provider))?;
 
-    let result = auths_sdk::domains::device::service::extend_device(
+    let result = auths_api::domains::device::service::extend_device(
         config,
         &ctx,
         &auths_core::ports::clock::SystemClock,

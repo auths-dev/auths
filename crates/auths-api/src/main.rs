@@ -1,5 +1,9 @@
-use auths_api::app::{build_router, AppState};
+use auths_api::app::{AppState, build_router};
 use auths_api::{AgentPersistence, AgentRegistry};
+use auths_core::storage::keychain::get_platform_keychain;
+use auths_storage::git::GitRegistryBackend;
+use auths_storage::git::RegistryConfig;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -34,10 +38,37 @@ async fn main() {
         tracing::info!("Loaded {} sessions from Redis", registry.len(now));
     }
 
+    // Initialize Git-backed registry for KERI identity storage
+    let agent_registry_path = PathBuf::from(".auths-agents");
+    let registry_config = RegistryConfig::single_tenant(&agent_registry_path);
+    let git_backend = GitRegistryBackend::from_config_unchecked(registry_config);
+
+    // Initialize registry if needed (creates .git structure)
+    if let Err(e) = git_backend.init_if_needed() {
+        tracing::error!("Failed to initialize agent registry: {:?}", e);
+        return;
+    }
+
+    let registry_backend: Arc<dyn auths_id::storage::registry::RegistryBackend + Send + Sync> =
+        Arc::new(git_backend);
+
+    // Initialize platform-specific keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+    let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> = {
+        match get_platform_keychain() {
+            Ok(keychain) => Arc::from(keychain),
+            Err(e) => {
+                tracing::error!("Failed to initialize platform keychain: {}", e);
+                return;
+            }
+        }
+    };
+
     // Create application state
     let state = AppState {
         registry: registry.clone(),
         persistence: persistence.clone(),
+        registry_backend,
+        keychain,
     };
 
     // Build router

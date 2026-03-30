@@ -1,13 +1,19 @@
 //! Integration tests for commit signing and attestation verification.
+//!
+//! COMMENTED OUT: Tests for workflows that moved to auths-api.
+//! To avoid violating the one-way dependency rule (auths-api imports from auths-sdk, never reverse),
+//! these tests have been moved to auths-api/tests/ where the workflows live.
 
+/*
 use auths_crypto::testing::gen_keypair;
 use auths_sdk::workflows::machine_identity::{
     OidcMachineIdentity, SignCommitParams, sign_commit_with_identity,
 };
 use chrono::Utc;
 use ring::signature::KeyPair;
-use serde_json::json;
+use serde_json::json;*/
 
+/*
 #[test]
 fn test_sign_commit_with_oidc_binding() {
     let keypair = gen_keypair();
@@ -219,3 +225,4 @@ fn test_multiple_commits_independent_attestations() {
         assert_eq!(att.commit_message.as_deref(), Some(expected_msg.as_str()));
     }
 }
+*/

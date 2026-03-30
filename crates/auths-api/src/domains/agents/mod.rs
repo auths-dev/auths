@@ -6,9 +6,8 @@
 pub mod handlers;
 pub mod routes;
 
-// Re-export SDK domain types for convenience
 pub use auths_sdk::domains::agents::{
-    AgentRegistry, AgentService, AgentSession, AgentStatus, AuthorizeRequest, AuthorizeResponse,
-    ProvisionRequest, ProvisionResponse,
+    AgentError, AgentRegistry, AgentService, AgentSession, AgentStatus, AuthorizeRequest,
+    AuthorizeResponse, ProvisionRequest, ProvisionResponse,
 };
 pub use routes::routes;

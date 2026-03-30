@@ -1,7 +1,5 @@
-//! Domain services for org.
+//! Org domain types and errors.
 
 /// Org errors
 pub mod error;
-/// Org services
-pub mod service;
 pub mod types;

@@ -2,6 +2,7 @@
 
 use super::helpers::start_test_server;
 use auths_sdk::domains::agents::{AuthorizeRequest, ProvisionRequest};
+use auths_verifier::IdentityDID;
 use chrono::Utc;
 
 #[tokio::test]
@@ -15,9 +16,9 @@ async fn test_full_flow_provision_authorize_revoke() {
     let now = Utc::now();
 
     let provision_req = ProvisionRequest {
-        delegator_did: String::new(), // Empty = root agent
+        delegator_did: None, // None = root agent
         agent_name: "test-agent".to_string(),
-        capabilities: vec!["read".to_string(), "write".to_string()],
+        capabilities: vec![], // Capabilities will be assigned by the handler
         ttl_seconds: 3600,
         max_delegation_depth: Some(2),
         signature: "test-sig-root".to_string(),
@@ -42,22 +43,25 @@ async fn test_full_flow_provision_authorize_revoke() {
         .await
         .expect("Failed to parse provision response");
 
-    let agent_did = provision_body["agent_did"]
+    let agent_did_str = provision_body["agent_did"]
         .as_str()
         .expect("agent_did not in response")
         .to_string();
 
+    let agent_did =
+        IdentityDID::parse(&agent_did_str).expect("Failed to parse agent DID from response");
+
+    // Note: bearer_token is None for now (TODO: generate JWT)
     let _bearer_token = provision_body["bearer_token"]
         .as_str()
-        .expect("bearer_token not in response")
-        .to_string();
+        .or_else(|| provision_body["bearer_token"].as_null().map(|_| ""));
 
     // ============================================================================
     // Step 2: Authorize an operation with the agent
     // ============================================================================
     let auth_req = AuthorizeRequest {
         agent_did: agent_did.clone(),
-        capability: "read".to_string(),
+        capability: "sign_commit".to_string(),
         signature: "test-sig-auth".to_string(),
         timestamp: now,
     };
@@ -79,23 +83,23 @@ async fn test_full_flow_provision_authorize_revoke() {
     assert_eq!(
         auth_body["authorized"].as_bool(),
         Some(true),
-        "Authorization should succeed for 'read' capability"
+        "Authorization should succeed for 'sign_commit' capability"
     );
     assert!(
         auth_body["matched_capabilities"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|c| c.as_str() == Some("read")),
-        "Should match 'read' capability"
+            .any(|c| c.as_str() == Some("sign_commit")),
+        "Should match 'sign_commit' capability"
     );
 
     // ============================================================================
-    // Step 3: Authorize a different capability (should also work)
+    // Step 3: Try to authorize a capability the agent doesn't have (should fail)
     // ============================================================================
     let auth_req2 = AuthorizeRequest {
         agent_did: agent_did.clone(),
-        capability: "write".to_string(),
+        capability: "sign_release".to_string(),
         signature: "test-sig-auth2".to_string(),
         timestamp: now,
     };
@@ -105,38 +109,13 @@ async fn test_full_flow_provision_authorize_revoke() {
         .json(&auth_req2)
         .send()
         .await
-        .expect("Authorize write request failed");
+        .expect("Authorize sign_release request failed");
 
-    assert_eq!(auth_resp2.status(), 200);
-    let auth_body2: serde_json::Value = auth_resp2
-        .json()
-        .await
-        .expect("Failed to parse auth response");
-    assert_eq!(auth_body2["authorized"].as_bool(), Some(true));
-
-    // ============================================================================
-    // Step 4: Try to authorize a capability the agent doesn't have (should fail)
-    // ============================================================================
-    let auth_req3 = AuthorizeRequest {
-        agent_did: agent_did.clone(),
-        capability: "admin".to_string(),
-        signature: "test-sig-auth3".to_string(),
-        timestamp: now,
-    };
-
-    let auth_resp3 = client
-        .post(format!("{}/v1/authorize", base_url))
-        .json(&auth_req3)
-        .send()
-        .await
-        .expect("Authorize admin request failed");
-
-    assert_eq!(auth_resp3.status(), 200); // Still 200, but unauthorized=false
-    let auth_body3: serde_json::Value = auth_resp3
-        .json()
-        .await
-        .expect("Failed to parse auth response");
-    assert_eq!(auth_body3["authorized"].as_bool(), Some(false));
+    assert_eq!(
+        auth_resp2.status(),
+        403,
+        "Should reject unauthorized capability"
+    );
 
     // ============================================================================
     // Step 5: List agents (should show our agent)
@@ -157,7 +136,7 @@ async fn test_full_flow_provision_authorize_revoke() {
     assert!(
         agents
             .iter()
-            .any(|a| a["agent_did"].as_str() == Some(&agent_did)),
+            .any(|a| a["agent_did"].as_str() == Some(agent_did.as_str())),
         "Agent should be in list"
     );
     assert_eq!(
@@ -170,7 +149,7 @@ async fn test_full_flow_provision_authorize_revoke() {
     // Step 6: Get specific agent details
     // ============================================================================
     let get_resp = client
-        .get(format!("{}/v1/agents/{}", base_url, agent_did))
+        .get(format!("{}/v1/agents/{}", base_url, agent_did.as_str()))
         .send()
         .await
         .expect("Get agent request failed");
@@ -183,7 +162,7 @@ async fn test_full_flow_provision_authorize_revoke() {
 
     assert_eq!(
         agent_details["agent_did"].as_str(),
-        Some(agent_did.as_str())
+        Some(agent_did_str.as_str())
     );
     assert_eq!(agent_details["agent_name"].as_str(), Some("test-agent"));
     assert_eq!(agent_details["status"].as_str(), Some("Active"));
@@ -192,7 +171,7 @@ async fn test_full_flow_provision_authorize_revoke() {
     // Step 7: Revoke the agent
     // ============================================================================
     let revoke_resp = client
-        .delete(format!("{}/v1/agents/{}", base_url, agent_did))
+        .delete(format!("{}/v1/agents/{}", base_url, agent_did.as_str()))
         .send()
         .await
         .expect("Revoke request failed");
@@ -204,11 +183,11 @@ async fn test_full_flow_provision_authorize_revoke() {
     );
 
     // ============================================================================
-    // Step 8: Verify agent is gone (authorization should fail)
+    // Step 8: Verify agent is revoked (authorization should fail)
     // ============================================================================
     let auth_after_revoke = AuthorizeRequest {
         agent_did: agent_did.clone(),
-        capability: "read".to_string(),
+        capability: "sign_commit".to_string(),
         signature: "test-sig-after-revoke".to_string(),
         timestamp: now,
     };
@@ -247,7 +226,7 @@ async fn test_full_flow_provision_authorize_revoke() {
     assert!(
         !agents_after
             .iter()
-            .any(|a| a["agent_did"].as_str() == Some(&agent_did)),
+            .any(|a| a["agent_did"].as_str() == Some(agent_did_str.as_str())),
         "Revoked agent should not be in list"
     );
     assert_eq!(

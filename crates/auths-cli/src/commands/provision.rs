@@ -6,12 +6,12 @@
 
 use crate::ux::format::Output;
 use anyhow::{Context, Result, anyhow};
+use auths_api::domains::identity::workflows::{IdentityConfig, NodeConfig, enforce_identity_state};
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::get_platform_keychain;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::identity::IdentityStorage;
 use auths_id::storage::registry::install_linearity_hook;
-use auths_sdk::workflows::provision::{IdentityConfig, NodeConfig, enforce_identity_state};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig, RegistryIdentityStorage};
 use clap::Parser;
 use config::{Config, Environment, File};

@@ -1,8 +1,7 @@
-//! Domain services for diagnostics.
+//! Diagnostics domain types and errors.
 
 pub mod error;
-pub mod service;
 /// Diagnostics types and configuration
 pub mod types;
 
-pub use types::*;
+pub use types::{AgentStatus, AuditSummary, IdentityStatus, NextStep, StatusReport};

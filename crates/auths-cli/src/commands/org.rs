@@ -23,7 +23,7 @@ use auths_id::{
     },
 };
 
-use auths_sdk::workflows::org::{
+use auths_api::domains::org::workflows::{
     AddMemberCommand, OrgContext, RevokeMemberCommand, Role, add_organization_member,
     member_role_order, revoke_organization_member,
 };
@@ -37,7 +37,7 @@ use clap::ValueEnum;
 
 /// CLI-level role wrapper that derives `ValueEnum` for argument parsing.
 ///
-/// Converts to `auths_sdk::workflows::org::Role` at the CLI boundary.
+/// Converts to `auths_api::domains::org::workflows::Role` at the CLI boundary.
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
 pub enum CliRole {
     Admin,

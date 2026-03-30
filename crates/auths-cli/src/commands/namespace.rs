@@ -5,6 +5,10 @@ use clap::{Parser, Subcommand};
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
+use auths_api::domains::namespace::workflows::{
+    DelegateNamespaceCommand, TransferNamespaceCommand, initiate_namespace_claim,
+    parse_claim_response, parse_lookup_response, sign_namespace_delegate, sign_namespace_transfer,
+};
 use auths_core::ports::namespace::{Ecosystem, PackageName};
 use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
@@ -14,10 +18,6 @@ use auths_id::storage::layout;
 use auths_infra_http::resolve_verified_platform_context;
 use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::namespace_registry::NamespaceVerifierRegistry;
-use auths_sdk::workflows::namespace::{
-    DelegateNamespaceCommand, TransferNamespaceCommand, initiate_namespace_claim,
-    parse_claim_response, parse_lookup_response, sign_namespace_delegate, sign_namespace_transfer,
-};
 use auths_storage::git::RegistryIdentityStorage;
 use auths_verifier::CanonicalDid;
 
@@ -273,7 +273,7 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
                         result = Some(r);
                         break;
                     }
-                    Err(auths_sdk::workflows::namespace::NamespaceError::VerificationFailed(
+                    Err(auths_api::domains::namespace::workflows::NamespaceError::VerificationFailed(
                         ref verify_err,
                     )) => {
                         use auths_core::ports::namespace::NamespaceVerifyError;

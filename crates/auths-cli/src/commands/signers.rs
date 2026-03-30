@@ -1,7 +1,7 @@
 //! Signer management commands for Auths.
 
 use anyhow::{Context, Result};
-use auths_sdk::workflows::allowed_signers::{
+use auths_api::domains::signing::workflows::{
     AllowedSigners, AllowedSignersError, EmailAddress, SignerPrincipal, SignerSource,
 };
 use auths_storage::git::RegistryAttestationStorage;

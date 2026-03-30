@@ -1,6 +1,29 @@
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use serde::{Deserialize, Serialize};
 
+/// Audit summary statistics for compliance reporting.
+///
+/// Aggregates signing and verification metrics across a commit range.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditSummary {
+    /// Total number of commits in the audited range.
+    pub total_commits: usize,
+    /// Commits with any signing attempt (including invalid signatures).
+    pub signed_commits: usize,
+    /// Commits with no signing attempt.
+    pub unsigned_commits: usize,
+    /// Commits signed with the auths workflow.
+    pub auths_signed: usize,
+    /// Commits signed with GPG.
+    pub gpg_signed: usize,
+    /// Commits signed with SSH.
+    pub ssh_signed: usize,
+    /// Signed commits whose signature verified successfully.
+    pub verification_passed: usize,
+    /// Signed commits whose signature did not verify.
+    pub verification_failed: usize,
+}
+
 /// Identity status for status report.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityStatus {

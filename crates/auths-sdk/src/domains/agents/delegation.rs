@@ -67,6 +67,7 @@ pub fn validate_delegation_constraints(
 mod tests {
     use super::*;
     use crate::domains::agents::types::AgentStatus;
+    use auths_verifier::{Capability, IdentityDID};
     use uuid::Uuid;
 
     #[test]
@@ -74,10 +75,10 @@ mod tests {
         let now = Utc::now();
         let parent = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:parent".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:parent"),
             agent_name: "parent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string(), "write".to_string()],
+            capabilities: vec![Capability::sign_commit(), Capability::sign_release()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -86,9 +87,9 @@ mod tests {
         };
 
         let req = ProvisionRequest {
-            delegator_did: "did:keri:parent".to_string(),
+            delegator_did: Some(IdentityDID::new_unchecked("did:keri:parent")),
             agent_name: "child".to_string(),
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             ttl_seconds: 3600,
             max_delegation_depth: Some(0),
             signature: "sig".to_string(),
@@ -103,10 +104,10 @@ mod tests {
         let now = Utc::now();
         let parent = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:parent".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:parent"),
             agent_name: "parent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -115,9 +116,9 @@ mod tests {
         };
 
         let req = ProvisionRequest {
-            delegator_did: "did:keri:parent".to_string(),
+            delegator_did: Some(IdentityDID::new_unchecked("did:keri:parent")),
             agent_name: "child".to_string(),
-            capabilities: vec!["admin".to_string()],
+            capabilities: vec![Capability::manage_members()],
             ttl_seconds: 3600,
             max_delegation_depth: Some(0),
             signature: "sig".to_string(),
@@ -132,10 +133,10 @@ mod tests {
         let now = Utc::now();
         let parent = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:parent".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:parent"),
             agent_name: "parent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -144,9 +145,9 @@ mod tests {
         };
 
         let req = ProvisionRequest {
-            delegator_did: "did:keri:parent".to_string(),
+            delegator_did: Some(IdentityDID::new_unchecked("did:keri:parent")),
             agent_name: "child".to_string(),
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             ttl_seconds: 7200,
             max_delegation_depth: Some(0),
             signature: "sig".to_string(),
@@ -161,10 +162,10 @@ mod tests {
         let now = Utc::now();
         let parent = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:parent".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:parent"),
             agent_name: "parent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now + chrono::Duration::hours(1),
@@ -173,9 +174,9 @@ mod tests {
         };
 
         let req = ProvisionRequest {
-            delegator_did: "did:keri:parent".to_string(),
+            delegator_did: Some(IdentityDID::new_unchecked("did:keri:parent")),
             agent_name: "child".to_string(),
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             ttl_seconds: 3600,
             max_delegation_depth: Some(0),
             signature: "sig".to_string(),

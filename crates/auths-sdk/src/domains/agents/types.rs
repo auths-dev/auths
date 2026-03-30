@@ -1,3 +1,4 @@
+use auths_verifier::{Capability, IdentityDID};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -17,13 +18,13 @@ pub struct AgentSession {
     /// Unique session identifier
     pub session_id: Uuid,
     /// Agent DID (unique identity)
-    pub agent_did: String,
+    pub agent_did: IdentityDID,
     /// Human-readable agent name
     pub agent_name: String,
     /// Parent delegator DID (optional)
-    pub delegator_did: Option<String>,
+    pub delegator_did: Option<IdentityDID>,
     /// Granted capabilities
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Session status
     pub status: AgentStatus,
     /// When session was created
@@ -51,12 +52,12 @@ impl AgentSession {
 /// Request to provision a new agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProvisionRequest {
-    /// Who is delegating (empty for root provision)
-    pub delegator_did: String,
+    /// Who is delegating (None for root provision)
+    pub delegator_did: Option<IdentityDID>,
     /// Human-readable name for the agent
     pub agent_name: String,
     /// Capabilities granted to this agent
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// How long agent should live (seconds)
     pub ttl_seconds: u64,
     /// Maximum delegation depth this agent can create (0 = cannot delegate)
@@ -73,7 +74,7 @@ pub struct ProvisionResponse {
     /// Unique session ID for audit
     pub session_id: Uuid,
     /// Agent's DID (cryptographic identity)
-    pub agent_did: String,
+    pub agent_did: IdentityDID,
     /// Optional bearer token (convenience only, not required for auth)
     pub bearer_token: Option<String>,
     /// Signed attestation proof
@@ -86,7 +87,7 @@ pub struct ProvisionResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorizeRequest {
     /// Agent's DID performing the operation
-    pub agent_did: String,
+    pub agent_did: IdentityDID,
     /// Capability being requested
     pub capability: String,
     /// Base64-encoded Ed25519 signature over canonicalized request body
@@ -103,7 +104,7 @@ pub struct AuthorizeResponse {
     /// Message explaining the decision
     pub message: String,
     /// Matched capabilities (if authorized)
-    pub matched_capabilities: Vec<String>,
+    pub matched_capabilities: Vec<Capability>,
 }
 
 #[cfg(test)]
@@ -116,10 +117,10 @@ mod tests {
         let now = Utc::now();
         let session = AgentSession {
             session_id: Uuid::new_v4(),
-            agent_did: "did:keri:test".to_string(),
+            agent_did: IdentityDID::new_unchecked("did:keri:test"),
             agent_name: "test-agent".to_string(),
             delegator_did: None,
-            capabilities: vec!["read".to_string()],
+            capabilities: vec![Capability::sign_commit()],
             status: AgentStatus::Active,
             created_at: now,
             expires_at: now - chrono::Duration::seconds(1),

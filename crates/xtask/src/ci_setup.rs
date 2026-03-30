@@ -1,10 +1,10 @@
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use base64::Engine as _;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -17,7 +17,9 @@ use crate::shell::{run_capture, run_capture_env, run_with_stdin};
 pub fn run() -> Result<()> {
     println!();
     println!("\x1b[0;36m╔════════════════════════════════════════════════════════════╗\x1b[0m");
-    println!("\x1b[0;36m║\x1b[0m\x1b[1m           CI Release Signing Setup (One-Time)              \x1b[0m\x1b[0;36m║\x1b[0m");
+    println!(
+        "\x1b[0;36m║\x1b[0m\x1b[1m           CI Release Signing Setup (One-Time)              \x1b[0m\x1b[0;36m║\x1b[0m"
+    );
     println!("\x1b[0;36m╚════════════════════════════════════════════════════════════╝\x1b[0m");
     println!();
     println!("This creates a limited-capability device for GitHub Actions to sign");
@@ -238,7 +240,9 @@ pub fn run() -> Result<()> {
         );
         println!("\x1b[2mTry: unset GITHUB_TOKEN && cargo xt ci-setup\x1b[0m");
         println!("\x1b[2mOr: gh auth login then re-run, or add manually:\x1b[0m");
-        println!("\x1b[2m  Repository \u{2192} Settings \u{2192} Secrets \u{2192} Actions \u{2192} New secret\x1b[0m");
+        println!(
+            "\x1b[2m  Repository \u{2192} Settings \u{2192} Secrets \u{2192} Actions \u{2192} New secret\x1b[0m"
+        );
         println!();
         println!("\x1b[1mAUTHS_CI_PASSPHRASE\x1b[0m");
         println!("{ci_pass}");
@@ -252,7 +256,9 @@ pub fn run() -> Result<()> {
 
     println!();
     println!("\x1b[1mTo revoke CI access at any time:\x1b[0m");
-    println!("  \x1b[0;36mauths device revoke --device-did {device_did} --key {identity_key_alias}\x1b[0m");
+    println!(
+        "  \x1b[0;36mauths device revoke --device-did {device_did} --key {identity_key_alias}\x1b[0m"
+    );
     println!();
 
     Ok(())

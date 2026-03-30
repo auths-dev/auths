@@ -158,7 +158,7 @@ async fn handle_verify(args: &VerifyArgs) -> Result<()> {
     let latest_checkpoint: SignedCheckpoint =
         serde_json::from_slice(&response_bytes).context("Failed to parse latest checkpoint")?;
 
-    let report = auths_sdk::workflows::transparency::try_cache_checkpoint(
+    let report = auths_api::domains::transparency::workflows::try_cache_checkpoint(
         &cache_path,
         &latest_checkpoint,
         None,

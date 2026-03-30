@@ -67,12 +67,10 @@ impl AuthsErrorInfo for OidcError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::JwtDecode(_) => {
-                Some("Verify the token format and ensure it is a valid JWT")
-            }
-            Self::SignatureVerificationFailed => {
-                Some("Check that the JWKS endpoint is up-to-date and the token is from a trusted issuer")
-            }
+            Self::JwtDecode(_) => Some("Verify the token format and ensure it is a valid JWT"),
+            Self::SignatureVerificationFailed => Some(
+                "Check that the JWKS endpoint is up-to-date and the token is from a trusted issuer",
+            ),
             Self::ClaimsValidationFailed { claim, .. } => {
                 if claim == "exp" {
                     Some("The token has expired; acquire a new token from the OIDC provider")
@@ -87,18 +85,18 @@ impl AuthsErrorInfo for OidcError {
             Self::UnknownKeyId(_) => {
                 Some("The JWKS cache may be stale; refresh the JWKS from the issuer endpoint")
             }
-            Self::JwksResolutionFailed(_) => {
-                Some("Check network connectivity to the JWKS endpoint and ensure the issuer URL is correct")
-            }
-            Self::AlgorithmMismatch { .. } => {
-                Some("Verify that the expected algorithm matches the algorithm used by the OIDC provider")
-            }
+            Self::JwksResolutionFailed(_) => Some(
+                "Check network connectivity to the JWKS endpoint and ensure the issuer URL is correct",
+            ),
+            Self::AlgorithmMismatch { .. } => Some(
+                "Verify that the expected algorithm matches the algorithm used by the OIDC provider",
+            ),
             Self::ClockSkewExceeded { .. } => {
                 Some("Synchronize the system clock or increase the configured clock skew tolerance")
             }
-            Self::TokenReplayDetected(_) => {
-                Some("A token with this ID has already been used; acquire a new token from the OIDC provider")
-            }
+            Self::TokenReplayDetected(_) => Some(
+                "A token with this ID has already been used; acquire a new token from the OIDC provider",
+            ),
         }
     }
 }

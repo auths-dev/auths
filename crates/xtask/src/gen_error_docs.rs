@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use walkdir::WalkDir;
@@ -266,12 +266,11 @@ fn parse_enum_error_attrs(lines: &[&str]) -> BTreeMap<(String, String), String> 
         }
 
         // Variant name line
-        if let Some(variant) = extract_variant_name(trimmed) {
-            if let Some(ref enum_name) = current_enum {
-                if let Some(msg) = pending_message.take() {
-                    result.insert((enum_name.clone(), variant), msg);
-                }
-            }
+        if let Some(variant) = extract_variant_name(trimmed)
+            && let Some(ref enum_name) = current_enum
+            && let Some(msg) = pending_message.take()
+        {
+            result.insert((enum_name.clone(), variant), msg);
         }
     }
 
@@ -314,11 +313,7 @@ fn extract_variant_name(line: &str) -> Option<String> {
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn count_char(s: &str, ch: char) -> usize {
@@ -352,25 +347,26 @@ fn parse_error_info_impls(lines: &[&str]) -> Vec<ImplInfo> {
     while i < lines.len() {
         let trimmed = lines[i].trim();
 
-        if trimmed.contains("AuthsErrorInfo for ") && trimmed.contains("impl") {
-            if let Some(type_name) = extract_impl_type_name(trimmed) {
-                let impl_end = find_block_end(lines, i);
-                let impl_lines = &lines[i..impl_end];
+        if trimmed.contains("AuthsErrorInfo for ")
+            && trimmed.contains("impl")
+            && let Some(type_name) = extract_impl_type_name(trimmed)
+        {
+            let impl_end = find_block_end(lines, i);
+            let impl_lines = &lines[i..impl_end];
 
-                let codes = parse_error_code_method(impl_lines);
-                let suggestions = parse_suggestion_method(impl_lines);
+            let codes = parse_error_code_method(impl_lines);
+            let suggestions = parse_suggestion_method(impl_lines);
 
-                if !codes.is_empty() {
-                    results.push(ImplInfo {
-                        type_name,
-                        codes,
-                        suggestions,
-                    });
-                }
-
-                i = impl_end;
-                continue;
+            if !codes.is_empty() {
+                results.push(ImplInfo {
+                    type_name,
+                    codes,
+                    suggestions,
+                });
             }
+
+            i = impl_end;
+            continue;
         }
         i += 1;
     }
@@ -384,11 +380,7 @@ fn extract_impl_type_name(line: &str) -> Option<String> {
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn find_block_end(lines: &[&str], start: usize) -> usize {
@@ -427,10 +419,11 @@ fn parse_error_code_method(impl_lines: &[&str]) -> Vec<CodeMapping> {
             brace_depth += count_char(trimmed, '{') as i32;
             brace_depth -= count_char(trimmed, '}') as i32;
 
-            if trimmed.contains("Self::") && trimmed.contains("\"AUTHS-E") {
-                if let Some(mapping) = parse_code_arm(trimmed) {
-                    results.push(mapping);
-                }
+            if trimmed.contains("Self::")
+                && trimmed.contains("\"AUTHS-E")
+                && let Some(mapping) = parse_code_arm(trimmed)
+            {
+                results.push(mapping);
             }
 
             if brace_depth <= 0 && !results.is_empty()
@@ -480,10 +473,11 @@ fn parse_suggestion_method(impl_lines: &[&str]) -> Vec<SuggestionMapping> {
             brace_depth += count_char(trimmed, '{') as i32;
             brace_depth -= count_char(trimmed, '}') as i32;
 
-            if trimmed.contains("Self::") && trimmed.contains("Some(\"") {
-                if let Some(mapping) = parse_suggestion_arm(trimmed) {
-                    results.push(mapping);
-                }
+            if trimmed.contains("Self::")
+                && trimmed.contains("Some(\"")
+                && let Some(mapping) = parse_suggestion_arm(trimmed)
+            {
+                results.push(mapping);
             }
 
             if brace_depth <= 0 && !results.is_empty()
@@ -669,7 +663,9 @@ fn update_mkdocs_nav(
                 println!("  updated  mkdocs.yml (inserted error codes nav)");
             }
         } else {
-            bail!("Cannot find insertion point in mkdocs.yml — add markers manually:\n  {marker_start}\n  {marker_end}");
+            bail!(
+                "Cannot find insertion point in mkdocs.yml — add markers manually:\n  {marker_start}\n  {marker_end}"
+            );
         }
     }
 

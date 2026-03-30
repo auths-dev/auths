@@ -2,8 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::ports::allowed_signers::AllowedSignersStore;
-use crate::workflows::allowed_signers::AllowedSignersError;
+use crate::ports::allowed_signers::{AllowedSignersError, AllowedSignersStore};
 
 /// In-memory fake for [`AllowedSignersStore`].
 ///

@@ -573,9 +573,12 @@ pub fn handle_id(
                     .passphrase_provider(Arc::clone(&passphrase_provider))
                     .build()
             };
-            let result = auths_sdk::workflows::rotation::rotate_identity(
+            let result = auths_api::domains::identity::workflows::rotate_identity(
                 rotation_config,
-                &rotation_ctx,
+                rotation_ctx.identity_storage.as_ref(),
+                rotation_ctx.registry.as_ref(),
+                rotation_ctx.key_storage.as_ref(),
+                rotation_ctx.passphrase_provider.as_ref(),
                 &auths_core::ports::clock::SystemClock,
             )
             .with_context(|| "Failed to rotate KERI identity keys")?;
@@ -800,7 +803,7 @@ pub fn handle_id(
                 let hostname = gethostname::gethostname();
                 let hostname_str = hostname.to_string_lossy().to_string();
                 let result = rt.block_on(
-                    auths_sdk::workflows::platform::upload_github_ssh_signing_key(
+                    auths_api::domains::identity::workflows::upload_github_ssh_signing_key(
                         &ssh_uploader,
                         &access_token,
                         &public_key,

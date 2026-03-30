@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::Path;
 use std::process::Command;
 
@@ -556,16 +556,16 @@ fn extract_default(desc: &str) -> (String, String) {
     let mut s = desc.to_string();
     let mut default = String::new();
 
-    if let Some(start) = s.find("[default: ") {
-        if let Some(end) = s[start..].find(']') {
-            default = s[start + 10..start + end].to_string();
-            s = format!("{}{}", &s[..start], &s[start + end + 1..]);
-        }
+    if let Some(start) = s.find("[default: ")
+        && let Some(end) = s[start..].find(']')
+    {
+        default = s[start + 10..start + end].to_string();
+        s = format!("{}{}", &s[..start], &s[start + end + 1..]);
     }
-    if let Some(start) = s.find("[possible values: ") {
-        if let Some(end) = s[start..].find(']') {
-            s = format!("{}{}", &s[..start], &s[start + end + 1..]);
-        }
+    if let Some(start) = s.find("[possible values: ")
+        && let Some(end) = s[start..].find(']')
+    {
+        s = format!("{}{}", &s[..start], &s[start + end + 1..]);
     }
     (s.trim().to_string(), default)
 }
