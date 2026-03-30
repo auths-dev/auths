@@ -63,4 +63,5 @@ pub use domains::diagnostics::types::*;
 pub use domains::identity::error::*;
 pub use domains::identity::types::*;
 pub use domains::org::error::*;
+pub use domains::signing::error::*;
 pub use domains::signing::types::*;

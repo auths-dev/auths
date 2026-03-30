@@ -33,7 +33,7 @@ use auths_verifier::types::DeviceDID;
 
 use auths_id::freeze::load_active_freeze;
 
-use crate::domains::signing::error::SigningError;
+use auths_sdk::SigningError;
 use auths_sdk::ports::agent::{AgentSigningError, AgentSigningPort};
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactSource};
 

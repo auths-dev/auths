@@ -1,7 +1,7 @@
 use anyhow::Error;
-use auths_api::domains::signing::service::{ArtifactSigningError, SigningError};
 use auths_api::domains::signing::workflows::AllowedSignersError;
 use auths_core::error::{AgentError, AuthsErrorInfo};
+use auths_sdk::domains::signing::error::{ArtifactSigningError, SigningError};
 use auths_sdk::error::{
     ApprovalError, DeviceError, DeviceExtensionError, McpAuthError, OrgError, RegistrationError,
     RotationError, SetupError,

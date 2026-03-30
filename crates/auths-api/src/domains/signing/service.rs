@@ -8,13 +8,13 @@ use auths_core::signing::SecureSigner;
 use auths_id::attestation::export::AttestationSink;
 use auths_id::storage::attestation::AttestationSource;
 
-// Re-export artifact signing types and functions
+// Re-export artifact signing types and functions from SDK
 pub use crate::domains::signing::workflows::{
     ArtifactSigningParams, ArtifactSigningResult, SigningKeyMaterial, sign_artifact,
 };
 
-// Re-export error types
-pub use crate::domains::signing::error::{ArtifactSigningError, SigningError};
+// Re-export error types from SDK
+pub use auths_sdk::{ArtifactSigningError, SigningError};
 
 /// Service for signing operations.
 ///

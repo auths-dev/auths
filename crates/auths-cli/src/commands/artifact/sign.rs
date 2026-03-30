@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auths_api::domains::signing::service::{
+use auths_api::domains::signing::workflows::{
     ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
 };
 use auths_core::config::EnvironmentConfig;

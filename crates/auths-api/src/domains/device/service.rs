@@ -12,7 +12,7 @@ pub use auths_sdk::{
     DeviceError, DeviceExtensionConfig, DeviceExtensionResult, DeviceLinkConfig, DeviceLinkResult,
 };
 
-// Re-export device workflow functions
+// Re-export device workflow functions from SDK
 pub use crate::domains::device::workflows::{extend_device, link_device, revoke_device};
 
 /// Service for device operations.
