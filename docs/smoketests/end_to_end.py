@@ -356,16 +356,20 @@ def run_tests(temp_dir: Path, report: TestReport) -> None:
         result = CommandResult(
             name="10. auths doctor",
             success=doctor_success,
-            stdout=doctor_result.stdout,
-            stderr=doctor_result.stderr,
+            output=doctor_result.stdout,
+            error=doctor_result.stderr,
         )
     except Exception as e:
         result = CommandResult(
             name="10. auths doctor",
             success=False,
-            stderr=str(e),
+            error=str(e),
         )
-    print_result(result)
+
+    if result.success:
+        print_success(f"{result.name} passed")
+    else:
+        print_failure(f"{result.name} failed")
     report.add(result)
 
     section("PHASE 5: IDENTITY MANAGEMENT")
