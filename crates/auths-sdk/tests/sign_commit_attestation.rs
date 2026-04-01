@@ -1,7 +1,7 @@
 //! Integration tests for commit signing and attestation verification.
 
 use auths_crypto::testing::gen_keypair;
-use auths_sdk::workflows::machine_identity::{
+use auths_sdk::workflows::ci::machine_identity::{
     OidcMachineIdentity, SignCommitParams, sign_commit_with_identity,
 };
 use chrono::Utc;

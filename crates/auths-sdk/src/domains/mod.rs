@@ -11,6 +11,7 @@
 
 pub mod agents;
 pub mod auth;
+pub mod ci;
 pub mod compliance;
 pub mod device;
 pub mod diagnostics;

@@ -1,3 +1,4 @@
+pub mod batch_sign;
 pub mod core;
 pub mod file;
 pub mod publish;
@@ -111,6 +112,36 @@ pub enum ArtifactSubcommand {
         note: Option<String>,
     },
 
+    /// Sign multiple artifacts matching a glob pattern.
+    ///
+    /// Signs each file, writes `.auths.json` attestations, and optionally
+    /// collects them into a target directory.
+    BatchSign {
+        /// Glob pattern matching artifact files (e.g. "dist/*.tar.gz").
+        #[arg(help = "Glob pattern matching artifact files to sign.")]
+        pattern: String,
+
+        /// Local alias of the device key.
+        #[arg(long)]
+        device_key: Option<String>,
+
+        /// Local alias of the identity key. Omit for device-only CI signing.
+        #[arg(long)]
+        key: Option<String>,
+
+        /// Directory to collect attestation files into.
+        #[arg(long, value_name = "DIR")]
+        attestation_dir: Option<PathBuf>,
+
+        /// Duration in seconds until expiration.
+        #[arg(long = "expires-in", value_name = "N")]
+        expires_in: Option<u64>,
+
+        /// Optional note to embed in each attestation.
+        #[arg(long)]
+        note: Option<String>,
+    },
+
     /// Verify an artifact's signature against an Auths identity.
     Verify {
         /// Path to the artifact file to verify.
@@ -217,6 +248,33 @@ pub fn handle_artifact(
                 ),
             };
             publish::handle_publish(&sig_path, package.as_deref(), &registry)
+        }
+        ArtifactSubcommand::BatchSign {
+            pattern,
+            device_key,
+            key,
+            attestation_dir,
+            expires_in,
+            note,
+        } => {
+            let resolved_alias = match device_key {
+                Some(alias) => alias,
+                None => crate::commands::key_detect::auto_detect_device_key(
+                    repo_opt.as_deref(),
+                    env_config,
+                )?,
+            };
+            batch_sign::handle_batch_sign(
+                &pattern,
+                &resolved_alias,
+                key.as_deref(),
+                attestation_dir,
+                expires_in,
+                note,
+                repo_opt,
+                passphrase_provider,
+                env_config,
+            )
         }
         ArtifactSubcommand::Verify {
             file,

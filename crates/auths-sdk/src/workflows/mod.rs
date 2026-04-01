@@ -4,10 +4,10 @@ pub mod artifact;
 pub mod audit;
 /// DID-based authentication challenge signing workflow.
 pub mod auth;
+/// CI workflows — batch attestation, OIDC machine identity, and future CI automations.
+pub mod ci;
 pub mod diagnostics;
 pub mod git_integration;
-/// Machine identity creation from OIDC tokens for ephemeral CI/CD identities.
-pub mod machine_identity;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod namespace;

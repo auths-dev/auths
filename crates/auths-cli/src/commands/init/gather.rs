@@ -236,12 +236,5 @@ pub(crate) fn check_keychain_access(out: &Output) -> Result<Box<dyn KeyStorage +
 }
 
 pub(crate) fn map_ci_environment(detected: &Option<String>) -> CiEnvironment {
-    match detected.as_deref() {
-        Some("GitHub Actions") => CiEnvironment::GitHubActions,
-        Some("GitLab CI") => CiEnvironment::GitLabCi,
-        Some(name) => CiEnvironment::Custom {
-            name: name.to_string(),
-        },
-        None => CiEnvironment::Unknown,
-    }
+    auths_sdk::domains::ci::map_ci_environment(detected)
 }

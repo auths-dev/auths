@@ -1,10 +1,11 @@
 //! Re-exports of domain configuration types for backwards compatibility.
 
 // Re-export all identity config types
+pub use crate::domains::ci::types::{CiEnvironment, CiIdentityConfig};
 pub use crate::domains::identity::types::{
-    CiEnvironment, CiIdentityConfig, CreateAgentIdentityConfig, CreateAgentIdentityConfigBuilder,
-    CreateDeveloperIdentityConfig, CreateDeveloperIdentityConfigBuilder, IdentityConfig,
-    IdentityConflictPolicy, IdentityRotationConfig,
+    CreateAgentIdentityConfig, CreateAgentIdentityConfigBuilder, CreateDeveloperIdentityConfig,
+    CreateDeveloperIdentityConfigBuilder, IdentityConfig, IdentityConflictPolicy,
+    IdentityRotationConfig,
 };
 
 // Re-export signing types
