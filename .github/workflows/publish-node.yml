@@ -28,22 +28,11 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            use-cross: true
-          - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            use-cross: true
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            use-cross: true
-          - os: macos-latest
-            target: x86_64-apple-darwin
           - os: macos-latest
             target: aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
 
@@ -62,13 +51,19 @@ jobs:
         working-directory: packages/auths-node
         run: pnpm install
 
-      - name: Install cross
-        if: matrix.use-cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Install zigbuild (Linux ARM64 cross-compilation)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: pip install ziglang cargo-zigbuild
 
       - name: Build native module
+        if: matrix.target != 'aarch64-unknown-linux-gnu'
         working-directory: packages/auths-node
         run: pnpm build -- --target ${{ matrix.target }}
+
+      - name: Build native module (zigbuild - Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        working-directory: packages/auths-node
+        run: pnpm build -- --target ${{ matrix.target }} --zig
 
       - uses: actions/upload-artifact@v4
         with:
@@ -85,7 +80,7 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: bindings-x86_64-unknown-linux-gnu
-          - os: macos-latest
+          - os: macos-14
             artifact: bindings-aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4

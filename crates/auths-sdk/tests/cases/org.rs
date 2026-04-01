@@ -93,6 +93,138 @@ fn make_ctx<'a>(
     }
 }
 
+// ── Regression: identity DID (did:keri:) as member DID ──────────────────────
+// These tests reproduce the bug where members added with did:keri: DIDs
+// silently vanish from list/find results because the storage layer previously
+// used DeviceDID::parse (which rejects did:keri:).
+
+const KERI_MEMBER_DID: &str = "did:keri:EH-Bgtw9tm61YHxUWOw37UweX_7LNJC89t0Pl7ateDdM";
+
+fn base_keri_member_attestation() -> Attestation {
+    AttestationBuilder::default()
+        .rid("keri-member-rid-001")
+        .issuer(org_issuer().as_ref())
+        .subject(KERI_MEMBER_DID)
+        .device_public_key(Ed25519PublicKey::from_bytes(MEMBER_PUBKEY))
+        .role(Some(Role::Member))
+        .capabilities(vec![Capability::sign_commit()])
+        .delegated_by(Some(CanonicalDid::new_unchecked(ADMIN_DID)))
+        .build()
+}
+
+#[test]
+fn add_and_find_member_with_identity_did() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+    let signer = FakeSecureSigner;
+    let pp = PrefilledPassphraseProvider::new("test");
+    let uuid = DeterministicUuidProvider::new();
+    let clock = MockClock(chrono::Utc::now());
+    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
+
+    let att = add_organization_member(
+        &ctx,
+        AddMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: KERI_MEMBER_DID.to_string(),
+            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            role: Role::Member,
+            capabilities: vec![],
+            admin_public_key_hex: admin_pubkey_hex(),
+            signer_alias: KeyAlias::new_unchecked("test-alias"),
+            note: None,
+        },
+    )
+    .expect("add_member with did:keri: should succeed");
+
+    assert_eq!(att.subject.as_str(), KERI_MEMBER_DID);
+
+    // The member must be findable by its did:keri: DID
+    let mut found = false;
+    backend
+        .visit_org_member_attestations(ORG, &mut |entry| {
+            if entry.did.as_str() == KERI_MEMBER_DID {
+                found = true;
+            }
+            std::ops::ControlFlow::Continue(())
+        })
+        .unwrap();
+    assert!(found, "member with did:keri: should be findable after add");
+}
+
+#[test]
+fn revoke_member_with_identity_did() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+
+    // Add member with did:keri: DID
+    backend
+        .store_org_member(ORG, &base_keri_member_attestation())
+        .unwrap();
+
+    let signer = FakeSecureSigner;
+    let pp = PrefilledPassphraseProvider::new("test");
+    let uuid = DeterministicUuidProvider::new();
+    let clock = MockClock(chrono::Utc::now());
+    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
+
+    // Revoking by did:keri: DID must work
+    let result = revoke_organization_member(
+        &ctx,
+        RevokeMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: KERI_MEMBER_DID.to_string(),
+            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            admin_public_key_hex: admin_pubkey_hex(),
+            signer_alias: KeyAlias::new_unchecked("test-alias"),
+            note: Some("offboarded".to_string()),
+        },
+    );
+
+    assert!(
+        result.is_ok(),
+        "revoke with did:keri: should succeed, got: {:?}",
+        result.err()
+    );
+    assert!(result.unwrap().is_revoked());
+}
+
+#[test]
+fn member_with_underscore_in_keri_prefix_roundtrips() {
+    // KERI prefixes can contain underscores (Base64url), which the
+    // sanitize/unsanitize path must handle without corruption.
+    let did_with_underscore = "did:keri:EH-Bgtw9tm61YHxUWOw37UweX_7LNJC89t0Pl7ateDdM";
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+
+    let att = AttestationBuilder::default()
+        .rid("underscore-rid")
+        .issuer(org_issuer().as_ref())
+        .subject(did_with_underscore)
+        .device_public_key(Ed25519PublicKey::from_bytes(MEMBER_PUBKEY))
+        .role(Some(Role::Member))
+        .capabilities(vec![Capability::sign_commit()])
+        .build();
+
+    backend.store_org_member(ORG, &att).unwrap();
+
+    let mut found_did: Option<String> = None;
+    backend
+        .visit_org_member_attestations(ORG, &mut |entry| {
+            if entry.did.as_str().contains("UweX_7") {
+                found_did = Some(entry.did.as_str().to_string());
+            }
+            std::ops::ControlFlow::Continue(())
+        })
+        .unwrap();
+
+    assert_eq!(
+        found_did.as_deref(),
+        Some(did_with_underscore),
+        "DID with underscore in KERI prefix must round-trip through sanitize/unsanitize"
+    );
+}
+
 // ── find_admin (tested indirectly via add_organization_member) ────────────────
 
 #[test]
