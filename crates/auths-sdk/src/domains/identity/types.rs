@@ -3,6 +3,8 @@ use auths_verifier::Capability;
 use auths_verifier::types::DeviceDID;
 use std::path::PathBuf;
 
+use crate::domains::ci::types::{CiEnvironment, CiIdentityConfig};
+
 /// Policy for handling an existing identity during developer setup.
 ///
 /// Replaces interactive CLI prompts with a typed enum that headless consumers
@@ -23,27 +25,6 @@ pub enum IdentityConflictPolicy {
     ReuseExisting,
     /// Overwrite the existing identity with a new one.
     ForceNew,
-}
-
-/// CI platform environment.
-///
-/// Usage:
-/// ```ignore
-/// let env = CiEnvironment::GitHubActions;
-/// ```
-#[derive(Debug, Clone)]
-pub enum CiEnvironment {
-    /// GitHub Actions CI environment.
-    GitHubActions,
-    /// GitLab CI/CD environment.
-    GitLabCi,
-    /// A custom CI platform with a user-provided name.
-    Custom {
-        /// The name of the custom CI platform.
-        name: String,
-    },
-    /// The CI platform could not be detected.
-    Unknown,
 }
 
 /// Configuration for provisioning a new developer identity.
@@ -267,30 +248,6 @@ impl CreateDeveloperIdentityConfigBuilder {
             sign_binary_path: self.sign_binary_path,
         }
     }
-}
-
-/// Configuration for CI/ephemeral identity.
-///
-/// The keychain and passphrase are passed separately to [`crate::setup::initialize`] —
-/// this struct carries only the CI-specific configuration values.
-///
-/// Args:
-/// * `ci_environment`: The detected or specified CI platform.
-/// * `registry_path`: Path to the ephemeral auths registry.
-///
-/// Usage:
-/// ```ignore
-/// let config = CiIdentityConfig {
-///     ci_environment: CiEnvironment::GitHubActions,
-///     registry_path: PathBuf::from("/tmp/.auths"),
-/// };
-/// ```
-#[derive(Debug, Clone)]
-pub struct CiIdentityConfig {
-    /// The detected or specified CI platform.
-    pub ci_environment: CiEnvironment,
-    /// Path to the ephemeral auths registry directory.
-    pub registry_path: PathBuf,
 }
 
 /// Selects which identity persona to provision via [`crate::setup::initialize`].

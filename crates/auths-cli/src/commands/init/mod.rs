@@ -125,6 +125,10 @@ pub struct InitCommand {
     /// Skip automatic registry registration during setup
     #[clap(long)]
     pub skip_registration: bool,
+
+    /// Scaffold a GitHub Actions workflow using the auths attest-action
+    #[clap(long)]
+    pub github_action: bool,
 }
 
 fn resolve_interactive(cmd: &InitCommand) -> Result<bool> {
@@ -158,6 +162,11 @@ pub fn handle_init(
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
     let out = Output::new();
+
+    if cmd.github_action {
+        return helpers::scaffold_github_action(&out);
+    }
+
     let interactive = resolve_interactive(&cmd)?;
 
     let profile = match cmd.profile {
@@ -382,6 +391,7 @@ mod tests {
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             skip_registration: false,
+            github_action: false,
         };
         assert!(!cmd.interactive);
         assert!(!cmd.non_interactive);
@@ -391,6 +401,7 @@ mod tests {
         assert!(!cmd.dry_run);
         assert_eq!(cmd.registry, "https://auths-registry.fly.dev");
         assert!(!cmd.skip_registration);
+        assert!(!cmd.github_action);
     }
 
     #[test]
@@ -404,6 +415,7 @@ mod tests {
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             skip_registration: false,
+            github_action: false,
         };
         assert!(cmd.non_interactive);
         assert!(matches!(cmd.profile, Some(InitProfile::Ci)));
@@ -435,6 +447,7 @@ mod tests {
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             skip_registration: false,
+            github_action: false,
         };
         assert!(!resolve_interactive(&cmd).unwrap());
     }
@@ -450,6 +463,7 @@ mod tests {
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             skip_registration: false,
+            github_action: false,
         };
         // Auto-detect returns is_terminal() — result depends on environment
         let result = resolve_interactive(&cmd).unwrap();

@@ -12,11 +12,12 @@ use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
 use crate::context::AuthsContext;
+use crate::domains::ci::types::{CiEnvironment, CiIdentityConfig};
 use crate::domains::identity::error::SetupError;
 use crate::domains::identity::types::{
-    AgentIdentityResult, CiEnvironment, CiIdentityConfig, CiIdentityResult,
-    CreateAgentIdentityConfig, CreateDeveloperIdentityConfig, DeveloperIdentityResult,
-    IdentityConfig, IdentityConflictPolicy, InitializeResult, RegistrationOutcome,
+    AgentIdentityResult, CiIdentityResult, CreateAgentIdentityConfig,
+    CreateDeveloperIdentityConfig, DeveloperIdentityResult, IdentityConfig, IdentityConflictPolicy,
+    InitializeResult, RegistrationOutcome,
 };
 use crate::domains::signing::types::PlatformClaimResult;
 use crate::domains::signing::types::{GitSigningScope, PlatformVerification};

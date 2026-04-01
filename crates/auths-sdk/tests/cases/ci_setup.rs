@@ -3,9 +3,10 @@ use std::sync::Arc;
 use auths_core::PrefilledPassphraseProvider;
 use auths_core::signing::StorageSigner;
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
+use auths_sdk::domains::ci::types::{CiEnvironment, CiIdentityConfig};
 use auths_sdk::domains::identity::service::initialize;
+use auths_sdk::domains::identity::types::IdentityConfig;
 use auths_sdk::domains::identity::types::InitializeResult;
-use auths_sdk::domains::identity::types::{CiEnvironment, CiIdentityConfig, IdentityConfig};
 
 use crate::cases::helpers::build_test_context;
 
