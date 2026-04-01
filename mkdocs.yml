@@ -200,7 +200,6 @@ nav:
       - errors/index.md
       - auths-crypto:
           - "AUTHS-E1001": errors/AUTHS-E1001.md
-          - "AUTHS-E1002": errors/AUTHS-E1002.md
           - "AUTHS-E1003": errors/AUTHS-E1003.md
           - "AUTHS-E1004": errors/AUTHS-E1004.md
           - "AUTHS-E1005": errors/AUTHS-E1005.md
@@ -321,6 +320,14 @@ nav:
           - "AUTHS-E3903": errors/AUTHS-E3903.md
           - "AUTHS-E3951": errors/AUTHS-E3951.md
           - "AUTHS-E3952": errors/AUTHS-E3952.md
+          - "AUTHS-E3961": errors/AUTHS-E3961.md
+          - "AUTHS-E3962": errors/AUTHS-E3962.md
+          - "AUTHS-E3963": errors/AUTHS-E3963.md
+          - "AUTHS-E3964": errors/AUTHS-E3964.md
+          - "AUTHS-E3965": errors/AUTHS-E3965.md
+          - "AUTHS-E3966": errors/AUTHS-E3966.md
+          - "AUTHS-E3967": errors/AUTHS-E3967.md
+          - "AUTHS-E3968": errors/AUTHS-E3968.md
       - auths-id:
           - "AUTHS-E4001": errors/AUTHS-E4001.md
           - "AUTHS-E4002": errors/AUTHS-E4002.md
@@ -437,10 +444,12 @@ nav:
           - "AUTHS-E5004": errors/AUTHS-E5004.md
           - "AUTHS-E5005": errors/AUTHS-E5005.md
           - "AUTHS-E5006": errors/AUTHS-E5006.md
+          - "AUTHS-E5007": errors/AUTHS-E5007.md
           - "AUTHS-E5101": errors/AUTHS-E5101.md
           - "AUTHS-E5102": errors/AUTHS-E5102.md
           - "AUTHS-E5103": errors/AUTHS-E5103.md
           - "AUTHS-E5104": errors/AUTHS-E5104.md
+          - "AUTHS-E5105": errors/AUTHS-E5105.md
           - "AUTHS-E5201": errors/AUTHS-E5201.md
           - "AUTHS-E5202": errors/AUTHS-E5202.md
           - "AUTHS-E5203": errors/AUTHS-E5203.md
@@ -455,10 +464,17 @@ nav:
           - "AUTHS-E5401": errors/AUTHS-E5401.md
           - "AUTHS-E5402": errors/AUTHS-E5402.md
           - "AUTHS-E5403": errors/AUTHS-E5403.md
+          - "AUTHS-E5404": errors/AUTHS-E5404.md
+          - "AUTHS-E5405": errors/AUTHS-E5405.md
+          - "AUTHS-E5406": errors/AUTHS-E5406.md
           - "AUTHS-E5501": errors/AUTHS-E5501.md
           - "AUTHS-E5502": errors/AUTHS-E5502.md
           - "AUTHS-E5503": errors/AUTHS-E5503.md
           - "AUTHS-E5504": errors/AUTHS-E5504.md
+          - "AUTHS-E5551": errors/AUTHS-E5551.md
+          - "AUTHS-E5552": errors/AUTHS-E5552.md
+          - "AUTHS-E5553": errors/AUTHS-E5553.md
+          - "AUTHS-E5554": errors/AUTHS-E5554.md
           - "AUTHS-E5601": errors/AUTHS-E5601.md
           - "AUTHS-E5602": errors/AUTHS-E5602.md
           - "AUTHS-E5603": errors/AUTHS-E5603.md
@@ -483,6 +499,12 @@ nav:
           - "AUTHS-E5806": errors/AUTHS-E5806.md
           - "AUTHS-E5807": errors/AUTHS-E5807.md
           - "AUTHS-E5808": errors/AUTHS-E5808.md
+          - "AUTHS-E5850": errors/AUTHS-E5850.md
+          - "AUTHS-E5851": errors/AUTHS-E5851.md
+          - "AUTHS-E5852": errors/AUTHS-E5852.md
+          - "AUTHS-E5853": errors/AUTHS-E5853.md
+          - "AUTHS-E5854": errors/AUTHS-E5854.md
+          - "AUTHS-E5855": errors/AUTHS-E5855.md
           - "AUTHS-E5901": errors/AUTHS-E5901.md
           - "AUTHS-E5902": errors/AUTHS-E5902.md
           - "AUTHS-E5903": errors/AUTHS-E5903.md
@@ -493,6 +515,24 @@ nav:
           - "AUTHS-E5908": errors/AUTHS-E5908.md
           - "AUTHS-E5909": errors/AUTHS-E5909.md
           - "AUTHS-E5910": errors/AUTHS-E5910.md
+          - "AUTHS-E6001": errors/AUTHS-E6001.md
+          - "AUTHS-E6002": errors/AUTHS-E6002.md
+          - "AUTHS-E6003": errors/AUTHS-E6003.md
+          - "AUTHS-E6004": errors/AUTHS-E6004.md
+          - "AUTHS-E7001": errors/AUTHS-E7001.md
+          - "AUTHS-E7002": errors/AUTHS-E7002.md
+          - "AUTHS-E7003": errors/AUTHS-E7003.md
+          - "AUTHS-E7004": errors/AUTHS-E7004.md
+          - "AUTHS-E7005": errors/AUTHS-E7005.md
+      - auths-oidc-port:
+          - "AUTHS-E8001": errors/AUTHS-E8001.md
+          - "AUTHS-E8002": errors/AUTHS-E8002.md
+          - "AUTHS-E8003": errors/AUTHS-E8003.md
+          - "AUTHS-E8004": errors/AUTHS-E8004.md
+          - "AUTHS-E8005": errors/AUTHS-E8005.md
+          - "AUTHS-E8006": errors/AUTHS-E8006.md
+          - "AUTHS-E8007": errors/AUTHS-E8007.md
+          - "AUTHS-E8008": errors/AUTHS-E8008.md
   # --- END ERROR CODES ---
   - Contributing:
       - Getting Started:

@@ -47,7 +47,7 @@ PUBLISH_BATCHES: list[list[str]] = [
     ["auths-policy", "auths-oidc-port"],
     ["auths-keri", "auths-pairing-protocol"],
     ["auths-core", "auths-index"],
-    ["auths-infra-http", "auths-mcp-server"],
+    ["auths-infra-http", "auths-mcp-server", "auths-transparency"],
     ["auths-id"],
     ["auths-storage", "auths-pairing-daemon"],
     ["auths-sdk"],

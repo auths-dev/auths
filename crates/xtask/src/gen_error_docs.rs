@@ -725,9 +725,13 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
             out.push_str(&format!("        // --- {group} ---\n"));
             prev_group = group;
         }
+        let doc = generate_doc(entry)
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n");
         out.push_str(&format!(
-            "        \"{}\" => Some(include_str!(\"../../../../docs/errors/{}.md\")),\n",
-            entry.code, entry.code
+            "        \"{}\" => Some(\"{}\"),\n",
+            entry.code, doc
         ));
     }
 

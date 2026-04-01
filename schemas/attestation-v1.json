@@ -142,12 +142,8 @@
       ]
     },
     "subject": {
-      "description": "DID of the device being attested.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/DeviceDID"
-        }
-      ]
+      "description": "DID of the attested subject (device `did:key:` or identity `did:keri:`).",
+      "type": "string"
     },
     "timestamp": {
       "description": "Creation timestamp.",
@@ -167,10 +163,6 @@
   "definitions": {
     "Capability": {
       "description": "A validated capability identifier.\n\nCapabilities are the atomic unit of authorization in Auths. They follow a namespace convention:\n\n- Well-known capabilities: `sign_commit`, `sign_release`, `manage_members`, `rotate_keys` - Custom capabilities: any valid string (alphanumeric + `:` + `-` + `_`, max 64 chars)\n\nThe `auths:` prefix is reserved for future well-known capabilities and cannot be used in custom capabilities created via `parse()`.\n\n# Examples\n\n``` use auths_verifier::Capability;\n\n// Well-known capabilities let cap = Capability::sign_commit(); assert_eq!(cap.as_str(), \"sign_commit\");\n\n// Custom capabilities let custom = Capability::parse(\"acme:deploy\").unwrap(); assert_eq!(custom.as_str(), \"acme:deploy\");\n\n// Reserved namespace is rejected assert!(Capability::parse(\"auths:custom\").is_err()); ```",
-      "type": "string"
-    },
-    "DeviceDID": {
-      "description": "Wrapper around a device DID string that ensures Git-safe ref formatting.",
       "type": "string"
     },
     "Ed25519PublicKey": {

@@ -391,14 +391,14 @@ pub enum NamespaceVerifyError {
 impl auths_crypto::AuthsErrorInfo for NamespaceVerifyError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::UnsupportedEcosystem { .. } => "AUTHS-E4401",
-            Self::PackageNotFound { .. } => "AUTHS-E4402",
-            Self::OwnershipNotConfirmed { .. } => "AUTHS-E4403",
-            Self::ChallengeExpired => "AUTHS-E4404",
-            Self::InvalidToken { .. } => "AUTHS-E4405",
-            Self::InvalidPackageName { .. } => "AUTHS-E4406",
-            Self::NetworkError { .. } => "AUTHS-E4407",
-            Self::RateLimited { .. } => "AUTHS-E4408",
+            Self::UnsupportedEcosystem { .. } => "AUTHS-E3961",
+            Self::PackageNotFound { .. } => "AUTHS-E3962",
+            Self::OwnershipNotConfirmed { .. } => "AUTHS-E3963",
+            Self::ChallengeExpired => "AUTHS-E3964",
+            Self::InvalidToken { .. } => "AUTHS-E3965",
+            Self::InvalidPackageName { .. } => "AUTHS-E3966",
+            Self::NetworkError { .. } => "AUTHS-E3967",
+            Self::RateLimited { .. } => "AUTHS-E3968",
         }
     }
 

@@ -85,10 +85,10 @@ pub enum McpAuthError {
 impl AuthsErrorInfo for TrustError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::UnknownIdentity { .. } => "AUTHS-E4001",
-            Self::KeyResolutionFailed { .. } => "AUTHS-E4002",
-            Self::InvalidTrustStore(_) => "AUTHS-E4003",
-            Self::TofuRequiresInteraction => "AUTHS-E4004",
+            Self::UnknownIdentity { .. } => "AUTHS-E5551",
+            Self::KeyResolutionFailed { .. } => "AUTHS-E5552",
+            Self::InvalidTrustStore(_) => "AUTHS-E5553",
+            Self::TofuRequiresInteraction => "AUTHS-E5554",
         }
     }
 

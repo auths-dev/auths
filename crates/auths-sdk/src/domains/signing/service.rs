@@ -265,12 +265,12 @@ pub enum ArtifactSigningError {
 impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::IdentityNotFound => "AUTHS-E5801",
-            Self::KeyResolutionFailed(_) => "AUTHS-E5802",
-            Self::KeyDecryptionFailed(_) => "AUTHS-E5803",
-            Self::DigestFailed(_) => "AUTHS-E5804",
-            Self::AttestationFailed(_) => "AUTHS-E5805",
-            Self::ResignFailed(_) => "AUTHS-E5806",
+            Self::IdentityNotFound => "AUTHS-E5850",
+            Self::KeyResolutionFailed(_) => "AUTHS-E5851",
+            Self::KeyDecryptionFailed(_) => "AUTHS-E5852",
+            Self::DigestFailed(_) => "AUTHS-E5853",
+            Self::AttestationFailed(_) => "AUTHS-E5854",
+            Self::ResignFailed(_) => "AUTHS-E5855",
         }
     }
 

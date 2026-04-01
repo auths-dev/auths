@@ -181,7 +181,7 @@ fn namespace_verify_error_codes() {
             NamespaceVerifyError::UnsupportedEcosystem {
                 ecosystem: "test".to_string(),
             },
-            "AUTHS-E4401",
+            "AUTHS-E3961",
         ),
         (
             NamespaceVerifyError::PackageNotFound {

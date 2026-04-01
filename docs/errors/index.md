@@ -6,7 +6,6 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | Code | Crate | Type | Message |
 |------|-------|------|---------|
 | [AUTHS-E1001](AUTHS-E1001.md) | `auths-crypto` | `CryptoError::InvalidSignature` | Invalid signature |
-| [AUTHS-E1002](AUTHS-E1002.md) | `auths-crypto` | `CryptoError::InvalidKeyLength` | Invalid public key length: expected {expected}, got {actual} |
 | [AUTHS-E1003](AUTHS-E1003.md) | `auths-crypto` | `CryptoError::InvalidPrivateKey` | Invalid private key: {0} |
 | [AUTHS-E1004](AUTHS-E1004.md) | `auths-crypto` | `CryptoError::OperationFailed` | Crypto operation failed: {0} |
 | [AUTHS-E1005](AUTHS-E1005.md) | `auths-crypto` | `CryptoError::UnsupportedTarget` | Operation not supported on current compilation target |
@@ -125,6 +124,14 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E3903](AUTHS-E3903.md) | `auths-core` | `SshAgentError::IoError` | I/O error: {0} |
 | [AUTHS-E3951](AUTHS-E3951.md) | `auths-core` | `ConfigStoreError::Read` | failed to read config from {path} |
 | [AUTHS-E3952](AUTHS-E3952.md) | `auths-core` | `ConfigStoreError::Write` | failed to write config to {path} |
+| [AUTHS-E3961](AUTHS-E3961.md) | `auths-core` | `NamespaceVerifyError::UnsupportedEcosystem` | unsupported ecosystem: {ecosystem} |
+| [AUTHS-E3962](AUTHS-E3962.md) | `auths-core` | `NamespaceVerifyError::PackageNotFound` | package '{package_name}' not found in {ecosystem} |
+| [AUTHS-E3963](AUTHS-E3963.md) | `auths-core` | `NamespaceVerifyError::OwnershipNotConfirmed` | ownership of '{package_name}' on {ecosystem} not confirmed for the given identity |
+| [AUTHS-E3964](AUTHS-E3964.md) | `auths-core` | `NamespaceVerifyError::ChallengeExpired` | verification challenge expired |
+| [AUTHS-E3965](AUTHS-E3965.md) | `auths-core` | `NamespaceVerifyError::InvalidToken` | invalid verification token: {reason} |
+| [AUTHS-E3966](AUTHS-E3966.md) | `auths-core` | `NamespaceVerifyError::InvalidPackageName` | invalid package name '{name}': {reason} |
+| [AUTHS-E3967](AUTHS-E3967.md) | `auths-core` | `NamespaceVerifyError::NetworkError` | verification network error: {message} |
+| [AUTHS-E3968](AUTHS-E3968.md) | `auths-core` | `NamespaceVerifyError::RateLimited` | rate limited by {ecosystem} registry |
 | [AUTHS-E4001](AUTHS-E4001.md) | `auths-id` | `FreezeError::Io` | _(transparent)_ |
 | [AUTHS-E4002](AUTHS-E4002.md) | `auths-id` | `FreezeError::Deserialization` | failed to parse freeze state: {0} |
 | [AUTHS-E4003](AUTHS-E4003.md) | `auths-id` | `FreezeError::InvalidDuration` | invalid duration format: {0} |
@@ -239,10 +246,12 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5004](AUTHS-E5004.md) | `auths-sdk` | `SetupError::GitConfigError` | git config error: {0} |
 | [AUTHS-E5005](AUTHS-E5005.md) | `auths-sdk` | `SetupError::RegistrationFailed` | registration failed: {0} |
 | [AUTHS-E5006](AUTHS-E5006.md) | `auths-sdk` | `SetupError::PlatformVerificationFailed` | platform verification failed: {0} |
+| [AUTHS-E5007](AUTHS-E5007.md) | `auths-sdk` | `SetupError::InvalidSetupConfig` | invalid setup config: {0} |
 | [AUTHS-E5101](AUTHS-E5101.md) | `auths-sdk` | `DeviceError::IdentityNotFound` | identity not found: {did} |
 | [AUTHS-E5102](AUTHS-E5102.md) | `auths-sdk` | `DeviceError::DeviceNotFound` | device not found: {did} |
 | [AUTHS-E5103](AUTHS-E5103.md) | `auths-sdk` | `DeviceError::AttestationError` | attestation error: {0} |
 | [AUTHS-E5104](AUTHS-E5104.md) | `auths-sdk` | `DeviceError::StorageError` | storage error: {0} |
+| [AUTHS-E5105](AUTHS-E5105.md) | `auths-sdk` | `DeviceError::DeviceDidMismatch` | device DID mismatch: expected {expected}, got {actual} |
 | [AUTHS-E5201](AUTHS-E5201.md) | `auths-sdk` | `DeviceExtensionError::IdentityNotFound` | identity not found |
 | [AUTHS-E5202](AUTHS-E5202.md) | `auths-sdk` | `DeviceExtensionError::NoAttestationFound` | no attestation found for device {device_did} |
 | [AUTHS-E5203](AUTHS-E5203.md) | `auths-sdk` | `DeviceExtensionError::AlreadyRevoked` | device {device_did} is already revoked |
@@ -256,11 +265,18 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5306](AUTHS-E5306.md) | `auths-sdk` | `RotationError::PartialRotation` | rotation event committed to KEL but keychain write failed — manual recovery required: {0} |
 | [AUTHS-E5401](AUTHS-E5401.md) | `auths-sdk` | `RegistrationError::AlreadyRegistered` | identity already registered at this registry |
 | [AUTHS-E5402](AUTHS-E5402.md) | `auths-sdk` | `RegistrationError::QuotaExceeded` | registration quota exceeded — try again later |
-| [AUTHS-E5403](AUTHS-E5403.md) | `auths-sdk` | `RegistrationError::LocalDataError` | local data error: {0} |
+| [AUTHS-E5403](AUTHS-E5403.md) | `auths-sdk` | `RegistrationError::InvalidDidFormat` | invalid DID format: {did} |
+| [AUTHS-E5404](AUTHS-E5404.md) | `auths-sdk` | `RegistrationError::IdentityLoadError` | identity load error: {0} |
+| [AUTHS-E5405](AUTHS-E5405.md) | `auths-sdk` | `RegistrationError::RegistryReadError` | registry read error: {0} |
+| [AUTHS-E5406](AUTHS-E5406.md) | `auths-sdk` | `RegistrationError::SerializationError` | serialization error: {0} |
 | [AUTHS-E5501](AUTHS-E5501.md) | `auths-sdk` | `McpAuthError::BridgeUnreachable` | bridge unreachable: {0} |
 | [AUTHS-E5502](AUTHS-E5502.md) | `auths-sdk` | `McpAuthError::TokenExchangeFailed` | token exchange failed (HTTP {status}): {body} |
 | [AUTHS-E5503](AUTHS-E5503.md) | `auths-sdk` | `McpAuthError::InvalidResponse` | invalid response: {0} |
 | [AUTHS-E5504](AUTHS-E5504.md) | `auths-sdk` | `McpAuthError::InsufficientCapabilities` | insufficient capabilities: requested {requested:?} |
+| [AUTHS-E5551](AUTHS-E5551.md) | `auths-sdk` | `TrustError::UnknownIdentity` | Unknown identity '{did}' and trust policy is '{policy}' |
+| [AUTHS-E5552](AUTHS-E5552.md) | `auths-sdk` | `TrustError::KeyResolutionFailed` | Failed to resolve public key for identity {did} |
+| [AUTHS-E5553](AUTHS-E5553.md) | `auths-sdk` | `TrustError::InvalidTrustStore` | Invalid trust store: {0} |
+| [AUTHS-E5554](AUTHS-E5554.md) | `auths-sdk` | `TrustError::TofuRequiresInteraction` | TOFU trust decision required but running in non-interactive mode |
 | [AUTHS-E5601](AUTHS-E5601.md) | `auths-sdk` | `OrgError::AdminNotFound` | no admin with the given public key found in organization '{org}' |
 | [AUTHS-E5602](AUTHS-E5602.md) | `auths-sdk` | `OrgError::MemberNotFound` | member '{did}' not found in organization '{org}' |
 | [AUTHS-E5603](AUTHS-E5603.md) | `auths-sdk` | `OrgError::AlreadyRevoked` | member '{did}' is already revoked |
@@ -285,6 +301,12 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5806](AUTHS-E5806.md) | `auths-sdk` | `AllowedSignersError::DuplicatePrincipal` | principal already exists: {0} |
 | [AUTHS-E5807](AUTHS-E5807.md) | `auths-sdk` | `AllowedSignersError::AttestationEntryProtected` | cannot remove attestation-managed entry: {0} |
 | [AUTHS-E5808](AUTHS-E5808.md) | `auths-sdk` | `AllowedSignersError::Storage` | attestation storage error: {0} |
+| [AUTHS-E5850](AUTHS-E5850.md) | `auths-sdk` | `ArtifactSigningError::IdentityNotFound` | identity not found in configured identity storage |
+| [AUTHS-E5851](AUTHS-E5851.md) | `auths-sdk` | `ArtifactSigningError::KeyResolutionFailed` | key resolution failed: {0} |
+| [AUTHS-E5852](AUTHS-E5852.md) | `auths-sdk` | `ArtifactSigningError::KeyDecryptionFailed` | key decryption failed: {0} |
+| [AUTHS-E5853](AUTHS-E5853.md) | `auths-sdk` | `ArtifactSigningError::DigestFailed` | digest computation failed: {0} |
+| [AUTHS-E5854](AUTHS-E5854.md) | `auths-sdk` | `ArtifactSigningError::AttestationFailed` | attestation creation failed: {0} |
+| [AUTHS-E5855](AUTHS-E5855.md) | `auths-sdk` | `ArtifactSigningError::ResignFailed` | attestation re-signing failed: {0} |
 | [AUTHS-E5901](AUTHS-E5901.md) | `auths-sdk` | `SigningError::IdentityFrozen` | identity is frozen: {0} |
 | [AUTHS-E5902](AUTHS-E5902.md) | `auths-sdk` | `SigningError::KeyResolution` | key resolution failed: {0} |
 | [AUTHS-E5903](AUTHS-E5903.md) | `auths-sdk` | `SigningError::SigningFailed` | signing operation failed: {0} |
@@ -295,3 +317,20 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5908](AUTHS-E5908.md) | `auths-sdk` | `SigningError::PassphraseExhausted` | passphrase exhausted after {attempts} attempt(s) |
 | [AUTHS-E5909](AUTHS-E5909.md) | `auths-sdk` | `SigningError::KeychainUnavailable` | keychain unavailable: {0} |
 | [AUTHS-E5910](AUTHS-E5910.md) | `auths-sdk` | `SigningError::KeyDecryptionFailed` | key decryption failed: {0} |
+| [AUTHS-E6001](AUTHS-E6001.md) | `auths-sdk` | `AuthChallengeError::EmptyNonce` | nonce must not be empty |
+| [AUTHS-E6002](AUTHS-E6002.md) | `auths-sdk` | `AuthChallengeError::EmptyDomain` | domain must not be empty |
+| [AUTHS-E6003](AUTHS-E6003.md) | `auths-sdk` | `AuthChallengeError::Canonicalization` | canonical JSON serialization failed: {0} |
+| [AUTHS-E6004](AUTHS-E6004.md) | `auths-sdk` | `AuthChallengeError::SigningFailed` | signing failed: {0} |
+| [AUTHS-E7001](AUTHS-E7001.md) | `auths-sdk` | `CiError::EnvironmentNotDetected` | CI environment not detected |
+| [AUTHS-E7002](AUTHS-E7002.md) | `auths-sdk` | `CiError::IdentityBundleInvalid` | identity bundle invalid at {path}: {reason} |
+| [AUTHS-E7003](AUTHS-E7003.md) | `auths-sdk` | `CiError::NoArtifacts` | no artifacts to sign |
+| [AUTHS-E7004](AUTHS-E7004.md) | `auths-sdk` | `CiError::CollectionDirFailed` | failed to create attestation directory {path}: {reason} |
+| [AUTHS-E7005](AUTHS-E7005.md) | `auths-sdk` | `CiError::CollectionCopyFailed` | failed to collect attestation {src} → {dst}: {reason} |
+| [AUTHS-E8001](AUTHS-E8001.md) | `auths-oidc-port` | `OidcError::JwtDecode` | JWT decode failed: {0} |
+| [AUTHS-E8002](AUTHS-E8002.md) | `auths-oidc-port` | `OidcError::SignatureVerificationFailed` | signature verification failed |
+| [AUTHS-E8003](AUTHS-E8003.md) | `auths-oidc-port` | `OidcError::ClaimsValidationFailed` | claim validation failed - {claim}: {reason} |
+| [AUTHS-E8004](AUTHS-E8004.md) | `auths-oidc-port` | `OidcError::UnknownKeyId` | unknown key ID: {0} |
+| [AUTHS-E8005](AUTHS-E8005.md) | `auths-oidc-port` | `OidcError::JwksResolutionFailed` | JWKS resolution failed: {0} |
+| [AUTHS-E8006](AUTHS-E8006.md) | `auths-oidc-port` | `OidcError::AlgorithmMismatch` | algorithm mismatch: expected {expected}, got {got} |
+| [AUTHS-E8007](AUTHS-E8007.md) | `auths-oidc-port` | `OidcError::ClockSkewExceeded` | token expired (exp: {token_exp}, now: {current_time}, leeway: {leeway}s) |
+| [AUTHS-E8008](AUTHS-E8008.md) | `auths-oidc-port` | `OidcError::TokenReplayDetected` | token replay detected (jti: {0}) |
