@@ -1,5 +1,6 @@
 [package]
 name = "auths-oidc-port"
+description = "OIDC port abstractions for Auths identity system"
 version.workspace = true
 edition = "2021"
 license.workspace = true
@@ -7,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-auths-crypto = { path = "../auths-crypto", version = "0.0.1-rc.9" }
+auths-crypto = { path = "../auths-crypto", version = "0.0.1-rc.10" }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 chrono = { version = "0.4", features = ["serde"] }

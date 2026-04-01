@@ -44,7 +44,7 @@ CRATES_IO_API = "https://crates.io/api/v1/crates"
 
 PUBLISH_BATCHES: list[list[str]] = [
     ["auths", "auths-crypto", "auths-jwt", "auths-verifier", "auths-telemetry", "auths-utils"],
-    ["auths-policy"],
+    ["auths-policy", "auths-oidc-port"],
     ["auths-keri", "auths-pairing-protocol"],
     ["auths-core", "auths-index"],
     ["auths-infra-http", "auths-mcp-server"],

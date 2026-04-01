@@ -51,19 +51,17 @@ jobs:
         working-directory: packages/auths-node
         run: pnpm install
 
-      - name: Install zigbuild (Linux ARM64 cross-compilation)
+      - name: Install cross-compilation tools (Linux ARM64)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: pip install ziglang cargo-zigbuild
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Build native module
-        if: matrix.target != 'aarch64-unknown-linux-gnu'
         working-directory: packages/auths-node
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64-linux-gnu-gcc' || '' }}
         run: pnpm build -- --target ${{ matrix.target }}
-
-      - name: Build native module (zigbuild - Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        working-directory: packages/auths-node
-        run: pnpm build -- --target ${{ matrix.target }} --zig
 
       - uses: actions/upload-artifact@v4
         with:

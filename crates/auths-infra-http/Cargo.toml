@@ -14,7 +14,7 @@ homepage.workspace = true
 async-trait = "0.1"
 auths-core = { workspace = true }
 auths-crypto = { workspace = true }
-auths-oidc-port = { path = "../auths-oidc-port", version = "0.0.1-rc.9" }
+auths-oidc-port = { path = "../auths-oidc-port", version = "0.0.1-rc.10" }
 auths-verifier = { workspace = true, features = ["native"] }
 futures-util = "0.3"
 jsonwebtoken = { version = "9.3", features = ["use_pem"] }
