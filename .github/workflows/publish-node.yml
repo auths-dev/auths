@@ -28,11 +28,22 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            use-cross: true
+          - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
+            use-cross: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            use-cross: true
+          - os: macos-latest
+            target: x86_64-apple-darwin
           - os: macos-latest
             target: aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
 
@@ -51,16 +62,12 @@ jobs:
         working-directory: packages/auths-node
         run: pnpm install
 
-      - name: Install cross-compilation tools (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+      - name: Install cross
+        if: matrix.use-cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build native module
         working-directory: packages/auths-node
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64-linux-gnu-gcc' || '' }}
         run: pnpm build -- --target ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
@@ -78,7 +85,7 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: bindings-x86_64-unknown-linux-gnu
-          - os: macos-14
+          - os: macos-latest
             artifact: bindings-aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
