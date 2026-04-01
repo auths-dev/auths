@@ -137,7 +137,7 @@ pub(crate) fn find_member(
 
     backend
         .visit_org_member_attestations(org_prefix, &mut |entry| {
-            if entry.did.to_string() == member_did
+            if entry.did.as_str() == member_did
                 && let Ok(att) = &entry.attestation
             {
                 found = Some(att.clone());

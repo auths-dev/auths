@@ -47,7 +47,7 @@ use log::warn;
 
 use auths_core::storage::keychain::IdentityDID;
 use auths_verifier::core::{Attestation, VerifiedAttestation};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::{CanonicalDid, DeviceDID};
 use git2::{Oid, Repository, Signature, Tree};
 
 use auths_id::keri::event::Event;
@@ -1397,9 +1397,12 @@ impl RegistryBackend for GitRegistryBackend {
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: member.issuer is a validated CanonicalDid
             let issuer_did = IdentityDID::new_unchecked(member.issuer.as_str());
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: member.subject is a validated DID from the attestation
+            let member_canonical = CanonicalDid::new_unchecked(member.subject.as_str());
             let indexed = auths_index::IndexedOrgMember {
                 org_prefix,
-                member_did: member.subject.clone(),
+                member_did: member_canonical,
                 issuer_did,
                 rid: member.rid.clone(),
                 revoked_at: member.revoked_at,
@@ -1448,7 +1451,7 @@ impl RegistryBackend for GitRegistryBackend {
             };
 
             let did_str = unsanitize_did(sanitized_did);
-            let did = match DeviceDID::parse(&did_str) {
+            let did = match CanonicalDid::parse(&did_str) {
                 Ok(d) => d,
                 Err(_) => {
                     log::warn!("Skipping unparseable member DID: {}", did_str);
@@ -1465,9 +1468,12 @@ impl RegistryBackend for GitRegistryBackend {
                         Ok(att) => {
                             // Validate subject matches filename DID (hard invariant)
                             if att.subject.as_str() != did_str {
+                                #[allow(clippy::disallowed_methods)]
+                                // INVARIANT: att.subject is a validated DID from deserialized attestation
+                                let att_subject = CanonicalDid::new_unchecked(att.subject.as_str());
                                 Err(MemberInvalidReason::SubjectMismatch {
                                     filename_did: did.clone(),
-                                    attestation_subject: att.subject.clone(),
+                                    attestation_subject: att_subject,
                                 })
                             // Validate issuer matches expected org issuer (hard invariant)
                             } else if att.issuer.as_str() != expected_issuer {
@@ -2773,7 +2779,7 @@ mod tests {
         let mut found_invalid = false;
         backend
             .visit_org_member_attestations(org, &mut |entry| {
-                if entry.did.to_string() == "did:key:z6MkBadJson"
+                if entry.did.as_str() == "did:key:z6MkBadJson"
                     && let Err(MemberInvalidReason::JsonParseError(_)) = &entry.attestation
                 {
                     found_invalid = true;
@@ -2822,7 +2828,7 @@ mod tests {
         let mut found_mismatch = false;
         backend
             .visit_org_member_attestations(org, &mut |entry| {
-                if entry.did.to_string() == "did:key:z6MkWRONG"
+                if entry.did.as_str() == "did:key:z6MkWRONG"
                     && let Err(MemberInvalidReason::SubjectMismatch {
                         filename_did,
                         attestation_subject,

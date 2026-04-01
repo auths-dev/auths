@@ -137,7 +137,7 @@ pub(crate) fn find_member(
 
     backend
         .visit_org_member_attestations(org_prefix, &mut |entry| {
-            if entry.did.to_string() == member_did
+            if entry.did.as_str() == member_did
                 && let Ok(att) = &entry.attestation
             {
                 found = Some(att.clone());
@@ -337,7 +337,7 @@ pub fn add_organization_member(
     let rid = ctx.uuid_provider.new_id().to_string();
 
     #[allow(clippy::disallowed_methods)]
-    // INVARIANT: cmd.member_did is a did:key string from the CLI, validated by the caller
+    // INVARIANT: cmd.member_did is a DID string (did:keri: or did:key:) from the caller
     let member_did = DeviceDID::new_unchecked(&cmd.member_did);
     let meta = AttestationMetadata {
         note: cmd

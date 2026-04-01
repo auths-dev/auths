@@ -31,7 +31,7 @@ use std::collections::HashSet;
 
 use auths_core::storage::keychain::IdentityDID;
 use auths_verifier::core::{Attestation, Capability, ResourceId, Role};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 
 /// Filter for querying org members.
@@ -128,8 +128,8 @@ pub enum MemberInvalidReason {
     /// which device/member this attestation is for, and the attestation's
     /// subject field must match.
     SubjectMismatch {
-        filename_did: DeviceDID,
-        attestation_subject: DeviceDID,
+        filename_did: CanonicalDid,
+        attestation_subject: CanonicalDid,
     },
 
     /// The attestation's issuer DID doesn't match the expected org issuer.
@@ -149,7 +149,7 @@ pub enum MemberInvalidReason {
 /// Low-level entry for visit_org_member_attestations.
 pub struct OrgMemberEntry {
     pub org: IdentityDID,
-    pub did: DeviceDID,
+    pub did: CanonicalDid,
     pub filename: String,
     pub attestation: Result<Attestation, MemberInvalidReason>,
 }
@@ -175,7 +175,7 @@ pub struct OrgMemberEntry {
 /// Or use `compute_status()` from this module with the raw attestation.
 #[derive(Debug, Clone)]
 pub struct MemberView {
-    pub did: DeviceDID,
+    pub did: CanonicalDid,
     /// Status: Active for valid attestations, Invalid for structural errors.
     /// Note: Backend does NOT compute Revoked/Expired - use `revoked_at` and
     /// `expires_at` fields to compute these statuses in the policy layer.

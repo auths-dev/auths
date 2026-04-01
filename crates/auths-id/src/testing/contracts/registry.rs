@@ -296,7 +296,7 @@ macro_rules! registry_backend_contract_tests {
                 let mut found = false;
                 store
                     .visit_org_member_attestations(org, &mut |entry| {
-                        if entry.did == did {
+                        if entry.did.as_str() == did.as_str() {
                             found = true;
                         }
                         ControlFlow::Continue(())

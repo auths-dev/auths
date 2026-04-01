@@ -2,7 +2,7 @@ use crate::error::Result;
 use crate::schema;
 use auths_verifier::core::{CommitOid, ResourceId};
 use auths_verifier::keri::{Prefix, Said};
-use auths_verifier::types::{DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, DeviceDID, IdentityDID};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlite::Connection;
@@ -50,7 +50,7 @@ pub struct IndexedIdentity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedOrgMember {
     pub org_prefix: Prefix,
-    pub member_did: DeviceDID,
+    pub member_did: CanonicalDid,
     pub issuer_did: IdentityDID,
     pub rid: ResourceId,
     pub revoked_at: Option<DateTime<Utc>>,
@@ -420,7 +420,7 @@ impl AttestationIndex {
             let org_prefix = Prefix::new_unchecked(org_prefix);
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: member_did was validated on insert via upsert_org_member and stored in SQLite
-            let member_did = DeviceDID::new_unchecked(member_did);
+            let member_did = CanonicalDid::new_unchecked(member_did);
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: issuer_did was validated on insert via upsert_org_member and stored in SQLite
             let issuer_did = IdentityDID::new_unchecked(issuer_did);
@@ -667,7 +667,7 @@ mod tests {
         #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literals
         let member = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
-            member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
+            member_did: CanonicalDid::new_unchecked("did:key:z6MkMember1"),
             issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
             rid: ResourceId::new("rid-member-1"),
             revoked_at: None,
@@ -689,7 +689,7 @@ mod tests {
         #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literals
         let member = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
-            member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
+            member_did: CanonicalDid::new_unchecked("did:key:z6MkMember1"),
             issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
             rid: ResourceId::new("rid-v1"),
             revoked_at: None,
@@ -701,7 +701,7 @@ mod tests {
         #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literals
         let updated = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
-            member_did: DeviceDID::new_unchecked("did:key:z6MkMember1"),
+            member_did: CanonicalDid::new_unchecked("did:key:z6MkMember1"),
             issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
             rid: ResourceId::new("rid-v2"),
             revoked_at: Some(Utc::now()),
@@ -726,7 +726,7 @@ mod tests {
             // INVARIANT: test-only hardcoded DID string literals
             let member = IndexedOrgMember {
                 org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
-                member_did: DeviceDID::new_unchecked(format!("did:key:z6MkMember{}", i)),
+                member_did: CanonicalDid::new_unchecked(format!("did:key:z6MkMember{}", i)),
                 issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
                 rid: ResourceId::new(format!("rid-{}", i)),
                 revoked_at: None,
