@@ -265,7 +265,7 @@ pub async fn verify_device_link(
         Err(e) => return DeviceLinkVerification::failure(format!("KEL verification failed: {e}")),
     };
 
-    if attestation.subject.to_string() != device_did {
+    if attestation.subject.as_str() != device_did {
         return DeviceLinkVerification::failure(format!(
             "Device DID mismatch: attestation subject is '{}', expected '{device_did}'",
             attestation.subject
@@ -606,7 +606,7 @@ mod tests {
             version: 1,
             rid: ResourceId::new("test-rid"),
             issuer: CanonicalDid::new_unchecked(issuer_did),
-            subject: DeviceDID::new_unchecked(subject_did),
+            subject: CanonicalDid::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1218,7 +1218,7 @@ mod tests {
             version: 1,
             rid: ResourceId::new("test-rid"),
             issuer: CanonicalDid::new_unchecked(issuer_did),
-            subject: DeviceDID::new_unchecked(subject_did),
+            subject: CanonicalDid::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -1572,7 +1572,7 @@ mod tests {
             version: 1,
             rid: ResourceId::new("test-rid"),
             issuer: CanonicalDid::new_unchecked(issuer_did),
-            subject: DeviceDID::new_unchecked(subject_did),
+            subject: CanonicalDid::new_unchecked(subject_did),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),

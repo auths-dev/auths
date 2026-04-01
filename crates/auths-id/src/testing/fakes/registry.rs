@@ -17,8 +17,8 @@ use crate::storage::registry::schemas::{RegistryMetadata, TipInfo};
 struct FakeState {
     events: HashMap<String, Vec<Event>>,
     key_states: HashMap<String, KeyState>,
-    attestations: HashMap<DeviceDID, Attestation>,
-    attestation_history: HashMap<DeviceDID, Vec<Attestation>>,
+    attestations: HashMap<CanonicalDid, Attestation>,
+    attestation_history: HashMap<CanonicalDid, Vec<Attestation>>,
     org_members: HashMap<(String, String), Attestation>,
 }
 
@@ -205,7 +205,10 @@ impl RegistryBackend for FakeRegistryBackend {
 
     fn load_attestation(&self, did: &DeviceDID) -> Result<Option<Attestation>, RegistryError> {
         let state = self.state.lock().unwrap();
-        Ok(state.attestations.get(did).cloned())
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: did.as_str() is a valid DID string from DeviceDID
+        let canonical = CanonicalDid::new_unchecked(did.as_str());
+        Ok(state.attestations.get(&canonical).cloned())
     }
 
     fn visit_attestation_history(
@@ -214,7 +217,10 @@ impl RegistryBackend for FakeRegistryBackend {
         visitor: &mut dyn FnMut(&Attestation) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         let state = self.state.lock().unwrap();
-        if let Some(history) = state.attestation_history.get(did) {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: did.as_str() is a valid DID string from DeviceDID
+        let canonical = CanonicalDid::new_unchecked(did.as_str());
+        if let Some(history) = state.attestation_history.get(&canonical) {
             for att in history {
                 if visitor(att).is_break() {
                     break;
@@ -229,8 +235,10 @@ impl RegistryBackend for FakeRegistryBackend {
         visitor: &mut dyn FnMut(&DeviceDID) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         let state = self.state.lock().unwrap();
-        for did in state.attestations.keys() {
-            if visitor(did).is_break() {
+        for canonical_did in state.attestations.keys() {
+            if let Ok(device_did) = DeviceDID::parse(canonical_did.as_str())
+                && visitor(&device_did).is_break()
+            {
                 break;
             }
         }

@@ -1146,7 +1146,7 @@ impl RegistryBackend for GitRegistryBackend {
         let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
         let navigator = TreeNavigator::new(&repo, base_tree.clone());
 
-        let sanitized_did = sanitize_did(&attestation.subject.to_string());
+        let sanitized_did = sanitize_did(attestation.subject.as_ref());
         let device_base = device_path(&sanitized_did)?;
         let att_path = paths::attestation_file(&device_base);
 
@@ -1366,7 +1366,7 @@ impl RegistryBackend for GitRegistryBackend {
         let navigator = TreeNavigator::new(&repo, base_tree.clone());
 
         let org_base = org_path(&Prefix::new_unchecked(org.to_string()))?;
-        let sanitized_member_did = sanitize_did(&member.subject.to_string());
+        let sanitized_member_did = sanitize_did(member.subject.as_ref());
         let member_path = paths::member_file(&org_base, &sanitized_member_did);
 
         // Check if this is a new member
@@ -2752,6 +2752,79 @@ mod tests {
     }
 
     #[test]
+    fn store_and_visit_org_member_with_keri_did() {
+        let (_dir, backend) = setup_test_repo();
+        let org = "EOrg1234567890";
+
+        // Members are identities (did:keri:), not devices (did:key:).
+        // This test ensures did:keri: members round-trip through git storage.
+        let keri_did = "did:keri:EH-Bgtw9tm61YHxUWOw37UweX_7LNJC89t0Pl7ateDdM";
+        let member_att = AttestationBuilder::default()
+            .rid("org-keri-member")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(keri_did)
+            .role(Some(Role::Member))
+            .build();
+
+        backend.store_org_member(org, &member_att).unwrap();
+
+        let mut found_did: Option<String> = None;
+        backend
+            .visit_org_member_attestations(org, &mut |entry| {
+                found_did = Some(entry.did.as_str().to_string());
+                ControlFlow::Continue(())
+            })
+            .unwrap();
+
+        assert_eq!(
+            found_did.as_deref(),
+            Some(keri_did),
+            "did:keri: member must be findable after store"
+        );
+    }
+
+    #[test]
+    fn store_and_visit_org_member_keri_did_with_underscore() {
+        let (_dir, backend) = setup_test_repo();
+        let org = "EOrg1234567890";
+
+        // KERI prefixes use Base64url which can contain underscores.
+        // The sanitize/unsanitize path must not corrupt these.
+        let did_with_underscore = "did:keri:EH-Bgtw9tm61YHxUWOw37UweX_7LNJC89t0Pl7ateDdM";
+        let member_att = AttestationBuilder::default()
+            .rid("org-underscore-member")
+            .issuer(&format!("did:keri:{}", org))
+            .subject(did_with_underscore)
+            .role(Some(Role::Member))
+            .build();
+
+        backend.store_org_member(org, &member_att).unwrap();
+
+        let mut found_did: Option<String> = None;
+        let mut attestation_error: Option<String> = None;
+        backend
+            .visit_org_member_attestations(org, &mut |entry| {
+                found_did = Some(entry.did.as_str().to_string());
+                if let Err(reason) = &entry.attestation {
+                    attestation_error = Some(format!("{:?}", reason));
+                }
+                ControlFlow::Continue(())
+            })
+            .unwrap();
+
+        assert_eq!(
+            found_did.as_deref(),
+            Some(did_with_underscore),
+            "DID with underscore in KERI prefix must survive sanitize/unsanitize round-trip"
+        );
+        assert!(
+            attestation_error.is_none(),
+            "attestation should be valid but got error: {:?}",
+            attestation_error
+        );
+    }
+
+    #[test]
     fn visit_org_member_attestations_yields_invalid_on_bad_json() {
         let (_dir, backend) = setup_test_repo();
         let org = "EOrg1234567890";
@@ -3598,7 +3671,7 @@ mod index_consistency_tests {
     use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
     use auths_id::storage::registry::org_member::MemberFilter;
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
-    use auths_verifier::types::{CanonicalDid, DeviceDID};
+    use auths_verifier::types::CanonicalDid;
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use chrono::Utc;
@@ -3657,7 +3730,7 @@ mod index_consistency_tests {
             version: 1,
             rid: ResourceId::new(rid),
             issuer: CanonicalDid::new_unchecked(format!("did:keri:{}", org_prefix)),
-            subject: DeviceDID::new_unchecked(format!("did:key:z6Mk{}", did_suffix)),
+            subject: CanonicalDid::new_unchecked(format!("did:key:z6Mk{}", did_suffix)),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -3905,12 +3978,11 @@ mod tenant_isolation_tests {
     }
 
     fn make_test_attestation(device_did: &str) -> Attestation {
-        let did = DeviceDID::new_unchecked(device_did);
         Attestation {
             version: 1,
             rid: ResourceId::new("test-rid"),
             issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
-            subject: did,
+            subject: CanonicalDid::new_unchecked(device_did),
             device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
@@ -3985,7 +4057,7 @@ mod tenant_isolation_tests {
         let globocorp = setup_tenant_backend(&base, "globocorp");
 
         let att = make_test_attestation("did:key:z6MkTest123");
-        let did = att.subject.clone();
+        let did = DeviceDID::new_unchecked(att.subject.as_str());
         acme.store_attestation(&att).unwrap();
 
         // globocorp sees no attestation for the device written to acme

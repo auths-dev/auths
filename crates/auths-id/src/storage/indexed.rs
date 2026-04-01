@@ -151,8 +151,11 @@ impl AttestationSource for IndexedAttestationStorage {
             return self.inner.discover_device_dids();
         }
 
-        // Collect unique device DIDs from the index
-        let mut dids: Vec<DeviceDID> = active.into_iter().map(|a| a.device_did.clone()).collect();
+        // Collect unique device DIDs from the index (filter to did:key: only)
+        let mut dids: Vec<DeviceDID> = active
+            .into_iter()
+            .filter_map(|a| DeviceDID::parse(a.device_did.as_str()).ok())
+            .collect();
         dids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         dids.dedup();
         Ok(dids)

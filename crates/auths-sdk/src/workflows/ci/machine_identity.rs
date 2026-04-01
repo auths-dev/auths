@@ -272,7 +272,9 @@ pub fn sign_commit_with_identity(
         version: 1,
         rid: ResourceId::new(rid),
         issuer: issuer.clone(),
-        subject: subject.clone(),
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: subject is a validated DeviceDID parsed on line 255
+        subject: CanonicalDid::new_unchecked(subject.as_str()),
         device_public_key: device_pk,
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),

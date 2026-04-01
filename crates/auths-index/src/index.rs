@@ -2,7 +2,7 @@ use crate::error::Result;
 use crate::schema;
 use auths_verifier::core::{CommitOid, ResourceId};
 use auths_verifier::keri::{Prefix, Said};
-use auths_verifier::types::{CanonicalDid, DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, IdentityDID};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlite::Connection;
@@ -16,8 +16,8 @@ pub struct IndexedAttestation {
     pub rid: ResourceId,
     /// DID of the issuer (controller)
     pub issuer_did: IdentityDID,
-    /// DID of the device this attestation is for
-    pub device_did: DeviceDID,
+    /// DID of the attestation subject (device or identity).
+    pub device_did: CanonicalDid,
     /// Git ref path (e.g., refs/auths/devices/nodes/...)
     pub git_ref: String,
     /// Git commit OID for loading full attestation (None when OID is not yet known)
@@ -281,7 +281,7 @@ impl AttestationIndex {
         let issuer_did = IdentityDID::new_unchecked(issuer_did);
         #[allow(clippy::disallowed_methods)]
         // INVARIANT: device_did was validated on insert via upsert_attestation and stored in SQLite
-        let device_did = DeviceDID::new_unchecked(device_did);
+        let device_did = CanonicalDid::new_unchecked(device_did);
 
         Ok(IndexedAttestation {
             rid: ResourceId::new(rid),
@@ -479,7 +479,7 @@ mod tests {
         #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literal
         let issuer_did = IdentityDID::new_unchecked("did:key:issuer123");
         #[allow(clippy::disallowed_methods)] // INVARIANT: test-only DID string from caller
-        let device_did = DeviceDID::new_unchecked(device);
+        let device_did = CanonicalDid::new_unchecked(device);
 
         IndexedAttestation {
             rid: ResourceId::new(rid),

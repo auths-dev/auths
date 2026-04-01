@@ -13,7 +13,6 @@
 
 use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::types::CanonicalDid;
-use auths_verifier::types::DeviceDID;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 #[cfg(feature = "std")]
@@ -228,7 +227,7 @@ impl TryFrom<RadAttestation> for Attestation {
         // INVARIANT: rad.canonical_payload.did is a validated radicle Did
         let issuer = CanonicalDid::new_unchecked(rad.canonical_payload.did.to_string());
         #[allow(clippy::disallowed_methods)] // INVARIANT: rad.device_did is a validated radicle Did
-        let subject = DeviceDID::new_unchecked(rad.device_did.to_string());
+        let subject = CanonicalDid::new_unchecked(rad.device_did.to_string());
         Ok(Attestation {
             version: 1,
             rid: ResourceId::new(rad.canonical_payload.rid.to_string()),
@@ -505,7 +504,7 @@ mod tests {
             version: 1,
             rid: ResourceId::new("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5"),
             issuer: CanonicalDid::new_unchecked("did:keri:EXq5abc"),
-            subject: DeviceDID::new_unchecked(device_did.to_string()),
+            subject: CanonicalDid::new_unchecked(device_did.to_string()),
             device_public_key: Ed25519PublicKey::from_bytes(device_pk_bytes),
             identity_signature: Ed25519Signature::from_bytes([0xCD; 64]),
             device_signature: Ed25519Signature::from_bytes([0xEF; 64]),

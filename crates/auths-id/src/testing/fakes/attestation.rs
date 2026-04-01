@@ -65,7 +65,7 @@ impl AttestationSource for FakeAttestationSource {
         let guard = self.attestations.lock().unwrap();
         Ok(guard
             .iter()
-            .filter(|a| a.subject == *device_did)
+            .filter(|a| a.subject.as_str() == device_did.as_str())
             .cloned()
             .collect())
     }
@@ -76,8 +76,10 @@ impl AttestationSource for FakeAttestationSource {
 
     fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
         let guard = self.attestations.lock().unwrap();
-        let dids: std::collections::HashSet<DeviceDID> =
-            guard.iter().map(|a| a.subject.clone()).collect();
+        let dids: std::collections::HashSet<DeviceDID> = guard
+            .iter()
+            .filter_map(|a| DeviceDID::parse(a.subject.as_str()).ok())
+            .collect();
         Ok(dids.into_iter().collect())
     }
 }

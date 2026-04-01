@@ -166,7 +166,7 @@ macro_rules! registry_backend_contract_tests {
                     loaded.is_some(),
                     "attestation should be present after store"
                 );
-                assert_eq!(loaded.unwrap().subject, did);
+                assert_eq!(loaded.unwrap().subject.as_str(), did.as_str());
             }
 
             #[test]

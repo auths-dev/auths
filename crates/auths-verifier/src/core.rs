@@ -1,7 +1,7 @@
 //! Core attestation types and canonical serialization.
 
 use crate::error::AttestationError;
-use crate::types::{CanonicalDid, DeviceDID, IdentityDID};
+use crate::types::{CanonicalDid, IdentityDID};
 use chrono::{DateTime, Utc};
 use hex;
 use json_canon;
@@ -705,8 +705,8 @@ pub struct Attestation {
     pub rid: ResourceId,
     /// DID of the issuing identity (can be `did:keri:` or `did:key:`).
     pub issuer: CanonicalDid,
-    /// DID of the device being attested.
-    pub subject: DeviceDID,
+    /// DID of the attested subject (device `did:key:` or identity `did:keri:`).
+    pub subject: CanonicalDid,
     /// Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
     pub device_public_key: Ed25519PublicKey,
     /// Issuer's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).
@@ -866,8 +866,8 @@ pub struct CanonicalAttestationData<'a> {
     pub rid: &'a str,
     /// DID of the issuing identity.
     pub issuer: &'a CanonicalDid,
-    /// DID of the device being attested.
-    pub subject: &'a DeviceDID,
+    /// DID of the attested subject.
+    pub subject: &'a CanonicalDid,
     /// Raw Ed25519 public key of the device.
     #[serde(with = "hex::serde")]
     pub device_public_key: &'a [u8],

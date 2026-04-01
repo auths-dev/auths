@@ -72,7 +72,7 @@ pub fn context_from_attestation(
     att: &Attestation,
     now: DateTime<Utc>,
 ) -> Result<EvalContext, DidParseError> {
-    let mut ctx = EvalContext::try_from_strings(now, &att.issuer, &att.subject.to_string())?;
+    let mut ctx = EvalContext::try_from_strings(now, &att.issuer, att.subject.as_ref())?;
 
     ctx = ctx.revoked(att.is_revoked());
 

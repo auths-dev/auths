@@ -3,7 +3,7 @@
 use crate::clock::ClockProvider;
 use crate::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use crate::core::{Capability, OidcBinding, Role, SignerType};
-use crate::types::{CanonicalDid, DeviceDID};
+use crate::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
@@ -26,7 +26,7 @@ pub struct AttestationBuilder {
     version: u32,
     rid: ResourceId,
     issuer: CanonicalDid,
-    subject: DeviceDID,
+    subject: CanonicalDid,
     device_public_key: Ed25519PublicKey,
     identity_signature: Ed25519Signature,
     device_signature: Ed25519Signature,
@@ -51,7 +51,7 @@ impl Default for AttestationBuilder {
         #[allow(clippy::disallowed_methods)]
         let issuer = CanonicalDid::new_unchecked("did:keri:Etest");
         #[allow(clippy::disallowed_methods)]
-        let subject = DeviceDID::new_unchecked("did:key:ztest");
+        let subject = CanonicalDid::new_unchecked("did:key:ztest");
         Self {
             version: 1,
             rid: ResourceId::new("test-rid"),
@@ -106,7 +106,7 @@ impl AttestationBuilder {
         #[allow(clippy::disallowed_methods)]
         // INVARIANT: test fixture; caller provides DID strings from known sources
         {
-            self.subject = DeviceDID::new_unchecked(subject);
+            self.subject = CanonicalDid::new_unchecked(subject);
         }
         self
     }

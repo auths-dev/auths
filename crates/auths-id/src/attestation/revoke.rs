@@ -88,7 +88,9 @@ pub fn create_signed_revocation(
     let revocation_issuer = CanonicalDid::new_unchecked(identity_did.as_str());
     Ok(Attestation {
         version: REVOCATION_VERSION,
-        subject: device_did.clone(),
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: device_did is a validated DeviceDID from the caller
+        subject: CanonicalDid::new_unchecked(device_did.as_str()),
         issuer: revocation_issuer,
         rid: ResourceId::new(rid),
         payload: payload_arg.clone(),

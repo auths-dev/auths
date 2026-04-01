@@ -477,7 +477,10 @@ fn principal_from_attestation(att: &auths_verifier::core::Attestation) -> Signer
     {
         return SignerPrincipal::Email(addr);
     }
-    SignerPrincipal::DeviceDid(att.subject.clone())
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: att.subject is a validated CanonicalDid from a deserialized attestation
+    let device_did = DeviceDID::new_unchecked(att.subject.as_str());
+    SignerPrincipal::DeviceDid(device_did)
 }
 
 fn parse_entry_line(

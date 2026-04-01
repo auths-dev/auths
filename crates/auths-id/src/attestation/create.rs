@@ -94,12 +94,15 @@ pub fn create_signed_attestation(
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: identity_did is an IdentityDID which guarantees valid DID format
     let issuer_canonical = CanonicalDid::new_unchecked(identity_did.as_str());
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: device_did is a validated DeviceDID from the caller
+    let subject_canonical = CanonicalDid::new_unchecked(device_did.as_str());
     let delegated_canonical = delegated_by.as_ref().map(|d| CanonicalDid::from(d.clone()));
     let data_to_canonicalize = CanonicalAttestationData {
         version: ATTESTATION_VERSION,
         rid,
         issuer: &issuer_canonical,
-        subject: device_did,
+        subject: &subject_canonical,
         device_public_key,
         payload: &payload,
         timestamp: &meta.timestamp,
@@ -161,7 +164,7 @@ pub fn create_signed_attestation(
     // Construct final attestation
     Ok(Attestation {
         version: ATTESTATION_VERSION,
-        subject: device_did.clone(),
+        subject: subject_canonical,
         issuer: issuer_canonical,
         rid: ResourceId::new(rid),
         payload: payload.clone(),

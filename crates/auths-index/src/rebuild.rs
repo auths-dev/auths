@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::index::{AttestationIndex, IndexedAttestation};
 use auths_verifier::core::{CommitOid, ResourceId};
-use auths_verifier::types::{DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, IdentityDID};
 use chrono::Utc;
 use git2::Repository;
 use std::path::Path;
@@ -123,7 +123,7 @@ fn extract_attestation_from_ref(
     let issuer_did = IdentityDID::new_unchecked(&issuer_did);
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: device_did extracted from attestation JSON stored in a signed Git commit
-    let device_did = DeviceDID::new_unchecked(&device_did);
+    let device_did = CanonicalDid::new_unchecked(&device_did);
 
     Ok(IndexedAttestation {
         rid: ResourceId::new(rid),
