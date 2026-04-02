@@ -30,7 +30,7 @@ auths-infra-git = { path = "../../crates/auths-infra-git" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["sync", "net"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "json"] }
 hex = "0.4"
 chrono = "0.4"
 ring = "0.17"
