@@ -13,7 +13,7 @@ class TestIdentityLifecycle:
     def test_init_developer_profile(self, auths_bin, isolated_env):
         result = run_auths(
             auths_bin,
-            ["init", "--profile", "developer", "--non-interactive", "--skip-registration"],
+            ["init", "--profile", "developer", "--non-interactive", ],
             env=isolated_env,
         )
         result.assert_success()
@@ -25,7 +25,7 @@ class TestIdentityLifecycle:
     def test_init_ci_profile(self, auths_bin, isolated_env):
         result = run_auths(
             auths_bin,
-            ["init", "--profile", "ci", "--non-interactive", "--skip-registration"],
+            ["init", "--profile", "ci", "--non-interactive", ],
             env=isolated_env,
         )
         result.assert_success()
@@ -33,7 +33,7 @@ class TestIdentityLifecycle:
     def test_init_agent_profile(self, auths_bin, isolated_env):
         result = run_auths(
             auths_bin,
-            ["init", "--profile", "agent", "--non-interactive", "--skip-registration"],
+            ["init", "--profile", "agent", "--non-interactive", ],
             env=isolated_env,
         )
         result.assert_success()
@@ -41,13 +41,13 @@ class TestIdentityLifecycle:
     def test_init_already_initialized(self, auths_bin, isolated_env):
         run_auths(
             auths_bin,
-            ["init", "--profile", "developer", "--non-interactive", "--skip-registration"],
+            ["init", "--profile", "developer", "--non-interactive", ],
             env=isolated_env,
         ).assert_success()
 
         second = run_auths(
             auths_bin,
-            ["init", "--profile", "developer", "--non-interactive", "--skip-registration"],
+            ["init", "--profile", "developer", "--non-interactive", ],
             env=isolated_env,
         )
         # Second init should either fail or warn
@@ -102,7 +102,7 @@ class TestIdentityLifecycle:
         # Init
         run_auths(
             auths_bin,
-            ["init", "--profile", "developer", "--non-interactive", "--skip-registration"],
+            ["init", "--profile", "developer", "--non-interactive", ],
             env=isolated_env,
         ).assert_success()
 

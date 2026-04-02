@@ -19,13 +19,7 @@ fn test_emergency_revoke_device() {
     // Run init and capture device DID from output
     let init_output = env
         .cmd("auths")
-        .args([
-            "init",
-            "--non-interactive",
-            "--profile",
-            "developer",
-            "--skip-registration",
-        ])
+        .args(["init", "--non-interactive", "--profile", "developer"])
         .output()
         .unwrap();
     assert!(init_output.status.success());

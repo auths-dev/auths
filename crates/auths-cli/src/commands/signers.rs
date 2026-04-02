@@ -208,7 +208,7 @@ fn handle_remove(args: &SignersRemoveArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_sync(args: &SignersSyncArgs) -> Result<()> {
+pub(crate) fn handle_sync(args: &SignersSyncArgs) -> Result<()> {
     let repo_path = expand_tilde(&args.repo)?;
     let storage = RegistryAttestationStorage::new(&repo_path);
 

@@ -21,7 +21,6 @@ fi
 echo "Checking Rust targets..."
 TARGETS=(
     "aarch64-apple-darwin"      # macOS Apple Silicon
-    "x86_64-apple-darwin"       # macOS Intel
     "aarch64-apple-ios"         # iOS device
     "aarch64-apple-ios-sim"     # iOS Simulator (Apple Silicon)
     "x86_64-apple-ios"          # iOS Simulator (Intel)

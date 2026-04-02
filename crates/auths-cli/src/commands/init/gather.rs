@@ -43,7 +43,7 @@ pub(crate) fn gather_developer_config(
         .with_conflict_policy(conflict_policy)
         .with_git_signing_scope(git_scope);
 
-    if !cmd.skip_registration {
+    if cmd.register {
         builder = builder.with_registration(&cmd.registry);
     }
 
@@ -134,7 +134,7 @@ pub(crate) fn submit_registration(
     out: &Output,
 ) -> Option<String> {
     if skip {
-        out.print_info("Registration skipped (--skip-registration)");
+        out.print_info("Registration skipped (pass --register to publish to the registry)");
         return None;
     }
 
