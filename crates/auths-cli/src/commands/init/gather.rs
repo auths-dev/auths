@@ -43,7 +43,7 @@ pub(crate) fn gather_developer_config(
         .with_conflict_policy(conflict_policy)
         .with_git_signing_scope(git_scope);
 
-    if !cmd.skip_registration {
+    if cmd.register {
         builder = builder.with_registration(&cmd.registry);
     }
 

@@ -12,6 +12,7 @@ mod prompts;
 use anyhow::{Result, anyhow};
 use clap::{Args, ValueEnum};
 use std::io::IsTerminal;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use auths_core::PrefilledPassphraseProvider;
@@ -29,6 +30,7 @@ use crate::config::CliConfig;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::Output;
 
+use super::signers::{SignersSyncArgs, handle_sync};
 use display::{
     display_agent_dry_run, display_agent_result, display_ci_result, display_developer_result,
 };
@@ -118,13 +120,13 @@ pub struct InitCommand {
     #[clap(long)]
     pub dry_run: bool,
 
-    /// Registry URL for automatic identity registration
+    /// Registry URL for identity registration
     #[clap(long, default_value = DEFAULT_REGISTRY_URL)]
     pub registry: String,
 
-    /// Skip automatic registry registration during setup
+    /// Register identity with the Auths Registry after creation
     #[clap(long)]
-    pub skip_registration: bool,
+    pub register: bool,
 
     /// Scaffold a GitHub Actions workflow using the auths attest-action
     #[clap(long)]
@@ -240,7 +242,7 @@ fn run_developer_setup(
 
     // PLATFORM VERIFICATION
     guide.section("Platform Verification");
-    let proof_url = if interactive && !cmd.skip_registration {
+    let proof_url = if interactive && cmd.register {
         out.print_info("Claim your Developer Passport");
         out.newline();
         match prompt_platform_verification(
@@ -267,13 +269,28 @@ fn run_developer_setup(
     offer_shell_completions(interactive, out)?;
     write_allowed_signers(&result.key_alias, out)?;
 
+    // Also write repo-local .auths/allowed_signers if we're inside a git repo,
+    // so `auths verify` works immediately without extra flags.
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        && output.status.success()
+    {
+        let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+        let repo_signers = root.join(".auths").join("allowed_signers");
+        let _ = handle_sync(&SignersSyncArgs {
+            repo: "~/.auths".into(),
+            output_file: Some(repo_signers),
+        });
+    }
+
     // REGISTRATION & DISPLAY
     guide.section("Registration & Summary");
     let registered = submit_registration(
         &get_auths_repo_path()?,
         &cmd.registry,
         proof_url,
-        cmd.skip_registration,
+        !cmd.register, // skip unless --register is explicitly passed
         out,
     );
     display_developer_result(out, &result, registered.as_deref());
@@ -390,7 +407,7 @@ mod tests {
             force: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
-            skip_registration: false,
+            register: false,
             github_action: false,
         };
         assert!(!cmd.interactive);
@@ -400,7 +417,7 @@ mod tests {
         assert!(!cmd.force);
         assert!(!cmd.dry_run);
         assert_eq!(cmd.registry, "https://auths-registry.fly.dev");
-        assert!(!cmd.skip_registration);
+        assert!(!cmd.register);
         assert!(!cmd.github_action);
     }
 
@@ -414,7 +431,7 @@ mod tests {
             force: true,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
-            skip_registration: false,
+            register: false,
             github_action: false,
         };
         assert!(cmd.non_interactive);
@@ -446,7 +463,7 @@ mod tests {
             force: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
-            skip_registration: false,
+            register: false,
             github_action: false,
         };
         assert!(!resolve_interactive(&cmd).unwrap());
@@ -462,7 +479,7 @@ mod tests {
             force: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
-            skip_registration: false,
+            register: false,
             github_action: false,
         };
         // Auto-detect returns is_terminal() — result depends on environment
