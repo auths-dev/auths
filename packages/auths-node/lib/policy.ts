@@ -173,7 +173,7 @@ type Predicate = Record<string, unknown>
  *
  * @example
  * ```typescript
- * import { PolicyBuilder } from '@auths-dev/node'
+ * import { PolicyBuilder } from '@auths-dev/sdk'
  *
  * // Quick standard policy
  * const policy = PolicyBuilder.standard('sign_commit')
@@ -631,7 +631,7 @@ export function compilePolicy(policyJson: string): string {
  *
  * @example
  * ```typescript
- * import { compilePolicy, evaluatePolicy } from '@auths-dev/node'
+ * import { compilePolicy, evaluatePolicy } from '@auths-dev/sdk'
  *
  * const compiled = compilePolicy(policyJson)
  * const decision = evaluatePolicy(compiled, {

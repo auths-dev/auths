@@ -5,13 +5,13 @@ Decentralized identity for developers and AI agents. Sign, verify, and manage cr
 ## Install
 
 ```bash
-npm install @auths-dev/node
+npm install @auths-dev/sdk
 ```
 
 ## Quick start
 
 ```typescript
-import { Auths, verifyAttestation } from '@auths-dev/node'
+import { Auths, verifyAttestation } from '@auths-dev/sdk'
 
 const auths = new Auths()
 
@@ -28,7 +28,7 @@ console.log(sig.signature) // hex-encoded Ed25519 signature
 ## Identity management
 
 ```typescript
-import { Auths } from '@auths-dev/node'
+import { Auths } from '@auths-dev/sdk'
 
 const auths = new Auths({ repoPath: '~/.auths' })
 
@@ -64,7 +64,7 @@ auths.devices.revoke({
 ## Policy engine
 
 ```typescript
-import { PolicyBuilder, evaluatePolicy } from '@auths-dev/node'
+import { PolicyBuilder, evaluatePolicy } from '@auths-dev/sdk'
 
 // Build a standard policy
 const policy = PolicyBuilder.standard('sign_commit')
@@ -109,7 +109,7 @@ import {
   verifyAttestation,
   verifyChain,
   verifyAttestationWithCapability,
-} from '@auths-dev/node'
+} from '@auths-dev/sdk'
 
 // Single attestation
 const result = verifyAttestation(attestationJson, issuerPublicKeyHex)
@@ -127,7 +127,7 @@ const capResult = verifyAttestationWithCapability(
 ## Error handling
 
 ```typescript
-import { Auths, VerificationError, CryptoError, NetworkError } from '@auths-dev/node'
+import { Auths, VerificationError, CryptoError, NetworkError } from '@auths-dev/sdk'
 
 const auths = new Auths()
 try {

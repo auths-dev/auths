@@ -1,4 +1,4 @@
-# Releasing auths-python
+# Releasing auths
 
 ## Cutting a release
 
@@ -17,7 +17,7 @@ You can also publish manually via `workflow_dispatch` on the **Publish Python SD
 
 These steps only need to be done once before the first publish:
 
-1. **Register `auths-python` on PyPI** (or let the first publish create it)
+1. **Register `auths` on PyPI** (or let the first publish create it)
 2. **Configure OIDC Trusted Publisher on PyPI:**
    - Owner: `auths-dev`
    - Repository: `auths`

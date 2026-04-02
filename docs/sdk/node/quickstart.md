@@ -3,13 +3,13 @@
 ## Install
 
 ```bash
-npm install @auths-dev/node
+npm install @auths-dev/sdk
 ```
 
 ## Create an identity and sign a commit
 
 ```typescript
-import { Auths } from '@auths-dev/node'
+import { Auths } from '@auths-dev/sdk'
 
 const auths = new Auths()
 const identity = auths.identities.create({ label: 'laptop' })
@@ -36,7 +36,7 @@ console.log(`Device: ${device.did}`)
 ## Verify a single attestation
 
 ```typescript
-import { verifyAttestation } from '@auths-dev/node'
+import { verifyAttestation } from '@auths-dev/sdk'
 
 const result = await verifyAttestation(attestationJson, publicKeyHex)
 console.log(`Valid: ${result.valid}`)
@@ -45,7 +45,7 @@ console.log(`Valid: ${result.valid}`)
 ## Verify a chain
 
 ```typescript
-import { verifyChain } from '@auths-dev/node'
+import { verifyChain } from '@auths-dev/sdk'
 
 const report = await verifyChain(attestationChain, rootPublicKeyHex)
 console.log(`Chain status: ${report.status.statusType}`) // 'Valid'
@@ -54,7 +54,7 @@ console.log(`Chain status: ${report.status.statusType}`) // 'Valid'
 ## Build a policy
 
 ```typescript
-import { PolicyBuilder } from '@auths-dev/node'
+import { PolicyBuilder } from '@auths-dev/sdk'
 
 const policy = new PolicyBuilder()
   .notRevoked()
@@ -111,7 +111,7 @@ const members = auths.orgs.listMembers({ orgDid: org.orgDid })
 ## Error handling
 
 ```typescript
-import { Auths, CryptoError, KeychainError, AuthsError } from '@auths-dev/node'
+import { Auths, CryptoError, KeychainError, AuthsError } from '@auths-dev/sdk'
 
 try {
   auths.signAs({ message: data, identityDid: 'did:keri:nonexistent' })

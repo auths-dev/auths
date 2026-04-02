@@ -21,7 +21,7 @@ AuthsError
 All SDK errors extend `AuthsError`, so a single catch handles everything:
 
 ```typescript
-import { AuthsError } from '@auths-dev/node'
+import { AuthsError } from '@auths-dev/sdk'
 
 try {
   auths.signAs({ message: data, identityDid: did })
@@ -35,7 +35,7 @@ try {
 For finer control, catch specific subclasses:
 
 ```typescript
-import { CryptoError, KeychainError, NetworkError } from '@auths-dev/node'
+import { CryptoError, KeychainError, NetworkError } from '@auths-dev/sdk'
 
 try {
   auths.signAs({ message: data, identityDid: did })

@@ -20,11 +20,11 @@ export declare function createIdentity(keyAlias: string, repoPath: string, passp
 
 export declare function createOrg(label: string, repoPath: string, passphrase?: string | undefined | null): NapiOrgResult
 
-export declare function delegateAgent(agentName: string, capabilities: Array<string>, parentRepoPath: string, passphrase?: string | undefined | null, expiresInDays?: number | undefined | null, identityDid?: string | undefined | null): NapiDelegatedAgentBundle
+export declare function delegateAgent(agentName: string, capabilities: Array<string>, parentRepoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, identityDid?: string | undefined | null): NapiDelegatedAgentBundle
 
 export declare function evaluatePolicy(policyJson: string, issuer: string, subject: string, capabilities?: Array<string> | undefined | null, role?: string | undefined | null, revoked?: boolean | undefined | null, expiresAt?: string | undefined | null, repo?: string | undefined | null, environment?: string | undefined | null, signerType?: string | undefined | null, delegatedBy?: string | undefined | null, chainDepth?: number | undefined | null): NapiPolicyDecision
 
-export declare function extendDeviceAuthorization(deviceDid: string, identityKeyAlias: string, days: number, repoPath: string, passphrase?: string | undefined | null): NapiExtensionResult
+export declare function extendDeviceAuthorization(deviceDid: string, identityKeyAlias: string, expiresIn: number, repoPath: string, passphrase?: string | undefined | null): NapiExtensionResult
 
 export declare function generateAuditReport(targetRepoPath: string, authsRepoPath: string, since?: string | undefined | null, until?: string | undefined | null, author?: string | undefined | null, limit?: number | undefined | null): string
 
@@ -36,7 +36,7 @@ export declare function getPinnedIdentity(did: string, repoPath: string): NapiPi
 
 export declare function joinPairingSession(shortCode: string, endpoint: string, token: string, repoPath: string, deviceName?: string | undefined | null, passphrase?: string | undefined | null): Promise<NapiPairingResponse>
 
-export declare function linkDeviceToIdentity(identityKeyAlias: string, capabilities: Array<string>, repoPath: string, passphrase?: string | undefined | null, expiresInDays?: number | undefined | null): NapiLinkResult
+export declare function linkDeviceToIdentity(identityKeyAlias: string, capabilities: Array<string>, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null): NapiLinkResult
 
 export declare function listAttestations(repoPath: string): Array<NapiAttestation>
 
@@ -230,9 +230,9 @@ export declare function signActionAsAgent(actionType: string, payloadJson: strin
 
 export declare function signActionAsIdentity(actionType: string, payloadJson: string, identityDid: string, repoPath: string, passphrase?: string | undefined | null): NapiActionEnvelope
 
-export declare function signArtifact(filePath: string, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresInDays?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
+export declare function signArtifact(filePath: string, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
 
-export declare function signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresInDays?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
+export declare function signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
 
 export declare function signAsAgent(message: Buffer, keyAlias: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignResult
 

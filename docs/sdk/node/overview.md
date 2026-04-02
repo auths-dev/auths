@@ -5,7 +5,7 @@ Full-featured Node.js SDK for Auths decentralized identity, backed by Rust via n
 ## Installation
 
 ```bash
-npm install @auths-dev/node
+npm install @auths-dev/sdk
 ```
 
 Pre-built native binaries for Linux, macOS, and Windows (x86_64 and aarch64). No Rust toolchain required. Requires Node.js 20+.
@@ -13,7 +13,7 @@ Pre-built native binaries for Linux, macOS, and Windows (x86_64 and aarch64). No
 ## Quick taste
 
 ```typescript
-import { Auths } from '@auths-dev/node'
+import { Auths } from '@auths-dev/sdk'
 
 const auths = new Auths()
 const identity = auths.identities.create({ label: 'laptop' })

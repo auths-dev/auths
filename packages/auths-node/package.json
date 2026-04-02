@@ -1,5 +1,5 @@
 {
-  "name": "@auths-dev/node",
+  "name": "@auths-dev/sdk",
   "version": "0.1.0",
   "description": "Node.js bindings for the Auths decentralized identity SDK",
   "license": "Apache-2.0",

@@ -3,7 +3,7 @@
 ## Install
 
 ```bash
-pip install auths-python
+pip install auths
 ```
 
 ## Create an identity and sign a commit

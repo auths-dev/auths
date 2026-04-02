@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "auths-python"
+name = "auths"
 version = "0.1.0"
 description = "Auths Python SDK - decentralized identity for developers and AI agents"
 readme = "README.md"

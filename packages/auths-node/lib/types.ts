@@ -157,7 +157,7 @@ export interface BundleAttestation {
  * @example
  * ```typescript
  * import { readFileSync } from 'node:fs'
- * import type { IdentityBundle } from '@auths-dev/node'
+ * import type { IdentityBundle } from '@auths-dev/sdk'
  *
  * const bundle: IdentityBundle = JSON.parse(
  *   readFileSync('.auths/identity-bundle.json', 'utf-8')

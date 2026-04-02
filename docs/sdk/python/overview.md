@@ -5,7 +5,7 @@ Full-featured Python SDK for Auths decentralized identity, backed by Rust via Py
 ## Installation
 
 ```bash
-pip install auths-python
+pip install auths
 ```
 
 Pre-built wheels for Linux, macOS, and Windows (Python 3.8+ via ABI3). No Rust toolchain required.
@@ -13,7 +13,7 @@ Pre-built wheels for Linux, macOS, and Windows (Python 3.8+ via ABI3). No Rust t
 For JWT token verification, install the optional dependency:
 
 ```bash
-pip install auths-python[jwt]
+pip install auths[jwt]
 ```
 
 ## Quick taste

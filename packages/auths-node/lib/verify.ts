@@ -78,7 +78,7 @@ export interface WitnessConfig {
  *
  * @example
  * ```typescript
- * import { verifyAttestation } from '@auths-dev/node'
+ * import { verifyAttestation } from '@auths-dev/sdk'
  *
  * const result = await verifyAttestation(attestationJson, publicKeyHex)
  * console.log(result.valid) // true
@@ -119,7 +119,7 @@ export async function verifyAttestationWithCapability(attestationJson: string, i
  *
  * @example
  * ```typescript
- * import { verifyChain } from '@auths-dev/node'
+ * import { verifyChain } from '@auths-dev/sdk'
  *
  * const report = await verifyChain(attestationChain, rootPublicKeyHex)
  * console.log(report.status.statusType) // 'Valid'
@@ -214,7 +214,7 @@ export async function verifyAtTimeWithCapability(attestationJson: string, issuer
  *
  * @example
  * ```typescript
- * import { verifyChainWithWitnesses } from '@auths-dev/node'
+ * import { verifyChainWithWitnesses } from '@auths-dev/sdk'
  *
  * const report = await verifyChainWithWitnesses(chain, rootKey, {
  *   receipts: witnessReceipts,

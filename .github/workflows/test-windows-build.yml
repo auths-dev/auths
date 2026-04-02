@@ -1,0 +1,45 @@
+name: Test Windows CLI Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.93 --profile minimal
+          rustup default 1.93
+          rustup target add x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: x86_64-pc-windows-msvc
+
+      - name: Build CLI
+        run: cargo build --release --package auths-cli --target x86_64-pc-windows-msvc
+
+      - name: Verify binary
+        run: |
+          dir target\x86_64-pc-windows-msvc\release\auths.exe
+          target\x86_64-pc-windows-msvc\release\auths.exe --version
+          target\x86_64-pc-windows-msvc\release\auths.exe --help
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Force -Path staging
+          Copy-Item target/x86_64-pc-windows-msvc/release/auths.exe staging/
+          Copy-Item target/x86_64-pc-windows-msvc/release/auths-sign.exe staging/ -ErrorAction SilentlyContinue
+          Copy-Item target/x86_64-pc-windows-msvc/release/auths-verify.exe staging/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path staging/* -DestinationPath auths-windows-x86_64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auths-windows-x86_64
+          path: auths-windows-x86_64.zip

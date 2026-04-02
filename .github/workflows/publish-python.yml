@@ -116,7 +116,7 @@ jobs:
       id-token: write
     environment:
       name: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'testpypi' || 'pypi' }}
-      url: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'https://test.pypi.org/p/auths-python' || 'https://pypi.org/p/auths-python' }}
+      url: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'https://test.pypi.org/p/auths' || 'https://pypi.org/p/auths' }}
     steps:
       - uses: actions/download-artifact@v4
         with:

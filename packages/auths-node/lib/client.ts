@@ -73,7 +73,7 @@ export interface VerifyChainOptions {
  *
  * @example
  * ```typescript
- * import { Auths } from '@auths-dev/node'
+ * import { Auths } from '@auths-dev/sdk'
  *
  * const auths = new Auths()
  *

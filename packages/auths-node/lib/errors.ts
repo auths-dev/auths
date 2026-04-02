@@ -7,7 +7,7 @@
  *
  * @example
  * ```typescript
- * import { Auths, AuthsError } from '@auths-dev/node'
+ * import { Auths, AuthsError } from '@auths-dev/sdk'
  *
  * try {
  *   auths.signAs({ message: data, identityDid: did })
@@ -36,7 +36,7 @@ export class AuthsError extends Error {
  *
  * @example
  * ```typescript
- * import { verifyAttestation, VerificationError } from '@auths-dev/node'
+ * import { verifyAttestation, VerificationError } from '@auths-dev/sdk'
  *
  * try {
  *   await verifyAttestation(json, publicKey)
@@ -61,7 +61,7 @@ export class VerificationError extends AuthsError {
  *
  * @example
  * ```typescript
- * import { Auths, CryptoError } from '@auths-dev/node'
+ * import { Auths, CryptoError } from '@auths-dev/sdk'
  *
  * try {
  *   auths.signAs({ message: data, identityDid: did })
@@ -86,7 +86,7 @@ export class CryptoError extends AuthsError {
  *
  * @example
  * ```typescript
- * import { Auths, KeychainError } from '@auths-dev/node'
+ * import { Auths, KeychainError } from '@auths-dev/sdk'
  *
  * try {
  *   auths.identities.create({ label: 'main' })
@@ -111,7 +111,7 @@ export class KeychainError extends AuthsError {
  *
  * @example
  * ```typescript
- * import { Auths, StorageError } from '@auths-dev/node'
+ * import { Auths, StorageError } from '@auths-dev/sdk'
  *
  * try {
  *   auths.trust.pin({ did: 'did:keri:ENOTREAL' })
@@ -136,7 +136,7 @@ export class StorageError extends AuthsError {
  *
  * @example
  * ```typescript
- * import { NetworkError } from '@auths-dev/node'
+ * import { NetworkError } from '@auths-dev/sdk'
  *
  * try {
  *   // network operation
@@ -164,7 +164,7 @@ export class NetworkError extends AuthsError {
  *
  * @example
  * ```typescript
- * import { Auths, IdentityError } from '@auths-dev/node'
+ * import { Auths, IdentityError } from '@auths-dev/sdk'
  *
  * try {
  *   auths.devices.link({ identityDid: did, capabilities: ['sign'] })
@@ -189,7 +189,7 @@ export class IdentityError extends AuthsError {
  *
  * @example
  * ```typescript
- * import { Auths, OrgError } from '@auths-dev/node'
+ * import { Auths, OrgError } from '@auths-dev/sdk'
  *
  * try {
  *   auths.orgs.addMember({ orgDid, memberDid, role: 'member' })
@@ -214,7 +214,7 @@ export class OrgError extends AuthsError {
  *
  * @example
  * ```typescript
- * import { PairingError } from '@auths-dev/node'
+ * import { PairingError } from '@auths-dev/sdk'
  *
  * try {
  *   await auths.pairing.createSession({ bindAddress: '127.0.0.1' })

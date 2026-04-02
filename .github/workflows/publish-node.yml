@@ -25,20 +25,39 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
+          # macOS — both archs build natively on arm64 runner
           - os: macos-latest
             target: aarch64-apple-darwin
+
+          # Linux (glibc) — native runners per arch
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+
+          # Linux (musl) — native runners per arch
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+
+          # Windows — native runners per arch
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Remove rust-toolchain.toml
+        shell: bash
+        run: rm -f rust-toolchain.toml
+
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.93"
           targets: ${{ matrix.target }}
+          components: clippy,rustfmt
 
       - uses: actions/setup-node@v4
         with:
@@ -51,16 +70,22 @@ jobs:
         working-directory: packages/auths-node
         run: pnpm install
 
-      - name: Install cross-compilation tools (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Install musl tools (Linux x64)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y musl-tools
+
+      - name: Install musl tools (Linux arm64)
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
 
       - name: Build native module
         working-directory: packages/auths-node
         env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64-linux-gnu-gcc' || '' }}
+          RUSTUP_TOOLCHAIN: "1.93"
         run: pnpm build -- --target ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
@@ -78,8 +103,12 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: bindings-x86_64-unknown-linux-gnu
-          - os: macos-14
+          - os: ubuntu-24.04-arm
+            artifact: bindings-aarch64-unknown-linux-gnu
+          - os: macos-latest
             artifact: bindings-aarch64-apple-darwin
+          - os: windows-latest
+            artifact: bindings-x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
 
@@ -108,9 +137,48 @@ jobs:
         working-directory: packages/auths-node
         run: pnpm test
 
+  universal-macos:
+    name: Universal macOS binary
+    needs: [build]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        working-directory: packages/auths-node
+        run: pnpm install
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bindings-aarch64-apple-darwin
+          path: packages/auths-node/artifacts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bindings-x86_64-apple-darwin
+          path: packages/auths-node/artifacts
+
+      - name: Build universal binary
+        working-directory: packages/auths-node
+        run: |
+          pnpm artifacts
+          pnpm universal
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-universal-apple-darwin
+          path: packages/auths-node/auths.darwin-universal.node
+
   publish:
     name: Publish to npm
-    needs: [build, test]
+    needs: [build, test, universal-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'npm')
     permissions:

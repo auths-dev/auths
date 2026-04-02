@@ -5,7 +5,7 @@ Decentralized identity for developers and AI agents. Sign, verify, and manage cr
 ## Install
 
 ```bash
-pip install auths-python
+pip install auths
 ```
 
 ## Quick start
