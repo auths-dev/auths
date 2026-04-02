@@ -27,6 +27,7 @@ use crate::commands::log::LogCommand;
 use crate::commands::namespace::NamespaceCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
+use crate::commands::reset::ResetCommand;
 use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
 use crate::commands::sign_commit::SignCommitCommand;
@@ -93,6 +94,7 @@ pub struct AuthsCli {
 #[command(rename_all = "lowercase")]
 pub enum RootCommand {
     Init(InitCommand),
+    Reset(ResetCommand),
     Sign(SignCommand),
     SignCommit(SignCommitCommand),
     Verify(UnifiedVerifyCommand),

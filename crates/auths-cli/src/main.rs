@@ -21,6 +21,7 @@ fn main() {
 fn audit_action(command: &RootCommand) -> Option<&'static str> {
     match command {
         RootCommand::Init(_) => Some("identity_created"),
+        RootCommand::Reset(_) => Some("identity_reset"),
         RootCommand::Pair(_) => Some("device_paired"),
         RootCommand::Device(_) => Some("device_command"),
         RootCommand::Verify(_) => Some("commit_verified"),
@@ -74,6 +75,7 @@ fn run() -> Result<()> {
     let result = match command {
         RootCommand::Error(cmd) => cmd.execute(&ctx),
         RootCommand::Init(cmd) => cmd.execute(&ctx),
+        RootCommand::Reset(cmd) => cmd.execute(&ctx),
         RootCommand::Sign(cmd) => cmd.execute(&ctx),
         RootCommand::SignCommit(cmd) => cmd.execute(&ctx),
         RootCommand::Verify(cmd) => cmd.execute(&ctx),

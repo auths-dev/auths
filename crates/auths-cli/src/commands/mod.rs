@@ -28,6 +28,7 @@ pub mod namespace;
 pub mod org;
 pub mod policy;
 pub mod provision;
+pub mod reset;
 pub mod scim;
 pub mod sign;
 pub mod sign_commit;

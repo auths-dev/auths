@@ -44,6 +44,21 @@ macro_rules! git_config_provider_contract_tests {
                 let result = provider.set("user.signingkey", "/path/to/key");
                 assert!(result.is_ok(), "setting a different key should succeed");
             }
+
+            #[test]
+            fn contract_unset_existing_key() {
+                let (provider, _guard) = $setup;
+                provider.set("gpg.format", "ssh").unwrap();
+                let result = provider.unset("gpg.format");
+                assert!(result.is_ok(), "unsetting an existing key should succeed");
+            }
+
+            #[test]
+            fn contract_unset_missing_key() {
+                let (provider, _guard) = $setup;
+                let result = provider.unset("nonexistent.key");
+                assert!(result.is_ok(), "unsetting a missing key should succeed");
+            }
         }
     };
 }

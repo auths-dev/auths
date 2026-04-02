@@ -19,4 +19,7 @@ pub enum GitConfigError {
 pub trait GitConfigProvider: Send + Sync {
     /// Set a global git config key to the given value.
     fn set(&self, key: &str, value: &str) -> Result<(), GitConfigError>;
+
+    /// Remove a git config key. Returns Ok(()) even if the key was not set.
+    fn unset(&self, key: &str) -> Result<(), GitConfigError>;
 }
