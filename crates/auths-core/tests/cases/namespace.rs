@@ -188,40 +188,40 @@ fn namespace_verify_error_codes() {
                 ecosystem: Ecosystem::Npm,
                 package_name: "test".to_string(),
             },
-            "AUTHS-E4402",
+            "AUTHS-E3962",
         ),
         (
             NamespaceVerifyError::OwnershipNotConfirmed {
                 ecosystem: Ecosystem::Npm,
                 package_name: "test".to_string(),
             },
-            "AUTHS-E4403",
+            "AUTHS-E3963",
         ),
-        (NamespaceVerifyError::ChallengeExpired, "AUTHS-E4404"),
+        (NamespaceVerifyError::ChallengeExpired, "AUTHS-E3964"),
         (
             NamespaceVerifyError::InvalidToken {
                 reason: "test".to_string(),
             },
-            "AUTHS-E4405",
+            "AUTHS-E3965",
         ),
         (
             NamespaceVerifyError::InvalidPackageName {
                 name: "test".to_string(),
                 reason: "test".to_string(),
             },
-            "AUTHS-E4406",
+            "AUTHS-E3966",
         ),
         (
             NamespaceVerifyError::NetworkError {
                 message: "test".to_string(),
             },
-            "AUTHS-E4407",
+            "AUTHS-E3967",
         ),
         (
             NamespaceVerifyError::RateLimited {
                 ecosystem: Ecosystem::Npm,
             },
-            "AUTHS-E4408",
+            "AUTHS-E3968",
         ),
     ];
 

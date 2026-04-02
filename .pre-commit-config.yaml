@@ -68,8 +68,8 @@ repos:
       # alternative targets, or cross-compilation.
 
       - id: cargo-test
-        name: cargo test (unit tests)
-        entry: cargo nextest run --workspace --profile pre-commit -E 'not kind(test)'
+        name: cargo test
+        entry: cargo nextest run --workspace --profile pre-commit
         language: system
         types: [rust]
         pass_filenames: false
