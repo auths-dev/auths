@@ -7,11 +7,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use auths_sdk::workflows::allowed_signers::AllowedSigners;
+use auths_sdk::workflows::diagnostics::{MIN_GIT_VERSION, parse_git_version};
 use auths_storage::git::RegistryAttestationStorage;
 
 use crate::ux::format::Output;
-
-pub(crate) const MIN_GIT_VERSION: (u32, u32, u32) = (2, 34, 0);
 
 pub(crate) fn get_auths_repo_path() -> Result<PathBuf> {
     auths_core::paths::auths_home().map_err(|e| anyhow!(e))
@@ -28,7 +27,7 @@ pub(crate) fn check_git_version(out: &Output) -> Result<()> {
     }
 
     let version_str = String::from_utf8_lossy(&output.stdout);
-    let version = parse_git_version(&version_str)?;
+    let version = cli_parse_git_version(&version_str)?;
 
     if version < MIN_GIT_VERSION {
         return Err(anyhow!(
@@ -49,31 +48,9 @@ pub(crate) fn check_git_version(out: &Output) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn parse_git_version(version_str: &str) -> Result<(u32, u32, u32)> {
-    let parts: Vec<&str> = version_str.split_whitespace().collect();
-    let version_part = parts
-        .iter()
-        .find(|s| s.chars().next().is_some_and(|c| c.is_ascii_digit()))
-        .ok_or_else(|| anyhow!("Could not parse Git version from: {}", version_str))?;
-
-    let numbers: Vec<u32> = version_part
-        .split('.')
-        .take(3)
-        .filter_map(|s| {
-            s.chars()
-                .take_while(|c| c.is_ascii_digit())
-                .collect::<String>()
-                .parse()
-                .ok()
-        })
-        .collect();
-
-    match numbers.as_slice() {
-        [major, minor, patch, ..] => Ok((*major, *minor, *patch)),
-        [major, minor] => Ok((*major, *minor, 0)),
-        [major] => Ok((*major, 0, 0)),
-        _ => Err(anyhow!("Could not parse Git version: {}", version_str)),
-    }
+pub(crate) fn cli_parse_git_version(version_str: &str) -> Result<(u32, u32, u32)> {
+    parse_git_version(version_str)
+        .ok_or_else(|| anyhow!("Could not parse Git version from: {}", version_str))
 }
 
 #[allow(clippy::disallowed_methods)] // CLI boundary: CI env detection
@@ -470,13 +447,13 @@ mod tests {
 
     #[test]
     fn test_parse_git_version() {
-        assert_eq!(parse_git_version("git version 2.39.0").unwrap(), (2, 39, 0));
-        assert_eq!(parse_git_version("git version 2.34.1").unwrap(), (2, 34, 1));
+        assert_eq!(parse_git_version("git version 2.39.0"), Some((2, 39, 0)));
+        assert_eq!(parse_git_version("git version 2.34.1"), Some((2, 34, 1)));
         assert_eq!(
-            parse_git_version("git version 2.39.0.windows.1").unwrap(),
-            (2, 39, 0)
+            parse_git_version("git version 2.39.0.windows.1"),
+            Some((2, 39, 0))
         );
-        assert_eq!(parse_git_version("git version 2.30").unwrap(), (2, 30, 0));
+        assert_eq!(parse_git_version("git version 2.30"), Some((2, 30, 0)));
     }
 
     #[test]
