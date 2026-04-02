@@ -3,6 +3,7 @@
 use anyhow::{Context, Result, anyhow};
 use clap_complete::Shell;
 use dialoguer::MultiSelect;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -374,10 +375,17 @@ pub(crate) fn offer_shell_completions(interactive: bool, out: &Output) -> Result
 
     if !interactive {
         if path.parent().is_some_and(|p| p.exists()) {
-            if let Err(e) = install_shell_completions(shell, &path) {
-                out.print_warn(&format!("Could not install completions: {}", e));
-            } else {
-                out.print_success(&format!("Installed {} completions", shell));
+            match install_shell_completions(shell, &path) {
+                Ok(zshrc_modified) => {
+                    out.print_success(&format!("Installed {} completions", shell));
+                    if zshrc_modified {
+                        out.println("  Updated ~/.zshrc with fpath configuration");
+                    }
+                    out.println(&shell_reload_hint(shell, &path));
+                }
+                Err(e) => {
+                    out.print_warn(&format!("Could not install completions: {}", e));
+                }
             }
         }
         return Ok(());
@@ -395,12 +403,12 @@ pub(crate) fn offer_shell_completions(interactive: bool, out: &Output) -> Result
 
     if install {
         match install_shell_completions(shell, &path) {
-            Ok(()) => {
+            Ok(zshrc_modified) => {
                 out.print_success(&format!("Installed {} completions", shell));
-                out.println(&format!(
-                    "  Restart your shell or run: source {}",
-                    path.display()
-                ));
+                if zshrc_modified {
+                    out.println("  Updated ~/.zshrc with fpath configuration");
+                }
+                out.println(&shell_reload_hint(shell, &path));
             }
             Err(e) => {
                 out.print_warn(&format!("Could not install completions: {}", e));
@@ -411,7 +419,60 @@ pub(crate) fn offer_shell_completions(interactive: bool, out: &Output) -> Result
     Ok(())
 }
 
-fn install_shell_completions(shell: Shell, path: &Path) -> Result<()> {
+/// Returns a shell-appropriate hint for activating completions.
+fn shell_reload_hint(shell: Shell, path: &Path) -> String {
+    match shell {
+        Shell::Zsh => "  Restart your shell or run: autoload -Uz compinit && compinit".to_string(),
+        _ => format!("  Restart your shell or run: source {}", path.display()),
+    }
+}
+
+/// Ensures `~/.zfunc` is in the zsh fpath by appending to `.zshrc` if needed.
+///
+/// Args:
+/// * `completion_path` - The path where the completion file was written.
+/// * `home` - The user's home directory.
+///
+/// Returns `Ok(true)` if `.zshrc` was modified, `Ok(false)` otherwise.
+fn ensure_zfunc_in_fpath(completion_path: &Path, home: &Path) -> Result<bool> {
+    let is_zfunc = completion_path
+        .parent()
+        .and_then(|p| p.file_name())
+        .is_some_and(|name| name == ".zfunc");
+
+    if !is_zfunc {
+        return Ok(false);
+    }
+
+    let zshrc = home.join(".zshrc");
+    let contents = std::fs::read_to_string(&zshrc).unwrap_or_default();
+
+    let already_configured = contents
+        .lines()
+        .any(|line| line.contains("fpath") && line.contains(".zfunc"));
+
+    if already_configured {
+        return Ok(false);
+    }
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&zshrc)
+        .with_context(|| format!("Failed to open {}", zshrc.display()))?;
+
+    file.write_all(
+        b"\n# Added by auths init\nfpath+=~/.zfunc\nautoload -Uz compinit && compinit\n",
+    )
+    .with_context(|| format!("Failed to write to {}", zshrc.display()))?;
+
+    Ok(true)
+}
+
+/// Install shell completions and configure fpath for zsh if needed.
+///
+/// Returns `Ok(true)` if `.zshrc` was modified for zsh fpath setup.
+fn install_shell_completions(shell: Shell, path: &Path) -> Result<bool> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create directory: {:?}", parent))?;
@@ -439,7 +500,13 @@ fn install_shell_completions(shell: Shell, path: &Path) -> Result<()> {
     std::fs::write(path, &output.stdout)
         .with_context(|| format!("Failed to write completions to {:?}", path))?;
 
-    Ok(())
+    if shell == Shell::Zsh
+        && let Some(home) = dirs::home_dir()
+    {
+        return ensure_zfunc_in_fpath(path, &home);
+    }
+
+    Ok(false)
 }
 
 #[cfg(test)]
@@ -514,5 +581,73 @@ mod tests {
         assert!(path.is_some());
         let p = path.unwrap();
         assert!(p.ends_with("auths.fish"));
+    }
+
+    #[test]
+    fn test_ensure_zfunc_in_fpath_adds_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::write(home.join(".zshrc"), "# existing config\n").unwrap();
+
+        let completion_path = home.join(".zfunc/_auths");
+        let modified = ensure_zfunc_in_fpath(&completion_path, home).unwrap();
+
+        assert!(modified);
+        let contents = std::fs::read_to_string(home.join(".zshrc")).unwrap();
+        assert!(contents.contains("fpath+=~/.zfunc"));
+        assert!(contents.contains("compinit"));
+    }
+
+    #[test]
+    fn test_ensure_zfunc_in_fpath_skips_when_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::write(home.join(".zshrc"), "fpath+=~/.zfunc\n").unwrap();
+
+        let completion_path = home.join(".zfunc/_auths");
+        let modified = ensure_zfunc_in_fpath(&completion_path, home).unwrap();
+
+        assert!(!modified);
+    }
+
+    #[test]
+    fn test_ensure_zfunc_in_fpath_skips_non_zfunc_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::write(home.join(".zshrc"), "").unwrap();
+
+        let completion_path = home.join(".oh-my-zsh/completions/_auths");
+        let modified = ensure_zfunc_in_fpath(&completion_path, home).unwrap();
+
+        assert!(!modified);
+    }
+
+    #[test]
+    fn test_ensure_zfunc_in_fpath_creates_zshrc_if_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+
+        let completion_path = home.join(".zfunc/_auths");
+        let modified = ensure_zfunc_in_fpath(&completion_path, home).unwrap();
+
+        assert!(modified);
+        assert!(home.join(".zshrc").exists());
+        let contents = std::fs::read_to_string(home.join(".zshrc")).unwrap();
+        assert!(contents.contains("fpath+=~/.zfunc"));
+    }
+
+    #[test]
+    fn test_shell_reload_hint_zsh_uses_compinit() {
+        let hint = shell_reload_hint(Shell::Zsh, Path::new("~/.zfunc/_auths"));
+        assert!(hint.contains("compinit"));
+        assert!(!hint.contains("source"));
+    }
+
+    #[test]
+    fn test_shell_reload_hint_bash_uses_source() {
+        let path = Path::new("/tmp/completions/auths");
+        let hint = shell_reload_hint(Shell::Bash, path);
+        assert!(hint.contains("source"));
+        assert!(hint.contains("/tmp/completions/auths"));
     }
 }
