@@ -9,6 +9,7 @@ use auths_sdk::ports::diagnostics::{
     CheckCategory, CheckResult, ConfigIssue, DiagnosticFix, FixApplied,
 };
 use auths_sdk::workflows::diagnostics::DiagnosticsWorkflow;
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use serde::Serialize;
 use std::io::IsTerminal;
@@ -147,7 +148,9 @@ fn compute_exit_code(checks: &[Check]) -> i32 {
 }
 
 /// Run all prerequisite checks.
+#[allow(clippy::disallowed_methods)] // CLI boundary: Utc::now() injected here
 fn run_checks() -> Vec<Check> {
+    let now = Utc::now();
     let adapter = PosixDiagnosticAdapter;
     let workflow = DiagnosticsWorkflow::new(&adapter, &adapter);
 
@@ -155,13 +158,6 @@ fn run_checks() -> Vec<Check> {
 
     if let Ok(report) = workflow.run() {
         for cr in report.checks {
-            // Categorize SDK checks: system tools are Advisory, git signing is Critical
-            let category = if cr.name == "Git signing config" {
-                CheckCategory::Critical
-            } else {
-                CheckCategory::Advisory
-            };
-
             let suggestion = if cr.passed {
                 None
             } else {
@@ -172,15 +168,19 @@ fn run_checks() -> Vec<Check> {
                 passed: cr.passed,
                 detail: format_check_detail(&cr),
                 suggestion,
-                category,
+                category: cr.category,
             });
         }
     }
 
     // Domain checks are all Critical
     checks.push(check_keychain_accessible());
-    checks.push(check_identity_exists());
+    checks.push(check_auths_repo());
+    checks.push(check_identity_valid(now));
     checks.push(check_allowed_signers_file());
+
+    // Advisory: network connectivity
+    checks.push(check_registry_connectivity());
 
     checks
 }
@@ -303,9 +303,19 @@ fn suggestion_for_check(name: &str) -> Option<String> {
         "Git installed" => {
             Some("Install Git for your platform (see: https://git-scm.com/downloads)".to_string())
         }
+        "Git version" => Some(
+            "Upgrade Git to 2.34.0+ for SSH signing: https://git-scm.com/downloads".to_string(),
+        ),
+        "Git user identity" => Some(
+            "Run: git config --global user.name \"Your Name\" && git config --global user.email \"you@example.com\"".to_string(),
+        ),
         "ssh-keygen installed" => Some("Install OpenSSH for your platform.".to_string()),
         "Git signing config" => Some("Run: auths doctor --fix".to_string()),
+        "Auths directory" => Some("Run: auths init --profile developer".to_string()),
         "Allowed signers file" => Some("Run: auths doctor --fix".to_string()),
+        "Registry connectivity" => {
+            Some("Check your internet connection or try again later.".to_string())
+        }
         _ => None,
     }
 }
@@ -332,7 +342,46 @@ fn check_keychain_accessible() -> Check {
     }
 }
 
-fn check_identity_exists() -> Check {
+fn check_auths_repo() -> Check {
+    let (passed, detail, suggestion) = match auths_core::paths::auths_home() {
+        Ok(path) => {
+            if !path.exists() {
+                (
+                    false,
+                    format!("{} (not found)", path.display()),
+                    Some("Run: auths init --profile developer".to_string()),
+                )
+            } else {
+                match crate::factories::storage::open_git_repo(&path) {
+                    Ok(_) => (
+                        true,
+                        format!("{} (valid git repository)", path.display()),
+                        None,
+                    ),
+                    Err(_) => (
+                        false,
+                        format!("{} (exists but not a valid git repo)", path.display()),
+                        Some("Run: auths init --profile developer".to_string()),
+                    ),
+                }
+            }
+        }
+        Err(e) => (
+            false,
+            format!("Cannot resolve path: {e}"),
+            Some("Run: auths init --profile developer".to_string()),
+        ),
+    };
+    Check {
+        name: "Auths directory".to_string(),
+        passed,
+        detail,
+        suggestion,
+        category: CheckCategory::Critical,
+    }
+}
+
+fn check_identity_valid(now: DateTime<Utc>) -> Check {
     let (passed, detail, suggestion) = match keychain::get_platform_keychain() {
         Ok(keychain) => match keychain.list_aliases() {
             Ok(aliases) if aliases.is_empty() => (
@@ -340,7 +389,23 @@ fn check_identity_exists() -> Check {
                 "No keys found in keychain".to_string(),
                 Some("Run: auths init --profile developer  (or: auths id init)".to_string()),
             ),
-            Ok(aliases) => (true, format!("{} key(s) found", aliases.len()), None),
+            Ok(aliases) => {
+                let key_count = aliases.len();
+                let expiry_info = check_attestation_expiry(now);
+                match expiry_info {
+                    ExpiryStatus::AllExpired(msg) => (
+                        false,
+                        format!("{key_count} key(s) found, but {msg}"),
+                        Some("Run: auths device refresh".to_string()),
+                    ),
+                    ExpiryStatus::ExpiringSoon(msg) => {
+                        (true, format!("{key_count} key(s) found ({msg})"), None)
+                    }
+                    ExpiryStatus::Ok | ExpiryStatus::NoAttestations => {
+                        (true, format!("{key_count} key(s) found"), None)
+                    }
+                }
+            }
             Err(e) => (
                 false,
                 format!("Failed to list keys: {e}"),
@@ -360,6 +425,67 @@ fn check_identity_exists() -> Check {
         suggestion,
         category: CheckCategory::Critical,
     }
+}
+
+enum ExpiryStatus {
+    Ok,
+    NoAttestations,
+    ExpiringSoon(String),
+    AllExpired(String),
+}
+
+fn check_attestation_expiry(now: DateTime<Utc>) -> ExpiryStatus {
+    use auths_id::storage::attestation::AttestationSource;
+    use auths_storage::git::RegistryAttestationStorage;
+
+    let repo_path = match auths_core::paths::auths_home() {
+        Ok(p) if p.exists() => p,
+        _ => return ExpiryStatus::NoAttestations,
+    };
+
+    let storage = RegistryAttestationStorage::new(&repo_path);
+    let attestations = match storage.load_all_attestations() {
+        Ok(a) => a,
+        Err(_) => return ExpiryStatus::NoAttestations,
+    };
+
+    if attestations.is_empty() {
+        return ExpiryStatus::NoAttestations;
+    }
+
+    let active: Vec<_> = attestations
+        .iter()
+        .filter(|a| a.revoked_at.is_none())
+        .collect();
+
+    if active.is_empty() {
+        return ExpiryStatus::AllExpired("all attestations revoked".to_string());
+    }
+
+    let with_expiry: Vec<_> = active.iter().filter(|a| a.expires_at.is_some()).collect();
+
+    if with_expiry.is_empty() {
+        return ExpiryStatus::Ok;
+    }
+
+    let all_expired = with_expiry
+        .iter()
+        .all(|a| a.expires_at.is_some_and(|exp| exp < now));
+
+    if all_expired {
+        return ExpiryStatus::AllExpired("all attestations expired".to_string());
+    }
+
+    let warn_threshold = now + chrono::Duration::days(7);
+    let expiring_soon = with_expiry
+        .iter()
+        .any(|a| a.expires_at.is_some_and(|exp| exp < warn_threshold));
+
+    if expiring_soon {
+        return ExpiryStatus::ExpiringSoon("some attestations expiring within 7 days".to_string());
+    }
+
+    ExpiryStatus::Ok
 }
 
 fn check_allowed_signers_file() -> Check {
@@ -434,6 +560,41 @@ fn check_allowed_signers_file() -> Check {
     }
 }
 
+fn check_registry_connectivity() -> Check {
+    use auths_sdk::registration::DEFAULT_REGISTRY_URL;
+
+    let url = format!("{DEFAULT_REGISTRY_URL}/health");
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build();
+
+    let (passed, detail) = match client {
+        Ok(client) => match client.get(&url).send() {
+            Ok(resp) if resp.status().is_success() => {
+                (true, format!("{DEFAULT_REGISTRY_URL} (reachable)"))
+            }
+            Ok(resp) => (
+                false,
+                format!("{DEFAULT_REGISTRY_URL} (HTTP {})", resp.status()),
+            ),
+            Err(e) => (false, format!("unreachable: {e}")),
+        },
+        Err(e) => (false, format!("HTTP client error: {e}")),
+    };
+
+    Check {
+        name: "Registry connectivity".to_string(),
+        passed,
+        detail,
+        suggestion: if passed {
+            None
+        } else {
+            suggestion_for_check("Registry connectivity")
+        },
+        category: CheckCategory::Advisory,
+    }
+}
+
 /// Print the report in human-readable format.
 fn print_report(report: &DoctorReport) {
     let out = Output::new();
@@ -502,16 +663,25 @@ mod tests {
     }
 
     #[test]
-    fn test_git_signing_config_checks_all_five_configs() {
+    fn test_workflow_includes_version_and_user_checks() {
         use super::*;
         let adapter = PosixDiagnosticAdapter;
         let workflow = DiagnosticsWorkflow::new(&adapter, &adapter);
         let report = workflow.run().unwrap();
-        let signing_check = report
-            .checks
-            .iter()
-            .find(|c| c.name == "Git signing config");
-        assert!(signing_check.is_some(), "signing config check must exist");
+
+        let check_names: Vec<&str> = report.checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(
+            check_names.contains(&"Git signing config"),
+            "signing config check must exist"
+        );
+        assert!(
+            check_names.contains(&"Git version"),
+            "git version check must exist"
+        );
+        assert!(
+            check_names.contains(&"Git user identity"),
+            "git user identity check must exist"
+        );
     }
 
     #[test]
@@ -525,5 +695,14 @@ mod tests {
         for text in suggestions.into_iter().flatten() {
             assert!(text.starts_with("Run:"), "bad suggestion: {}", text);
         }
+    }
+
+    #[test]
+    fn test_suggestion_for_all_new_checks() {
+        use super::suggestion_for_check;
+        assert!(suggestion_for_check("Git version").is_some());
+        assert!(suggestion_for_check("Git user identity").is_some());
+        assert!(suggestion_for_check("Auths directory").is_some());
+        assert!(suggestion_for_check("Registry connectivity").is_some());
     }
 }

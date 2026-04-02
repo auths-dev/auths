@@ -5,6 +5,7 @@ use crate::ports::diagnostics::{
 /// Configurable fake for [`GitDiagnosticProvider`].
 pub struct FakeGitDiagnosticProvider {
     version_passes: bool,
+    version_string: String,
     configs: Vec<(String, Option<String>)>,
 }
 
@@ -17,11 +18,21 @@ impl FakeGitDiagnosticProvider {
     pub fn new(version_passes: bool, configs: Vec<(&str, Option<&str>)>) -> Self {
         Self {
             version_passes,
+            version_string: "git version 2.40.0".to_string(),
             configs: configs
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.map(str::to_string)))
                 .collect(),
         }
+    }
+
+    /// Override the version string returned by `check_git_version`.
+    ///
+    /// Args:
+    /// * `version`: Raw version string, e.g. `"git version 2.30.0"`.
+    pub fn with_version_string(mut self, version: &str) -> Self {
+        self.version_string = version.to_string();
+        self
     }
 }
 
@@ -31,7 +42,7 @@ impl GitDiagnosticProvider for FakeGitDiagnosticProvider {
             name: "Git installed".to_string(),
             passed: self.version_passes,
             message: if self.version_passes {
-                Some("git version 2.40.0".to_string())
+                Some(self.version_string.clone())
             } else {
                 Some("git not found".to_string())
             },
