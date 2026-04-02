@@ -101,6 +101,14 @@ impl GitConfigProvider for FakeGitConfigProvider {
             .insert(key.into(), value.into());
         Ok(())
     }
+
+    fn unset(&self, key: &str) -> Result<(), GitConfigError> {
+        self.configs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(key);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
