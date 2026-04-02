@@ -1,4 +1,5 @@
 mod doctor;
+mod golden_path;
 mod helpers;
 mod init;
 mod json_output;
