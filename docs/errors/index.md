@@ -164,6 +164,9 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4406](AUTHS-E4406.md) | `auths-id` | `IdentityError::KeyStorage` | Key storage error: {0} |
 | [AUTHS-E4407](AUTHS-E4407.md) | `auths-id` | `IdentityError::KeyRetrieval` | Key retrieval error: {0} |
 | [AUTHS-E4408](AUTHS-E4408.md) | `auths-id` | `IdentityError::RingError` | Ring crypto error: {0} |
+| [AUTHS-E4409](AUTHS-E4409.md) | `auths-id` | `StorageError::NotFound` | _(transparent)_ |
+| [AUTHS-E4410](AUTHS-E4410.md) | `auths-id` | `StorageError::CasConflict` | _(transparent)_ |
+| [AUTHS-E4411](AUTHS-E4411.md) | `auths-id` | `StorageError::Io` | _(transparent)_ |
 | [AUTHS-E4501](AUTHS-E4501.md) | `auths-id` | `ValidationError::InvalidSaid` | Invalid SAID: expected {expected}, got {actual} |
 | [AUTHS-E4502](AUTHS-E4502.md) | `auths-id` | `ValidationError::BrokenChain` | Broken chain: event {sequence} references {referenced}, but previous was {actual} |
 | [AUTHS-E4503](AUTHS-E4503.md) | `auths-id` | `ValidationError::InvalidSequence` | Invalid sequence: expected {expected}, got {actual} |
@@ -242,21 +245,17 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4992](AUTHS-E4992.md) | `auths-id` | `HookError::NotGitRepo` | Not a Git repository: {0} |
 | [AUTHS-E5001](AUTHS-E5001.md) | `auths-sdk` | `SetupError::IdentityAlreadyExists` | identity already exists: {did} |
 | [AUTHS-E5002](AUTHS-E5002.md) | `auths-sdk` | `SetupError::KeychainUnavailable` | keychain unavailable ({backend}): {reason} |
-| [AUTHS-E5003](AUTHS-E5003.md) | `auths-sdk` | `SetupError::StorageError` | storage error: {0} |
 | [AUTHS-E5004](AUTHS-E5004.md) | `auths-sdk` | `SetupError::GitConfigError` | git config error: {0} |
-| [AUTHS-E5005](AUTHS-E5005.md) | `auths-sdk` | `SetupError::RegistrationFailed` | registration failed: {0} |
 | [AUTHS-E5006](AUTHS-E5006.md) | `auths-sdk` | `SetupError::PlatformVerificationFailed` | platform verification failed: {0} |
 | [AUTHS-E5007](AUTHS-E5007.md) | `auths-sdk` | `SetupError::InvalidSetupConfig` | invalid setup config: {0} |
 | [AUTHS-E5101](AUTHS-E5101.md) | `auths-sdk` | `DeviceError::IdentityNotFound` | identity not found: {did} |
 | [AUTHS-E5102](AUTHS-E5102.md) | `auths-sdk` | `DeviceError::DeviceNotFound` | device not found: {did} |
 | [AUTHS-E5103](AUTHS-E5103.md) | `auths-sdk` | `DeviceError::AttestationError` | attestation error: {0} |
-| [AUTHS-E5104](AUTHS-E5104.md) | `auths-sdk` | `DeviceError::StorageError` | storage error: {0} |
 | [AUTHS-E5105](AUTHS-E5105.md) | `auths-sdk` | `DeviceError::DeviceDidMismatch` | device DID mismatch: expected {expected}, got {actual} |
 | [AUTHS-E5201](AUTHS-E5201.md) | `auths-sdk` | `DeviceExtensionError::IdentityNotFound` | identity not found |
 | [AUTHS-E5202](AUTHS-E5202.md) | `auths-sdk` | `DeviceExtensionError::NoAttestationFound` | no attestation found for device {device_did} |
 | [AUTHS-E5203](AUTHS-E5203.md) | `auths-sdk` | `DeviceExtensionError::AlreadyRevoked` | device {device_did} is already revoked |
 | [AUTHS-E5204](AUTHS-E5204.md) | `auths-sdk` | `DeviceExtensionError::AttestationFailed` | attestation creation failed: {0} |
-| [AUTHS-E5205](AUTHS-E5205.md) | `auths-sdk` | `DeviceExtensionError::StorageError` | storage error: {0} |
 | [AUTHS-E5301](AUTHS-E5301.md) | `auths-sdk` | `RotationError::IdentityNotFound` | identity not found at {path} |
 | [AUTHS-E5302](AUTHS-E5302.md) | `auths-sdk` | `RotationError::KeyNotFound` | key not found: {0} |
 | [AUTHS-E5303](AUTHS-E5303.md) | `auths-sdk` | `RotationError::KeyDecryptionFailed` | key decryption failed: {0} |

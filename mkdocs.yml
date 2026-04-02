@@ -361,6 +361,9 @@ nav:
           - "AUTHS-E4406": errors/AUTHS-E4406.md
           - "AUTHS-E4407": errors/AUTHS-E4407.md
           - "AUTHS-E4408": errors/AUTHS-E4408.md
+          - "AUTHS-E4409": errors/AUTHS-E4409.md
+          - "AUTHS-E4410": errors/AUTHS-E4410.md
+          - "AUTHS-E4411": errors/AUTHS-E4411.md
           - "AUTHS-E4501": errors/AUTHS-E4501.md
           - "AUTHS-E4502": errors/AUTHS-E4502.md
           - "AUTHS-E4503": errors/AUTHS-E4503.md
@@ -440,21 +443,17 @@ nav:
       - auths-sdk:
           - "AUTHS-E5001": errors/AUTHS-E5001.md
           - "AUTHS-E5002": errors/AUTHS-E5002.md
-          - "AUTHS-E5003": errors/AUTHS-E5003.md
           - "AUTHS-E5004": errors/AUTHS-E5004.md
-          - "AUTHS-E5005": errors/AUTHS-E5005.md
           - "AUTHS-E5006": errors/AUTHS-E5006.md
           - "AUTHS-E5007": errors/AUTHS-E5007.md
           - "AUTHS-E5101": errors/AUTHS-E5101.md
           - "AUTHS-E5102": errors/AUTHS-E5102.md
           - "AUTHS-E5103": errors/AUTHS-E5103.md
-          - "AUTHS-E5104": errors/AUTHS-E5104.md
           - "AUTHS-E5105": errors/AUTHS-E5105.md
           - "AUTHS-E5201": errors/AUTHS-E5201.md
           - "AUTHS-E5202": errors/AUTHS-E5202.md
           - "AUTHS-E5203": errors/AUTHS-E5203.md
           - "AUTHS-E5204": errors/AUTHS-E5204.md
-          - "AUTHS-E5205": errors/AUTHS-E5205.md
           - "AUTHS-E5301": errors/AUTHS-E5301.md
           - "AUTHS-E5302": errors/AUTHS-E5302.md
           - "AUTHS-E5303": errors/AUTHS-E5303.md

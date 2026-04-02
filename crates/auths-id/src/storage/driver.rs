@@ -23,6 +23,7 @@
 //! ```
 
 use async_trait::async_trait;
+use auths_core::error::AuthsErrorInfo;
 use std::fmt;
 
 /// Error type for storage operations.
@@ -66,6 +67,28 @@ impl std::error::Error for StorageError {
         match self {
             StorageError::Io(e) => Some(e.as_ref()),
             _ => None,
+        }
+    }
+}
+
+impl AuthsErrorInfo for StorageError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::NotFound(_) => "AUTHS-E4409",
+            Self::CasConflict { .. } => "AUTHS-E4410",
+            Self::Io(_) => "AUTHS-E4411",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::NotFound(_) => Some("Verify the storage path exists and is initialized"),
+            Self::CasConflict { .. } => {
+                Some("A concurrent modification was detected; retry the operation")
+            }
+            Self::Io(_) => {
+                Some("Check file permissions, disk space, and storage backend connectivity")
+            }
         }
     }
 }

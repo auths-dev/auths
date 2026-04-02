@@ -169,10 +169,10 @@ impl AuthsErrorInfo for SetupError {
             Self::IdentityAlreadyExists { .. } => "AUTHS-E5001",
             Self::KeychainUnavailable { .. } => "AUTHS-E5002",
             Self::CryptoError(e) => e.error_code(),
-            Self::StorageError(_) => "AUTHS-E5003",
+            Self::StorageError(e) => e.error_code(),
             Self::GitConfigError(_) => "AUTHS-E5004",
             Self::InvalidSetupConfig(_) => "AUTHS-E5007",
-            Self::RegistrationFailed(_) => "AUTHS-E5005",
+            Self::RegistrationFailed(e) => e.error_code(),
             Self::PlatformVerificationFailed(_) => "AUTHS-E5006",
         }
     }
@@ -186,12 +186,12 @@ impl AuthsErrorInfo for SetupError {
                 Some("Run `auths doctor` to diagnose keychain issues")
             }
             Self::CryptoError(e) => e.suggestion(),
-            Self::StorageError(_) => Some("Check file permissions and disk space"),
+            Self::StorageError(e) => e.suggestion(),
             Self::GitConfigError(_) => {
                 Some("Ensure Git is configured: git config --global user.name/email")
             }
             Self::InvalidSetupConfig(_) => Some("Check identity setup configuration parameters"),
-            Self::RegistrationFailed(_) => Some("Check network connectivity and try again"),
+            Self::RegistrationFailed(e) => e.suggestion(),
             Self::PlatformVerificationFailed(_) => Some(
                 "Platform identity verification failed; check your platform credentials and network connectivity",
             ),
