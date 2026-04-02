@@ -68,7 +68,9 @@ pub(crate) fn gather_ci_config(
     }
     out.newline();
 
-    let registry_path = std::env::current_dir()?.join(".auths-ci");
+    let registry_path = std::env::current_dir()
+        .context("Failed to determine current working directory")?
+        .join(".auths-ci");
     #[allow(clippy::disallowed_methods)] // CLI boundary: CI passphrase from env
     let passphrase =
         std::env::var("AUTHS_PASSPHRASE").unwrap_or_else(|_| "Ci-ephemeral-pass1!".to_string());

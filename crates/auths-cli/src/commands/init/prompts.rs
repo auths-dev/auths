@@ -107,7 +107,8 @@ pub(crate) fn prompt_for_git_scope(interactive: bool) -> Result<GitSigningScope>
         .interact()?;
 
     if choice == 0 {
-        let repo_path = std::env::current_dir()?;
+        let repo_path =
+            std::env::current_dir().context("Failed to determine current working directory")?;
         Ok(GitSigningScope::Local { repo_path })
     } else {
         Ok(GitSigningScope::Global)

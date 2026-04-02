@@ -1,3 +1,4 @@
+use auths_core::error::AuthsErrorInfo;
 use thiserror::Error;
 
 /// Typed storage errors originating from the `auths-id` layer.
@@ -29,6 +30,28 @@ pub enum SdkStorageError {
     /// Attestation creation failed.
     #[error(transparent)]
     Attestation(#[from] auths_verifier::error::AttestationError),
+}
+
+impl AuthsErrorInfo for SdkStorageError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Identity(e) => e.error_code(),
+            Self::Init(e) => e.error_code(),
+            Self::AgentProvisioning(e) => e.error_code(),
+            Self::Driver(e) => e.error_code(),
+            Self::Attestation(e) => e.error_code(),
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Identity(e) => e.suggestion(),
+            Self::Init(e) => e.suggestion(),
+            Self::AgentProvisioning(e) => e.suggestion(),
+            Self::Driver(e) => e.suggestion(),
+            Self::Attestation(e) => e.suggestion(),
+        }
+    }
 }
 
 /// Re-export identity domain errors for backwards compatibility.

@@ -82,7 +82,8 @@ pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()>
 
     let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
     let ssh_dir = home.join(".ssh");
-    std::fs::create_dir_all(&ssh_dir)?;
+    std::fs::create_dir_all(&ssh_dir)
+        .with_context(|| format!("Failed to create SSH directory: {}", ssh_dir.display()))?;
     let signers_path = ssh_dir.join("allowed_signers");
 
     let store = crate::adapters::allowed_signers_store::FileAllowedSignersStore;

@@ -546,6 +546,17 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E4408\n\n**Crate:** `auths-id`  \n**Type:** `IdentityError::RingError`\n\n## Message\n\nRing crypto error: {0}\n",
         ),
 
+        // --- auths-id (StorageError) ---
+        "AUTHS-E4409" => Some(
+            "# AUTHS-E4409\n\n**Crate:** `auths-id`  \n**Type:** `StorageError::NotFound`\n\n## Message\n\n_(transparent — see inner error)_\n\n## Suggestion\n\nVerify the storage path exists and is initialized\n",
+        ),
+        "AUTHS-E4410" => Some(
+            "# AUTHS-E4410\n\n**Crate:** `auths-id`  \n**Type:** `StorageError::CasConflict`\n\n## Message\n\n_(transparent — see inner error)_\n",
+        ),
+        "AUTHS-E4411" => Some(
+            "# AUTHS-E4411\n\n**Crate:** `auths-id`  \n**Type:** `StorageError::Io`\n\n## Message\n\n_(transparent — see inner error)_\n",
+        ),
+
         // --- auths-id (ValidationError) ---
         "AUTHS-E4501" => Some(
             "# AUTHS-E4501\n\n**Crate:** `auths-id`  \n**Type:** `ValidationError::InvalidSaid`\n\n## Message\n\nInvalid SAID: expected {expected}, got {actual}\n",
@@ -805,14 +816,8 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5002" => Some(
             "# AUTHS-E5002\n\n**Crate:** `auths-sdk`  \n**Type:** `SetupError::KeychainUnavailable`\n\n## Message\n\nkeychain unavailable ({backend}): {reason}\n",
         ),
-        "AUTHS-E5003" => Some(
-            "# AUTHS-E5003\n\n**Crate:** `auths-sdk`  \n**Type:** `SetupError::StorageError`\n\n## Message\n\nstorage error: {0}\n\n## Suggestion\n\nCheck file permissions and disk space\n",
-        ),
         "AUTHS-E5004" => Some(
             "# AUTHS-E5004\n\n**Crate:** `auths-sdk`  \n**Type:** `SetupError::GitConfigError`\n\n## Message\n\ngit config error: {0}\n",
-        ),
-        "AUTHS-E5005" => Some(
-            "# AUTHS-E5005\n\n**Crate:** `auths-sdk`  \n**Type:** `SetupError::RegistrationFailed`\n\n## Message\n\nregistration failed: {0}\n\n## Suggestion\n\nCheck network connectivity and try again\n",
         ),
         "AUTHS-E5006" => Some(
             "# AUTHS-E5006\n\n**Crate:** `auths-sdk`  \n**Type:** `SetupError::PlatformVerificationFailed`\n\n## Message\n\nplatform verification failed: {0}\n",
@@ -831,9 +836,6 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5103" => Some(
             "# AUTHS-E5103\n\n**Crate:** `auths-sdk`  \n**Type:** `DeviceError::AttestationError`\n\n## Message\n\nattestation error: {0}\n",
         ),
-        "AUTHS-E5104" => Some(
-            "# AUTHS-E5104\n\n**Crate:** `auths-sdk`  \n**Type:** `DeviceError::StorageError`\n\n## Message\n\nstorage error: {0}\n\n## Suggestion\n\nCheck file permissions and disk space\n",
-        ),
         "AUTHS-E5105" => Some(
             "# AUTHS-E5105\n\n**Crate:** `auths-sdk`  \n**Type:** `DeviceError::DeviceDidMismatch`\n\n## Message\n\ndevice DID mismatch: expected {expected}, got {actual}\n\n## Suggestion\n\nCheck that --device-did matches the key alias\n",
         ),
@@ -850,9 +852,6 @@ pub fn explain(code: &str) -> Option<&'static str> {
         ),
         "AUTHS-E5204" => Some(
             "# AUTHS-E5204\n\n**Crate:** `auths-sdk`  \n**Type:** `DeviceExtensionError::AttestationFailed`\n\n## Message\n\nattestation creation failed: {0}\n",
-        ),
-        "AUTHS-E5205" => Some(
-            "# AUTHS-E5205\n\n**Crate:** `auths-sdk`  \n**Type:** `DeviceExtensionError::StorageError`\n\n## Message\n\nstorage error: {0}\n\n## Suggestion\n\nCheck file permissions and disk space\n",
         ),
 
         // --- auths-sdk (RotationError) ---
@@ -1276,6 +1275,9 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E4406",
         "AUTHS-E4407",
         "AUTHS-E4408",
+        "AUTHS-E4409",
+        "AUTHS-E4410",
+        "AUTHS-E4411",
         "AUTHS-E4501",
         "AUTHS-E4502",
         "AUTHS-E4503",
@@ -1354,21 +1356,17 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E4992",
         "AUTHS-E5001",
         "AUTHS-E5002",
-        "AUTHS-E5003",
         "AUTHS-E5004",
-        "AUTHS-E5005",
         "AUTHS-E5006",
         "AUTHS-E5007",
         "AUTHS-E5101",
         "AUTHS-E5102",
         "AUTHS-E5103",
-        "AUTHS-E5104",
         "AUTHS-E5105",
         "AUTHS-E5201",
         "AUTHS-E5202",
         "AUTHS-E5203",
         "AUTHS-E5204",
-        "AUTHS-E5205",
         "AUTHS-E5301",
         "AUTHS-E5302",
         "AUTHS-E5303",
@@ -1480,6 +1478,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 329);
+        assert_eq!(all_codes().len(), 328);
     }
 }

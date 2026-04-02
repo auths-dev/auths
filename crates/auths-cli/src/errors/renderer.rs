@@ -262,4 +262,25 @@ mod tests {
         let (code, _, _) = extract_error_info(&err).unwrap();
         assert_eq!(code, "AUTHS-E3001");
     }
+
+    #[test]
+    fn setup_error_storage_delegates_to_inner_code() {
+        let inner = auths_id::error::StorageError::NotFound("test".into());
+        let sdk_err = auths_sdk::error::SdkStorageError::Identity(inner);
+        let setup_err = SetupError::StorageError(sdk_err);
+        let err = Error::new(setup_err);
+        let (code, _, suggestion) = extract_error_info(&err).unwrap();
+        assert_eq!(code, "AUTHS-E4104");
+        assert!(suggestion.is_some());
+    }
+
+    #[test]
+    fn setup_error_registration_delegates_to_inner_code() {
+        let reg_err = RegistrationError::AlreadyRegistered;
+        let setup_err = SetupError::RegistrationFailed(reg_err);
+        let err = Error::new(setup_err);
+        let (code, _, suggestion) = extract_error_info(&err).unwrap();
+        assert_eq!(code, "AUTHS-E5401");
+        assert!(suggestion.is_some());
+    }
 }

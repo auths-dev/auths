@@ -105,7 +105,7 @@ impl AuthsErrorInfo for DeviceError {
             Self::AttestationError(_) => "AUTHS-E5103",
             Self::DeviceDidMismatch { .. } => "AUTHS-E5105",
             Self::CryptoError(e) => e.error_code(),
-            Self::StorageError(_) => "AUTHS-E5104",
+            Self::StorageError(e) => e.error_code(),
         }
     }
 
@@ -118,7 +118,7 @@ impl AuthsErrorInfo for DeviceError {
             ),
             Self::DeviceDidMismatch { .. } => Some("Check that --device-did matches the key alias"),
             Self::CryptoError(e) => e.suggestion(),
-            Self::StorageError(_) => Some("Check file permissions and disk space"),
+            Self::StorageError(e) => e.suggestion(),
         }
     }
 }
@@ -130,7 +130,7 @@ impl AuthsErrorInfo for DeviceExtensionError {
             Self::NoAttestationFound { .. } => "AUTHS-E5202",
             Self::AlreadyRevoked { .. } => "AUTHS-E5203",
             Self::AttestationFailed(_) => "AUTHS-E5204",
-            Self::StorageError(_) => "AUTHS-E5205",
+            Self::StorageError(e) => e.error_code(),
         }
     }
 
@@ -146,7 +146,7 @@ impl AuthsErrorInfo for DeviceExtensionError {
             Self::AttestationFailed(_) => {
                 Some("Failed to create the extension attestation; check key access and try again")
             }
-            Self::StorageError(_) => Some("Check file permissions and disk space"),
+            Self::StorageError(e) => e.suggestion(),
         }
     }
 }
