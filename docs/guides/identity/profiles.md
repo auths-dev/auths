@@ -52,7 +52,7 @@ auths init --profile developer --non-interactive --key-alias my-key
 | `--force` | `false` | Overwrite existing identity |
 | `--non-interactive` | `false` | Skip all prompts, use defaults |
 | `--registry` | `https://auths-registry.fly.dev` | Registry URL for identity registration |
-| `--skip-registration` | `false` | Skip automatic registry registration |
+| `--register` | `false` | Register identity with the Auths Registry |
 
 ### CI profile
 

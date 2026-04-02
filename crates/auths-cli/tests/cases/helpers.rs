@@ -94,13 +94,7 @@ impl TestEnv {
     pub fn init_identity(&self) {
         let output = self
             .cmd("auths")
-            .args([
-                "init",
-                "--non-interactive",
-                "--profile",
-                "developer",
-                "--skip-registration",
-            ])
+            .args(["init", "--non-interactive", "--profile", "developer"])
             .output()
             .unwrap();
         assert!(

@@ -18,7 +18,7 @@ Set up your cryptographic identity and Git signing
 | `--force` | — | Force overwrite if identity already exists |
 | `--dry-run` | — | Preview agent configuration without creating files or identities |
 | `--registry <REGISTRY>` | `https://auths-registry.fly.dev` | Registry URL for automatic identity registration |
-| `--skip-registration` | — | Skip automatic registry registration during setup |
+| `--register` | — | Register identity with the Auths Registry after creation |
 | `--json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |

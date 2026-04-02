@@ -134,7 +134,7 @@ pub(crate) fn submit_registration(
     out: &Output,
 ) -> Option<String> {
     if skip {
-        out.print_info("Registration skipped (--skip-registration)");
+        out.print_info("Registration skipped (pass --register to publish to the registry)");
         return None;
     }
 

@@ -96,7 +96,7 @@ def init_identity(auths_bin, isolated_env):
     """Pre-initialized Auths identity."""
     result = run_auths(
         auths_bin,
-        ["init", "--profile", "developer", "--non-interactive", "--skip-registration"],
+        ["init", "--profile", "developer", "--non-interactive", ],
         env=isolated_env,
     )
     result.assert_success()

@@ -78,13 +78,7 @@ fn test_init_happy_path() {
 
     let output = env
         .cmd("auths")
-        .args([
-            "init",
-            "--non-interactive",
-            "--profile",
-            "developer",
-            "--skip-registration",
-        ])
+        .args(["init", "--non-interactive", "--profile", "developer"])
         .output()
         .unwrap();
 
