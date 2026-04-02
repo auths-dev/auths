@@ -57,4 +57,23 @@ impl GitConfigProvider for SystemGitConfigProvider {
         }
         Ok(())
     }
+
+    fn unset(&self, key: &str) -> Result<(), GitConfigError> {
+        let mut cmd = std::process::Command::new("git");
+        cmd.args(["config", self.scope_flag, "--unset", key]);
+        if let Some(dir) = &self.working_dir {
+            cmd.current_dir(dir);
+        }
+        let output = cmd
+            .output()
+            .map_err(|e| GitConfigError::CommandFailed(format!("failed to run git config: {e}")))?;
+        // Exit code 5 means the key was not set — treat as success
+        if !output.status.success() && output.status.code() != Some(5) {
+            return Err(GitConfigError::CommandFailed(format!(
+                "git config --unset {} failed",
+                key
+            )));
+        }
+        Ok(())
+    }
 }
