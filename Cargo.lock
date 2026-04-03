@@ -301,11 +301,11 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auths"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 
 [[package]]
 name = "auths-api"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "auths-cli"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "auths-core"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "auths-crypto"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "base64",
@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "auths-id"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "auths-index"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "anyhow",
  "auths-verifier",
@@ -537,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-git"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "auths-core",
  "auths-sdk",
@@ -552,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-http"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "auths-jwt"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "serde",
  "serde_json",
@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "auths-keri"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "auths-crypto",
  "auths-verifier",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "auths-mcp-server"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "anyhow",
  "auths-jwt",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "auths-oidc-port"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -644,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-daemon"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "auths-core",
  "axum",
@@ -664,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-protocol"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "auths-crypto",
  "base64",
@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "auths-policy"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "auths-verifier",
  "blake3",
@@ -696,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "auths-radicle"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "auths-crypto",
  "auths-id",
@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "auths-scim"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "chrono",
  "nom",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "auths-sdk"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "auths-storage"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -792,7 +792,7 @@ dependencies = [
 
 [[package]]
 name = "auths-telemetry"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "chrono",
  "metrics",
@@ -821,7 +821,7 @@ dependencies = [
 
 [[package]]
 name = "auths-transparency"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -845,7 +845,7 @@ dependencies = [
 
 [[package]]
 name = "auths-utils"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "dirs",
  "thiserror 2.0.18",
@@ -853,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "auths-verifier"
-version = "0.0.1-rc.10"
+version = "0.0.1-rc.11"
 dependencies = [
  "async-trait",
  "auths-crypto",
