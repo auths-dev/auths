@@ -82,7 +82,7 @@ pub(crate) fn gather_ci_config(
     let keychain =
         get_platform_keychain().map_err(|e| anyhow!("Failed to get memory keychain: {}", e))?;
 
-    out.println(&format!("  Using keychain: {}", keychain.backend_name()));
+    out.print_info(&format!("Using keychain: {}", keychain.backend_name()));
 
     let config = CiIdentityConfig {
         ci_environment: map_ci_environment(&ci_env),
@@ -111,7 +111,11 @@ pub(crate) fn gather_agent_config(
         .filter_map(|s| auths_verifier::Capability::parse(&s).ok())
         .collect();
 
+    out.print_info("Checking prerequisites...");
     let keychain = check_keychain_access(out)?;
+    out.print_success("Prerequisites OK");
+    out.newline();
+
     let registry_path = get_auths_repo_path()?;
 
     let config = auths_sdk::types::CreateAgentIdentityConfig::builder(
