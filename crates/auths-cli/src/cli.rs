@@ -56,7 +56,7 @@ fn cli_styles() -> Styles {
     about = "\x1b[1;32mauths \u{2014} cryptographic identity for developers and agents\x1b[0m",
     version,
     styles = cli_styles(),
-    after_help = "Run 'auths <command> --help' for details on any command.\nRun 'auths --help-all' for advanced commands (id, device, key, policy, ...)."
+    after_help = "Run 'auths <command> --help' for details on any command.\nRun 'auths --help-all' for all commands including advanced ones."
 )]
 pub struct AuthsCli {
     #[command(subcommand)]
@@ -75,7 +75,7 @@ pub struct AuthsCli {
     )]
     pub format: OutputFormat,
 
-    #[clap(long, global = true, help = "Emit machine-readable JSON")]
+    #[clap(short = 'j', long, global = true, help = "Emit machine-readable JSON")]
     pub json: bool,
 
     #[clap(short, long, global = true, help = "Suppress non-essential output")]
@@ -93,35 +93,59 @@ pub struct AuthsCli {
 #[derive(Subcommand, Debug)]
 #[command(rename_all = "lowercase")]
 pub enum RootCommand {
+    // ── Primary ──
     Init(InitCommand),
-    Reset(ResetCommand),
     Sign(SignCommand),
-    SignCommit(SignCommitCommand),
     Verify(UnifiedVerifyCommand),
     Status(StatusCommand),
     Whoami(WhoamiCommand),
-    Tutorial(LearnCommand),
-    Doctor(DoctorCommand),
-    Signers(SignersCommand),
+
+    // ── Setup & Troubleshooting ──
     Pair(PairCommand),
-    Error(ErrorLookupCommand),
+    Doctor(DoctorCommand),
+    Tutorial(LearnCommand),
+
+    // ── Utilities ──
+    Config(ConfigCommand),
     Completions(CompletionsCommand),
+
+    // ── Advanced (visible via --help-all) ──
+    #[command(hide = true)]
+    Reset(ResetCommand),
+    #[command(hide = true)]
+    SignCommit(SignCommitCommand),
+    #[command(hide = true)]
+    Signers(SignersCommand),
+    #[command(hide = true)]
+    Error(ErrorLookupCommand),
+    #[command(hide = true)]
+    Id(IdCommand),
+    #[command(hide = true)]
+    Device(DeviceCommand),
+    #[command(hide = true)]
+    Key(KeyCommand),
+    #[command(hide = true)]
+    Approval(ApprovalCommand),
+    #[command(hide = true)]
+    Artifact(ArtifactCommand),
+    #[command(hide = true)]
+    Policy(PolicyCommand),
+    #[command(hide = true)]
+    Git(GitCommand),
+    #[command(hide = true)]
+    Trust(TrustCommand),
+    #[command(hide = true)]
+    Namespace(NamespaceCommand),
+    #[command(hide = true)]
+    Org(OrgCommand),
+    #[command(hide = true)]
+    Audit(AuditCommand),
+    #[command(hide = true)]
+    Auth(AuthCommand),
+
+    // ── Internal (visible via --help-all) ──
     #[command(hide = true)]
     Emergency(EmergencyCommand),
-
-    Id(IdCommand),
-    Device(DeviceCommand),
-    Key(KeyCommand),
-    Approval(ApprovalCommand),
-    Artifact(ArtifactCommand),
-    Policy(PolicyCommand),
-    Git(GitCommand),
-    Trust(TrustCommand),
-    Namespace(NamespaceCommand),
-    Org(OrgCommand),
-    Audit(AuditCommand),
-    Config(ConfigCommand),
-
     #[command(hide = true)]
     Agent(AgentCommand),
     #[command(hide = true)]
@@ -136,5 +160,4 @@ pub enum RootCommand {
     Log(LogCommand),
     #[command(hide = true)]
     Account(AccountCommand),
-    Auth(AuthCommand),
 }

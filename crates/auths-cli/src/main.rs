@@ -1,7 +1,7 @@
 // CLI is the presentation boundary — printing and exit are expected here.
 #![allow(clippy::print_stdout, clippy::print_stderr, clippy::exit)]
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use auths_cli::cli::{AuthsCli, RootCommand};
 use auths_cli::commands::executable::ExecutableCommand;
@@ -36,23 +36,24 @@ fn run() -> Result<()> {
 
     let _telemetry = init_audit_sinks();
 
-    let cli = AuthsCli::parse();
+    // Intercept top-level help/--help-all BEFORE clap parsing so we can
+    // print grouped output while letting clap handle subcommand help normally
+    // (e.g. `auths init --help` still works via clap).
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let has_help = raw_args.iter().any(|a| a == "--help" || a == "-h");
+    let has_help_all = raw_args.iter().any(|a| a == "--help-all");
+    let first_non_flag = raw_args.iter().find(|a| !a.starts_with('-'));
 
-    if cli.help_all {
-        use clap::CommandFactory;
-        let mut cmd = AuthsCli::command();
-        let sub_names: Vec<String> = cmd
-            .get_subcommands()
-            .map(|s| s.get_name().to_string())
-            .collect();
-        for name in &sub_names {
-            if let Some(sub) = cmd.find_subcommand_mut(name) {
-                *sub = sub.clone().hide(false);
-            }
-        }
-        cmd.print_help()?;
+    if has_help_all {
+        print_grouped_help(true)?;
         return Ok(());
     }
+    if has_help && first_non_flag.is_none() {
+        print_grouped_help(false)?;
+        return Ok(());
+    }
+
+    let cli = AuthsCli::parse();
 
     let is_json = cli.json || matches!(cli.format, OutputFormat::Json);
     if is_json {
@@ -64,8 +65,7 @@ fn run() -> Result<()> {
     let command = match cli.command {
         Some(cmd) => cmd,
         None => {
-            use clap::CommandFactory;
-            AuthsCli::command().print_help()?;
+            print_grouped_help(false)?;
             return Ok(());
         }
     };
@@ -118,4 +118,166 @@ fn run() -> Result<()> {
     }
 
     result
+}
+
+/// Command group definition for grouped help output.
+struct CommandGroup {
+    heading: &'static str,
+    commands: &'static [&'static str],
+}
+
+/// The primary commands shown in default help.
+const HELP_GROUPS: &[CommandGroup] = &[
+    CommandGroup {
+        heading: "Primary",
+        commands: &["init", "sign", "verify", "status", "whoami"],
+    },
+    CommandGroup {
+        heading: "Setup & Troubleshooting",
+        commands: &["pair", "doctor", "tutorial"],
+    },
+    CommandGroup {
+        heading: "Utilities",
+        commands: &["config", "completions"],
+    },
+];
+
+fn print_grouped_help(show_all: bool) -> Result<()> {
+    let cmd = AuthsCli::command();
+
+    // ANSI codes matching cli_styles()
+    const BLUE_BOLD: &str = "\x1b[1;34m";
+    const CYAN_BOLD: &str = "\x1b[1;36m";
+    const GREEN_BOLD: &str = "\x1b[1;32m";
+    const RESET: &str = "\x1b[0m";
+
+    // Header
+    println!("{GREEN_BOLD}auths \u{2014} cryptographic identity for developers and agents{RESET}");
+    println!();
+    println!("{BLUE_BOLD}Usage:{RESET} auths [OPTIONS] [COMMAND]");
+
+    // Collect subcommand metadata
+    let subcommands: Vec<(&str, String, bool)> = cmd
+        .get_subcommands()
+        .map(|s| {
+            let name = s.get_name();
+            let about = s.get_about().map(|a| a.to_string()).unwrap_or_default();
+            let hidden = s.is_hide_set();
+            (name, about, hidden)
+        })
+        .collect();
+
+    // Print primary groups
+    for group in HELP_GROUPS {
+        println!();
+        println!("{BLUE_BOLD}{}:{RESET}", group.heading);
+        for &cmd_name in group.commands {
+            if let Some((_, about, _)) = subcommands.iter().find(|(n, _, _)| *n == cmd_name) {
+                println!("  {CYAN_BOLD}{:<13}{RESET}{}", cmd_name, about);
+            }
+        }
+    }
+
+    // If --help-all, show advanced and internal groups
+    if show_all {
+        // Collect all names in primary groups
+        let primary_names: Vec<&str> = HELP_GROUPS
+            .iter()
+            .flat_map(|g| g.commands.iter().copied())
+            .collect();
+
+        // Internal commands (always hidden, even in --help-all context)
+        let internal = [
+            "emergency",
+            "agent",
+            "witness",
+            "scim",
+            "commit",
+            "debug",
+            "log",
+            "account",
+        ];
+
+        // Advanced = hidden but not internal
+        let advanced: Vec<&(&str, String, bool)> = subcommands
+            .iter()
+            .filter(|(name, _, _)| !primary_names.contains(name) && !internal.contains(name))
+            .collect();
+
+        if !advanced.is_empty() {
+            println!();
+            println!("{BLUE_BOLD}Advanced:{RESET}");
+            for (name, about, _) in &advanced {
+                println!("  {CYAN_BOLD}{:<13}{RESET}{}", name, about);
+            }
+        }
+
+        // Internal
+        let internal_cmds: Vec<&(&str, String, bool)> = subcommands
+            .iter()
+            .filter(|(name, _, _)| internal.contains(name))
+            .collect();
+
+        if !internal_cmds.is_empty() {
+            println!();
+            println!("{BLUE_BOLD}Internal:{RESET}");
+            for (name, about, _) in &internal_cmds {
+                println!("  {CYAN_BOLD}{:<13}{RESET}{}", name, about);
+            }
+        }
+    }
+
+    // Options
+    println!();
+    println!("{BLUE_BOLD}Options:{RESET}");
+    for arg in cmd.get_arguments() {
+        if arg.is_hide_set() {
+            continue;
+        }
+        let long = arg.get_long().map(|l| format!("--{l}"));
+        let short = arg.get_short().map(|s| format!("-{s}"));
+        let about = arg.get_help().map(|h| h.to_string()).unwrap_or_default();
+
+        // Only show value placeholder for args that take a value (not bool flags)
+        let takes_value = !matches!(
+            arg.get_action(),
+            clap::ArgAction::SetTrue
+                | clap::ArgAction::SetFalse
+                | clap::ArgAction::Count
+                | clap::ArgAction::Version
+                | clap::ArgAction::Help
+                | clap::ArgAction::HelpShort
+                | clap::ArgAction::HelpLong
+        );
+        let value_hint = if takes_value {
+            arg.get_value_names()
+                .unwrap_or_default()
+                .iter()
+                .map(|v| format!(" <{v}>"))
+                .collect::<String>()
+        } else {
+            String::new()
+        };
+
+        // Build the flag string and pad to consistent width
+        let flag_str = match (short, long) {
+            (Some(s), Some(l)) => format!("  {s}, {l}{value_hint}"),
+            (None, Some(l)) => format!("      {l}{value_hint}"),
+            (Some(s), None) => format!("  {s}{value_hint}"),
+            (None, None) => continue,
+        };
+        println!("{CYAN_BOLD}{:<23}{RESET} {about}", flag_str);
+    }
+    // Help and version flags (clap adds these separately, not in get_arguments)
+    println!("{CYAN_BOLD}{:<23}{RESET} Print help", "  -h, --help");
+    println!("{CYAN_BOLD}{:<23}{RESET} Print version", "  -V, --version");
+
+    // Footer
+    println!();
+    println!("Run 'auths <command> --help' for details on any command.");
+    if !show_all {
+        println!("Run 'auths --help-all' for all commands including advanced ones.");
+    }
+
+    Ok(())
 }
