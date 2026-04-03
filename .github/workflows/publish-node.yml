@@ -146,13 +146,13 @@ jobs:
           path: packages/auths-node/artifacts
           merge-multiple: true
 
-      - name: Move artifacts
-        working-directory: packages/auths-node
-        run: pnpm artifacts
-
       - name: Prepare npm packages
         working-directory: packages/auths-node
         run: pnpm prepublishOnly
+
+      - name: Move artifacts
+        working-directory: packages/auths-node
+        run: pnpm artifacts
 
       - name: Publish
         working-directory: packages/auths-node
