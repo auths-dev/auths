@@ -43,7 +43,7 @@ pub(crate) fn display_ci_result(
     out.print_heading("Add these to your CI secrets:");
     out.println("─".repeat(50).as_str());
     for line in &result.env_block {
-        println!("{}", line);
+        out.println(line);
     }
     out.println("─".repeat(50).as_str());
     out.newline();

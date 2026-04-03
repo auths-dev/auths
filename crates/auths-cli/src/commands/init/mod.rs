@@ -199,7 +199,7 @@ fn run_developer_setup(
     ctx: &CliConfig,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
-    let mut guide = GuidedSetup::new(out, guided::developer_steps());
+    let mut guide = GuidedSetup::new(out, guided::developer_steps(), interactive);
 
     // GATHER
     guide.section("Prerequisites & Configuration");
@@ -304,7 +304,7 @@ fn run_developer_setup(
 }
 
 fn run_ci_setup(out: &Output, ctx: &CliConfig) -> Result<()> {
-    let mut guide = GuidedSetup::new(out, guided::ci_steps());
+    let mut guide = GuidedSetup::new(out, guided::ci_steps(), false);
 
     // GATHER
     guide.section("CI Environment Detection");
@@ -344,7 +344,7 @@ fn run_agent_setup(
     cmd: &InitCommand,
     ctx: &CliConfig,
 ) -> Result<()> {
-    let mut guide = GuidedSetup::new(out, guided::agent_steps());
+    let mut guide = GuidedSetup::new(out, guided::agent_steps(), interactive);
 
     // GATHER
     guide.section("Agent Configuration");
