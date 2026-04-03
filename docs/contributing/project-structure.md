@@ -22,10 +22,11 @@ auths/
 │   └── xtask/                   Build automation tasks (publish = false)
 │
 ├── packages/
-│   ├── auths-verifier-python/   Python bindings (PyO3)
-│   ├── auths-verifier-ts/       TypeScript bindings (WASM)
-│   ├── auths-verifier-go/       Go bindings (CGo)
-│   ├── auths-verifier-swift/    Swift/Kotlin bindings (UniFFI)
+│   ├── auths-python/            Python SDK (PyO3/maturin)
+│   ├── auths-node/              Node.js SDK (napi-rs)
+│   ├── auths-verifier-ts/       TypeScript verification bindings (WASM)
+│   ├── auths-verifier-go/       Go verification bindings (CGo)
+│   ├── auths-verifier-swift/    Swift/Kotlin verification bindings (UniFFI)
 │   └── auths-mobile-swift/      iOS identity creation (UniFFI)
 │
 ├── docs/                        MkDocs documentation
@@ -122,6 +123,6 @@ Bindings:   packages/auths-verifier-{python,ts,go,swift}
 
 All crates share a workspace `Cargo.toml` at the repository root. Common dependencies and versions are declared under `[workspace.dependencies]`:
 
-- Current workspace version: `0.0.1-rc.3`
+- Current workspace version: `0.0.1-rc.10`
 - Rust edition: 2024 (implied by `rust-version = "1.93"`)
 - Workspace resolver: `3`

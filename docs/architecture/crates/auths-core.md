@@ -25,7 +25,6 @@ flowchart LR
 | `agent` | SSH agent daemon (`AgentCore`, `AgentHandle`, `AgentSession`) |
 | `error` | `AgentError` enum with `AuthsErrorInfo` trait for structured error codes |
 | `config` | `EnvironmentConfig` for reading keychain and path settings |
-| `keri_did` | KERI DID parsing and construction |
 | `pairing` | Ephemeral ECDH pairing protocol types |
 | `paths` | `auths_home()` and related path resolution |
 | `policy` | Policy evaluation types |
@@ -101,11 +100,12 @@ Platform-agnostic interface for storing and loading encrypted private keys. All 
 
 ```rust
 pub trait KeyStorage: Send + Sync {
-    fn store_key(&self, alias: &KeyAlias, identity_did: &IdentityDID, encrypted_key_data: &[u8]) -> Result<(), AgentError>;
-    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, Vec<u8>), AgentError>;
+    fn store_key(&self, alias: &KeyAlias, identity_did: &IdentityDID, role: KeyRole, encrypted_key_data: &[u8]) -> Result<(), AgentError>;
+    fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError>;
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError>;
     fn list_aliases(&self) -> Result<Vec<KeyAlias>, AgentError>;
     fn list_aliases_for_identity(&self, identity_did: &IdentityDID) -> Result<Vec<KeyAlias>, AgentError>;
+    fn list_aliases_for_identity_with_role(&self, identity_did: &IdentityDID, role: KeyRole) -> Result<Vec<KeyAlias>, AgentError>;
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError>;
     fn backend_name(&self) -> &'static str;
 }

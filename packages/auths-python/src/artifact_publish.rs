@@ -17,7 +17,7 @@ fn http_client() -> &'static reqwest::Client {
     })
 }
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyArtifactPublishResult {
     #[pyo3(get)]
@@ -64,7 +64,7 @@ impl PyArtifactPublishResult {
 #[pyfunction]
 #[pyo3(signature = (attestation_json, registry_url, package_name=None))]
 pub fn publish_artifact(
-    py: Python<'_>,
+    _py: Python<'_>,
     attestation_json: String,
     registry_url: String,
     package_name: Option<String>,
@@ -77,7 +77,7 @@ pub fn publish_artifact(
         registry_url.trim_end_matches('/')
     );
 
-    py.allow_threads(move || {
+    {
         runtime().block_on(async move {
             let mut body = serde_json::json!({ "attestation": attestation });
             if let Some(ref name) = package_name {
@@ -125,5 +125,5 @@ pub fn publish_artifact(
                 }
             }
         })
-    })
+    }
 }

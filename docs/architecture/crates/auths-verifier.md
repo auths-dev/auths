@@ -10,9 +10,9 @@ flowchart BT
     CORE["auths-core"]
     ID["auths-id"]
     SDK["auths-sdk"]
-    VERIFIER --> CORE
-    VERIFIER --> ID
-    VERIFIER --> SDK
+    CORE --> VERIFIER
+    ID --> VERIFIER
+    SDK --> VERIFIER
 ```
 
 `auths-verifier` is a standalone crate at the bottom of the dependency graph. It provides signature verification, attestation types, DID types, KERI verification, and witness receipt validation. It is deliberately free of heavy dependencies like `git2`, platform keychains, or tokio (except when the `ffi` feature brings in a minimal tokio runtime).

@@ -22,9 +22,9 @@ use pyo3::prelude::*;
 /// ```
 #[pyfunction]
 #[pyo3(signature = (repo_path = "~/.auths"))]
-pub fn generate_allowed_signers_file(py: Python<'_>, repo_path: &str) -> PyResult<String> {
+pub fn generate_allowed_signers_file(_py: Python<'_>, repo_path: &str) -> PyResult<String> {
     let rp = repo_path.to_string();
-    py.allow_threads(move || {
+    {
         let repo = PathBuf::from(shellexpand::tilde(&rp).as_ref());
         let storage = RegistryAttestationStorage::new(&repo);
         let mut signers = AllowedSigners::new("/dev/null");
@@ -47,5 +47,5 @@ pub fn generate_allowed_signers_file(py: Python<'_>, repo_path: &str) -> PyResul
         } else {
             Ok(format!("{}\n", lines.join("\n")))
         }
-    })
+    }
 }

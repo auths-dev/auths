@@ -99,20 +99,18 @@ This gives the runner its own `did:keri` identity and device key, independent of
 A human operator issues an attestation granting the CI agent specific capabilities:
 
 ```bash
-auths attestation issue \
-  --subject did:key:z6MkCIRunner... \
-  --signer-type Workload \
+auths device link \
+  --device-did did:key:z6MkCIRunner... \
+  --key my-key \
   --capabilities "sign:commit,sign:release" \
-  --delegated-by did:keri:EHumanAdmin... \
   --expires-in 7d
 ```
 
 The attestation:
 
-- Uses `signer_type: Workload` to identify this as an automated process
 - Grants only `sign:commit` and `sign:release` — not `deploy:production` or `manage_members`
 - Expires in 7 days, requiring periodic re-authorization
-- Includes `delegated_by` linking back to the authorizing human
+- Links back to the authorizing human's identity through the attestation chain
 
 ### Agent signs artifacts
 
@@ -120,7 +118,7 @@ The CI agent signs commits and releases using its own key:
 
 ```bash
 git commit -S -m "Release v2.1.0"
-auths sign --file release-v2.1.0.tar.gz
+auths sign release-v2.1.0.tar.gz
 ```
 
 Every signature is traceable through the attestation chain: `CI runner → human admin → organization`.
@@ -130,7 +128,7 @@ Every signature is traceable through the attestation chain: `CI runner → human
 Any verifier can validate the agent's work by checking the full chain:
 
 ```bash
-auths verify-commit HEAD
+auths verify HEAD
 ```
 
 The verifier confirms: the commit was signed by a device with a valid attestation, the attestation was issued by an authorized human, and the capabilities include `sign:commit`.

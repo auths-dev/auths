@@ -41,7 +41,7 @@ fn trust_level_str(tl: &TrustLevel) -> &'static str {
 #[pyo3(signature = (did, repo_path, label=None, trust_level="manual"))]
 #[allow(clippy::type_complexity)]
 pub fn pin_identity(
-    py: Python<'_>,
+    _py: Python<'_>,
     did: &str,
     repo_path: &str,
     label: Option<String>,
@@ -51,7 +51,7 @@ pub fn pin_identity(
     let did = did.to_string();
     let repo = repo_path.to_string();
 
-    py.allow_threads(move || {
+    {
         let store = PinnedIdentityStore::new(store_path(&repo));
         let repo_path = resolve_repo(&repo);
 
@@ -130,30 +130,30 @@ pub fn pin_identity(
             None,
             pinned_at,
         ))
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (did, repo_path))]
-pub fn remove_pinned_identity(py: Python<'_>, did: &str, repo_path: &str) -> PyResult<()> {
+pub fn remove_pinned_identity(_py: Python<'_>, did: &str, repo_path: &str) -> PyResult<()> {
     let did = did.to_string();
     let repo = repo_path.to_string();
 
-    py.allow_threads(move || {
+    {
         let store = PinnedIdentityStore::new(store_path(&repo));
         store
             .remove(&did)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_TRUST_ERROR] {e}")))?;
         Ok(())
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (repo_path,))]
-pub fn list_pinned_identities(py: Python<'_>, repo_path: &str) -> PyResult<String> {
+pub fn list_pinned_identities(_py: Python<'_>, repo_path: &str) -> PyResult<String> {
     let repo = repo_path.to_string();
 
-    py.allow_threads(move || {
+    {
         let store = PinnedIdentityStore::new(store_path(&repo));
         let entries = store
             .list()
@@ -175,21 +175,21 @@ pub fn list_pinned_identities(py: Python<'_>, repo_path: &str) -> PyResult<Strin
 
         serde_json::to_string(&json_entries)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_TRUST_ERROR] {e}")))
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (did, repo_path))]
 #[allow(clippy::type_complexity)]
 pub fn get_pinned_identity(
-    py: Python<'_>,
+    _py: Python<'_>,
     did: &str,
     repo_path: &str,
 ) -> PyResult<Option<(String, Option<String>, String, String, Option<u64>, String)>> {
     let did = did.to_string();
     let repo = repo_path.to_string();
 
-    py.allow_threads(move || {
+    {
         let store = PinnedIdentityStore::new(store_path(&repo));
         let entry = store
             .lookup(&did)
@@ -205,5 +205,5 @@ pub fn get_pinned_identity(
                 e.first_seen.to_rfc3339(),
             )
         }))
-    })
+    }
 }

@@ -15,7 +15,7 @@ use pyo3::prelude::*;
 
 use crate::identity::{make_keychain_config, resolve_key_alias, resolve_passphrase};
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyIdentityRotationResult {
     #[pyo3(get)]
@@ -55,7 +55,7 @@ impl PyIdentityRotationResult {
 #[pyfunction]
 #[pyo3(signature = (repo_path, identity_key_alias=None, next_key_alias=None, passphrase=None))]
 pub fn rotate_identity_ffi(
-    py: Python<'_>,
+    _py: Python<'_>,
     repo_path: &str,
     identity_key_alias: Option<&str>,
     next_key_alias: Option<&str>,
@@ -113,7 +113,7 @@ pub fn rotate_identity_ffi(
         next_key_alias: next_alias,
     };
 
-    py.allow_threads(|| {
+    {
         let result = rotate_identity(rotation_config, &ctx, clock.as_ref()).map_err(|e| {
             PyRuntimeError::new_err(format!("[AUTHS_ROTATION_ERROR] Key rotation failed: {e}"))
         })?;
@@ -124,5 +124,5 @@ pub fn rotate_identity_ffi(
             previous_key_fingerprint: result.previous_key_fingerprint,
             sequence: result.sequence,
         })
-    })
+    }
 }

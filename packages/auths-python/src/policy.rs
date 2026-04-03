@@ -131,7 +131,7 @@ impl PyEvalContext {
     }
 }
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyDecision {
     #[pyo3(get)]

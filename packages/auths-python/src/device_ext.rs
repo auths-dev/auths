@@ -16,7 +16,7 @@ use pyo3::prelude::*;
 
 use crate::identity::{make_keychain_config, resolve_passphrase};
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyDeviceExtension {
     #[pyo3(get)]
@@ -54,7 +54,7 @@ impl PyDeviceExtension {
 #[pyfunction]
 #[pyo3(signature = (device_did, identity_key_alias, expires_in, repo_path, passphrase=None))]
 pub fn extend_device_authorization_ffi(
-    py: Python<'_>,
+    _py: Python<'_>,
     device_did: &str,
     identity_key_alias: &str,
     expires_in: u64,
@@ -109,7 +109,7 @@ pub fn extend_device_authorization_ffi(
         .passphrase_provider(provider)
         .build();
 
-    py.allow_threads(|| {
+    {
         let result = extend_device(ext_config, &ctx, clock.as_ref()).map_err(|e| {
             PyRuntimeError::new_err(format!("[AUTHS_DEVICE_ERROR] Device extension failed: {e}"))
         })?;
@@ -121,5 +121,5 @@ pub fn extend_device_authorization_ffi(
                 .previous_expires_at
                 .map(|t: chrono::DateTime<chrono::Utc>| t.to_rfc3339()),
         })
-    })
+    }
 }

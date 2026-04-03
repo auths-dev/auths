@@ -67,7 +67,7 @@ fn extract_org_prefix(org_did: &str) -> String {
 #[pyfunction]
 #[pyo3(signature = (label, repo_path, passphrase=None))]
 pub fn create_org(
-    py: Python<'_>,
+    _py: Python<'_>,
     label: &str,
     repo_path: &str,
     passphrase: Option<String>,
@@ -77,7 +77,7 @@ pub fn create_org(
     let label = label.to_string();
     let repo_path_str = repo_path.to_string();
 
-    py.allow_threads(move || {
+    {
         let key_alias_str = format!(
             "org-{}",
             label
@@ -159,14 +159,14 @@ pub fn create_org(
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
         Ok((org_prefix, controller_did.to_string(), label, repo_path_str))
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (org_did, member_did, role, repo_path, capabilities_json=None, passphrase=None, note=None, member_public_key_hex=None))]
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn add_org_member(
-    py: Python<'_>,
+    _py: Python<'_>,
     org_did: &str,
     member_did: &str,
     role: &str,
@@ -183,7 +183,7 @@ pub fn add_org_member(
     let member_did = member_did.to_string();
     let role_str = role.to_string();
 
-    py.allow_threads(move || {
+    {
         let role: Role = role_str
             .parse()
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] Invalid role: {e}")))?;
@@ -272,14 +272,14 @@ pub fn add_org_member(
             false,
             expires,
         ))
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (org_did, member_did, repo_path, passphrase=None, note=None, member_public_key_hex=None))]
 #[allow(clippy::type_complexity)]
 pub fn revoke_org_member(
-    py: Python<'_>,
+    _py: Python<'_>,
     org_did: &str,
     member_did: &str,
     repo_path: &str,
@@ -293,7 +293,7 @@ pub fn revoke_org_member(
     let org_did = org_did.to_string();
     let member_did = member_did.to_string();
 
-    py.allow_threads(move || {
+    {
         let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let signer_alias = find_signer_alias(&org_did, &*keychain)?;
 
@@ -373,13 +373,13 @@ pub fn revoke_org_member(
             true,
             revocation.expires_at.map(|e| e.to_rfc3339()),
         ))
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (org_did, include_revoked, repo_path))]
 pub fn list_org_members(
-    py: Python<'_>,
+    _py: Python<'_>,
     org_did: &str,
     include_revoked: bool,
     repo_path: &str,
@@ -387,7 +387,7 @@ pub fn list_org_members(
     let repo = resolve_repo(repo_path);
     let org_prefix = extract_org_prefix(org_did);
 
-    py.allow_threads(move || {
+    {
         let backend =
             GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&repo));
 
@@ -428,5 +428,5 @@ pub fn list_org_members(
 
         serde_json::to_string(&result)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))
-    })
+    }
 }

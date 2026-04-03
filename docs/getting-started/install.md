@@ -88,7 +88,31 @@ Pre-built binaries for macOS, Linux, and Windows are available on the
 
 ## Shell Completions
 
-Shell completions are planned for a future release.
+Generate shell completions for your shell:
+
+=== "Bash"
+
+    ```bash
+    auths completions bash > ~/.local/share/bash-completion/completions/auths
+    ```
+
+=== "Zsh"
+
+    ```bash
+    auths completions zsh > ~/.zfunc/_auths
+    ```
+
+=== "Fish"
+
+    ```bash
+    auths completions fish > ~/.config/fish/completions/auths.fish
+    ```
+
+=== "PowerShell"
+
+    ```powershell
+    auths completions powershell > $PROFILE.CurrentUserAllHosts
+    ```
 
 ## Verify Installation
 
@@ -99,7 +123,7 @@ auths --version
 Expected output:
 
 ```
-auths 0.0.1-rc.5
+auths 0.0.1-rc.10
 ```
 
 !!! tip

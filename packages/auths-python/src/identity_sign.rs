@@ -51,7 +51,7 @@ fn make_signer(
 #[pyfunction]
 #[pyo3(signature = (message, identity_did, repo_path, passphrase=None))]
 pub fn sign_as_identity(
-    py: Python<'_>,
+    _py: Python<'_>,
     message: &[u8],
     identity_did: &str,
     repo_path: &str,
@@ -62,14 +62,14 @@ pub fn sign_as_identity(
         IdentityDID::parse(identity_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
 
     let msg = message.to_vec();
-    py.allow_threads(move || {
+    {
         let sig_bytes = signer
             .sign_for_identity(&did, &provider, &msg)
             .map_err(|e| {
                 PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}"))
             })?;
         Ok(hex::encode(sig_bytes))
-    })
+    }
 }
 
 /// Sign an action envelope using a keychain-stored identity key.
@@ -88,7 +88,7 @@ pub fn sign_as_identity(
 #[pyfunction]
 #[pyo3(signature = (action_type, payload_json, identity_did, repo_path, passphrase=None))]
 pub fn sign_action_as_identity(
-    py: Python<'_>,
+    _py: Python<'_>,
     action_type: &str,
     payload_json: &str,
     identity_did: &str,
@@ -130,14 +130,14 @@ pub fn sign_action_as_identity(
     let action_type_owned = action_type.to_string();
     let identity_did_owned = identity_did.to_string();
 
-    let sig_hex = py.allow_threads(move || {
+    let sig_hex = {
         let sig_bytes = signer
             .sign_for_identity(&did, &provider, canonical.as_bytes())
             .map_err(|e| {
                 PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}"))
             })?;
         Ok::<String, PyErr>(hex::encode(sig_bytes))
-    })?;
+    }?;
 
     let envelope = serde_json::json!({
         "version": "1.0",
@@ -169,7 +169,7 @@ pub fn sign_action_as_identity(
 #[pyfunction]
 #[pyo3(signature = (identity_did, repo_path, passphrase=None))]
 pub fn get_identity_public_key(
-    py: Python<'_>,
+    _py: Python<'_>,
     identity_did: &str,
     repo_path: &str,
     passphrase: Option<String>,
@@ -178,7 +178,7 @@ pub fn get_identity_public_key(
     let did =
         IdentityDID::parse(identity_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
 
-    py.allow_threads(move || {
+    {
         let aliases = signer
             .inner()
             .list_aliases_for_identity_with_role(&did, KeyRole::Primary)
@@ -201,7 +201,7 @@ pub fn get_identity_public_key(
             ))
         })?;
         Ok(hex::encode(pub_bytes))
-    })
+    }
 }
 
 /// Sign arbitrary bytes using a keychain-stored agent key (by alias).
@@ -222,7 +222,7 @@ pub fn get_identity_public_key(
 #[pyfunction]
 #[pyo3(signature = (message, key_alias, repo_path, passphrase=None))]
 pub fn sign_as_agent(
-    py: Python<'_>,
+    _py: Python<'_>,
     message: &[u8],
     key_alias: &str,
     repo_path: &str,
@@ -234,14 +234,14 @@ pub fn sign_as_agent(
     })?;
 
     let msg = message.to_vec();
-    py.allow_threads(move || {
+    {
         let sig_bytes = signer
             .sign_with_alias(&alias, &provider, &msg)
             .map_err(|e| {
                 PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}"))
             })?;
         Ok(hex::encode(sig_bytes))
-    })
+    }
 }
 
 /// Sign an action envelope using an agent's key alias.
@@ -261,7 +261,7 @@ pub fn sign_as_agent(
 #[pyfunction]
 #[pyo3(signature = (action_type, payload_json, key_alias, agent_did, repo_path, passphrase=None))]
 pub fn sign_action_as_agent(
-    py: Python<'_>,
+    _py: Python<'_>,
     action_type: &str,
     payload_json: &str,
     key_alias: &str,
@@ -305,14 +305,14 @@ pub fn sign_action_as_agent(
     let action_type_owned = action_type.to_string();
     let agent_did_owned = agent_did.to_string();
 
-    let sig_hex = py.allow_threads(move || {
+    let sig_hex = {
         let sig_bytes = signer
             .sign_with_alias(&alias, &provider, canonical.as_bytes())
             .map_err(|e| {
                 PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Signing failed: {e}"))
             })?;
         Ok::<String, PyErr>(hex::encode(sig_bytes))
-    })?;
+    }?;
 
     let envelope = serde_json::json!({
         "version": "1.0",

@@ -47,11 +47,10 @@ The human's attestation has no `delegated_by` — this is the root of the chain.
 The human creates a scoped, time-limited attestation granting specific capabilities to an agent:
 
 ```bash
-auths attestation issue \
-  --subject did:key:z6MkAgentDevice... \
-  --signer-type Agent \
+auths device link \
+  --device-did did:key:z6MkAgentDevice... \
+  --key my-key \
   --capabilities "sign:commit,deploy:staging" \
-  --delegated-by did:keri:EHuman123... \
   --expires-in 24h
 ```
 
@@ -103,7 +102,7 @@ The sub-agent's capabilities are a strict subset of the parent agent's. The expi
 When a relying party receives a signed artifact, it verifies the full attestation chain using `verify_chain()`:
 
 ```bash
-auths verify --attestation-chain chain.json
+auths verify chain.json
 ```
 
 The verifier checks, from leaf to root:

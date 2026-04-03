@@ -42,7 +42,7 @@ struct TokenResponse {
 /// ```
 #[pyfunction]
 pub fn get_token(
-    py: Python<'_>,
+    _py: Python<'_>,
     bridge_url: String,
     chain_json: String,
     root_public_key: String,
@@ -63,7 +63,7 @@ pub fn get_token(
         },
     };
 
-    py.allow_threads(|| {
+    {
         runtime().block_on(async {
             let response = http_client()
                 .post(&url)
@@ -90,5 +90,5 @@ pub fn get_token(
 
             Ok(token_resp.access_token)
         })
-    })
+    }
 }
