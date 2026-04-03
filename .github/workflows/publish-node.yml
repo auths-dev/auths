@@ -156,8 +156,7 @@ jobs:
 
       - name: Publish platform packages
         working-directory: packages/auths-node
-        # TODO: remove --skip-optional-publish after v0.1.0 (platform packages already published)
-        run: npx napi prepublish -t npm --no-gh-release --skip-optional-publish
+        run: npx napi prepublish -t npm --no-gh-release
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

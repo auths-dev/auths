@@ -8,7 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-auths-crypto = { path = "../auths-crypto", version = "0.0.1-rc.10" }
+auths-crypto = { path = "../auths-crypto", version = "0.1.0" }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 chrono = { version = "0.4", features = ["serde"] }
