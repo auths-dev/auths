@@ -46,7 +46,7 @@ pub struct PyPairingHandle {
 impl PyPairingHandle {
     fn wait_for_response(
         &mut self,
-        py: Python<'_>,
+        _py: Python<'_>,
         timeout_secs: u64,
     ) -> PyResult<(String, Option<String>, String, String)> {
         let handle = self.handle.take().ok_or_else(|| {
@@ -56,7 +56,7 @@ impl PyPairingHandle {
         })?;
         let timeout = Duration::from_secs(timeout_secs);
 
-        py.allow_threads(move || {
+        {
             let rt = runtime();
             let result = rt.block_on(handle.wait_for_response(timeout));
             match result {
@@ -73,7 +73,7 @@ impl PyPairingHandle {
                     "[AUTHS_PAIRING_TIMEOUT] {e}"
                 ))),
             }
-        })
+        }
     }
 
     fn stop(&mut self) -> PyResult<()> {
@@ -107,7 +107,7 @@ impl PyPairingHandle {
 #[pyfunction]
 #[pyo3(signature = (repo_path, capabilities_json=None, timeout_secs=300, bind_address="0.0.0.0", enable_mdns=true, passphrase=None))]
 pub fn create_pairing_session_ffi(
-    py: Python<'_>,
+    _py: Python<'_>,
     repo_path: &str,
     capabilities_json: Option<String>,
     timeout_secs: u64,
@@ -126,7 +126,7 @@ pub fn create_pairing_session_ffi(
         vec!["sign:commit".to_string()]
     };
 
-    py.allow_threads(move || {
+    {
         let identity_storage = RegistryIdentityStorage::new(repo.clone());
         let managed = identity_storage
             .load_identity()
@@ -203,13 +203,13 @@ pub fn create_pairing_session_ffi(
             controller_did,
             py_handle,
         ))
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (short_code, endpoint, token, repo_path, device_name=None, passphrase=None))]
 pub fn join_pairing_session_ffi(
-    py: Python<'_>,
+    _py: Python<'_>,
     short_code: &str,
     endpoint: &str,
     token: &str,
@@ -224,7 +224,7 @@ pub fn join_pairing_session_ffi(
     let endpoint = endpoint.to_string();
     let token = token.to_string();
 
-    py.allow_threads(move || {
+    {
         let identity_storage = RegistryIdentityStorage::new(repo.clone());
         let managed = identity_storage
             .load_identity()
@@ -368,13 +368,13 @@ pub fn join_pairing_session_ffi(
         })?;
 
         Ok((device_did.to_string(), device_name))
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (device_did, device_public_key_hex, repo_path, capabilities_json=None, passphrase=None))]
 pub fn complete_pairing_ffi(
-    py: Python<'_>,
+    _py: Python<'_>,
     device_did: &str,
     device_public_key_hex: &str,
     repo_path: &str,
@@ -392,7 +392,7 @@ pub fn complete_pairing_ffi(
         vec!["sign:commit".to_string()]
     };
 
-    py.allow_threads(move || {
+    {
         let device_pubkey = hex::decode(&device_pk_hex).map_err(|e| {
             PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] Invalid public key hex: {e}"))
         })?;
@@ -447,5 +447,5 @@ pub fn complete_pairing_ffi(
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
 
         Ok((device_did, None, attestation.rid.to_string()))
-    })
+    }
 }

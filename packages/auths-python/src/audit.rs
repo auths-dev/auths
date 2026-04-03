@@ -13,7 +13,7 @@ fn resolve_repo(repo_path: &str) -> PathBuf {
 #[pyfunction]
 #[pyo3(signature = (target_repo_path, auths_repo_path, since=None, until=None, author=None, limit=500))]
 pub fn generate_audit_report(
-    py: Python<'_>,
+    _py: Python<'_>,
     target_repo_path: &str,
     auths_repo_path: &str,
     since: Option<String>,
@@ -24,7 +24,7 @@ pub fn generate_audit_report(
     let target = resolve_repo(target_repo_path);
     let _auths = resolve_repo(auths_repo_path);
 
-    py.allow_threads(move || {
+    {
         let provider = Git2LogProvider::open(&target)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_AUDIT_ERROR] {e}")))?;
 
@@ -139,5 +139,5 @@ pub fn generate_audit_report(
 
         serde_json::to_string(&result)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_AUDIT_ERROR] {e}")))
-    })
+    }
 }

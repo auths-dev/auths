@@ -71,7 +71,7 @@ pub(crate) fn resolve_key_alias(
     }
 }
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct DelegatedAgentBundle {
     #[pyo3(get)]
@@ -93,7 +93,7 @@ impl DelegatedAgentBundle {
     }
 }
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct AgentIdentityBundle {
     #[pyo3(get)]
@@ -128,7 +128,7 @@ impl AgentIdentityBundle {
 /// ```
 #[pyfunction]
 pub fn create_identity(
-    py: Python<'_>,
+    _py: Python<'_>,
     key_alias: &str,
     repo_path: &str,
     passphrase: Option<String>,
@@ -154,7 +154,7 @@ pub fn create_identity(
         PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
     })?;
 
-    py.allow_threads(|| {
+    {
         let (identity_did, result_alias) =
             initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None)
                 .map_err(|e| {
@@ -180,7 +180,7 @@ pub fn create_identity(
             result_alias.to_string(),
             hex::encode(pub_bytes),
         ))
-    })
+    }
 }
 
 /// Create a standalone agent identity with its own KERI identity (did:keri:).
@@ -198,7 +198,7 @@ pub fn create_identity(
 #[pyfunction]
 #[pyo3(signature = (agent_name, capabilities, repo_path, passphrase=None))]
 pub fn create_agent_identity(
-    py: Python<'_>,
+    _py: Python<'_>,
     agent_name: &str,
     capabilities: Vec<String>,
     repo_path: &str,
@@ -242,7 +242,7 @@ pub fn create_agent_identity(
     #[allow(clippy::disallowed_methods)] // Presentation boundary
     let now = chrono::Utc::now();
 
-    py.allow_threads(|| {
+    {
         let (identity_did, result_alias) = initialize_registry_identity(
             backend.clone(),
             &alias,
@@ -298,7 +298,7 @@ pub fn create_agent_identity(
             public_key_hex: hex::encode(pub_bytes),
             repo_path: Some(repo.to_string_lossy().to_string()),
         })
-    })
+    }
 }
 
 /// Delegate an agent under a parent identity using device-link delegation.
@@ -322,7 +322,7 @@ pub fn create_agent_identity(
 #[pyfunction]
 #[pyo3(signature = (agent_name, capabilities, parent_repo_path, passphrase=None, expires_in=None, identity_did=None))]
 pub fn delegate_agent(
-    py: Python<'_>,
+    _py: Python<'_>,
     agent_name: &str,
     capabilities: Vec<String>,
     parent_repo_path: &str,
@@ -437,7 +437,7 @@ pub fn delegate_agent(
         .passphrase_provider(provider)
         .build();
 
-    py.allow_threads(|| {
+    {
         let result = link_device(link_config, &ctx, clock.as_ref()).map_err(|e| {
             PyRuntimeError::new_err(format!(
                 "[AUTHS_IDENTITY_ERROR] Agent provisioning failed: {e}"
@@ -473,7 +473,7 @@ pub fn delegate_agent(
             public_key_hex: hex::encode(&agent_pubkey),
             repo_path: Some(repo.to_string_lossy().to_string()),
         })
-    })
+    }
 }
 
 /// Link a device to an identity.
@@ -492,7 +492,7 @@ pub fn delegate_agent(
 #[pyfunction]
 #[pyo3(signature = (identity_key_alias, capabilities, repo_path, passphrase=None, expires_in=None))]
 pub fn link_device_to_identity(
-    py: Python<'_>,
+    _py: Python<'_>,
     identity_key_alias: &str,
     capabilities: Vec<String>,
     repo_path: &str,
@@ -553,7 +553,7 @@ pub fn link_device_to_identity(
         .passphrase_provider(provider)
         .build();
 
-    py.allow_threads(|| {
+    {
         let result = link_device(link_config, &ctx, clock.as_ref()).map_err(|e| {
             PyRuntimeError::new_err(format!("[AUTHS_DEVICE_ERROR] Device linking failed: {e}"))
         })?;
@@ -561,7 +561,7 @@ pub fn link_device_to_identity(
             result.device_did.to_string(),
             result.attestation_id.to_string(),
         ))
-    })
+    }
 }
 
 /// Revoke a device from an identity.
@@ -580,7 +580,7 @@ pub fn link_device_to_identity(
 #[pyfunction]
 #[pyo3(signature = (device_did, identity_key_alias, repo_path, passphrase=None, note=None))]
 pub fn revoke_device_from_identity(
-    py: Python<'_>,
+    _py: Python<'_>,
     device_did: &str,
     identity_key_alias: &str,
     repo_path: &str,
@@ -620,12 +620,12 @@ pub fn revoke_device_from_identity(
         .passphrase_provider(provider)
         .build();
 
-    py.allow_threads(|| {
+    {
         revoke_device(device_did, &alias, &ctx, note, clock.as_ref()).map_err(|e| {
             PyRuntimeError::new_err(format!(
                 "[AUTHS_DEVICE_ERROR] Device revocation failed: {e}"
             ))
         })?;
         Ok(())
-    })
+    }
 }

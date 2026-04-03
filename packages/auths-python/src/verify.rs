@@ -30,7 +30,7 @@ use crate::types::{VerificationReport, VerificationResult};
 /// ```
 #[pyfunction]
 pub fn verify_attestation(
-    py: Python<'_>,
+    _py: Python<'_>,
     attestation_json: &str,
     issuer_pk_hex: &str,
 ) -> PyResult<VerificationResult> {
@@ -63,8 +63,7 @@ pub fn verify_attestation(
         }
     };
 
-    py.allow_threads(
-        || match runtime().block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
+    match runtime().block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
             Ok(_) => Ok(VerificationResult {
                 valid: true,
                 error: None,
@@ -75,8 +74,7 @@ pub fn verify_attestation(
                 error_code: Some(e.error_code().to_string()),
                 error: Some(e.to_string()),
             }),
-        },
-    )
+        }
 }
 
 /// Verify a chain of attestations from a root identity to a leaf device.
@@ -91,7 +89,7 @@ pub fn verify_attestation(
 /// ```
 #[pyfunction]
 pub fn verify_chain(
-    py: Python<'_>,
+    _py: Python<'_>,
     attestations_json: Vec<String>,
     root_pk_hex: &str,
 ) -> PyResult<VerificationReport> {
@@ -121,7 +119,7 @@ pub fn verify_chain(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
-    py.allow_threads(|| {
+    {
         match runtime().block_on(rust_verify_chain(&attestations, &root_pk_bytes)) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
@@ -129,7 +127,7 @@ pub fn verify_chain(
                 e.error_code()
             ))),
         }
-    })
+    }
 }
 
 /// Full cryptographic verification that a device is authorized.
@@ -146,7 +144,7 @@ pub fn verify_chain(
 /// ```
 #[pyfunction]
 pub fn verify_device_authorization(
-    py: Python<'_>,
+    _py: Python<'_>,
     identity_did: &str,
     device_did: &str,
     attestations_json: Vec<String>,
@@ -180,7 +178,7 @@ pub fn verify_device_authorization(
 
     let device = DeviceDID::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
 
-    py.allow_threads(|| {
+    {
         match runtime().block_on(rust_verify_device_authorization(
             identity_did,
             &device,
@@ -193,7 +191,7 @@ pub fn verify_device_authorization(
                 e.error_code()
             ))),
         }
-    })
+    }
 }
 
 /// Verify a single attestation and check that it grants a required capability.
@@ -209,7 +207,7 @@ pub fn verify_device_authorization(
 /// ```
 #[pyfunction]
 pub fn verify_attestation_with_capability(
-    py: Python<'_>,
+    _py: Python<'_>,
     attestation_json: &str,
     issuer_pk_hex: &str,
     required_capability: &str,
@@ -247,7 +245,7 @@ pub fn verify_attestation_with_capability(
         PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
     })?;
 
-    py.allow_threads(|| {
+    {
         match runtime().block_on(rust_verify_with_capability(&att, &cap, &issuer_pk_bytes)) {
             Ok(_) => Ok(VerificationResult {
                 valid: true,
@@ -260,7 +258,7 @@ pub fn verify_attestation_with_capability(
                 error: Some(e.to_string()),
             }),
         }
-    })
+    }
 }
 
 /// Verify a chain of attestations and check that all grant a required capability.
@@ -276,7 +274,7 @@ pub fn verify_attestation_with_capability(
 /// ```
 #[pyfunction]
 pub fn verify_chain_with_capability(
-    py: Python<'_>,
+    _py: Python<'_>,
     attestations_json: Vec<String>,
     root_pk_hex: &str,
     required_capability: &str,
@@ -311,7 +309,7 @@ pub fn verify_chain_with_capability(
         PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
     })?;
 
-    py.allow_threads(|| {
+    {
         match runtime().block_on(rust_verify_chain_with_capability(
             &attestations,
             &cap,
@@ -323,7 +321,7 @@ pub fn verify_chain_with_capability(
                 e.error_code()
             ))),
         }
-    })
+    }
 }
 
 fn parse_rfc3339_timestamp(at_rfc3339: &str) -> PyResult<DateTime<Utc>> {
@@ -390,7 +388,7 @@ fn validate_attestation_key(attestation_json: &str, issuer_pk_hex: &str) -> PyRe
 /// ```
 #[pyfunction]
 pub fn verify_at_time(
-    py: Python<'_>,
+    _py: Python<'_>,
     attestation_json: &str,
     issuer_pk_hex: &str,
     at_rfc3339: &str,
@@ -409,8 +407,7 @@ pub fn verify_at_time(
         }
     };
 
-    py.allow_threads(
-        || match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
             Ok(_) => Ok(VerificationResult {
                 valid: true,
                 error: None,
@@ -421,8 +418,7 @@ pub fn verify_at_time(
                 error_code: Some(e.error_code().to_string()),
                 error: Some(e.to_string()),
             }),
-        },
-    )
+        }
 }
 
 /// Verify an attestation at a specific historical timestamp with capability check.
@@ -439,7 +435,7 @@ pub fn verify_at_time(
 /// ```
 #[pyfunction]
 pub fn verify_at_time_with_capability(
-    py: Python<'_>,
+    _py: Python<'_>,
     attestation_json: &str,
     issuer_pk_hex: &str,
     at_rfc3339: &str,
@@ -463,8 +459,7 @@ pub fn verify_at_time_with_capability(
         PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
     })?;
 
-    py.allow_threads(
-        || match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
             Ok(_) => {
                 if att.capabilities.contains(&cap) {
                     Ok(VerificationResult {
@@ -487,8 +482,7 @@ pub fn verify_at_time_with_capability(
                 error_code: Some(e.error_code().to_string()),
                 error: Some(e.to_string()),
             }),
-        },
-    )
+        }
 }
 
 /// Verify a chain of attestations with witness receipt quorum enforcement.
@@ -506,7 +500,7 @@ pub fn verify_at_time_with_capability(
 /// ```
 #[pyfunction]
 pub fn verify_chain_with_witnesses(
-    py: Python<'_>,
+    _py: Python<'_>,
     attestations_json: Vec<String>,
     root_pk_hex: &str,
     receipts_json: Vec<String>,
@@ -580,7 +574,7 @@ pub fn verify_chain_with_witnesses(
         threshold,
     };
 
-    py.allow_threads(|| {
+    {
         match runtime().block_on(rust_verify_chain_with_witnesses(
             &attestations,
             &root_pk_bytes,
@@ -592,5 +586,5 @@ pub fn verify_chain_with_witnesses(
                 e.error_code()
             ))),
         }
-    })
+    }
 }

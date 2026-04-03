@@ -85,7 +85,7 @@ impl ArtifactSource for BytesArtifact {
     }
 }
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyArtifactResult {
     #[pyo3(get)]
@@ -210,7 +210,7 @@ fn build_context_and_sign(
 #[pyfunction]
 #[pyo3(signature = (file_path, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None))]
 pub fn sign_artifact(
-    py: Python<'_>,
+    _py: Python<'_>,
     file_path: &str,
     identity_key_alias: &str,
     repo_path: &str,
@@ -229,9 +229,9 @@ pub fn sign_artifact(
     let alias = identity_key_alias.to_string();
     let rp = repo_path.to_string();
 
-    py.allow_threads(move || {
+    {
         build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note)
-    })
+    }
 }
 
 /// Sign raw bytes, producing a dual-signed attestation.
@@ -251,7 +251,7 @@ pub fn sign_artifact(
 #[pyfunction]
 #[pyo3(signature = (data, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None))]
 pub fn sign_artifact_bytes(
-    py: Python<'_>,
+    _py: Python<'_>,
     data: &[u8],
     identity_key_alias: &str,
     repo_path: &str,
@@ -265,7 +265,7 @@ pub fn sign_artifact_bytes(
     let alias = identity_key_alias.to_string();
     let rp = repo_path.to_string();
 
-    py.allow_threads(move || {
+    {
         build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note)
-    })
+    }
 }

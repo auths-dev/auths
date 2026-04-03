@@ -11,7 +11,7 @@ use pyo3::prelude::*;
 
 use crate::identity::{make_keychain_config, resolve_passphrase};
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyCommitSignResult {
     #[pyo3(get)]
@@ -55,7 +55,7 @@ impl PyCommitSignResult {
 #[pyfunction]
 #[pyo3(signature = (data, identity_key_alias, repo_path, passphrase=None))]
 pub fn sign_commit(
-    py: Python<'_>,
+    _py: Python<'_>,
     data: &[u8],
     identity_key_alias: &str,
     repo_path: &str,
@@ -84,7 +84,7 @@ pub fn sign_commit(
     #[allow(clippy::disallowed_methods)] // Presentation boundary
     let now = chrono::Utc::now();
 
-    py.allow_threads(move || {
+    {
         let pem = CommitSigningWorkflow::execute(&signing_ctx, params, now).map_err(|e| {
             PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Commit signing failed: {e}"))
         })?;
@@ -94,5 +94,5 @@ pub fn sign_commit(
             method: "direct".to_string(),
             namespace: "git".to_string(),
         })
-    })
+    }
 }

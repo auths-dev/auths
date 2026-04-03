@@ -66,10 +66,10 @@ impl CryptoDiagnosticProvider for FfiDiagnosticAdapter {
 
 #[pyfunction]
 #[pyo3(signature = (repo_path,))]
-pub fn run_diagnostics(py: Python<'_>, repo_path: &str) -> PyResult<String> {
+pub fn run_diagnostics(_py: Python<'_>, repo_path: &str) -> PyResult<String> {
     let _repo = repo_path.to_string();
 
-    py.allow_threads(move || {
+    {
         let adapter = FfiDiagnosticAdapter;
         let workflow = DiagnosticsWorkflow::new(&adapter, &adapter);
         let report = workflow
@@ -104,5 +104,5 @@ pub fn run_diagnostics(py: Python<'_>, repo_path: &str) -> PyResult<String> {
 
         serde_json::to_string(&result)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_DIAGNOSTIC_ERROR] {e}")))
-    })
+    }
 }

@@ -4,7 +4,7 @@ use auths_verifier::types::{
 };
 use pyo3::prelude::*;
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct VerificationResult {
     #[pyo3(get)]
@@ -39,7 +39,7 @@ impl VerificationResult {
     }
 }
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct VerificationStatus {
     #[pyo3(get)]
@@ -124,7 +124,7 @@ impl From<RustVerificationStatus> for VerificationStatus {
     }
 }
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct ChainLink {
     #[pyo3(get)]
@@ -158,7 +158,7 @@ impl From<RustChainLink> for ChainLink {
     }
 }
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct VerificationReport {
     #[pyo3(get)]

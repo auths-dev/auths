@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 use crate::runtime::runtime;
 
 /// Result of native commit signature verification.
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyCommitVerificationResult {
     #[pyo3(get)]
@@ -75,7 +75,7 @@ fn error_to_code(err: &CommitVerificationError) -> &'static str {
 /// ```
 #[pyfunction]
 pub fn verify_commit_native(
-    py: Python<'_>,
+    _py: Python<'_>,
     commit_content: &[u8],
     allowed_keys_hex: Vec<String>,
 ) -> PyResult<PyCommitVerificationResult> {
@@ -92,7 +92,7 @@ pub fn verify_commit_native(
         .collect::<PyResult<Vec<_>>>()?;
 
     let content = commit_content.to_vec();
-    py.allow_threads(|| {
+    {
         let provider = auths_crypto::RingCryptoProvider;
         let result = runtime().block_on(verify_commit_signature(&content, &keys, &provider, None));
 
@@ -110,5 +110,5 @@ pub fn verify_commit_native(
                 error: Some(err.to_string()),
             }),
         }
-    })
+    }
 }

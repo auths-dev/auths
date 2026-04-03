@@ -9,7 +9,7 @@ use auths_verifier::types::DeviceDID;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
-#[pyclass]
+#[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyAttestation {
     #[pyo3(get)]
@@ -94,16 +94,16 @@ fn open_attestation_storage(repo_path: &str) -> PyResult<Arc<RegistryAttestation
 /// let atts = list_attestations(py, "~/.auths")?;
 /// ```
 #[pyfunction]
-pub fn list_attestations(py: Python<'_>, repo_path: &str) -> PyResult<Vec<PyAttestation>> {
+pub fn list_attestations(_py: Python<'_>, repo_path: &str) -> PyResult<Vec<PyAttestation>> {
     let storage = open_attestation_storage(repo_path)?;
-    py.allow_threads(|| {
+    {
         let all = storage.load_all_attestations().map_err(|e| {
             PyRuntimeError::new_err(format!(
                 "[AUTHS_REGISTRY_ERROR] Failed to load attestations: {e}"
             ))
         })?;
         Ok(all.iter().map(attestation_to_py).collect())
-    })
+    }
 }
 
 /// List attestations for a specific device DID.
@@ -118,12 +118,12 @@ pub fn list_attestations(py: Python<'_>, repo_path: &str) -> PyResult<Vec<PyAtte
 /// ```
 #[pyfunction]
 pub fn list_attestations_by_device(
-    py: Python<'_>,
+    _py: Python<'_>,
     repo_path: &str,
     device_did: &str,
 ) -> PyResult<Vec<PyAttestation>> {
     let storage = open_attestation_storage(repo_path)?;
-    py.allow_threads(|| {
+    {
         let all = storage.load_all_attestations().map_err(|e| {
             PyRuntimeError::new_err(format!(
                 "[AUTHS_REGISTRY_ERROR] Failed to load attestations: {e}"
@@ -134,7 +134,7 @@ pub fn list_attestations_by_device(
             .get(device_did)
             .map(|atts| atts.iter().map(attestation_to_py).collect())
             .unwrap_or_default())
-    })
+    }
 }
 
 /// Get the latest attestation for a specific device DID.
@@ -149,12 +149,12 @@ pub fn list_attestations_by_device(
 /// ```
 #[pyfunction]
 pub fn get_latest_attestation(
-    py: Python<'_>,
+    _py: Python<'_>,
     repo_path: &str,
     device_did: &str,
 ) -> PyResult<Option<PyAttestation>> {
     let storage = open_attestation_storage(repo_path)?;
-    py.allow_threads(|| {
+    {
         let all = storage.load_all_attestations().map_err(|e| {
             PyRuntimeError::new_err(format!(
                 "[AUTHS_REGISTRY_ERROR] Failed to load attestations: {e}"
@@ -164,5 +164,5 @@ pub fn get_latest_attestation(
         let did =
             DeviceDID::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
         Ok(group.latest(&did).map(attestation_to_py))
-    })
+    }
 }

@@ -52,7 +52,7 @@ fn save_witness_config(repo_path: &Path, config: &WitnessConfig) -> PyResult<()>
 #[pyfunction]
 #[pyo3(signature = (url, repo_path, label=None))]
 pub fn add_witness(
-    py: Python<'_>,
+    _py: Python<'_>,
     url: &str,
     repo_path: &str,
     label: Option<String>,
@@ -60,7 +60,7 @@ pub fn add_witness(
     let url_str = url.to_string();
     let repo = resolve_repo(repo_path);
 
-    py.allow_threads(move || {
+    {
         let parsed_url: url::Url = url_str.parse().map_err(|e| {
             PyRuntimeError::new_err(format!(
                 "[AUTHS_WITNESS_ERROR] Invalid URL '{}': {}",
@@ -81,16 +81,16 @@ pub fn add_witness(
 
         save_witness_config(&repo, &config)?;
         Ok((url_str, None, label))
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (url, repo_path))]
-pub fn remove_witness(py: Python<'_>, url: &str, repo_path: &str) -> PyResult<()> {
+pub fn remove_witness(_py: Python<'_>, url: &str, repo_path: &str) -> PyResult<()> {
     let url_str = url.to_string();
     let repo = resolve_repo(repo_path);
 
-    py.allow_threads(move || {
+    {
         let parsed_url: url::Url = url_str.parse().map_err(|e| {
             PyRuntimeError::new_err(format!(
                 "[AUTHS_WITNESS_ERROR] Invalid URL '{}': {}",
@@ -107,15 +107,15 @@ pub fn remove_witness(py: Python<'_>, url: &str, repo_path: &str) -> PyResult<()
 
         save_witness_config(&repo, &config)?;
         Ok(())
-    })
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (repo_path,))]
-pub fn list_witnesses(py: Python<'_>, repo_path: &str) -> PyResult<String> {
+pub fn list_witnesses(_py: Python<'_>, repo_path: &str) -> PyResult<String> {
     let repo = resolve_repo(repo_path);
 
-    py.allow_threads(move || {
+    {
         let config = load_witness_config(&repo)?;
 
         let entries: Vec<serde_json::Value> = config
@@ -132,5 +132,5 @@ pub fn list_witnesses(py: Python<'_>, repo_path: &str) -> PyResult<String> {
 
         serde_json::to_string(&entries)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_WITNESS_ERROR] {e}")))
-    })
+    }
 }
