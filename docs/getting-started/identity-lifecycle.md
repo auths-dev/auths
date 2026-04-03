@@ -6,7 +6,7 @@ An Auths identity moves through distinct phases: creation, device linking, key r
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Inception: auths id init
+    [*] --> Inception: auths id create
     Inception --> Active: Identity created<br/>KEL seq 0
     Active --> Active: Link device<br/>IXN event anchors attestation
     Active --> Rotated: Rotate keys<br/>ROT event, KEL seq +1
@@ -22,7 +22,7 @@ stateDiagram-v2
 Identity creation generates two Ed25519 keypairs and writes a single inception event to the Key Event Log.
 
 ```
-auths id init --alias my-key
+auths id create --local-key-alias my-key
 ```
 
 What happens internally:
@@ -121,7 +121,7 @@ After rotation:
 When a device is compromised or decommissioned, its attestation is revoked. Revocation is a signed event: the identity key signs a new attestation with the `revoked_at` field set.
 
 ```
-auths device revoke <device-did>
+auths device revoke --device-did <DEVICE_DID> --key <KEY_ALIAS>
 ```
 
 The revoked attestation replaces the original at the same Git ref path. The revocation is anchored in the KEL via an interaction event. After revocation, signatures from that device will fail verification (the verifier checks the `revoked_at` field).
