@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use auths_sdk::workflows::allowed_signers::{
-    AllowedSigners, AllowedSignersError, EmailAddress, SignerPrincipal, SignerSource,
+    AllowedSigners, AllowedSignersError, EmailAddress, SignerPrincipal, SignerSource, SyncReport,
 };
 use auths_storage::git::RegistryAttestationStorage;
 use auths_verifier::core::Ed25519PublicKey;
@@ -208,26 +208,32 @@ fn handle_remove(args: &SignersRemoveArgs) -> Result<()> {
     Ok(())
 }
 
+/// Core sync logic — no printing. Reused by init and `auths signers sync`.
+pub(crate) fn sync_signers(
+    repo: &std::path::Path,
+    output_file: &std::path::Path,
+) -> Result<(PathBuf, SyncReport)> {
+    let storage = RegistryAttestationStorage::new(repo);
+    let mut signers = AllowedSigners::load(output_file, &FileAllowedSignersStore)
+        .with_context(|| format!("Failed to load {}", output_file.display()))?;
+    let report = signers
+        .sync(&storage)
+        .context("Failed to sync attestations")?;
+    signers
+        .save(&FileAllowedSignersStore)
+        .with_context(|| format!("Failed to write {}", output_file.display()))?;
+    Ok((output_file.to_path_buf(), report))
+}
+
 pub(crate) fn handle_sync(args: &SignersSyncArgs) -> Result<()> {
     let repo_path = expand_tilde(&args.repo)?;
-    let storage = RegistryAttestationStorage::new(&repo_path);
-
     let path = if let Some(ref output) = args.output_file {
         expand_tilde(output).map_err(|e| anyhow::anyhow!("{}", e))?
     } else {
         resolve_signers_path()?
     };
 
-    let mut signers = AllowedSigners::load(&path, &FileAllowedSignersStore)
-        .with_context(|| format!("Failed to load {}", path.display()))?;
-
-    let report = signers
-        .sync(&storage)
-        .context("Failed to sync attestations")?;
-
-    signers
-        .save(&FileAllowedSignersStore)
-        .with_context(|| format!("Failed to write {}", path.display()))?;
+    let (path, report) = sync_signers(&repo_path, &path)?;
 
     println!(
         "Synced: {} added, {} removed, {} manual preserved",
