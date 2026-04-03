@@ -1,3 +1,4 @@
+"""Trust pinning and identity verification levels."""
 from __future__ import annotations
 
 import enum

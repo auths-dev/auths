@@ -1,3 +1,4 @@
+"""Device pairing sessions — Stripe-style API."""
 from __future__ import annotations
 
 import json

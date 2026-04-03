@@ -1,3 +1,4 @@
+"""Diagnostic checks for identity and signing health."""
 from __future__ import annotations
 
 import json

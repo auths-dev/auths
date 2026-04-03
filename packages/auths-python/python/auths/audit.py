@@ -1,3 +1,4 @@
+"""Audit reports and commit history analysis."""
 from __future__ import annotations
 
 import json

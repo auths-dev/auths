@@ -1,3 +1,4 @@
+"""Witness management for attestation countersigning."""
 from __future__ import annotations
 
 import json
