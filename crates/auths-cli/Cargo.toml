@@ -64,7 +64,7 @@ der = { version = "0.7", features = ["oid"] }
 env_logger = "0.11.8"
 config = { version = "0.15.19", features = ["toml"] }
 toml = "1.0.2"
-sha2 = "0.10"
+sha2 = "0.11"
 tempfile = "3"
 thiserror.workspace = true
 zeroize = "1.8"

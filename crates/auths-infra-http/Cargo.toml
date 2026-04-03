@@ -17,7 +17,7 @@ auths-crypto = { workspace = true }
 auths-oidc-port = { path = "../auths-oidc-port", version = "0.0.1-rc.10" }
 auths-verifier = { workspace = true, features = ["native"] }
 futures-util = "0.3"
-jsonwebtoken = { version = "9.3", features = ["use_pem"] }
+jsonwebtoken = { version = "10.3.0", features = ["use_pem"] }
 reqwest = { version = "0.13.2", features = ["json", "form"] }
 thiserror.workspace = true
 tokio.workspace = true

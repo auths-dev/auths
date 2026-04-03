@@ -36,5 +36,5 @@ auths-pairing-daemon = { path = "../../crates/auths-pairing-daemon" }
 auths-infra-git = { path = "../../crates/auths-infra-git" }
 shellexpand = "3"
 url = "2"
-sha2 = "0.10"
+sha2 = "0.11"
 uuid = { version = "1", features = ["v4"] }
