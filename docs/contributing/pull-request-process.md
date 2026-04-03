@@ -19,9 +19,9 @@ Alternatively, ticket-based naming (`fn-43`, `fix-127`) is used when branches ma
 Write commit messages in present tense using an imperative verb:
 
 ```
-add support for key rotation in CLI
-fix attestation expiry check off-by-one
-refactor storage trait to use thiserror
+feat: add support for key rotation in CLI
+fix: attestation expiry check off-by-one
+refactor: storage trait to use thiserror
 ```
 
 Not:
@@ -36,7 +36,25 @@ Keep the first line under 72 characters. Use the body for additional context whe
 
 ## Before opening a PR
 
-Run the full local check suite:
+### Pre-commit hooks
+
+The repo uses [pre-commit](https://pre-commit.com/) to run checks automatically on every commit and push. Install the hooks once after cloning:
+
+```bash
+pip install pre-commit   # or: brew install pre-commit
+pre-commit install
+pre-commit install --hook-type pre-push
+```
+
+**On commit**, the hooks run fast checks: `cargo fmt`, `cargo clippy`, YAML/TOML validation, actionlint, clippy config sync, and `cargo deny` (licenses + bans).
+
+**On push**, slower checks run: the full test suite (`cargo nextest run`), Python bindings check, WASM compilation, and cross-platform `cargo check` for Linux, Windows, and aarch64.
+
+If you need to bypass hooks temporarily (e.g. WIP commits), use `git commit --no-verify`, but make sure all checks pass before opening a PR.
+
+### Manual checks
+
+You can also run the checks manually:
 
 ```bash
 # Format

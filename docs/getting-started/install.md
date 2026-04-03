@@ -8,6 +8,13 @@
 | Git         | 2.x             |
 | OS          | macOS, Linux, or Windows |
 
+## Homebrew
+
+```bash
+brew tap auths-dev/auths-cli
+brew install auths
+```
+
 ## From Cargo
 
 The recommended way to install Auths is via `cargo install`:
@@ -41,23 +48,6 @@ Use `--force` to overwrite a previous installation:
 cargo install --path crates/auths-cli --force
 ```
 
-### Run without installing
-
-You can also run directly from the source tree without installing:
-
-```bash
-cargo run -p auths-cli -- <arguments>
-```
-
-Or set up a cargo alias in `.cargo/config.toml`:
-
-```toml
-[alias]
-auths = "run -p auths-cli --"
-```
-
-Then: `cargo auths key list`
-
 ## Pre-built Binaries
 
 Pre-built binaries for macOS, Linux, and Windows are available on the
@@ -81,6 +71,13 @@ Pre-built binaries for macOS, Linux, and Windows are available on the
     ```bash
     cargo install auths-cli --features keychain-windows
     ```
+
+On all platforms, auths caches your passphrase for a configurable duration (default: 1 hour) so you are not prompted on every operation. You can adjust this with [`auths config set`](../cli/commands/primary.md#auths-config-set):
+
+```bash
+auths config set passphrase.cache duration
+auths config set passphrase.duration 7d
+```
 
 !!! note
     For CI or headless environments, set `AUTHS_KEYCHAIN_BACKEND=file` to use the

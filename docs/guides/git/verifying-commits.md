@@ -205,10 +205,10 @@ auths audit --repo . --since 2026-01-01
 auths audit --repo . --format json --require-all-signed --exit-code
 
 # CSV for spreadsheet import
-auths audit --repo . --format csv --output audit-report.csv
+auths audit --repo . --format csv -o audit-report.csv
 
 # HTML report
-auths audit --repo . --format html --output audit-report.html
+auths audit --repo . --format html -o audit-report.html
 ```
 
 Audit options:

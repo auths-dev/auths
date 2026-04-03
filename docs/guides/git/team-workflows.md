@@ -335,7 +335,7 @@ auths audit --repo . --since 2026-Q1
 auths audit --repo . --format json --since 2026-01-01 --until 2026-03-31
 
 # HTML report for stakeholders
-auths audit --repo . --format html --output q1-audit.html
+auths audit --repo . --format html -o q1-audit.html
 
 # CI gate: fail if any unsigned commits
 auths audit --repo . --require-all-signed --exit-code
