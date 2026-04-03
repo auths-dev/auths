@@ -17,7 +17,7 @@ crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
 # UniFFI for Swift/Kotlin bindings (cli feature for bindgen)
-uniffi = { version = "0.28", features = ["cli"] }
+uniffi = { version = "0.31.0", features = ["cli"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
