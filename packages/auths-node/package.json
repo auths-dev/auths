@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Node.js bindings for the Auths decentralized identity SDK",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/auths-dev/auths"
+  },
   "main": "index.js",
   "types": "index.d.ts",
   "exports": {
@@ -29,7 +33,7 @@
     "artifacts": "napi artifacts",
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm",
+    "prepublishOnly": "napi prepublish -t npm --no-gh-release",
     "docs": "typedoc",
     "test": "vitest run",
     "universal": "napi universal -t darwin"

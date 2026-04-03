@@ -125,7 +125,6 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'npm')
     permissions:
-      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -155,21 +154,21 @@ jobs:
         working-directory: packages/auths-node
         run: pnpm artifacts
 
-      - name: Prepare npm packages
+      - name: Publish platform packages
         working-directory: packages/auths-node
-        run: pnpm prepublishOnly
+        # TODO: remove --skip-optional-publish after v0.1.0 (platform packages already published)
+        run: npx napi prepublish -t npm --no-gh-release --skip-optional-publish
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish
+      - name: Publish main package
         working-directory: packages/auths-node
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.target }}" = "dry-run" ]; then
             echo "Dry run - skipping publish"
             npm pack
           else
-            npm publish --provenance --access public
+            npm publish --ignore-scripts --provenance --access public
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
