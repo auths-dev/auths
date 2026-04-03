@@ -363,7 +363,7 @@ dependencies = [
  "colored",
  "config",
  "console 0.16.2",
- "der 0.7.10",
+ "der 0.8.0",
  "dialoguer",
  "dirs",
  "env_logger",
@@ -2371,6 +2371,9 @@ name = "der"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71fd89660b2dc699704064e59e9dba0147b903e85319429e131620d022be411b"
+dependencies = [
+ "const-oid 0.10.2",
+]
 
 [[package]]
 name = "deranged"
