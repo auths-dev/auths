@@ -188,7 +188,7 @@ auths device list --include-revoked
 ```bash
 auths device extend \
   --device-did "$DEVICE_DID" \
-  --days 90 \
+  --expires-in 7776000 \
   --key my-key \
   --device-key laptop-key
 ```
@@ -211,8 +211,10 @@ auths key delete --alias laptop-key
 ### Verify an attestation
 
 ```bash
-auths device verify --device-did "$DEVICE_DID"
+auths device verify --attestation path/to/attestation.json
 ```
+
+The `--attestation` flag accepts a path to a device authorization JSON file, or `-` to read from stdin. You can optionally pass `--issuer-did` or `--issuer-pk` to specify the expected issuer.
 
 ## Troubleshooting
 

@@ -6,7 +6,7 @@ hide:
 
 <div align="center" style="margin-top: 4rem; margin-bottom: 4rem;" markdown="1">
 
-<h1 class="hero-text">Decentralized Identity for Developers</h1>
+<h1 class="hero-text">Portable Identity for Developers, Agents, and Workflows</h1>
 
 <p class="hero-subtitle">
 Cryptographic commit signing with Git-native storage. One identity, multiple devices, no central authority.
@@ -17,6 +17,18 @@ Cryptographic commit signing with Git-native storage. One identity, multiple dev
 [Architecture](architecture/overview.md){ .md-button }
 
 </div>
+
+## Install
+
+```bash
+brew tap auths-dev/auths-cli
+brew install auths
+```
+
+You can also install via `cargo install auths-cli`.
+
+!!! tip
+    See the full [Installation guide](getting-started/install.md) for platform-specific keychain setup and pre-built binaries.
 
 ---
 
@@ -43,17 +55,6 @@ Cryptographic commit signing with Git-native storage. One identity, multiple dev
 </div>
 
 ---
-
-## Install
-
-```bash
-cargo install auths-cli
-```
-
-This installs three binaries: `auths` (main CLI), `auths-sign` (Git signing program), and `auths-verify` (verification tool).
-
-!!! tip
-    See the full [Installation guide](getting-started/install.md) for platform-specific keychain setup and pre-built binaries.
 
 ## Quick Tour
 

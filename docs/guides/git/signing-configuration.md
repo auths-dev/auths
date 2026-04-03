@@ -296,10 +296,10 @@ cat ~/.auths/agent.log
 
 ### Passphrase with special characters rejected
 
-Shell metacharacters (`$`, `!`, `&`) are expanded before Auths sees them. Use single quotes:
+Shell metacharacters (`$`, `!`, `&`) are expanded before Auths sees them. Set the passphrase via the environment variable with single quotes:
 
 ```bash
-auths agent unlock --key main --passphrase 'MyPass$1!'
+AUTHS_PASSPHRASE='MyPass$1!' auths agent unlock --key main
 ```
 
 ### Local config overriding global
