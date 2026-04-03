@@ -38,34 +38,40 @@ auths/
 ## Crate dependency graph
 
 ```
-Layer 0: auths-crypto            (cryptographic primitives, DID:key encoding)
-Layer 1: auths-verifier          (standalone verification, FFI/WASM)
-Layer 2: auths-core              (keychains, signing, policy ports)
-Layer 3: auths-id, auths-policy  (identity, attestation, KERI, trait definitions)
-Layer 4: auths-storage, auths-sdk (storage adapters, application services)
-Layer 5: auths-infra-git, auths-infra-http (infrastructure adapters)
-Layer 6: auths-cli               (user commands)
+Layer 1: auths, auths-crypto, auths-jwt, auths-verifier, auths-telemetry, auths-utils
+Layer 2: auths-policy, auths-oidc-port
+Layer 3: auths-keri, auths-pairing-protocol
+Layer 4: auths-core, auths-index
+Layer 5: auths-infra-http, auths-mcp-server, auths-transparency
+Layer 6: auths-id
+Layer 7: auths-storage, auths-pairing-daemon
+Layer 8: auths-sdk
+Layer 9: auths-infra-git
+Layer 10: auths-cli
 ```
 
-Dependencies flow strictly downward. The publish order follows the same layer ordering.
+Dependencies flow strictly downward. The publish order follows the same layering — crates in lower batches depend only on crates in earlier batches.
 
 ```
-auths-crypto
+auths, auths-crypto, auths-jwt, auths-verifier, auths-telemetry, auths-utils
     ↑
-auths-verifier
+auths-policy, auths-oidc-port
     ↑
-auths-core ──────────────────────┐
-    ↑                            │
-auths-id ───── auths-policy      │
-    ↑                            │
-auths-storage   auths-sdk ───────┘
-    ↑              ↑
-auths-infra-git  auths-infra-http
-    ↑              ↑
-    └── auths-cli ─┘
-
-Standalone: auths-index, auths-telemetry
-Bindings:   packages/auths-verifier-{python,ts,go,swift}
+auths-keri, auths-pairing-protocol
+    ↑
+auths-core, auths-index
+    ↑
+auths-infra-http, auths-mcp-server, auths-transparency
+    ↑
+auths-id
+    ↑
+auths-storage, auths-pairing-daemon
+    ↑
+auths-sdk
+    ↑
+auths-infra-git
+    ↑
+auths-cli
 ```
 
 ## Crate responsibilities

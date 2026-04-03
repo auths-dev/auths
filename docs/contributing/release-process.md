@@ -134,7 +134,33 @@ SDK versions track their own binding API stability. A breaking change in the Pyt
 SDK publishing is automated via GitHub Actions triggered by `v*` tags:
 
 - **Python**: `.github/workflows/publish-python.yml` -- builds platform wheels with maturin and publishes to PyPI using Trusted Publisher.
+- **Node.js**: `.github/workflows/publish-node.yml` -- builds native bindings with napi-rs and publishes to npm.
 - **TypeScript**: `.github/workflows/publish-typescript.yml` -- builds WASM + TypeScript and publishes to npm.
+
+### Manual SDK publishing
+
+If an automated publish fails (e.g. a transient CI error) or you need to publish a single SDK independently, you can trigger each workflow manually via `gh workflow run`.
+
+**Dry run** (builds and tests but does not publish):
+
+```bash
+gh workflow run "Publish Python SDK" --ref main -f target=testpypi
+gh workflow run "Publish Node SDK" --ref main -f target=dry-run
+```
+
+**Production publish**:
+
+```bash
+gh workflow run "Publish Python SDK" --ref main -f target=pypi
+gh workflow run "Publish Node SDK" --ref main -f target=npm
+```
+
+You can monitor progress with:
+
+```bash
+gh run list --workflow=publish-python.yml --limit 1
+gh run list --workflow=publish-node.yml --limit 1
+```
 
 ## CI matrix
 
