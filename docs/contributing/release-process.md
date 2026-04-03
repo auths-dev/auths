@@ -20,15 +20,23 @@ version = "0.0.1-rc.5"
 
 ## Release steps
 
-### Using the justfile (recommended)
+### Using the release scripts
 
 The `justfile` at the repo root automates all release steps:
 
+GitHub Release:
 ```bash
-just release 0.x.y
+just github-release
 ```
-
 This handles pre-flight checks (clean working tree, branch, remote sync), creates and pushes the annotated tag, and opens the GitHub Actions run in your browser. GitHub Actions then builds binaries, creates the release, and triggers the Homebrew formula update.
+
+> Note: GitHub releases should succeed before moving onto crate.io release.
+
+[crates.io](https://crates.io/crates/auths-cli) release:
+```bash
+just crates-release
+```
+This makes similar checks as the github release. It also includes properly ordering runs based on dependency ordering, as well as a sleep timer to help crates.io fully upload crates with preceeding dependency.
 
 ### One-time CI signing setup
 

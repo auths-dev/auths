@@ -1,0 +1,22 @@
+{
+  "name": "@auths-dev/sdk-linux-x64-gnu",
+  "version": "0.1.0",
+  "cpu": [
+    "x64"
+  ],
+  "main": "auths.linux-x64-gnu.node",
+  "files": [
+    "auths.linux-x64-gnu.node"
+  ],
+  "description": "Node.js bindings for the Auths decentralized identity SDK",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "os": [
+    "linux"
+  ],
+  "libc": [
+    "glibc"
+  ]
+}
