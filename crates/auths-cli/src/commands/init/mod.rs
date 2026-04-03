@@ -30,7 +30,7 @@ use crate::config::CliConfig;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::Output;
 
-use super::signers::{SignersSyncArgs, handle_sync};
+use super::signers::sync_signers;
 use display::{
     display_agent_dry_run, display_agent_result, display_ci_result, display_developer_result,
 };
@@ -278,10 +278,15 @@ fn run_developer_setup(
     {
         let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
         let repo_signers = root.join(".auths").join("allowed_signers");
-        let _ = handle_sync(&SignersSyncArgs {
-            repo: "~/.auths".into(),
-            output_file: Some(repo_signers),
-        });
+        if let Ok(auths_repo) = get_auths_repo_path()
+            && let Ok((path, report)) = sync_signers(&auths_repo, &repo_signers)
+        {
+            out.println(&format!(
+                "  Wrote {} allowed signer(s) to {}",
+                report.added,
+                path.display()
+            ));
+        }
     }
 
     // REGISTRATION & DISPLAY

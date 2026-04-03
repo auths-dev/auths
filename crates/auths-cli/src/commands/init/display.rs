@@ -8,21 +8,25 @@ pub(crate) fn display_developer_result(
     registered: Option<&str>,
 ) {
     out.newline();
-    out.print_heading("You are on the Web of Trust!");
+    if registered.is_some() {
+        out.print_heading("You are on the Web of Trust!");
+    } else {
+        out.print_heading("Your identity is ready!");
+    }
     out.newline();
     out.println(&format!("  Identity: {}", out.info(&result.identity_did)));
     out.println(&format!("  Key alias: {}", out.info(&result.key_alias)));
     if let Some(registry) = registered {
         out.println(&format!("  Registry: {}", out.info(registry)));
+        let did_prefix = result
+            .identity_did
+            .strip_prefix("did:keri:")
+            .unwrap_or(&result.identity_did);
+        out.println(&format!(
+            "  Profile: {}",
+            out.info(&format!("https://auths.dev/registry/identity/{did_prefix}"))
+        ));
     }
-    let did_prefix = result
-        .identity_did
-        .strip_prefix("did:keri:")
-        .unwrap_or(&result.identity_did);
-    out.println(&format!(
-        "  Profile: {}",
-        out.info(&format!("https://auths.dev/registry/identity/{did_prefix}"))
-    ));
     out.newline();
     out.print_success("Your next commit will be signed with Auths!");
     out.println("  Run `auths status` to check your identity");
