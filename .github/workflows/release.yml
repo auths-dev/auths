@@ -1,7 +1,7 @@
 # Usage:
 # Set a tag, then push it to trigger the release workflow:
-# git tag v0.0.1-rc.5
-# git push origin v0.0.1-rc.5
+# git tag v0.1.0
+# git push origin v0.1.0
 
 name: Release
 
@@ -32,11 +32,10 @@ jobs:
             target: aarch64-apple-darwin
             asset_name: auths-macos-aarch64
             ext: .tar.gz
-          # No windows support for now
-          # - os: windows-latest
-          #   target: x86_64-pc-windows-msvc
-          #   asset_name: auths-windows-x86_64
-          #   ext: .zip
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: auths-windows-x86_64
+            ext: .zip
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
