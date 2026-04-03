@@ -33,6 +33,11 @@ flowchart LR
 | `types` | Plain-old-data config structs for all SDK workflows |
 | `result` | Return types for SDK workflow functions |
 | `error` | Domain error types (`SetupError`, `DeviceError`, `RotationError`, etc.) |
+| `audit` | Audit event emission convenience for SDK operations |
+| `domains` | Domain services for specialized business logic |
+| `keys` | Key import and management operations |
+| `namespace_registry` | Namespace verifier adapter registry mapping ecosystems to implementations |
+| `oidc_jti_registry` | OIDC JWT ID (jti) registry for token replay detection |
 | `presentation` | HTML and structured report rendering |
 
 ## `AuthsContext` -- The Dependency Container
@@ -50,6 +55,7 @@ pub struct AuthsContext {
     pub attestation_source: Arc<dyn AttestationSource + Send + Sync>,
     pub passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     pub uuid_provider: Arc<dyn UuidProvider + Send + Sync>,
+    pub agent_signing: Arc<dyn AgentSigningPort + Send + Sync>,
 }
 ```
 
@@ -69,7 +75,7 @@ pub struct AuthsContext {
 
 ### Builder Pattern
 
-`AuthsContext` uses a typestate builder to enforce compile-time correctness. The three required fields (`registry`, `key_storage`, `clock`) use typestate markers (`Missing` / `Set<T>`) so that `build()` is only callable once all three are set.
+`AuthsContext` uses a typestate builder to enforce compile-time correctness. The six required fields (`registry`, `key_storage`, `clock`, `identity_storage`, `attestation_sink`, `attestation_source`) use typestate markers (`Missing` / `Set<T>`) so that `build()` is only callable once all three are set.
 
 ```rust
 let ctx = AuthsContext::builder()

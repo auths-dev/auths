@@ -1,6 +1,8 @@
 # Primary Commands
 
-## auths init
+## Primary
+
+### auths init
 
 ```bash
 auths init
@@ -17,19 +19,18 @@ Set up your cryptographic identity and Git signing
 | `--key-alias <KEY_ALIAS>` | `main` | Key alias for the identity key (default: main) |
 | `--force` | — | Force overwrite if identity already exists |
 | `--dry-run` | — | Preview agent configuration without creating files or identities |
-| `--registry <REGISTRY>` | `https://auths-registry.fly.dev` | Registry URL for automatic identity registration |
+| `--registry <REGISTRY>` | `https://auths-registry.fly.dev` | Registry URL for identity registration |
 | `--register` | — | Register identity with the Auths Registry after creation |
-| `--json` | — | Emit machine-readable JSON |
+| `--github-action` | — | Scaffold a GitHub Actions workflow using the auths attest-action |
+| `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths init -->
 
----
-
-## auths sign
+### auths sign
 
 ```bash
-auths sign <TARGET>
+auths sign
 ```
 
 <!-- BEGIN GENERATED: auths sign -->
@@ -39,18 +40,16 @@ Sign a Git commit or artifact file.
 |------|---------|-------------|
 | `<TARGET>` | — | Commit ref, range, or artifact file path |
 | `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
-| `--key <IDENTITY_KEY_ALIAS>` | — | Local alias of the identity key (for artifact signing) |
-| `--device-key <DEVICE_KEY_ALIAS>` | — | Local alias of the device key (for artifact signing, required for files) |
+| `--key <KEY>` | — | Local alias of the identity key (for artifact signing) |
+| `--device-key <DEVICE_KEY>` | — | Local alias of the device key (for artifact signing, required for files) |
 | `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--note <NOTE>` | — | Optional note to embed in the attestation (for artifact signing) |
-| `--json` | — | Emit machine-readable JSON |
+| `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths sign -->
 
----
-
-## auths verify
+### auths verify
 
 ```bash
 auths verify
@@ -68,14 +67,12 @@ Verify a signed commit or attestation.
 | `--witness-receipts <WITNESS_RECEIPTS>` | — | Path to witness receipts JSON file |
 | `--witness-threshold <WITNESS_THRESHOLD>` | `1` | Witness quorum threshold |
 | `--witness-keys <WITNESS_KEYS>...` | — | Witness public keys as DID:hex pairs |
-| `--json` | — | Emit machine-readable JSON |
+| `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths verify -->
 
----
-
-## auths status
+### auths status
 
 ```bash
 auths status
@@ -86,14 +83,12 @@ Show identity and agent status overview
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | — | Emit machine-readable JSON |
+| `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths status -->
 
----
-
-## auths whoami
+### auths whoami
 
 ```bash
 auths whoami
@@ -104,54 +99,14 @@ Show the current identity on this machine
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--json` | — | Emit machine-readable JSON |
+| `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths whoami -->
 
----
+## Setup & Troubleshooting
 
-## auths tutorial
-
-```bash
-auths tutorial
-```
-
-<!-- BEGIN GENERATED: auths tutorial -->
-Interactive tutorial for learning Auths concepts
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-s, --skip <SECTION>` | — | Skip to a specific section (1-6) |
-| `--reset` | — | Reset progress and start from the beginning |
-| `--list` | — | List all tutorial sections |
-| `--json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths tutorial -->
-
----
-
-## auths doctor
-
-```bash
-auths doctor
-```
-
-<!-- BEGIN GENERATED: auths doctor -->
-Run comprehensive health checks
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--fix` | — | Auto-fix issues where possible |
-| `--json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths doctor -->
-
----
-
-## auths pair
+### auths pair
 
 ```bash
 auths pair
@@ -165,7 +120,113 @@ Link devices to your identity
 | `--join <CODE>` | — | Join an existing pairing session using a short code |
 | `--registry <URL>` | — | Registry URL for pairing relay (omit for LAN mode) |
 | `--timeout <SECONDS>` | `300` | Custom timeout in seconds for the pairing session (default: 300 = 5 minutes)  [aliases: --expiry] |
-| `--json` | — | Emit machine-readable JSON |
+| `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths pair -->
+
+### auths doctor
+
+```bash
+auths doctor
+```
+
+<!-- BEGIN GENERATED: auths doctor -->
+Run comprehensive health checks
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--fix` | — | Auto-fix issues where possible |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths doctor -->
+
+### auths tutorial
+
+```bash
+auths tutorial
+```
+
+<!-- BEGIN GENERATED: auths tutorial -->
+Interactive tutorial for learning Auths concepts
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-s, --skip <SECTION>` | — | Skip to a specific section (1-6) |
+| `--reset` | — | Reset progress and start from the beginning |
+| `--list` | — | List all tutorial sections |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths tutorial -->
+
+## Utilities
+
+### auths config set
+
+```bash
+auths config set
+```
+
+<!-- BEGIN GENERATED: auths config set -->
+Set a configuration value (e.g. `auths config set passphrase.cache always`)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<KEY>` | — | Dotted key path (e.g. `passphrase.cache`, `passphrase.duration`) |
+| `<VALUE>` | — | Value to assign |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths config set -->
+
+### auths config get
+
+```bash
+auths config get
+```
+
+<!-- BEGIN GENERATED: auths config get -->
+Get a configuration value (e.g. `auths config get passphrase.cache`)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<KEY>` | — | Dotted key path |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths config get -->
+
+### auths config show
+
+```bash
+auths config show
+```
+
+<!-- BEGIN GENERATED: auths config show -->
+Show the full configuration
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths config show -->
+
+### auths completions
+
+```bash
+auths completions
+```
+
+<!-- BEGIN GENERATED: auths completions -->
+Generate shell completions
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<SHELL>` | — | The shell to generate completions for |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths completions -->
