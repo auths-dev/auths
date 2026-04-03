@@ -22,7 +22,7 @@ This guide walks through setting up a local development environment for Auths.
 ## Clone and build
 
 ```bash
-git clone https://github.com/AuThs-protocol/auths.git
+git clone https://github.com/auths-dev/auths.git
 cd auths
 cargo build
 ```
