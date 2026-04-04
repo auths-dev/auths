@@ -36,11 +36,10 @@ use crate::core::provider::{CliPassphraseProvider, PrefilledPassphraseProvider};
 /// let config = build_config(&cli)?;
 /// ```
 pub fn build_config(cli: &AuthsCli) -> Result<CliConfig> {
-    let is_json = cli.json || matches!(cli.format, OutputFormat::Json);
-    let output_format = if is_json {
+    let output_format = if cli.json {
         OutputFormat::Json
     } else {
-        cli.format
+        OutputFormat::Text
     };
 
     let env_config = EnvironmentConfig::from_env();

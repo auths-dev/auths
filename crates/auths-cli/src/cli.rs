@@ -37,7 +37,6 @@ use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
 use crate::commands::whoami::WhoamiCommand;
 use crate::commands::witness::WitnessCommand;
-use crate::config::OutputFormat;
 
 fn cli_styles() -> Styles {
     Styles::styled()
@@ -64,16 +63,6 @@ pub struct AuthsCli {
 
     #[clap(long, help = "Show all commands including advanced ones")]
     pub help_all: bool,
-
-    #[clap(
-        long,
-        value_enum,
-        default_value = "text",
-        global = true,
-        hide = true,
-        help = "Output format (text or json)"
-    )]
-    pub format: OutputFormat,
 
     #[clap(short = 'j', long, global = true, help = "Emit machine-readable JSON")]
     pub json: bool,
