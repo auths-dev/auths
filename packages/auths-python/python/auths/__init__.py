@@ -17,6 +17,7 @@ from auths._native import (
     VerificationReport,
     VerificationResult,
     VerificationStatus,
+    generate_inmemory_keypair,
     get_token,
     sign_action,
     sign_artifact_bytes_raw,

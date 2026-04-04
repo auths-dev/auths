@@ -100,18 +100,11 @@ pub struct SignersAddFromGithubArgs {
 }
 
 fn resolve_signers_path() -> Result<PathBuf> {
-    let output = std::process::Command::new("git")
-        .args(["config", "--get", "gpg.ssh.allowedSignersFile"])
-        .output();
-
-    if let Ok(out) = output
-        && out.status.success()
+    if let Some(path_str) =
+        crate::subprocess::git_silent(&["config", "--get", "gpg.ssh.allowedSignersFile"])
     {
-        let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !path_str.is_empty() {
-            let path = PathBuf::from(&path_str);
-            return Ok(expand_tilde(&path)?);
-        }
+        let path = PathBuf::from(&path_str);
+        return Ok(expand_tilde(&path)?);
     }
 
     let home = dirs::home_dir().context("Could not determine home directory")?;
@@ -159,15 +152,14 @@ fn handle_add(args: &SignersAddArgs) -> Result<()> {
     let mut signers = AllowedSigners::load(&path, &FileAllowedSignersStore)
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
-    let principal = SignerPrincipal::Email(
-        EmailAddress::new(&args.email).map_err(|e| anyhow::anyhow!("{}", e))?,
-    );
+    let principal =
+        SignerPrincipal::Email(EmailAddress::new(&args.email).map_err(anyhow::Error::from)?);
 
     let pubkey = parse_ssh_pubkey(&args.pubkey)?;
 
     signers
         .add(principal, pubkey, SignerSource::Manual)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+        .map_err(anyhow::Error::from)?;
     signers
         .save(&FileAllowedSignersStore)
         .with_context(|| format!("Failed to write {}", path.display()))?;
@@ -181,9 +173,8 @@ fn handle_remove(args: &SignersRemoveArgs) -> Result<()> {
     let mut signers = AllowedSigners::load(&path, &FileAllowedSignersStore)
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
-    let principal = SignerPrincipal::Email(
-        EmailAddress::new(&args.email).map_err(|e| anyhow::anyhow!("{}", e))?,
-    );
+    let principal =
+        SignerPrincipal::Email(EmailAddress::new(&args.email).map_err(anyhow::Error::from)?);
 
     match signers.remove(&principal) {
         Ok(true) => {
@@ -202,7 +193,7 @@ fn handle_remove(args: &SignersRemoveArgs) -> Result<()> {
             );
             std::process::exit(1);
         }
-        Err(e) => return Err(anyhow::anyhow!("{}", e)),
+        Err(e) => return Err(anyhow::Error::from(e)),
     }
 
     Ok(())
@@ -228,7 +219,7 @@ pub(crate) fn sync_signers(
 pub(crate) fn handle_sync(args: &SignersSyncArgs) -> Result<()> {
     let repo_path = expand_tilde(&args.repo)?;
     let path = if let Some(ref output) = args.output_file {
-        expand_tilde(output).map_err(|e| anyhow::anyhow!("{}", e))?
+        expand_tilde(output).map_err(anyhow::Error::from)?
     } else {
         resolve_signers_path()?
     };
@@ -276,8 +267,7 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
         .with_context(|| format!("Failed to load {}", path.display()))?;
 
     let email = format!("{}@github.com", args.username);
-    let principal =
-        SignerPrincipal::Email(EmailAddress::new(&email).map_err(|e| anyhow::anyhow!("{}", e))?);
+    let principal = SignerPrincipal::Email(EmailAddress::new(&email).map_err(anyhow::Error::from)?);
 
     let mut added = 0;
     for key_str in &ed25519_keys {
@@ -292,9 +282,7 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
         // For multiple keys, append index to email to avoid duplicates
         let p = if ed25519_keys.len() > 1 && added > 0 {
             let indexed_email = format!("{}+{}@github.com", args.username, added);
-            SignerPrincipal::Email(
-                EmailAddress::new(&indexed_email).map_err(|e| anyhow::anyhow!("{}", e))?,
-            )
+            SignerPrincipal::Email(EmailAddress::new(&indexed_email).map_err(anyhow::Error::from)?)
         } else {
             principal.clone()
         };
@@ -304,7 +292,7 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
             Err(AllowedSignersError::DuplicatePrincipal(p)) => {
                 eprintln!("Skipping duplicate: {}", p);
             }
-            Err(e) => return Err(anyhow::anyhow!("{}", e)),
+            Err(e) => return Err(anyhow::Error::from(e)),
         }
     }
 

@@ -627,7 +627,7 @@ fn compute_policy_stats(expr: &CompiledExpr) -> PolicyStats {
 
 fn build_eval_context(test: &TestContext, now: DateTime<Utc>) -> Result<EvalContext> {
     let mut ctx = EvalContext::try_from_strings(now, &test.issuer, &test.subject)
-        .map_err(|e| anyhow!("invalid DID: {}", e))?;
+        .map_err(|e| anyhow!("Invalid identity format: {}", e))?;
 
     ctx = ctx.revoked(test.revoked);
     ctx = ctx.chain_depth(test.chain_depth);

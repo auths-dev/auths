@@ -7,7 +7,7 @@ pub fn parse_witness_keys(keys: &[String]) -> Result<Vec<(String, Vec<u8>)>> {
             // Find the last ':' to split DID from hex key
             let last_colon = s
                 .rfind(':')
-                .ok_or_else(|| anyhow!("Invalid witness key format '{}': expected DID:hex", s))?;
+                .ok_or_else(|| anyhow!("Invalid witness key format '{}': expected format: <did>:<public_key_hex> (e.g. did:key:z6Mk...:abcd1234)", s))?;
             let did = &s[..last_colon];
             let pk_hex = &s[last_colon + 1..];
             let pk_bytes = hex::decode(pk_hex)

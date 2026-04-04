@@ -94,7 +94,7 @@ pub fn handle_provision(
         registry,
         identity_storage,
     )
-    .map_err(|e| anyhow::anyhow!("{}", e))?
+    .map_err(anyhow::Error::from)?
     {
         None => {
             out.print_success("Identity already exists and matches — no changes needed.");

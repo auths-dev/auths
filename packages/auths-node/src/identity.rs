@@ -4,6 +4,7 @@ use std::sync::Arc;
 use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, KeyRole, get_platform_keychain_with_config};
+use auths_crypto::ed25519_pubkey_to_did_key;
 use auths_id::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::storage::attestation::AttestationSource;
@@ -24,7 +25,8 @@ use ring::signature::{Ed25519KeyPair, KeyPair};
 use crate::error::format_error;
 use crate::helpers::{make_env_config, resolve_key_alias, resolve_passphrase};
 use crate::types::{
-    NapiAgentIdentityBundle, NapiDelegatedAgentBundle, NapiIdentityResult, NapiRotationResult,
+    NapiAgentIdentityBundle, NapiDelegatedAgentBundle, NapiIdentityResult, NapiInMemoryKeypair,
+    NapiRotationResult,
 };
 
 fn init_backend(repo: &PathBuf) -> napi::Result<Arc<GitRegistryBackend>> {
@@ -464,4 +466,38 @@ pub fn get_identity_public_key(
         )
     })?;
     Ok(hex::encode(pub_bytes))
+}
+
+/// Generate an in-memory Ed25519 keypair without keychain, Git, or filesystem access.
+///
+/// Args:
+/// (no arguments)
+///
+/// Usage:
+/// ```ignore
+/// let kp = generate_inmemory_keypair()?;
+/// // kp.private_key_hex, kp.public_key_hex, kp.did
+/// ```
+#[napi]
+pub fn generate_inmemory_keypair() -> napi::Result<NapiInMemoryKeypair> {
+    let rng = SystemRandom::new();
+    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
+        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key generation failed: {e}")))?;
+    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())
+        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key parsing failed: {e}")))?;
+
+    let seed = extract_seed_bytes(pkcs8.as_ref())
+        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Seed extraction failed: {e}")))?;
+
+    let pub_bytes = keypair.public_key().as_ref();
+    let pub_array: &[u8; 32] = pub_bytes.try_into().map_err(|_| {
+        format_error("AUTHS_CRYPTO_ERROR", "Invalid public key length")
+    })?;
+    let did = ed25519_pubkey_to_did_key(pub_array);
+
+    Ok(NapiInMemoryKeypair {
+        private_key_hex: hex::encode(seed),
+        public_key_hex: hex::encode(pub_bytes),
+        did,
+    })
 }

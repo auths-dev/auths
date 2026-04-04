@@ -61,6 +61,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(identity::delegate_agent, m)?)?;
     m.add_function(wrap_pyfunction!(identity::link_device_to_identity, m)?)?;
     m.add_function(wrap_pyfunction!(identity::revoke_device_from_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::generate_inmemory_keypair, m)?)?;
 
     m.add_function(wrap_pyfunction!(identity_sign::sign_as_identity, m)?)?;
     m.add_function(wrap_pyfunction!(identity_sign::sign_action_as_identity, m)?)?;

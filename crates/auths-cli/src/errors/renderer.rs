@@ -1,12 +1,18 @@
 use anyhow::Error;
+use auths_core::error::TrustError as CoreTrustError;
 use auths_core::error::{AgentError, AuthsErrorInfo};
+use auths_core::pairing::PairingError;
+use auths_id::error::StorageError as IdStorageError;
+use auths_id::error::{FreezeError, InitError};
+use auths_id::storage::StorageError as IdDriverStorageError;
 use auths_sdk::domains::signing::service::{ArtifactSigningError, SigningError};
 use auths_sdk::error::{
     ApprovalError, DeviceError, DeviceExtensionError, McpAuthError, OrgError, RegistrationError,
-    RotationError, SetupError,
+    RotationError, SdkStorageError, SetupError, TrustError,
 };
 use auths_sdk::workflows::allowed_signers::AllowedSignersError;
-use auths_verifier::AttestationError;
+use auths_sdk::workflows::auth::AuthChallengeError;
+use auths_verifier::{AttestationError, CommitVerificationError};
 use colored::Colorize;
 
 use crate::errors::cli_error::CliError;
@@ -63,6 +69,16 @@ fn extract_error_info(err: &Error) -> Option<(&str, &str, Option<&str>)> {
             AllowedSignersError,
             ArtifactSigningError,
             SigningError,
+            SdkStorageError,
+            TrustError,
+            AuthChallengeError,
+            CommitVerificationError,
+            PairingError,
+            FreezeError,
+            InitError,
+            CoreTrustError,
+            IdStorageError,
+            IdDriverStorageError,
         );
     }
 
@@ -106,6 +122,15 @@ fn render_text(err: &Error) {
         )),
         s if s.contains("ssh-keygen") && s.contains("not found") => Some(
             "ssh-keygen not found on PATH.\n\n     Install OpenSSH:\n       Ubuntu: sudo apt install openssh-client\n       macOS:  ssh-keygen is pre-installed\n       Windows: Install OpenSSH via Settings > Apps > Optional features".to_string()
+        ),
+        s if s.contains("not a git repository") => Some(
+            "This command must be run inside a Git repository.\nRun `git init` first, or navigate to an existing repo.".to_string()
+        ),
+        s if s.contains("permission denied") || s.contains("Permission denied") => Some(format!(
+            "Permission denied. Check file permissions on the relevant path.\n     Run `auths doctor` for a full health check.\n     See: {DOCS_BASE_URL}/cli/troubleshooting/"
+        )),
+        s if s.contains("connection refused") || s.contains("timed out") || s.contains("timeout") => Some(
+            "Network connection failed. Check your internet connection and try again.\nIf using a registry, verify the URL with `auths config show`.".to_string()
         ),
         _ => None,
     };

@@ -357,7 +357,7 @@ fn display_dry_run_revoke(device_did: &str, identity_key_alias: &str) -> Result<
             }),
         )
         .print()
-        .map_err(|e| anyhow!("{e}"))
+        .map_err(anyhow::Error::from)
     } else {
         let out = crate::ux::format::Output::new();
         out.print_info("Dry run mode — no changes will be made");
@@ -575,7 +575,7 @@ fn list_devices(
             }),
         )
         .print()
-        .map_err(|e| anyhow!("{e}"));
+        .map_err(anyhow::Error::from);
     }
 
     println!("Devices for identity: {}", identity.controller_did);

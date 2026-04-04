@@ -1106,7 +1106,7 @@ fn display_dry_run_revoke_member(org: &str, member: &str, invoker_did: &str) -> 
             }),
         )
         .print()
-        .map_err(|e| anyhow!("{e}"))
+        .map_err(anyhow::Error::from)
     } else {
         let out = crate::ux::format::Output::new();
         out.print_info("Dry run mode — no changes will be made");

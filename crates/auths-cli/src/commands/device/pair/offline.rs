@@ -17,7 +17,8 @@ pub(crate) fn handle_initiate_offline(
     capabilities: &[String],
 ) -> Result<()> {
     // Try to load controller DID, fall back to placeholder
-    let auths_dir = auths_core::paths::auths_home().unwrap_or_default();
+    let auths_dir = auths_core::paths::auths_home()
+        .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
     let controller_did = if auths_dir.exists() {
         let storage = auths_storage::git::RegistryIdentityStorage::new(auths_dir.clone());

@@ -51,6 +51,12 @@ export interface NapiDelegatedAgentBundle {
   repoPath?: string | null
 }
 
+export interface NapiInMemoryKeypair {
+  privateKeyHex: string
+  publicKeyHex: string
+  did: string
+}
+
 export interface NapiRotationResult {
   controllerDid: string
   newKeyFingerprint: string
@@ -176,6 +182,7 @@ export interface NativeBindings {
   version(): string
 
   // Identity
+  generateInmemoryKeypair(): NapiInMemoryKeypair
   createIdentity(keyAlias: string, repoPath: string, passphrase?: string | null): NapiIdentityResult
   createAgentIdentity(agentName: string, capabilities: string[], repoPath: string, passphrase?: string | null): NapiAgentIdentityBundle
   delegateAgent(agentName: string, capabilities: string[], parentRepoPath: string, passphrase?: string | null, expiresInDays?: number | null, identityDid?: string | null): NapiDelegatedAgentBundle

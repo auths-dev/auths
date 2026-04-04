@@ -109,7 +109,7 @@ fn handle_auth_challenge(nonce: &str, domain: &str, ctx: &CliConfig) -> Result<(
             }),
         )
         .print()
-        .map_err(|e| anyhow::anyhow!("{e}"))
+        .map_err(anyhow::Error::from)
     } else {
         println!("Signature:  {}", result.signature_hex);
         println!("Public Key: {}", result.public_key_hex);

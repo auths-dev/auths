@@ -23,11 +23,12 @@ pub(crate) async fn handle_initiate_online(
     capabilities: &[String],
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    let auths_dir = auths_core::paths::auths_home_with_config(env_config).unwrap_or_default();
+    let auths_dir = auths_core::paths::auths_home_with_config(env_config)
+        .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
     let identity_storage = auths_storage::git::RegistryIdentityStorage::new(auths_dir.clone());
-    let controller_did = auths_sdk::pairing::load_controller_did(&identity_storage)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let controller_did =
+        auths_sdk::pairing::load_controller_did(&identity_storage).map_err(anyhow::Error::from)?;
 
     print_pairing_header("ONLINE", registry, &controller_did);
 
@@ -116,7 +117,7 @@ pub(crate) async fn handle_initiate_online(
 
     match initiate_online_pairing(params, &relay, &ctx, now, Some(&on_status))
         .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .map_err(anyhow::Error::from)?
     {
         auths_sdk::pairing::PairingCompletionResult::Success {
             device_did,

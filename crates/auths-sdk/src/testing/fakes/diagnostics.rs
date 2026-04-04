@@ -63,6 +63,7 @@ impl GitDiagnosticProvider for FakeGitDiagnosticProvider {
 /// Configurable fake for [`CryptoDiagnosticProvider`].
 pub struct FakeCryptoDiagnosticProvider {
     ssh_keygen_passes: bool,
+    ssh_version_string: String,
 }
 
 impl FakeCryptoDiagnosticProvider {
@@ -71,7 +72,19 @@ impl FakeCryptoDiagnosticProvider {
     /// Args:
     /// * `ssh_keygen_passes`: Whether `check_ssh_keygen_available` should report success.
     pub fn new(ssh_keygen_passes: bool) -> Self {
-        Self { ssh_keygen_passes }
+        Self {
+            ssh_keygen_passes,
+            ssh_version_string: "OpenSSH_9.6p1, LibreSSL 3.3.6".to_string(),
+        }
+    }
+
+    /// Override the SSH version string returned by `check_ssh_version`.
+    ///
+    /// Args:
+    /// * `version`: Raw version string, e.g. `"OpenSSH_8.1p1, LibreSSL 3.3.6"`.
+    pub fn with_ssh_version(mut self, version: &str) -> Self {
+        self.ssh_version_string = version.to_string();
+        self
     }
 }
 
@@ -84,6 +97,10 @@ impl CryptoDiagnosticProvider for FakeCryptoDiagnosticProvider {
             config_issues: vec![],
             category: CheckCategory::Advisory,
         })
+    }
+
+    fn check_ssh_version(&self) -> Result<String, DiagnosticError> {
+        Ok(self.ssh_version_string.clone())
     }
 }
 

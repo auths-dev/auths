@@ -240,7 +240,7 @@ pub(crate) fn handle_pairing_response(
     use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
     let identity_store = Arc::new(RegistryIdentityStorage::new(auths_dir.to_path_buf()));
     let controller_did = pairing::load_controller_did(identity_store.as_ref())
-        .map_err(|e| anyhow::anyhow!("{}", e))
+        .map_err(anyhow::Error::from)
         .context("Failed to load identity from ~/.auths")?;
 
     println!(
@@ -298,7 +298,7 @@ pub(crate) fn handle_pairing_response(
         passphrase_provider,
         &auths_core::ports::clock::SystemClock,
     )
-    .map_err(|e| anyhow::anyhow!("{}", e))
+    .map_err(anyhow::Error::from)
     .context("Pairing completion failed")?
     {
         PairingCompletionResult::Success {

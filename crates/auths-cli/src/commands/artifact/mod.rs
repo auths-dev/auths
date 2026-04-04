@@ -208,7 +208,7 @@ fn resolve_commit_sha_from_flags(
         return Ok(None);
     }
     if let Some(sha) = commit {
-        let validated = validate_commit_sha(&sha).map_err(|e| anyhow::anyhow!("{}", e))?;
+        let validated = validate_commit_sha(&sha).map_err(anyhow::Error::from)?;
         return Ok(Some(validated));
     }
     Ok(crate::commands::git_helpers::resolve_head_silent())

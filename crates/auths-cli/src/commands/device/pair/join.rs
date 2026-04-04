@@ -22,7 +22,7 @@ pub(crate) async fn handle_join(
     registry: &str,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    let normalized = validate_short_code(code).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let normalized = validate_short_code(code).map_err(anyhow::Error::from)?;
 
     let formatted = format!("{}-{}", &normalized[..3], &normalized[3..]);
 
@@ -42,7 +42,8 @@ pub(crate) async fn handle_join(
 
     let relay = HttpPairingRelayClient::new();
 
-    let auths_dir = auths_core::paths::auths_home_with_config(env_config).unwrap_or_default();
+    let auths_dir = auths_core::paths::auths_home_with_config(env_config)
+        .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
     if !auths_dir.exists() {
         anyhow::bail!("No local identity found. Run 'auths init' first.");
@@ -57,7 +58,7 @@ pub(crate) async fn handle_join(
     let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider))
         .context("Failed to build auths context")?;
 
-    let material = load_device_signing_material(&ctx).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let material = load_device_signing_material(&ctx).map_err(anyhow::Error::from)?;
 
     key_spinner.finish_with_message(format!("{CHECK}Device key loaded"));
 
@@ -88,7 +89,9 @@ pub(crate) async fn handle_join(
     };
 
     if token.is_expired(now) {
-        anyhow::bail!("Session expired");
+        anyhow::bail!(
+            "Pairing session expired. Start a new session with `auths pair` on the controller device."
+        );
     }
 
     let create_spinner = create_wait_spinner(&format!("{GEAR}Creating pairing response..."));
@@ -150,7 +153,9 @@ pub(crate) async fn handle_join(
     if !confirmed {
         display_sas_mismatch_warning();
         drop(transport_key);
-        anyhow::bail!("SAS verification failed — pairing aborted");
+        anyhow::bail!(
+            "Security codes didn't match — the connection may not be secure. Restart pairing with `auths pair`."
+        );
     }
 
     // Wait for encrypted attestation from initiator

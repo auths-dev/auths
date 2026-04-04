@@ -271,9 +271,7 @@ fn run_developer_setup(
 
     // Also write repo-local .auths/allowed_signers if we're inside a git repo,
     // so `auths verify` works immediately without extra flags.
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
+    if let Ok(output) = crate::subprocess::git_command(&["rev-parse", "--show-toplevel"]).output()
         && output.status.success()
     {
         let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());

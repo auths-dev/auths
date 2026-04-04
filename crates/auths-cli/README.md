@@ -64,6 +64,42 @@ auths doctor
 auths tutorial
 ```
 
+## Artifact Signing
+
+Sign, verify, and publish arbitrary files — binaries, packages, container images — with the same identity used for commits.
+
+### Sign an artifact
+
+```bash
+auths artifact sign ./release.tar.gz
+auths artifact sign ./my-app.whl --note "v2.1.0 release"
+auths artifact sign ./build.zip --expires-in 90   # expires in 90 days
+```
+
+### Verify an artifact
+
+```bash
+auths artifact verify ./release.tar.gz
+```
+
+### Batch sign multiple artifacts
+
+```bash
+auths artifact batch-sign ./dist/
+```
+
+### Publish an attestation to a registry
+
+```bash
+auths artifact publish ./release.tar.gz.auths.json --registry https://registry.example.com
+```
+
+The `auths sign` shorthand also supports artifact files — if the target is a file on disk, it signs the artifact instead of a commit:
+
+```bash
+auths sign ./release.tar.gz   # equivalent to: auths artifact sign ./release.tar.gz
+```
+
 ## Advanced Commands
 
 Run `auths --help-all` to see the full command list:

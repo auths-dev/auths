@@ -309,7 +309,19 @@ fn suggestion_for_check(name: &str) -> Option<String> {
         "Git user identity" => Some(
             "Run: git config --global user.name \"Your Name\" && git config --global user.email \"you@example.com\"".to_string(),
         ),
-        "ssh-keygen installed" => Some("Install OpenSSH for your platform.".to_string()),
+        "ssh-keygen installed" => {
+            let hint = if cfg!(target_os = "macos") {
+                "ssh-keygen is normally pre-installed on macOS. Check your PATH."
+            } else if cfg!(target_os = "windows") {
+                "Install OpenSSH via Settings > Apps > Optional features, or `winget install Microsoft.OpenSSH.Client`."
+            } else {
+                "Install OpenSSH: `sudo apt install openssh-client` (Debian/Ubuntu) or `sudo dnf install openssh-clients` (Fedora/RHEL)."
+            };
+            Some(hint.to_string())
+        }
+        "SSH version" => Some(
+            "Upgrade OpenSSH to 8.2+ for -Y find-principals support. Check with: ssh -V".to_string(),
+        ),
         "Git signing config" => Some("Run: auths doctor --fix".to_string()),
         "Auths directory" => Some("Run: auths init --profile developer".to_string()),
         "Allowed signers file" => Some("Run: auths doctor --fix".to_string()),
