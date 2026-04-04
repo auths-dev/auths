@@ -295,25 +295,9 @@ pub fn sign_commit_with_identity(
     };
 
     // Create canonical form and sign
-    let canonical_data = auths_verifier::core::CanonicalAttestationData {
-        version: attestation.version,
-        rid: &attestation.rid,
-        issuer: &attestation.issuer,
-        subject: &attestation.subject,
-        device_public_key: attestation.device_public_key.as_bytes(),
-        payload: &attestation.payload,
-        timestamp: &attestation.timestamp,
-        expires_at: &attestation.expires_at,
-        revoked_at: &attestation.revoked_at,
-        note: &attestation.note,
-        role: None,
-        capabilities: None,
-        delegated_by: None,
-        signer_type: None,
-    };
-
-    let canonical_bytes = auths_verifier::core::canonicalize_attestation_data(&canonical_data)
-        .map_err(|e| format!("Canonicalization failed: {}", e))?;
+    let canonical_bytes =
+        auths_verifier::core::canonicalize_attestation_data(&attestation.canonical_data())
+            .map_err(|e| format!("Canonicalization failed: {}", e))?;
 
     let signature = issuer_keypair.sign(&canonical_bytes);
     attestation.identity_signature = Ed25519Signature::try_from_slice(signature.as_ref())

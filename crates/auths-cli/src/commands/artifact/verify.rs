@@ -37,6 +37,10 @@ struct VerifyArtifactResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     issuer: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    commit_sha: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit_verified: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
@@ -50,6 +54,7 @@ pub async fn handle_verify(
     witness_receipts: Option<PathBuf>,
     witness_keys: &[String],
     witness_threshold: usize,
+    verify_commit: bool,
 ) -> Result<()> {
     let file_str = file.to_string_lossy().to_string();
 
@@ -139,6 +144,8 @@ pub async fn handle_verify(
                 capability_valid: None,
                 witness_quorum: None,
                 issuer: Some(attestation.issuer.to_string()),
+                commit_sha: attestation.commit_sha.clone(),
+                commit_verified: None,
                 error: Some(format!(
                     "Digest mismatch: file={}, attestation={}",
                     file_digest.hex, artifact_meta.digest.hex
@@ -201,6 +208,55 @@ pub async fn handle_verify(
         valid = false;
     }
 
+    // 8b. Display commit linkage info (always, when present)
+    let commit_sha_val = attestation.commit_sha.clone();
+    if let Some(ref sha) = commit_sha_val
+        && !is_json_mode()
+    {
+        eprintln!("  Commit: {}", sha);
+    }
+
+    // 8c. Optional commit attestation verification
+    let commit_verified = if verify_commit {
+        match &commit_sha_val {
+            None => {
+                if !is_json_mode() {
+                    eprintln!(
+                        "warning: artifact attestation has no commit_sha field; \
+                         re-sign with: auths artifact sign --commit <SHA>"
+                    );
+                }
+                None
+            }
+            Some(sha) => {
+                // Look up commit attestation via git ref
+                let commit_ref = format!("refs/auths/commits/{}", sha);
+                let lookup = std::process::Command::new("git")
+                    .args(["show", &format!("{}:attestation.json", commit_ref)])
+                    .output();
+                match lookup {
+                    Ok(output) if output.status.success() => {
+                        if !is_json_mode() {
+                            eprintln!("  Commit {}: signing attestation found", &sha[..12]);
+                        }
+                        Some(true)
+                    }
+                    _ => {
+                        if !is_json_mode() {
+                            eprintln!(
+                                "warning: no signing attestation found for commit {}",
+                                &sha[..std::cmp::min(sha.len(), 12)]
+                            );
+                        }
+                        Some(false)
+                    }
+                }
+            }
+        }
+    } else {
+        None
+    };
+
     let exit_code = if valid { 0 } else { 1 };
 
     output_result(
@@ -214,6 +270,8 @@ pub async fn handle_verify(
             capability_valid,
             witness_quorum,
             issuer: Some(identity_did.to_string()),
+            commit_sha: commit_sha_val,
+            commit_verified,
             error: None,
         },
     )
@@ -313,6 +371,8 @@ fn output_error(file: &str, exit_code: i32, message: &str) -> Result<()> {
             capability_valid: None,
             witness_quorum: None,
             issuer: None,
+            commit_sha: None,
+            commit_verified: None,
             error: Some(message.to_string()),
         };
         println!("{}", serde_json::to_string(&result)?);

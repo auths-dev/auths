@@ -202,6 +202,7 @@ pub enum SigningKeyMaterial {
 ///     device_key: SigningKeyMaterial::Direct(my_seed),
 ///     expires_in: Some(31_536_000),
 ///     note: None,
+///     commit_sha: None,
 /// };
 /// ```
 pub struct ArtifactSigningParams {
@@ -215,6 +216,8 @@ pub struct ArtifactSigningParams {
     pub expires_in: Option<u64>,
     /// Optional human-readable annotation embedded in the attestation.
     pub note: Option<String>,
+    /// Git commit SHA for provenance binding (included in signed canonical data).
+    pub commit_sha: Option<String>,
 }
 
 /// Result of a successful artifact attestation signing operation.
@@ -262,6 +265,10 @@ pub enum ArtifactSigningError {
     /// Adding the device signature to a partially-signed attestation failed.
     #[error("attestation re-signing failed: {0}")]
     ResignFailed(String),
+
+    /// The provided commit SHA has an invalid format.
+    #[error("invalid commit SHA: {0} (expected 40 or 64 hex characters)")]
+    InvalidCommitSha(String),
 }
 
 impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
@@ -273,6 +280,7 @@ impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
             Self::DigestFailed(_) => "AUTHS-E5853",
             Self::AttestationFailed(_) => "AUTHS-E5854",
             Self::ResignFailed(_) => "AUTHS-E5855",
+            Self::InvalidCommitSha(_) => "AUTHS-E5856",
         }
     }
 
@@ -289,6 +297,9 @@ impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
             Self::AttestationFailed(_) => Some("Check identity storage with `auths status`"),
             Self::ResignFailed(_) => {
                 Some("Verify your device key is accessible with `auths status`")
+            }
+            Self::InvalidCommitSha(_) => {
+                Some("Provide a full SHA-1 (40 hex chars) or SHA-256 (64 hex chars) commit hash")
             }
         }
     }
@@ -392,6 +403,24 @@ fn resolve_required_key(
     })?
 }
 
+/// Validate and normalize a commit SHA (40-char SHA-1 or 64-char SHA-256).
+///
+/// Args:
+/// * `sha`: The raw commit SHA string to validate.
+///
+/// Usage:
+/// ```ignore
+/// let normalized = validate_commit_sha("AbCd1234...")?;
+/// ```
+pub fn validate_commit_sha(sha: &str) -> Result<String, ArtifactSigningError> {
+    let normalized = sha.to_ascii_lowercase();
+    let len = normalized.len();
+    if (len != 40 && len != 64) || !normalized.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(ArtifactSigningError::InvalidCommitSha(sha.to_string()));
+    }
+    Ok(normalized)
+}
+
 /// Full artifact attestation signing pipeline.
 ///
 /// Loads the identity, resolves key material (supporting both keychain aliases
@@ -410,6 +439,7 @@ fn resolve_required_key(
 ///     device_key: SigningKeyMaterial::Direct(seed),
 ///     expires_in: Some(31_536_000),
 ///     note: None,
+///     commit_sha: None,
 /// };
 /// let result = sign_artifact(params, &ctx)?;
 /// ```
@@ -474,6 +504,11 @@ pub fn sign_artifact(
     let payload = serde_json::to_value(&artifact_meta)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
+    let validated_commit_sha = params
+        .commit_sha
+        .map(|sha| validate_commit_sha(&sha))
+        .transpose()?;
+
     let signer = SeedMapSigner { seeds };
     // Seeds are already resolved — passphrase provider will not be called.
     let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
@@ -493,6 +528,7 @@ pub fn sign_artifact(
         vec![Capability::sign_release()],
         None,
         None,
+        validated_commit_sha,
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
@@ -528,11 +564,12 @@ pub fn sign_artifact(
 /// * `data` - Raw artifact bytes to sign.
 /// * `expires_in` - Optional TTL in seconds.
 /// * `note` - Optional attestation note.
+/// * `commit_sha` - Optional git commit SHA for provenance binding (40 or 64 hex chars).
 ///
 /// Usage:
 /// ```ignore
 /// let did = IdentityDID::parse("did:keri:E...")?;
-/// let result = sign_artifact_raw(Utc::now(), &seed, &did, b"payload", None, None)?;
+/// let result = sign_artifact_raw(Utc::now(), &seed, &did, b"payload", None, None, None)?;
 /// ```
 pub fn sign_artifact_raw(
     now: DateTime<Utc>,
@@ -541,6 +578,7 @@ pub fn sign_artifact_raw(
     data: &[u8],
     expires_in: Option<u64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> Result<ArtifactSigningResult, ArtifactSigningError> {
     let pubkey = provider_bridge::ed25519_public_key_from_seed_sync(seed)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
@@ -584,6 +622,10 @@ pub fn sign_artifact_raw(
     // Seeds are already resolved — passphrase provider will not be called.
     let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
 
+    let validated_commit_sha = commit_sha
+        .map(|sha| validate_commit_sha(&sha))
+        .transpose()?;
+
     let attestation = create_signed_attestation(
         now,
         &rid,
@@ -599,6 +641,7 @@ pub fn sign_artifact_raw(
         vec![Capability::sign_release()],
         None,
         None,
+        validated_commit_sha,
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 

@@ -246,9 +246,9 @@ export declare function signActionAsIdentity(actionType: string, payloadJson: st
  */
 export declare function signActionRaw(privateKeyHex: string, actionType: string, payloadJson: string, identityDid: string): string
 
-export declare function signArtifact(filePath: string, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
+export declare function signArtifact(filePath: string, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null, commitSha?: string | undefined | null): NapiArtifactResult
 
-export declare function signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
+export declare function signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null, commitSha?: string | undefined | null): NapiArtifactResult
 
 /**
  * Sign raw bytes with a raw Ed25519 private key, producing a dual-signed attestation.
@@ -261,8 +261,13 @@ export declare function signArtifactBytes(data: Buffer, identityKeyAlias: string
  * * `identity_did`: Identity DID string (must be `did:keri:` format).
  * * `expires_in`: Optional duration in seconds until expiration.
  * * `note`: Optional human-readable note.
+ *
+ * Usage:
+ * ```ignore
+ * let result = sign_artifact_bytes_raw(buffer, "abcd...".into(), "did:keri:E...".into(), None, None)?;
+ * ```
  */
-export declare function signArtifactBytesRaw(data: Buffer, privateKeyHex: string, identityDid: string, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
+export declare function signArtifactBytesRaw(data: Buffer, privateKeyHex: string, identityDid: string, expiresIn?: number | undefined | null, note?: string | undefined | null, commitSha?: string | undefined | null): NapiArtifactResult
 
 export declare function signAsAgent(message: Buffer, keyAlias: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignResult
 

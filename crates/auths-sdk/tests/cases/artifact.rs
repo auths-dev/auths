@@ -131,6 +131,7 @@ fn sign_artifact_with_alias_keys_produces_valid_json() {
         device_key: SigningKeyMaterial::Alias(key_alias),
         expires_in: Some(31_536_000),
         note: Some("integration test".into()),
+        commit_sha: None,
     };
 
     let result = sign_artifact(params, &ctx).unwrap();
@@ -161,6 +162,7 @@ fn sign_artifact_with_direct_device_key_produces_valid_json() {
         device_key: SigningKeyMaterial::Direct(device_seed),
         expires_in: None,
         note: None,
+        commit_sha: None,
     };
 
     let result = sign_artifact(params, &ctx).unwrap();
@@ -183,6 +185,7 @@ fn sign_artifact_identity_not_found_returns_error() {
         device_key: SigningKeyMaterial::Direct(device_seed),
         expires_in: None,
         note: None,
+        commit_sha: None,
     };
 
     let result = sign_artifact(params, &empty_ctx);
@@ -211,6 +214,7 @@ fn sign_artifact_raw_produces_valid_attestation_json() {
         data,
         Some(86400),
         Some("test note".into()),
+        None,
     )
     .unwrap();
 
@@ -238,7 +242,7 @@ fn sign_artifact_raw_without_optional_fields() {
     let identity_did = IdentityDID::new_unchecked("did:keri:Eminimal");
     let now = Utc::now();
 
-    let result = sign_artifact_raw(now, &seed, &identity_did, b"data", None, None).unwrap();
+    let result = sign_artifact_raw(now, &seed, &identity_did, b"data", None, None, None).unwrap();
 
     let parsed: serde_json::Value = serde_json::from_str(&result.attestation_json).unwrap();
     assert!(parsed.get("expires_at").is_none() || parsed["expires_at"].is_null());
@@ -252,7 +256,7 @@ fn sign_artifact_raw_digest_matches_sha256_of_data() {
     let data = b"hello world";
     let now = Utc::now();
 
-    let result = sign_artifact_raw(now, &seed, &identity_did, data, None, None).unwrap();
+    let result = sign_artifact_raw(now, &seed, &identity_did, data, None, None, None).unwrap();
 
     let expected_digest = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
     assert_eq!(result.digest, expected_digest);

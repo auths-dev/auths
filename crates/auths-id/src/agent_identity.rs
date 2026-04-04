@@ -307,6 +307,7 @@ fn sign_agent_attestation(
         vec![],
         None,
         config.delegated_by.clone(),
+        None, // commit_sha
     )?;
 
     att.signer_type = Some(SignerType::Agent);

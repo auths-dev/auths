@@ -1,5 +1,5 @@
 use crate::identity::resolve::DidResolver;
-use auths_verifier::core::{Attestation, CanonicalAttestationData};
+use auths_verifier::core::Attestation;
 use auths_verifier::error::AttestationError;
 use chrono::{DateTime, Duration, Utc};
 use log::debug;
@@ -72,28 +72,8 @@ pub fn verify_with_resolver(
     })?;
     let issuer_pk_bytes = *resolved.public_key();
 
-    // 3. Reconstruct canonical data (MUST match create_with_signatures, includes org fields)
-    let data_to_canonicalize = CanonicalAttestationData {
-        version: att.version,
-        rid: &att.rid,
-        issuer: &att.issuer,
-        subject: &att.subject,
-        device_public_key: att.device_public_key.as_bytes(),
-        payload: &att.payload,
-        timestamp: &att.timestamp,
-        expires_at: &att.expires_at,
-        revoked_at: &att.revoked_at,
-        note: &att.note,
-        role: att.role.as_ref().map(|r| r.as_str()),
-        capabilities: if att.capabilities.is_empty() {
-            None
-        } else {
-            Some(&att.capabilities)
-        },
-        delegated_by: att.delegated_by.as_ref(),
-        signer_type: att.signer_type.as_ref(),
-    };
-    let canonical_json_string = json_canon::to_string(&data_to_canonicalize).map_err(|e| {
+    // 3. Reconstruct canonical data (single source of truth via canonical_data())
+    let canonical_json_string = json_canon::to_string(&att.canonical_data()).map_err(|e| {
         AttestationError::SerializationError(format!(
             "Failed to create canonical JSON for verification: {}",
             e

@@ -86,23 +86,9 @@ fn get_commit_author(commit_sha: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Resolve commit reference to full SHA.
-fn resolve_commit_sha(commit_ref: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["rev-parse", commit_ref])
-        .output()
-        .context("Failed to resolve commit reference")?;
-
-    if !output.status.success() {
-        return Err(anyhow!("Invalid commit reference: {}", commit_ref));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
 /// Handle the sign-commit command.
 pub fn handle_sign_commit(cmd: SignCommitCommand, ctx: &CliConfig) -> Result<()> {
-    let commit_sha = resolve_commit_sha(&cmd.commit)?;
+    let commit_sha = super::git_helpers::resolve_commit_sha(&cmd.commit)?;
     let commit_message = get_commit_message(&commit_sha).ok();
     let author = get_commit_author(&commit_sha).ok();
 

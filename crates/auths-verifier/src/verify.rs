@@ -2,9 +2,7 @@
 
 #[cfg(feature = "native")]
 use crate::core::Capability;
-use crate::core::{
-    Attestation, CanonicalAttestationData, VerifiedAttestation, canonicalize_attestation_data,
-};
+use crate::core::{Attestation, VerifiedAttestation, canonicalize_attestation_data};
 use crate::error::AttestationError;
 use crate::types::{ChainLink, VerificationReport, VerificationStatus};
 #[cfg(feature = "native")]
@@ -292,27 +290,7 @@ pub async fn verify_device_link(
 pub fn compute_attestation_seal_digest(
     attestation: &Attestation,
 ) -> Result<String, AttestationError> {
-    let data = CanonicalAttestationData {
-        version: attestation.version,
-        rid: &attestation.rid,
-        issuer: &attestation.issuer,
-        subject: &attestation.subject,
-        device_public_key: attestation.device_public_key.as_bytes(),
-        payload: &attestation.payload,
-        timestamp: &attestation.timestamp,
-        expires_at: &attestation.expires_at,
-        revoked_at: &attestation.revoked_at,
-        note: &attestation.note,
-        role: attestation.role.as_ref().map(|r| r.as_str()),
-        capabilities: if attestation.capabilities.is_empty() {
-            None
-        } else {
-            Some(&attestation.capabilities)
-        },
-        delegated_by: attestation.delegated_by.as_ref(),
-        signer_type: attestation.signer_type.as_ref(),
-    };
-    let canonical = canonicalize_attestation_data(&data)?;
+    let canonical = canonicalize_attestation_data(&attestation.canonical_data())?;
     Ok(crate::keri::compute_said(&canonical).to_string())
 }
 
@@ -364,27 +342,7 @@ pub(crate) async fn verify_with_keys_at(
     }
 
     // --- 5. Reconstruct and canonicalize data ---
-    let data_to_canonicalize = CanonicalAttestationData {
-        version: att.version,
-        rid: &att.rid,
-        issuer: &att.issuer,
-        subject: &att.subject,
-        device_public_key: att.device_public_key.as_bytes(),
-        payload: &att.payload,
-        timestamp: &att.timestamp,
-        expires_at: &att.expires_at,
-        revoked_at: &att.revoked_at,
-        note: &att.note,
-        role: att.role.as_ref().map(|r| r.as_str()),
-        capabilities: if att.capabilities.is_empty() {
-            None
-        } else {
-            Some(&att.capabilities)
-        },
-        delegated_by: att.delegated_by.as_ref(),
-        signer_type: att.signer_type.as_ref(),
-    };
-    let canonical_json_bytes = canonicalize_attestation_data(&data_to_canonicalize)?;
+    let canonical_json_bytes = canonicalize_attestation_data(&att.canonical_data())?;
     let data_to_verify = canonical_json_bytes.as_slice();
     debug!(
         "(Verify) Canonical data: {}",
@@ -626,27 +584,7 @@ mod tests {
             oidc_binding: None,
         };
 
-        let data = CanonicalAttestationData {
-            version: att.version,
-            rid: &att.rid,
-            issuer: &att.issuer,
-            subject: &att.subject,
-            device_public_key: att.device_public_key.as_bytes(),
-            payload: &att.payload,
-            timestamp: &att.timestamp,
-            expires_at: &att.expires_at,
-            revoked_at: &att.revoked_at,
-            note: &att.note,
-            role: att.role.as_ref().map(|r| r.as_str()),
-            capabilities: if att.capabilities.is_empty() {
-                None
-            } else {
-                Some(&att.capabilities)
-            },
-            delegated_by: att.delegated_by.as_ref(),
-            signer_type: att.signer_type.as_ref(),
-        };
-        let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
+        let canonical_bytes = canonicalize_attestation_data(&att.canonical_data()).unwrap();
 
         att.identity_signature =
             Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
@@ -1238,28 +1176,7 @@ mod tests {
             oidc_binding: None,
         };
 
-        let caps_ref = if att.capabilities.is_empty() {
-            None
-        } else {
-            Some(&att.capabilities)
-        };
-        let data = CanonicalAttestationData {
-            version: att.version,
-            rid: &att.rid,
-            issuer: &att.issuer,
-            subject: &att.subject,
-            device_public_key: att.device_public_key.as_bytes(),
-            payload: &att.payload,
-            timestamp: &att.timestamp,
-            expires_at: &att.expires_at,
-            revoked_at: &att.revoked_at,
-            note: &att.note,
-            role: att.role.as_ref().map(|r| r.as_str()),
-            capabilities: caps_ref,
-            delegated_by: att.delegated_by.as_ref(),
-            signer_type: att.signer_type.as_ref(),
-        };
-        let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
+        let canonical_bytes = canonicalize_attestation_data(&att.canonical_data()).unwrap();
 
         att.identity_signature =
             Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();
@@ -1592,27 +1509,7 @@ mod tests {
             oidc_binding: None,
         };
 
-        let data = CanonicalAttestationData {
-            version: att.version,
-            rid: &att.rid,
-            issuer: &att.issuer,
-            subject: &att.subject,
-            device_public_key: att.device_public_key.as_bytes(),
-            payload: &att.payload,
-            timestamp: &att.timestamp,
-            expires_at: &att.expires_at,
-            revoked_at: &att.revoked_at,
-            note: &att.note,
-            role: att.role.as_ref().map(|r| r.as_str()),
-            capabilities: if att.capabilities.is_empty() {
-                None
-            } else {
-                Some(&att.capabilities)
-            },
-            delegated_by: att.delegated_by.as_ref(),
-            signer_type: att.signer_type.as_ref(),
-        };
-        let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
+        let canonical_bytes = canonicalize_attestation_data(&att.canonical_data()).unwrap();
 
         att.identity_signature =
             Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();

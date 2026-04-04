@@ -5,9 +5,7 @@
 
 use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::KeyAlias;
-use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519Signature, canonicalize_attestation_data,
-};
+use auths_verifier::core::{Attestation, Ed25519Signature, canonicalize_attestation_data};
 use auths_verifier::error::AttestationError;
 
 use chrono::{DateTime, Utc};
@@ -67,28 +65,7 @@ pub fn resign_attestation(
     identity_alias: Option<&KeyAlias>,
     device_alias: &KeyAlias,
 ) -> Result<(), AttestationError> {
-    let data_to_canonicalize = CanonicalAttestationData {
-        version: attestation.version,
-        rid: &attestation.rid,
-        issuer: &attestation.issuer,
-        subject: &attestation.subject,
-        device_public_key: attestation.device_public_key.as_bytes(),
-        payload: &attestation.payload,
-        timestamp: &attestation.timestamp,
-        expires_at: &attestation.expires_at,
-        revoked_at: &attestation.revoked_at,
-        note: &attestation.note,
-        role: attestation.role.as_ref().map(|r| r.as_str()),
-        capabilities: if attestation.capabilities.is_empty() {
-            None
-        } else {
-            Some(&attestation.capabilities)
-        },
-        delegated_by: attestation.delegated_by.as_ref(),
-        signer_type: attestation.signer_type.as_ref(),
-    };
-
-    let message_to_sign = canonicalize_attestation_data(&data_to_canonicalize)?;
+    let message_to_sign = canonicalize_attestation_data(&attestation.canonical_data())?;
 
     // Sign with the identity key (if alias provided)
     if let Some(alias) = identity_alias {

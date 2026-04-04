@@ -2,8 +2,7 @@ use assert_cmd::Command;
 use auths_crypto::testing::gen_keypair;
 use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature,
-    canonicalize_attestation_data,
+    Attestation, Ed25519PublicKey, Ed25519Signature, canonicalize_attestation_data,
 };
 use auths_verifier::types::{CanonicalDid, DeviceDID};
 use chrono::{Duration, Utc};
@@ -30,28 +29,8 @@ fn create_signed_attestation(
         .timestamp(Some(Utc::now()))
         .build();
 
-    // Create canonical data for signing (includes org fields)
-    let data = CanonicalAttestationData {
-        version: att.version,
-        rid: &att.rid,
-        issuer: &att.issuer,
-        subject: &att.subject,
-        device_public_key: att.device_public_key.as_bytes(),
-        payload: &att.payload,
-        timestamp: &att.timestamp,
-        expires_at: &att.expires_at,
-        revoked_at: &att.revoked_at,
-        note: &att.note,
-        role: att.role.as_ref().map(|r| r.as_str()),
-        capabilities: if att.capabilities.is_empty() {
-            None
-        } else {
-            Some(&att.capabilities)
-        },
-        delegated_by: att.delegated_by.as_ref(),
-        signer_type: att.signer_type.as_ref(),
-    };
-    let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
+    // Create canonical data for signing (single source of truth via canonical_data())
+    let canonical_bytes = canonicalize_attestation_data(&att.canonical_data()).unwrap();
 
     // Sign with issuer (identity) key
     att.identity_signature =

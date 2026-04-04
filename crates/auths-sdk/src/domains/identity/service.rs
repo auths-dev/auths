@@ -321,6 +321,7 @@ fn bind_device(
         vec![],
         None,
         None,
+        None, // commit_sha
     )
     .map_err(|e| SetupError::StorageError(e.into()))?;
 

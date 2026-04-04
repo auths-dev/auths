@@ -704,17 +704,7 @@ enum SignatureInfo {
 }
 
 fn resolve_commit_sha(commit_ref: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["rev-parse", commit_ref])
-        .output()
-        .context("Failed to run git rev-parse")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("Invalid commit reference: {}", stderr.trim()));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    super::git_helpers::resolve_commit_sha(commit_ref)
 }
 
 fn get_commit_signature(sha: &str) -> Result<SignatureInfo> {

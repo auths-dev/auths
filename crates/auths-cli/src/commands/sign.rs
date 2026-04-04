@@ -152,6 +152,7 @@ pub fn handle_sign_unified(
                 Some(alias) => alias.to_string(),
                 None => super::key_detect::auto_detect_device_key(repo_opt.as_deref(), env_config)?,
             };
+            let commit_sha = super::git_helpers::resolve_head_silent();
             handle_artifact_sign(
                 &path,
                 cmd.sig_output,
@@ -159,6 +160,7 @@ pub fn handle_sign_unified(
                 &device_key_alias,
                 cmd.expires_in,
                 cmd.note,
+                commit_sha,
                 repo_opt,
                 passphrase_provider,
                 env_config,

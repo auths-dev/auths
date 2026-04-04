@@ -372,6 +372,7 @@ pub fn add_organization_member(
             // INVARIANT: admin_att.subject is a CanonicalDid from a verified attestation loaded by find_admin()
             Some(IdentityDID::new_unchecked(admin_att.subject.to_string()))
         },
+        None, // commit_sha
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 

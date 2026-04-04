@@ -180,8 +180,7 @@ fn json_canon_golden_output() {
 #[test]
 fn environment_claim_excluded_from_canonical_form() {
     use auths_verifier::core::{
-        Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId,
-        canonicalize_attestation_data,
+        Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId, canonicalize_attestation_data,
     };
     use auths_verifier::types::CanonicalDid;
 
@@ -209,48 +208,15 @@ fn environment_claim_excluded_from_canonical_form() {
         oidc_binding: None,
     };
 
-    let data = CanonicalAttestationData {
-        version: att.version,
-        rid: &att.rid,
-        issuer: &att.issuer,
-        subject: &att.subject,
-        device_public_key: att.device_public_key.as_bytes(),
-        payload: &att.payload,
-        timestamp: &att.timestamp,
-        expires_at: &att.expires_at,
-        revoked_at: &att.revoked_at,
-        note: &att.note,
-        role: None,
-        capabilities: None,
-        delegated_by: None,
-        signer_type: None,
-    };
-
-    let canonical_with_env = canonicalize_attestation_data(&data).unwrap();
+    let canonical_with_env = canonicalize_attestation_data(&att.canonical_data()).unwrap();
 
     let att_without = Attestation {
         environment_claim: None,
         ..att.clone()
     };
 
-    let data_without = CanonicalAttestationData {
-        version: att_without.version,
-        rid: &att_without.rid,
-        issuer: &att_without.issuer,
-        subject: &att_without.subject,
-        device_public_key: att_without.device_public_key.as_bytes(),
-        payload: &att_without.payload,
-        timestamp: &att_without.timestamp,
-        expires_at: &att_without.expires_at,
-        revoked_at: &att_without.revoked_at,
-        note: &att_without.note,
-        role: None,
-        capabilities: None,
-        delegated_by: None,
-        signer_type: None,
-    };
-
-    let canonical_without_env = canonicalize_attestation_data(&data_without).unwrap();
+    let canonical_without_env =
+        canonicalize_attestation_data(&att_without.canonical_data()).unwrap();
 
     assert_eq!(
         canonical_with_env, canonical_without_env,
