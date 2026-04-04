@@ -165,6 +165,7 @@ pub fn create_org(
         admin_capabilities,
         Some(Role::Admin),
         None,
+        None, // commit_sha
     )
     .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
 

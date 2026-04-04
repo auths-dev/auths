@@ -104,6 +104,7 @@ fn build_context_and_sign(
     passphrase: Option<String>,
     expires_in: Option<i64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_env_config(&passphrase_str, repo_path);
@@ -150,6 +151,7 @@ fn build_context_and_sign(
         device_key: SigningKeyMaterial::Alias(alias),
         expires_in: expires_in.map(|s| s as u64),
         note,
+        commit_sha,
     };
 
     let result = sdk_sign_artifact(params, &ctx).map_err(|e| {
@@ -175,6 +177,7 @@ pub fn sign_artifact(
     passphrase: Option<String>,
     expires_in: Option<i64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
     let path = PathBuf::from(shellexpand::tilde(&file_path).as_ref());
     if !path.exists() {
@@ -194,6 +197,7 @@ pub fn sign_artifact(
         passphrase,
         expires_in,
         note,
+        commit_sha,
     )
 }
 
@@ -205,6 +209,7 @@ pub fn sign_artifact_bytes(
     passphrase: Option<String>,
     expires_in: Option<i64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
     let artifact = Arc::new(BytesArtifact {
         data: data.to_vec(),
@@ -216,6 +221,7 @@ pub fn sign_artifact_bytes(
         passphrase,
         expires_in,
         note,
+        commit_sha,
     )
 }
 
@@ -241,14 +247,13 @@ pub fn sign_artifact_bytes_raw(
     identity_did: String,
     expires_in: Option<i64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> napi::Result<NapiArtifactResult> {
-    let seed = decode_seed_hex(&private_key_hex).map_err(|e| {
-        format_error("AUTHS_INVALID_INPUT", format!("Invalid private key: {e}"))
-    })?;
+    let seed = decode_seed_hex(&private_key_hex)
+        .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid private key: {e}")))?;
 
-    let did = IdentityDID::parse(&identity_did).map_err(|e| {
-        format_error("AUTHS_INVALID_INPUT", format!("Invalid identity DID: {e}"))
-    })?;
+    let did = IdentityDID::parse(&identity_did)
+        .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid identity DID: {e}")))?;
 
     let expires_in_u64 = expires_in
         .map(|v| {
@@ -266,13 +271,21 @@ pub fn sign_artifact_bytes_raw(
     let now = Utc::now();
     let data_len = data.len();
 
-    let result = sign_artifact_raw(now, &seed, &did, data.as_ref(), expires_in_u64, note)
-        .map_err(|e| {
-            format_error(
-                "AUTHS_SIGNING_FAILED",
-                format!("Artifact signing failed: {e}"),
-            )
-        })?;
+    let result = sign_artifact_raw(
+        now,
+        &seed,
+        &did,
+        data.as_ref(),
+        expires_in_u64,
+        note,
+        commit_sha,
+    )
+    .map_err(|e| {
+        format_error(
+            "AUTHS_SIGNING_FAILED",
+            format!("Artifact signing failed: {e}"),
+        )
+    })?;
 
     Ok(NapiArtifactResult {
         attestation_json: result.attestation_json,

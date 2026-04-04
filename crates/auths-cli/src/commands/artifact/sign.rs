@@ -21,6 +21,7 @@ pub fn handle_sign(
     device_key: &str,
     expires_in: Option<u64>,
     note: Option<String>,
+    commit_sha: Option<String>,
     repo_opt: Option<PathBuf>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
@@ -35,6 +36,7 @@ pub fn handle_sign(
         device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(device_key)),
         expires_in,
         note,
+        commit_sha,
     };
 
     let result = sign_artifact(params, &ctx)

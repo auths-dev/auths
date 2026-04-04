@@ -17,6 +17,7 @@ pub mod doctor;
 pub mod emergency;
 pub mod error_lookup;
 pub mod git;
+pub mod git_helpers;
 pub mod id;
 pub mod index;
 pub mod init;

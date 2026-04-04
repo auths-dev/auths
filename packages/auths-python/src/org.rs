@@ -149,6 +149,7 @@ pub fn create_org(
             admin_capabilities,
             Some(Role::Admin),
             None,
+            None, // commit_sha
         )
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 

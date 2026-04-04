@@ -26,6 +26,8 @@ export interface SignArtifactOptions {
   note?: string
   /** Override the client's passphrase. */
   passphrase?: string
+  /** Optional commit SHA to bind the attestation to. */
+  commitSha?: string
 }
 
 /** Options for {@link ArtifactService.signBytes}. */
@@ -40,6 +42,8 @@ export interface SignArtifactBytesOptions {
   note?: string
   /** Override the client's passphrase. */
   passphrase?: string
+  /** Optional commit SHA to bind the attestation to. */
+  commitSha?: string
 }
 
 /**
@@ -85,6 +89,7 @@ export class ArtifactService {
         pp,
         opts.expiresInDays ?? null,
         opts.note ?? null,
+        opts.commitSha ?? null,
       )
     } catch (err) {
       throw mapNativeError(err, CryptoError)
@@ -116,6 +121,7 @@ export class ArtifactService {
         pp,
         opts.expiresInDays ?? null,
         opts.note ?? null,
+        opts.commitSha ?? null,
       )
     } catch (err) {
       throw mapNativeError(err, CryptoError)

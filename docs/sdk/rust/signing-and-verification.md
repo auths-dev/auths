@@ -118,6 +118,7 @@ let params = ArtifactSigningParams {
     device_key: SigningKeyMaterial::Direct(my_seed),
     expires_in: Some(31_536_000),
     note: Some("v1.0.0 release".into()),
+    commit_sha: None,
 };
 
 let result = sign_artifact_attestation(params, &ctx)?;

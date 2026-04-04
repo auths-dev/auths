@@ -894,6 +894,9 @@ pub struct CanonicalAttestationData<'a> {
     /// Type of signer (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signer_type: Option<&'a SignerType>,
+    /// Git commit SHA for provenance binding (included in signed envelope).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_sha: Option<&'a str>,
 }
 
 /// Produce the canonical JSON bytes over which signatures are computed.
@@ -932,6 +935,40 @@ impl Attestation {
         }
         serde_json::from_slice(json_bytes)
             .map_err(|e| AttestationError::SerializationError(e.to_string()))
+    }
+
+    /// Returns the canonical subset of fields that signatures are computed over.
+    ///
+    /// Args:
+    /// * `&self`: The attestation to extract canonical data from.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let canonical = attestation.canonical_data();
+    /// let bytes = canonicalize_attestation_data(&canonical)?;
+    /// ```
+    pub fn canonical_data(&self) -> CanonicalAttestationData<'_> {
+        CanonicalAttestationData {
+            version: self.version,
+            rid: &self.rid,
+            issuer: &self.issuer,
+            subject: &self.subject,
+            device_public_key: self.device_public_key.as_bytes(),
+            payload: &self.payload,
+            timestamp: &self.timestamp,
+            expires_at: &self.expires_at,
+            revoked_at: &self.revoked_at,
+            note: &self.note,
+            role: self.role.as_ref().map(|r| r.as_str()),
+            capabilities: if self.capabilities.is_empty() {
+                None
+            } else {
+                Some(&self.capabilities)
+            },
+            delegated_by: self.delegated_by.as_ref(),
+            signer_type: self.signer_type.as_ref(),
+            commit_sha: self.commit_sha.as_deref(),
+        }
     }
 
     /// Formats the attestation contents for debug or inspection purposes.

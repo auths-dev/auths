@@ -224,6 +224,7 @@ pub fn extend_device(
         vec![],
         None,
         None,
+        None, // commit_sha
     )
     .map_err(DeviceExtensionError::AttestationFailed)?;
 
@@ -316,6 +317,7 @@ fn sign_and_persist_attestation(
         params.capabilities.clone(),
         None,
         None,
+        None, // commit_sha
     )
     .map_err(DeviceError::AttestationError)?;
 

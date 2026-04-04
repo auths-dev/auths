@@ -218,8 +218,12 @@ pub fn sign_action_as_agent(
 
 /// Decode a hex-encoded Ed25519 seed and validate its length.
 fn decode_seed_hex(private_key_hex: &str) -> napi::Result<Vec<u8>> {
-    let seed = hex::decode(private_key_hex)
-        .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid private key hex: {e}")))?;
+    let seed = hex::decode(private_key_hex).map_err(|e| {
+        format_error(
+            "AUTHS_INVALID_INPUT",
+            format!("Invalid private key hex: {e}"),
+        )
+    })?;
     if seed.len() != 32 {
         return Err(format_error(
             "AUTHS_INVALID_INPUT",
@@ -306,9 +310,9 @@ pub fn sign_action_raw(
         environment: None,
     };
 
-    let canonical = envelope.canonical_bytes().map_err(|e| {
-        format_error("AUTHS_SERIALIZATION_ERROR", e)
-    })?;
+    let canonical = envelope
+        .canonical_bytes()
+        .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", e))?;
 
     let keypair = Ed25519KeyPair::from_seed_unchecked(&seed).map_err(|e| {
         format_error(

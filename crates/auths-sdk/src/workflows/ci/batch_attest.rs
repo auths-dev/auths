@@ -66,6 +66,8 @@ pub struct BatchSignConfig {
     pub expires_in: Option<u64>,
     /// Optional note for all attestations.
     pub note: Option<String>,
+    /// Git commit SHA for provenance binding (shared across all artifacts in batch).
+    pub commit_sha: Option<String>,
 }
 
 /// Outcome for a single artifact in a batch.
@@ -202,6 +204,7 @@ pub fn batch_sign_artifacts(
             device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(&config.device_key)),
             expires_in: config.expires_in,
             note: config.note.clone(),
+            commit_sha: config.commit_sha.clone(),
         };
 
         match sign_artifact(params, ctx) {

@@ -121,6 +121,7 @@ fn create_test_attestation(
         vec![],
         None,
         None,
+        None, // commit_sha
     )
     .expect("Failed to create signed attestation")
 }

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use anyhow::{Result, bail};
 use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
+use auths_sdk::signing::validate_commit_sha;
 
 #[derive(Args, Debug, Clone)]
 #[command(
@@ -73,6 +74,14 @@ pub enum ArtifactSubcommand {
         /// Optional note to embed in the attestation.
         #[arg(long)]
         note: Option<String>,
+
+        /// Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted).
+        #[arg(long, conflicts_with = "no_commit")]
+        commit: Option<String>,
+
+        /// Do not embed any commit SHA in the attestation.
+        #[arg(long, conflicts_with = "commit")]
+        no_commit: bool,
     },
 
     /// Sign and publish an artifact attestation to a registry.
@@ -110,6 +119,14 @@ pub enum ArtifactSubcommand {
         /// Optional note to embed in the attestation.
         #[arg(long)]
         note: Option<String>,
+
+        /// Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted).
+        #[arg(long, conflicts_with = "no_commit")]
+        commit: Option<String>,
+
+        /// Do not embed any commit SHA in the attestation.
+        #[arg(long, conflicts_with = "commit")]
+        no_commit: bool,
     },
 
     /// Sign multiple artifacts matching a glob pattern.
@@ -140,6 +157,14 @@ pub enum ArtifactSubcommand {
         /// Optional note to embed in each attestation.
         #[arg(long)]
         note: Option<String>,
+
+        /// Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted).
+        #[arg(long, conflicts_with = "no_commit")]
+        commit: Option<String>,
+
+        /// Do not embed any commit SHA in the attestation.
+        #[arg(long, conflicts_with = "commit")]
+        no_commit: bool,
     },
 
     /// Verify an artifact's signature against an Auths identity.
@@ -167,7 +192,26 @@ pub enum ArtifactSubcommand {
         /// Witness quorum threshold (default: 1).
         #[arg(long, default_value = "1")]
         witness_threshold: usize,
+
+        /// Also verify the source commit's signing attestation.
+        #[arg(long)]
+        verify_commit: bool,
     },
+}
+
+/// Resolve the commit SHA from CLI flags.
+fn resolve_commit_sha_from_flags(
+    commit: Option<String>,
+    no_commit: bool,
+) -> Result<Option<String>> {
+    if no_commit {
+        return Ok(None);
+    }
+    if let Some(sha) = commit {
+        let validated = validate_commit_sha(&sha).map_err(|e| anyhow::anyhow!("{}", e))?;
+        return Ok(Some(validated));
+    }
+    Ok(crate::commands::git_helpers::resolve_head_silent())
 }
 
 /// Handle the `artifact` command dispatch.
@@ -185,7 +229,10 @@ pub fn handle_artifact(
             device_key,
             expires_in,
             note,
+            commit,
+            no_commit,
         } => {
+            let commit_sha = resolve_commit_sha_from_flags(commit, no_commit)?;
             let resolved_alias = match device_key {
                 Some(alias) => alias,
                 None => crate::commands::key_detect::auto_detect_device_key(
@@ -200,6 +247,7 @@ pub fn handle_artifact(
                 &resolved_alias,
                 expires_in,
                 note,
+                commit_sha,
                 repo_opt,
                 passphrase_provider,
                 env_config,
@@ -214,7 +262,10 @@ pub fn handle_artifact(
             device_key,
             expires_in,
             note,
+            commit,
+            no_commit,
         } => {
+            let commit_sha = resolve_commit_sha_from_flags(commit, no_commit)?;
             let sig_path = match (signature, file.as_ref()) {
                 (Some(sig), _) => sig,
                 (None, Some(artifact)) => {
@@ -236,6 +287,7 @@ pub fn handle_artifact(
                             &resolved_alias,
                             expires_in,
                             note,
+                            commit_sha,
                             repo_opt.clone(),
                             passphrase_provider,
                             env_config,
@@ -256,7 +308,10 @@ pub fn handle_artifact(
             attestation_dir,
             expires_in,
             note,
+            commit,
+            no_commit,
         } => {
+            let commit_sha = resolve_commit_sha_from_flags(commit, no_commit)?;
             let resolved_alias = match device_key {
                 Some(alias) => alias,
                 None => crate::commands::key_detect::auto_detect_device_key(
@@ -271,6 +326,7 @@ pub fn handle_artifact(
                 attestation_dir,
                 expires_in,
                 note,
+                commit_sha,
                 repo_opt,
                 passphrase_provider,
                 env_config,
@@ -283,6 +339,7 @@ pub fn handle_artifact(
             witness_receipts,
             witness_keys,
             witness_threshold,
+            verify_commit,
         } => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(verify::handle_verify(
@@ -292,6 +349,7 @@ pub fn handle_artifact(
                 witness_receipts,
                 &witness_keys,
                 witness_threshold,
+                verify_commit,
             ))
         }
     }

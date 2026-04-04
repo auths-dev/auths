@@ -1,8 +1,7 @@
 use auths_crypto::testing::create_test_keypair;
 use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature,
-    canonicalize_attestation_data,
+    Attestation, Ed25519PublicKey, Ed25519Signature, canonicalize_attestation_data,
 };
 use auths_verifier::verifier::Verifier;
 use chrono::{DateTime, Duration, Utc};
@@ -27,23 +26,7 @@ fn create_signed_attestation(
         .timestamp(timestamp)
         .build();
 
-    let data = CanonicalAttestationData {
-        version: att.version,
-        rid: &att.rid,
-        issuer: &att.issuer,
-        subject: &att.subject,
-        device_public_key: att.device_public_key.as_bytes(),
-        payload: &att.payload,
-        timestamp: &att.timestamp,
-        expires_at: &att.expires_at,
-        revoked_at: &att.revoked_at,
-        note: &att.note,
-        role: None,
-        capabilities: None,
-        delegated_by: None,
-        signer_type: None,
-    };
-    let canonical_bytes = canonicalize_attestation_data(&data).unwrap();
+    let canonical_bytes = canonicalize_attestation_data(&att.canonical_data()).unwrap();
 
     att.identity_signature =
         Ed25519Signature::try_from_slice(issuer_kp.sign(&canonical_bytes).as_ref()).unwrap();

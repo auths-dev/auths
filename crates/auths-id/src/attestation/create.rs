@@ -4,7 +4,7 @@ use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::Capability;
 use auths_verifier::core::{
-    Attestation, CanonicalAttestationData, Ed25519PublicKey, Ed25519Signature, ResourceId, Role,
+    Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId, Role,
     canonicalize_attestation_data,
 };
 use auths_verifier::error::AttestationError;
@@ -71,6 +71,7 @@ pub fn create_signed_attestation(
     capabilities: Vec<Capability>,
     role: Option<Role>,
     delegated_by: Option<IdentityDID>,
+    commit_sha: Option<String>,
 ) -> Result<Attestation, AttestationError> {
     if device_public_key.len() != ED25519_PUBLIC_KEY_LEN {
         return Err(AttestationError::InvalidInput(format!(
@@ -90,7 +91,7 @@ pub fn create_signed_attestation(
         }
     }
 
-    // Construct the canonical data to be signed
+    // Build attestation with empty signatures first (ActionEnvelope pattern)
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: identity_did is an IdentityDID which guarantees valid DID format
     let issuer_canonical = CanonicalDid::new_unchecked(identity_did.as_str());
@@ -98,71 +99,8 @@ pub fn create_signed_attestation(
     // INVARIANT: device_did is a validated DeviceDID from the caller
     let subject_canonical = CanonicalDid::new_unchecked(device_did.as_str());
     let delegated_canonical = delegated_by.as_ref().map(|d| CanonicalDid::from(d.clone()));
-    let data_to_canonicalize = CanonicalAttestationData {
-        version: ATTESTATION_VERSION,
-        rid,
-        issuer: &issuer_canonical,
-        subject: &subject_canonical,
-        device_public_key,
-        payload: &payload,
-        timestamp: &meta.timestamp,
-        expires_at: &meta.expires_at,
-        revoked_at: &None,
-        note: &meta.note,
-        // Org fields included in signed envelope
-        role: role.as_ref().map(|r| r.as_str()),
-        capabilities: if capabilities.is_empty() {
-            None
-        } else {
-            Some(&capabilities)
-        },
-        delegated_by: delegated_canonical.as_ref(),
-        signer_type: None,
-    };
 
-    // Canonicalize the attestation data
-    let message_to_sign = canonicalize_attestation_data(&data_to_canonicalize)?;
-
-    // Sign with the identity key (if alias provided)
-    let identity_signature = if let Some(alias) = identity_alias {
-        debug!("Signing attestation with identity alias '{}'", alias);
-        let sig = signer
-            .sign_with_alias(alias, passphrase_provider, &message_to_sign)
-            .map_err(|e| {
-                AttestationError::SigningError(format!(
-                    "Failed to sign with identity key '{}': {}",
-                    alias, e
-                ))
-            })?;
-        debug!("Identity signature obtained successfully");
-        Ed25519Signature::try_from_slice(&sig)
-            .map_err(|e| AttestationError::SigningError(e.to_string()))?
-    } else {
-        debug!("No identity alias provided, skipping identity signature (device-only attestation)");
-        Ed25519Signature::empty()
-    };
-
-    // Sign with the device key if alias provided
-    let device_signature = if let Some(alias) = device_alias {
-        debug!("Signing attestation with device alias '{}'", alias);
-        let sig = signer
-            .sign_with_alias(alias, passphrase_provider, &message_to_sign)
-            .map_err(|e| {
-                AttestationError::SigningError(format!(
-                    "Failed to sign with device key '{}': {}",
-                    alias, e
-                ))
-            })?;
-        debug!("Device signature obtained successfully");
-        Ed25519Signature::try_from_slice(&sig)
-            .map_err(|e| AttestationError::SigningError(e.to_string()))?
-    } else {
-        debug!("No device alias provided, skipping device signature");
-        Ed25519Signature::empty()
-    };
-
-    // Construct final attestation
-    Ok(Attestation {
+    let mut attestation = Attestation {
         version: ATTESTATION_VERSION,
         subject: subject_canonical,
         issuer: issuer_canonical,
@@ -174,18 +112,59 @@ pub fn create_signed_attestation(
         note: meta.note.clone(),
         device_public_key: Ed25519PublicKey::try_from_slice(device_public_key)
             .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
-        identity_signature,
-        device_signature,
+        identity_signature: Ed25519Signature::empty(),
+        device_signature: Ed25519Signature::empty(),
         role,
         capabilities,
         delegated_by: delegated_canonical,
         signer_type: None,
         environment_claim: None,
-        commit_sha: None,
+        commit_sha,
         commit_message: None,
         author: None,
         oidc_binding: None,
-    })
+    };
+
+    // Canonicalize using single source of truth
+    let message_to_sign = canonicalize_attestation_data(&attestation.canonical_data())?;
+
+    // Sign with the identity key (if alias provided)
+    if let Some(alias) = identity_alias {
+        debug!("Signing attestation with identity alias '{}'", alias);
+        let sig = signer
+            .sign_with_alias(alias, passphrase_provider, &message_to_sign)
+            .map_err(|e| {
+                AttestationError::SigningError(format!(
+                    "Failed to sign with identity key '{}': {}",
+                    alias, e
+                ))
+            })?;
+        debug!("Identity signature obtained successfully");
+        attestation.identity_signature = Ed25519Signature::try_from_slice(&sig)
+            .map_err(|e| AttestationError::SigningError(e.to_string()))?;
+    } else {
+        debug!("No identity alias provided, skipping identity signature (device-only attestation)");
+    }
+
+    // Sign with the device key if alias provided
+    if let Some(alias) = device_alias {
+        debug!("Signing attestation with device alias '{}'", alias);
+        let sig = signer
+            .sign_with_alias(alias, passphrase_provider, &message_to_sign)
+            .map_err(|e| {
+                AttestationError::SigningError(format!(
+                    "Failed to sign with device key '{}': {}",
+                    alias, e
+                ))
+            })?;
+        debug!("Device signature obtained successfully");
+        attestation.device_signature = Ed25519Signature::try_from_slice(&sig)
+            .map_err(|e| AttestationError::SigningError(e.to_string()))?;
+    } else {
+        debug!("No device alias provided, skipping device signature");
+    }
+
+    Ok(attestation)
 }
 
 /// Generates the canonical byte representation specifically for revocation data.

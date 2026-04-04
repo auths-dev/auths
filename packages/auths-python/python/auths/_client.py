@@ -543,6 +543,7 @@ class Auths:
         identity_did: str,
         expires_in: int | None = None,
         note: str | None = None,
+        commit_sha: str | None = None,
     ) -> ArtifactSigningResult:
         """Sign a file artifact, producing a dual-signed attestation.
 
@@ -554,6 +555,7 @@ class Auths:
             identity_did: The identity DID to sign with (used as key alias).
             expires_in: Duration in seconds until expiration (per RFC 6749).
             note: Optional human-readable note.
+            commit_sha: Optional commit SHA to bind the attestation to.
 
         Returns:
             ArtifactSigningResult with the attestation JSON, RID, digest, and file size.
@@ -573,7 +575,7 @@ class Auths:
         pp = self._passphrase
         try:
             raw = _sign_artifact(
-                path, identity_did, self.repo_path, pp, expires_in, note,
+                path, identity_did, self.repo_path, pp, expires_in, note, commit_sha,
             )
             return ArtifactSigningResult(
                 attestation_json=raw.attestation_json,
@@ -593,6 +595,7 @@ class Auths:
         identity_did: str,
         expires_in: int | None = None,
         note: str | None = None,
+        commit_sha: str | None = None,
     ) -> ArtifactSigningResult:
         """Sign raw bytes, producing a dual-signed attestation.
 
@@ -604,6 +607,7 @@ class Auths:
             identity_did: The identity DID to sign with (used as key alias).
             expires_in: Duration in seconds until expiration (per RFC 6749).
             note: Optional human-readable note.
+            commit_sha: Optional commit SHA to bind the attestation to.
 
         Returns:
             ArtifactSigningResult with the attestation JSON, RID, digest, and size.
@@ -622,7 +626,7 @@ class Auths:
         pp = self._passphrase
         try:
             raw = _sign_artifact_bytes(
-                data, identity_did, self.repo_path, pp, expires_in, note,
+                data, identity_did, self.repo_path, pp, expires_in, note, commit_sha,
             )
             return ArtifactSigningResult(
                 attestation_json=raw.attestation_json,

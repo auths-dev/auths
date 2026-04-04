@@ -133,6 +133,7 @@ fn build_context_and_sign(
     passphrase: Option<String>,
     expires_in: Option<u64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> PyResult<PyArtifactResult> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_keychain_config(&passphrase_str, repo_path);
@@ -180,6 +181,7 @@ fn build_context_and_sign(
         device_key: SigningKeyMaterial::Alias(alias),
         expires_in,
         note,
+        commit_sha,
     };
 
     let result = sdk_sign_artifact(params, &ctx).map_err(|e| {
@@ -211,7 +213,7 @@ fn build_context_and_sign(
 /// let result = sign_artifact(py, "release.tar.gz", "main", "~/.auths", None, None, None)?;
 /// ```
 #[pyfunction]
-#[pyo3(signature = (file_path, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None))]
+#[pyo3(signature = (file_path, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None, commit_sha=None))]
 pub fn sign_artifact(
     _py: Python<'_>,
     file_path: &str,
@@ -220,6 +222,7 @@ pub fn sign_artifact(
     passphrase: Option<String>,
     expires_in: Option<u64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> PyResult<PyArtifactResult> {
     let path = PathBuf::from(shellexpand::tilde(file_path).as_ref());
     if !path.exists() {
@@ -233,7 +236,9 @@ pub fn sign_artifact(
     let rp = repo_path.to_string();
 
     {
-        build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note)
+        build_context_and_sign(
+            artifact, &alias, &rp, passphrase, expires_in, note, commit_sha,
+        )
     }
 }
 
@@ -252,7 +257,7 @@ pub fn sign_artifact(
 /// let result = sign_artifact_bytes(py, b"manifest data", "main", "~/.auths", None, None, None)?;
 /// ```
 #[pyfunction]
-#[pyo3(signature = (data, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None))]
+#[pyo3(signature = (data, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None, commit_sha=None))]
 pub fn sign_artifact_bytes(
     _py: Python<'_>,
     data: &[u8],
@@ -261,6 +266,7 @@ pub fn sign_artifact_bytes(
     passphrase: Option<String>,
     expires_in: Option<u64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> PyResult<PyArtifactResult> {
     let artifact = Arc::new(BytesArtifact {
         data: data.to_vec(),
@@ -269,7 +275,9 @@ pub fn sign_artifact_bytes(
     let rp = repo_path.to_string();
 
     {
-        build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note)
+        build_context_and_sign(
+            artifact, &alias, &rp, passphrase, expires_in, note, commit_sha,
+        )
     }
 }
 
@@ -289,7 +297,7 @@ pub fn sign_artifact_bytes(
 /// let result = sign_artifact_bytes_raw(py, b"payload", "abcd...", "did:keri:E...", None, None)?;
 /// ```
 #[pyfunction]
-#[pyo3(signature = (data, private_key_hex, identity_did, expires_in=None, note=None))]
+#[pyo3(signature = (data, private_key_hex, identity_did, expires_in=None, note=None, commit_sha=None))]
 pub fn sign_artifact_bytes_raw(
     _py: Python<'_>,
     data: &[u8],
@@ -297,6 +305,7 @@ pub fn sign_artifact_bytes_raw(
     identity_did: &str,
     expires_in: Option<u64>,
     note: Option<String>,
+    commit_sha: Option<String>,
 ) -> PyResult<PyArtifactResult> {
     let seed = decode_seed_hex(private_key_hex)
         .map_err(|e| PyValueError::new_err(format!("[AUTHS_INVALID_INPUT] {e}")))?;
@@ -306,9 +315,12 @@ pub fn sign_artifact_bytes_raw(
 
     let now = Utc::now();
 
-    let result = sign_artifact_raw(now, &seed, &did, data, expires_in, note).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Artifact signing failed: {e}"))
-    })?;
+    let result =
+        sign_artifact_raw(now, &seed, &did, data, expires_in, note, commit_sha).map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_SIGNING_FAILED] Artifact signing failed: {e}"
+            ))
+        })?;
 
     Ok(PyArtifactResult {
         attestation_json: result.attestation_json,

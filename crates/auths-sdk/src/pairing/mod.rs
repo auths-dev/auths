@@ -365,6 +365,7 @@ pub fn create_pairing_attestation(
         device_capabilities,
         None,
         None,
+        None, // commit_sha
     )
     .map_err(|e| PairingError::AttestationFailed(e.to_string()))?;
 
