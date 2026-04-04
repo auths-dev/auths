@@ -462,6 +462,7 @@ dependencies = [
  "async-trait",
  "base64",
  "bs58",
+ "hex",
  "js-sys",
  "ring",
  "ssh-key",

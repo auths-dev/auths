@@ -19,6 +19,7 @@ from auths._native import (
     VerificationStatus,
     get_token,
     sign_action,
+    sign_artifact_bytes_raw,
     sign_bytes,
     verify_action_envelope,
     verify_at_time,

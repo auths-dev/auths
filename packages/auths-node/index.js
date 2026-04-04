@@ -609,6 +609,7 @@ module.exports.signActionAsIdentity = nativeBinding.signActionAsIdentity
 module.exports.signActionRaw = nativeBinding.signActionRaw
 module.exports.signArtifact = nativeBinding.signArtifact
 module.exports.signArtifactBytes = nativeBinding.signArtifactBytes
+module.exports.signArtifactBytesRaw = nativeBinding.signArtifactBytesRaw
 module.exports.signAsAgent = nativeBinding.signAsAgent
 module.exports.signAsIdentity = nativeBinding.signAsIdentity
 module.exports.signBytesRaw = nativeBinding.signBytesRaw

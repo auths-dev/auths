@@ -223,6 +223,7 @@ export interface NativeBindings {
   // Artifact
   signArtifact(filePath: string, identityKeyAlias: string, repoPath: string, passphrase?: string | null, expiresInDays?: number | null, note?: string | null): NapiArtifactResult
   signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | null, expiresInDays?: number | null, note?: string | null): NapiArtifactResult
+  signArtifactBytesRaw(data: Buffer, privateKeyHex: string, identityDid: string, expiresIn?: number | null, note?: string | null): NapiArtifactResult
 
   // Audit
   generateAuditReport(targetRepoPath: string, authsRepoPath: string, since?: string | null, until?: string | null, author?: string | null, limit?: number | null): string

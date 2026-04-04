@@ -164,6 +164,52 @@ pub trait CryptoProvider: Send + Sync {
     ) -> Result<[u8; 32], CryptoError>;
 }
 
+/// Errors from hex seed decoding.
+///
+/// Usage:
+/// ```ignore
+/// match decode_seed_hex("bad") {
+///     Err(SeedDecodeError::InvalidHex(_)) => { /* not valid hex */ }
+///     Err(SeedDecodeError::WrongLength { .. }) => { /* not 32 bytes */ }
+///     Ok(seed) => { /* use seed */ }
+/// }
+/// ```
+#[derive(Debug, thiserror::Error)]
+pub enum SeedDecodeError {
+    /// The input string is not valid hexadecimal.
+    #[error("invalid hex encoding: {0}")]
+    InvalidHex(hex::FromHexError),
+
+    /// The decoded bytes are not exactly 32 bytes.
+    #[error("expected {expected} bytes, got {got}")]
+    WrongLength {
+        /// Expected byte count (always 32).
+        expected: usize,
+        /// Actual byte count after decoding.
+        got: usize,
+    },
+}
+
+/// Decodes a hex-encoded Ed25519 seed (64 hex chars = 32 bytes) into a [`SecureSeed`].
+///
+/// Args:
+/// * `hex_str`: Hex-encoded seed string (must be exactly 64 characters).
+///
+/// Usage:
+/// ```ignore
+/// let seed = decode_seed_hex("abcdef01...")?;
+/// ```
+pub fn decode_seed_hex(hex_str: &str) -> Result<SecureSeed, SeedDecodeError> {
+    let bytes = hex::decode(hex_str).map_err(SeedDecodeError::InvalidHex)?;
+    let arr: [u8; 32] = bytes
+        .try_into()
+        .map_err(|v: Vec<u8>| SeedDecodeError::WrongLength {
+            expected: 32,
+            got: v.len(),
+        })?;
+    Ok(SecureSeed::new(arr))
+}
+
 /// Ed25519 public key length in bytes.
 pub const ED25519_PUBLIC_KEY_LEN: usize = 32;
 

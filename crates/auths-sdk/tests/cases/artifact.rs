@@ -1,10 +1,13 @@
 use auths_core::crypto::ssh::SecureSeed;
+use auths_core::storage::keychain::IdentityDID;
 use auths_sdk::domains::signing::service::{
     ArtifactSigningError, ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
+    sign_artifact_raw,
 };
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
 use auths_sdk::testing::fakes::FakeArtifactSource;
 use auths_sdk::workflows::artifact::compute_digest;
+use chrono::Utc;
 use std::sync::Arc;
 
 use crate::cases::helpers::{build_empty_test_context, setup_signed_artifact_context};
@@ -188,4 +191,70 @@ fn sign_artifact_identity_not_found_returns_error() {
         "Expected IdentityNotFound, got: {:?}",
         result.unwrap_err()
     );
+}
+
+// ---------------------------------------------------------------------------
+// sign_artifact_raw tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sign_artifact_raw_produces_valid_attestation_json() {
+    let seed = SecureSeed::new([42u8; 32]);
+    let identity_did = IdentityDID::new_unchecked("did:keri:Etest1234");
+    let data = b"release binary content";
+    let now = Utc::now();
+
+    let result = sign_artifact_raw(
+        now,
+        &seed,
+        &identity_did,
+        data,
+        Some(86400),
+        Some("test note".into()),
+    )
+    .unwrap();
+
+    assert!(!result.attestation_json.is_empty());
+    assert!(result.rid.starts_with("sha256:"));
+    assert!(!result.digest.is_empty());
+
+    let parsed: serde_json::Value = serde_json::from_str(&result.attestation_json).unwrap();
+    assert_eq!(parsed["issuer"].as_str().unwrap(), "did:keri:Etest1234");
+    assert!(parsed.get("identity_signature").is_some());
+    assert!(parsed.get("device_signature").is_some());
+    assert!(parsed.get("payload").is_some());
+    assert!(parsed.get("expires_at").is_some());
+    assert_eq!(parsed["note"].as_str().unwrap(), "test note");
+
+    let payload = &parsed["payload"];
+    assert_eq!(payload["artifact_type"].as_str().unwrap(), "bytes");
+    assert_eq!(payload["digest"]["algorithm"].as_str().unwrap(), "sha256");
+    assert_eq!(payload["size"].as_u64().unwrap(), data.len() as u64);
+}
+
+#[test]
+fn sign_artifact_raw_without_optional_fields() {
+    let seed = SecureSeed::new([7u8; 32]);
+    let identity_did = IdentityDID::new_unchecked("did:keri:Eminimal");
+    let now = Utc::now();
+
+    let result = sign_artifact_raw(now, &seed, &identity_did, b"data", None, None).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&result.attestation_json).unwrap();
+    assert!(parsed.get("expires_at").is_none() || parsed["expires_at"].is_null());
+    assert!(parsed.get("note").is_none() || parsed["note"].is_null());
+}
+
+#[test]
+fn sign_artifact_raw_digest_matches_sha256_of_data() {
+    let seed = SecureSeed::new([1u8; 32]);
+    let identity_did = IdentityDID::new_unchecked("did:keri:Edigest");
+    let data = b"hello world";
+    let now = Utc::now();
+
+    let result = sign_artifact_raw(now, &seed, &identity_did, data, None, None).unwrap();
+
+    let expected_digest = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
+    assert_eq!(result.digest, expected_digest);
+    assert_eq!(result.rid.as_str(), format!("sha256:{expected_digest}"));
 }

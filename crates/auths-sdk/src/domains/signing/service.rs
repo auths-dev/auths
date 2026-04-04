@@ -4,7 +4,7 @@
 //! Agent communication and passphrase prompting remain in the CLI.
 
 use crate::context::AuthsContext;
-use crate::ports::artifact::ArtifactSource;
+use crate::ports::artifact::{ArtifactDigest, ArtifactMetadata, ArtifactSource};
 use auths_core::crypto::ssh::{self, SecureSeed};
 use auths_core::crypto::{provider_bridge, signer as core_signer};
 use auths_core::signing::{PassphraseProvider, SecureSigner};
@@ -14,6 +14,8 @@ use auths_id::attestation::create::create_signed_attestation;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_verifier::core::{Capability, ResourceId};
 use auths_verifier::types::DeviceDID;
+use chrono::{DateTime, Utc};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -502,6 +504,103 @@ pub fn sign_artifact(
         &device_alias,
     )
     .map_err(|e| ArtifactSigningError::ResignFailed(e.to_string()))?;
+
+    let attestation_json = serde_json::to_string_pretty(&attestation)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+
+    Ok(ArtifactSigningResult {
+        attestation_json,
+        rid,
+        digest: artifact_meta.digest.hex,
+    })
+}
+
+/// Signs artifact bytes with a raw Ed25519 seed, bypassing keychain and identity storage.
+///
+/// This is the raw-key equivalent of [`sign_artifact`]. It does not require an
+/// [`AuthsContext`] or any filesystem/keychain access. The same seed is used for
+/// both identity and device signing roles.
+///
+/// Args:
+/// * `now` - Current UTC time (injected per clock pattern).
+/// * `seed` - Ed25519 32-byte seed.
+/// * `identity_did` - Parsed identity DID (must be `did:keri:` — caller validates via `IdentityDID::parse()`).
+/// * `data` - Raw artifact bytes to sign.
+/// * `expires_in` - Optional TTL in seconds.
+/// * `note` - Optional attestation note.
+///
+/// Usage:
+/// ```ignore
+/// let did = IdentityDID::parse("did:keri:E...")?;
+/// let result = sign_artifact_raw(Utc::now(), &seed, &did, b"payload", None, None)?;
+/// ```
+pub fn sign_artifact_raw(
+    now: DateTime<Utc>,
+    seed: &SecureSeed,
+    identity_did: &IdentityDID,
+    data: &[u8],
+    expires_in: Option<u64>,
+    note: Option<String>,
+) -> Result<ArtifactSigningResult, ArtifactSigningError> {
+    let pubkey = provider_bridge::ed25519_public_key_from_seed_sync(seed)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+
+    let device_did = DeviceDID::from_ed25519(&pubkey);
+
+    let digest_hex = hex::encode(Sha256::digest(data));
+    let artifact_meta = ArtifactMetadata {
+        artifact_type: "bytes".to_string(),
+        digest: ArtifactDigest {
+            algorithm: "sha256".to_string(),
+            hex: digest_hex,
+        },
+        name: None,
+        size: Some(data.len() as u64),
+    };
+
+    let rid = ResourceId::new(format!("sha256:{}", artifact_meta.digest.hex));
+    let meta = AttestationMetadata {
+        timestamp: Some(now),
+        expires_at: expires_in.map(|s| now + chrono::Duration::seconds(s as i64)),
+        note,
+    };
+
+    let payload = serde_json::to_value(&artifact_meta)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+
+    let identity_alias = KeyAlias::new_unchecked("__raw_identity__");
+    let device_alias = KeyAlias::new_unchecked("__raw_device__");
+
+    let mut seeds: HashMap<String, SecureSeed> = HashMap::new();
+    seeds.insert(
+        identity_alias.as_str().to_string(),
+        SecureSeed::new(*seed.as_bytes()),
+    );
+    seeds.insert(
+        device_alias.as_str().to_string(),
+        SecureSeed::new(*seed.as_bytes()),
+    );
+    let signer = SeedMapSigner { seeds };
+    // Seeds are already resolved — passphrase provider will not be called.
+    let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
+
+    let attestation = create_signed_attestation(
+        now,
+        &rid,
+        identity_did,
+        &device_did,
+        &pubkey,
+        Some(payload),
+        &meta,
+        &signer,
+        &noop_provider,
+        Some(&identity_alias),
+        Some(&device_alias),
+        vec![Capability::sign_release()],
+        None,
+        None,
+    )
+    .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
     let attestation_json = serde_json::to_string_pretty(&attestation)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;

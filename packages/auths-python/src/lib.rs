@@ -88,6 +88,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<artifact_sign::PyArtifactResult>()?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact, m)?)?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        artifact_sign::sign_artifact_bytes_raw,
+        m
+    )?)?;
 
     m.add_class::<commit_sign::PyCommitSignResult>()?;
     m.add_function(wrap_pyfunction!(commit_sign::sign_commit, m)?)?;
