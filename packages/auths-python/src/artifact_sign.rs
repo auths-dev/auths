@@ -3,17 +3,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use auths_core::signing::PrefilledPassphraseProvider;
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, get_platform_keychain_with_config};
+use auths_crypto::decode_seed_hex;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
 use auths_sdk::signing::{
     ArtifactSigningParams, SigningKeyMaterial, sign_artifact as sdk_sign_artifact,
+    sign_artifact_raw,
 };
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
-use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError};
+use chrono::Utc;
+use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use sha2::{Digest, Sha256};
 
@@ -95,7 +98,7 @@ pub struct PyArtifactResult {
     #[pyo3(get)]
     pub digest: String,
     #[pyo3(get)]
-    pub file_size: u64,
+    pub file_size: i64,
 }
 
 #[pymethods]
@@ -111,7 +114,7 @@ impl PyArtifactResult {
     }
 }
 
-fn human_size(bytes: u64) -> String {
+fn human_size(bytes: i64) -> String {
     if bytes < 1024 {
         format!("{bytes} B")
     } else if bytes < 1024 * 1024 {
@@ -169,7 +172,7 @@ fn build_context_and_sign(
     let file_size = artifact
         .metadata()
         .map(|m| m.size.unwrap_or(0))
-        .unwrap_or(0);
+        .unwrap_or(0) as i64;
 
     let params = ArtifactSigningParams {
         artifact,
@@ -268,4 +271,49 @@ pub fn sign_artifact_bytes(
     {
         build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note)
     }
+}
+
+/// Sign raw bytes with a raw Ed25519 private key, producing a dual-signed attestation.
+///
+/// No keychain or filesystem access required.
+///
+/// Args:
+/// * `data`: The raw bytes to sign.
+/// * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+/// * `identity_did`: Identity DID string (must be `did:keri:` format).
+/// * `expires_in`: Optional duration in seconds until expiration.
+/// * `note`: Optional human-readable note.
+///
+/// Usage:
+/// ```ignore
+/// let result = sign_artifact_bytes_raw(py, b"payload", "abcd...", "did:keri:E...", None, None)?;
+/// ```
+#[pyfunction]
+#[pyo3(signature = (data, private_key_hex, identity_did, expires_in=None, note=None))]
+pub fn sign_artifact_bytes_raw(
+    _py: Python<'_>,
+    data: &[u8],
+    private_key_hex: &str,
+    identity_did: &str,
+    expires_in: Option<u64>,
+    note: Option<String>,
+) -> PyResult<PyArtifactResult> {
+    let seed = decode_seed_hex(private_key_hex)
+        .map_err(|e| PyValueError::new_err(format!("[AUTHS_INVALID_INPUT] {e}")))?;
+
+    let did = IdentityDID::parse(identity_did)
+        .map_err(|e| PyValueError::new_err(format!("[AUTHS_INVALID_INPUT] {e}")))?;
+
+    let now = Utc::now();
+
+    let result = sign_artifact_raw(now, &seed, &did, data, expires_in, note).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Artifact signing failed: {e}"))
+    })?;
+
+    Ok(PyArtifactResult {
+        attestation_json: result.attestation_json,
+        rid: result.rid.to_string(),
+        digest: result.digest,
+        file_size: data.len() as i64,
+    })
 }

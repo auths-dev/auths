@@ -20,6 +20,7 @@ test-utils = ["dep:ring"]
 async-trait = "0.1"
 base64.workspace = true
 bs58 = "0.5.1"
+hex = "0.4"
 js-sys = { version = "0.3", optional = true }
 ssh-key = { version = "0.6", features = ["ed25519"] }
 thiserror.workspace = true

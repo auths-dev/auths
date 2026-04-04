@@ -3,16 +3,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use auths_core::signing::PrefilledPassphraseProvider;
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, get_platform_keychain_with_config};
+use auths_crypto::decode_seed_hex;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
 use auths_sdk::signing::{
     ArtifactSigningParams, SigningKeyMaterial, sign_artifact as sdk_sign_artifact,
+    sign_artifact_raw,
 };
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
+use chrono::Utc;
 use napi_derive::napi;
 use sha2::{Digest, Sha256};
 
@@ -214,4 +217,67 @@ pub fn sign_artifact_bytes(
         expires_in,
         note,
     )
+}
+
+/// Sign raw bytes with a raw Ed25519 private key, producing a dual-signed attestation.
+///
+/// No keychain or filesystem access required.
+///
+/// Args:
+/// * `data`: The raw bytes to sign.
+/// * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+/// * `identity_did`: Identity DID string (must be `did:keri:` format).
+/// * `expires_in`: Optional duration in seconds until expiration.
+/// * `note`: Optional human-readable note.
+///
+/// Usage:
+/// ```ignore
+/// let result = sign_artifact_bytes_raw(buffer, "abcd...".into(), "did:keri:E...".into(), None, None)?;
+/// ```
+#[napi]
+pub fn sign_artifact_bytes_raw(
+    data: napi::bindgen_prelude::Buffer,
+    private_key_hex: String,
+    identity_did: String,
+    expires_in: Option<i64>,
+    note: Option<String>,
+) -> napi::Result<NapiArtifactResult> {
+    let seed = decode_seed_hex(&private_key_hex).map_err(|e| {
+        format_error("AUTHS_INVALID_INPUT", format!("Invalid private key: {e}"))
+    })?;
+
+    let did = IdentityDID::parse(&identity_did).map_err(|e| {
+        format_error("AUTHS_INVALID_INPUT", format!("Invalid identity DID: {e}"))
+    })?;
+
+    let expires_in_u64 = expires_in
+        .map(|v| {
+            if v < 0 {
+                Err(format_error(
+                    "AUTHS_INVALID_INPUT",
+                    "expiresIn must be non-negative".to_string(),
+                ))
+            } else {
+                Ok(v as u64)
+            }
+        })
+        .transpose()?;
+
+    let now = Utc::now();
+    let data_len = data.len();
+
+    let result = sign_artifact_raw(now, &seed, &did, data.as_ref(), expires_in_u64, note)
+        .map_err(|e| {
+            format_error(
+                "AUTHS_SIGNING_FAILED",
+                format!("Artifact signing failed: {e}"),
+            )
+        })?;
+
+    Ok(NapiArtifactResult {
+        attestation_json: result.attestation_json,
+        rid: result.rid.to_string(),
+        digest: result.digest,
+        file_size: data_len as i64,
+    })
 }

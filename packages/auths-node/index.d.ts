@@ -250,6 +250,20 @@ export declare function signArtifact(filePath: string, identityKeyAlias: string,
 
 export declare function signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
 
+/**
+ * Sign raw bytes with a raw Ed25519 private key, producing a dual-signed attestation.
+ *
+ * No keychain or filesystem access required.
+ *
+ * Args:
+ * * `data`: The raw bytes to sign.
+ * * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+ * * `identity_did`: Identity DID string (must be `did:keri:` format).
+ * * `expires_in`: Optional duration in seconds until expiration.
+ * * `note`: Optional human-readable note.
+ */
+export declare function signArtifactBytesRaw(data: Buffer, privateKeyHex: string, identityDid: string, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
+
 export declare function signAsAgent(message: Buffer, keyAlias: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignResult
 
 export declare function signAsIdentity(message: Buffer, identityDid: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignResult
