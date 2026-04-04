@@ -236,7 +236,9 @@ pub fn sign_artifact(
     let rp = repo_path.to_string();
 
     {
-        build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note, commit_sha)
+        build_context_and_sign(
+            artifact, &alias, &rp, passphrase, expires_in, note, commit_sha,
+        )
     }
 }
 
@@ -273,7 +275,9 @@ pub fn sign_artifact_bytes(
     let rp = repo_path.to_string();
 
     {
-        build_context_and_sign(artifact, &alias, &rp, passphrase, expires_in, note, commit_sha)
+        build_context_and_sign(
+            artifact, &alias, &rp, passphrase, expires_in, note, commit_sha,
+        )
     }
 }
 
@@ -311,9 +315,12 @@ pub fn sign_artifact_bytes_raw(
 
     let now = Utc::now();
 
-    let result = sign_artifact_raw(now, &seed, &did, data, expires_in, note, commit_sha).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_SIGNING_FAILED] Artifact signing failed: {e}"))
-    })?;
+    let result =
+        sign_artifact_raw(now, &seed, &did, data, expires_in, note, commit_sha).map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_SIGNING_FAILED] Artifact signing failed: {e}"
+            ))
+        })?;
 
     Ok(PyArtifactResult {
         attestation_json: result.attestation_json,

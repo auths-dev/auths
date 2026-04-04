@@ -488,9 +488,9 @@ pub fn verify_action_envelope(
     let sig_bytes = hex::decode(&envelope.signature)
         .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid signature hex: {e}")))?;
 
-    let canonical = envelope.canonical_bytes().map_err(|e| {
-        format_error("AUTHS_SERIALIZATION_ERROR", e)
-    })?;
+    let canonical = envelope
+        .canonical_bytes()
+        .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", e))?;
 
     let key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &pk_bytes);
     match key.verify(&canonical, &sig_bytes) {

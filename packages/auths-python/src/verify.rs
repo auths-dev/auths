@@ -64,17 +64,17 @@ pub fn verify_attestation(
     };
 
     match runtime().block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
-            Ok(_) => Ok(VerificationResult {
-                valid: true,
-                error: None,
-                error_code: None,
-            }),
-            Err(e) => Ok(VerificationResult {
-                valid: false,
-                error_code: Some(e.error_code().to_string()),
-                error: Some(e.to_string()),
-            }),
-        }
+        Ok(_) => Ok(VerificationResult {
+            valid: true,
+            error: None,
+            error_code: None,
+        }),
+        Err(e) => Ok(VerificationResult {
+            valid: false,
+            error_code: Some(e.error_code().to_string()),
+            error: Some(e.to_string()),
+        }),
+    }
 }
 
 /// Verify a chain of attestations from a root identity to a leaf device.
@@ -408,17 +408,17 @@ pub fn verify_at_time(
     };
 
     match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
-            Ok(_) => Ok(VerificationResult {
-                valid: true,
-                error: None,
-                error_code: None,
-            }),
-            Err(e) => Ok(VerificationResult {
-                valid: false,
-                error_code: Some(e.error_code().to_string()),
-                error: Some(e.to_string()),
-            }),
-        }
+        Ok(_) => Ok(VerificationResult {
+            valid: true,
+            error: None,
+            error_code: None,
+        }),
+        Err(e) => Ok(VerificationResult {
+            valid: false,
+            error_code: Some(e.error_code().to_string()),
+            error: Some(e.to_string()),
+        }),
+    }
 }
 
 /// Verify an attestation at a specific historical timestamp with capability check.
@@ -460,29 +460,29 @@ pub fn verify_at_time_with_capability(
     })?;
 
     match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
-            Ok(_) => {
-                if att.capabilities.contains(&cap) {
-                    Ok(VerificationResult {
-                        valid: true,
-                        error: None,
-                        error_code: None,
-                    })
-                } else {
-                    Ok(VerificationResult {
-                        valid: false,
-                        error: Some(format!(
-                            "Attestation does not grant required capability '{required_capability}'"
-                        )),
-                        error_code: Some("AUTHS_MISSING_CAPABILITY".to_string()),
-                    })
-                }
+        Ok(_) => {
+            if att.capabilities.contains(&cap) {
+                Ok(VerificationResult {
+                    valid: true,
+                    error: None,
+                    error_code: None,
+                })
+            } else {
+                Ok(VerificationResult {
+                    valid: false,
+                    error: Some(format!(
+                        "Attestation does not grant required capability '{required_capability}'"
+                    )),
+                    error_code: Some("AUTHS_MISSING_CAPABILITY".to_string()),
+                })
             }
-            Err(e) => Ok(VerificationResult {
-                valid: false,
-                error_code: Some(e.error_code().to_string()),
-                error: Some(e.to_string()),
-            }),
         }
+        Err(e) => Ok(VerificationResult {
+            valid: false,
+            error_code: Some(e.error_code().to_string()),
+            error: Some(e.to_string()),
+        }),
+    }
 }
 
 /// Verify a chain of attestations with witness receipt quorum enforcement.
