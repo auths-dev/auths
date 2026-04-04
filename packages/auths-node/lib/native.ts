@@ -192,6 +192,8 @@ export interface NativeBindings {
   signActionAsIdentity(actionType: string, payloadJson: string, identityDid: string, repoPath: string, passphrase?: string | null): NapiActionEnvelope
   signAsAgent(message: Buffer, keyAlias: string, repoPath: string, passphrase?: string | null): NapiCommitSignResult
   signActionAsAgent(actionType: string, payloadJson: string, keyAlias: string, agentDid: string, repoPath: string, passphrase?: string | null): NapiActionEnvelope
+  signBytesRaw(privateKeyHex: string, message: Buffer): string
+  signActionRaw(privateKeyHex: string, actionType: string, payloadJson: string, identityDid: string): string
 
   // Commit signing
   signCommit(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | null): NapiCommitSignPemResult
@@ -239,6 +241,7 @@ export interface NativeBindings {
   joinPairingSession(shortCode: string, endpoint: string, token: string, repoPath: string, deviceName?: string | null, passphrase?: string | null): Promise<NapiPairingResponse>
 
   // Verification
+  verifyActionEnvelope(envelopeJson: string, publicKeyHex: string): NapiVerificationResult
   verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
   verifyChain(attestationsJson: string[], rootPkHex: string): Promise<NapiVerificationReport>
   verifyDeviceAuthorization(identityDid: string, deviceDid: string, attestationsJson: string[], identityPkHex: string): Promise<NapiVerificationReport>

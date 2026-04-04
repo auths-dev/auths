@@ -1,3 +1,4 @@
+use auths_verifier::action::ActionEnvelope;
 use auths_verifier::core::{
     Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
 };
@@ -443,5 +444,65 @@ pub async fn verify_chain_with_witnesses(
             e.error_code(),
             format!("Chain verification with witnesses failed: {e}"),
         )),
+    }
+}
+
+/// Verify an action envelope's Ed25519 signature with a raw public key.
+///
+/// Args:
+/// * `envelope_json`: The complete action envelope as a JSON string.
+/// * `public_key_hex`: The signer's Ed25519 public key in hex format (64 chars).
+///
+/// Usage:
+/// ```ignore
+/// let result = verify_action_envelope("{...}".into(), "abcd1234...".into())?;
+/// ```
+#[napi]
+pub fn verify_action_envelope(
+    envelope_json: String,
+    public_key_hex: String,
+) -> napi::Result<NapiVerificationResult> {
+    if envelope_json.len() > MAX_ATTESTATION_JSON_SIZE {
+        return Err(format_error(
+            "AUTHS_INVALID_INPUT",
+            format!(
+                "Envelope JSON too large: {} bytes, max {MAX_ATTESTATION_JSON_SIZE}",
+                envelope_json.len()
+            ),
+        ));
+    }
+
+    let pk_bytes = decode_pk_hex(&public_key_hex, "public key")?;
+
+    let envelope: ActionEnvelope = serde_json::from_str(&envelope_json)
+        .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid envelope JSON: {e}")))?;
+
+    if envelope.version != "1.0" {
+        return Ok(NapiVerificationResult {
+            valid: false,
+            error: Some(format!("Unsupported version: {}", envelope.version)),
+            error_code: Some("AUTHS_INVALID_INPUT".to_string()),
+        });
+    }
+
+    let sig_bytes = hex::decode(&envelope.signature)
+        .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid signature hex: {e}")))?;
+
+    let canonical = envelope.canonical_bytes().map_err(|e| {
+        format_error("AUTHS_SERIALIZATION_ERROR", e)
+    })?;
+
+    let key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &pk_bytes);
+    match key.verify(&canonical, &sig_bytes) {
+        Ok(()) => Ok(NapiVerificationResult {
+            valid: true,
+            error: None,
+            error_code: None,
+        }),
+        Err(_) => Ok(NapiVerificationResult {
+            valid: false,
+            error: Some("Ed25519 signature verification failed".to_string()),
+            error_code: Some("AUTHS_ISSUER_SIG_FAILED".to_string()),
+        }),
     }
 }
