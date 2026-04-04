@@ -7,6 +7,7 @@ use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{
     IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
 };
+use auths_crypto::ed25519_pubkey_to_did_key;
 use auths_id::identity::helpers::encode_seed_as_pkcs8;
 use auths_id::identity::helpers::extract_seed_bytes;
 use auths_id::identity::initialize::initialize_registry_identity;
@@ -628,4 +629,42 @@ pub fn revoke_device_from_identity(
         })?;
         Ok(())
     }
+}
+
+/// Generate an in-memory Ed25519 keypair without keychain, Git, or filesystem access.
+///
+/// Returns `(private_key_hex, public_key_hex, did_key_string)` where:
+/// - `private_key_hex`: 32-byte seed encoded as hex (use with `sign_bytes` / `sign_action`)
+/// - `public_key_hex`: 32-byte public key encoded as hex (use with `verify_action_envelope`)
+/// - `did_key_string`: `did:key:z...` encoding of the public key
+///
+/// Args:
+/// (no arguments)
+///
+/// Usage:
+/// ```python
+/// from auths import generate_inmemory_keypair
+/// private_key, public_key, did = generate_inmemory_keypair()
+/// ```
+#[pyfunction]
+pub fn generate_inmemory_keypair() -> PyResult<(String, String, String)> {
+    let rng = SystemRandom::new();
+    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}"))
+    })?;
+    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key parsing failed: {e}"))
+    })?;
+
+    let seed = extract_seed_bytes(pkcs8.as_ref()).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
+    })?;
+
+    let pub_bytes = keypair.public_key().as_ref();
+    let pub_array: &[u8; 32] = pub_bytes.try_into().map_err(|_| {
+        PyRuntimeError::new_err("[AUTHS_CRYPTO_ERROR] Invalid public key length")
+    })?;
+    let did = ed25519_pubkey_to_did_key(pub_array);
+
+    Ok((hex::encode(seed), hex::encode(pub_bytes), did))
 }

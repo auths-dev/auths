@@ -231,9 +231,11 @@ pub async fn handle_verify(
             Some(sha) => {
                 // Look up commit attestation via git ref
                 let commit_ref = format!("refs/auths/commits/{}", sha);
-                let lookup = std::process::Command::new("git")
-                    .args(["show", &format!("{}:attestation.json", commit_ref)])
-                    .output();
+                let lookup = crate::subprocess::git_command(&[
+                    "show",
+                    &format!("{}:attestation.json", commit_ref),
+                ])
+                .output();
                 match lookup {
                     Ok(output) if output.status.success() => {
                         if !is_json_mode() {

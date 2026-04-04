@@ -117,7 +117,7 @@ pub fn handle_claim(
                     now,
                     &on_device_code,
                 ))
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+                .map_err(anyhow::Error::from)?;
 
             print_response(&response.message)?;
         }
@@ -146,7 +146,7 @@ pub fn handle_claim(
 
             let profile = rt
                 .block_on(npm_provider.verify_token(npm_token.trim()))
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+                .map_err(anyhow::Error::from)?;
 
             println!(
                 "  {} Authenticated as {}",
@@ -165,7 +165,7 @@ pub fn handle_claim(
                     config,
                     now,
                 ))
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+                .map_err(anyhow::Error::from)?;
 
             print_response(&response.message)?;
         }
@@ -214,7 +214,7 @@ pub fn handle_claim(
                     config,
                     now,
                 ))
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+                .map_err(anyhow::Error::from)?;
 
             print_response(&response.message)?;
         }

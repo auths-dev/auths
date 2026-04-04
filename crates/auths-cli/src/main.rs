@@ -73,40 +73,45 @@ fn run() -> Result<()> {
     let action = audit_action(&command);
 
     let result = match command {
-        RootCommand::Error(cmd) => cmd.execute(&ctx),
+        // Primary
         RootCommand::Init(cmd) => cmd.execute(&ctx),
-        RootCommand::Reset(cmd) => cmd.execute(&ctx),
         RootCommand::Sign(cmd) => cmd.execute(&ctx),
-        RootCommand::SignCommit(cmd) => cmd.execute(&ctx),
         RootCommand::Verify(cmd) => cmd.execute(&ctx),
+        RootCommand::Artifact(cmd) => cmd.execute(&ctx),
         RootCommand::Status(cmd) => cmd.execute(&ctx),
         RootCommand::Whoami(cmd) => cmd.execute(&ctx),
-        RootCommand::Tutorial(cmd) => cmd.execute(&ctx),
-        RootCommand::Doctor(cmd) => cmd.execute(&ctx),
-        RootCommand::Signers(cmd) => cmd.execute(&ctx),
+        // Setup & Troubleshooting
         RootCommand::Pair(cmd) => cmd.execute(&ctx),
+        RootCommand::Trust(cmd) => cmd.execute(&ctx),
+        RootCommand::Doctor(cmd) => cmd.execute(&ctx),
+        RootCommand::Tutorial(cmd) => cmd.execute(&ctx),
+        // Utilities
+        RootCommand::Config(cmd) => cmd.execute(&ctx),
         RootCommand::Completions(cmd) => cmd.execute(&ctx),
-        RootCommand::Emergency(cmd) => cmd.execute(&ctx),
+        // Advanced
+        RootCommand::Reset(cmd) => cmd.execute(&ctx),
+        RootCommand::SignCommit(cmd) => cmd.execute(&ctx),
+        RootCommand::Signers(cmd) => cmd.execute(&ctx),
+        RootCommand::Error(cmd) => cmd.execute(&ctx),
         RootCommand::Id(cmd) => cmd.execute(&ctx),
         RootCommand::Device(cmd) => cmd.execute(&ctx),
         RootCommand::Key(cmd) => cmd.execute(&ctx),
         RootCommand::Approval(cmd) => cmd.execute(&ctx),
-        RootCommand::Artifact(cmd) => cmd.execute(&ctx),
         RootCommand::Policy(cmd) => cmd.execute(&ctx),
         RootCommand::Git(cmd) => cmd.execute(&ctx),
-        RootCommand::Trust(cmd) => cmd.execute(&ctx),
         RootCommand::Namespace(cmd) => cmd.execute(&ctx),
         RootCommand::Org(cmd) => cmd.execute(&ctx),
         RootCommand::Audit(cmd) => cmd.execute(&ctx),
+        RootCommand::Auth(cmd) => cmd.execute(&ctx),
+        // Internal
+        RootCommand::Emergency(cmd) => cmd.execute(&ctx),
         RootCommand::Agent(cmd) => cmd.execute(&ctx),
         RootCommand::Witness(cmd) => cmd.execute(&ctx),
         RootCommand::Scim(cmd) => cmd.execute(&ctx),
-        RootCommand::Config(cmd) => cmd.execute(&ctx),
         RootCommand::Commit(cmd) => cmd.execute(&ctx),
         RootCommand::Debug(cmd) => cmd.execute(&ctx),
         RootCommand::Log(cmd) => cmd.execute(&ctx),
         RootCommand::Account(cmd) => cmd.execute(&ctx),
-        RootCommand::Auth(cmd) => cmd.execute(&ctx),
     };
 
     if let Some(action) = action {
@@ -130,11 +135,11 @@ struct CommandGroup {
 const HELP_GROUPS: &[CommandGroup] = &[
     CommandGroup {
         heading: "Primary",
-        commands: &["init", "sign", "verify", "status", "whoami"],
+        commands: &["init", "sign", "verify", "artifact", "status", "whoami"],
     },
     CommandGroup {
         heading: "Setup & Troubleshooting",
-        commands: &["pair", "doctor", "tutorial"],
+        commands: &["pair", "trust", "doctor", "tutorial"],
     },
     CommandGroup {
         heading: "Utilities",

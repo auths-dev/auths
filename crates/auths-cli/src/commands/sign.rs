@@ -33,23 +33,49 @@ pub fn parse_sign_target(raw_target: &str) -> SignTarget {
     if path.exists() {
         SignTarget::Artifact(path.to_path_buf())
     } else {
+        if looks_like_artifact_path(raw_target) {
+            eprintln!(
+                "Warning: '{}' looks like an artifact file path, but the file does not exist.\n\
+                 Treating as a git commit range. If you meant to sign a file, check the path.",
+                raw_target
+            );
+        }
         SignTarget::CommitRange(raw_target.to_string())
     }
 }
+
+/// Heuristic: does the target look like an artifact file path rather than a git ref?
+fn looks_like_artifact_path(target: &str) -> bool {
+    // Path-shaped strings
+    if target.starts_with("./") || target.starts_with("../") || target.contains('/') {
+        let lower = target.to_lowercase();
+        return ARTIFACT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext));
+    }
+    // Bare filename with artifact extension
+    let lower = target.to_lowercase();
+    ARTIFACT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
+}
+
+const ARTIFACT_EXTENSIONS: &[&str] = &[
+    ".tar.gz", ".tgz", ".zip", ".whl", ".gem", ".jar", ".deb", ".rpm", ".dmg", ".exe", ".msi",
+    ".pkg", ".nupkg",
+];
 
 /// Execute `git rebase --exec "git commit --amend --no-edit" <base>` to re-sign a range.
 ///
 /// Args:
 /// * `base` - The exclusive base ref (commits after this ref will be re-signed).
 fn execute_git_rebase(base: &str) -> Result<()> {
-    use std::process::Command;
-    let output = Command::new("git")
-        .args(["rebase", "--exec", "git commit --amend --no-edit", base])
-        .output()
-        .context("Failed to spawn git rebase")?;
+    let output =
+        crate::subprocess::git_command(&["rebase", "--exec", "git commit --amend --no-edit", base])
+            .output()
+            .context("Failed to spawn git rebase")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("git rebase failed: {}", stderr.trim()));
+        return Err(anyhow!(
+            "Failed to re-sign commits. Check for uncommitted changes or rebase conflicts.\n\nGit reported: {}",
+            stderr.trim()
+        ));
     }
     Ok(())
 }
@@ -59,20 +85,22 @@ fn execute_git_rebase(base: &str) -> Result<()> {
 /// Args:
 /// * `range` - A git ref or range (e.g., "HEAD", "main..HEAD").
 fn sign_commit_range(range: &str) -> Result<()> {
-    use std::process::Command;
     let is_range = range.contains("..");
     if is_range {
         let parts: Vec<&str> = range.splitn(2, "..").collect();
         let base = parts[0];
         execute_git_rebase(base)?;
     } else {
-        let output = Command::new("git")
-            .args(["commit", "--amend", "--no-edit", "--no-verify"])
-            .output()
-            .context("Failed to spawn git commit --amend")?;
+        let output =
+            crate::subprocess::git_command(&["commit", "--amend", "--no-edit", "--no-verify"])
+                .output()
+                .context("Failed to spawn git commit --amend")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("git commit --amend failed: {}", stderr.trim()));
+            return Err(anyhow!(
+                "Failed to amend commit with signature. Ensure you have a commit to amend and no conflicting changes.\n\nGit reported: {}",
+                stderr.trim()
+            ));
         }
     }
     if crate::ux::format::is_json_mode() {

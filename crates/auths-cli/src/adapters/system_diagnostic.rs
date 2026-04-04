@@ -10,7 +10,7 @@ pub struct PosixDiagnosticAdapter;
 
 impl GitDiagnosticProvider for PosixDiagnosticAdapter {
     fn check_git_version(&self) -> Result<CheckResult, DiagnosticError> {
-        let output = Command::new("git").arg("--version").output();
+        let output = crate::subprocess::git_command(&["--version"]).output();
         let (passed, message) = match output {
             Ok(out) if out.status.success() => {
                 let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -28,8 +28,7 @@ impl GitDiagnosticProvider for PosixDiagnosticAdapter {
     }
 
     fn get_git_config(&self, key: &str) -> Result<Option<String>, DiagnosticError> {
-        let output = Command::new("git")
-            .args(["config", "--global", "--get", key])
+        let output = crate::subprocess::git_command(&["config", "--global", "--get", key])
             .output()
             .map_err(|e| DiagnosticError::ExecutionFailed(e.to_string()))?;
 
@@ -45,13 +44,21 @@ impl GitDiagnosticProvider for PosixDiagnosticAdapter {
 
 impl CryptoDiagnosticProvider for PosixDiagnosticAdapter {
     fn check_ssh_keygen_available(&self) -> Result<CheckResult, DiagnosticError> {
-        let output = Command::new("ssh-keygen").arg("-V").output();
+        // Use `which` crate logic: check if ssh-keygen exists on PATH
+        let output = Command::new("ssh-keygen")
+            .arg("-?")
+            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .output();
         let (passed, message) = match output {
-            Ok(out) if out.status.success() => (true, Some("ssh-keygen found on PATH".to_string())),
-            _ => (
-                false,
-                Some("ssh-keygen command not found on PATH".to_string()),
-            ),
+            Ok(out) if !out.stderr.is_empty() || !out.stdout.is_empty() => {
+                (true, Some("ssh-keygen found on PATH".to_string()))
+            }
+            Ok(_) => (true, Some("ssh-keygen found on PATH".to_string())),
+            Err(_) => {
+                let hint = ssh_install_hint();
+                (false, Some(format!("ssh-keygen not found on PATH. {hint}")))
+            }
         };
         Ok(CheckResult {
             name: "ssh-keygen installed".to_string(),
@@ -60,5 +67,36 @@ impl CryptoDiagnosticProvider for PosixDiagnosticAdapter {
             config_issues: vec![],
             category: CheckCategory::Advisory,
         })
+    }
+
+    fn check_ssh_version(&self) -> Result<String, DiagnosticError> {
+        // `ssh -V` writes to stderr, not stdout
+        let output = Command::new("ssh")
+            .arg("-V")
+            .stderr(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .output()
+            .map_err(|e| DiagnosticError::ExecutionFailed(format!("ssh -V failed: {e}")))?;
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !stderr.is_empty() {
+            return Ok(stderr);
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !stdout.is_empty() {
+            return Ok(stdout);
+        }
+        Ok("unknown".to_string())
+    }
+}
+
+/// Platform-specific install hint for ssh-keygen / OpenSSH.
+fn ssh_install_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "ssh-keygen is normally pre-installed on macOS. Check your PATH."
+    } else if cfg!(target_os = "windows") {
+        "Install OpenSSH via Settings > Apps > Optional features, or `winget install Microsoft.OpenSSH.Client`."
+    } else {
+        "Install OpenSSH: `sudo apt install openssh-client` (Debian/Ubuntu) or `sudo dnf install openssh-clients` (Fedora/RHEL)."
     }
 }

@@ -163,6 +163,14 @@ pub struct NapiDelegatedAgentBundle {
 
 #[napi(object)]
 #[derive(Clone)]
+pub struct NapiInMemoryKeypair {
+    pub private_key_hex: String,
+    pub public_key_hex: String,
+    pub did: String,
+}
+
+#[napi(object)]
+#[derive(Clone)]
 pub struct NapiRotationResult {
     pub controller_did: String,
     pub new_key_fingerprint: String,

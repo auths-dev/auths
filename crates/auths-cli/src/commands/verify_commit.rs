@@ -12,6 +12,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+use crate::subprocess::git_command;
 use tempfile::NamedTempFile;
 
 use super::verify_helpers::parse_witness_keys;
@@ -198,13 +200,21 @@ fn resolve_signers_source(cmd: &VerifyCommitCommand) -> Result<SignersSource> {
 fn resolve_commits(commit_spec: &str) -> Result<Vec<String>> {
     if commit_spec.contains("..") {
         // Commit range — use git rev-list
-        let output = Command::new("git")
-            .args(["rev-list", commit_spec])
+        let output = git_command(&["rev-list", commit_spec])
             .output()
             .context("Failed to run git rev-list")?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let lower = stderr.to_lowercase();
+
+            if lower.contains("unknown revision") || lower.contains("bad revision") {
+                return Err(anyhow!(
+                    "{}",
+                    format_commit_range_hint(commit_spec, stderr.trim())
+                ));
+            }
+
             return Err(anyhow!("Invalid commit range: {}", stderr.trim()));
         }
 
@@ -225,6 +235,22 @@ fn resolve_commits(commit_spec: &str) -> Result<Vec<String>> {
     }
 }
 
+/// Build a contextual hint when a commit range fails to resolve.
+fn format_commit_range_hint(commit_spec: &str, raw_stderr: &str) -> String {
+    let hint = if commit_spec.contains('~') || commit_spec.contains('^') {
+        "This repository may not have enough commits for that range. \
+         Try a smaller offset (e.g. HEAD~1..HEAD) or verify with `git log --oneline`."
+    } else if commit_spec.contains("..") {
+        "One or both refs in the range do not exist. \
+         Check branch/tag names with `git branch -a` or `git tag -l`."
+    } else {
+        "The commit reference could not be resolved. \
+         Verify it exists with `git log --oneline`."
+    };
+
+    format!("Failed to resolve commit range '{commit_spec}': {raw_stderr}\n\nHint: {hint}")
+}
+
 /// Load an attestation from git ref `refs/auths/commits/<sha>`.
 ///
 /// Attestations are stored as JSON in git refs using the naming convention
@@ -235,17 +261,8 @@ fn resolve_commits(commit_spec: &str) -> Result<Vec<String>> {
 fn try_load_attestation_from_ref(commit_sha: &str) -> Option<Attestation> {
     let ref_name = format!("refs/auths/commits/{}", commit_sha);
 
-    let output = Command::new("git")
-        .args(["show", &ref_name])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let attestation_json = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str(&attestation_json).ok()
+    let stdout = crate::subprocess::git_silent(&["show", &ref_name])?;
+    serde_json::from_str(&stdout).ok()
 }
 
 /// Extract OIDC binding display from an attestation.
@@ -708,14 +725,17 @@ fn resolve_commit_sha(commit_ref: &str) -> Result<String> {
 }
 
 fn get_commit_signature(sha: &str) -> Result<SignatureInfo> {
-    let output = Command::new("git")
-        .args(["cat-file", "commit", sha])
+    let output = git_command(&["cat-file", "commit", sha])
         .output()
         .context("Failed to run git cat-file")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("Failed to read commit: {}", stderr.trim()));
+        return Err(anyhow!(
+            "Failed to read commit object for '{}'. Ensure the SHA exists in this repository.\n\nGit reported: {}",
+            sha,
+            stderr.trim()
+        ));
     }
 
     let commit_content = String::from_utf8_lossy(&output.stdout);
@@ -729,8 +749,7 @@ fn get_commit_signature(sha: &str) -> Result<SignatureInfo> {
         return Ok(SignatureInfo::Ssh { signature, payload });
     }
 
-    let show_output = Command::new("git")
-        .args(["log", "-1", "--format=%G?", sha])
+    let show_output = git_command(&["log", "-1", "--format=%G?", sha])
         .output()
         .context("Failed to run git log")?;
 
@@ -868,14 +887,29 @@ fn check_ssh_keygen() -> Result<()> {
     let output = Command::new("ssh-keygen")
         .arg("-?")
         .stderr(Stdio::piped())
+        .stdout(Stdio::piped())
         .output()
-        .context("ssh-keygen not found in PATH")?;
+        .with_context(|| {
+            let hint = platform_ssh_install_hint();
+            format!("ssh-keygen not found in PATH. {hint}")
+        })?;
 
     if output.stderr.is_empty() && output.stdout.is_empty() {
-        return Err(anyhow!("ssh-keygen not functioning"));
+        let hint = platform_ssh_install_hint();
+        return Err(anyhow!("ssh-keygen not functioning. {hint}"));
     }
 
     Ok(())
+}
+
+fn platform_ssh_install_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "ssh-keygen is normally pre-installed on macOS. Check your PATH."
+    } else if cfg!(target_os = "windows") {
+        "Install OpenSSH via Settings > Apps > Optional features, or `winget install Microsoft.OpenSSH.Client`."
+    } else {
+        "Install OpenSSH: `sudo apt install openssh-client` (Debian/Ubuntu) or `sudo dnf install openssh-clients` (Fedora/RHEL)."
+    }
 }
 
 fn handle_error(cmd: &VerifyCommitCommand, exit_code: i32, message: &str) -> Result<()> {

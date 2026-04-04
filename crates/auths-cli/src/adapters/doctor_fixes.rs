@@ -1,7 +1,6 @@
 //! Fix implementations for CLI-only diagnostic checks.
 
 use std::path::PathBuf;
-use std::process::Command;
 
 use auths_sdk::ports::diagnostics::{CheckResult, DiagnosticError, DiagnosticFix};
 use auths_sdk::workflows::allowed_signers::AllowedSigners;
@@ -121,8 +120,7 @@ impl DiagnosticFix for GitSigningConfigFix {
 }
 
 fn set_git_config_value(key: &str, value: &str) -> Result<(), DiagnosticError> {
-    let status = Command::new("git")
-        .args(["config", "--global", key, value])
+    let status = crate::subprocess::git_command(&["config", "--global", key, value])
         .status()
         .map_err(|e| DiagnosticError::ExecutionFailed(format!("git config: {e}")))?;
     if !status.success() {

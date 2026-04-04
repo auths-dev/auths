@@ -1,13 +1,13 @@
 //! Sign a Git commit with machine identity and OIDC binding.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use auths_core::paths::auths_home_with_config;
 use clap::Parser;
 use serde::Serialize;
-use std::process::Command;
 
 use crate::config::CliConfig;
 use crate::factories::storage::build_auths_context;
+use crate::subprocess::git_stdout;
 
 /// Sign a Git commit with the current identity.
 ///
@@ -60,30 +60,14 @@ struct AttestationDisplay {
 
 /// Get commit message from git.
 fn get_commit_message(commit_sha: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["log", "-1", "--pretty=format:%s", commit_sha])
-        .output()
-        .context("Failed to get commit message")?;
-
-    if !output.status.success() {
-        return Err(anyhow!("Invalid commit reference: {}", commit_sha));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    git_stdout(&["log", "-1", "--pretty=format:%s", commit_sha])
+        .map_err(|_| anyhow!("Invalid commit reference: {}", commit_sha))
 }
 
 /// Get commit author from git.
 fn get_commit_author(commit_sha: &str) -> Result<String> {
-    let output = Command::new("git")
-        .args(["log", "-1", "--pretty=format:%an", commit_sha])
-        .output()
-        .context("Failed to get commit author")?;
-
-    if !output.status.success() {
-        return Err(anyhow!("Could not retrieve author for {}", commit_sha));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    git_stdout(&["log", "-1", "--pretty=format:%an", commit_sha])
+        .map_err(|_| anyhow!("Could not retrieve author for {}", commit_sha))
 }
 
 /// Handle the sign-commit command.

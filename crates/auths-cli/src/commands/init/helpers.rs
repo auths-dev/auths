@@ -11,6 +11,7 @@ use auths_sdk::workflows::allowed_signers::AllowedSigners;
 use auths_sdk::workflows::diagnostics::{MIN_GIT_VERSION, parse_git_version};
 use auths_storage::git::RegistryAttestationStorage;
 
+use crate::subprocess::git_command;
 use crate::ux::format::Output;
 
 pub(crate) fn get_auths_repo_path() -> Result<PathBuf> {
@@ -18,8 +19,7 @@ pub(crate) fn get_auths_repo_path() -> Result<PathBuf> {
 }
 
 pub(crate) fn check_git_version(out: &Output) -> Result<()> {
-    let output = Command::new("git")
-        .arg("--version")
+    let output = git_command(&["--version"])
         .output()
         .context("Failed to run git --version")?;
 
@@ -116,8 +116,7 @@ pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()>
 }
 
 fn set_git_config(key: &str, value: &str, scope: &str) -> Result<()> {
-    let status = Command::new("git")
-        .args(["config", scope, key, value])
+    let status = git_command(&["config", scope, key, value])
         .status()
         .with_context(|| format!("Failed to run git config {scope} {key} {value}"))?;
 
@@ -190,8 +189,7 @@ pub(crate) fn scaffold_github_action(out: &Output) -> Result<()> {
     out.newline();
 
     // Check we're in a git repo
-    let git_root = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
+    let git_root = git_command(&["rev-parse", "--show-toplevel"])
         .output()
         .context("Failed to run git rev-parse")?;
 
@@ -204,9 +202,7 @@ pub(crate) fn scaffold_github_action(out: &Output) -> Result<()> {
     let root = PathBuf::from(String::from_utf8_lossy(&git_root.stdout).trim());
 
     // Check for GitHub remote
-    let remote_output = Command::new("git")
-        .args(["remote", "get-url", "origin"])
-        .output();
+    let remote_output = git_command(&["remote", "get-url", "origin"]).output();
 
     match remote_output {
         Ok(ref output) if output.status.success() => {

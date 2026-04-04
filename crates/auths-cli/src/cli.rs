@@ -97,11 +97,13 @@ pub enum RootCommand {
     Init(InitCommand),
     Sign(SignCommand),
     Verify(UnifiedVerifyCommand),
+    Artifact(ArtifactCommand),
     Status(StatusCommand),
     Whoami(WhoamiCommand),
 
     // ── Setup & Troubleshooting ──
     Pair(PairCommand),
+    Trust(TrustCommand),
     Doctor(DoctorCommand),
     Tutorial(LearnCommand),
 
@@ -127,13 +129,9 @@ pub enum RootCommand {
     #[command(hide = true)]
     Approval(ApprovalCommand),
     #[command(hide = true)]
-    Artifact(ArtifactCommand),
-    #[command(hide = true)]
     Policy(PolicyCommand),
     #[command(hide = true)]
     Git(GitCommand),
-    #[command(hide = true)]
-    Trust(TrustCommand),
     #[command(hide = true)]
     Namespace(NamespaceCommand),
     #[command(hide = true)]

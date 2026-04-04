@@ -98,6 +98,13 @@ pub trait GitDiagnosticProvider: Send + Sync {
 pub trait CryptoDiagnosticProvider: Send + Sync {
     /// Check that ssh-keygen is available on the system.
     fn check_ssh_keygen_available(&self) -> Result<CheckResult, DiagnosticError>;
+
+    /// Return the raw SSH version string from `ssh -V`.
+    ///
+    /// Default returns "unknown" so existing implementors are not broken.
+    fn check_ssh_version(&self) -> Result<String, DiagnosticError> {
+        Ok("unknown".to_string())
+    }
 }
 
 impl<T: GitDiagnosticProvider> GitDiagnosticProvider for &T {
@@ -145,5 +152,8 @@ pub struct FixApplied {
 impl<T: CryptoDiagnosticProvider> CryptoDiagnosticProvider for &T {
     fn check_ssh_keygen_available(&self) -> Result<CheckResult, DiagnosticError> {
         (**self).check_ssh_keygen_available()
+    }
+    fn check_ssh_version(&self) -> Result<String, DiagnosticError> {
+        (**self).check_ssh_version()
     }
 }

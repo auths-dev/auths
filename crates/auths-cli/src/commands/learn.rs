@@ -4,7 +4,8 @@ use colored::Colorize;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::process::Command as ProcessCommand;
+
+use crate::subprocess::git_command;
 
 /// Interactive tutorial for learning Auths concepts.
 #[derive(Parser, Debug, Clone)]
@@ -377,18 +378,15 @@ fn section_creating_identity(tutorial: &Tutorial) -> Result<()> {
         fs::create_dir_all(&sandbox_repo)?;
 
         // Initialize git repo
-        ProcessCommand::new("git")
-            .args(["init", "--quiet"])
+        git_command(&["init", "--quiet"])
             .current_dir(&sandbox_repo)
             .status()?;
 
-        ProcessCommand::new("git")
-            .args(["config", "user.email", "tutorial@auths.io"])
+        git_command(&["config", "user.email", "tutorial@auths.io"])
             .current_dir(&sandbox_repo)
             .status()?;
 
-        ProcessCommand::new("git")
-            .args(["config", "user.name", "Tutorial User"])
+        git_command(&["config", "user.name", "Tutorial User"])
             .current_dir(&sandbox_repo)
             .status()?;
     }
@@ -430,13 +428,11 @@ fn section_signing_commit(tutorial: &Tutorial) -> Result<()> {
 
     fs::write(&test_file, "Hello from Auths tutorial!\n")?;
 
-    ProcessCommand::new("git")
-        .args(["add", "test.txt"])
+    git_command(&["add", "test.txt"])
         .current_dir(&sandbox_repo)
         .status()?;
 
-    ProcessCommand::new("git")
-        .args(["commit", "--quiet", "-m", "Tutorial: First signed commit"])
+    git_command(&["commit", "--quiet", "-m", "Tutorial: First signed commit"])
         .current_dir(&sandbox_repo)
         .status()?;
 
@@ -444,8 +440,7 @@ fn section_signing_commit(tutorial: &Tutorial) -> Result<()> {
     println!();
 
     // Show the commit
-    let output = ProcessCommand::new("git")
-        .args(["log", "--oneline", "-1"])
+    let output = git_command(&["log", "--oneline", "-1"])
         .current_dir(&sandbox_repo)
         .output()?;
 

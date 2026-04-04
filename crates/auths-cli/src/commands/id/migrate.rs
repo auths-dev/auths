@@ -4,6 +4,7 @@
 //! - GPG keys (`auths migrate from-gpg`)
 //! - SSH keys (`auths migrate from-ssh`)
 
+use crate::subprocess::git_command;
 use crate::ux::format::{Output, is_json_mode};
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
@@ -397,8 +398,7 @@ fn perform_gpg_migration(
 
     // Initialize Git repo if needed
     if !repo_path.join(".git").exists() {
-        std::process::Command::new("git")
-            .args(["init"])
+        git_command(&["init"])
             .current_dir(&repo_path)
             .output()
             .context("Failed to initialize Git repository")?;
@@ -795,8 +795,7 @@ fn perform_ssh_migration(
 
     // Initialize Git repo if needed
     if !repo_path.join(".git").exists() {
-        Command::new("git")
-            .args(["init"])
+        git_command(&["init"])
             .current_dir(&repo_path)
             .output()
             .context("Failed to initialize Git repository")?;
@@ -1164,15 +1163,14 @@ fn analyze_commit_signatures(
     // Use git log to get commit info with signatures
     // %GS = signer identity (SSH keys show "ssh-ed25519 ...", GPG shows key ID/email)
     // %GK = signing key fingerprint
-    let output = Command::new("git")
-        .args([
-            "log",
-            &format!("-{}", count),
-            "--pretty=format:%H|%an|%ae|%G?|%GK|%GS",
-        ])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git log")?;
+    let output = git_command(&[
+        "log",
+        &format!("-{}", count),
+        "--pretty=format:%H|%an|%ae|%G?|%GK|%GS",
+    ])
+    .current_dir(repo_path)
+    .output()
+    .context("Failed to run git log")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

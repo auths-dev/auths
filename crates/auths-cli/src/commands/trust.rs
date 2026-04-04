@@ -230,7 +230,11 @@ fn handle_remove(cmd: TrustRemoveCommand) -> Result<()> {
 
     // Check if exists
     if store.lookup(&cmd.did)?.is_none() {
-        anyhow::bail!("Identity {} is not pinned.", cmd.did);
+        anyhow::bail!(
+            "Identity {} is not pinned. Pin it first with: auths trust pin {}",
+            cmd.did,
+            cmd.did
+        );
     }
 
     store.remove(&cmd.did)?;
@@ -258,9 +262,13 @@ fn handle_remove(cmd: TrustRemoveCommand) -> Result<()> {
 fn handle_show(cmd: TrustShowCommand) -> Result<()> {
     let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
 
-    let pin = store
-        .lookup(&cmd.did)?
-        .ok_or_else(|| anyhow!("Identity {} is not pinned.", cmd.did))?;
+    let pin = store.lookup(&cmd.did)?.ok_or_else(|| {
+        anyhow!(
+            "Identity {} is not pinned. Pin it first with: auths trust pin {}",
+            cmd.did,
+            cmd.did
+        )
+    })?;
 
     if is_json_mode() {
         JsonResponse::success(

@@ -245,7 +245,7 @@ fn display_dry_run_rotate(
             }),
         )
         .print()
-        .map_err(|e| anyhow!("{e}"))
+        .map_err(anyhow::Error::from)
     } else {
         let out = crate::ux::format::Output::new();
         out.print_info("Dry run mode — no changes will be made");
@@ -721,7 +721,7 @@ pub fn handle_id(
 
             let device_code = rt
                 .block_on(oauth.request_device_code(&client_id, GITHUB_SSH_UPLOAD_SCOPES))
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+                .map_err(anyhow::Error::from)?;
 
             out.println(&format!(
                 "  Enter this code: {}",
@@ -748,18 +748,18 @@ pub fn handle_id(
                     interval,
                     expires_in,
                 ))
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+                .map_err(anyhow::Error::from)?;
 
             let profile = rt
                 .block_on(oauth.fetch_user_profile(&access_token))
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+                .map_err(anyhow::Error::from)?;
 
             out.print_success(&format!("Re-authenticated as @{}", profile.login));
 
             // Try to get device public key and upload SSH key
             let controller_did =
                 auths_sdk::pairing::load_controller_did(ctx.identity_storage.as_ref())
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    .map_err(anyhow::Error::from)?;
 
             #[allow(clippy::disallowed_methods)]
             let identity_did = IdentityDID::new_unchecked(controller_did.clone());

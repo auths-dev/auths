@@ -8,6 +8,7 @@ pub mod constants;
 pub mod core;
 pub mod errors;
 pub mod factories;
+pub mod subprocess;
 pub mod telemetry;
 pub mod ux;
 

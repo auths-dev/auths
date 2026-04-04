@@ -212,7 +212,7 @@ fn key_list() -> Result<()> {
         response.print()?;
     } else {
         // Use eprintln for status messages to not interfere with potential stdout parsing
-        eprintln!("Using keychain backend: {}", backend_name);
+        eprintln!("Using key storage: {}", backend_name);
 
         if aliases.is_empty() {
             println!("No keys found in keychain for this application.");
@@ -240,7 +240,7 @@ fn key_export(alias: &str, passphrase: &str, format: ExportFormat) -> Result<()>
             };
             if ptr.is_null() {
                 anyhow::bail!(
-                    "❌ Failed to export PEM private key (check alias/passphrase or logs)"
+                    "Failed to export PEM private key. Check the key alias with `auths key list` or verify your passphrase."
                 );
             }
             let pem_string = unsafe {
@@ -260,7 +260,9 @@ fn key_export(alias: &str, passphrase: &str, format: ExportFormat) -> Result<()>
                 ffi::ffi_export_public_key_openssh(c_alias.as_ptr(), c_passphrase.as_ptr())
             };
             if ptr.is_null() {
-                anyhow::bail!("❌ Failed to export public key (check alias/passphrase or logs)");
+                anyhow::bail!(
+                    "Failed to export public key. Check the key alias with `auths key list` or verify your passphrase."
+                );
             }
             let pub_string = unsafe {
                 // Safety: ptr is not null and points to a C string allocated by FFI
@@ -299,7 +301,7 @@ fn key_export(alias: &str, passphrase: &str, format: ExportFormat) -> Result<()>
 /// Deletes a key from the platform's secure storage by its alias.
 fn key_delete(alias: &str) -> Result<()> {
     let keychain: Box<dyn KeyStorage> = get_platform_keychain()?;
-    eprintln!("🔍 Using keychain backend: {}", keychain.backend_name());
+    eprintln!("Using key storage: {}", keychain.backend_name());
 
     match keychain.delete_key(&KeyAlias::new_unchecked(alias)) {
         Ok(_) => {

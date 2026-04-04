@@ -32,11 +32,12 @@ pub async fn handle_initiate_lan(
     capabilities: &[String],
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    let auths_dir = auths_core::paths::auths_home_with_config(env_config).unwrap_or_default();
+    let auths_dir = auths_core::paths::auths_home_with_config(env_config)
+        .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
     let identity_storage = auths_storage::git::RegistryIdentityStorage::new(auths_dir.clone());
-    let controller_did = auths_sdk::pairing::load_controller_did(&identity_storage)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let controller_did =
+        auths_sdk::pairing::load_controller_did(&identity_storage).map_err(anyhow::Error::from)?;
 
     // Detect LAN IP
     let lan_ip =

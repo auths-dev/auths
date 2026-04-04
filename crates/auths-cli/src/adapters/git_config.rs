@@ -41,8 +41,7 @@ impl SystemGitConfigProvider {
 
 impl GitConfigProvider for SystemGitConfigProvider {
     fn set(&self, key: &str, value: &str) -> Result<(), GitConfigError> {
-        let mut cmd = std::process::Command::new("git");
-        cmd.args(["config", self.scope_flag, key, value]);
+        let mut cmd = crate::subprocess::git_command(&["config", self.scope_flag, key, value]);
         if let Some(dir) = &self.working_dir {
             cmd.current_dir(dir);
         }
@@ -59,8 +58,7 @@ impl GitConfigProvider for SystemGitConfigProvider {
     }
 
     fn unset(&self, key: &str) -> Result<(), GitConfigError> {
-        let mut cmd = std::process::Command::new("git");
-        cmd.args(["config", self.scope_flag, "--unset", key]);
+        let mut cmd = crate::subprocess::git_command(&["config", self.scope_flag, "--unset", key]);
         if let Some(dir) = &self.working_dir {
             cmd.current_dir(dir);
         }
