@@ -230,6 +230,22 @@ export declare function signActionAsAgent(actionType: string, payloadJson: strin
 
 export declare function signActionAsIdentity(actionType: string, payloadJson: string, identityDid: string, repoPath: string, passphrase?: string | undefined | null): NapiActionEnvelope
 
+/**
+ * Sign an action envelope with a hex-encoded Ed25519 private key.
+ *
+ * Args:
+ * * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+ * * `action_type`: Application-defined action type (e.g. "tool_call").
+ * * `payload_json`: JSON string for the payload field.
+ * * `identity_did`: Signer's identity DID (e.g. "did:keri:E...").
+ *
+ * Usage:
+ * ```ignore
+ * let envelope = sign_action_raw("deadbeef...".into(), "tool_call".into(), "{}".into(), "did:keri:E...".into())?;
+ * ```
+ */
+export declare function signActionRaw(privateKeyHex: string, actionType: string, payloadJson: string, identityDid: string): string
+
 export declare function signArtifact(filePath: string, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
 
 export declare function signArtifactBytes(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null): NapiArtifactResult
@@ -238,7 +254,35 @@ export declare function signAsAgent(message: Buffer, keyAlias: string, repoPath:
 
 export declare function signAsIdentity(message: Buffer, identityDid: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignResult
 
+/**
+ * Sign raw bytes with a hex-encoded Ed25519 private key.
+ *
+ * Args:
+ * * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+ * * `message`: The bytes to sign.
+ *
+ * Usage:
+ * ```ignore
+ * let sig = sign_bytes_raw("deadbeef...".into(), buffer)?;
+ * ```
+ */
+export declare function signBytesRaw(privateKeyHex: string, message: Buffer): string
+
 export declare function signCommit(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignPemResult
+
+/**
+ * Verify an action envelope's Ed25519 signature with a raw public key.
+ *
+ * Args:
+ * * `envelope_json`: The complete action envelope as a JSON string.
+ * * `public_key_hex`: The signer's Ed25519 public key in hex format (64 chars).
+ *
+ * Usage:
+ * ```ignore
+ * let result = verify_action_envelope("{...}".into(), "abcd1234...".into())?;
+ * ```
+ */
+export declare function verifyActionEnvelope(envelopeJson: string, publicKeyHex: string): NapiVerificationResult
 
 export declare function verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
 

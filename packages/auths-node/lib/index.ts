@@ -123,3 +123,6 @@ export {
 
 import native from './native'
 export const version: () => string = native.version
+export const signBytesRaw: (privateKeyHex: string, message: Buffer) => string = native.signBytesRaw
+export const signActionRaw: (privateKeyHex: string, actionType: string, payloadJson: string, identityDid: string) => string = native.signActionRaw
+export const verifyActionEnvelope: (envelopeJson: string, publicKeyHex: string) => { valid: boolean; error?: string | null; errorCode?: string | null } = native.verifyActionEnvelope
