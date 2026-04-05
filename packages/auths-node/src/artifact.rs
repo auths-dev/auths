@@ -268,6 +268,7 @@ pub fn sign_artifact_bytes_raw(
         })
         .transpose()?;
 
+    #[allow(clippy::disallowed_methods)] // FFI boundary: clock injected from here into domain code
     let now = Utc::now();
     let data_len = data.len();
 

@@ -54,6 +54,7 @@ pub enum VerificationStatus {
     Revoked { at: Option<String> },
     InvalidSignature { step: u32 },
     BrokenChain { missing_link: String },
+    InsufficientWitnesses { required: u32, verified: u32 },
 }
 
 impl From<RustVerificationStatus> for VerificationStatus {
@@ -71,6 +72,12 @@ impl From<RustVerificationStatus> for VerificationStatus {
             }
             RustVerificationStatus::BrokenChain { missing_link } => {
                 VerificationStatus::BrokenChain { missing_link }
+            }
+            RustVerificationStatus::InsufficientWitnesses { required, verified } => {
+                VerificationStatus::InsufficientWitnesses {
+                    required: required as u32,
+                    verified: verified as u32,
+                }
             }
         }
     }
@@ -171,8 +178,17 @@ pub fn verify_attestation(attestation_json: String, issuer_pk_hex: String) -> Ve
         }
     };
 
-    // Verify
-    match verify_with_keys(&att, &issuer_pk_bytes) {
+    // Verify (bridge sync UniFFI boundary → async verifier)
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            return VerificationResult {
+                valid: false,
+                error: Some(format!("Failed to create async runtime: {e}")),
+            };
+        }
+    };
+    match rt.block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
         Ok(_verified) => VerificationResult {
             valid: true,
             error: None,
@@ -226,8 +242,10 @@ pub fn verify_chain(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Verify chain
-    match rust_verify_chain(&attestations, &root_pk_bytes) {
+    // Verify chain (bridge sync UniFFI boundary → async verifier)
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| VerifierError::VerificationFailed(format!("Async runtime: {e}")))?;
+    match rt.block_on(rust_verify_chain(&attestations, &root_pk_bytes)) {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(VerifierError::VerificationFailed(format!(
             "Chain verification failed: {}",
@@ -288,13 +306,15 @@ pub fn verify_device_authorization(
     let device = DeviceDID::parse(&device_did)
         .map_err(|e| VerifierError::InvalidInput(format!("Invalid device DID: {e}")))?;
 
-    // Verify
-    match rust_verify_device_authorization(
+    // Verify (bridge sync UniFFI boundary → async verifier)
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| VerifierError::VerificationFailed(format!("Async runtime: {e}")))?;
+    match rt.block_on(rust_verify_device_authorization(
         &identity_did,
         &device,
         &attestations,
         &identity_pk_bytes,
-    ) {
+    )) {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(VerifierError::VerificationFailed(format!(
             "Device authorization verification failed: {}",

@@ -42,6 +42,13 @@ repos:
         types: [rust]
         pass_filenames: false
 
+      - id: cargo-clippy-packages
+        name: cargo clippy (packages/)
+        entry: bash -c 'for d in packages/auths-node packages/auths-python packages/auths-verifier-swift; do [ -f "$d/Cargo.toml" ] && CARGO_TARGET_DIR=../../target cargo clippy --manifest-path "$d/Cargo.toml" --all-targets -- -D warnings || exit 1; done'
+        language: system
+        types: [rust]
+        pass_filenames: false
+
       # - id: gen-docs
       #   name: cargo xtask gen-docs (auto-fix)
       #   entry: bash -c 'cargo run --package xtask -- gen-docs && git add docs/cli/commands/'
