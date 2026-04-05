@@ -97,43 +97,14 @@ jobs:
           $hash = (Get-FileHash ${{ matrix.asset_name }}${{ matrix.ext }} -Algorithm SHA256).Hash.ToLower()
           "$hash  ${{ matrix.asset_name }}${{ matrix.ext }}" | Out-File -Encoding ascii ${{ matrix.asset_name }}${{ matrix.ext }}.sha256
 
-      - name: Install auths for artifact signing (Unix)
-        if: matrix.ext == '.tar.gz'
-        run: |
-          cargo build --release --package auths-cli
-          sudo cp target/release/auths /usr/local/bin/auths
-
       - name: Sign artifact (Unix)
         if: matrix.ext == '.tar.gz'
-        env:
-          AUTHS_CI_TOKEN: ${{ secrets.AUTHS_CI_TOKEN }}
-          AUTHS_KEYCHAIN_BACKEND: file
-          AUTHS_KEYCHAIN_FILE: /tmp/auths-ci-keychain
-        run: |
-          if [ -z "$AUTHS_CI_TOKEN" ]; then
-            echo "Skipping artifact signing: AUTHS_CI_TOKEN not set (run 'auths ci setup' to configure)"
-            exit 0
-          fi
-
-          # Extract fields from the single CI token
-          AUTHS_PASSPHRASE=$(echo "$AUTHS_CI_TOKEN" | jq -r '.passphrase')
-          echo "::add-mask::$AUTHS_PASSPHRASE"
-          export AUTHS_PASSPHRASE
-
-          echo "$AUTHS_CI_TOKEN" | jq -r '.keychain' | base64 -d > /tmp/auths-ci-keychain
-          mkdir -p /tmp/auths-identity
-          echo "$AUTHS_CI_TOKEN" | jq -r '.identity_repo' | base64 -d | tar -xz -C /tmp/auths-identity
-
-          if ! git -C /tmp/auths-identity rev-parse --git-dir > /dev/null 2>&1; then
-            echo "Skipping artifact signing: identity repo in AUTHS_CI_TOKEN is not a valid git repository."
-            echo "Re-run 'auths ci setup' to regenerate the token."
-            exit 0
-          fi
-
-          auths artifact sign ${{ matrix.asset_name }}${{ matrix.ext }} \
-            --device-key ci-release-device \
-            --note "GitHub Actions release — ${{ github.ref_name }}" \
-            --repo /tmp/auths-identity
+        uses: auths-dev/sign@v1
+        with:
+          token: ${{ secrets.AUTHS_CI_TOKEN }}
+          files: ${{ matrix.asset_name }}${{ matrix.ext }}
+          verify: true
+          note: 'GitHub Actions release — ${{ github.ref_name }}'
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -1,6 +1,8 @@
 # Auths
 
+[![CI](https://github.com/auths-dev/auths/actions/workflows/ci.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/ci.yml)
 [![Verify Commits](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml?query=branch%3Amain+event%3Apush)
+[![Sign Commits](https://github.com/auths-dev/auths/actions/workflows/sign-commits.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/sign-commits.yml?query=branch%3Amain)
 [![Verified with Auths](https://img.shields.io/badge/identity-verified%20with%20auths-brightgreen)](https://auths.dev)
 
 <!-- Auths Verification Badge (renders in HTML contexts, not on GitHub) -->

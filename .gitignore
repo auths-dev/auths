@@ -140,3 +140,4 @@ tests/e2e/.auths-ci/
 # jnkn
 .jnkn/
 jnkn.db
+.gitnexus
