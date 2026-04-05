@@ -1,4 +1,4 @@
-# @auths-dev/node
+# @auths-dev/sdk
 
 ## Classes
 
