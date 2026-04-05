@@ -5,7 +5,7 @@ use clap::{CommandFactory, Parser};
 
 use auths_cli::cli::{AuthsCli, RootCommand};
 use auths_cli::commands::executable::ExecutableCommand;
-use auths_cli::config::OutputFormat;
+
 use auths_cli::factories::{build_config, init_audit_sinks};
 use auths_cli::ux::format::set_json_mode;
 
@@ -55,8 +55,7 @@ fn run() -> Result<()> {
 
     let cli = AuthsCli::parse();
 
-    let is_json = cli.json || matches!(cli.format, OutputFormat::Json);
-    if is_json {
+    if cli.json {
         set_json_mode(true);
     }
 
@@ -88,6 +87,8 @@ fn run() -> Result<()> {
         // Utilities
         RootCommand::Config(cmd) => cmd.execute(&ctx),
         RootCommand::Completions(cmd) => cmd.execute(&ctx),
+        // CI/CD
+        RootCommand::Ci(cmd) => cmd.execute(&ctx),
         // Advanced
         RootCommand::Reset(cmd) => cmd.execute(&ctx),
         RootCommand::SignCommit(cmd) => cmd.execute(&ctx),
@@ -140,6 +141,10 @@ const HELP_GROUPS: &[CommandGroup] = &[
     CommandGroup {
         heading: "Setup & Troubleshooting",
         commands: &["pair", "trust", "doctor", "tutorial"],
+    },
+    CommandGroup {
+        heading: "CI/CD",
+        commands: &["ci"],
     },
     CommandGroup {
         heading: "Utilities",

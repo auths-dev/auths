@@ -214,6 +214,7 @@ fn build_context_and_sign(
 /// ```
 #[pyfunction]
 #[pyo3(signature = (file_path, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None, commit_sha=None))]
+#[allow(clippy::too_many_arguments)] // PyO3 boundary: _py context param is mandatory
 pub fn sign_artifact(
     _py: Python<'_>,
     file_path: &str,
@@ -258,6 +259,7 @@ pub fn sign_artifact(
 /// ```
 #[pyfunction]
 #[pyo3(signature = (data, identity_key_alias, repo_path, passphrase=None, expires_in=None, note=None, commit_sha=None))]
+#[allow(clippy::too_many_arguments)] // PyO3 boundary: _py context param is mandatory
 pub fn sign_artifact_bytes(
     _py: Python<'_>,
     data: &[u8],
@@ -313,6 +315,7 @@ pub fn sign_artifact_bytes_raw(
     let did = IdentityDID::parse(identity_did)
         .map_err(|e| PyValueError::new_err(format!("[AUTHS_INVALID_INPUT] {e}")))?;
 
+    #[allow(clippy::disallowed_methods)] // FFI boundary: clock injected from here into domain code
     let now = Utc::now();
 
     let result =

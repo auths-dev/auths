@@ -490,9 +490,9 @@ pub fn generate_inmemory_keypair() -> napi::Result<NapiInMemoryKeypair> {
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Seed extraction failed: {e}")))?;
 
     let pub_bytes = keypair.public_key().as_ref();
-    let pub_array: &[u8; 32] = pub_bytes.try_into().map_err(|_| {
-        format_error("AUTHS_CRYPTO_ERROR", "Invalid public key length")
-    })?;
+    let pub_array: &[u8; 32] = pub_bytes
+        .try_into()
+        .map_err(|_| format_error("AUTHS_CRYPTO_ERROR", "Invalid public key length"))?;
     let did = ed25519_pubkey_to_did_key(pub_array);
 
     Ok(NapiInMemoryKeypair {

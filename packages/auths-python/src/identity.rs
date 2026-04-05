@@ -661,9 +661,9 @@ pub fn generate_inmemory_keypair() -> PyResult<(String, String, String)> {
     })?;
 
     let pub_bytes = keypair.public_key().as_ref();
-    let pub_array: &[u8; 32] = pub_bytes.try_into().map_err(|_| {
-        PyRuntimeError::new_err("[AUTHS_CRYPTO_ERROR] Invalid public key length")
-    })?;
+    let pub_array: &[u8; 32] = pub_bytes
+        .try_into()
+        .map_err(|_| PyRuntimeError::new_err("[AUTHS_CRYPTO_ERROR] Invalid public key length"))?;
     let did = ed25519_pubkey_to_did_key(pub_array);
 
     Ok((hex::encode(seed), hex::encode(pub_bytes), did))

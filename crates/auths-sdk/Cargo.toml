@@ -35,6 +35,10 @@ html-escape = "0.2"
 ssh-key = "0.6"
 tempfile = "3"
 url = { version = "2", features = ["serde"] }
+flate2 = "1"
+rand = "0.9"
+tar = "0.4"
+walkdir = "2"
 zeroize = "1.8"
 uuid = { workspace = true, features = ["serde", "v4"] }
 dashmap = "6"
@@ -52,7 +56,10 @@ auths-core = { workspace = true, features = ["test-utils"] }
 auths-id = { workspace = true, features = ["test-utils"] }
 auths-verifier = { workspace = true, features = ["test-utils"] }
 auths-storage = { workspace = true, features = ["backend-git"] }
+base64 = "0.22"
+flate2 = "1"
 git2.workspace = true
+tar = "0.4"
 tempfile = "3"
 
 [lints]

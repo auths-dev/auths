@@ -1,3 +1,4 @@
+mod clap_collision;
 mod doctor;
 mod golden_path;
 mod helpers;
