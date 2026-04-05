@@ -106,24 +106,27 @@ jobs:
       - name: Sign artifact (Unix)
         if: matrix.ext == '.tar.gz'
         env:
-          AUTHS_PASSPHRASE: ${{ secrets.AUTHS_CI_PASSPHRASE }}
-          AUTHS_CI_KEYCHAIN_B64: ${{ secrets.AUTHS_CI_KEYCHAIN }}
-          AUTHS_CI_IDENTITY_BUNDLE_B64: ${{ secrets.AUTHS_CI_IDENTITY_BUNDLE }}
+          AUTHS_CI_TOKEN: ${{ secrets.AUTHS_CI_TOKEN }}
           AUTHS_KEYCHAIN_BACKEND: file
           AUTHS_KEYCHAIN_FILE: /tmp/auths-ci-keychain
         run: |
-          if [ -z "$AUTHS_PASSPHRASE" ] || [ -z "$AUTHS_CI_KEYCHAIN_B64" ] || [ -z "$AUTHS_CI_IDENTITY_BUNDLE_B64" ]; then
-            echo "Skipping artifact signing: AUTHS_CI_PASSPHRASE, AUTHS_CI_KEYCHAIN, and AUTHS_CI_IDENTITY_BUNDLE must all be set (run 'just ci-setup' to populate them)"
+          if [ -z "$AUTHS_CI_TOKEN" ]; then
+            echo "Skipping artifact signing: AUTHS_CI_TOKEN not set (run 'auths ci setup' to configure)"
             exit 0
           fi
 
-          printf '%s' "$AUTHS_CI_KEYCHAIN_B64" | tr -d '[:space:]' | base64 -d > /tmp/auths-ci-keychain
+          # Extract fields from the single CI token
+          AUTHS_PASSPHRASE=$(echo "$AUTHS_CI_TOKEN" | jq -r '.passphrase')
+          echo "::add-mask::$AUTHS_PASSPHRASE"
+          export AUTHS_PASSPHRASE
+
+          echo "$AUTHS_CI_TOKEN" | jq -r '.keychain' | base64 -d > /tmp/auths-ci-keychain
           mkdir -p /tmp/auths-identity
-          printf '%s' "$AUTHS_CI_IDENTITY_BUNDLE_B64" | tr -d '[:space:]' | base64 -d | tar -xz -C /tmp/auths-identity
+          echo "$AUTHS_CI_TOKEN" | jq -r '.identity_repo' | base64 -d | tar -xz -C /tmp/auths-identity
 
           if ! git -C /tmp/auths-identity rev-parse --git-dir > /dev/null 2>&1; then
-            echo "Skipping artifact signing: AUTHS_CI_IDENTITY_BUNDLE does not contain a valid git repository."
-            echo "Re-run 'just ci-setup' to regenerate the secret, then update AUTHS_CI_IDENTITY_BUNDLE in GitHub Secrets."
+            echo "Skipping artifact signing: identity repo in AUTHS_CI_TOKEN is not a valid git repository."
+            echo "Re-run 'auths ci setup' to regenerate the token."
             exit 0
           fi
 

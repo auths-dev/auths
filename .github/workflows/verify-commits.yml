@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: auths-dev/auths-verify-github-action@v1
+      - uses: auths-dev/verify@v1
         with:
           allowed-signers: .auths/allowed_signers
           fail-on-unsigned: true
