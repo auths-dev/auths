@@ -20,12 +20,31 @@ Cryptographic commit signing with Git-native storage. One identity, multiple dev
 
 ## Install
 
-```bash
-brew tap auths-dev/auths-cli
-brew install auths
-```
+=== "macOS"
 
-You can also install via `cargo install auths-cli`.
+    ```bash
+    brew tap auths-dev/auths-cli
+    brew install auths
+    ```
+
+=== "Linux"
+
+    ```bash
+    curl -sSfL https://get.auths.dev | sh
+    ```
+
+=== "Cargo"
+
+    ```bash
+    cargo install auths-cli
+    ```
+
+=== "Source"
+
+    ```bash
+    git clone git@github.com:auths-dev/auths.git
+    cargo install --path crates/auths-cli
+    ```
 
 !!! tip
     See the full [Installation guide](getting-started/install.md) for platform-specific keychain setup and pre-built binaries.
