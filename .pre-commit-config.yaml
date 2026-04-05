@@ -28,6 +28,13 @@ repos:
         types: [rust]
         pass_filenames: false
 
+      - id: cargo-fmt-packages
+        name: cargo fmt (packages/)
+        entry: bash -c 'for d in packages/auths-node packages/auths-python packages/auths-verifier-swift; do [ -f "$d/Cargo.toml" ] && cargo fmt --manifest-path "$d/Cargo.toml" --all; done'
+        language: system
+        types: [rust]
+        pass_filenames: false
+
       - id: cargo-clippy
         name: cargo clippy
         entry: cargo clippy --all-targets --all-features -- -D warnings

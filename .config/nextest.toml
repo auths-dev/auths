@@ -23,6 +23,11 @@ slow-timeout = { period = "30s", terminate-after = 1 }
 fail-fast = false
 retries = 2
 
+# reqwest/rustls spawns background TLS threads on crate load; allow the leak.
+[[profile.default.overrides]]
+filter = 'package(auths-infra-http)'
+leak-timeout = "500ms"
+
 # Integration tests: serial execution to avoid global state races.
 # Matches any test binary built from tests/ dirs.
 [[profile.default.overrides]]

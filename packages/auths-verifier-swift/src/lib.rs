@@ -5,15 +5,12 @@
 
 use ::auths_verifier::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use ::auths_verifier::types::{
-    ChainLink as RustChainLink,
-    DeviceDID,
-    VerificationReport as RustVerificationReport,
+    ChainLink as RustChainLink, DeviceDID, VerificationReport as RustVerificationReport,
     VerificationStatus as RustVerificationStatus,
 };
 use ::auths_verifier::verify::{
     verify_chain as rust_verify_chain,
-    verify_device_authorization as rust_verify_device_authorization,
-    verify_with_keys,
+    verify_device_authorization as rust_verify_device_authorization, verify_with_keys,
 };
 
 // Use proc-macro based approach (no UDL)
@@ -136,7 +133,8 @@ pub fn verify_attestation(attestation_json: String, issuer_pk_hex: String) -> Ve
             valid: false,
             error: Some(format!(
                 "Attestation JSON too large: {} bytes, max {}",
-                attestation_json.len(), MAX_ATTESTATION_JSON_SIZE
+                attestation_json.len(),
+                MAX_ATTESTATION_JSON_SIZE
             )),
         };
     }
@@ -291,7 +289,12 @@ pub fn verify_device_authorization(
         .map_err(|e| VerifierError::InvalidInput(format!("Invalid device DID: {e}")))?;
 
     // Verify
-    match rust_verify_device_authorization(&identity_did, &device, &attestations, &identity_pk_bytes) {
+    match rust_verify_device_authorization(
+        &identity_did,
+        &device,
+        &attestations,
+        &identity_pk_bytes,
+    ) {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(VerifierError::VerificationFailed(format!(
             "Device authorization verification failed: {}",
