@@ -2,6 +2,7 @@ mod allowed_signers;
 mod artifact;
 mod audit;
 mod ci_setup;
+mod ci_token;
 mod device;
 mod diagnostics;
 pub mod helpers;

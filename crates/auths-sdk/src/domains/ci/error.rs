@@ -42,6 +42,34 @@ pub enum CiError {
         /// Underlying error.
         reason: String,
     },
+
+    /// The CI token version is not supported by this build.
+    #[error("unsupported CI token version {version} (expected 1)")]
+    TokenVersionUnsupported {
+        /// The version found in the token.
+        version: u32,
+    },
+
+    /// Failed to deserialize a CI token from JSON.
+    #[error("CI token deserialization failed: {reason}")]
+    TokenDeserializationFailed {
+        /// The underlying parse error message.
+        reason: String,
+    },
+
+    /// Failed to serialize a CI token to JSON.
+    #[error("CI token serialization failed: {reason}")]
+    TokenSerializationFailed {
+        /// The underlying serialization error message.
+        reason: String,
+    },
+
+    /// Failed to build the identity bundle tar.gz.
+    #[error("identity bundle failed: {reason}")]
+    BundleFailed {
+        /// What went wrong during bundling.
+        reason: String,
+    },
 }
 
 impl auths_core::error::AuthsErrorInfo for CiError {
@@ -52,6 +80,10 @@ impl auths_core::error::AuthsErrorInfo for CiError {
             Self::NoArtifacts => "AUTHS-E7003",
             Self::CollectionDirFailed { .. } => "AUTHS-E7004",
             Self::CollectionCopyFailed { .. } => "AUTHS-E7005",
+            Self::TokenVersionUnsupported { .. } => "AUTHS-E7006",
+            Self::TokenDeserializationFailed { .. } => "AUTHS-E7007",
+            Self::TokenSerializationFailed { .. } => "AUTHS-E7008",
+            Self::BundleFailed { .. } => "AUTHS-E7009",
         }
     }
 
@@ -61,7 +93,7 @@ impl auths_core::error::AuthsErrorInfo for CiError {
                 Some("Set CI-specific environment variables or pass --ci-environment explicitly")
             }
             Self::IdentityBundleInvalid { .. } => {
-                Some("Re-run `just ci-setup` to regenerate the identity bundle secret")
+                Some("Re-run `auths ci setup` to regenerate the identity bundle secret")
             }
             Self::NoArtifacts => Some("Check your glob pattern matches at least one file"),
             Self::CollectionDirFailed { .. } => {
@@ -70,6 +102,16 @@ impl auths_core::error::AuthsErrorInfo for CiError {
             Self::CollectionCopyFailed { .. } => {
                 Some("Check file permissions and available disk space")
             }
+            Self::TokenVersionUnsupported { .. } => {
+                Some("Update auths to the latest version to support this token format")
+            }
+            Self::TokenDeserializationFailed { .. } => {
+                Some("Check that AUTHS_CI_TOKEN contains valid JSON from `auths ci setup`")
+            }
+            Self::TokenSerializationFailed { .. } => {
+                Some("This is an internal error — please report it")
+            }
+            Self::BundleFailed { .. } => Some("Check that ~/.auths exists and is readable"),
         }
     }
 }

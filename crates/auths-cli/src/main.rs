@@ -87,6 +87,8 @@ fn run() -> Result<()> {
         // Utilities
         RootCommand::Config(cmd) => cmd.execute(&ctx),
         RootCommand::Completions(cmd) => cmd.execute(&ctx),
+        // CI/CD
+        RootCommand::Ci(cmd) => cmd.execute(&ctx),
         // Advanced
         RootCommand::Reset(cmd) => cmd.execute(&ctx),
         RootCommand::SignCommit(cmd) => cmd.execute(&ctx),
@@ -139,6 +141,10 @@ const HELP_GROUPS: &[CommandGroup] = &[
     CommandGroup {
         heading: "Setup & Troubleshooting",
         commands: &["pair", "trust", "doctor", "tutorial"],
+    },
+    CommandGroup {
+        heading: "CI/CD",
+        commands: &["ci"],
     },
     CommandGroup {
         heading: "Utilities",
