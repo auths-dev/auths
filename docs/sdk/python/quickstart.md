@@ -1,12 +1,48 @@
 # Python SDK Quickstart
 
+Get from `pip install` to verified attestation in under 2 minutes.
+
 ## Install
 
 ```bash
 pip install auths
 ```
 
-## Create an identity and sign a commit
+Requires Python 3.8+. Native Ed25519 via Rust — no OpenSSL dependency.
+
+## Verify an attestation (no client needed)
+
+The most common use case: you have a `.auths.json` file and want to check if it's valid.
+
+```python
+from auths import verify_attestation
+
+with open("release.tar.gz.auths.json") as f:
+    attestation_json = f.read()
+
+result = verify_attestation(attestation_json, issuer_public_key_hex)
+print(result.valid)  # True
+print(result.error)  # None
+```
+
+## Verify an attestation chain
+
+Check that a device was authorized by an identity, with full delegation chain verification:
+
+```python
+from auths import verify_chain
+
+report = verify_chain(
+    [att1_json, att2_json],  # ordered: root → leaf
+    root_public_key_hex
+)
+
+for link in report.chain:
+    mark = "✓" if link.valid else "✗"
+    print(f"  {mark} {link.issuer} → {link.subject}")
+```
+
+## Create an identity and link a device
 
 ```python
 from auths import Auths
@@ -14,50 +50,59 @@ from auths import Auths
 client = Auths()
 identity = client.identities.create(label="laptop")
 
-# Sign commit data (returns SSHSIG PEM)
-result = client.sign_commit(commit_bytes, identity_did=identity.did)
-print(result.signature_pem[:60] + "...")
-```
-
-## Link a device
-
-```python
 device = client.devices.link(
     identity.did,
     capabilities=["sign", "verify"],
     expires_in=7_776_000,
 )
-print(f"Device: {device.did}")
+print(f"Identity: {identity.did}")
+print(f"Device:   {device.did}")
 ```
 
-## Verify a single attestation
+## Sign and verify artifacts
 
 ```python
-attestations = client.attestations.list(device_did=device.did)
-att = attestations[0]
-
-result = client.verify(att.json, issuer_key=identity.public_key)
-print(f"Valid: {result.valid}")
+signed = client.sign_artifact(
+    "release.tar.gz",
+    identity_did=identity.did,
+    expires_in=31_536_000,
+)
+print(f"RID:    {signed.rid}")
+print(f"Digest: {signed.digest}")
+# -> release.tar.gz.auths.json created
 ```
 
-## Verify a chain
+## Sign and verify actions (API auth)
+
+The same identity that signs artifacts can authenticate API requests:
 
 ```python
-chain = [att.json for att in attestations]
-report = client.verify_chain(chain, root_key=identity.public_key)
-print(f"Chain valid: {report.is_valid()}")
+# Sign an action envelope
+envelope = client.sign_action(
+    action_type="api_call",
+    payload_json='{"endpoint": "/resource"}',
+    identity_did=identity.did,
+)
+
+# Verify it (server-side, stateless — one function call)
+result = client.verify_action(envelope, identity.public_key)
+print(result.valid)  # True
 ```
 
-## Verify git commits
+## Verify Git commits
 
 ```python
-from auths import verify_commit_range
+from auths.git import verify_commit_range
 
-result = verify_commit_range("origin/main..HEAD")
-for commit in result.commits:
-    status = "pass" if commit.is_valid else f"FAIL ({commit.error_code})"
-    print(f"  {commit.commit_sha[:8]} {status}")
-print(result.summary)
+results = verify_commit_range(
+    commit_range="HEAD~5..HEAD",
+    identity_bundle="bundle.json",
+)
+
+for commit in results.commits:
+    mark = "✓" if commit.is_valid else "✗"
+    print(f"  {mark} {commit.commit_sha[:8]} — {commit.error or 'signed'}")
+print(results.summary)
 ```
 
 ## Build a policy
@@ -75,16 +120,18 @@ policy = (
 )
 ```
 
-## Sign an artifact
+## Ephemeral identities (testing & demos)
+
+No keychain or filesystem needed — generate a throwaway identity in-memory:
 
 ```python
-signed = client.sign_artifact(
-    "release.tar.gz",
-    identity_did=identity.did,
-    expires_in=31_536_000,
-)
-print(f"RID: {signed.rid}")
-print(f"Digest: {signed.digest}")
+from auths._native import generate_inmemory_keypair, sign_bytes_raw
+
+keypair = generate_inmemory_keypair()
+print(keypair.did)             # did:key:z6Mk...
+print(keypair.public_key_hex)  # 64-char hex
+
+signature = sign_bytes_raw(keypair.private_key_hex, b"hello")
 ```
 
 ## Error handling
@@ -100,10 +147,15 @@ except AuthsError as e:
     print(f"Auths error ({e.code}): {e.message}")
 ```
 
+All errors inherit from `AuthsError`. See [Error Reference](errors.md) for the full hierarchy.
+
 ## Next steps
 
-- [API Reference](api/client.md) — full class and function documentation
-- [Devices](api/devices.md) — device linking, extension, and revocation
-- [Organizations](api/orgs.md) — create orgs and manage members
-- [JWT](api/jwt.md) — verify OIDC bridge tokens
-- [Errors](errors.md) — error hierarchy and codes
+| Guide | Description |
+|-------|-------------|
+| [API Reference](api/client.md) | Full class and function documentation |
+| [Identity & Devices](api/identities.md) | Create identities, link devices, rotate keys |
+| [Artifact Signing](api/signing.md) | Sign releases for CI/CD |
+| [Policy Engine](api/policy.md) | Enforce signing policies programmatically |
+| [Organizations](api/orgs.md) | Create orgs and manage members |
+| [Errors](errors.md) | Error hierarchy and codes |

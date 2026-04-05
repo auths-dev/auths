@@ -5,32 +5,51 @@
 Auths is structured as a workspace of focused crates. The `auths-sdk` crate is the orchestration layer that most Rust consumers should depend on directly.
 
 ```mermaid
-graph TD
-    CLI["auths-cli<br/>(I/O adapter, clap)"]
-    SDK["auths-sdk<br/>(orchestration)"]
-    CORE["auths-core<br/>(cryptography, keychains)"]
-    ID["auths-id<br/>(identity, Git storage)"]
-    VERIFIER["auths-verifier<br/>(verification, FFI/WASM)"]
-    CRYPTO["auths-crypto<br/>(Ed25519 provider trait)"]
-    POLICY["auths-policy<br/>(capability policies)"]
-    INDEX["auths-index<br/>(SQLite attestation lookups)"]
-    STORAGE["auths-storage<br/>(backend abstraction)"]
-    INFRA_GIT["auths-infra-git<br/>(Git I/O adapter)"]
-    INFRA_HTTP["auths-infra-http<br/>(HTTP I/O adapter)"]
+flowchart TD
+    subgraph Presentation["Presentation Layer (6)"]
+        CLI["auths-cli<br/><small>auths, auths-sign, auths-verify</small>"]
+    end
+
+    subgraph Infrastructure["Infrastructure Layer (5)"]
+        INFRA_GIT["auths-infra-git<br/><small>Git audit adapter</small>"]
+        INFRA_HTTP["auths-infra-http<br/><small>HTTP transport</small>"]
+    end
+
+    subgraph Services["Services Layer (4)"]
+        SDK["auths-sdk<br/><small>workflows, clock injection</small>"]
+        STORAGE["auths-storage<br/><small>Git/SQL storage adapters</small>"]
+    end
+
+    subgraph Domain["Domain Layer (3)"]
+        ID["auths-id<br/><small>identity, attestation, KERI, traits</small>"]
+        POLICY["auths-policy<br/><small>authorization evaluation</small>"]
+    end
+
+    subgraph Core["Core Layer (2)"]
+        CORE["auths-core<br/><small>keychains, signing, ports</small>"]
+    end
+
+    subgraph Verification["Verification Layer (1)"]
+        VERIFIER["auths-verifier<br/><small>FFI, WASM, minimal deps</small>"]
+    end
+
+    subgraph Crypto["Crypto Layer (0)"]
+        CRYPTO["auths-crypto<br/><small>CryptoProvider, DID encoding</small>"]
+    end
 
     CLI --> SDK
-    SDK --> CORE
+    CLI --> INFRA_GIT
+    CLI --> INFRA_HTTP
+    INFRA_GIT --> SDK
     SDK --> ID
-    SDK --> VERIFIER
-    SDK --> CRYPTO
-    SDK --> POLICY
+    SDK --> CORE
+    STORAGE --> ID
     ID --> CORE
+    ID --> POLICY
     ID --> VERIFIER
+    CORE --> VERIFIER
     CORE --> CRYPTO
     VERIFIER --> CRYPTO
-    STORAGE --> ID
-    INFRA_GIT --> STORAGE
-    INFRA_HTTP --> SDK
 ```
 
 ## Which Crate for What

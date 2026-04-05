@@ -177,7 +177,6 @@ nav:
       - Verifier Embedding:
           - FFI (C/C++): sdk/verifier/ffi.md
           - WASM: sdk/verifier/wasm.md
-          - Python: sdk/verifier/python.md
       - API Reference: sdk/crate-index.md
 
   - Architecture:
