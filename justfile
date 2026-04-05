@@ -112,8 +112,7 @@ release-github:
 release-crates:
     python scripts/releases/2_crates.py --publish
 
-# One-time setup: create a CI release-signing device and export secrets for GitHub
-# Run this once locally, then add the printed values as GitHub secrets
-# Delegates to the xtask crate for cross-platform correctness.
+# One-time setup: create a CI release-signing device and set AUTHS_CI_TOKEN secret.
+# Run this once locally — detects forge from git remote and sets the secret automatically.
 ci-setup:
-    cargo xt ci-setup
+    auths ci setup

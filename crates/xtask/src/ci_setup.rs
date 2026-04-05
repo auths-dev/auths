@@ -15,6 +15,13 @@ use walkdir::WalkDir;
 use crate::shell::{run_capture, run_capture_env, run_with_stdin};
 
 pub fn run() -> Result<()> {
+    eprintln!(
+        "\x1b[1;33m⚠ `cargo xt ci-setup` is deprecated. Use `auths ci setup` instead.\x1b[0m"
+    );
+    eprintln!("  The new command bundles all secrets into a single AUTHS_CI_TOKEN.");
+    eprintln!("  Run `auths ci setup --help` for details.");
+    eprintln!();
+
     println!();
     println!("\x1b[0;36m╔════════════════════════════════════════════════════════════╗\x1b[0m");
     println!("\x1b[0;36m║\x1b[0m\x1b[1m           CI Release Signing Setup (One-Time)              \x1b[0m\x1b[0;36m║\x1b[0m");
