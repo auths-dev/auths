@@ -270,10 +270,7 @@ def main() -> None:
     print(f"{BOLD}{GREEN}  Artifact signing workflow completed successfully!{RESET}")
     print(f"{BOLD}{GREEN}{'='*60}{RESET}")
     print(f"\n  This confirms the release.yml signing step will work in CI.")
-    print(f"  Make sure these GitHub secrets are set (via 'just ci-setup'):")
-    print(f"    • AUTHS_CI_PASSPHRASE")
-    print(f"    • AUTHS_CI_KEYCHAIN")
-    print(f"    • AUTHS_CI_IDENTITY_BUNDLE\n")
+    print(f"  Make sure AUTHS_CI_TOKEN is set (via 'auths ci setup').\n")
 
 
 if __name__ == "__main__":

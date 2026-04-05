@@ -12,38 +12,38 @@ CI signing in Auths works through device delegation:
 4. In CI, the runner restores the identity bundle and signs artifacts using the CI device key.
 5. You can **revoke** the CI device at any time without affecting your root identity.
 
-## One-time setup with `cargo xt ci-setup`
+## One-time setup with `auths ci setup`
 
-The `ci-setup` xtask automates the entire provisioning flow. Run it from the project root:
+Run this from any repo with a git remote:
 
 ```bash
-cargo xt ci-setup
+auths ci setup
 ```
 
 This command will:
 
-1. **Verify your identity exists** by running `auths status`.
-2. **Read your identity DID** from `auths id show` and your key alias from `auths key list`.
-3. **Generate a CI device key** (Ed25519, 32-byte seed) and import it into your platform keychain under the alias `ci-release-device`.
-4. **Prompt for a passphrase** that will protect the CI device key. This passphrase will be stored as a GitHub Secret.
-5. **Create an encrypted file keychain** by copying the key to a file-backed keychain using `auths key copy-backend --alias ci-release-device --dst-backend file`.
-6. **Derive the device DID** using `auths key export --alias ci-release-device --format pub` and `auths debug util pubkey-to-did`.
-7. **Link the CI device** to your identity with `auths device link --capabilities sign_release --note "GitHub Actions release signer"`.
-8. **Package your `~/.auths` repository** as a base64-encoded tarball (excluding `.sock` files).
-9. **Set three GitHub Secrets** via the `gh` CLI:
-    - `AUTHS_CI_PASSPHRASE` -- The passphrase for the CI device key.
-    - `AUTHS_CI_KEYCHAIN` -- The encrypted file keychain (base64).
-    - `AUTHS_CI_IDENTITY_BUNDLE` -- The `~/.auths` repository snapshot (base64 tarball).
+1. **Verify your identity exists** and read your identity DID and key alias.
+2. **Generate a CI device key** (Ed25519) and link it to your identity with `sign_release` capability.
+3. **Package everything** into a single `AUTHS_CI_TOKEN` JSON secret containing the passphrase, encrypted keychain, identity repo snapshot, and verification bundle.
+4. **Set the secret** on your forge automatically via the `gh` CLI (GitHub) or print the token for manual setup (other forges).
 
-If the `gh` CLI is not authenticated, the command prints the secret values for you to add manually via **Repository > Settings > Secrets > Actions > New secret**.
+If the `gh` CLI is not authenticated, the command prints the token value for you to add manually via **Repository > Settings > Secrets > Actions > New secret**.
+
+### Rotating the token
+
+To refresh the token (new TTL, updated identity repo) without regenerating the device key:
+
+```bash
+auths ci rotate
+```
 
 ### Re-running setup
 
-If you already have a `ci-release-device` key, `cargo xt ci-setup` detects it and reuses the existing key while regenerating the file keychain and secrets.
+If you already have a `ci-release-device` key, `auths ci setup` detects it and reuses the existing key while regenerating the token.
 
 ## Signing artifacts in GitHub Actions
 
-Once the secrets are set, add a signing step to your release workflow:
+Once `AUTHS_CI_TOKEN` is set, add a signing step to your release workflow:
 
 ```yaml
 name: Release
@@ -60,34 +60,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Auths
-        run: cargo install auths-cli
-
-      - name: Restore Auths identity
-        env:
-          AUTHS_CI_IDENTITY_BUNDLE: ${{ secrets.AUTHS_CI_IDENTITY_BUNDLE }}
-          AUTHS_CI_KEYCHAIN: ${{ secrets.AUTHS_CI_KEYCHAIN }}
-          AUTHS_CI_PASSPHRASE: ${{ secrets.AUTHS_CI_PASSPHRASE }}
-        run: |
-          # Restore the ~/.auths identity repository
-          mkdir -p ~/.auths
-          echo "$AUTHS_CI_IDENTITY_BUNDLE" | base64 -d | tar xz -C ~/.auths
-
-          # Restore the file keychain
-          echo "$AUTHS_CI_KEYCHAIN" | base64 -d > /tmp/ci-keychain.enc
-
-          # Set environment for file-backend keychain
-          echo "AUTHS_KEYCHAIN_BACKEND=file" >> $GITHUB_ENV
-          echo "AUTHS_KEYCHAIN_FILE=/tmp/ci-keychain.enc" >> $GITHUB_ENV
-          echo "AUTHS_PASSPHRASE=$AUTHS_CI_PASSPHRASE" >> $GITHUB_ENV
-
       - name: Build release artifact
         run: cargo build --release && tar czf myproject.tar.gz -C target/release myproject
 
-      - name: Sign release artifact
-        run: |
-          auths sign myproject.tar.gz \
-            --device-key ci-release-device
+      - name: Sign and verify artifact
+        uses: auths-dev/sign@v1
+        with:
+          token: ${{ secrets.AUTHS_CI_TOKEN }}
+          files: 'myproject.tar.gz'
+          verify: true
 
       - name: Upload release
         uses: softprops/action-gh-release@v2
@@ -227,4 +208,4 @@ auths device revoke \
   --key <your-key>
 ```
 
-The device DID and identity key alias are printed by `cargo xt ci-setup` when the device is created. After revocation, the CI device key can no longer produce valid attestations, even if the secrets remain in GitHub.
+The device DID and identity key alias are printed by `auths ci setup` when the device is created. After revocation, the CI device key can no longer produce valid attestations, even if the secrets remain in GitHub.
