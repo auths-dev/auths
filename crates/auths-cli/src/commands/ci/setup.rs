@@ -87,7 +87,22 @@ pub fn run_setup(
     }
 
     // Step 4: Handle passphrase
-    let ci_pass = if auto_passphrase {
+    // When reusing an existing key, we need the ORIGINAL passphrase to decrypt it.
+    // Auto-generate is only valid for new keys.
+    let ci_pass = if reuse {
+        // Existing key — need the original passphrase
+        #[allow(clippy::disallowed_methods)]
+        let env_pass = std::env::var("AUTHS_PASSPHRASE").ok();
+        if let Some(pass) = env_pass {
+            println!("\x1b[2mUsing passphrase from AUTHS_PASSPHRASE env var.\x1b[0m");
+            Zeroizing::new(pass)
+        } else {
+            let pass =
+                rpassword::prompt_password("Passphrase for existing ci-release-device key: ")
+                    .context("Failed to read passphrase")?;
+            Zeroizing::new(pass)
+        }
+    } else if auto_passphrase {
         let pass = generate_ci_passphrase();
         println!("\x1b[2mAuto-generated CI passphrase (64-char hex).\x1b[0m");
         Zeroizing::new(pass)

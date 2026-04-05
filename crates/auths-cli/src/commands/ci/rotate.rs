@@ -8,7 +8,7 @@ use auths_core::config::EnvironmentConfig;
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
 use auths_crypto::did_key::ed25519_pubkey_to_did_key;
-use auths_sdk::domains::ci::bundle::{build_identity_bundle, generate_ci_passphrase};
+use auths_sdk::domains::ci::bundle::build_identity_bundle;
 use auths_sdk::domains::ci::forge::Forge;
 use auths_sdk::domains::ci::token::CiToken;
 use ring::signature::KeyPair;
@@ -41,7 +41,7 @@ const CI_DEVICE_ALIAS: &str = "ci-release-device";
 pub fn run_rotate(
     repo_override: Option<String>,
     max_age_secs: u64,
-    auto_passphrase: bool,
+    _auto_passphrase: bool,
     _passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     _env_config: &EnvironmentConfig,
     repo_path: &Path,
@@ -73,20 +73,20 @@ pub fn run_rotate(
         .ok_or_else(|| anyhow!("No keys found in keychain"))?
         .to_string();
 
-    // Handle passphrase
-    let ci_pass = if auto_passphrase {
-        let pass = generate_ci_passphrase();
-        println!("\x1b[2mAuto-generated new CI passphrase (64-char hex).\x1b[0m");
-        Zeroizing::new(pass)
-    } else {
-        let pass = rpassword::prompt_password("New CI device passphrase: ")
-            .context("Failed to read passphrase")?;
-        let confirm = rpassword::prompt_password("Confirm passphrase: ")
-            .context("Failed to read confirmation")?;
-        if pass != confirm {
-            return Err(anyhow!("Passphrases do not match"));
+    // Handle passphrase — rotate always reuses the existing key,
+    // so we need the ORIGINAL passphrase to decrypt it.
+    let ci_pass = {
+        #[allow(clippy::disallowed_methods)]
+        let env_pass = std::env::var("AUTHS_PASSPHRASE").ok();
+        if let Some(pass) = env_pass {
+            println!("\x1b[2mUsing passphrase from AUTHS_PASSPHRASE env var.\x1b[0m");
+            Zeroizing::new(pass)
+        } else {
+            let pass =
+                rpassword::prompt_password("Passphrase for existing ci-release-device key: ")
+                    .context("Failed to read passphrase")?;
+            Zeroizing::new(pass)
         }
-        Zeroizing::new(pass)
     };
 
     // Regenerate file keychain
