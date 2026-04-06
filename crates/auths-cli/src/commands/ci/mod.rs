@@ -4,6 +4,9 @@ pub mod forge_backend;
 pub mod rotate;
 pub mod setup;
 
+/// Key alias used by all CI commands (setup, rotate).
+pub(crate) const CI_DEVICE_ALIAS: &str = "ci-release-device";
+
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use std::sync::Arc;

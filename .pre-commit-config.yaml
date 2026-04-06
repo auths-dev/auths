@@ -21,6 +21,13 @@ repos:
       # ── Fast gates (commit) ──────────────────────────────────────────────
       # These run on every `git commit`. They should take < 3 seconds incrementally.
 
+      - id: check-workflow-secrets
+        name: "Workflow secret leak check (no ${{ secrets.* }} in body: blocks)"
+        entry: bash scripts/check_workflow_secrets.sh
+        language: system
+        files: \.github/workflows/.*\.yml$
+        pass_filenames: false
+
       - id: check-sdk-boundary
         name: SDK boundary check (CLI must not import core/id/storage)
         entry: bash scripts/check_sdk_boundary.sh

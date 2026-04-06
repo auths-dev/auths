@@ -7,12 +7,10 @@
     clippy::expect_used
 )]
 mod check_clippy_sync;
-mod ci_setup;
 mod gen_docs;
 mod gen_error_docs;
 mod gen_schema;
 mod schemas;
-mod shell;
 mod test_integration;
 
 use clap::{Parser, Subcommand};
@@ -26,8 +24,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// One-time setup: create a CI release-signing device and set GitHub secrets
-    CiSetup,
     /// Generate docs/cloud-ci/telemetry/schema.json and schema.md from AuditEvent
     GenSchema,
     /// Regenerate CLI flag tables in docs from `auths --help` output.
@@ -67,7 +63,6 @@ fn main() -> anyhow::Result<()> {
             .expect("could not determine workspace root")
     };
     match cli.command {
-        Command::CiSetup => ci_setup::run(),
         Command::GenSchema => gen_schema::run(workspace_root()),
         Command::GenDocs { check } => gen_docs::run(workspace_root(), check),
         Command::GenerateSchemas => schemas::generate(workspace_root()),
