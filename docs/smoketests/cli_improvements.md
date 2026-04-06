@@ -132,7 +132,7 @@ auths pair --help
 **Current Flow:**
 ```bash
 auths sign /path/to/artifact
-auths verify /path/to/artifact.auths.json
+auths verify /path/to/artifact
 ```
 
 **Pain Points:**

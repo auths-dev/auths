@@ -5,22 +5,25 @@ use clap::Parser;
 use std::path::{Path, PathBuf};
 
 use super::verify_commit::{VerifyCommitCommand, handle_verify_commit};
+use crate::commands::artifact::verify::handle_verify as handle_artifact_verify;
 use crate::commands::device::verify_attestation::{VerifyCommand, handle_verify};
 
 /// What kind of target the user provided.
 pub enum VerifyTarget {
     GitRef(String),
     Attestation(String),
+    ArtifactFile(PathBuf), // binary artifact, will look up .auths.json sidecar
 }
 
 /// Determine whether `raw_target` is a Git reference or an attestation path.
 ///
 /// Rules (evaluated in order):
 /// 1. "-" → stdin attestation
-/// 2. Path exists on disk → attestation file
-/// 3. Contains ".." (range notation) → git ref
-/// 4. Is "HEAD" or matches ^[0-9a-f]{4,40}$ → git ref
-/// 5. Otherwise → git ref (assume the user knows what they're typing)
+/// 2. Path exists on disk and is JSON → attestation file
+/// 3. Path exists on disk and is not JSON → artifact file (sidecar lookup)
+/// 4. Contains ".." (range notation) → git ref
+/// 5. Is "HEAD" or matches ^[0-9a-f]{4,40}$ → git ref
+/// 6. Otherwise → git ref (assume the user knows what they're typing)
 ///
 /// Args:
 /// * `raw_target` - Raw CLI input string.
@@ -36,7 +39,11 @@ pub fn parse_verify_target(raw_target: &str) -> VerifyTarget {
     }
     let path = Path::new(raw_target);
     if path.exists() {
-        return VerifyTarget::Attestation(raw_target.to_string());
+        if is_attestation_path(raw_target) {
+            return VerifyTarget::Attestation(raw_target.to_string());
+        } else {
+            return VerifyTarget::ArtifactFile(path.to_path_buf());
+        }
     }
     if raw_target.contains("..") {
         return VerifyTarget::GitRef(raw_target.to_string());
@@ -57,6 +64,12 @@ pub fn parse_verify_target(raw_target: &str) -> VerifyTarget {
     VerifyTarget::GitRef(raw_target.to_string())
 }
 
+/// Returns true if the path looks like an attestation/JSON file rather than a binary artifact.
+fn is_attestation_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.ends_with(".json")
+}
+
 /// Unified verify command: verifies a signed commit or an attestation.
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -64,21 +77,18 @@ pub fn parse_verify_target(raw_target: &str) -> VerifyTarget {
     after_help = "Examples:
   auths verify HEAD                       # Verify current commit signature
   auths verify main..HEAD                 # Verify range of commits
-  auths verify artifact.json              # Verify signed artifact
+  auths verify release.tar.gz             # Verify artifact (finds .auths.json sidecar)
+  auths verify release.tar.gz.auths.json  # Verify attestation file directly
   auths verify - < artifact.json          # Verify from stdin
 
-Trust Policies:
-  Defaults to TOFU (Trust-On-First-Use) on interactive terminals.
-  Use --trust explicit in CI/CD to reject unknown identities.
-
 Artifact Verification:
-  File signatures are stored as <file>.auths.json.
-  JSON attestations can be verified directly.
+  Pass the artifact file directly — auths finds <file>.auths.json automatically.
+  Pass --signature to override the default sidecar path.
 
 Related:
-  auths trust add <did>     — Add an identity to your trust store
-  auths sign                — Create signatures
-  auths --help-all          — See all commands"
+  auths sign     — Create signatures
+  auths publish  — Sign and publish to registry
+  auths trust    — Manage trusted identities"
 )]
 pub struct UnifiedVerifyCommand {
     /// Git ref, commit hash, range (e.g. HEAD, abc1234, main..HEAD),
@@ -113,6 +123,11 @@ pub struct UnifiedVerifyCommand {
     /// Witness public keys as DID:hex pairs.
     #[arg(long, num_args = 1..)]
     pub witness_keys: Vec<String>,
+
+    /// Path to signature file. Only used when verifying an artifact file (not a commit).
+    /// Defaults to <FILE>.auths.json.
+    #[arg(long, value_name = "PATH")]
+    pub signature: Option<PathBuf>,
 }
 
 /// Handle the unified verify command.
@@ -147,6 +162,18 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
                 witness_keys: cmd.witness_keys,
             };
             handle_verify(verify_cmd).await
+        }
+        VerifyTarget::ArtifactFile(artifact_path) => {
+            handle_artifact_verify(
+                &artifact_path,
+                cmd.signature,
+                cmd.identity_bundle,
+                cmd.witness_receipts,
+                &cmd.witness_keys,
+                cmd.witness_threshold,
+                false,
+            )
+            .await
         }
     }
 }
@@ -194,6 +221,39 @@ mod tests {
 
     #[test]
     fn test_parse_verify_target_file() {
+        use std::fs::File;
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let f = dir.path().join("attestation.json");
+        File::create(&f).unwrap();
+        let target = parse_verify_target(f.to_str().unwrap());
+        assert!(matches!(target, VerifyTarget::Attestation(_)));
+    }
+
+    #[test]
+    fn test_parse_verify_target_binary_file_routes_to_artifact() {
+        use std::fs::File;
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let artifact = dir.path().join("release.tar.gz");
+        File::create(&artifact).unwrap();
+        let target = parse_verify_target(artifact.to_str().unwrap());
+        assert!(matches!(target, VerifyTarget::ArtifactFile(_)));
+    }
+
+    #[test]
+    fn test_parse_verify_target_json_file_routes_to_attestation() {
+        use std::fs::File;
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let attest = dir.path().join("release.auths.json");
+        File::create(&attest).unwrap();
+        let target = parse_verify_target(attest.to_str().unwrap());
+        assert!(matches!(target, VerifyTarget::Attestation(_)));
+    }
+
+    #[test]
+    fn test_parse_verify_target_plain_json_routes_to_attestation() {
         use std::fs::File;
         use tempfile::tempdir;
         let dir = tempdir().unwrap();

@@ -44,7 +44,7 @@ fn create_signed_attestation(
 }
 
 fn write_attestation_to_file(att: &Attestation) -> NamedTempFile {
-    let mut file = NamedTempFile::new().unwrap();
+    let mut file = tempfile::Builder::new().suffix(".json").tempfile().unwrap();
     let json = serde_json::to_string(att).unwrap();
     file.write_all(json.as_bytes()).unwrap();
     file.flush().unwrap();

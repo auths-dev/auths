@@ -133,16 +133,23 @@ Exit codes: `0` for valid, `1` for invalid/unsigned, `2` for errors.
 
 ### Verifying artifacts
 
-Verify a signed artifact attestation:
+Verify a signed artifact by passing the artifact file directly — `auths` finds the `.auths.json` sidecar automatically:
 
 ```bash
-auths verify myproject.tar.gz.auths.json --issuer-pk <hex-encoded-public-key>
+auths verify myproject.tar.gz --issuer-pk <hex-encoded-public-key>
 ```
 
 Or using the issuer's DID:
 
 ```bash
-auths verify myproject.tar.gz.auths.json --issuer-did did:keri:EaBcDeFg...
+auths verify myproject.tar.gz --issuer-did did:keri:EaBcDeFg...
+```
+
+You can also pass the attestation file directly, or override the sidecar path:
+
+```bash
+auths verify myproject.tar.gz.auths.json --issuer-pk <hex-encoded-public-key>
+auths verify myproject.tar.gz --signature /path/to/custom.auths.json --issuer-pk <hex-encoded-public-key>
 ```
 
 ### JSON output for CI parsing
