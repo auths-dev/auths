@@ -7,10 +7,10 @@ use anyhow::{Result, anyhow};
 use auths_utils::path::expand_tilde;
 use clap::{Parser, Subcommand};
 
-use auths_core::witness::{WitnessServerConfig, WitnessServerState, run_server};
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::witness_config::WitnessConfig;
-use auths_storage::git::RegistryIdentityStorage;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::storage::RegistryIdentityStorage;
+use auths_sdk::witness::WitnessConfig;
+use auths_sdk::witness::{WitnessServerConfig, WitnessServerState, run_server};
 
 /// Manage the KERI witness server.
 #[derive(Parser, Debug, Clone)]
@@ -68,7 +68,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             rt.block_on(async {
                 let state = {
                     let (seed, pubkey) =
-                        auths_core::crypto::provider_bridge::generate_ed25519_keypair_sync()
+                        auths_sdk::crypto::provider_bridge::generate_ed25519_keypair_sync()
                             .map_err(|e| anyhow::anyhow!("Failed to generate keypair: {}", e))?;
 
                     let witness_did = if let Some(did) = witness_did {

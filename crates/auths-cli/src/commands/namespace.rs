@@ -5,20 +5,20 @@ use clap::{Parser, Subcommand};
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
-use auths_core::ports::namespace::{Ecosystem, PackageName};
-use auths_core::signing::StorageSigner;
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
 use auths_crypto::AuthsErrorInfo;
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::storage::layout;
 use auths_infra_http::resolve_verified_platform_context;
 use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
+use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
 use auths_sdk::namespace_registry::NamespaceVerifierRegistry;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::ports::{Ecosystem, PackageName};
+use auths_sdk::signing::StorageSigner;
+use auths_sdk::storage::RegistryIdentityStorage;
+use auths_sdk::storage_layout::layout;
 use auths_sdk::workflows::namespace::{
     DelegateNamespaceCommand, TransferNamespaceCommand, initiate_namespace_claim,
     parse_claim_response, parse_lookup_response, sign_namespace_delegate, sign_namespace_transfer,
 };
-use auths_storage::git::RegistryIdentityStorage;
 use auths_verifier::CanonicalDid;
 
 /// Manage namespace claims in package ecosystems.
@@ -276,7 +276,7 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
                     Err(auths_sdk::workflows::namespace::NamespaceError::VerificationFailed(
                         ref verify_err,
                     )) => {
-                        use auths_core::ports::namespace::NamespaceVerifyError;
+                        use auths_sdk::ports::NamespaceVerifyError;
                         match verify_err {
                             NamespaceVerifyError::OwnershipNotConfirmed { ecosystem, .. }
                                 if attempt + 1 < max_retries =>

@@ -4,7 +4,7 @@ use crate::adapters::doctor_fixes::{AllowedSignersFix, GitSigningConfigFix};
 use crate::adapters::system_diagnostic::PosixDiagnosticAdapter;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::Result;
-use auths_core::storage::keychain;
+use auths_sdk::keychain;
 use auths_sdk::ports::diagnostics::{
     CheckCategory, CheckResult, ConfigIssue, DiagnosticFix, FixApplied,
 };
@@ -256,7 +256,7 @@ fn apply_fixes(checks: &[Check], out: Option<&Output>) -> Vec<FixApplied> {
 fn build_available_fixes() -> Vec<Box<dyn DiagnosticFix>> {
     let mut fixes: Vec<Box<dyn DiagnosticFix>> = Vec::new();
 
-    if let Ok(repo_path) = auths_core::paths::auths_home() {
+    if let Ok(repo_path) = auths_sdk::paths::auths_home() {
         fixes.push(Box::new(AllowedSignersFix::new(repo_path)));
     }
 
@@ -355,7 +355,7 @@ fn check_keychain_accessible() -> Check {
 }
 
 fn check_auths_repo() -> Check {
-    let (passed, detail, suggestion) = match auths_core::paths::auths_home() {
+    let (passed, detail, suggestion) = match auths_sdk::paths::auths_home() {
         Ok(path) => {
             if !path.exists() {
                 (
@@ -447,10 +447,10 @@ enum ExpiryStatus {
 }
 
 fn check_attestation_expiry(now: DateTime<Utc>) -> ExpiryStatus {
-    use auths_id::storage::attestation::AttestationSource;
-    use auths_storage::git::RegistryAttestationStorage;
+    use auths_sdk::ports::AttestationSource;
+    use auths_sdk::storage::RegistryAttestationStorage;
 
-    let repo_path = match auths_core::paths::auths_home() {
+    let repo_path = match auths_sdk::paths::auths_home() {
         Ok(p) if p.exists() => p,
         _ => return ExpiryStatus::NoAttestations,
     };

@@ -5,8 +5,8 @@ use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::PassphraseProvider;
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::signing::PassphraseProvider;
 
 use super::artifact::sign::handle_sign as handle_artifact_sign;
 

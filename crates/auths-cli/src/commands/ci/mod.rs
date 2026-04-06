@@ -8,8 +8,8 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use std::sync::Arc;
 
-use auths_core::signing::PassphraseProvider;
-use auths_id::storage::layout;
+use auths_sdk::signing::PassphraseProvider;
+use auths_sdk::storage_layout::layout;
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;

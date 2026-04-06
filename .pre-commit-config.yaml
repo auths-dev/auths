@@ -21,6 +21,13 @@ repos:
       # ── Fast gates (commit) ──────────────────────────────────────────────
       # These run on every `git commit`. They should take < 3 seconds incrementally.
 
+      - id: check-sdk-boundary
+        name: SDK boundary check (CLI must not import core/id/storage)
+        entry: bash scripts/check_sdk_boundary.sh
+        language: system
+        files: crates/auths-cli/src/.*\.rs$
+        pass_filenames: false
+
       - id: cargo-fmt
         name: cargo fmt
         entry: cargo fmt --all

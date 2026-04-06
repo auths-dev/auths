@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::PassphraseProvider;
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::signing::validate_commit_sha;
 
 #[derive(Args, Debug, Clone)]

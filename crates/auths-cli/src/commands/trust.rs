@@ -4,7 +4,7 @@
 
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::{Context, Result, anyhow};
-use auths_core::trust::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
+use auths_sdk::trust::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
 use auths_verifier::PublicKeyHex;
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};

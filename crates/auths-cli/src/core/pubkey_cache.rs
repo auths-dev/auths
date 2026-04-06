@@ -13,7 +13,7 @@ use super::fs::{create_restricted_dir, write_sensitive_file};
 
 /// Get the pubkey cache directory path (~/.auths/pubkeys), respecting AUTHS_HOME.
 fn get_pubkey_cache_dir() -> Result<PathBuf> {
-    Ok(auths_core::paths::auths_home()
+    Ok(auths_sdk::paths::auths_home()
         .map_err(|e| anyhow!(e))?
         .join("pubkeys"))
 }

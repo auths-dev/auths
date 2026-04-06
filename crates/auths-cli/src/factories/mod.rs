@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use auths_core::config::{EnvironmentConfig, load_config};
-use auths_core::paths::auths_home;
-use auths_core::signing::{KeychainPassphraseProvider, PassphraseProvider};
-use auths_core::storage::passphrase_cache::{get_passphrase_cache, parse_duration_str};
+use auths_sdk::core_config::{EnvironmentConfig, load_config};
+use auths_sdk::keychain::{get_passphrase_cache, parse_duration_str};
+use auths_sdk::paths::auths_home;
 use auths_sdk::ports::agent::AgentSigningPort;
+use auths_sdk::signing::{KeychainPassphraseProvider, PassphraseProvider};
 use auths_telemetry::TelemetryShutdown;
 use auths_telemetry::config::{build_sinks_from_config, load_audit_config};
 use auths_telemetry::sinks::composite::CompositeSink;

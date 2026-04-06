@@ -18,6 +18,41 @@
 //! SDK functions accept typed configs and return structured `Result` types.
 //! They never prompt for input, print to stdout, or call `process::exit()`.
 
+// ── Re-export modules: types from auths-core, auths-id, auths-storage ──
+// These allow CLI and API consumers to import through auths-sdk instead of
+// depending on lower-layer crates directly.
+
+/// Re-exports of agent process types from `auths-core`.
+pub mod agent_core;
+/// Re-exports of attestation operations from `auths-id`.
+pub mod attestation;
+/// Re-exports of configuration types from `auths-core`.
+pub mod core_config;
+/// Re-exports of cryptographic utilities from `auths-core`.
+pub mod crypto;
+/// Re-exports of FFI types from `auths-core`.
+pub mod ffi;
+/// Re-exports of freeze types from `auths-id`.
+pub mod freeze;
+/// Re-exports of identity types and operations from `auths-id`.
+pub mod identity;
+/// Re-exports of KERI cache module from `auths-id`.
+pub mod keri;
+/// Re-exports of keychain and key storage types from `auths-core`.
+pub mod keychain;
+/// Re-exports of path utilities from `auths-core`.
+pub mod paths;
+/// Re-exports of Git storage backend types from `auths-storage`.
+pub mod storage;
+/// Re-exports of storage layout types from `auths-id`.
+pub mod storage_layout;
+/// Re-exports of trust and pinned identity types from `auths-core`.
+pub mod trust;
+/// Re-exports of witness server and config types.
+pub mod witness;
+
+// ── SDK modules ──
+
 /// Audit event emission convenience for SDK operations.
 pub mod audit;
 /// Runtime dependency container (`AuthsContext`) for injecting infrastructure adapters.

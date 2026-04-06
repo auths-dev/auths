@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
-use auths_core::ports::network::RegistryClient;
 use auths_infra_http::HttpRegistryClient;
+use auths_sdk::ports::RegistryClient;
 use auths_transparency::SignedCheckpoint;
 use clap::{Args, Subcommand};
 use serde::Serialize;

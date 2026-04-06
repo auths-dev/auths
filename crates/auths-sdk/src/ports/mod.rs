@@ -14,3 +14,18 @@ pub mod git_config;
 pub mod pairing;
 /// Platform claim port traits for OAuth device flow, proof publishing, and registry submission.
 pub mod platform;
+
+// Re-exports from auths-core ports
+pub use auths_core::ports::clock::SystemClock;
+pub use auths_core::ports::config_store::{ConfigStore, ConfigStoreError};
+pub use auths_core::ports::id::{SystemUuidProvider, UuidProvider};
+pub use auths_core::ports::namespace::{Ecosystem, NamespaceVerifyError, PackageName};
+pub use auths_core::ports::network::RegistryClient;
+pub use auths_core::ports::ssh_agent::{SshAgentError, SshAgentPort};
+pub use auths_core::ports::storage::StorageError as CoreStorageError;
+
+// Re-exports from auths-id ports
+pub use auths_id::ports::registry::RegistryBackend;
+pub use auths_id::storage::attestation::AttestationSource;
+pub use auths_id::storage::git_refs::AttestationMetadata;
+pub use auths_id::storage::identity::IdentityStorage;

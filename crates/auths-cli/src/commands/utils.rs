@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use std::path::PathBuf;
 
 use auths_crypto::{ed25519_pubkey_to_did_key, openssh_pub_to_raw_ed25519};
-use auths_id::identity::helpers::{encode_seed_as_pkcs8, load_keypair_from_der_or_seed};
+use auths_sdk::identity::{encode_seed_as_pkcs8, load_keypair_from_der_or_seed};
 
 use crate::commands::device::verify_attestation::handle_verify_attestation;
 

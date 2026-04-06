@@ -5,9 +5,9 @@
 //! with `sign_with_seed()`.
 
 #[cfg(unix)]
-use auths_core::agent::{AgentStatus, add_identity, agent_sign, check_agent_status};
+use auths_sdk::agent_core::{AgentStatus, add_identity, agent_sign, check_agent_status};
 #[cfg(unix)]
-use auths_core::crypto::ssh::{construct_sshsig_pem, construct_sshsig_signed_data};
+use auths_sdk::crypto::{construct_sshsig_pem, construct_sshsig_signed_data};
 use auths_sdk::ports::agent::{AgentSigningError, AgentSigningPort};
 
 #[cfg(unix)]

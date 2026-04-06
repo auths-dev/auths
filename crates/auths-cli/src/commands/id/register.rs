@@ -5,14 +5,14 @@ use anyhow::{Result, bail};
 use auths_verifier::IdentityDID;
 use serde::Serialize;
 
-use auths_id::ports::registry::RegistryBackend;
-use auths_id::storage::attestation::AttestationSource;
-use auths_id::storage::identity::IdentityStorage;
 use auths_infra_http::HttpRegistryClient;
 use auths_sdk::domains::identity::error::RegistrationError;
 pub use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::domains::identity::types::RegistrationOutcome;
-use auths_storage::git::{
+use auths_sdk::ports::AttestationSource;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::ports::RegistryBackend;
+use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 

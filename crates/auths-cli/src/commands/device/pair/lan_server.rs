@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use auths_core::pairing::types::{CreateSessionRequest, SubmitResponseRequest};
 use auths_pairing_daemon::{PairingDaemonBuilder, PairingDaemonHandle};
+use auths_sdk::pairing::{CreateSessionRequest, SubmitResponseRequest};
 
 /// Detect the LAN IP address of this machine.
 pub fn detect_lan_ip() -> std::io::Result<IpAddr> {
@@ -98,7 +98,7 @@ impl LanPairingServer {
     pub async fn wait_for_response(
         self,
         timeout: Duration,
-    ) -> Result<SubmitResponseRequest, auths_core::pairing::PairingError> {
+    ) -> Result<SubmitResponseRequest, auths_sdk::error::PairingError> {
         self.cancel.cancel();
 
         self.handle
@@ -106,7 +106,7 @@ impl LanPairingServer {
             .await
             .map_err(|e| match e {
                 auths_pairing_daemon::DaemonError::Pairing(pe) => pe,
-                other => auths_core::pairing::PairingError::LocalServerError(other.to_string()),
+                other => auths_sdk::error::PairingError::LocalServerError(other.to_string()),
             })
     }
 }

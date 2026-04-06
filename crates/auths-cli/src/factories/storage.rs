@@ -2,18 +2,18 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
-use auths_core::config::EnvironmentConfig;
-use auths_core::ports::clock::SystemClock;
-use auths_core::ports::storage::StorageError;
-use auths_core::signing::PassphraseProvider;
-use auths_core::storage::keychain::get_platform_keychain_with_config;
-use auths_id::attestation::export::AttestationSink;
-use auths_id::ports::registry::RegistryBackend;
-use auths_id::storage::attestation::AttestationSource;
-use auths_id::storage::identity::IdentityStorage;
 use auths_infra_git::GitRepo;
+use auths_sdk::attestation::AttestationSink;
 use auths_sdk::context::AuthsContext;
-use auths_storage::git::{
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::keychain::get_platform_keychain_with_config;
+use auths_sdk::ports::AttestationSource;
+use auths_sdk::ports::CoreStorageError as StorageError;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::ports::RegistryBackend;
+use auths_sdk::ports::SystemClock;
+use auths_sdk::signing::PassphraseProvider;
+use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 

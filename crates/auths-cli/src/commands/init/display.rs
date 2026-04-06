@@ -87,14 +87,14 @@ pub(crate) fn display_agent_dry_run(
     }
     out.newline();
     out.print_info("TOML config that would be generated:");
-    let provisioning_config = auths_id::agent_identity::AgentProvisioningConfig {
+    let provisioning_config = auths_sdk::identity::AgentProvisioningConfig {
         agent_name: config.alias.to_string(),
         capabilities: config.capabilities.iter().map(|c| c.to_string()).collect(),
         expires_in: config.expires_in,
         delegated_by: None,
-        storage_mode: auths_id::agent_identity::AgentStorageMode::Persistent { repo_path: None },
+        storage_mode: auths_sdk::identity::AgentStorageMode::Persistent { repo_path: None },
     };
-    out.println(&auths_id::agent_identity::format_agent_toml(
+    out.println(&auths_sdk::identity::format_agent_toml(
         "did:keri:E<pending>",
         "agent-key",
         &provisioning_config,

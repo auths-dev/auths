@@ -1,10 +1,10 @@
 //! Signer management commands for Auths.
 
 use anyhow::{Context, Result};
+use auths_sdk::storage::RegistryAttestationStorage;
 use auths_sdk::workflows::allowed_signers::{
     AllowedSigners, AllowedSignersError, EmailAddress, SignerPrincipal, SignerSource, SyncReport,
 };
-use auths_storage::git::RegistryAttestationStorage;
 use auths_verifier::core::Ed25519PublicKey;
 use clap::{Parser, Subcommand};
 use ssh_key::PublicKey as SshPublicKey;

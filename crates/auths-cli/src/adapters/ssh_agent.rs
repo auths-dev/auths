@@ -1,6 +1,6 @@
 //! CLI adapter for system SSH agent key registration via `ssh-add`.
 
-use auths_core::ports::ssh_agent::{SshAgentError, SshAgentPort};
+use auths_sdk::ports::{SshAgentError, SshAgentPort};
 use std::path::Path;
 use std::process::Command;
 

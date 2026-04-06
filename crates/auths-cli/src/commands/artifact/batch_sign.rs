@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::PassphraseProvider;
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::workflows::ci::batch_attest::{
     BatchEntry, BatchEntryResult, BatchSignConfig, batch_sign_artifacts, default_attestation_path,
 };
@@ -43,7 +43,7 @@ pub fn handle_batch_sign(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    let repo_path = auths_id::storage::layout::resolve_repo_path(repo_opt)?;
+    let repo_path = auths_sdk::storage_layout::resolve_repo_path(repo_opt)?;
     let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
 
     let paths = expand_glob(pattern)?;

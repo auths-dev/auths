@@ -7,8 +7,15 @@
 #[cfg(feature = "lan-pairing")]
 pub mod lan;
 
-use auths_core::pairing::types::{Base64UrlEncoded, SubmitResponseRequest};
-use auths_core::pairing::{PairingResponse, PairingToken, SessionStatus, normalize_short_code};
+// Re-exports of pairing types from auths-core for CLI consumption
+pub use auths_core::pairing::types::{
+    Base64UrlEncoded, CreateSessionRequest, SubmitResponseRequest,
+};
+pub use auths_core::pairing::{
+    PairingResponse, PairingSession, PairingToken, QrOptions, normalize_short_code, render_qr,
+};
+
+use auths_core::pairing::SessionStatus;
 use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::pairing::PairingRelayClient;
 use auths_core::signing::PassphraseProvider;

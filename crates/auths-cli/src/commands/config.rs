@@ -3,7 +3,7 @@
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 use anyhow::{Result, bail};
-use auths_core::config::{AuthsConfig, PassphraseCachePolicy, load_config, save_config};
+use auths_sdk::core_config::{AuthsConfig, PassphraseCachePolicy, load_config, save_config};
 
 use crate::adapters::config_store::FileConfigStore;
 use clap::{Parser, Subcommand};
@@ -71,7 +71,7 @@ fn execute_set(key: &str, value: &str) -> Result<()> {
             config.passphrase.cache = parse_cache_policy(value)?;
         }
         "passphrase.duration" => {
-            auths_core::storage::passphrase_cache::parse_duration_str(value).ok_or_else(|| {
+            auths_sdk::keychain::parse_duration_str(value).ok_or_else(|| {
                 anyhow::anyhow!(
                     "Invalid duration '{}'. Use formats like '7d', '24h', '30m', '3600s'.",
                     value

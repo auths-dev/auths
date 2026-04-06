@@ -5,12 +5,10 @@ use std::ffi::CString;
 use std::fs;
 use std::path::PathBuf;
 
-use auths_core::api::ffi;
-use auths_core::error::AgentError;
-use auths_core::storage::encrypted_file::EncryptedFileStorage;
-use auths_core::storage::keychain::{
-    IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain,
-};
+use auths_sdk::error::AgentError;
+use auths_sdk::ffi::ffi;
+use auths_sdk::keychain::EncryptedFileStorage;
+use auths_sdk::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::core::types::ExportFormat;

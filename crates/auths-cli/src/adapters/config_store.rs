@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use auths_core::ports::config_store::{ConfigStore, ConfigStoreError};
+use auths_sdk::ports::{ConfigStore, ConfigStoreError};
 
 /// Reads and writes config files from the local filesystem.
 pub struct FileConfigStore;

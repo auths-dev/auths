@@ -292,15 +292,15 @@ fn handle_revoke_device(
     now: chrono::DateTime<chrono::Utc>,
     ctx: &crate::config::CliConfig,
 ) -> Result<()> {
-    use auths_core::signing::StorageSigner;
-    use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
-    use auths_id::attestation::export::AttestationSink;
-    use auths_id::attestation::revoke::create_signed_revocation;
-    use auths_id::identity::helpers::ManagedIdentity;
-    use auths_id::storage::attestation::AttestationSource;
-    use auths_id::storage::identity::IdentityStorage;
-    use auths_id::storage::layout;
-    use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
+    use auths_sdk::attestation::AttestationSink;
+    use auths_sdk::attestation::create_signed_revocation;
+    use auths_sdk::identity::ManagedIdentity;
+    use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
+    use auths_sdk::ports::AttestationSource;
+    use auths_sdk::ports::IdentityStorage;
+    use auths_sdk::signing::StorageSigner;
+    use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
+    use auths_sdk::storage_layout::layout;
     use auths_verifier::Ed25519PublicKey;
     use auths_verifier::types::DeviceDID;
 
@@ -427,9 +427,9 @@ fn handle_rotate_now(
     now: chrono::DateTime<chrono::Utc>,
     ctx: &crate::config::CliConfig,
 ) -> Result<()> {
-    use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
-    use auths_id::identity::rotate::rotate_keri_identity;
-    use auths_id::storage::layout::{self, StorageLayoutConfig};
+    use auths_sdk::identity::rotate_keri_identity;
+    use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
+    use auths_sdk::storage_layout::{StorageLayoutConfig, layout};
 
     let out = Output::new();
 
@@ -527,8 +527,8 @@ fn handle_rotate_now(
 
 /// Handle freeze operation — temporarily disables all signing.
 fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
-    use auths_id::freeze::{FreezeState, load_active_freeze, parse_duration, store_freeze};
-    use auths_id::storage::layout;
+    use auths_sdk::freeze::{FreezeState, load_active_freeze, parse_duration, store_freeze};
+    use auths_sdk::storage_layout::layout;
 
     let out = Output::new();
 
@@ -625,8 +625,8 @@ fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Resu
 
 /// Handle unfreeze — cancel an active freeze early.
 fn handle_unfreeze(cmd: UnfreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
-    use auths_id::freeze::{load_active_freeze, remove_freeze};
-    use auths_id::storage::layout;
+    use auths_sdk::freeze::{load_active_freeze, remove_freeze};
+    use auths_sdk::storage_layout::layout;
 
     let out = Output::new();
 
@@ -665,11 +665,11 @@ fn handle_unfreeze(cmd: UnfreezeCommand, now: chrono::DateTime<chrono::Utc>) -> 
 
 /// Handle incident report generation.
 fn handle_report(cmd: ReportCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
-    use auths_id::identity::helpers::ManagedIdentity;
-    use auths_id::storage::attestation::AttestationSource;
-    use auths_id::storage::identity::IdentityStorage;
-    use auths_id::storage::layout;
-    use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
+    use auths_sdk::identity::ManagedIdentity;
+    use auths_sdk::ports::AttestationSource;
+    use auths_sdk::ports::IdentityStorage;
+    use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
+    use auths_sdk::storage_layout::layout;
 
     let out = Output::new();
 
@@ -909,7 +909,7 @@ mod tests {
         assert!(dir.path().join("freeze.json").exists());
 
         // Verify the freeze is active
-        let state = auths_id::freeze::load_active_freeze(dir.path(), chrono::Utc::now()).unwrap();
+        let state = auths_sdk::freeze::load_active_freeze(dir.path(), chrono::Utc::now()).unwrap();
         assert!(state.is_some());
     }
 
