@@ -7,10 +7,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_core::{
-    config::EnvironmentConfig,
+use auths_sdk::{
+    core_config::EnvironmentConfig,
+    keychain::{KeyAlias, get_platform_keychain},
     signing::PassphraseProvider,
-    storage::keychain::{KeyAlias, get_platform_keychain},
 };
 use auths_verifier::{IdentityBundle, IdentityDID, Prefix};
 use clap::ValueEnum;
@@ -27,17 +27,13 @@ struct IdShowResponse {
     metadata: Option<serde_json::Value>,
 }
 
-use auths_id::{
-    identity::initialize::initialize_registry_identity,
-    ports::registry::RegistryBackend,
-    storage::{
-        attestation::AttestationSource,
-        identity::IdentityStorage,
-        layout::{self, StorageLayoutConfig},
-    },
-};
-use auths_storage::git::{
+use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
+};
+use auths_sdk::{
+    identity::initialize_registry_identity,
+    ports::{AttestationSource, IdentityStorage, RegistryBackend},
+    storage_layout::{StorageLayoutConfig, layout},
 };
 
 /// Storage layout presets for different ecosystems.
@@ -538,16 +534,15 @@ pub fn handle_id(
                 next_key_alias: next_key_alias.map(KeyAlias::new_unchecked),
             };
             let rotation_ctx = {
-                use auths_core::storage::keychain::get_platform_keychain_with_config;
-                use auths_id::attestation::export::AttestationSink;
-                use auths_id::storage::attestation::AttestationSource;
-                use auths_id::storage::identity::IdentityStorage;
+                use auths_sdk::attestation::AttestationSink;
                 use auths_sdk::context::AuthsContext;
-                use auths_storage::git::{
+                use auths_sdk::keychain::get_platform_keychain_with_config;
+                use auths_sdk::ports::{AttestationSource, IdentityStorage};
+                use auths_sdk::storage::{
                     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig,
                     RegistryIdentityStorage,
                 };
-                let backend: Arc<dyn auths_id::ports::registry::RegistryBackend + Send + Sync> =
+                let backend: Arc<dyn auths_sdk::ports::RegistryBackend + Send + Sync> =
                     Arc::new(GitRegistryBackend::from_config_unchecked(
                         RegistryConfig::single_tenant(&repo_path),
                     ));
@@ -558,15 +553,14 @@ pub fn handle_id(
                     Arc::clone(&attestation_store) as Arc<dyn AttestationSink + Send + Sync>;
                 let attestation_source: Arc<dyn AttestationSource + Send + Sync> =
                     attestation_store as Arc<dyn AttestationSource + Send + Sync>;
-                let key_storage: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
-                    Arc::from(
-                        get_platform_keychain_with_config(env_config)
-                            .context("Failed to access keychain")?,
-                    );
+                let key_storage: Arc<dyn auths_sdk::keychain::KeyStorage + Send + Sync> = Arc::from(
+                    get_platform_keychain_with_config(env_config)
+                        .context("Failed to access keychain")?,
+                );
                 AuthsContext::builder()
                     .registry(backend)
                     .key_storage(key_storage)
-                    .clock(Arc::new(auths_core::ports::clock::SystemClock))
+                    .clock(Arc::new(auths_sdk::ports::SystemClock))
                     .identity_storage(identity_storage)
                     .attestation_sink(attestation_sink)
                     .attestation_source(attestation_source)
@@ -576,7 +570,7 @@ pub fn handle_id(
             let result = auths_sdk::workflows::rotation::rotate_identity(
                 rotation_config,
                 &rotation_ctx,
-                &auths_core::ports::clock::SystemClock,
+                &auths_sdk::ports::SystemClock,
             )
             .with_context(|| "Failed to rotate KERI identity keys")?;
 
@@ -633,9 +627,9 @@ pub fn handle_id(
             // Decrypt to get public key
             let pass = passphrase_provider
                 .get_passphrase(&format!("Enter passphrase for key '{}':", alias))?;
-            let pkcs8_bytes = auths_core::crypto::signer::decrypt_keypair(&encrypted_key, &pass)
+            let pkcs8_bytes = auths_sdk::crypto::decrypt_keypair(&encrypted_key, &pass)
                 .context("Failed to decrypt key")?;
-            let keypair = auths_id::identity::helpers::load_keypair_from_der_or_seed(&pkcs8_bytes)?;
+            let keypair = auths_sdk::identity::load_keypair_from_der_or_seed(&pkcs8_bytes)?;
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: hex::encode of Ed25519 pubkey always produces valid hex
             let public_key_hex = auths_verifier::PublicKeyHex::new_unchecked(hex::encode(
@@ -691,9 +685,9 @@ pub fn handle_id(
             }
 
             use crate::constants::GITHUB_SSH_UPLOAD_SCOPES;
-            use auths_core::ports::platform::OAuthDeviceFlowProvider;
-            use auths_core::storage::keychain::extract_public_key_bytes;
             use auths_infra_http::{HttpGitHubOAuthProvider, HttpGitHubSshKeyUploader};
+            use auths_sdk::keychain::extract_public_key_bytes;
+            use auths_sdk::ports::platform::OAuthDeviceFlowProvider;
             use std::time::Duration;
 
             const GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";

@@ -1,34 +1,28 @@
 use anyhow::{Context, Result, anyhow};
-use auths_core::crypto::signer::decrypt_keypair;
-use auths_id::attestation::create::create_signed_attestation;
-use auths_id::attestation::revoke::create_signed_revocation;
-use auths_id::identity::initialize::initialize_registry_identity;
-use auths_id::identity::resolve::DidResolver;
+use auths_sdk::attestation::create_signed_attestation;
+use auths_sdk::attestation::create_signed_revocation;
+use auths_sdk::crypto::decrypt_keypair;
+use auths_sdk::identity::DidResolver;
+use auths_sdk::identity::initialize_registry_identity;
 use chrono::{DateTime, Utc};
 use clap::{ArgAction, Parser, Subcommand};
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
 
-use auths_core::signing::StorageSigner;
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
-use auths_id::{
-    attestation::{export::AttestationSink, group::AttestationGroup, verify::verify_with_resolver},
-    identity::resolve::DefaultDidResolver,
-    storage::git_refs::AttestationMetadata,
-    storage::{
-        attestation::AttestationSource,
-        identity::IdentityStorage,
-        layout::{self, StorageLayoutConfig},
-    },
-};
+use auths_sdk::attestation::{AttestationGroup, AttestationSink, verify_with_resolver};
+use auths_sdk::identity::DefaultDidResolver;
+use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
+use auths_sdk::ports::{AttestationMetadata, AttestationSource, IdentityStorage};
+use auths_sdk::signing::StorageSigner;
+use auths_sdk::storage_layout::{StorageLayoutConfig, layout};
 
+use auths_sdk::storage::{
+    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
+};
 use auths_sdk::workflows::org::{
     AddMemberCommand, OrgContext, RevokeMemberCommand, Role, add_organization_member,
     member_role_order, revoke_organization_member,
-};
-use auths_storage::git::{
-    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::types::DeviceDID;
 use auths_verifier::{Capability, Ed25519PublicKey, Prefix, PublicKeyHex};
@@ -719,13 +713,13 @@ pub fn handle_org(
             let org_prefix = org.strip_prefix("did:keri:").unwrap_or(&org).to_string();
 
             let signer = StorageSigner::new(key_storage);
-            let uuid_provider = auths_core::ports::id::SystemUuidProvider;
+            let uuid_provider = auths_sdk::ports::SystemUuidProvider;
 
             let org_ctx = OrgContext {
                 registry: &*std::sync::Arc::new(GitRegistryBackend::from_config_unchecked(
                     RegistryConfig::single_tenant(&repo_path),
                 )),
-                clock: &auths_core::ports::clock::SystemClock,
+                clock: &auths_sdk::ports::SystemClock,
                 uuid_provider: &uuid_provider,
                 signer: &signer,
                 passphrase_provider: passphrase_provider.as_ref(),
@@ -826,13 +820,13 @@ pub fn handle_org(
             let org_prefix = org.strip_prefix("did:keri:").unwrap_or(&org).to_string();
 
             let signer = StorageSigner::new(key_storage);
-            let uuid_provider = auths_core::ports::id::SystemUuidProvider;
+            let uuid_provider = auths_sdk::ports::SystemUuidProvider;
 
             let org_ctx = OrgContext {
                 registry: &*std::sync::Arc::new(GitRegistryBackend::from_config_unchecked(
                     RegistryConfig::single_tenant(&repo_path),
                 )),
-                clock: &auths_core::ports::clock::SystemClock,
+                clock: &auths_sdk::ports::SystemClock,
                 uuid_provider: &uuid_provider,
                 signer: &signer,
                 passphrase_provider: passphrase_provider.as_ref(),
@@ -1040,7 +1034,7 @@ fn handle_join(code: &str, registry: &str) -> Result<()> {
     let pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase).context("wrong passphrase")?;
 
     let pkcs8 = auths_crypto::Pkcs8Der::new(&pkcs8_bytes[..]);
-    let seed = auths_core::crypto::ssh::extract_seed_from_pkcs8(&pkcs8)
+    let seed = auths_sdk::crypto::extract_seed_from_pkcs8(&pkcs8)
         .context("failed to extract seed from key material")?;
 
     // Create a signed bearer payload: { did, timestamp, signature }

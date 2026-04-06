@@ -1,7 +1,7 @@
 use tempfile::tempdir;
 
-use auths_id::identity::events::KeyRotationEvent;
-use auths_id::storage::keri::KeriGitStorage;
+use auths_sdk::identity::KeyRotationEvent;
+use auths_sdk::keri::KeriGitStorage;
 use auths_verifier::keri::Prefix;
 
 use chrono::Utc;

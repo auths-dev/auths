@@ -339,9 +339,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
- "auths-core",
  "auths-crypto",
- "auths-id",
  "auths-index",
  "auths-infra-git",
  "auths-infra-http",
@@ -349,7 +347,6 @@ dependencies = [
  "auths-pairing-protocol",
  "auths-policy",
  "auths-sdk",
- "auths-storage",
  "auths-telemetry",
  "auths-transparency",
  "auths-utils",

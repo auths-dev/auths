@@ -1,8 +1,7 @@
-use auths_id::storage::attestation::AttestationSource;
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::storage::layout::StorageLayoutConfig;
-use auths_id::storage::layout::{attestation_ref_for_device, identity_ref};
-use auths_storage::git::{GitAttestationStorage, GitIdentityStorage};
+use auths_sdk::ports::AttestationSource;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::storage::{GitAttestationStorage, GitIdentityStorage};
+use auths_sdk::storage_layout::{StorageLayoutConfig, attestation_ref_for_device, identity_ref};
 use auths_verifier::types::DeviceDID;
 use tempfile::tempdir;
 

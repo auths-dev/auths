@@ -1,4 +1,4 @@
-use auths_core::error::AuthsErrorInfo;
+pub use auths_core::error::AuthsErrorInfo;
 use thiserror::Error;
 
 /// Typed storage errors originating from the `auths-id` layer.
@@ -72,3 +72,14 @@ pub use crate::domains::compliance::error::ApprovalError;
 /// Re-export from `auths-core` — defined there to avoid a circular dependency with
 /// `auths-infra-http` (which implements the platform port traits).
 pub use auths_core::ports::platform::PlatformError;
+
+// Re-exported error types from auths-core for CLI error rendering
+pub use auths_core::error::AgentError;
+pub use auths_core::error::TrustError as CoreTrustError;
+pub use auths_core::pairing::PairingError;
+
+// Re-exported error types from auths-id for CLI error rendering
+pub use auths_id::error::FreezeError;
+pub use auths_id::error::InitError;
+pub use auths_id::error::StorageError as IdStorageError;
+pub use auths_id::storage::StorageError as IdDriverStorageError;

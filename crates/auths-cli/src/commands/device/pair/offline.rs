@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use console::style;
 
-use auths_core::pairing::{PairingToken, QrOptions, render_qr};
+use auths_sdk::pairing::{PairingToken, QrOptions, render_qr};
 
 use super::common::*;
 
@@ -17,11 +17,11 @@ pub(crate) fn handle_initiate_offline(
     capabilities: &[String],
 ) -> Result<()> {
     // Try to load controller DID, fall back to placeholder
-    let auths_dir = auths_core::paths::auths_home()
+    let auths_dir = auths_sdk::paths::auths_home()
         .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
     let controller_did = if auths_dir.exists() {
-        let storage = auths_storage::git::RegistryIdentityStorage::new(auths_dir.clone());
+        let storage = auths_sdk::storage::RegistryIdentityStorage::new(auths_dir.clone());
         auths_sdk::pairing::load_controller_did(&storage)
             .unwrap_or_else(|_| "did:keri:offline-test".to_string())
     } else {

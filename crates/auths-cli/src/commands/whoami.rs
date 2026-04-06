@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::storage::layout;
-use auths_storage::git::RegistryIdentityStorage;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::storage::RegistryIdentityStorage;
+use auths_sdk::storage_layout as layout;
 use clap::Parser;
 use serde::Serialize;
 

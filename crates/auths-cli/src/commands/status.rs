@@ -2,12 +2,12 @@
 
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::{Result, anyhow};
-use auths_core::config::EnvironmentConfig;
-use auths_core::storage::keychain::KeyStorage;
-use auths_id::storage::attestation::AttestationSource;
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::storage::layout;
-use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::keychain::KeyStorage;
+use auths_sdk::ports::AttestationSource;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
+use auths_sdk::storage_layout::layout;
 use chrono::{DateTime, Duration, Utc};
 use clap::Parser;
 use serde::Serialize;
@@ -292,16 +292,15 @@ fn load_identity_status(
     let storage = RegistryIdentityStorage::new(repo_path);
     match storage.load_identity() {
         Ok(identity) => {
-            let key_aliases =
-                auths_core::storage::keychain::get_platform_keychain_with_config(env_config)
-                    .ok()
-                    .and_then(|keychain| {
-                        keychain
-                            .list_aliases_for_identity(&identity.controller_did)
-                            .ok()
-                    })
-                    .map(|aliases| aliases.iter().map(|a| a.as_str().to_string()).collect())
-                    .unwrap_or_default();
+            let key_aliases = auths_sdk::keychain::get_platform_keychain_with_config(env_config)
+                .ok()
+                .and_then(|keychain| {
+                    keychain
+                        .list_aliases_for_identity(&identity.controller_did)
+                        .ok()
+                })
+                .map(|aliases| aliases.iter().map(|a| a.as_str().to_string()).collect())
+                .unwrap_or_default();
 
             Some(IdentityStatus {
                 controller_did: identity.controller_did.to_string(),
@@ -454,7 +453,7 @@ fn compute_device_status(
 
 /// Get the auths directory path (~/.auths), respecting AUTHS_HOME.
 fn get_auths_dir() -> Result<PathBuf> {
-    auths_core::paths::auths_home().map_err(|e| anyhow!(e))
+    auths_sdk::paths::auths_home().map_err(|e| anyhow!(e))
 }
 
 /// Resolve the repository path from optional argument or default (~/.auths).

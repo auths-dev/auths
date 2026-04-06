@@ -5,11 +5,11 @@ use dialoguer::{Confirm, Input, Select};
 use std::path::Path;
 use std::sync::Arc;
 
-use auths_core::signing::PassphraseProvider;
-use auths_core::storage::keychain::IdentityDID;
-use auths_id::storage::identity::IdentityStorage;
+use auths_sdk::keychain::IdentityDID;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::signing::PassphraseProvider;
+use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::types::{GitSigningScope, IdentityConflictPolicy};
-use auths_storage::git::RegistryIdentityStorage;
 
 use super::InitCommand;
 use super::InitProfile;
@@ -118,7 +118,7 @@ pub(crate) fn prompt_for_git_scope(interactive: bool) -> Result<GitSigningScope>
 pub(crate) fn prompt_platform_verification(
     out: &Output,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
-    env_config: &auths_core::config::EnvironmentConfig,
+    env_config: &auths_sdk::core_config::EnvironmentConfig,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Option<(String, String)>> {
     let items = [
@@ -146,16 +146,16 @@ pub(crate) fn prompt_platform_verification(
 fn run_github_verification(
     out: &Output,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
-    env_config: &auths_core::config::EnvironmentConfig,
+    env_config: &auths_sdk::core_config::EnvironmentConfig,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Option<(String, String)>> {
     use std::time::Duration;
 
     use crate::constants::GITHUB_SSH_UPLOAD_SCOPES;
-    use auths_core::ports::platform::OAuthDeviceFlowProvider;
-    use auths_core::ports::platform::PlatformProofPublisher;
-    use auths_core::storage::keychain::extract_public_key_bytes;
     use auths_infra_http::{HttpGistPublisher, HttpGitHubOAuthProvider, HttpGitHubSshKeyUploader};
+    use auths_sdk::keychain::extract_public_key_bytes;
+    use auths_sdk::ports::platform::OAuthDeviceFlowProvider;
+    use auths_sdk::ports::platform::PlatformProofPublisher;
     use auths_sdk::workflows::platform::create_signed_platform_claim;
 
     const GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";

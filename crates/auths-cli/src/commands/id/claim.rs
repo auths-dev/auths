@@ -2,11 +2,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::PassphraseProvider;
 use auths_infra_http::{
     HttpGistPublisher, HttpGitHubOAuthProvider, HttpNpmAuthProvider, HttpRegistryClaimClient,
 };
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::workflows::platform::{
     GitHubClaimConfig, NpmClaimConfig, PypiClaimConfig, claim_github_identity, claim_npm_identity,
     claim_pypi_identity,
@@ -84,7 +84,7 @@ pub fn handle_claim(
                 scopes: "read:user gist".to_string(),
             };
 
-            let on_device_code = |code: &auths_core::ports::platform::DeviceCodeResponse| {
+            let on_device_code = |code: &auths_sdk::ports::platform::DeviceCodeResponse| {
                 println!();
                 println!("  Copy this code: {}", style(&code.user_code).bold().cyan());
                 println!("  At: {}", style(&code.verification_uri).cyan());

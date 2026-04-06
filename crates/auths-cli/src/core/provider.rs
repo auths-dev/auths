@@ -1,6 +1,6 @@
 use anyhow::Context;
-use auths_core::error::AgentError;
-use auths_core::signing::PassphraseProvider;
+use auths_sdk::error::AgentError;
+use auths_sdk::signing::PassphraseProvider;
 use zeroize::Zeroizing;
 
 /// A PassphraseProvider implementation that prompts the user on the command line.

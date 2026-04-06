@@ -4,13 +4,13 @@ use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 use std::sync::Arc;
 
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::PassphraseProvider;
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
 use auths_crypto::did_key::ed25519_pubkey_to_did_key;
+use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::domains::ci::bundle::build_identity_bundle;
 use auths_sdk::domains::ci::forge::Forge;
 use auths_sdk::domains::ci::token::CiToken;
+use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
+use auths_sdk::signing::PassphraseProvider;
 use ring::signature::KeyPair;
 use zeroize::Zeroizing;
 
@@ -99,9 +99,9 @@ pub fn run_rotate(
     let (_, _, encrypted_key) = keychain
         .load_key(&key_alias)
         .context("Failed to load CI device key")?;
-    let pkcs8 = auths_core::crypto::signer::decrypt_keypair(&encrypted_key, &ci_pass)
+    let pkcs8 = auths_sdk::crypto::decrypt_keypair(&encrypted_key, &ci_pass)
         .context("Failed to decrypt CI device key")?;
-    let kp = auths_id::identity::helpers::load_keypair_from_der_or_seed(&pkcs8)?;
+    let kp = auths_sdk::identity::load_keypair_from_der_or_seed(&pkcs8)?;
     let pub_bytes: [u8; 32] = kp
         .public_key()
         .as_ref()
@@ -117,8 +117,8 @@ pub fn run_rotate(
 
     // Re-export verify bundle
     let identity_storage =
-        auths_storage::git::RegistryIdentityStorage::new(repo_path.to_path_buf());
-    let identity = auths_id::storage::identity::IdentityStorage::load_identity(&identity_storage)
+        auths_sdk::storage::RegistryIdentityStorage::new(repo_path.to_path_buf());
+    let identity = auths_sdk::ports::IdentityStorage::load_identity(&identity_storage)
         .context("Failed to load identity")?;
     let identity_did_str = identity.controller_did.to_string();
 

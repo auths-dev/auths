@@ -13,7 +13,7 @@ mod offline;
 mod online;
 
 use anyhow::Result;
-use auths_core::config::EnvironmentConfig;
+use auths_sdk::core_config::EnvironmentConfig;
 use chrono::Utc;
 use clap::Parser;
 
@@ -164,7 +164,7 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
 
 #[cfg(test)]
 mod tests {
-    use auths_core::pairing::normalize_short_code;
+    use auths_sdk::pairing::normalize_short_code;
 
     #[test]
     fn test_code_normalization() {

@@ -3,10 +3,10 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use auths_core::config::EnvironmentConfig;
-use auths_core::storage::keychain::{KeyAlias, KeyStorage};
-use auths_id::storage::identity::IdentityStorage;
-use auths_storage::git::RegistryIdentityStorage;
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::keychain::{KeyAlias, KeyStorage};
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::storage::RegistryIdentityStorage;
 use dialoguer::Select;
 use std::io::IsTerminal;
 
@@ -51,13 +51,13 @@ pub fn auto_detect_device_key(
     env_config: &EnvironmentConfig,
 ) -> Result<String> {
     let repo_path =
-        auths_id::storage::layout::resolve_repo_path(repo_opt.map(|p| p.to_path_buf()))?;
+        auths_sdk::storage_layout::resolve_repo_path(repo_opt.map(|p| p.to_path_buf()))?;
     let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
     let identity = identity_storage
         .load_identity()
         .map_err(|_| anyhow!("No identity found. Run `auths init` to get started."))?;
 
-    let keychain = auths_core::storage::keychain::get_platform_keychain_with_config(env_config)
+    let keychain = auths_sdk::keychain::get_platform_keychain_with_config(env_config)
         .context("Failed to access keychain")?;
     let aliases = keychain
         .list_aliases_for_identity(&identity.controller_did)
@@ -91,7 +91,7 @@ pub fn auto_detect_device_key(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_core::storage::keychain::KeyAlias;
+    use auths_sdk::keychain::KeyAlias;
 
     #[test]
     fn filter_removes_next_aliases() {

@@ -351,11 +351,11 @@ fn perform_gpg_migration(
     out: &Output,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
-    use auths_core::error::AgentError;
-    use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
-    use auths_id::identity::initialize::initialize_registry_identity;
-    use auths_id::ports::registry::RegistryBackend;
-    use auths_storage::git::{GitRegistryBackend, RegistryConfig};
+    use auths_sdk::error::AgentError;
+    use auths_sdk::identity::initialize_registry_identity;
+    use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
+    use auths_sdk::ports::RegistryBackend;
+    use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
     use std::fs;
     use std::sync::Arc;
     use zeroize::Zeroizing;
@@ -415,7 +415,7 @@ fn perform_gpg_migration(
 
     // Create a simple passphrase provider that prompts if needed
     struct MigrationPassphraseProvider;
-    impl auths_core::signing::PassphraseProvider for MigrationPassphraseProvider {
+    impl auths_sdk::signing::PassphraseProvider for MigrationPassphraseProvider {
         fn get_passphrase(&self, prompt: &str) -> Result<Zeroizing<String>, AgentError> {
             // For migration, we create unencrypted keys by default
             // Return empty passphrase
@@ -754,11 +754,11 @@ fn perform_ssh_migration(
     out: &Output,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
-    use auths_core::error::AgentError;
-    use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
-    use auths_id::identity::initialize::initialize_registry_identity;
-    use auths_id::ports::registry::RegistryBackend;
-    use auths_storage::git::{GitRegistryBackend, RegistryConfig};
+    use auths_sdk::error::AgentError;
+    use auths_sdk::identity::initialize_registry_identity;
+    use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
+    use auths_sdk::ports::RegistryBackend;
+    use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
     use std::sync::Arc;
     use zeroize::Zeroizing;
 
@@ -813,7 +813,7 @@ fn perform_ssh_migration(
 
     // Create a simple passphrase provider
     struct MigrationPassphraseProvider;
-    impl auths_core::signing::PassphraseProvider for MigrationPassphraseProvider {
+    impl auths_sdk::signing::PassphraseProvider for MigrationPassphraseProvider {
         fn get_passphrase(&self, prompt: &str) -> Result<Zeroizing<String>, AgentError> {
             let _ = prompt;
             Ok(Zeroizing::new(String::new()))

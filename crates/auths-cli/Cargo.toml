@@ -33,13 +33,10 @@ anyhow = "1"
 hex = "0.4.3"
 gethostname = "1.1.0"
 glob.workspace = true
-auths-core = { workspace = true, features = ["witness-server"] }
-auths-id = { workspace = true, features = ["witness-client", "indexed-storage"] }
-auths-storage = { workspace = true, features = ["backend-git"] }
 auths-policy.workspace = true
 auths-index.workspace = true
 auths-crypto.workspace = true
-auths-sdk.workspace = true
+auths-sdk = { workspace = true, features = ["backend-git", "witness-server", "witness-client", "indexed-storage"] }
 auths-transparency = { workspace = true, features = ["native"] }
 auths-pairing-protocol.workspace = true
 auths-telemetry = { workspace = true, features = ["sink-http"] }

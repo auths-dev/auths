@@ -4,19 +4,17 @@ use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 use std::sync::Arc;
 
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::PassphraseProvider;
-use auths_core::storage::encrypted_file::EncryptedFileStorage;
-use auths_core::storage::keychain::{
-    IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain,
-};
 use auths_crypto::did_key::ed25519_pubkey_to_did_key;
-use auths_id::storage::attestation::AttestationSource;
-use auths_id::storage::identity::IdentityStorage;
+use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::domains::ci::bundle::{build_identity_bundle, generate_ci_passphrase};
 use auths_sdk::domains::ci::forge::Forge;
 use auths_sdk::domains::ci::token::CiToken;
-use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
+use auths_sdk::keychain::EncryptedFileStorage;
+use auths_sdk::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain};
+use auths_sdk::ports::AttestationSource;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::signing::PassphraseProvider;
+use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
 use auths_verifier::IdentityBundle;
 use ring::signature::KeyPair;
 use zeroize::Zeroizing;
@@ -150,9 +148,9 @@ pub fn run_setup(
     let (_, _, encrypted_key) = keychain
         .load_key(&key_alias)
         .context("Failed to load CI device key")?;
-    let pkcs8 = auths_core::crypto::signer::decrypt_keypair(&encrypted_key, &ci_pass)
+    let pkcs8 = auths_sdk::crypto::decrypt_keypair(&encrypted_key, &ci_pass)
         .context("Failed to decrypt CI device key")?;
-    let kp = auths_id::identity::helpers::load_keypair_from_der_or_seed(&pkcs8)?;
+    let kp = auths_sdk::identity::load_keypair_from_der_or_seed(&pkcs8)?;
     let pub_bytes: [u8; 32] = kp
         .public_key()
         .as_ref()
@@ -313,7 +311,7 @@ fn link_ci_device(
     auths_sdk::domains::device::service::link_device(
         link_config,
         &ctx,
-        &auths_core::ports::clock::SystemClock,
+        &auths_sdk::ports::SystemClock,
     )
     .map_err(|e| anyhow!("Failed to link CI device: {e}"))?;
 
@@ -337,7 +335,7 @@ pub(super) fn build_verify_bundle(
     let now = chrono::Utc::now();
 
     #[allow(clippy::disallowed_methods)]
-    let identity_did = auths_core::storage::keychain::IdentityDID::new_unchecked(identity_did_str);
+    let identity_did = auths_sdk::keychain::IdentityDID::new_unchecked(identity_did_str);
     #[allow(clippy::disallowed_methods)]
     let public_key_hex = auths_verifier::PublicKeyHex::new_unchecked(hex::encode(public_key_bytes));
 

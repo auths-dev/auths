@@ -8,9 +8,9 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use console::style;
 
-use auths_core::config::EnvironmentConfig;
-use auths_core::pairing::types::CreateSessionRequest;
-use auths_core::pairing::{PairingToken, QrOptions, render_qr};
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::pairing::CreateSessionRequest;
+use auths_sdk::pairing::{PairingToken, QrOptions, render_qr};
 
 use super::common::*;
 use super::lan_server::{LanPairingServer, detect_lan_ip};
@@ -32,10 +32,10 @@ pub async fn handle_initiate_lan(
     capabilities: &[String],
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    let auths_dir = auths_core::paths::auths_home_with_config(env_config)
+    let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
         .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
-    let identity_storage = auths_storage::git::RegistryIdentityStorage::new(auths_dir.clone());
+    let identity_storage = auths_sdk::storage::RegistryIdentityStorage::new(auths_dir.clone());
     let controller_did =
         auths_sdk::pairing::load_controller_did(&identity_storage).map_err(anyhow::Error::from)?;
 
@@ -62,7 +62,7 @@ pub async fn handle_initiate_lan(
     let request = CreateSessionRequest {
         session_id: session_id.clone(),
         controller_did: session.token.controller_did.clone(),
-        ephemeral_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
+        ephemeral_pubkey: auths_sdk::pairing::Base64UrlEncoded::from_raw(
             session.token.ephemeral_pubkey.clone(),
         ),
         short_code: session.token.short_code.clone(),
@@ -196,7 +196,7 @@ pub async fn handle_initiate_lan(
                 env_config,
             )?;
         }
-        Err(auths_core::pairing::PairingError::LanTimeout) => {
+        Err(auths_sdk::error::PairingError::LanTimeout) => {
             wait_spinner.finish_with_message(format!("{}", style("Session expired.").yellow()));
             if let Some(adv) = _advertiser {
                 adv.shutdown();
@@ -220,7 +220,7 @@ pub async fn handle_join_lan(
     code: &str,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    use auths_core::pairing::normalize_short_code;
+    use auths_sdk::pairing::normalize_short_code;
 
     let normalized = normalize_short_code(code);
     if normalized.len() != 6 {

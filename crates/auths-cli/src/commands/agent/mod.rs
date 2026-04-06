@@ -216,7 +216,7 @@ fn parse_timeout(s: &str) -> Result<std::time::Duration> {
 }
 
 fn get_auths_dir() -> Result<PathBuf> {
-    auths_core::paths::auths_home().map_err(|e| anyhow!(e))
+    auths_sdk::paths::auths_home().map_err(|e| anyhow!(e))
 }
 
 /// Get the default socket path.
@@ -286,7 +286,7 @@ fn run_agent_foreground(
     env_path: &std::path::Path,
     timeout: std::time::Duration,
 ) -> Result<()> {
-    use auths_core::AgentHandle;
+    use auths_sdk::agent_core::AgentHandle;
     use std::sync::Arc;
 
     let pid = std::process::id();
@@ -323,7 +323,7 @@ fn run_agent_foreground(
 
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
     let result = rt.block_on(async {
-        auths_core::api::start_agent_listener_with_handle(handle.clone()).await
+        auths_sdk::agent_core::start_agent_listener_with_handle(handle.clone()).await
     });
 
     cleanup_stale_files(&[pid_path, env_path, socket]);
@@ -511,7 +511,7 @@ fn lock_agent() -> Result<()> {
     }
 
     let socket_path = get_default_socket_path()?;
-    auths_core::agent::remove_all_identities(&socket_path)
+    auths_sdk::agent_core::remove_all_identities(&socket_path)
         .map_err(|e| anyhow!("Failed to lock agent: {}", e))?;
 
     eprintln!("Agent locked — all keys removed from memory.");
@@ -539,21 +539,19 @@ fn unlock_agent(key_alias: &str) -> Result<()> {
 
     let socket_path = get_default_socket_path()?;
 
-    let keychain = auths_core::storage::keychain::get_platform_keychain()
+    let keychain = auths_sdk::keychain::get_platform_keychain()
         .map_err(|e| anyhow!("Failed to get platform keychain: {}", e))?;
     let (_identity_did, _role, encrypted_data) = keychain
-        .load_key(&auths_core::storage::keychain::KeyAlias::new_unchecked(
-            key_alias,
-        ))
+        .load_key(&auths_sdk::keychain::KeyAlias::new_unchecked(key_alias))
         .map_err(|e| anyhow!("Failed to load key '{}': {}", key_alias, e))?;
 
     let passphrase = rpassword::prompt_password(format!("Passphrase for '{}': ", key_alias))
         .context("Failed to read passphrase")?;
 
-    let key_bytes = auths_core::crypto::signer::decrypt_keypair(&encrypted_data, &passphrase)
+    let key_bytes = auths_sdk::crypto::decrypt_keypair(&encrypted_data, &passphrase)
         .map_err(|e| anyhow!("Failed to decrypt key '{}': {}", key_alias, e))?;
 
-    auths_core::agent::add_identity(&socket_path, &key_bytes)
+    auths_sdk::agent_core::add_identity(&socket_path, &key_bytes)
         .map_err(|e| anyhow!("Failed to add key to agent: {}", e))?;
 
     eprintln!("Agent unlocked — key '{}' loaded.", key_alias);

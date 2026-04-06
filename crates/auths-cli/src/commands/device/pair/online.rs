@@ -1,9 +1,9 @@
 //! Online pairing mode — uses a registry relay server.
 
 use anyhow::{Context, Result};
-use auths_core::config::EnvironmentConfig;
-use auths_core::pairing::{QrOptions, render_qr};
+use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::pairing::{PairingSessionParams, PairingStatus, initiate_online_pairing};
+use auths_sdk::pairing::{QrOptions, render_qr};
 use console::style;
 use indicatif::ProgressBar;
 
@@ -23,17 +23,17 @@ pub(crate) async fn handle_initiate_online(
     capabilities: &[String],
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    let auths_dir = auths_core::paths::auths_home_with_config(env_config)
+    let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
         .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
-    let identity_storage = auths_storage::git::RegistryIdentityStorage::new(auths_dir.clone());
+    let identity_storage = auths_sdk::storage::RegistryIdentityStorage::new(auths_dir.clone());
     let controller_did =
         auths_sdk::pairing::load_controller_did(&identity_storage).map_err(anyhow::Error::from)?;
 
     print_pairing_header("ONLINE", registry, &controller_did);
 
     let passphrase_provider: std::sync::Arc<
-        dyn auths_core::signing::PassphraseProvider + Send + Sync,
+        dyn auths_sdk::signing::PassphraseProvider + Send + Sync,
     > = std::sync::Arc::new(CliPassphraseProvider::new());
 
     let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider))

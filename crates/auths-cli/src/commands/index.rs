@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
-use auths_id::storage::layout::{self, StorageLayoutConfig};
 use auths_index::{AttestationIndex, rebuild_attestations_from_git};
+use auths_sdk::storage_layout::{self as layout, StorageLayoutConfig};
 
 #[derive(Args, Debug, Clone)]
 #[command(about = "Manage the device authorization index for fast lookups.")]

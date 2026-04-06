@@ -32,10 +32,10 @@ use clap::Parser;
 use auths_cli::adapters::config_store::FileConfigStore;
 use auths_cli::core::pubkey_cache::get_cached_pubkey;
 use auths_cli::factories::build_agent_provider;
-use auths_core::config::{EnvironmentConfig, load_config};
-use auths_core::signing::{KeychainPassphraseProvider, PassphraseProvider};
-use auths_core::storage::keychain::get_platform_keychain;
-use auths_core::storage::passphrase_cache::{get_passphrase_cache, parse_duration_str};
+use auths_sdk::core_config::{EnvironmentConfig, load_config};
+use auths_sdk::keychain::get_platform_keychain;
+use auths_sdk::keychain::{get_passphrase_cache, parse_duration_str};
+use auths_sdk::signing::{KeychainPassphraseProvider, PassphraseProvider};
 use auths_sdk::workflows::signing::{
     CommitSigningContext, CommitSigningParams, CommitSigningWorkflow,
 };
@@ -133,7 +133,9 @@ fn build_signing_context(alias: &str) -> Result<CommitSigningContext> {
 
     let passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync> =
         if let Some(passphrase) = env_config.keychain.passphrase.clone() {
-            Arc::new(auths_core::PrefilledPassphraseProvider::new(&passphrase))
+            Arc::new(auths_sdk::signing::PrefilledPassphraseProvider::new(
+                &passphrase,
+            ))
         } else {
             let config = load_config(&FileConfigStore);
             let cache = get_passphrase_cache(config.passphrase.biometric);
@@ -277,7 +279,7 @@ fn run_sign(args: &Args) -> Result<()> {
 
     let pubkey = get_cached_pubkey(&alias).ok().flatten().unwrap_or_default();
 
-    let repo_path = auths_id::storage::layout::resolve_repo_path(None).ok();
+    let repo_path = auths_sdk::storage_layout::resolve_repo_path(None).ok();
 
     let ctx = build_signing_context(&alias)?;
     let mut params = CommitSigningParams::new(&alias, namespace, data).with_pubkey(pubkey);
@@ -300,8 +302,8 @@ fn run_sign(args: &Args) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_core::crypto::ssh::construct_sshsig_signed_data;
     use auths_crypto::Pkcs8Der;
+    use auths_sdk::crypto::construct_sshsig_signed_data;
 
     #[test]
     fn test_args_accepts_o_flag() {
@@ -411,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_sshsig_format() {
-        use auths_core::crypto::ssh::SecureSeed;
+        use auths_sdk::crypto::SecureSeed;
 
         let seed = SecureSeed::new([
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
@@ -420,7 +422,7 @@ mod tests {
         ]);
 
         let data = b"test data to sign";
-        let result = auths_core::crypto::ssh::create_sshsig(&seed, data, "git");
+        let result = auths_sdk::crypto::create_sshsig(&seed, data, "git");
 
         assert!(result.is_ok(), "SSHSIG creation failed: {:?}", result.err());
 
@@ -431,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_encode_ssh_pubkey() {
-        use auths_core::crypto::ssh::encode_ssh_pubkey;
+        use auths_sdk::crypto::encode_ssh_pubkey;
 
         let pubkey = [0x42u8; 32];
         let blob = encode_ssh_pubkey(&pubkey);
@@ -471,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_extract_seed_from_pkcs8_ring_generated_key() {
-        use auths_core::crypto::ssh::extract_seed_from_pkcs8;
+        use auths_sdk::crypto::extract_seed_from_pkcs8;
         use ring::rand::SystemRandom;
         use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -502,7 +504,7 @@ mod tests {
 
     #[test]
     fn test_extract_seed_from_pkcs8_rejects_invalid_input() {
-        use auths_core::crypto::ssh::extract_seed_from_pkcs8;
+        use auths_sdk::crypto::extract_seed_from_pkcs8;
 
         let bad_input = Pkcs8Der::new(vec![0u8; 50]);
         let result = extract_seed_from_pkcs8(&bad_input);

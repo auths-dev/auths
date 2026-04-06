@@ -1,15 +1,15 @@
 use anyhow::Error;
-use auths_core::error::TrustError as CoreTrustError;
-use auths_core::error::{AgentError, AuthsErrorInfo};
-use auths_core::pairing::PairingError;
-use auths_id::error::StorageError as IdStorageError;
-use auths_id::error::{FreezeError, InitError};
-use auths_id::storage::StorageError as IdDriverStorageError;
 use auths_sdk::domains::signing::service::{ArtifactSigningError, SigningError};
+use auths_sdk::error::CoreTrustError;
+use auths_sdk::error::IdDriverStorageError;
+use auths_sdk::error::IdStorageError;
+use auths_sdk::error::PairingError;
+use auths_sdk::error::{AgentError, AuthsErrorInfo};
 use auths_sdk::error::{
     ApprovalError, DeviceError, DeviceExtensionError, McpAuthError, OrgError, RegistrationError,
     RotationError, SdkStorageError, SetupError, TrustError,
 };
+use auths_sdk::error::{FreezeError, InitError};
 use auths_sdk::workflows::allowed_signers::AllowedSignersError;
 use auths_sdk::workflows::auth::AuthChallengeError;
 use auths_verifier::{AttestationError, CommitVerificationError};
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn setup_error_storage_delegates_to_inner_code() {
-        let inner = auths_id::error::StorageError::NotFound("test".into());
+        let inner = IdStorageError::NotFound("test".into());
         let sdk_err = auths_sdk::error::SdkStorageError::Identity(inner);
         let setup_err = SetupError::StorageError(sdk_err);
         let err = Error::new(setup_err);

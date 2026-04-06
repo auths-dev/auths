@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::PassphraseProvider;
-use auths_core::storage::keychain::KeyAlias;
+use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::domains::signing::service::{
     ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
 };
+use auths_sdk::keychain::KeyAlias;
+use auths_sdk::signing::PassphraseProvider;
 
 use super::file::FileArtifact;
 use crate::factories::storage::build_auths_context;
@@ -26,7 +26,7 @@ pub fn handle_sign(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    let repo_path = auths_id::storage::layout::resolve_repo_path(repo_opt)?;
+    let repo_path = auths_sdk::storage_layout::resolve_repo_path(repo_opt)?;
 
     let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
 

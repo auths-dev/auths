@@ -1,6 +1,6 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
-use auths_core::trust::{PinnedIdentity, PinnedIdentityStore, RootsFile, TrustLevel, TrustPolicy};
+use auths_sdk::trust::{PinnedIdentity, PinnedIdentityStore, RootsFile, TrustLevel, TrustPolicy};
 use auths_verifier::Capability;
 use auths_verifier::core::Attestation;
 use auths_verifier::verify::{

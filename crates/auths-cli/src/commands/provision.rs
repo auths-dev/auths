@@ -4,15 +4,12 @@
 //! to match. Secrets are handled via environment variable overrides layered
 //! automatically by the `config` crate, never passed as CLI arguments.
 
+use crate::factories::storage::build_auths_context;
 use crate::ux::format::Output;
 use anyhow::{Context, Result, anyhow};
-use auths_core::signing::PassphraseProvider;
-use auths_core::storage::keychain::get_platform_keychain;
-use auths_id::ports::registry::RegistryBackend;
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::storage::registry::install_linearity_hook;
+use auths_sdk::signing::PassphraseProvider;
+use auths_sdk::storage_layout::install_linearity_hook;
 use auths_sdk::workflows::provision::{IdentityConfig, NodeConfig, enforce_identity_state};
-use auths_storage::git::{GitRegistryBackend, RegistryConfig, RegistryIdentityStorage};
 use clap::Parser;
 use config::{Config, Environment, File};
 use std::path::{Path, PathBuf};
@@ -78,21 +75,19 @@ pub fn handle_provision(
     out.print_info("Initializing identity...");
 
     let repo_path = Path::new(&config.identity.repo_path);
-    let registry: Arc<dyn RegistryBackend + Send + Sync> = Arc::new(
-        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(repo_path)),
-    );
-    let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
-        Arc::new(RegistryIdentityStorage::new(repo_path.to_path_buf()));
-    let keychain =
-        get_platform_keychain().map_err(|e| anyhow!("Failed to access keychain: {}", e))?;
+    let auths_ctx = build_auths_context(
+        repo_path,
+        &Default::default(),
+        Some(passphrase_provider.clone()),
+    )?;
 
     match enforce_identity_state(
         &config,
         cmd.force,
         passphrase_provider.as_ref(),
-        keychain.as_ref(),
-        registry,
-        identity_storage,
+        auths_ctx.key_storage.as_ref(),
+        Arc::clone(&auths_ctx.registry),
+        Arc::clone(&auths_ctx.identity_storage),
     )
     .map_err(anyhow::Error::from)?
     {

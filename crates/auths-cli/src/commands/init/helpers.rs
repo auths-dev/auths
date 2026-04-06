@@ -7,15 +7,15 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use auths_sdk::storage::RegistryAttestationStorage;
 use auths_sdk::workflows::allowed_signers::AllowedSigners;
 use auths_sdk::workflows::diagnostics::{MIN_GIT_VERSION, parse_git_version};
-use auths_storage::git::RegistryAttestationStorage;
 
 use crate::subprocess::git_command;
 use crate::ux::format::Output;
 
 pub(crate) fn get_auths_repo_path() -> Result<PathBuf> {
-    auths_core::paths::auths_home().map_err(|e| anyhow!(e))
+    auths_sdk::paths::auths_home().map_err(|e| anyhow!(e))
 }
 
 pub(crate) fn check_git_version(out: &Output) -> Result<()> {

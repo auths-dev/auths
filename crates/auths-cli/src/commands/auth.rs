@@ -1,15 +1,15 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 
-use auths_core::crypto::provider_bridge;
-use auths_core::crypto::signer::decrypt_keypair;
-use auths_core::crypto::ssh::extract_seed_from_pkcs8;
-use auths_core::storage::keychain::{KeyStorage, get_platform_keychain_with_config};
 use auths_crypto::Pkcs8Der;
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::storage::layout;
+use auths_sdk::crypto::decrypt_keypair;
+use auths_sdk::crypto::extract_seed_from_pkcs8;
+use auths_sdk::crypto::provider_bridge;
+use auths_sdk::keychain::KeyStorage;
+use auths_sdk::storage_layout::layout;
+
+use crate::factories::storage::build_auths_context;
 use auths_sdk::workflows::auth::sign_auth_challenge;
-use auths_storage::git::RegistryIdentityStorage;
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
@@ -59,8 +59,13 @@ fn handle_auth_challenge(nonce: &str, domain: &str, ctx: &CliConfig) -> Result<(
     let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
     let passphrase_provider = ctx.passphrase_provider.clone();
 
-    let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
-    let managed = identity_storage
+    let auths_ctx = build_auths_context(
+        &repo_path,
+        &ctx.env_config,
+        Some(ctx.passphrase_provider.clone()),
+    )?;
+    let managed = auths_ctx
+        .identity_storage
         .load_identity()
         .context("No identity found. Run `auths init` first.")?;
 
@@ -68,11 +73,11 @@ fn handle_auth_challenge(nonce: &str, domain: &str, ctx: &CliConfig) -> Result<(
 
     let key_alias_str =
         super::key_detect::auto_detect_device_key(ctx.repo_path.as_deref(), &ctx.env_config)?;
-    let key_alias = auths_core::storage::keychain::KeyAlias::new(&key_alias_str)
+    let key_alias = auths_sdk::keychain::KeyAlias::new(&key_alias_str)
         .map_err(|e| anyhow!("Invalid key alias: {e}"))?;
 
-    let keychain = get_platform_keychain_with_config(&ctx.env_config)?;
-    let (_stored_did, _role, encrypted_key) = keychain
+    let (_stored_did, _role, encrypted_key) = auths_ctx
+        .key_storage
         .load_key(&key_alias)
         .with_context(|| format!("Failed to load key '{}'", key_alias_str))?;
 

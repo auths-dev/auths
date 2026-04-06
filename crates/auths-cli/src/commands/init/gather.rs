@@ -4,14 +4,14 @@ use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 use std::sync::Arc;
 
-use auths_core::storage::keychain::{KeyAlias, KeyStorage, get_platform_keychain};
-use auths_id::storage::attestation::AttestationSource;
-use auths_id::storage::identity::IdentityStorage;
 use auths_infra_http::HttpRegistryClient;
-use auths_sdk::types::{CiEnvironment, CiIdentityConfig, CreateDeveloperIdentityConfig};
-use auths_storage::git::{
+use auths_sdk::keychain::{KeyAlias, KeyStorage, get_platform_keychain};
+use auths_sdk::ports::AttestationSource;
+use auths_sdk::ports::IdentityStorage;
+use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
+use auths_sdk::types::{CiEnvironment, CiIdentityConfig, CreateDeveloperIdentityConfig};
 
 use super::InitCommand;
 use super::helpers::{

@@ -1,7 +1,7 @@
 //! Sign a Git commit with machine identity and OIDC binding.
 
 use anyhow::{Result, anyhow};
-use auths_core::paths::auths_home_with_config;
+use auths_sdk::paths::auths_home_with_config;
 use clap::Parser;
 use serde::Serialize;
 

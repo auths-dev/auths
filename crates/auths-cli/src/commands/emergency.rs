@@ -14,6 +14,7 @@ use dialoguer::{Confirm, Input, Select};
 use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Emergency incident response commands.
 #[derive(Parser, Debug, Clone)]
@@ -289,20 +290,11 @@ fn handle_interactive_flow(ctx: &crate::config::CliConfig) -> Result<()> {
 /// Handle device revocation using the real revocation code path.
 fn handle_revoke_device(
     cmd: RevokeDeviceCommand,
-    now: chrono::DateTime<chrono::Utc>,
+    _now: chrono::DateTime<chrono::Utc>,
     ctx: &crate::config::CliConfig,
 ) -> Result<()> {
-    use auths_core::signing::StorageSigner;
-    use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
-    use auths_id::attestation::export::AttestationSink;
-    use auths_id::attestation::revoke::create_signed_revocation;
-    use auths_id::identity::helpers::ManagedIdentity;
-    use auths_id::storage::attestation::AttestationSource;
-    use auths_id::storage::identity::IdentityStorage;
-    use auths_id::storage::layout;
-    use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
-    use auths_verifier::Ed25519PublicKey;
-    use auths_verifier::types::DeviceDID;
+    use auths_sdk::keychain::KeyAlias;
+    use auths_sdk::storage_layout::layout;
 
     let out = Output::new();
 
@@ -360,59 +352,24 @@ fn handle_revoke_device(
         }
     }
 
-    // Resolve repository and load identity
     let repo_path = layout::resolve_repo_path(cmd.repo)?;
-
-    let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
-    let managed_identity: ManagedIdentity = identity_storage
-        .load_identity()
-        .with_context(|| format!("Failed to load identity from repo {:?}", repo_path))?;
-
-    let controller_did = managed_identity.controller_did;
-    let rid = managed_identity.storage_id;
-
-    #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from managed identity storage
-    let device_did_obj = DeviceDID::new_unchecked(device_did.clone());
-
-    // Look up the device's public key from existing attestations
-    let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-    let existing_attestations = attestation_storage
-        .load_attestations_for_device(&device_did_obj)
-        .with_context(|| format!("Failed to load attestations for device {}", device_did_obj))?;
-    let device_public_key = existing_attestations
-        .iter()
-        .find(|a| !a.device_public_key.is_zero())
-        .map(|a| a.device_public_key)
-        .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
-
-    let secure_signer = StorageSigner::new(get_platform_keychain()?);
-
-    let revocation_timestamp = now;
+    let auths_ctx = crate::factories::storage::build_auths_context(
+        &repo_path,
+        &ctx.env_config,
+        Some(Arc::clone(&ctx.passphrase_provider)),
+    )?;
+    let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias);
 
     out.print_info("Creating signed revocation attestation...");
-    let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias);
-    let revocation_attestation = create_signed_revocation(
-        &rid,
-        &controller_did,
-        &device_did_obj,
-        device_public_key.as_bytes(),
-        cmd.note,
-        None,
-        revocation_timestamp,
-        &secure_signer,
-        ctx.passphrase_provider.as_ref(),
+    auths_sdk::domains::device::service::revoke_device(
+        &device_did,
         &identity_key_alias,
+        &auths_ctx,
+        cmd.note,
+        &auths_sdk::ports::SystemClock,
     )
-    .map_err(anyhow::Error::from)
-    .context("Failed to create revocation attestation")?;
-
-    out.print_info("Saving revocation to Git repository...");
-    let attestation_storage = RegistryAttestationStorage::new(repo_path);
-    attestation_storage
-        .export(
-            &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(revocation_attestation),
-        )
-        .context("Failed to save revocation attestation to Git repository")?;
+    .map_err(anyhow::Error::new)
+    .context("Failed to revoke device")?;
 
     out.print_success(&format!("Device {} has been revoked", device_did));
     out.newline();
@@ -424,12 +381,12 @@ fn handle_revoke_device(
 /// Handle emergency key rotation using the real rotation code path.
 fn handle_rotate_now(
     cmd: RotateNowCommand,
-    now: chrono::DateTime<chrono::Utc>,
+    _now: chrono::DateTime<chrono::Utc>,
     ctx: &crate::config::CliConfig,
 ) -> Result<()> {
-    use auths_core::storage::keychain::{KeyAlias, get_platform_keychain};
-    use auths_id::identity::rotate::rotate_keri_identity;
-    use auths_id::storage::layout::{self, StorageLayoutConfig};
+    use auths_sdk::domains::identity::types::IdentityRotationConfig;
+    use auths_sdk::keychain::KeyAlias;
+    use auths_sdk::storage_layout::layout;
 
     let out = Output::new();
 
@@ -491,30 +448,30 @@ fn handle_rotate_now(
         }
     }
 
-    // Resolve repository
     let repo_path = layout::resolve_repo_path(cmd.repo)?;
-    let config = StorageLayoutConfig::default();
-
-    let keychain = get_platform_keychain()?;
+    let rotation_config = IdentityRotationConfig {
+        repo_path: repo_path.clone(),
+        identity_key_alias: Some(KeyAlias::new_unchecked(current_alias)),
+        next_key_alias: Some(KeyAlias::new_unchecked(next_alias)),
+    };
+    let auths_ctx = crate::factories::storage::build_auths_context(
+        &repo_path,
+        &ctx.env_config,
+        Some(Arc::clone(&ctx.passphrase_provider)),
+    )?;
 
     out.print_info("Rotating key...");
-    let current_alias = KeyAlias::new_unchecked(current_alias);
-    let next_alias = KeyAlias::new_unchecked(next_alias);
-    let rotation_info = rotate_keri_identity(
-        &repo_path,
-        &current_alias,
-        &next_alias,
-        ctx.passphrase_provider.as_ref(),
-        &config,
-        keychain.as_ref(),
-        None,
-        now,
+    let rotation_result = auths_sdk::domains::identity::rotation::rotate_identity(
+        rotation_config,
+        &auths_ctx,
+        &auths_sdk::ports::SystemClock,
     )
+    .map_err(anyhow::Error::new)
     .context("Key rotation failed")?;
 
     out.print_success(&format!(
         "Key rotation complete (new sequence: {})",
-        rotation_info.sequence
+        rotation_result.sequence
     ));
     out.newline();
     out.println("Next steps:");
@@ -527,8 +484,8 @@ fn handle_rotate_now(
 
 /// Handle freeze operation — temporarily disables all signing.
 fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
-    use auths_id::freeze::{FreezeState, load_active_freeze, parse_duration, store_freeze};
-    use auths_id::storage::layout;
+    use auths_sdk::freeze::{FreezeState, load_active_freeze, parse_duration, store_freeze};
+    use auths_sdk::storage_layout::layout;
 
     let out = Output::new();
 
@@ -625,8 +582,8 @@ fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Resu
 
 /// Handle unfreeze — cancel an active freeze early.
 fn handle_unfreeze(cmd: UnfreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
-    use auths_id::freeze::{load_active_freeze, remove_freeze};
-    use auths_id::storage::layout;
+    use auths_sdk::freeze::{load_active_freeze, remove_freeze};
+    use auths_sdk::storage_layout::layout;
 
     let out = Output::new();
 
@@ -665,11 +622,11 @@ fn handle_unfreeze(cmd: UnfreezeCommand, now: chrono::DateTime<chrono::Utc>) -> 
 
 /// Handle incident report generation.
 fn handle_report(cmd: ReportCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
-    use auths_id::identity::helpers::ManagedIdentity;
-    use auths_id::storage::attestation::AttestationSource;
-    use auths_id::storage::identity::IdentityStorage;
-    use auths_id::storage::layout;
-    use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
+    use auths_sdk::identity::ManagedIdentity;
+    use auths_sdk::ports::AttestationSource;
+    use auths_sdk::ports::IdentityStorage;
+    use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
+    use auths_sdk::storage_layout::layout;
 
     let out = Output::new();
 
@@ -909,7 +866,7 @@ mod tests {
         assert!(dir.path().join("freeze.json").exists());
 
         // Verify the freeze is active
-        let state = auths_id::freeze::load_active_freeze(dir.path(), chrono::Utc::now()).unwrap();
+        let state = auths_sdk::freeze::load_active_freeze(dir.path(), chrono::Utc::now()).unwrap();
         assert!(state.is_some());
     }
 

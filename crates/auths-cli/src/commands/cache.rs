@@ -5,8 +5,8 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
-use auths_core::config::EnvironmentConfig;
-use auths_id::keri::cache;
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::keri::cache;
 
 #[derive(Parser, Debug, Clone)]
 #[command(about = "Manage local identity history cache")]
@@ -34,7 +34,7 @@ enum CacheSubcommand {
 }
 
 pub fn handle_cache(cmd: CacheCommand, env_config: &EnvironmentConfig) -> Result<()> {
-    let auths_home = auths_core::paths::auths_home_with_config(env_config)
+    let auths_home = auths_sdk::paths::auths_home_with_config(env_config)
         .context("Failed to resolve auths home directory")?;
     match cmd.command {
         CacheSubcommand::List => handle_list(&auths_home),

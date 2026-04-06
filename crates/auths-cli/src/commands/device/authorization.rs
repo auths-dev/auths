@@ -7,17 +7,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auths_core::config::EnvironmentConfig;
-use auths_core::signing::{PassphraseProvider, UnifiedPassphraseProvider};
-use auths_core::storage::keychain::KeyAlias;
-use auths_id::attestation::group::AttestationGroup;
-use auths_id::identity::helpers::ManagedIdentity;
-use auths_id::storage::attestation::AttestationSource;
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::storage::layout::{self, StorageLayoutConfig};
-use auths_storage::git::{
+use auths_sdk::attestation::AttestationGroup;
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::identity::ManagedIdentity;
+use auths_sdk::keychain::KeyAlias;
+use auths_sdk::ports::{AttestationSource, IdentityStorage};
+use auths_sdk::signing::{PassphraseProvider, UnifiedPassphraseProvider};
+use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
+use auths_sdk::storage_layout::{StorageLayoutConfig, layout};
 use chrono::Utc;
 
 use crate::commands::registry_overrides::RegistryOverrides;
@@ -276,7 +275,7 @@ pub fn handle_device(
             let result = auths_sdk::domains::device::service::link_device(
                 link_config,
                 &ctx,
-                &auths_core::ports::clock::SystemClock,
+                &auths_sdk::ports::SystemClock,
             )
             .map_err(anyhow::Error::new)?;
 
@@ -305,7 +304,7 @@ pub fn handle_device(
                 &identity_key_alias,
                 &ctx,
                 note,
-                &auths_core::ports::clock::SystemClock,
+                &auths_sdk::ports::SystemClock,
             )
             .map_err(anyhow::Error::new)?;
 
@@ -452,7 +451,7 @@ fn handle_extend(
     let result = auths_sdk::domains::device::service::extend_device(
         config,
         &ctx,
-        &auths_core::ports::clock::SystemClock,
+        &auths_sdk::ports::SystemClock,
     )
     .with_context(|| format!("Failed to extend device authorization for '{}'", device_did))?;
 
@@ -490,8 +489,8 @@ fn list_devices(
     let attestation_storage = RegistryAttestationStorage::new(repo_path.to_path_buf());
     let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
         RegistryConfig::single_tenant(repo_path),
-    )) as Arc<dyn auths_id::ports::registry::RegistryBackend + Send + Sync>;
-    let resolver = auths_id::identity::resolve::RegistryDidResolver::new(backend);
+    )) as Arc<dyn auths_sdk::ports::RegistryBackend + Send + Sync>;
+    let resolver = auths_sdk::identity::RegistryDidResolver::new(backend);
 
     let identity: ManagedIdentity = identity_storage
         .load_identity()
@@ -511,7 +510,7 @@ fn list_devices(
             .expect("Grouped attestations should not be empty");
 
         let verification_result =
-            auths_id::attestation::verify::verify_with_resolver(now, &resolver, latest, None);
+            auths_sdk::attestation::verify_with_resolver(now, &resolver, latest, None);
 
         let status_string = match verification_result {
             Ok(()) => {

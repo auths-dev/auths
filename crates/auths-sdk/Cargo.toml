@@ -12,8 +12,9 @@ categories = ["cryptography", "authentication"]
 
 [dependencies]
 async-trait = "0.1"
-auths-core.workspace = true
-auths-id.workspace = true
+auths-core = { workspace = true, public = true }
+auths-id = { workspace = true, public = true }
+auths-storage = { workspace = true, optional = true, public = true }
 auths-infra-http.workspace = true
 auths-oidc-port = { path = "../auths-oidc-port", version = "0.1.0" }
 auths-telemetry.workspace = true
@@ -49,6 +50,10 @@ auths-pairing-daemon = { workspace = true, optional = true }
 test-utils = ["auths-id/test-utils"]
 mcp = ["dep:reqwest"]
 lan-pairing = ["dep:auths-pairing-daemon"]
+backend-git = ["dep:auths-storage", "auths-storage/backend-git"]
+witness-server = ["auths-core/witness-server"]
+witness-client = ["auths-id/witness-client"]
+indexed-storage = ["auths-id/indexed-storage"]
 
 [dev-dependencies]
 auths-sdk = { path = ".", features = ["test-utils"] }

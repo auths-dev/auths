@@ -8,10 +8,10 @@ use anyhow::{Context, Result, anyhow};
 use console::{Emoji, style};
 use indicatif::{ProgressBar, ProgressStyle};
 
-use auths_core::config::EnvironmentConfig;
-use auths_core::pairing::PairingSession;
-use auths_core::pairing::types::SubmitResponseRequest;
-use auths_core::signing::PassphraseProvider;
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::pairing::PairingSession;
+use auths_sdk::pairing::SubmitResponseRequest;
+use auths_sdk::signing::PassphraseProvider;
 
 use crate::core::fs::{create_restricted_dir, write_sensitive_file};
 
@@ -134,7 +134,7 @@ pub(crate) fn handle_pairing_response(
     capabilities: &[String],
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    use auths_core::storage::keychain::get_platform_keychain_with_config;
+    use auths_sdk::keychain::get_platform_keychain_with_config;
     use auths_sdk::pairing::{self, DecryptedPairingResponse, PairingCompletionResult};
 
     println!();
@@ -235,9 +235,9 @@ pub(crate) fn handle_pairing_response(
     }
 
     // Resolve identity key alias and collect passphrase before spinner
-    use auths_id::attestation::export::AttestationSink;
-    use auths_id::storage::identity::IdentityStorage;
-    use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
+    use auths_sdk::attestation::AttestationSink;
+    use auths_sdk::ports::IdentityStorage;
+    use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
     let identity_store = Arc::new(RegistryIdentityStorage::new(auths_dir.to_path_buf()));
     let controller_did = pairing::load_controller_did(identity_store.as_ref())
         .map_err(anyhow::Error::from)
@@ -252,7 +252,7 @@ pub(crate) fn handle_pairing_response(
     let keychain = get_platform_keychain_with_config(env_config)?;
     #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from managed identity
     let controller_identity_did =
-        auths_core::storage::keychain::IdentityDID::new_unchecked(controller_did.clone());
+        auths_sdk::keychain::IdentityDID::new_unchecked(controller_did.clone());
     let aliases = keychain
         .list_aliases_for_identity(&controller_identity_did)
         .context("Failed to list key aliases")?;
@@ -270,8 +270,7 @@ pub(crate) fn handle_pairing_response(
         .context("Failed to get passphrase")?;
     let passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync> =
         Arc::new(PrefilledPassphraseProvider::new(passphrase));
-    let key_storage: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
-        Arc::from(keychain);
+    let key_storage: Arc<dyn auths_sdk::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
 
     let attest_spinner = create_wait_spinner(&format!("{GEAR}Creating device attestation..."));
 
@@ -296,7 +295,7 @@ pub(crate) fn handle_pairing_response(
         attestation_sink,
         key_storage,
         passphrase_provider,
-        &auths_core::ports::clock::SystemClock,
+        &auths_sdk::ports::SystemClock,
     )
     .map_err(anyhow::Error::from)
     .context("Pairing completion failed")?

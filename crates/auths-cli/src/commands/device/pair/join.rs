@@ -1,13 +1,13 @@
 //! Join mode — join an existing pairing session via short code.
 
 use anyhow::{Context, Result};
-use auths_core::config::EnvironmentConfig;
-use auths_core::pairing::types::Base64UrlEncoded;
-use auths_core::pairing::{PairingResponse, PairingToken};
-use auths_core::ports::pairing::PairingRelayClient;
 use auths_infra_http::HttpPairingRelayClient;
 use auths_pairing_protocol::sas;
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::pairing::Base64UrlEncoded;
+use auths_sdk::pairing::{PairingResponse, PairingToken};
 use auths_sdk::pairing::{load_device_signing_material, validate_short_code};
+use auths_sdk::ports::pairing::PairingRelayClient;
 use console::style;
 
 use crate::core::provider::CliPassphraseProvider;
@@ -42,7 +42,7 @@ pub(crate) async fn handle_join(
 
     let relay = HttpPairingRelayClient::new();
 
-    let auths_dir = auths_core::paths::auths_home_with_config(env_config)
+    let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
         .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
     if !auths_dir.exists() {
@@ -50,7 +50,7 @@ pub(crate) async fn handle_join(
     }
 
     let passphrase_provider: std::sync::Arc<
-        dyn auths_core::signing::PassphraseProvider + Send + Sync,
+        dyn auths_sdk::signing::PassphraseProvider + Send + Sync,
     > = std::sync::Arc::new(CliPassphraseProvider::new());
 
     let key_spinner = create_wait_spinner(&format!("{GEAR}Loading local device key..."));
@@ -129,7 +129,7 @@ pub(crate) async fn handle_join(
     );
 
     // Submit the response to the relay
-    let submit_req = auths_core::pairing::types::SubmitResponseRequest {
+    let submit_req = auths_sdk::pairing::SubmitResponseRequest {
         device_x25519_pubkey: Base64UrlEncoded::from_raw(
             pairing_response.device_x25519_pubkey.clone(),
         ),
