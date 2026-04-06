@@ -26,16 +26,16 @@ What it does:
 
 1. Verifies keychain access (macOS Keychain, Linux Secret Service, Windows Credential Manager, or encrypted file fallback)
 2. Checks Git version compatibility
-3. Prompts for a key alias (default: `main`)
+3. Prompts for a key name (default: `main`)
 4. Generates an Ed25519 keypair with KERI pre-rotation
 5. Links the current device to the identity
 6. Configures Git signing (`gpg.format`, `gpg.ssh.program`, `user.signingKey`, `commit.gpgSign`)
-7. Optionally claims a Developer Passport by linking a GitHub identity
+7. Optionally links your GitHub account for identity verification
 8. Optionally registers the identity on the public Auths Registry
 
 Interactive prompts include:
 
-- **Key alias** -- the local name for your signing key
+- **Key name** -- the local name for your signing key
 - **Conflict policy** -- reuse an existing identity or create a new one
 - **Git scope** -- configure signing for this repository only (`--local`) or all repositories (`--global`)
 - **Platform verification** -- link your GitHub account for identity discovery

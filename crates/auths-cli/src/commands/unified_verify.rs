@@ -104,20 +104,20 @@ pub struct UnifiedVerifyCommand {
     #[arg(long, value_parser)]
     pub identity_bundle: Option<PathBuf>,
 
-    /// Issuer public key in hex format (attestation verification).
-    #[arg(long = "issuer-pk")]
+    /// Signer public key in hex format (attestation verification).
+    #[arg(long = "signer-key")]
     pub issuer_pk: Option<String>,
 
-    /// Issuer identity ID for attestation trust-based key resolution.
-    #[arg(long = "issuer-did", visible_alias = "issuer")]
+    /// Signer identity ID for attestation trust-based key resolution.
+    #[arg(long = "signer", visible_alias = "issuer-did")]
     pub issuer_did: Option<String>,
 
-    /// Path to witness receipts JSON file.
-    #[arg(long)]
+    /// Path to witness signatures JSON file.
+    #[arg(long = "witness-signatures")]
     pub witness_receipts: Option<PathBuf>,
 
-    /// Witness quorum threshold.
-    #[arg(long, default_value = "1")]
+    /// Number of witnesses required.
+    #[arg(long = "witnesses-required", default_value = "1")]
     pub witness_threshold: usize,
 
     /// Witness public keys as DID:hex pairs.

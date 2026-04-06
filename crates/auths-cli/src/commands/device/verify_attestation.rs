@@ -32,18 +32,18 @@ pub struct VerifyCommand {
     #[arg(long, value_parser, required = true)]
     pub attestation: String,
 
-    /// Issuer public key in hex format (64 hex chars = 32 bytes).
+    /// Signer public key in hex format (64 hex chars = 32 bytes).
     ///
     /// If provided, bypasses trust resolution and uses this key directly.
-    /// Takes precedence over --issuer-did and trust policy.
-    #[arg(long = "issuer-pk", value_parser)]
+    /// Takes precedence over --signer and trust policy.
+    #[arg(long = "signer-key", value_parser)]
     pub issuer_pk: Option<String>,
 
-    /// Issuer identity ID for trust-based key resolution.
+    /// Signer identity ID for trust-based key resolution.
     ///
     /// Looks up the public key from pinned identity store or roots.json.
     /// Uses --trust policy to determine behavior for unknown identities.
-    #[arg(long = "issuer-did", visible_alias = "issuer", value_parser)]
+    #[arg(long = "signer", visible_alias = "issuer-did", value_parser)]
     pub issuer_did: Option<String>,
 
     /// Trust policy for unknown identities.
@@ -68,12 +68,12 @@ pub struct VerifyCommand {
     #[arg(long = "require-capability")]
     pub require_capability: Option<String>,
 
-    /// Path to witness receipts JSON file.
-    #[arg(long)]
+    /// Path to witness signatures JSON file.
+    #[arg(long = "witness-signatures")]
     pub witness_receipts: Option<PathBuf>,
 
-    /// Witness quorum threshold (default: 1).
-    #[arg(long, default_value = "1")]
+    /// Number of witnesses required (default: 1).
+    #[arg(long = "witnesses-required", default_value = "1")]
     pub witness_threshold: usize,
 
     /// Witness public keys as DID:hex pairs (e.g., "did:key:z6Mk...:abcd1234...").
@@ -243,7 +243,7 @@ fn resolve_issuer_key(
             // The attestation itself doesn't contain the issuer's public key directly,
             // so we need it from --issuer-pk or the user needs to provide it
             anyhow::bail!(
-                "Unknown identity '{}'. Provide --issuer-pk to trust on first use, \
+                "Unknown identity '{}'. Provide --signer-key to trust on first use, \
                  or add to .auths/roots.json for explicit trust.",
                 did
             );
@@ -254,7 +254,7 @@ fn resolve_issuer_key(
                  Options:\n  \
                  1. Add to .auths/roots.json in the repository\n  \
                  2. Pin manually: auths trust pin --did {} --key <hex>\n  \
-                 3. Provide --issuer-pk <hex> to bypass trust resolution",
+                 3. Provide --signer-key <hex> to bypass trust resolution",
                 did,
                 did
             );

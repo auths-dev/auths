@@ -189,7 +189,7 @@ pub fn run_rotate(
         super::setup::humanize_duration(max_age_secs)
     );
     println!(
-        "To revoke: auths device revoke --device-did {} --key {}",
+        "To revoke: auths device revoke --device {} --key {}",
         device_did, identity_key_alias
     );
 

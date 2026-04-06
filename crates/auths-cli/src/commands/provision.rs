@@ -99,11 +99,11 @@ pub fn handle_provision(
             out.print_success("Identity provisioned successfully.");
             out.println(&format!(
                 "  {}",
-                out.key_value("Controller DID", &result.controller_did)
+                out.key_value("Identity", &result.controller_did)
             ));
             out.println(&format!(
                 "  {}",
-                out.key_value("Key alias", &result.key_alias)
+                out.key_value("Key name", &result.key_alias)
             ));
         }
     }

@@ -12,7 +12,7 @@ use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::witness::WitnessConfig;
 use auths_sdk::witness::{WitnessServerConfig, WitnessServerState, run_server};
 
-/// Manage the KERI witness server.
+/// Manage identity witness servers.
 #[derive(Parser, Debug, Clone)]
 pub struct WitnessCommand {
     #[command(subcommand)]
@@ -33,7 +33,7 @@ pub enum WitnessSubcommand {
         #[clap(long, default_value = "witness.db")]
         db_path: PathBuf,
 
-        /// Witness DID (auto-generated if not provided).
+        /// Witness server identity (auto-generated if not provided).
         #[clap(long, visible_alias = "witness")]
         witness_did: Option<String>,
     },
@@ -90,7 +90,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                 };
 
                 println!(
-                    "Witness server starting on {} (DID: {})",
+                    "Witness server started at {} (identity: {})",
                     bind,
                     state.witness_did()
                 );
@@ -120,7 +120,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             save_witness_config(&repo_path, &config)?;
             println!("Added witness: {}", url);
             println!(
-                "  Total witnesses: {}, threshold: {}",
+                "  Witnesses: {}, required: {}",
                 config.witness_urls.len(),
                 config.threshold
             );
@@ -146,7 +146,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             save_witness_config(&repo_path, &config)?;
             println!("Removed witness: {}", url);
             println!(
-                "  Remaining witnesses: {}, threshold: {}",
+                "  Remaining witnesses: {}, required: {}",
                 config.witness_urls.len(),
                 config.threshold
             );
@@ -165,7 +165,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                 println!("  {}. {}", i + 1, url);
             }
             println!(
-                "\nThreshold: {}/{} (policy: {:?})",
+                "\nRequired: {}/{} (policy: {:?})",
                 config.threshold,
                 config.witness_urls.len(),
                 config.policy

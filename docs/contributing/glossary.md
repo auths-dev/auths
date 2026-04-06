@@ -13,7 +13,7 @@
 | **Inception event** | The first event in a KERI Key Event Log. Creates the identity, commits to the initial public key, and pre-commits to the first rotation key via a hash. The inception event's content hash becomes the permanent identity prefix (AID). |
 | **KEL** | Key Event Log. A hash-linked, append-only sequence of KERI events (inception, rotation, interaction). Stored in Auths as a Git commit chain at `refs/did/keri/<prefix>/kel`. |
 | **KERI** | Key Event Receipt Infrastructure. A protocol for decentralized key management with pre-rotation, enabling key rotation without changing the identifier. |
-| **Key alias** | A human-readable name for a key stored in the platform keychain (e.g., `my-key`, `laptop-key`). Maps to a `SecureSeed` in the OS-native credential store. |
+| **Key name** | A human-readable name for a key stored in the platform keychain (e.g., `my-key`, `laptop-key`). Maps to a `SecureSeed` in the OS-native credential store. Also referred to as "key alias" in internal API types. |
 | **Pre-rotation** | A KERI mechanism where the hash of the next rotation key is committed in the current event. An attacker who compromises the current key cannot rotate the identity because they lack the pre-image of the next-key commitment. |
 | **Rotation** | Replacing the active signing key while preserving the identity DID. Recorded as a rotation event in the KEL. The new key must match the previously committed next-key hash. |
 | **SAID** | Self-Addressing Identifier. A content-addressed hash that uniquely identifies a KERI event. Computed over the canonicalized event data. |

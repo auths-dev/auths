@@ -116,7 +116,7 @@ impl AuthsErrorInfo for DeviceError {
             Self::AttestationError(_) => Some(
                 "The attestation operation failed; run `auths device list` to check device status",
             ),
-            Self::DeviceDidMismatch { .. } => Some("Check that --device-did matches the key alias"),
+            Self::DeviceDidMismatch { .. } => Some("Check that --device matches the key name"),
             Self::CryptoError(e) => e.suggestion(),
             Self::StorageError(e) => e.suggestion(),
         }

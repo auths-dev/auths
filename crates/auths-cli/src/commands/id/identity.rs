@@ -12,7 +12,7 @@ use auths_sdk::{
     keychain::{KeyAlias, get_platform_keychain},
     signing::PassphraseProvider,
 };
-use auths_verifier::{IdentityBundle, IdentityDID, Prefix};
+use auths_verifier::{IdentityBundle, IdentityDID};
 use clap::ValueEnum;
 
 use crate::commands::registry_overrides::RegistryOverrides;
@@ -61,7 +61,7 @@ impl LayoutPreset {
 
 #[derive(Parser, Debug, Clone)]
 #[command(
-    about = "Manage identities stored in Git repositories.",
+    about = "Manage your signing identity.",
     after_help = "Examples:
   auths id show             # Show current identity details
   auths id list             # List identities (same as show)
@@ -83,7 +83,7 @@ pub struct IdCommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum IdSubcommand {
-    /// Create a new cryptographic identity with secure key storage.
+    /// Create a new signing identity.
     #[command(name = "create")]
     Create {
         /// Path to JSON file with arbitrary identity metadata.
@@ -94,11 +94,8 @@ pub enum IdSubcommand {
         )]
         metadata_file: PathBuf,
 
-        /// Alias for storing the NEWLY generated private key in the secure keychain.
-        #[arg(
-            long,
-            help = "Alias for storing the NEWLY generated private key in the secure keychain."
-        )]
+        /// Name for the new signing key in secure storage.
+        #[arg(long, help = "Name for the new signing key in secure storage.")]
         local_key_alias: String,
 
         /// Storage layout preset for ecosystem compatibility.
@@ -121,42 +118,42 @@ pub enum IdSubcommand {
 
     /// Rotate identity keys. Stores the new key under a new alias.
     Rotate {
-        /// Alias of the identity key to rotate. If provided alone, next-key-alias defaults to <alias>-rotated-<timestamp>.
-        #[arg(long, help = "Alias of the identity key to rotate.")]
+        /// Name of the key to rotate. Defaults to the next rotation key automatically.
+        #[arg(long, help = "Name of the key to rotate.")]
         alias: Option<String>,
 
-        /// Alias of the CURRENT private key controlling the identity (alternative to --alias).
+        /// Current signing key name (alternative to --alias).
         #[arg(
             long,
-            help = "Alias of the CURRENT private key controlling the identity.",
+            help = "Current signing key name (alternative to --alias).",
             conflicts_with = "alias"
         )]
         current_key_alias: Option<String>,
 
-        /// Alias to store the NEWLY generated private key under.
-        #[arg(long, help = "Alias to store the NEWLY generated private key under.")]
+        /// Name for the new signing key after rotation.
+        #[arg(long, help = "Name for the new signing key after rotation.")]
         next_key_alias: Option<String>,
 
-        /// Verification server prefix to add (e.g., B...). Can be specified multiple times.
+        /// Add a witness server address (repeatable).
         #[arg(
             long,
             action = ArgAction::Append,
-            help = "Verification server prefix to add (e.g., B...). Can be specified multiple times."
+            help = "Add a witness server address (repeatable)."
         )]
         add_witness: Vec<String>,
 
-        /// Verification server prefix to remove (e.g., B...). Can be specified multiple times.
+        /// Remove a witness server address (repeatable).
         #[arg(
             long,
             action = ArgAction::Append,
-            help = "Verification server prefix to remove (e.g., B...). Can be specified multiple times."
+            help = "Remove a witness server address (repeatable)."
         )]
         remove_witness: Vec<String>,
 
-        /// New simple verification threshold count (e.g., 1 for 1-of-N). If omitted, the existing simple count is reused if possible.
+        /// Number of witnesses required to accept this rotation (e.g., 1).
         #[arg(
             long,
-            help = "New simple verification threshold count (e.g., 1 for 1-of-N)."
+            help = "Number of witnesses required to accept this rotation (e.g., 1)."
         )]
         witness_threshold: Option<u64>,
 
@@ -233,9 +230,9 @@ fn display_dry_run_rotate(
                 "current_key_alias": current_alias,
                 "next_key_alias": next_alias,
                 "actions": [
-                    "Generate new Ed25519 keypair",
-                    "Create rotation event in KERI event log",
-                    "Update key alias mappings",
+                    "Generate new signing key",
+                    "Record rotation in identity log",
+                    "Update key name mappings",
                     "All devices will need to re-authorize"
                 ]
             }),
@@ -248,16 +245,16 @@ fn display_dry_run_rotate(
         out.newline();
         out.println(&format!("   Repository: {:?}", repo_path));
         if let Some(alias) = current_alias {
-            out.println(&format!("   Current Key Alias: {}", alias));
+            out.println(&format!("   Current key name: {}", alias));
         }
         if let Some(alias) = next_alias {
-            out.println(&format!("   New Key Alias: {}", alias));
+            out.println(&format!("   New key name: {}", alias));
         }
         out.newline();
         out.println("Would perform the following actions:");
-        out.println("  1. Generate new Ed25519 keypair");
-        out.println("  2. Create rotation event in KERI event log");
-        out.println("  3. Update key alias mappings");
+        out.println("  1. Generate new signing key");
+        out.println("  2. Record rotation in identity log");
+        out.println("  3. Update key name mappings");
         out.println("  4. All devices will need to re-authorize");
         Ok(())
     }
@@ -321,12 +318,10 @@ pub fn handle_id(
             let metadata_file_path = metadata_file;
 
             // --- Common Setup: Repo Init Check & Metadata Loading ---
-            println!("🔐 Creating new cryptographic identity...");
+            println!("🔐 Creating identity...");
             println!("   Repository path:   {:?}", repo_path);
-            println!("   Local Key Alias:   {}", local_key_alias);
+            println!("   Key name:          {}", local_key_alias);
             println!("   Metadata File:     {:?}", metadata_file_path);
-            println!("   Using Identity Ref: '{}'", config.identity_ref);
-            println!("   Using Identity Blob: '{}'", config.identity_blob_name);
 
             // Ensure Git Repository Exists and is Initialized
             use crate::factories::storage::{ensure_git_repo, open_git_repo};
@@ -393,7 +388,6 @@ pub fn handle_id(
             println!("   Metadata loaded successfully from file.");
 
             // --- Always Use KERI Initialization Logic ---
-            println!("   Initializing using did:keri method (default)...");
 
             // Call the initialize_registry_identity function from auths_id
             let _metadata_value = metadata_value; // metadata stored separately if needed
@@ -410,38 +404,23 @@ pub fn handle_id(
                 None,
             ) {
                 Ok((controller_did_keri, alias)) => {
-                    println!("\n✅ Identity (did:keri) initialized successfully!");
+                    println!("\n✅ Identity created.");
                     println!(
                         "   Repository:         {:?}",
                         repo_path
                             .canonicalize()
                             .unwrap_or_else(|_| repo_path.clone())
                     );
-                    println!("   Controller DID:     {}", controller_did_keri);
+                    println!("   Identity:           {}", controller_did_keri);
                     println!(
-                        "   Local Key Alias:  {} (Use this for local signing/rotations)",
+                        "   Key name:         {} (use this for signing and rotations)",
                         alias
-                    );
-                    let did_prefix = controller_did_keri
-                        .as_str()
-                        .strip_prefix("did:keri:")
-                        .unwrap_or("");
-                    if !did_prefix.is_empty() {
-                        println!(
-                            "   KEL Ref Used:       '{}'",
-                            layout::keri_kel_ref(&Prefix::new_unchecked(did_prefix.to_string()))
-                        );
-                    }
-                    println!("   Identity Ref Used:  '{}'", config.identity_ref);
-                    println!(
-                        "   Identity Blob Used: '{}'",
-                        layout::identity_blob_name(&config)
                     );
                     println!("   Metadata stored from: {:?}", metadata_file_path);
                     println!("🔑 Keep your passphrase secure!");
                     Ok(())
                 }
-                Err(e) => Err(e).context("Failed to initialize KERI identity"),
+                Err(e) => Err(e).context("Failed to create identity"),
             }
         }
 
@@ -468,14 +447,9 @@ pub fn handle_id(
                 );
                 response.print()?;
             } else {
-                println!("Showing identity details...");
-                println!("   Using Repository:    {:?}", repo_path);
-                println!("   Using Identity Ref:  '{}'", config.identity_ref);
-                println!("   Using Identity Blob: '{}'", config.identity_blob_name);
-
-                println!("Controller DID: {}", identity.controller_did);
-                println!("Storage ID (RID): {}", identity.storage_id);
-                println!("Metadata (raw JSON, interpretation depends on convention):");
+                println!("Identity:   {}", identity.controller_did);
+                println!("Storage ID: {}", identity.storage_id);
+                println!("Metadata:");
                 if let Some(meta) = &identity.metadata {
                     println!(
                         "{}",
@@ -510,22 +484,22 @@ pub fn handle_id(
                 );
             }
 
-            println!("🔄 Rotating KERI identity keys...");
+            println!("🔄 Rotating keys...");
             println!("   Using Repository: {:?}", repo_path);
             if let Some(ref a) = identity_key_alias {
-                println!("   Current Key Alias: {}", a);
+                println!("   Current key name: {}", a);
             }
             if let Some(ref a) = next_key_alias {
-                println!("   New Key Alias: {}", a);
+                println!("   New key name: {}", a);
             }
             if !add_witness.is_empty() {
-                println!("   Witnesses to Add: {:?}", add_witness);
+                println!("   Adding witnesses: {:?}", add_witness);
             }
             if !remove_witness.is_empty() {
-                println!("   Witnesses to Remove: {:?}", remove_witness);
+                println!("   Removing witnesses: {:?}", remove_witness);
             }
             if let Some(thresh) = witness_threshold {
-                println!("   New Witness Threshold: {}", thresh);
+                println!("   Witnesses required: {}", thresh);
             }
 
             let rotation_config = auths_sdk::types::IdentityRotationConfig {
@@ -572,17 +546,17 @@ pub fn handle_id(
                 &rotation_ctx,
                 &auths_sdk::ports::SystemClock,
             )
-            .with_context(|| "Failed to rotate KERI identity keys")?;
+            .with_context(|| "Failed to rotate keys")?;
 
-            println!("\n✅ KERI identity keys rotated successfully!");
-            println!("   Identity DID: {}", result.controller_did);
+            println!("\n✅ Keys rotated.");
+            println!("   Identity: {}", result.controller_did);
             println!(
                 "   Old key fingerprint: {}...",
                 result.previous_key_fingerprint
             );
             println!("   New key fingerprint: {}...", result.new_key_fingerprint);
             println!(
-                "⚠️ The previous key alias is no longer the active signing key for this identity."
+                "⚠️  Your old key name is no longer active. Update any scripts that reference it."
             );
 
             log::info!(
@@ -601,7 +575,7 @@ pub fn handle_id(
         } => {
             println!("📦 Exporting identity bundle...");
             println!("   Using Repository:  {:?}", repo_path);
-            println!("   Key Alias:         {}", alias);
+            println!("   Key name:          {}", alias);
             println!("   Output File:       {:?}", output_file);
 
             // Load identity

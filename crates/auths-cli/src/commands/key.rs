@@ -17,7 +17,7 @@ use crate::ux::format::{JsonResponse, is_json_mode};
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "key",
-    about = "Manage local cryptographic keys in secure storage (list, import, export, delete).",
+    about = "Manage signing keys stored on this device.",
     after_help = "Examples:
   auths key list            # List all stored key aliases
   auths key import --key-alias mykey --seed seed.bin
@@ -96,10 +96,10 @@ pub enum KeySubcommand {
         )]
         seed_file: PathBuf,
 
-        /// Controller DID (e.g., did:key:...) to associate with the imported key.
+        /// Your identity to associate with this key (e.g., did:keri:E...).
         #[arg(
             long,
-            help = "Controller DID (e.g., did:key:...) to associate with the imported key."
+            help = "Your identity to associate with this key (e.g., did:keri:E...)."
         )]
         controller_did: String,
     },

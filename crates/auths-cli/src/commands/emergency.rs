@@ -47,7 +47,7 @@ pub enum EmergencySubcommand {
 /// Revoke a compromised device.
 #[derive(Parser, Debug, Clone)]
 pub struct RevokeDeviceCommand {
-    /// Device DID to revoke.
+    /// Device ID to revoke.
     #[arg(long)]
     pub device: Option<String>,
 
@@ -306,7 +306,7 @@ fn handle_revoke_device(
         did
     } else if std::io::stdin().is_terminal() {
         Input::new()
-            .with_prompt("Enter device DID to revoke")
+            .with_prompt("Enter device ID to revoke")
             .interact_text()?
     } else {
         return Err(anyhow!("--device is required in non-interactive mode"));
@@ -426,7 +426,7 @@ fn handle_rotate_now(
         out.print_info("Dry run mode - no changes will be made");
         out.newline();
         out.println("Would perform the following actions:");
-        out.println("  1. Generate new Ed25519 keypair");
+        out.println("  1. Generate new signing key");
         out.println("  2. Create rotation event in identity log");
         out.println("  3. Update key alias mappings");
         return Ok(());

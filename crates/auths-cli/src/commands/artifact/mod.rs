@@ -181,16 +181,16 @@ pub enum ArtifactSubcommand {
         #[arg(long, value_parser)]
         identity_bundle: Option<PathBuf>,
 
-        /// Path to witness receipts JSON file.
-        #[arg(long)]
+        /// Path to witness signatures JSON file.
+        #[arg(long = "witness-signatures")]
         witness_receipts: Option<PathBuf>,
 
         /// Witness public keys as DID:hex pairs (e.g., "did:key:z6Mk...:abcd1234...").
         #[arg(long, num_args = 1..)]
         witness_keys: Vec<String>,
 
-        /// Witness quorum threshold (default: 1).
-        #[arg(long, default_value = "1")]
+        /// Number of witnesses required (default: 1).
+        #[arg(long = "witnesses-required", default_value = "1")]
         witness_threshold: usize,
 
         /// Also verify the source commit's signing attestation.

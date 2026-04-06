@@ -75,14 +75,14 @@ The `--current-key-alias` flag is equivalent to `--alias` and cannot be combined
 ```bash
 auths id rotate --alias my-key \
   --add-witness "B<prefix>" \
-  --witness-threshold 1
+  --witnesses-required 1
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--add-witness <PREFIX>` | Add a witness prefix (repeatable) |
 | `--remove-witness <PREFIX>` | Remove a witness prefix (repeatable) |
-| `--witness-threshold <N>` | New threshold count for witness receipts |
+| `--witnesses-required <N>` | Number of witnesses required to accept this rotation |
 
 ## Emergency rotation
 

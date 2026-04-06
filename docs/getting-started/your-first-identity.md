@@ -69,7 +69,7 @@ auths id show
 ```
 
 ```
-Controller DID: did:keri:EAbcd1234...
+Identity: did:keri:EAbcd1234...
 Storage ID (RID): EAbcd1234
 ```
 

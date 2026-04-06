@@ -49,9 +49,9 @@ const DEFAULT_KEY_ALIAS: &str = "main";
 pub enum InitProfile {
     /// Full local development setup with keychain, identity, device linking, and git signing
     Developer,
-    /// Ephemeral identity for CI/CD pipelines
+    /// Temporary signing identity for CI/CD pipelines
     Ci,
-    /// Scoped identity for AI agents with capability restrictions
+    /// Restricted signing identity for AI agents
     Agent,
 }
 
@@ -80,16 +80,16 @@ impl std::fmt::Display for InitProfile {
 #[derive(Args, Debug, Clone)]
 #[command(
     name = "init",
-    about = "Set up your cryptographic identity and Git signing",
+    about = "Create your signing identity and configure Git",
     after_help = "Examples:
   auths init                              # Interactive setup wizard
   auths init --profile developer          # Developer profile with prompts
   auths init --profile ci --non-interactive # Automated CI setup
 
 Profiles:
-  developer — Full development environment: local keys, device linking, Git signing
-  ci        — Ephemeral identity for CI/CD pipelines with environment variables
-  agent     — Scoped identity for AI agents with capability restrictions
+  developer — Local setup: keychain, Git signing, platform identity
+  ci        — Temporary signing identity for CI/CD runners
+  agent     — Restricted signing identity for AI agents
 
 Related:
   auths status  — Check setup completion
@@ -237,13 +237,16 @@ fn run_developer_setup(
         _ => unreachable!(),
     };
 
-    out.print_success(&format!("Identity ready: {}", &result.identity_did));
-    out.print_success(&format!("Device linked: {}", result.device_did.as_str()));
+    out.print_success(&format!("Identity created: {}", &result.identity_did));
+    out.print_success(&format!(
+        "This device authorized: {}",
+        result.device_did.as_str()
+    ));
 
     // PLATFORM VERIFICATION
     guide.section("Platform Verification");
     let proof_url = if interactive && cmd.register {
-        out.print_info("Claim your Developer Passport");
+        out.print_info("Link your GitHub account");
         out.newline();
         match prompt_platform_verification(
             out,
@@ -252,7 +255,7 @@ fn run_developer_setup(
             now,
         )? {
             Some((url, _username)) => {
-                out.print_success(&format!("Proof anchored: {}", url));
+                out.print_success(&format!("GitHub identity linked: {}", url));
                 Some(url)
             }
             None => {

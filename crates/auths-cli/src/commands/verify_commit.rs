@@ -37,12 +37,12 @@ pub struct VerifyCommitCommand {
     #[arg(long, value_parser, help = "Path to identity bundle JSON (for CI)")]
     pub identity_bundle: Option<PathBuf>,
 
-    /// Path to witness receipts JSON file.
-    #[arg(long)]
+    /// Path to witness signatures JSON file.
+    #[arg(long = "witness-signatures")]
     pub witness_receipts: Option<PathBuf>,
 
-    /// Witness quorum threshold (default: 1).
-    #[arg(long, default_value = "1")]
+    /// Number of witnesses required (default: 1).
+    #[arg(long = "witnesses-required", default_value = "1")]
     pub witness_threshold: usize,
 
     /// Witness public keys as DID:hex pairs (e.g., "did:key:z6Mk...:abcd1234...").

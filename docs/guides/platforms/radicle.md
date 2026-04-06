@@ -65,13 +65,13 @@ auths id show --repo "$RAD_REPO_PATH"
 Import a device key and link it to your identity:
 
 ```bash
-CONTROLLER_DID=$(auths id show --repo "$RAD_REPO_PATH" \
-  | grep 'Controller DID:' | awk -F': ' '{print $2}')
+IDENTITY=$(auths id show --repo "$RAD_REPO_PATH" \
+  | grep 'Identity:' | awk '{print $NF}')
 
 auths key import \
   --alias rad_device_key \
   --seed-file ~/rad_device.seed \
-  --controller-did "$CONTROLLER_DID"
+  --identity "$IDENTITY"
 ```
 
 Then link the device:
@@ -81,7 +81,7 @@ auths device link \
   --repo "$RAD_REPO_PATH" \
   --key radicle_id_key \
   --device-key rad_device_key \
-  --device-did "$DEVICE_DID" \
+  --device "$DEVICE_DID" \
   --note "Radicle Laptop Key"
 ```
 

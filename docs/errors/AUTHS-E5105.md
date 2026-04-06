@@ -9,4 +9,4 @@ device DID mismatch: expected {expected}, got {actual}
 
 ## Suggestion
 
-Check that --device-did matches the key alias
+Check that --device matches the key name

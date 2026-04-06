@@ -121,7 +121,7 @@ After rotation:
 When a device is compromised or decommissioned, its attestation is revoked. Revocation is a signed event: the identity key signs a new attestation with the `revoked_at` field set.
 
 ```
-auths device revoke --device-did <DEVICE_DID> --key <KEY_ALIAS>
+auths device revoke --device <DEVICE_DID> --key <KEY_ALIAS>
 ```
 
 The revoked attestation replaces the original at the same Git ref path. The revocation is anchored in the KEL via an interaction event. After revocation, signatures from that device will fail verification (the verifier checks the `revoked_at` field).

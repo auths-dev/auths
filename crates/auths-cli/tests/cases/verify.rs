@@ -63,7 +63,7 @@ fn test_verify_valid_attestation_returns_exit_code_0() {
     let mut cmd = Command::cargo_bin("auths").unwrap();
     cmd.arg("verify")
         .arg(file.path())
-        .arg("--issuer-pk")
+        .arg("--signer-key")
         .arg(&pk_hex);
 
     cmd.assert().success();
@@ -82,7 +82,7 @@ fn test_verify_invalid_attestation_returns_exit_code_1() {
     let mut cmd = Command::cargo_bin("auths").unwrap();
     cmd.arg("verify")
         .arg(file.path())
-        .arg("--issuer-pk")
+        .arg("--signer-key")
         .arg(&wrong_pk_hex);
 
     cmd.assert().code(1);
@@ -98,7 +98,7 @@ fn test_verify_invalid_json_returns_exit_code_2() {
     let mut cmd = Command::cargo_bin("auths").unwrap();
     cmd.arg("verify")
         .arg(file.path())
-        .arg("--issuer-pk")
+        .arg("--signer-key")
         .arg("a".repeat(64));
 
     cmd.assert().code(2);
@@ -115,7 +115,7 @@ fn test_verify_json_output_valid() {
     let mut cmd = Command::cargo_bin("auths").unwrap();
     cmd.arg("verify")
         .arg(file.path())
-        .arg("--issuer-pk")
+        .arg("--signer-key")
         .arg(&pk_hex)
         .arg("--json");
 
@@ -141,7 +141,7 @@ fn test_verify_json_output_invalid() {
     let mut cmd = Command::cargo_bin("auths").unwrap();
     cmd.arg("verify")
         .arg(file.path())
-        .arg("--issuer-pk")
+        .arg("--signer-key")
         .arg(&wrong_pk_hex)
         .arg("--json");
 
@@ -166,7 +166,7 @@ fn test_verify_stdin_input() {
     let mut cmd = Command::cargo_bin("auths").unwrap();
     cmd.arg("verify")
         .arg("-")
-        .arg("--issuer-pk")
+        .arg("--signer-key")
         .arg(&pk_hex)
         .write_stdin(json);
 
@@ -181,7 +181,7 @@ fn test_verify_help_shows_usage() {
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("attestation"))
-        .stdout(predicates::str::contains("issuer-pk"));
+        .stdout(predicates::str::contains("signer-key"));
 }
 
 #[test]
@@ -285,7 +285,7 @@ fn test_verify_issuer_did_with_pinned_store() {
     let mut cmd = Command::cargo_bin("auths").unwrap();
     cmd.arg("verify")
         .arg(att_file.path())
-        .arg("--issuer-pk")
+        .arg("--signer-key")
         .arg(&pk_hex);
 
     cmd.assert().success();
@@ -300,7 +300,7 @@ fn test_verify_help_shows_unified_options() {
 
     cmd.assert()
         .success()
-        .stdout(predicates::str::contains("--issuer-did"))
-        .stdout(predicates::str::contains("--issuer-pk"))
+        .stdout(predicates::str::contains("--signer"))
+        .stdout(predicates::str::contains("--signer-key"))
         .stdout(predicates::str::contains("--allowed-signers"));
 }
