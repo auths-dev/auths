@@ -5,15 +5,14 @@ use clap::{Parser, Subcommand};
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
+use crate::factories::storage::build_auths_context;
 use auths_crypto::AuthsErrorInfo;
 use auths_infra_http::resolve_verified_platform_context;
 use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
-use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
+use auths_sdk::keychain::KeyAlias;
 use auths_sdk::namespace_registry::NamespaceVerifierRegistry;
-use auths_sdk::ports::IdentityStorage;
 use auths_sdk::ports::{Ecosystem, PackageName};
 use auths_sdk::signing::StorageSigner;
-use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::storage_layout::layout;
 use auths_sdk::workflows::namespace::{
     DelegateNamespaceCommand, TransferNamespaceCommand, initiate_namespace_claim,
@@ -147,10 +146,19 @@ fn resolve_registry_url(registry_url: Option<String>) -> String {
 fn load_identity_and_alias(
     ctx: &CliConfig,
     key: Option<String>,
-) -> Result<(auths_verifier::types::IdentityDID, KeyAlias)> {
+) -> Result<(
+    auths_verifier::types::IdentityDID,
+    KeyAlias,
+    auths_sdk::context::AuthsContext,
+)> {
     let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
-    let identity_storage = RegistryIdentityStorage::new(repo_path);
-    let managed_identity = identity_storage
+    let auths_ctx = build_auths_context(
+        &repo_path,
+        &ctx.env_config,
+        Some(ctx.passphrase_provider.clone()),
+    )?;
+    let managed_identity = auths_ctx
+        .identity_storage
         .load_identity()
         .context("Failed to load identity. Run `auths init` first.")?;
 
@@ -173,7 +181,7 @@ fn load_identity_and_alias(
     });
 
     let key_alias = KeyAlias::new_unchecked(alias_str);
-    Ok((controller_did, key_alias))
+    Ok((controller_did, key_alias, auths_ctx))
 }
 
 fn post_signed_entry(registry_url: &str, body: serde_json::Value) -> Result<serde_json::Value> {
@@ -213,8 +221,8 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             key,
         } => {
             let registry_url = resolve_registry_url(registry_url);
-            let (controller_did, key_alias) = load_identity_and_alias(ctx, key)?;
-            let signer = StorageSigner::new(get_platform_keychain()?);
+            let (controller_did, key_alias, auths_ctx) = load_identity_and_alias(ctx, key)?;
+            let signer = StorageSigner::new(std::sync::Arc::clone(&auths_ctx.key_storage));
             let passphrase_provider = ctx.passphrase_provider.clone();
 
             let eco = Ecosystem::parse(&ecosystem).context("Failed to parse ecosystem")?;
@@ -369,8 +377,8 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             key,
         } => {
             let registry_url = resolve_registry_url(registry_url);
-            let (controller_did, key_alias) = load_identity_and_alias(ctx, key)?;
-            let signer = StorageSigner::new(get_platform_keychain()?);
+            let (controller_did, key_alias, auths_ctx) = load_identity_and_alias(ctx, key)?;
+            let signer = StorageSigner::new(std::sync::Arc::clone(&auths_ctx.key_storage));
             let passphrase_provider = ctx.passphrase_provider.clone();
 
             println!(
@@ -412,8 +420,8 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             key,
         } => {
             let registry_url = resolve_registry_url(registry_url);
-            let (controller_did, key_alias) = load_identity_and_alias(ctx, key)?;
-            let signer = StorageSigner::new(get_platform_keychain()?);
+            let (controller_did, key_alias, auths_ctx) = load_identity_and_alias(ctx, key)?;
+            let signer = StorageSigner::new(std::sync::Arc::clone(&auths_ctx.key_storage));
             let passphrase_provider = ctx.passphrase_provider.clone();
 
             println!(
