@@ -11,16 +11,18 @@ use crate::commands::device::verify_attestation::{VerifyCommand, handle_verify};
 pub enum VerifyTarget {
     GitRef(String),
     Attestation(String),
+    ArtifactFile(PathBuf), // binary artifact, will look up .auths.json sidecar
 }
 
 /// Determine whether `raw_target` is a Git reference or an attestation path.
 ///
 /// Rules (evaluated in order):
 /// 1. "-" → stdin attestation
-/// 2. Path exists on disk → attestation file
-/// 3. Contains ".." (range notation) → git ref
-/// 4. Is "HEAD" or matches ^[0-9a-f]{4,40}$ → git ref
-/// 5. Otherwise → git ref (assume the user knows what they're typing)
+/// 2. Path exists on disk and is JSON → attestation file
+/// 3. Path exists on disk and is not JSON → artifact file (sidecar lookup)
+/// 4. Contains ".." (range notation) → git ref
+/// 5. Is "HEAD" or matches ^[0-9a-f]{4,40}$ → git ref
+/// 6. Otherwise → git ref (assume the user knows what they're typing)
 ///
 /// Args:
 /// * `raw_target` - Raw CLI input string.
@@ -36,7 +38,11 @@ pub fn parse_verify_target(raw_target: &str) -> VerifyTarget {
     }
     let path = Path::new(raw_target);
     if path.exists() {
-        return VerifyTarget::Attestation(raw_target.to_string());
+        if is_attestation_path(raw_target) {
+            return VerifyTarget::Attestation(raw_target.to_string());
+        } else {
+            return VerifyTarget::ArtifactFile(path.to_path_buf());
+        }
     }
     if raw_target.contains("..") {
         return VerifyTarget::GitRef(raw_target.to_string());
@@ -55,6 +61,12 @@ pub fn parse_verify_target(raw_target: &str) -> VerifyTarget {
     // return a clear error if the ref doesn't resolve in the git repo, so no
     // silent data loss occurs from a typoed filename being misclassified.
     VerifyTarget::GitRef(raw_target.to_string())
+}
+
+/// Returns true if the path looks like an attestation/JSON file rather than a binary artifact.
+fn is_attestation_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.ends_with(".json")
 }
 
 /// Unified verify command: verifies a signed commit or an attestation.
@@ -148,6 +160,7 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
             };
             handle_verify(verify_cmd).await
         }
+        VerifyTarget::ArtifactFile(_) => todo!("artifact file routing"),
     }
 }
 
@@ -194,6 +207,39 @@ mod tests {
 
     #[test]
     fn test_parse_verify_target_file() {
+        use std::fs::File;
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let f = dir.path().join("attestation.json");
+        File::create(&f).unwrap();
+        let target = parse_verify_target(f.to_str().unwrap());
+        assert!(matches!(target, VerifyTarget::Attestation(_)));
+    }
+
+    #[test]
+    fn test_parse_verify_target_binary_file_routes_to_artifact() {
+        use std::fs::File;
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let artifact = dir.path().join("release.tar.gz");
+        File::create(&artifact).unwrap();
+        let target = parse_verify_target(artifact.to_str().unwrap());
+        assert!(matches!(target, VerifyTarget::ArtifactFile(_)));
+    }
+
+    #[test]
+    fn test_parse_verify_target_json_file_routes_to_attestation() {
+        use std::fs::File;
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let attest = dir.path().join("release.auths.json");
+        File::create(&attest).unwrap();
+        let target = parse_verify_target(attest.to_str().unwrap());
+        assert!(matches!(target, VerifyTarget::Attestation(_)));
+    }
+
+    #[test]
+    fn test_parse_verify_target_plain_json_routes_to_attestation() {
         use std::fs::File;
         use tempfile::tempdir;
         let dir = tempdir().unwrap();
