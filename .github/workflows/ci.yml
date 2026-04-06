@@ -18,7 +18,6 @@ on:
 
 permissions:
   contents: read
-  checks: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -134,9 +133,7 @@ jobs:
 
       - name: Security audit
         if: matrix.os == 'ubuntu-latest'
-        uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo audit
 
   # capsec-audit:
   #   name: Capability Audit

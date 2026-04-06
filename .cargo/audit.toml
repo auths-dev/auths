@@ -17,4 +17,12 @@ ignore = [
     # -> hyper-rustls 0.24 -> rustls 0.21). Pinned by AWS SDK's legacy TLS stack.
     # No update available until AWS SDK drops rustls 0.21 support.
     "RUSTSEC-2026-0049",
+
+    # lru IterMut stacked-borrows violation (via aws-sdk-s3 -> lru 0.12.5).
+    # Patched in lru >= 0.16.3, but blocked until aws-sdk-s3 updates its dep.
+    "RUSTSEC-2026-0002",
 ]
+
+[yanked]
+# uds_windows 1.2.0 is yanked but is a transitive dep of zbus; no direct fix available.
+ignore = true
