@@ -74,8 +74,10 @@ fn run() -> Result<()> {
     let result = match command {
         // Primary
         RootCommand::Init(cmd) => cmd.execute(&ctx),
+        RootCommand::Demo(cmd) => cmd.execute(&ctx),
         RootCommand::Sign(cmd) => cmd.execute(&ctx),
         RootCommand::Verify(cmd) => cmd.execute(&ctx),
+        RootCommand::Publish(cmd) => cmd.execute(&ctx),
         RootCommand::Artifact(cmd) => cmd.execute(&ctx),
         RootCommand::Status(cmd) => cmd.execute(&ctx),
         RootCommand::Whoami(cmd) => cmd.execute(&ctx),
@@ -136,11 +138,11 @@ struct CommandGroup {
 const HELP_GROUPS: &[CommandGroup] = &[
     CommandGroup {
         heading: "Primary",
-        commands: &["init", "sign", "verify", "artifact", "status", "whoami"],
+        commands: &["init", "sign", "verify", "status", "whoami"],
     },
     CommandGroup {
         heading: "Setup & Troubleshooting",
-        commands: &["pair", "trust", "doctor", "tutorial"],
+        commands: &["pair", "trust", "doctor", "tutorial", "demo"],
     },
     CommandGroup {
         heading: "CI/CD",
@@ -281,6 +283,22 @@ fn print_grouped_help(show_all: bool) -> Result<()> {
     // Help and version flags (clap adds these separately, not in get_arguments)
     println!("{CYAN_BOLD}{:<23}{RESET} Print help", "  -h, --help");
     println!("{CYAN_BOLD}{:<23}{RESET} Print version", "  -V, --version");
+
+    // Examples
+    if !show_all {
+        println!();
+        println!("{BLUE_BOLD}Examples:{RESET}");
+        println!(
+            "  {CYAN_BOLD}auths init{RESET}                    Set up your cryptographic identity"
+        );
+        println!(
+            "  {CYAN_BOLD}auths demo{RESET}                    Try sign + verify in 30 seconds"
+        );
+        println!("  {CYAN_BOLD}auths sign release.tar.gz{RESET}     Sign an artifact");
+        println!(
+            "  {CYAN_BOLD}auths verify release.tar.gz{RESET}   Verify a signed artifact (auto-finds .auths.json)"
+        );
+    }
 
     // Footer
     println!();

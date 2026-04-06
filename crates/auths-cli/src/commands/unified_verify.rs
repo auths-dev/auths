@@ -5,6 +5,7 @@ use clap::Parser;
 use std::path::{Path, PathBuf};
 
 use super::verify_commit::{VerifyCommitCommand, handle_verify_commit};
+use crate::commands::artifact::verify::handle_verify as handle_artifact_verify;
 use crate::commands::device::verify_attestation::{VerifyCommand, handle_verify};
 
 /// What kind of target the user provided.
@@ -76,21 +77,18 @@ fn is_attestation_path(path: &str) -> bool {
     after_help = "Examples:
   auths verify HEAD                       # Verify current commit signature
   auths verify main..HEAD                 # Verify range of commits
-  auths verify artifact.json              # Verify signed artifact
+  auths verify release.tar.gz             # Verify artifact (finds .auths.json sidecar)
+  auths verify release.tar.gz.auths.json  # Verify attestation file directly
   auths verify - < artifact.json          # Verify from stdin
 
-Trust Policies:
-  Defaults to TOFU (Trust-On-First-Use) on interactive terminals.
-  Use --trust explicit in CI/CD to reject unknown identities.
-
 Artifact Verification:
-  File signatures are stored as <file>.auths.json.
-  JSON attestations can be verified directly.
+  Pass the artifact file directly — auths finds <file>.auths.json automatically.
+  Pass --signature to override the default sidecar path.
 
 Related:
-  auths trust add <did>     — Add an identity to your trust store
-  auths sign                — Create signatures
-  auths --help-all          — See all commands"
+  auths sign     — Create signatures
+  auths publish  — Sign and publish to registry
+  auths trust    — Manage trusted identities"
 )]
 pub struct UnifiedVerifyCommand {
     /// Git ref, commit hash, range (e.g. HEAD, abc1234, main..HEAD),
@@ -125,6 +123,11 @@ pub struct UnifiedVerifyCommand {
     /// Witness public keys as DID:hex pairs.
     #[arg(long, num_args = 1..)]
     pub witness_keys: Vec<String>,
+
+    /// Path to signature file. Only used when verifying an artifact file (not a commit).
+    /// Defaults to <FILE>.auths.json.
+    #[arg(long, value_name = "PATH")]
+    pub signature: Option<PathBuf>,
 }
 
 /// Handle the unified verify command.
@@ -160,7 +163,18 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
             };
             handle_verify(verify_cmd).await
         }
-        VerifyTarget::ArtifactFile(_) => todo!("artifact file routing"),
+        VerifyTarget::ArtifactFile(artifact_path) => {
+            handle_artifact_verify(
+                &artifact_path,
+                cmd.signature,
+                cmd.identity_bundle,
+                cmd.witness_receipts,
+                &cmd.witness_keys,
+                cmd.witness_threshold,
+                false,
+            )
+            .await
+        }
     }
 }
 

@@ -14,6 +14,7 @@ use crate::commands::commit::CommitCmd;
 use crate::commands::completions::CompletionsCommand;
 use crate::commands::config::ConfigCommand;
 use crate::commands::debug::DebugCmd;
+use crate::commands::demo::DemoCommand;
 use crate::commands::device::DeviceCommand;
 use crate::commands::device::pair::PairCommand;
 use crate::commands::doctor::DoctorCommand;
@@ -28,6 +29,7 @@ use crate::commands::log::LogCommand;
 use crate::commands::namespace::NamespaceCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
+use crate::commands::publish::PublishCommand;
 use crate::commands::reset::ResetCommand;
 use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
@@ -87,11 +89,11 @@ pub enum RootCommand {
     Init(InitCommand),
     Sign(SignCommand),
     Verify(UnifiedVerifyCommand),
-    Artifact(ArtifactCommand),
     Status(StatusCommand),
     Whoami(WhoamiCommand),
 
     // ── Setup & Troubleshooting ──
+    Demo(DemoCommand),
     Pair(PairCommand),
     Trust(TrustCommand),
     Doctor(DoctorCommand),
@@ -105,6 +107,10 @@ pub enum RootCommand {
     Ci(CiCommand),
 
     // ── Advanced (visible via --help-all) ──
+    #[command(hide = true)]
+    Publish(PublishCommand),
+    #[command(hide = true)]
+    Artifact(ArtifactCommand),
     #[command(hide = true)]
     Reset(ResetCommand),
     #[command(hide = true)]

@@ -28,8 +28,12 @@ pub(crate) fn display_developer_result(
         ));
     }
     out.newline();
+    out.key_value("Next step     ", "auths sign <file>   or   auths git setup");
+    out.key_value("Share identity", "auths export --bundle | pbcopy");
+    out.newline();
     out.print_success("Your next commit will be signed with Auths!");
     out.println("  Run `auths status` to check your identity");
+    out.println("  Run `auths demo` to test sign + verify right now");
 }
 
 pub(crate) fn display_ci_result(

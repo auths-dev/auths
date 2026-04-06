@@ -665,6 +665,8 @@ Sign multiple artifacts matching a glob pattern
 
 ### auths artifact verify
 
+> **Prefer `auths verify <file>`** — pass the artifact file directly and the sidecar is found automatically. `auths artifact verify` remains available for advanced use.
+
 ```bash
 auths artifact verify
 ```
