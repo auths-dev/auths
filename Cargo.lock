@@ -7920,14 +7920,9 @@ dependencies = [
  "auths-verifier",
  "base64",
  "clap",
- "flate2",
  "jsonschema",
- "rand 0.10.0",
- "rpassword",
  "schemars 0.8.22",
  "serde_json",
- "tar",
- "tempfile",
  "walkdir",
 ]
 

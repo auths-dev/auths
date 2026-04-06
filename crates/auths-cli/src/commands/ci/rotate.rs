@@ -18,8 +18,7 @@ use crate::commands::ci::forge_backend::backend_for_forge;
 use crate::commands::ci::setup::warn_short_ttl;
 use crate::subprocess::git_stdout;
 
-/// CI device key alias (same as setup).
-const CI_DEVICE_ALIAS: &str = "ci-release-device";
+use super::CI_DEVICE_ALIAS;
 
 /// Run the `auths ci rotate` flow.
 ///

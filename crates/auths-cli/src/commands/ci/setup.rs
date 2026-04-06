@@ -23,8 +23,7 @@ use crate::commands::ci::forge_backend::backend_for_forge;
 use crate::factories::storage::build_auths_context;
 use crate::subprocess::git_stdout;
 
-/// CI device key alias used by `auths ci setup`.
-const CI_DEVICE_ALIAS: &str = "ci-release-device";
+use super::CI_DEVICE_ALIAS;
 
 /// Run the `auths ci setup` flow.
 ///
