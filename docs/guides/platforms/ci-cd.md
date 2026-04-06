@@ -1,49 +1,58 @@
 # CI/CD Integration
 
-Sign release artifacts and verify commit signatures in CI pipelines. Auths uses a limited-capability device key model so your root identity never leaves your machine.
+Sign every commit. Verify every release. Auths uses a limited-capability device key model so your root identity never leaves your machine — the CI runner only ever holds a scoped, revocable token.
 
-## Concepts
+---
 
-CI signing in Auths works through device delegation:
+## GitHub Actions
 
-1. You create a **CI device key** on your local machine.
-2. You **link** that device to your identity with restricted capabilities (e.g., `sign_release` only).
-3. The device key and a snapshot of your identity repository are packaged as GitHub Secrets.
-4. In CI, the runner restores the identity bundle and signs artifacts using the CI device key.
-5. You can **revoke** the CI device at any time without affecting your root identity.
+The fastest path. Two actions, one secret, zero ongoing maintenance.
 
-## One-time setup with `auths ci setup`
-
-Run this from any repo with a git remote:
+### Setup (one-time)
 
 ```bash
 auths ci setup
 ```
 
-This command will:
+This creates a scoped CI device key, links it to your identity with `sign_release` capability, and sets `AUTHS_CI_TOKEN` on your repo via the `gh` CLI. If `gh` isn't authenticated, it prints the token value to paste in manually under **Repository → Settings → Secrets → Actions**.
 
-1. **Verify your identity exists** and read your identity DID and key alias.
-2. **Generate a CI device key** (Ed25519) and link it to your identity with `sign_release` capability.
-3. **Package everything** into a single `AUTHS_CI_TOKEN` JSON secret containing the passphrase, encrypted keychain, identity repo snapshot, and verification bundle.
-4. **Set the secret** on your forge automatically via the `gh` CLI (GitHub) or print the token for manual setup (other forges).
+### Sign commits
 
-If the `gh` CLI is not authenticated, the command prints the token value for you to add manually via **Repository > Settings > Secrets > Actions > New secret**.
+Add to any workflow that pushes to `main`:
 
-### Rotating the token
-
-To refresh the token (new TTL, updated identity repo) without regenerating the device key:
-
-```bash
-auths ci rotate
+```yaml
+- uses: auths-dev/sign@v1
+  with:
+    token: ${{ secrets.AUTHS_CI_TOKEN }}
+    commits: 'HEAD~1..HEAD'
 ```
 
-### Re-running setup
+### Verify commits
 
-If you already have a `ci-release-device` key, `auths ci setup` detects it and reuses the existing key while regenerating the token.
+Add to every pull request and push:
 
-## Signing artifacts in GitHub Actions
+```yaml
+- uses: auths-dev/verify@v1
+  with:
+    fail-on-unsigned: true
+    post-pr-comment: 'true'
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+```
 
-Once `AUTHS_CI_TOKEN` is set, add a signing step to your release workflow:
+No token needed — the action reads `.auths/allowed_signers` from your repo.
+
+### Show it off
+
+Once both workflows are running, add badges to your README:
+
+```markdown
+[![Verify Commits](https://github.com/<org>/<repo>/actions/workflows/verify-commits.yml/badge.svg)](https://github.com/<org>/<repo>/actions/workflows/verify-commits.yml?query=branch%3Amain+event%3Apush)
+[![Sign Commits](https://github.com/<org>/<repo>/actions/workflows/sign-commits.yml/badge.svg)](https://github.com/<org>/<repo>/actions/workflows/sign-commits.yml?query=branch%3Amain)
+```
+
+### Sign release artifacts
+
+For releases triggered by a tag push, combine signing with your existing build step:
 
 ```yaml
 name: Release
@@ -60,10 +69,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build release artifact
+      - name: Build
         run: cargo build --release && tar czf myproject.tar.gz -C target/release myproject
 
-      - name: Sign and verify artifact
+      - name: Sign artifact
         uses: auths-dev/sign@v1
         with:
           token: ${{ secrets.AUTHS_CI_TOKEN }}
@@ -78,83 +87,104 @@ jobs:
             myproject.tar.gz.auths.json
 ```
 
-The `auths sign <file>` command detects that the target is a file (not a Git ref) and creates an attestation file at `<file>.auths.json` containing the cryptographic signature, the signer's DID, and the artifact digest.
+Signing produces `myproject.tar.gz.auths.json` alongside the artifact — ship both so downstream consumers can verify.
 
-## Signing Git commits in CI
+### Rotating or revoking access
 
-To sign Git commits (not just artifacts), configure Git to use Auths as the signing program:
-
-```yaml
-      - name: Configure Git signing
-        run: |
-          git config --global gpg.format ssh
-          git config --global gpg.ssh.program auths-sign
-          git config --global commit.gpgsign true
-          git config --global user.signingkey "$(auths key export --alias ci-release-device --format pub)"
-```
-
-Then any `git commit` in the workflow will be signed by the CI device key.
-
-## Verifying signatures in pipelines
-
-### Verifying commits
-
-Use `auths verify` to check commit signatures. For CI, the `--identity-bundle` flag enables stateless verification without needing access to the full identity repository:
+To refresh the token (new TTL, updated identity snapshot):
 
 ```bash
-# Export a bundle on your local machine (one-time)
-auths id export-bundle \
-  --alias main \
-  --output identity-bundle.json \
-  --max-age-secs 7776000  # 90 days
+auths ci rotate
 ```
 
-Commit this bundle to your repository (e.g., `.auths/identity-bundle.json`), then verify in CI:
+To revoke a CI device entirely:
+
+```bash
+auths device revoke --device <ci-device-did> --key <your-key>
+```
+
+After revocation the CI key can no longer produce valid attestations, even if the secret is still in GitHub.
+
+---
+
+## Manual setup (other CI platforms)
+
+Running GitLab CI, CircleCI, Bitbucket Pipelines, or your own runner? The same `AUTHS_CI_TOKEN` approach works anywhere you can set an environment variable and install a binary.
+
+### Install the CLI
 
 ```yaml
-      - name: Verify commit signatures
-        run: |
-          auths verify HEAD --identity-bundle .auths/identity-bundle.json
+# Example: generic shell step
+- name: Install auths
+  run: |
+    curl -fsSL https://get.auths.dev | sh
+    echo "$HOME/.auths/bin" >> $GITHUB_PATH   # or equivalent PATH export
 ```
 
-To verify a range of commits:
+### Sign commits
+
+Configure Git to use Auths as the signing program, then any `git commit` in the workflow is signed:
+
+```yaml
+- name: Configure Git signing
+  run: |
+    git config --global gpg.format ssh
+    git config --global gpg.ssh.program auths-sign
+    git config --global commit.gpgsign true
+    git config --global user.signingkey "$(auths key export --alias ci-release-device --format pub)"
+```
+
+### Sign artifacts
+
+```bash
+auths sign myproject.tar.gz
+# → creates myproject.tar.gz.auths.json
+```
+
+### Verify commits
+
+For stateless verification (no access to the identity repo), export a bundle once locally and commit it:
+
+```bash
+# Local — one-time export
+auths id export-bundle \
+  --alias main \
+  --output .auths/identity-bundle.json \
+  --max-age-secs 7776000   # 90 days
+git add .auths/identity-bundle.json && git commit -m "add identity bundle"
+```
+
+Then in CI:
+
+```bash
+auths verify HEAD --identity-bundle .auths/identity-bundle.json
+```
+
+To verify a PR range:
 
 ```bash
 auths verify main..HEAD --identity-bundle .auths/identity-bundle.json
 ```
 
-The verify command checks:
+### Verify artifacts
 
-1. **SSH signature validity** -- The commit has a valid SSH signature from an allowed signer.
-2. **Attestation chain** -- If the bundle contains attestations, the chain is verified (signatures, expiry, revocation).
-3. **Witness quorum** -- If witness receipts are provided, the required threshold is checked.
-
-Exit codes: `0` for valid, `1` for invalid/unsigned, `2` for errors.
-
-### Verifying artifacts
-
-Verify a signed artifact by passing the artifact file directly — `auths` finds the `.auths.json` sidecar automatically:
+Pass the artifact file directly — Auths finds the `.auths.json` sidecar automatically:
 
 ```bash
 auths verify myproject.tar.gz --signer-key <hex-encoded-public-key>
-```
-
-Or using the issuer's DID:
-
-```bash
+# or by DID
 auths verify myproject.tar.gz --signer did:keri:EaBcDeFg...
 ```
 
-You can also pass the attestation file directly, or override the sidecar path:
+Override the sidecar path with `--signature` if needed:
 
 ```bash
-auths verify myproject.tar.gz.auths.json --signer-key <hex-encoded-public-key>
 auths verify myproject.tar.gz --signature /path/to/custom.auths.json --signer-key <hex-encoded-public-key>
 ```
 
-### JSON output for CI parsing
+### Machine-readable output
 
-Use `--json` for machine-readable verification output:
+Add `--json` to any verify command for structured output your pipeline can parse:
 
 ```bash
 auths verify HEAD --identity-bundle .auths/identity-bundle.json --json
@@ -169,6 +199,10 @@ auths verify HEAD --identity-bundle .auths/identity-bundle.json --json
   "signer": "did:keri:EaBcDeFg..."
 }
 ```
+
+Exit codes: `0` valid · `1` invalid/unsigned · `2` error.
+
+---
 
 ## GitHub Actions OIDC cross-reference
 
@@ -204,15 +238,3 @@ steps:
 ```
 
 The bridge verifies the KERI attestation chain, validates the GitHub OIDC token against GitHub's JWKS endpoint, and cross-references the GitHub `actor` claim against the expected KERI identity. If both pass, it issues a bridge JWT.
-
-## Revoking CI access
-
-To revoke a CI device at any time:
-
-```bash
-auths device revoke \
-  --device <ci-device-did> \
-  --key <your-key>
-```
-
-The device DID and identity key alias are printed by `auths ci setup` when the device is created. After revocation, the CI device key can no longer produce valid attestations, even if the secrets remain in GitHub.
