@@ -25,4 +25,4 @@ ignore = [
 
 [yanked]
 # uds_windows 1.2.0 is yanked but is a transitive dep of zbus; no direct fix available.
-ignore = true
+enabled = false
