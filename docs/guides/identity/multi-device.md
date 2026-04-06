@@ -117,12 +117,12 @@ Use manual linking when you need full control over key material or cannot run a 
 ### 1. Import the device key on the new device
 
 ```bash
-CONTROLLER_DID=$(auths id show | grep 'Controller DID:' | awk -F': ' '{print $2}')
+IDENTITY=$(auths id show | grep 'Identity:' | awk '{print $NF}')
 
 auths key import \
   --alias laptop-key \
   --seed-file ~/device_key.seed \
-  --controller-did "$CONTROLLER_DID"
+  --identity "$IDENTITY"
 ```
 
 The seed file must contain exactly 32 bytes of raw Ed25519 key material. You will be prompted for a passphrase to encrypt the key before storing it in the platform keychain.
@@ -133,7 +133,7 @@ The seed file must contain exactly 32 bytes of raw Ed25519 key material. You wil
 auths device link \
   --key my-key \
   --device-key laptop-key \
-  --device-did "$DEVICE_DID" \
+  --device "$DEVICE_DID" \
   --note "Work Laptop" \
   --expires-in 7776000
 ```
@@ -187,7 +187,7 @@ auths device list --include-revoked
 
 ```bash
 auths device extend \
-  --device-did "$DEVICE_DID" \
+  --device "$DEVICE_DID" \
   --expires-in 7776000 \
   --key my-key \
   --device-key laptop-key
@@ -197,7 +197,7 @@ auths device extend \
 
 ```bash
 auths device revoke \
-  --device-did "$DEVICE_DID" \
+  --device "$DEVICE_DID" \
   --key my-key \
   --note "Laptop retired"
 ```
@@ -214,7 +214,7 @@ auths key delete --alias laptop-key
 auths device verify --attestation path/to/attestation.json
 ```
 
-The `--attestation` flag accepts a path to a device authorization JSON file, or `-` to read from stdin. You can optionally pass `--issuer-did` or `--issuer-pk` to specify the expected issuer.
+The `--attestation` flag accepts a path to a device authorization JSON file, or `-` to read from stdin. You can optionally pass `--signer` or `--signer-key` to specify the expected signer.
 
 ## Troubleshooting
 

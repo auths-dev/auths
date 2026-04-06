@@ -38,18 +38,17 @@ struct DeviceEntry {
 
 #[derive(Args, Debug, Clone)]
 #[command(
-    about = "Manage device authorizations within an identity repository.",
+    about = "Manage which devices can sign with your identity.",
     after_help = "Examples:
-  auths device list         # List all linked devices
+  auths device list         # List authorized devices
   auths device link --key identity-key --device-key device-key --device-did did:key:...
-                            # Link a new device to your identity
-  auths device revoke       # Revoke a device authorization
+                            # Authorize a new device
+  auths device revoke       # Revoke a device
   auths device extend       # Extend device expiry
 
 Related:
-  auths pair    — Pair a new device with your identity
   auths status  — Show device status and expiry
-  auths init    — Set up identity and linking"
+  auths init    — Set up identity and signing"
 )]
 pub struct DeviceCommand {
     #[command(subcommand)]
@@ -74,19 +73,19 @@ pub enum DeviceSubcommand {
     /// Authorize a new device to act on behalf of the identity.
     #[command(visible_alias = "add")]
     Link {
-        #[arg(long, help = "Local alias of the *identity's* key (used for signing).")]
+        #[arg(long, help = "Your identity's key name.")]
         key: String,
 
         #[arg(
             long,
-            help = "Local alias of the *new device's* key (must be imported first)."
+            help = "The new device's key name (import first with: auths key import)."
         )]
         device_key: String,
 
         #[arg(
             long,
             visible_alias = "device",
-            help = "Identity ID of the new device being authorized (must match --device-key)."
+            help = "The device's ID (must match --device-key)."
         )]
         device_did: String,
 
@@ -128,17 +127,10 @@ pub enum DeviceSubcommand {
 
     /// Revoke an existing device authorization using the identity key.
     Revoke {
-        #[arg(
-            long,
-            visible_alias = "device",
-            help = "Identity ID of the device authorization to revoke."
-        )]
+        #[arg(long, visible_alias = "device", help = "The device's ID to revoke.")]
         device_did: String,
 
-        #[arg(
-            long,
-            help = "Local alias of the *identity's* key (required to authorize revocation)."
-        )]
+        #[arg(long, help = "Your identity's key name.")]
         key: String,
 
         #[arg(long, help = "Optional note explaining the revocation.")]
@@ -148,12 +140,12 @@ pub enum DeviceSubcommand {
         dry_run: bool,
     },
 
-    /// Resolve a device DID to its controller identity DID.
+    /// Resolve a device to its owner identity.
     Resolve {
         #[arg(
             long,
             visible_alias = "device",
-            help = "The device DID to resolve (e.g. did:key:z6Mk...)."
+            help = "The device ID to resolve (e.g. did:key:z6Mk...)."
         )]
         device_did: String,
     },
@@ -167,11 +159,7 @@ pub enum DeviceSubcommand {
 
     /// Extend the expiration date of an existing device authorization.
     Extend {
-        #[arg(
-            long,
-            visible_alias = "device",
-            help = "Identity ID of the device authorization to extend."
-        )]
+        #[arg(long, visible_alias = "device", help = "The device's ID to extend.")]
         device_did: String,
 
         /// Duration in seconds until expiration (per RFC 6749).
@@ -182,16 +170,10 @@ pub enum DeviceSubcommand {
         )]
         expires_in: u64,
 
-        #[arg(
-            long,
-            help = "Local alias of the *identity's* key (required for re-signing)."
-        )]
+        #[arg(long, help = "Your identity's key name.")]
         key: String,
 
-        #[arg(
-            long,
-            help = "Local alias of the *device's* key (required for re-signing)."
-        )]
+        #[arg(long, help = "The device's key name.")]
         device_key: String,
     },
 }
@@ -331,11 +313,11 @@ pub fn handle_device(
 
 fn display_link_result(
     result: &auths_sdk::result::DeviceLinkResult,
-    device_did: &str,
+    _device_did: &str,
 ) -> Result<()> {
     println!(
-        "\n✅ Successfully linked device {} (attestation: {})",
-        device_did, result.attestation_id
+        "\n✅ Device authorized. (Attestation: {})",
+        result.attestation_id
     );
     Ok(())
 }
@@ -577,7 +559,7 @@ fn list_devices(
         .map_err(anyhow::Error::from);
     }
 
-    println!("Devices for identity: {}", identity.controller_did);
+    println!("Authorized devices for: {}", identity.controller_did);
     if entries.is_empty() {
         if include_revoked {
             println!("  No authorized devices found.");

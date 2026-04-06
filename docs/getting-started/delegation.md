@@ -48,7 +48,7 @@ The human creates a scoped, time-limited attestation granting specific capabilit
 
 ```bash
 auths device link \
-  --device-did did:key:z6MkAgentDevice... \
+  --device did:key:z6MkAgentDevice... \
   --key my-key \
   --capabilities "sign:commit,deploy:staging" \
   --expires-in 24h

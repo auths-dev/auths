@@ -100,7 +100,7 @@ A human operator issues an attestation granting the CI agent specific capabiliti
 
 ```bash
 auths device link \
-  --device-did did:key:z6MkCIRunner... \
+  --device did:key:z6MkCIRunner... \
   --key my-key \
   --capabilities "sign:commit,sign:release" \
   --expires-in 7d

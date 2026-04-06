@@ -64,7 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Identity DID: {}", result.identity_did);
     println!("Device DID:   {}", result.device_did);
-    println!("Key alias:    {}", result.key_alias);
+    println!("Key name:    {}", result.key_alias);
 
     Ok(())
 }

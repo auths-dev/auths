@@ -12,7 +12,7 @@ For commit verification, `auths verify`:
 2. Looks up the signer's principal against the `--allowed-signers` file
 3. Verifies the signature cryptographically using `ssh-keygen`
 4. Optionally verifies the attestation chain (when `--identity-bundle` is provided)
-5. Optionally verifies witness receipts (when `--witness-receipts` is provided)
+5. Optionally verifies witness signatures (when `--witness-signatures` is provided)
 
 ## Verifying a Single Commit
 
@@ -128,12 +128,12 @@ Witnesses provide additional assurance by countersigning attestations. To verify
 ```bash
 auths verify HEAD \
   --identity-bundle bundle.json \
-  --witness-receipts receipts.json \
-  --witness-threshold 2 \
+  --witness-signatures receipts.json \
+  --witnesses-required 2 \
   --witness-keys "did:key:z6Mk...:abcd1234..."
 ```
 
-The `--witness-threshold` specifies how many witness signatures must be valid. If the quorum is not met, verification fails.
+The `--witnesses-required` specifies how many witness signatures must be valid. If the quorum is not met, verification fails.
 
 ## CI Integration
 
@@ -229,10 +229,10 @@ The `auths verify` command also verifies attestation JSON files:
 
 ```bash
 # Verify an attestation file
-auths verify attestation.json --issuer-pk abcdef1234...
+auths verify attestation.json --signer-key abcdef1234...
 
 # Verify from stdin
-cat attestation.json | auths verify - --issuer-did did:keri:E...
+cat attestation.json | auths verify - --signer did:keri:E...
 ```
 
 ## Verification Library (auths-verifier)

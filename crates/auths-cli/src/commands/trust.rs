@@ -14,7 +14,7 @@ use serde::Serialize;
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "trust",
-    about = "Manage trusted identity roots",
+    about = "Pin identities you trust for verification",
     after_help = "Examples:
   auths trust list          # Show all pinned trusted identities
   auths trust pin --did did:keri:EExample --key 7f8c9d0e1a2b3c4d...
@@ -64,7 +64,7 @@ pub struct TrustPinCommand {
     #[clap(long, required = true)]
     pub key: String,
 
-    /// Optional KEL tip SAID for rotation tracking.
+    /// Identity log checkpoint for tracking key changes (optional, advanced).
     #[clap(long)]
     pub kel_tip: Option<String>,
 
@@ -295,10 +295,10 @@ fn handle_show(cmd: TrustShowCommand) -> Result<()> {
         ));
         out.println(&format!("Origin:       {}", pin.origin));
         if let Some(ref tip) = pin.kel_tip_said {
-            out.println(&format!("KEL Tip:      {}", tip));
+            out.println(&format!("Log checkpoint: {}", tip));
         }
         if let Some(seq) = pin.kel_sequence {
-            out.println(&format!("KEL Sequence: {}", seq));
+            out.println(&format!("Log sequence:   {}", seq));
         }
     }
 

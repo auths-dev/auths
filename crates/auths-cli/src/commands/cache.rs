@@ -9,7 +9,7 @@ use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::keri::cache;
 
 #[derive(Parser, Debug, Clone)]
-#[command(about = "Manage local identity history cache")]
+#[command(about = "Manage cached identity snapshots")]
 pub struct CacheCommand {
     #[command(subcommand)]
     command: CacheSubcommand,
@@ -47,15 +47,15 @@ fn handle_list(auths_home: &std::path::Path) -> Result<()> {
     let entries = cache::list_cached_entries(auths_home)?;
 
     if entries.is_empty() {
-        println!("No cached identity states found.");
+        println!("No cached snapshots found.");
         return Ok(());
     }
 
-    println!("Cached identity states:\n");
+    println!("Cached identity snapshots:\n");
     for entry in entries {
         println!("  Identity ID: {}", entry.did);
         println!("  Sequence: {}", entry.sequence);
-        println!("  Validated against: {}", entry.validated_against_tip_said);
+        println!("  Verified against: {}", entry.validated_against_tip_said);
         println!("  Commit OID: {}", entry.last_commit_oid);
         println!("  Cached at: {}", entry.cached_at);
         println!("  File: {}", entry.path.display());
@@ -73,15 +73,17 @@ fn handle_inspect(auths_home: &std::path::Path, did: &str) -> Result<()> {
             println!("Identity ID: {}", cached.did);
             println!("Sequence: {}", cached.sequence);
             println!(
-                "Validated against tip: {}",
+                "Verified against log entry: {}",
                 cached.validated_against_tip_said
             );
             println!("Last commit OID: {}", cached.last_commit_oid);
             println!("Cached at: {}", cached.cached_at);
             println!("\nKey State:");
-            println!("  Prefix: {}", cached.state.prefix);
             println!("  Current keys: {:?}", cached.state.current_keys);
-            println!("  Next commitment: {:?}", cached.state.next_commitment);
+            println!(
+                "  Pre-committed rotation key: {:?}",
+                cached.state.next_commitment
+            );
             println!("  Is abandoned: {}", cached.state.is_abandoned);
             println!(
                 "\nCache file: {}",

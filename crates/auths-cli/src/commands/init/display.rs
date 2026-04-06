@@ -15,7 +15,7 @@ pub(crate) fn display_developer_result(
     }
     out.newline();
     out.println(&format!("  Identity: {}", out.info(&result.identity_did)));
-    out.println(&format!("  Key alias: {}", out.info(&result.key_alias)));
+    out.println(&format!("  Key name: {}", out.info(&result.key_alias)));
     if let Some(registry) = registered {
         out.println(&format!("  Registry: {}", out.info(registry)));
         let did_prefix = result

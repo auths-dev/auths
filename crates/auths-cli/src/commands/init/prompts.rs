@@ -22,9 +22,9 @@ pub(crate) fn prompt_profile(out: &Output) -> Result<InitProfile> {
     out.newline();
 
     let items = [
-        "Developer - Full local setup with keychain and git signing",
-        "CI - Ephemeral identity for CI/CD pipelines",
-        "Agent - Scoped identity for AI agents",
+        "Developer  — Local setup: keychain, Git signing, platform identity",
+        "CI         — Temporary signing identity for CI/CD runners",
+        "Agent      — Restricted signing identity for AI agents",
     ];
 
     let selection = Select::new()
@@ -43,7 +43,7 @@ pub(crate) fn prompt_profile(out: &Output) -> Result<InitProfile> {
 pub(crate) fn prompt_for_alias(interactive: bool, cmd: &InitCommand) -> Result<String> {
     if interactive {
         Ok(Input::new()
-            .with_prompt("Key alias")
+            .with_prompt("Key name")
             .default(cmd.key_alias.clone())
             .interact_text()?)
     } else {
@@ -122,13 +122,13 @@ pub(crate) fn prompt_platform_verification(
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Option<(String, String)>> {
     let items = [
-        "GitHub — link your GitHub identity (recommended)",
+        "GitHub — link your GitHub account (recommended)",
         "GitLab — coming soon",
         "Anonymous — skip platform verification",
     ];
 
     let selection = Select::new()
-        .with_prompt("Claim your Developer Passport")
+        .with_prompt("Link your GitHub account")
         .items(items)
         .default(0)
         .interact()?;
@@ -232,7 +232,10 @@ fn run_github_verification(
         .block_on(publisher.publish_proof(&access_token, &claim_json))
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    out.print_success(&format!("Published proof Gist: {}", out.info(&proof_url)));
+    out.print_success(&format!(
+        "GitHub identity verified: {}",
+        out.info(&proof_url)
+    ));
 
     // Try to upload SSH signing key to GitHub (non-fatal if it fails)
     #[allow(clippy::disallowed_methods)]

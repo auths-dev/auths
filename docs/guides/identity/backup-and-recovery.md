@@ -96,7 +96,7 @@ If you have another device linked to the same identity:
 
     ```bash
     auths device revoke \
-      --device-did "did:key:z6Mk..." \
+      --device "did:key:z6Mk..." \
       --key my-key \
       --note "Device lost"
     ```
@@ -129,7 +129,7 @@ If the lost device was your only device but you have a backup of the keychain an
     auths key import \
       --alias my-key \
       --seed-file /path/to/backup/seed \
-      --controller-did "did:keri:E..."
+      --identity "did:keri:E..."
     ```
 
     Or, if you used `copy-backend` to create a file-based keychain backup, set the environment to use it:

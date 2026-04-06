@@ -93,7 +93,7 @@ pub enum OrgSubcommand {
         metadata_file: Option<PathBuf>,
     },
     Attest {
-        #[arg(long = "subject-did", visible_alias = "subject")]
+        #[arg(long = "subject", visible_alias = "subject-did")]
         subject_did: String,
         #[arg(long)]
         payload_file: PathBuf,
@@ -105,7 +105,7 @@ pub enum OrgSubcommand {
         key: Option<String>,
     },
     Revoke {
-        #[arg(long = "subject-did", visible_alias = "subject")]
+        #[arg(long = "subject", visible_alias = "subject-did")]
         subject_did: String,
         #[arg(long)]
         note: Option<String>,
@@ -113,7 +113,7 @@ pub enum OrgSubcommand {
         key: Option<String>,
     },
     Show {
-        #[arg(long = "subject-did", visible_alias = "subject")]
+        #[arg(long = "subject", visible_alias = "subject-did")]
         subject_did: String,
         #[arg(long, action = ArgAction::SetTrue)]
         include_revoked: bool,
@@ -129,7 +129,7 @@ pub enum OrgSubcommand {
         org: String,
 
         /// Member identity ID to add
-        #[arg(long = "member-did", visible_alias = "member")]
+        #[arg(long = "member", visible_alias = "member-did")]
         member_did: String,
 
         /// Role to assign (admin, member, readonly)
@@ -156,7 +156,7 @@ pub enum OrgSubcommand {
         org: String,
 
         /// Member identity ID to revoke
-        #[arg(long = "member-did", visible_alias = "member")]
+        #[arg(long = "member", visible_alias = "member-did")]
         member_did: String,
 
         /// Reason for revocation
