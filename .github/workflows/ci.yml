@@ -131,6 +131,9 @@ jobs:
       - name: Run doc tests
         run: cargo test --all --doc
 
+      - name: Install cargo-audit
+        if: matrix.os == 'ubuntu-latest'
+        uses: taiki-e/install-action@cargo-audit
       - name: Security audit
         if: matrix.os == 'ubuntu-latest'
         run: cargo audit
