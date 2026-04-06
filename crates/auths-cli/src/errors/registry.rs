@@ -837,7 +837,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E5103\n\n**Crate:** `auths-sdk`  \n**Type:** `DeviceError::AttestationError`\n\n## Message\n\nattestation error: {0}\n",
         ),
         "AUTHS-E5105" => Some(
-            "# AUTHS-E5105\n\n**Crate:** `auths-sdk`  \n**Type:** `DeviceError::DeviceDidMismatch`\n\n## Message\n\ndevice DID mismatch: expected {expected}, got {actual}\n\n## Suggestion\n\nCheck that --device-did matches the key alias\n",
+            "# AUTHS-E5105\n\n**Crate:** `auths-sdk`  \n**Type:** `DeviceError::DeviceDidMismatch`\n\n## Message\n\ndevice DID mismatch: expected {expected}, got {actual}\n\n## Suggestion\n\nCheck that --device matches the key name\n",
         ),
 
         // --- auths-sdk (DeviceExtensionError) ---

@@ -252,7 +252,7 @@ pub fn run_setup(
     );
     println!("To rotate: auths ci rotate");
     println!(
-        "To revoke: auths device revoke --device-did {} --key {}",
+        "To revoke: auths device revoke --device {} --key {}",
         device_did, identity_key_alias
     );
 

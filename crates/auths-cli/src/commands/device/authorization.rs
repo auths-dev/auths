@@ -41,7 +41,7 @@ struct DeviceEntry {
     about = "Manage which devices can sign with your identity.",
     after_help = "Examples:
   auths device list         # List authorized devices
-  auths device link --key identity-key --device-key device-key --device-did did:key:...
+  auths device link --key identity-key --device-key device-key --device did:key:...
                             # Authorize a new device
   auths device revoke       # Revoke a device
   auths device extend       # Extend device expiry

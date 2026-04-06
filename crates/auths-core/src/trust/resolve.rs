@@ -180,7 +180,7 @@ pub fn resolve_trust(
                      Options:\n  \
                      1. Add to .auths/roots.json in the repository\n  \
                      2. Pin manually: auths trust pin {} --key {}\n  \
-                     3. Provide --issuer-pk {} to bypass trust resolution",
+                     3. Provide --signer-key {} to bypass trust resolution",
                     did, did, pk_hex, pk_hex
                 )))
             }

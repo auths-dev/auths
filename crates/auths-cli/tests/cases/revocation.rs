@@ -3,7 +3,9 @@ use super::helpers::TestEnv;
 fn extract_device_did(init_output: &[u8]) -> Option<String> {
     let stdout = String::from_utf8_lossy(init_output);
     for line in stdout.lines() {
-        if (line.contains("Device linked:") || line.contains("Device:"))
+        if (line.contains("Device linked:")
+            || line.contains("Device:")
+            || line.contains("This device authorized:"))
             && let Some(did) = line.split_whitespace().find(|w| w.starts_with("did:key:"))
         {
             return Some(did.to_string());

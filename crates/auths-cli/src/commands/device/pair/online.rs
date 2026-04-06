@@ -142,7 +142,7 @@ pub(crate) async fn handle_initiate_online(
             println!("  You can manually link this device using:");
             println!(
                 "    {}",
-                style(format!("auths device link --device-did {} ...", device_did)).dim()
+                style(format!("auths device link --device {} ...", device_did)).dim()
             );
         }
     }

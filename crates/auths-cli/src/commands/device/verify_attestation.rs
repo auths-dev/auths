@@ -243,7 +243,7 @@ fn resolve_issuer_key(
             // The attestation itself doesn't contain the issuer's public key directly,
             // so we need it from --issuer-pk or the user needs to provide it
             anyhow::bail!(
-                "Unknown identity '{}'. Provide --issuer-pk to trust on first use, \
+                "Unknown identity '{}'. Provide --signer-key to trust on first use, \
                  or add to .auths/roots.json for explicit trust.",
                 did
             );
@@ -254,7 +254,7 @@ fn resolve_issuer_key(
                  Options:\n  \
                  1. Add to .auths/roots.json in the repository\n  \
                  2. Pin manually: auths trust pin --did {} --key <hex>\n  \
-                 3. Provide --issuer-pk <hex> to bypass trust resolution",
+                 3. Provide --signer-key <hex> to bypass trust resolution",
                 did,
                 did
             );

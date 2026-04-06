@@ -520,7 +520,10 @@ fn section_revoking_access() -> Result<()> {
     println!();
     println!("  To revoke a device:");
     println!();
-    println!("    {}", "$ auths device revoke <device-did>".cyan());
+    println!(
+        "    {}",
+        "$ auths device revoke --device <did:key:z6Mk...>".cyan()
+    );
     println!();
     println!("  This creates a revocation record that:");
     println!();

@@ -323,7 +323,7 @@ pub(crate) fn handle_pairing_response(
             println!("  You can manually link this device using:");
             println!(
                 "    {}",
-                style(format!("auths device link --device-did {} ...", device_did)).dim()
+                style(format!("auths device link --device {} ...", device_did)).dim()
             );
             save_device_info(now, auths_dir, &response)?;
         }
