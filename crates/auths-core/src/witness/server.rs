@@ -226,10 +226,10 @@ impl WitnessServerState {
             sig: vec![],
         };
 
-        let payload_for_said = receipt
-            .signing_payload()
+        let receipt_value = serde_json::to_value(&receipt)
             .map_err(|e| WitnessError::Serialization(e.to_string()))?;
-        receipt.d = crate::crypto::said::compute_said(&payload_for_said);
+        receipt.d = crate::crypto::said::compute_said(&receipt_value)
+            .map_err(|e| WitnessError::Serialization(e.to_string()))?;
 
         let signing_payload = receipt
             .signing_payload()
@@ -314,17 +314,10 @@ fn verify_event_said(event: &serde_json::Value) -> Result<(), String> {
         .and_then(|v| v.as_str())
         .ok_or("missing 'd' (SAID) field")?;
 
-    let mut zeroed = event.clone();
-    zeroed
-        .as_object_mut()
-        .ok_or("event must be a JSON object")?
-        .insert("d".to_string(), serde_json::Value::String(String::new()));
+    let computed = crate::crypto::said::compute_said(event)
+        .map_err(|e| format!("failed to compute SAID: {}", e))?;
 
-    let canonical =
-        serde_json::to_vec(&zeroed).map_err(|e| format!("failed to serialize event: {}", e))?;
-    let computed = crate::crypto::said::compute_said(&canonical);
-
-    if computed != claimed_d {
+    if computed.as_str() != claimed_d {
         return Err(format!(
             "SAID mismatch: claimed {} but computed {}",
             claimed_d, computed
@@ -678,13 +671,9 @@ mod tests {
         let sig = kp.sign(&payload);
         event["x"] = serde_json::Value::String(hex::encode(sig.as_ref()));
 
-        // Compute SAID (with empty d, but final x)
-        let mut for_said = event.clone();
-        for_said["d"] = serde_json::Value::String(String::new());
-        let said_payload = serde_json::to_vec(&for_said).unwrap();
-        event["d"] = serde_json::Value::String(
-            crate::crypto::said::compute_said(&said_payload).into_inner(),
-        );
+        // Compute SAID (x is already set; compute_said ignores x and injects d placeholder)
+        let said = crate::crypto::said::compute_said(&event).unwrap();
+        event["d"] = serde_json::Value::String(said.into_inner());
 
         event
     }
@@ -794,10 +783,8 @@ mod tests {
             "x": "not_valid_hex!!!"
         });
         // Set proper SAID for the event as-is
-        let said_payload = serde_json::to_vec(&event).unwrap();
-        event["d"] = serde_json::Value::String(
-            crate::crypto::said::compute_said(&said_payload).into_inner(),
-        );
+        let said = crate::crypto::said::compute_said(&event).unwrap();
+        event["d"] = serde_json::Value::String(said.into_inner());
 
         let response = app
             .oneshot(
@@ -839,13 +826,9 @@ mod tests {
         let sig = wrong_kp.sign(&payload);
         event["x"] = serde_json::Value::String(hex::encode(sig.as_ref()));
 
-        // Compute SAID
-        let mut for_said = event.clone();
-        for_said["d"] = serde_json::Value::String(String::new());
-        let said_payload = serde_json::to_vec(&for_said).unwrap();
-        event["d"] = serde_json::Value::String(
-            crate::crypto::said::compute_said(&said_payload).into_inner(),
-        );
+        // Compute SAID (x is already set; compute_said ignores x and injects d placeholder)
+        let said = crate::crypto::said::compute_said(&event).unwrap();
+        event["d"] = serde_json::Value::String(said.into_inner());
 
         let response = app
             .oneshot(

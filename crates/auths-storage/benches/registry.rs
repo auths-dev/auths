@@ -65,8 +65,8 @@ fn make_signed_ixn(prefix: &Prefix, seq: u64, prev_said: &str, keypair: &Ed25519
         x: String::new(),
     };
 
-    let json = serde_json::to_vec(&Event::Ixn(ixn.clone())).unwrap();
-    ixn.d = compute_said(&json);
+    let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
+    ixn.d = compute_said(&value).unwrap();
 
     let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
     let sig = keypair.sign(&canonical);

@@ -19,10 +19,9 @@
 //!
 //! Usage (default, no CESR):
 //! ```ignore
-//! use auths_keri::{Prefix, Said, compute_said, compute_spec_said};
+//! use auths_keri::{Prefix, Said, compute_said};
 //!
-//! let said = compute_said(event_bytes);
-//! let spec_said = compute_spec_said(&event_json)?;
+//! let said = compute_said(&event_json)?;
 //! ```
 //!
 //! Usage (with CESR feature):
@@ -56,11 +55,11 @@ mod stream;
 #[cfg(feature = "cesr")]
 mod version;
 
-pub use crypto::{compute_next_commitment, compute_said, verify_commitment};
+pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::KeriTranslationError;
 pub use events::{Event, IcpEvent, IxnEvent, KERI_VERSION, KeriSequence, RotEvent, Seal, SealType};
 pub use keys::{KeriDecodeError, KeriPublicKey};
-pub use said::{SAID_PLACEHOLDER, compute_spec_said, verify_spec_said};
+pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};
 pub use state::KeyState;
 pub use types::{KeriTypeError, Prefix, Said};
 pub use validate::{

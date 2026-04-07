@@ -332,8 +332,8 @@ fn verify_anchor_by_digest_works() {
     .unwrap();
 
     // Compute digest
-    let att_json = serde_json::to_vec(&attestation).unwrap();
-    let digest = compute_said(&att_json);
+    let att_value = serde_json::to_value(&attestation).unwrap();
+    let digest = compute_said(&att_value).unwrap();
 
     // Verify by digest
     let verification = verify_anchor_by_digest(&repo, &init.prefix, digest.as_str()).unwrap();

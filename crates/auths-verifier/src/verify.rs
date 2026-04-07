@@ -302,7 +302,11 @@ pub fn compute_attestation_seal_digest(
     attestation: &Attestation,
 ) -> Result<String, AttestationError> {
     let canonical = canonicalize_attestation_data(&attestation.canonical_data())?;
-    Ok(compute_said(&canonical).to_string())
+    let value: serde_json::Value = serde_json::from_slice(&canonical)
+        .map_err(|e| AttestationError::SerializationError(e.to_string()))?;
+    Ok(compute_said(&value)
+        .map_err(|e| AttestationError::SerializationError(e.to_string()))?
+        .into_inner())
 }
 
 // ---------------------------------------------------------------------------

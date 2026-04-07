@@ -13,7 +13,8 @@ use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
-use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
+use auths_core::crypto::said::{compute_next_commitment, verify_commitment};
+use auths_keri::compute_said;
 
 use super::event::KeriSequence;
 use super::types::{Prefix, Said};
@@ -207,9 +208,9 @@ pub fn rotate_keys(
     };
 
     // Compute SAID
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value).map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     // Sign with the new current key (next_keypair is now the active key)
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))?;
@@ -319,9 +320,9 @@ pub fn abandon_identity(
     };
 
     // Compute SAID
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value).map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     // Sign with the new current key (next_keypair is now the active key)
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))?;
@@ -408,9 +409,9 @@ pub fn rotate_keys_with_backend(
         x: String::new(),
     };
 
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value).map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;

@@ -1,6 +1,6 @@
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-
 use crate::error::KeriTranslationError;
+use crate::types::Said;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
 /// The 44-character `#` placeholder injected into the `d` field (and `i` field
 /// for inception events) before hashing. Matches the length of a CESR-qualified
@@ -9,61 +9,85 @@ pub const SAID_PLACEHOLDER: &str = "############################################
 
 /// Computes a spec-compliant SAID for a KERI event.
 ///
-/// The algorithm:
+/// The algorithm (Trust over IP KERI v0.9):
 /// 1. Set `d` to the 44-char `#` placeholder.
 /// 2. For inception events (`t == "icp"`), also set `i` to the placeholder.
-/// 3. Remove the `x` field entirely (signatures are detached).
+/// 3. Remove the `x` field entirely (signatures are detached from the digest).
 /// 4. Serialize with `serde_json::to_vec` (insertion-order, NOT json-canon).
 /// 5. Blake3-256 hash the bytes.
-/// 6. CESR-encode the digest: `E` derivation code + base64url-no-pad (Blake3-256).
+/// 6. CESR-encode the digest: `E` derivation code + base64url-no-pad.
 ///
 /// Args:
 /// * `event`: The event as a JSON object.
-pub fn compute_spec_said(event: &serde_json::Value) -> Result<String, KeriTranslationError> {
-    let mut obj = event
+pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationError> {
+    let obj = event
         .as_object()
         .ok_or(KeriTranslationError::MissingField {
             field: "root object",
-        })?
-        .clone();
+        })?;
 
-    obj.insert(
-        "d".to_string(),
-        serde_json::Value::String(SAID_PLACEHOLDER.to_string()),
-    );
-
+    let placeholder = serde_json::Value::String(SAID_PLACEHOLDER.to_string());
     let event_type = obj.get("t").and_then(|v| v.as_str()).unwrap_or("");
-    if event_type == "icp" {
-        obj.insert(
-            "i".to_string(),
-            serde_json::Value::String(SAID_PLACEHOLDER.to_string()),
-        );
+    let has_d = obj.contains_key("d");
+
+    // Rebuild the map to guarantee spec-compliant field ordering.
+    // With `preserve_order`, IndexMap::insert appends new keys to the end.
+    // If the `d` field was omitted by the serializer (empty Said), we must
+    // inject it immediately after `t`, not at the end.
+    let mut new_obj = serde_json::Map::new();
+    let mut d_injected = false;
+
+    for (k, v) in obj {
+        if k == "x" {
+            // Signatures are detached from the digest
+            continue;
+        } else if k == "d" {
+            new_obj.insert("d".to_string(), placeholder.clone());
+            d_injected = true;
+        } else if k == "i" && event_type == "icp" {
+            new_obj.insert("i".to_string(), placeholder.clone());
+        } else {
+            new_obj.insert(k.clone(), v.clone());
+            // Spec field order: v, t, d, ... — inject d right after t when absent.
+            if k == "t" && !has_d {
+                new_obj.insert("d".to_string(), placeholder.clone());
+                d_injected = true;
+            }
+        }
     }
 
-    obj.remove("x");
+    if !d_injected {
+        new_obj.insert("d".to_string(), placeholder.clone());
+    }
 
-    let serialized = serde_json::to_vec(&serde_json::Value::Object(obj))
+    let serialized = serde_json::to_vec(&serde_json::Value::Object(new_obj))
         .map_err(KeriTranslationError::SerializationFailed)?;
 
     let hash = blake3::hash(&serialized);
-    Ok(format!("E{}", URL_SAFE_NO_PAD.encode(hash.as_bytes())))
+    Ok(Said::new_unchecked(format!(
+        "E{}",
+        URL_SAFE_NO_PAD.encode(hash.as_bytes())
+    )))
 }
 
 /// Verifies that an event's `d` field matches the spec-compliant SAID.
 ///
 /// Args:
 /// * `event`: The event JSON with a populated `d` field.
-pub fn verify_spec_said(event: &serde_json::Value) -> Result<(), KeriTranslationError> {
+pub fn verify_said(event: &serde_json::Value) -> Result<(), KeriTranslationError> {
     let found = event
         .get("d")
         .and_then(|v| v.as_str())
         .ok_or(KeriTranslationError::MissingField { field: "d" })?
         .to_string();
 
-    let computed = compute_spec_said(event)?;
+    let computed = compute_said(event)?;
 
-    if computed != found {
-        return Err(KeriTranslationError::SaidMismatch { computed, found });
+    if computed.as_str() != found {
+        return Err(KeriTranslationError::SaidMismatch {
+            computed: computed.into_inner(),
+            found,
+        });
     }
 
     Ok(())
@@ -89,9 +113,9 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said = compute_spec_said(&event).unwrap();
-        assert_eq!(said.len(), 44);
-        assert!(said.starts_with('E'));
+        let said = compute_said(&event).unwrap();
+        assert_eq!(said.as_str().len(), 44);
+        assert!(said.as_str().starts_with('E'));
     }
 
     #[test]
@@ -111,8 +135,8 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said1 = compute_spec_said(&event).unwrap();
-        let said2 = compute_spec_said(&event).unwrap();
+        let said1 = compute_said(&event).unwrap();
+        let said2 = compute_said(&event).unwrap();
         assert_eq!(said1, said2);
     }
 
@@ -147,8 +171,8 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said_with = compute_spec_said(&event_with_x).unwrap();
-        let said_without = compute_spec_said(&event_without_x).unwrap();
+        let said_with = compute_said(&event_with_x).unwrap();
+        let said_without = compute_said(&event_without_x).unwrap();
         assert_eq!(said_with, said_without, "x field must not affect SAID");
     }
 
@@ -182,8 +206,8 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said_a = compute_spec_said(&event_a).unwrap();
-        let said_b = compute_spec_said(&event_b).unwrap();
+        let said_a = compute_said(&event_a).unwrap();
+        let said_b = compute_said(&event_b).unwrap();
         assert_eq!(
             said_a, said_b,
             "inception SAID must be independent of initial i value"
@@ -191,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_spec_said_accepts_correct() {
+    fn verify_said_accepts_correct() {
         let event = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "rot",
@@ -207,14 +231,14 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said = compute_spec_said(&event).unwrap();
+        let said = compute_said(&event).unwrap();
         let mut event_with_said = event.clone();
-        event_with_said["d"] = serde_json::Value::String(said);
-        assert!(verify_spec_said(&event_with_said).is_ok());
+        event_with_said["d"] = serde_json::Value::String(said.into_inner());
+        assert!(verify_said(&event_with_said).is_ok());
     }
 
     #[test]
-    fn verify_spec_said_rejects_wrong() {
+    fn verify_said_rejects_wrong() {
         let event = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "rot",
@@ -230,6 +254,6 @@ mod tests {
             "b": [],
             "a": []
         });
-        assert!(verify_spec_said(&event).is_err());
+        assert!(verify_said(&event).is_err());
     }
 }

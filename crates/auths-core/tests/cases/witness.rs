@@ -29,7 +29,7 @@ async fn start_test_server() -> (SocketAddr, WitnessServerState) {
 
 /// Build a valid KERI inception event with proper SAID and self-signature.
 /// Returns (event_json_bytes, computed_said).
-fn make_test_event(prefix: &str, seq: u64) -> (Vec<u8>, String) {
+fn make_test_event(prefix: &str, seq: u64) -> (Vec<u8>, auths_keri::Said) {
     let rng = ring::rand::SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let kp = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
@@ -51,12 +51,9 @@ fn make_test_event(prefix: &str, seq: u64) -> (Vec<u8>, String) {
     let sig = kp.sign(&payload);
     event["x"] = serde_json::Value::String(hex::encode(sig.as_ref()));
 
-    // Compute SAID (with empty d, but final x)
-    let mut for_said = event.clone();
-    for_said["d"] = serde_json::Value::String(String::new());
-    let said_payload = serde_json::to_vec(&for_said).unwrap();
-    let said = auths_core::crypto::said::compute_said(&said_payload);
-    event["d"] = serde_json::Value::String(said.clone());
+    // Compute SAID (x is already set; compute_said ignores x and injects d placeholder)
+    let said = auths_core::crypto::said::compute_said(&event).unwrap();
+    event["d"] = serde_json::Value::String(said.as_str().to_string());
 
     (serde_json::to_vec(&event).unwrap(), said)
 }

@@ -28,10 +28,11 @@ use std::sync::Arc;
 use crate::storage::layout::StorageLayoutConfig;
 use crate::storage::registry::RegistryBackend;
 use crate::witness_config::WitnessConfig;
-use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
+use auths_core::crypto::said::{compute_next_commitment, verify_commitment};
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
+use auths_keri::compute_said;
 
 /// Result of a rotation operation with keychain-specific info.
 pub struct RotationKeyInfo {
@@ -262,9 +263,10 @@ pub fn rotate_registry_identity(
         x: String::new(),
     };
 
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| InitError::Keri(format!("Serialization failed: {}", e)))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value)
+        .map_err(|e| InitError::Keri(format!("SAID computation failed: {}", e)))?;
 
     let canonical = serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| InitError::Keri(e.to_string()))?;

@@ -88,9 +88,10 @@ pub fn compute_rotation_event(
         x: String::new(),
     };
 
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| RotationError::RotationFailed(format!("serialization failed: {e}")))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value)
+        .map_err(|e| RotationError::RotationFailed(format!("SAID computation failed: {e}")))?;
 
     let canonical = serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| RotationError::RotationFailed(format!("serialize for signing failed: {e}")))?;

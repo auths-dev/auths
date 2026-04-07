@@ -9,8 +9,9 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use crate::keys::KeriPublicKey;
 use ring::signature::UnparsedPublicKey;
 
-use crate::crypto::{compute_said, verify_commitment};
+use crate::crypto::verify_commitment;
 use crate::events::{Event, IcpEvent, IxnEvent, RotEvent};
+use crate::said::compute_said;
 use crate::state::KeyState;
 use crate::types::{Prefix, Said};
 
@@ -307,11 +308,13 @@ pub fn verify_event_crypto(
 /// Args:
 /// * `event` - The event to verify.
 pub fn verify_event_said(event: &Event) -> Result<(), ValidationError> {
-    let json = serialize_for_said(event)?;
-    let computed = compute_said(&json);
+    let value =
+        serde_json::to_value(event).map_err(|e| ValidationError::Serialization(e.to_string()))?;
+    let computed =
+        compute_said(&value).map_err(|e| ValidationError::Serialization(e.to_string()))?;
     let actual = event.said();
 
-    if computed != actual.as_str() {
+    if computed != *actual {
         return Err(ValidationError::InvalidSaid {
             expected: computed,
             actual: actual.clone(),
@@ -344,34 +347,9 @@ pub fn validate_for_append(event: &Event, state: &KeyState) -> Result<(), Valida
 /// Args:
 /// * `event` - The event to compute the SAID for.
 pub fn compute_event_said(event: &Event) -> Result<Said, ValidationError> {
-    let json = serialize_for_said(event)?;
-    Ok(compute_said(&json))
-}
-
-/// Serialize an event for SAID computation (with empty `d`, `i` for icp, and `x` fields).
-fn serialize_for_said(event: &Event) -> Result<Vec<u8>, ValidationError> {
-    match event {
-        Event::Icp(e) => {
-            let mut e = e.clone();
-            e.d = Said::default();
-            e.i = Prefix::default();
-            e.x = String::new();
-            serde_json::to_vec(&Event::Icp(e))
-        }
-        Event::Rot(e) => {
-            let mut e = e.clone();
-            e.d = Said::default();
-            e.x = String::new();
-            serde_json::to_vec(&Event::Rot(e))
-        }
-        Event::Ixn(e) => {
-            let mut e = e.clone();
-            e.d = Said::default();
-            e.x = String::new();
-            serde_json::to_vec(&Event::Ixn(e))
-        }
-    }
-    .map_err(|e| ValidationError::Serialization(e.to_string()))
+    let value =
+        serde_json::to_value(event).map_err(|e| ValidationError::Serialization(e.to_string()))?;
+    compute_said(&value).map_err(|e| ValidationError::Serialization(e.to_string()))
 }
 
 /// Serialize event for signing (clears d, i for icp, and x fields).
@@ -432,12 +410,9 @@ fn verify_event_signature(event: &Event, signing_key: &str) -> Result<(), Valida
 /// Args:
 /// * `icp` - The inception event to finalize.
 pub fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, ValidationError> {
-    icp.d = Said::default();
-    icp.i = Prefix::default();
-
-    let json = serde_json::to_vec(&Event::Icp(icp.clone()))
+    let value = serde_json::to_value(Event::Icp(icp.clone()))
         .map_err(|e| ValidationError::Serialization(e.to_string()))?;
-    let said = compute_said(&json);
+    let said = compute_said(&value).map_err(|e| ValidationError::Serialization(e.to_string()))?;
 
     icp.d = said.clone();
     icp.i = Prefix::new_unchecked(said.into_inner());
@@ -545,8 +520,8 @@ mod tests {
             x: String::new(),
         };
 
-        let json = serde_json::to_vec(&Event::Ixn(ixn.clone())).unwrap();
-        ixn.d = compute_said(&json);
+        let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
+        ixn.d = compute_said(&value).unwrap();
 
         let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
         let sig = keypair.sign(&canonical);
@@ -611,8 +586,8 @@ mod tests {
             x: String::new(),
         };
 
-        let json = serde_json::to_vec(&Event::Ixn(ixn.clone())).unwrap();
-        ixn.d = compute_said(&json);
+        let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
+        ixn.d = compute_said(&value).unwrap();
 
         let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
         let sig = keypair.sign(&canonical);
@@ -643,8 +618,8 @@ mod tests {
             x: String::new(),
         };
 
-        let json = serde_json::to_vec(&Event::Ixn(ixn.clone())).unwrap();
-        ixn.d = compute_said(&json);
+        let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
+        ixn.d = compute_said(&value).unwrap();
 
         let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
         let sig = keypair.sign(&canonical);

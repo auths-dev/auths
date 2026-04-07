@@ -62,8 +62,8 @@ fn make_signed_ixn(
         x: String::new(),
     };
 
-    let json = serde_json::to_vec(&Event::Ixn(ixn.clone())).unwrap();
-    ixn.d = compute_said(&json);
+    let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
+    ixn.d = compute_said(&value).unwrap();
     ixn.x = sign_event(&Event::Ixn(ixn.clone()), kp);
     ixn
 }
@@ -91,8 +91,8 @@ fn make_signed_rot(
         x: String::new(),
     };
 
-    let json = serde_json::to_vec(&Event::Rot(rot.clone())).unwrap();
-    rot.d = compute_said(&json);
+    let value = serde_json::to_value(Event::Rot(rot.clone())).unwrap();
+    rot.d = compute_said(&value).unwrap();
     rot.x = sign_event(&Event::Rot(rot.clone()), new_kp);
     rot
 }
