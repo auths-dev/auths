@@ -1,4 +1,3 @@
-use auths_verifier::keri::KeriEvent;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use cesride::{Indexer, Siger};
@@ -8,11 +7,11 @@ use crate::error::KeriTranslationError;
 use crate::event::serialize_for_cesr;
 use crate::stream::{CesrStream, assemble_cesr_stream};
 
-/// Exports a sequence of Auths internal events as a CESR stream.
+/// Exports a sequence of KERI events as a CESR stream.
 ///
 /// Args:
 /// * `codec`: The CESR codec.
-/// * `events`: Internal Auths events in sequence order.
+/// * `events`: KERI events as JSON values in sequence order.
 ///
 /// Usage:
 /// ```ignore
@@ -24,7 +23,7 @@ use crate::stream::{CesrStream, assemble_cesr_stream};
 /// ```
 pub fn export_kel_as_cesr(
     codec: &dyn CesrCodec,
-    events: &[KeriEvent],
+    events: &[serde_json::Value],
 ) -> Result<CesrStream, KeriTranslationError> {
     let serialized: Vec<_> = events
         .iter()
@@ -34,10 +33,10 @@ pub fn export_kel_as_cesr(
     assemble_cesr_stream(codec, &serialized)
 }
 
-/// Imports a CESR stream and converts it back to Auths internal events.
+/// Imports a CESR stream and converts it back to KERI event JSON values.
 ///
 /// Parses the CESR stream, extracts JSON event bodies and attached signatures,
-/// and reconstitutes `KeriEvent` types with signatures re-embedded in the `x` field
+/// and reconstitutes event objects with signatures re-embedded in the `x` field
 /// as base64url-no-pad.
 ///
 /// Args:
@@ -46,7 +45,7 @@ pub fn export_kel_as_cesr(
 pub fn import_cesr_to_events(
     _codec: &dyn CesrCodec,
     cesr_bytes: &[u8],
-) -> Result<Vec<KeriEvent>, KeriTranslationError> {
+) -> Result<Vec<serde_json::Value>, KeriTranslationError> {
     let mut offset = 0;
     let mut events = Vec::new();
 
@@ -77,9 +76,7 @@ pub fn import_cesr_to_events(
             obj.insert("x".to_string(), serde_json::Value::String(b64));
         }
 
-        let event: KeriEvent =
-            serde_json::from_value(value).map_err(KeriTranslationError::SerializationFailed)?;
-        events.push(event);
+        events.push(value);
 
         offset = find_next_event_start(cesr_bytes, attachment_start);
     }

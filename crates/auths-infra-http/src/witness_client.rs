@@ -1,5 +1,5 @@
 use auths_core::ports::network::{NetworkError, WitnessClient};
-use auths_verifier::keri::Prefix;
+use auths_keri::Prefix;
 use std::future::Future;
 use std::time::Duration;
 

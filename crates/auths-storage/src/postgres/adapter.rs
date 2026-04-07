@@ -11,8 +11,8 @@ use auths_id::keri::state::KeyState;
 use auths_id::ports::registry::{
     OrgMemberEntry, RegistryBackend, RegistryError, RegistryMetadata, TipInfo,
 };
+use auths_keri::Prefix;
 use auths_verifier::core::Attestation;
-use auths_verifier::keri::Prefix;
 use auths_verifier::types::DeviceDID;
 
 /// PostgreSQL-backed registry storage (stub).

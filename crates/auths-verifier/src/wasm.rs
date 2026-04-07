@@ -4,11 +4,11 @@ use crate::core::{
     MAX_PUBLIC_KEY_HEX_LEN, MAX_SIGNATURE_HEX_LEN,
 };
 use crate::error::{AttestationError, AuthsErrorInfo};
-use crate::keri;
 use crate::types::VerificationReport;
 use crate::verify;
-use crate::witness::{WitnessReceipt, WitnessVerifyConfig};
+use crate::witness::WitnessVerifyConfig;
 use auths_crypto::{CryptoProvider, ED25519_PUBLIC_KEY_LEN, WebCryptoProvider};
+use auths_keri::witness::Receipt;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -305,7 +305,7 @@ async fn verify_chain_with_witnesses_internal(
         AttestationError::SerializationError(format!("Failed to parse attestations JSON: {}", e))
     })?;
 
-    let receipts: Vec<WitnessReceipt> = serde_json::from_str(receipts_json).map_err(|e| {
+    let receipts: Vec<Receipt> = serde_json::from_str(receipts_json).map_err(|e| {
         AttestationError::SerializationError(format!("Failed to parse receipts JSON: {}", e))
     })?;
 
@@ -366,10 +366,10 @@ async fn verify_chain_with_witnesses_internal(
 ///
 /// Usage:
 /// ```ignore
-/// let key_state_json = verifyKelJson("[{\"v\":\"KERI10JSON\",\"t\":\"icp\",...}]").await?;
+/// let key_state_json = validateKelJson("[{\"v\":\"KERI10JSON\",\"t\":\"icp\",...}]").await?;
 /// ```
-#[wasm_bindgen(js_name = verifyKelJson)]
-pub async fn wasm_verify_kel_json(kel_json: &str) -> Result<String, JsValue> {
+#[wasm_bindgen(js_name = validateKelJson)]
+pub async fn wasm_validate_kel_json(kel_json: &str) -> Result<String, JsValue> {
     console_log!("WASM: Verifying KEL...");
 
     if kel_json.len() > MAX_JSON_BATCH_SIZE {
@@ -380,11 +380,10 @@ pub async fn wasm_verify_kel_json(kel_json: &str) -> Result<String, JsValue> {
         )));
     }
 
-    let events = keri::parse_kel_json(kel_json)
+    let events = auths_keri::parse_kel_json(kel_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse KEL JSON: {}", e)))?;
 
-    let key_state = keri::verify_kel(&events, &provider())
-        .await
+    let key_state = auths_keri::validate_kel(&events)
         .map_err(|e| JsValue::from_str(&format!("KEL verification failed: {}", e)))?;
 
     console_log!(
@@ -435,7 +434,7 @@ pub async fn wasm_verify_device_link(
         )));
     }
 
-    let events = keri::parse_kel_json(kel_json)
+    let events = auths_keri::parse_kel_json(kel_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse KEL JSON: {}", e)))?;
 
     let attestation: Attestation = serde_json::from_str(attestation_json)

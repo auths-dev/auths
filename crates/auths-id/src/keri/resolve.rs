@@ -5,7 +5,7 @@
 //! 2. Replaying all events to derive current KeyState
 //! 3. Decoding the current public key
 
-use auths_crypto::KeriPublicKey;
+use auths_keri::KeriPublicKey;
 use auths_verifier::types::IdentityDID;
 use git2::Repository;
 

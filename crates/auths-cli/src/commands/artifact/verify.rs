@@ -3,12 +3,13 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use auths_keri::witness::Receipt;
 use auths_transparency::{
     BundleVerificationReport, CheckpointStatus, DelegationStatus, InclusionStatus, NamespaceStatus,
     OfflineBundle, SignatureStatus, TrustRoot, WitnessStatus,
 };
 use auths_verifier::core::Attestation;
-use auths_verifier::witness::{WitnessQuorum, WitnessReceipt, WitnessVerifyConfig};
+use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     CanonicalDid, Capability, IdentityBundle, VerificationReport, verify_chain,
     verify_chain_with_capability, verify_chain_with_witnesses,
@@ -343,7 +344,7 @@ async fn verify_witnesses(
 
     let receipts_bytes = fs::read(receipts_path)
         .with_context(|| format!("Failed to read witness receipts: {:?}", receipts_path))?;
-    let receipts: Vec<WitnessReceipt> =
+    let receipts: Vec<Receipt> =
         serde_json::from_slice(&receipts_bytes).context("Failed to parse witness receipts JSON")?;
 
     let witness_keys = parse_witness_keys(witness_keys_raw)?;

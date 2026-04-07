@@ -1,75 +1,27 @@
 //! Witness receipt verification for the auths-verifier crate.
 //!
-//! This module provides pure verification logic for witness receipts.
-//! It defines wire-compatible types that match the `auths_core::witness::Receipt`
-//! JSON format, enabling `auths-verifier` to verify witness receipts without
-//! depending on `auths-core`.
+//! This module provides pure verification logic for witness receipts,
+//! re-using `auths_keri::witness::Receipt` as the canonical receipt type.
 //!
 //! # Usage
 //!
 //! ```rust,ignore
-//! use auths_verifier::witness::{WitnessReceipt, WitnessVerifyConfig, verify_witness_receipts};
+//! use auths_verifier::witness::{Receipt, WitnessVerifyConfig, verify_witness_receipts};
 //!
 //! let config = WitnessVerifyConfig {
 //!     receipts: &receipts,
 //!     witness_keys: &[("did:key:z6Mk...".into(), pk_bytes.to_vec())],
 //!     threshold: 2,
 //! };
-//! let quorum = verify_witness_receipts(&config);
+//! let quorum = verify_witness_receipts(&config).await;
 //! assert!(quorum.verified >= quorum.required);
 //! ```
 
+pub use auths_keri::witness::Receipt;
+
 use auths_crypto::CryptoProvider;
+use auths_keri::Said;
 use serde::{Deserialize, Serialize};
-
-use crate::keri::Said;
-
-/// Wire-compatible with `auths_core::witness::Receipt`.
-/// Same JSON shape: `{ v, t, d, i, s, a, sig }`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WitnessReceipt {
-    /// Version string (e.g., "KERI10JSON000000_")
-    pub v: String,
-    /// Type identifier ("rct" for receipt)
-    pub t: String,
-    /// Receipt SAID
-    pub d: Said,
-    /// Witness identifier (DID)
-    pub i: String,
-    /// Event sequence number
-    pub s: u64,
-    /// Event SAID being receipted
-    pub a: Said,
-    /// Ed25519 signature over the canonical receipt payload (excluding sig)
-    #[serde(with = "hex")]
-    pub sig: Vec<u8>,
-}
-
-impl WitnessReceipt {
-    /// Get the canonical JSON for signature verification (without the sig field).
-    pub fn signing_payload(&self) -> Result<Vec<u8>, serde_json::Error> {
-        let payload = WitnessReceiptSigningPayload {
-            v: &self.v,
-            t: &self.t,
-            d: self.d.as_str(),
-            i: &self.i,
-            s: self.s,
-            a: self.a.as_str(),
-        };
-        serde_json::to_vec(&payload)
-    }
-}
-
-/// Internal type for signing payload (excludes sig).
-#[derive(Serialize)]
-struct WitnessReceiptSigningPayload<'a> {
-    v: &'a str,
-    t: &'a str,
-    d: &'a str,
-    i: &'a str,
-    s: u64,
-    a: &'a str,
-}
 
 /// Result of witness quorum verification.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -96,7 +48,7 @@ pub struct WitnessReceiptResult {
 /// Configuration for witness receipt verification.
 pub struct WitnessVerifyConfig<'a> {
     /// The receipts to verify
-    pub receipts: &'a [WitnessReceipt],
+    pub receipts: &'a [Receipt],
     /// Known witness keys: (witness_did, ed25519_public_key_bytes)
     pub witness_keys: &'a [(String, Vec<u8>)],
     /// Minimum number of valid receipts required
@@ -108,7 +60,7 @@ pub struct WitnessVerifyConfig<'a> {
 /// Returns `true` if the signature over the canonical payload (excluding `sig`)
 /// is valid for the given public key.
 pub async fn verify_receipt_signature(
-    receipt: &WitnessReceipt,
+    receipt: &Receipt,
     pk: &[u8],
     provider: &dyn CryptoProvider,
 ) -> bool {
@@ -181,8 +133,8 @@ mod tests {
         witness_did: &str,
         event_said: &str,
         seq: u64,
-    ) -> WitnessReceipt {
-        let mut receipt = WitnessReceipt {
+    ) -> Receipt {
+        let mut receipt = Receipt {
             v: "KERI10JSON000000_".into(),
             t: "rct".into(),
             d: Said::new_unchecked(format!("EReceipt_{}", seq)),
@@ -198,7 +150,7 @@ mod tests {
 
     #[test]
     fn receipt_signing_payload_excludes_sig() {
-        let receipt = WitnessReceipt {
+        let receipt = Receipt {
             v: "KERI10JSON000000_".into(),
             t: "rct".into(),
             d: Said::new_unchecked("EReceipt123".into()),
@@ -317,7 +269,7 @@ mod tests {
             sig_hex
         );
 
-        let receipt: WitnessReceipt = serde_json::from_str(&json).unwrap();
+        let receipt: Receipt = serde_json::from_str(&json).unwrap();
         assert_eq!(receipt.v, "KERI10JSON000000_");
         assert_eq!(receipt.t, "rct");
         assert_eq!(receipt.d, "EReceipt123");
@@ -327,7 +279,7 @@ mod tests {
         assert_eq!(receipt.sig.len(), 64);
 
         let json_out = serde_json::to_string(&receipt).unwrap();
-        let parsed: WitnessReceipt = serde_json::from_str(&json_out).unwrap();
+        let parsed: Receipt = serde_json::from_str(&json_out).unwrap();
         assert_eq!(receipt, parsed);
     }
 }

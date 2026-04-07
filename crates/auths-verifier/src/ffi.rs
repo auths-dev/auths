@@ -2,8 +2,9 @@ use crate::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use crate::error::AttestationError;
 use crate::types::DeviceDID;
 use crate::verifier::Verifier;
-use crate::witness::{WitnessReceipt, WitnessVerifyConfig};
+use crate::witness::WitnessVerifyConfig;
 use auths_crypto::ED25519_PUBLIC_KEY_LEN;
+use auths_keri::witness::Receipt;
 use log::error;
 use std::os::raw::c_int;
 use std::panic;
@@ -87,8 +88,8 @@ type WitnessKeys = Vec<(String, Vec<u8>)>;
 fn parse_witness_inputs(
     receipts_json: &[u8],
     witness_keys_json: &[u8],
-) -> Result<(Vec<WitnessReceipt>, WitnessKeys), c_int> {
-    let receipts: Vec<WitnessReceipt> = serde_json::from_slice(receipts_json).map_err(|e| {
+) -> Result<(Vec<Receipt>, WitnessKeys), c_int> {
+    let receipts: Vec<Receipt> = serde_json::from_slice(receipts_json).map_err(|e| {
         error!("FFI: receipts JSON parse error: {}", e);
         ERR_VERIFY_WITNESS_PARSE
     })?;
@@ -232,7 +233,7 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
 /// # Arguments
 /// * `chain_json_ptr` / `chain_json_len` - JSON array of attestations
 /// * `root_pk_ptr` / `root_pk_len` - 32-byte Ed25519 root public key
-/// * `receipts_json_ptr` / `receipts_json_len` - JSON array of WitnessReceipt objects
+/// * `receipts_json_ptr` / `receipts_json_len` - JSON array of Receipt objects
 /// * `witness_keys_json_ptr` / `witness_keys_json_len` - JSON array of `{"did": "...", "pk_hex": "..."}`
 /// * `threshold` - Minimum number of valid witness receipts required
 /// * `result_ptr` / `result_len` - Output buffer for JSON VerificationReport

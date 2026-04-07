@@ -179,7 +179,7 @@ fn parse_trailer_line(line: &str) -> Option<(String, String)> {
 mod tests {
     use super::*;
     use auths_core::witness::{KERI_VERSION, RECEIPT_TYPE};
-    use auths_verifier::keri::Said;
+    use auths_keri::Said;
 
     fn sample_receipt() -> Receipt {
         Receipt {

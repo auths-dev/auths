@@ -1,55 +1,54 @@
 use auths_keri::{CesrV1Codec, assemble_cesr_stream, serialize_for_cesr};
-use auths_verifier::keri::{IcpEvent, IxnEvent, KeriEvent, Prefix, RotEvent, Said, Seal};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-fn make_signed_icp() -> KeriEvent {
-    KeriEvent::Inception(IcpEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "0".into(),
-        kt: "1".into(),
-        k: vec!["DTestKey12345678901234567890123456789012".into()],
-        nt: "1".into(),
-        n: vec!["ETestNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
-        a: vec![],
-        x: URL_SAFE_NO_PAD.encode([1u8; 64]),
+fn make_signed_icp() -> serde_json::Value {
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "icp",
+        "d": "ETestSaid1234567890123456789012345678901",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "0",
+        "kt": "1",
+        "k": ["DTestKey12345678901234567890123456789012"],
+        "nt": "1",
+        "n": ["ETestNext12345678901234567890123456789012"],
+        "bt": "0",
+        "b": [],
+        "a": [],
+        "x": URL_SAFE_NO_PAD.encode([1u8; 64])
     })
 }
 
-fn make_signed_rot() -> KeriEvent {
-    KeriEvent::Rotation(RotEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "1".into(),
-        p: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        kt: "1".into(),
-        k: vec!["DNewKey123456789012345678901234567890123".into()],
-        nt: "1".into(),
-        n: vec!["ENewNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
-        a: vec![],
-        x: URL_SAFE_NO_PAD.encode([2u8; 64]),
+fn make_signed_rot() -> serde_json::Value {
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "rot",
+        "d": "ETestRotSaid23456789012345678901234567890",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "1",
+        "p": "ETestSaid1234567890123456789012345678901",
+        "kt": "1",
+        "k": ["DNewKey123456789012345678901234567890123"],
+        "nt": "1",
+        "n": ["ENewNext12345678901234567890123456789012"],
+        "bt": "0",
+        "b": [],
+        "a": [],
+        "x": URL_SAFE_NO_PAD.encode([2u8; 64])
     })
 }
 
-fn make_signed_ixn() -> KeriEvent {
-    KeriEvent::Interaction(IxnEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestIxnSaid23456789012345678901234567890".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "2".into(),
-        p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
-        a: vec![Seal {
-            d: Said::new_unchecked("ESealDigest234567890123456789012345678901".into()),
-            seal_type: "device-attestation".into(),
-        }],
-        x: URL_SAFE_NO_PAD.encode([3u8; 64]),
+fn make_signed_ixn() -> serde_json::Value {
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "ixn",
+        "d": "ETestIxnSaid23456789012345678901234567890",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "2",
+        "p": "ETestRotSaid23456789012345678901234567890",
+        "a": [{"d": "ESealDigest234567890123456789012345678901", "type": "device-attestation"}],
+        "x": URL_SAFE_NO_PAD.encode([3u8; 64])
     })
 }
 
@@ -96,7 +95,6 @@ fn stream_byte_count_matches_sum_of_parts() {
         .map(|e| serialize_for_cesr(&codec, e).unwrap())
         .collect();
 
-    // Compute expected size: body + counter code (4 bytes) + signature (88 bytes) per event.
     let expected: usize = serialized
         .iter()
         .map(|s| {
@@ -116,19 +114,20 @@ fn stream_byte_count_matches_sum_of_parts() {
 #[test]
 fn event_without_signature_omits_attachment() {
     let codec = CesrV1Codec::new();
-    let event = KeriEvent::Inception(IcpEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "0".into(),
-        kt: "1".into(),
-        k: vec!["DTestKey12345678901234567890123456789012".into()],
-        nt: "1".into(),
-        n: vec!["ETestNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
-        a: vec![],
-        x: String::new(),
+    let event = serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "icp",
+        "d": "ETestSaid1234567890123456789012345678901",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "0",
+        "kt": "1",
+        "k": ["DTestKey12345678901234567890123456789012"],
+        "nt": "1",
+        "n": ["ETestNext12345678901234567890123456789012"],
+        "bt": "0",
+        "b": [],
+        "a": [],
+        "x": ""
     });
     let serialized = serialize_for_cesr(&codec, &event).unwrap();
     let stream = assemble_cesr_stream(&codec, std::slice::from_ref(&serialized)).unwrap();

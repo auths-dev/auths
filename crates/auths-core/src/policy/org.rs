@@ -18,8 +18,8 @@
 //! with filtering (role, capabilities), use the registry's `list_org_members()`
 //! with `MemberFilter`, then apply this policy to each result.
 
+use auths_keri::Prefix;
 use auths_verifier::core::{Attestation, Capability};
-use auths_verifier::keri::Prefix;
 use chrono::{DateTime, Utc};
 
 use super::Decision;
@@ -143,7 +143,7 @@ pub fn authorize_org_action(
 ///
 /// ```rust
 /// use auths_core::policy::org::expected_org_issuer;
-/// use auths_verifier::keri::Prefix;
+/// use auths_keri::Prefix;
 ///
 /// let prefix = Prefix::new_unchecked("EOrg12345".into());
 /// assert_eq!(expected_org_issuer(&prefix), "did:keri:EOrg12345");

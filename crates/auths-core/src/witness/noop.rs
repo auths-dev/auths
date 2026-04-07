@@ -6,7 +6,7 @@
 //! - You're in a private/trusted environment
 //! - The system has other consistency mechanisms (e.g., external consistency logic)
 
-use auths_verifier::keri::Prefix;
+use auths_keri::Prefix;
 
 use super::hash::EventHash;
 use super::provider::WitnessProvider;
@@ -20,7 +20,7 @@ use super::provider::WitnessProvider;
 ///
 /// ```rust
 /// use auths_core::witness::{WitnessProvider, NoOpWitness};
-/// use auths_verifier::keri::Prefix;
+/// use auths_keri::Prefix;
 ///
 /// let witness = NoOpWitness;
 /// let prefix = Prefix::new_unchecked("E123abc".into());

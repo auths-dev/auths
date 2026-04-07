@@ -255,7 +255,7 @@ pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageErro
 mod tests {
     use super::*;
     use auths_core::witness::{KERI_VERSION, RECEIPT_TYPE, Receipt};
-    use auths_verifier::keri::Said;
+    use auths_keri::Said;
     use git2::RepositoryInitOptions;
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};

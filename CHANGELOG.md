@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **xtask:** Removed `cargo xt ci-setup`. Use `auths ci setup` (or `just ci-setup`) instead.
+
 ### Added (Unified Python SDK)
 
 - **`auths-python`: Unified Python SDK package** — consolidated `auths-verifier-python` and `auths-agent-python` into a single `packages/auths-python` crate. Shared FFI runtime, module registration, and type definitions in `src/runtime.rs` and `src/types.rs`.

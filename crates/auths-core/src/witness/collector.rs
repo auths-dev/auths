@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use auths_verifier::keri::Prefix;
+use auths_keri::Prefix;
 use tokio::time::{Duration, timeout};
 
 use super::async_provider::AsyncWitnessProvider;

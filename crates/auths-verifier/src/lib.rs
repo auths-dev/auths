@@ -57,7 +57,6 @@ pub mod error;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
 pub mod ffi;
-pub mod keri;
 pub mod ssh_sig;
 pub mod types;
 pub mod verifier;
@@ -113,13 +112,13 @@ pub use verify::{
 };
 
 // Re-export witness types
-pub use witness::{WitnessQuorum, WitnessReceipt, WitnessReceiptResult, WitnessVerifyConfig};
+pub use witness::{WitnessQuorum, WitnessReceiptResult, WitnessVerifyConfig};
 
-// Re-export KERI verification types (key parsing lives in auths-crypto)
-pub use keri::{
-    IcpEvent as KeriIcpEvent, IxnEvent as KeriIxnEvent, KeriEvent, KeriKeyState, KeriTypeError,
-    KeriVerifyError, Prefix, RotEvent as KeriRotEvent, Said, Seal as KeriSeal, compute_said,
-    find_seal_in_kel, parse_kel_json, verify_kel,
+// Re-export KERI types directly from auths-keri
+pub use auths_keri::{
+    Event as KeriEvent, IcpEvent as KeriIcpEvent, IxnEvent as KeriIxnEvent, KeriTypeError, Prefix,
+    RotEvent as KeriRotEvent, Said, Seal as KeriSeal, ValidationError, compute_said,
+    find_seal_in_kel, parse_kel_json,
 };
 
 // Re-export commit verification types

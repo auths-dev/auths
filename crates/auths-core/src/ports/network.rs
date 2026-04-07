@@ -2,8 +2,8 @@
 
 use std::future::Future;
 
+use auths_keri::Prefix;
 use auths_verifier::core::Ed25519PublicKey;
-use auths_verifier::keri::Prefix;
 
 /// Domain error for outbound network operations.
 ///

@@ -1,5 +1,6 @@
 use auths_core::ports::storage::{EventLogReader, EventLogWriter, StorageError};
-use auths_verifier::keri::Prefix;
+use auths_keri::Prefix;
+use auths_keri::kel_io::KelStorageError;
 
 use crate::error::map_git2_error;
 use crate::helpers;
@@ -36,42 +37,62 @@ impl<'r> GitEventLog<'r> {
     }
 }
 
+/// Convert a `StorageError` into `KelStorageError` (identical variant set).
+fn to_kel(e: StorageError) -> KelStorageError {
+    match e {
+        StorageError::NotFound { path } => KelStorageError::NotFound { path },
+        StorageError::AlreadyExists { path } => KelStorageError::AlreadyExists { path },
+        StorageError::CasConflict => KelStorageError::CasConflict,
+        StorageError::Io(s) => KelStorageError::Io(s),
+        StorageError::Internal(e) => KelStorageError::Internal(e),
+        // #[non_exhaustive]: forward any future variants as internal errors
+        other => KelStorageError::Internal(Box::new(other)),
+    }
+}
+
+// auths_core::ports::storage::EventLogReader re-exports auths_keri::kel_io::EventLogReader,
+// so these impls satisfy both paths simultaneously.
 impl EventLogReader for GitEventLog<'_> {
-    fn read_event_log(&self, prefix: &Prefix) -> Result<Vec<u8>, StorageError> {
+    fn read_event_log(&self, prefix: &Prefix) -> Result<Vec<u8>, KelStorageError> {
         let refname = Self::kel_ref(prefix.as_str());
-        self.repo.with_repo(|repo| {
-            let events = walk_commits(repo, &refname)?;
-            let joined: Vec<u8> = events.into_iter().flatten().collect();
-            Ok(joined)
-        })
+        self.repo
+            .with_repo(|repo| {
+                let events = walk_commits(repo, &refname)?;
+                let joined: Vec<u8> = events.into_iter().flatten().collect();
+                Ok(joined)
+            })
+            .map_err(to_kel)
     }
 
-    fn read_event_at(&self, prefix: &Prefix, seq: u64) -> Result<Vec<u8>, StorageError> {
+    fn read_event_at(&self, prefix: &Prefix, seq: u64) -> Result<Vec<u8>, KelStorageError> {
         let refname = Self::kel_ref(prefix.as_str());
-        self.repo.with_repo(|repo| {
-            let events = walk_commits(repo, &refname)?;
-            events
-                .into_iter()
-                .nth(seq as usize)
-                .ok_or_else(|| StorageError::not_found(format!("{}/seq/{}", prefix.as_str(), seq)))
-        })
+        self.repo
+            .with_repo(|repo| {
+                let events = walk_commits(repo, &refname)?;
+                events.into_iter().nth(seq as usize).ok_or_else(|| {
+                    StorageError::not_found(format!("{}/seq/{}", prefix.as_str(), seq))
+                })
+            })
+            .map_err(to_kel)
     }
 }
 
 impl EventLogWriter for GitEventLog<'_> {
-    fn append_event(&self, prefix: &Prefix, event: &[u8]) -> Result<(), StorageError> {
+    fn append_event(&self, prefix: &Prefix, event: &[u8]) -> Result<(), KelStorageError> {
         let refname = Self::kel_ref(prefix.as_str());
-        self.repo.with_repo(|repo| {
-            helpers::create_ref_commit(
-                repo,
-                &refname,
-                event,
-                EVENT_FILE,
-                &format!("append event to {}", prefix.as_str()),
-            )
-            .map_err(map_git2_error)?;
-            Ok(())
-        })
+        self.repo
+            .with_repo(|repo| {
+                helpers::create_ref_commit(
+                    repo,
+                    &refname,
+                    event,
+                    EVENT_FILE,
+                    &format!("append event to {}", prefix.as_str()),
+                )
+                .map_err(map_git2_error)?;
+                Ok(())
+            })
+            .map_err(to_kel)
     }
 }
 

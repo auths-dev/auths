@@ -107,12 +107,12 @@ impl RegistryIdentityStorage {
         &self,
         metadata: Option<serde_json::Value>,
         witness_config: Option<&auths_id::witness_config::WitnessConfig>,
-    ) -> Result<(String, auths_id::keri::InceptionResult), InitError> {
-        use auths_core::crypto::said::compute_next_commitment;
+    ) -> Result<(String, auths_id::keri::inception::InceptionResult), InitError> {
         use auths_id::keri::{
             Event, IcpEvent, InceptionResult, KERI_VERSION, KeriSequence, Prefix, Said,
             finalize_icp_event, serialize_for_signing,
         };
+        use auths_keri::compute_next_commitment;
         use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
         use ring::rand::SystemRandom;
         use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -206,7 +206,7 @@ impl RegistryIdentityStorage {
     /// Store metadata for an identity.
     fn store_metadata(
         &self,
-        prefix: &auths_verifier::keri::Prefix,
+        prefix: &auths_keri::Prefix,
         metadata: Option<serde_json::Value>,
     ) -> Result<(), StorageError> {
         let repo = Repository::open(&self.repo_path)?;
@@ -254,7 +254,7 @@ impl RegistryIdentityStorage {
     /// Load metadata for an identity.
     fn load_metadata(
         &self,
-        prefix: &auths_verifier::keri::Prefix,
+        prefix: &auths_keri::Prefix,
     ) -> Result<Option<serde_json::Value>, StorageError> {
         let repo = Repository::open(&self.repo_path)?;
 
@@ -311,7 +311,7 @@ impl IdentityStorage for RegistryIdentityStorage {
         controller_did: &str,
         metadata: Option<serde_json::Value>,
     ) -> Result<(), StorageError> {
-        use auths_verifier::keri::Prefix;
+        use auths_keri::Prefix;
 
         // Extract prefix from controller_did (did:keri:{prefix})
         let prefix_str = controller_did.strip_prefix("did:keri:").ok_or_else(|| {
@@ -326,7 +326,7 @@ impl IdentityStorage for RegistryIdentityStorage {
     }
 
     fn load_identity(&self) -> Result<ManagedIdentity, StorageError> {
-        use auths_verifier::keri::Prefix;
+        use auths_keri::Prefix;
 
         // Find the first (and typically only) identity in the registry
         let prefix_str = self

@@ -11,6 +11,7 @@ keywords = ["sdk", "identity", "did", "cryptography", "attestation"]
 categories = ["cryptography", "authentication"]
 
 [dependencies]
+auths-keri.workspace = true
 async-trait = "0.1"
 auths-core = { workspace = true, public = true }
 auths-id = { workspace = true, public = true }

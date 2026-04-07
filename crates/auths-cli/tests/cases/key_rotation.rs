@@ -1,8 +1,8 @@
 use tempfile::tempdir;
 
+use auths_keri::Prefix;
 use auths_sdk::identity::KeyRotationEvent;
 use auths_sdk::keri::KeriGitStorage;
-use auths_verifier::keri::Prefix;
 
 use chrono::Utc;
 use sha2::{Digest, Sha256};

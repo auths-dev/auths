@@ -72,6 +72,24 @@ impl auths_crypto::AuthsErrorInfo for StorageError {
     }
 }
 
+impl From<auths_keri::kel_io::KelStorageError> for StorageError {
+    fn from(err: auths_keri::kel_io::KelStorageError) -> Self {
+        match err {
+            auths_keri::kel_io::KelStorageError::NotFound { path } => {
+                StorageError::NotFound { path }
+            }
+            auths_keri::kel_io::KelStorageError::AlreadyExists { path } => {
+                StorageError::AlreadyExists { path }
+            }
+            auths_keri::kel_io::KelStorageError::CasConflict => StorageError::CasConflict,
+            auths_keri::kel_io::KelStorageError::Io(s) => StorageError::Io(s),
+            auths_keri::kel_io::KelStorageError::Internal(e) => StorageError::Internal(e),
+            // #[non_exhaustive]: forward any future variants as internal errors
+            other => StorageError::Internal(Box::new(other)),
+        }
+    }
+}
+
 impl StorageError {
     /// Convenience constructor for `NotFound`.
     pub fn not_found(path: impl fmt::Display) -> Self {

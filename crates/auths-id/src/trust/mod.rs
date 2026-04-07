@@ -4,7 +4,7 @@
 //! providing Git-backed KEL replay for verifying rotation continuity.
 
 use auths_core::trust::continuity::{KelContinuityChecker, RotationProof};
-use auths_crypto::KeriPublicKey;
+use auths_keri::KeriPublicKey;
 use git2::Repository;
 
 use crate::keri::{Event, GitKel, Said, did_to_prefix, validate_kel};
@@ -118,7 +118,7 @@ fn verify_chain_from_index(events: &[Event], pinned_idx: usize, pinned_tip_said:
 
 #[cfg(test)]
 mod tests {
-    use auths_crypto::KeriPublicKey;
+    use auths_keri::KeriPublicKey;
 
     #[test]
     fn test_keri_key_parse_valid() {

@@ -1,6 +1,6 @@
 //! DID resolution for did:key and did:keri.
 
-use auths_crypto::KeriPublicKey;
+use auths_keri::KeriPublicKey;
 use auths_verifier::core::Ed25519PublicKey;
 use git2::Repository;
 use std::path::Path;

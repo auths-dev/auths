@@ -1,6 +1,7 @@
-use auths_core::ports::storage::{EventLogReader, EventLogWriter, StorageError};
+use auths_core::ports::storage::{EventLogReader, EventLogWriter};
 use auths_infra_git::{GitEventLog, GitRepo};
-use auths_verifier::keri::Prefix;
+use auths_keri::Prefix;
+use auths_keri::kel_io::KelStorageError;
 
 fn setup() -> (tempfile::TempDir, GitRepo) {
     let (dir, _repo) = auths_test_utils::git::init_test_repo();
@@ -45,7 +46,7 @@ fn read_event_at_out_of_range() {
     log.append_event(&prefix, b"only-one").unwrap();
 
     let result = log.read_event_at(&prefix, 5);
-    assert!(matches!(result, Err(StorageError::NotFound { .. })));
+    assert!(matches!(result, Err(KelStorageError::NotFound { .. })));
 }
 
 #[test]

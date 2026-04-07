@@ -6,7 +6,7 @@ use auths_core::witness::{
     AsyncWitnessProvider, ReceiptCollectorBuilder, WitnessError, WitnessServerState,
 };
 use auths_infra_http::HttpAsyncWitnessClient;
-use auths_verifier::keri::{Prefix, Said};
+use auths_keri::{Prefix, Said};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
 async fn start_test_server() -> (SocketAddr, WitnessServerState) {

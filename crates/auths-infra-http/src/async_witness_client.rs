@@ -7,7 +7,7 @@ use crate::default_client_builder;
 use auths_core::witness::{
     AsyncWitnessProvider, DuplicityEvidence, EventHash, Receipt, WitnessError,
 };
-use auths_verifier::keri::{Prefix, Said};
+use auths_keri::{Prefix, Said};
 
 /// HTTP-based witness client implementing [`AsyncWitnessProvider`].
 ///

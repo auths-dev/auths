@@ -10,7 +10,6 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use zeroize::Zeroizing;
 
-use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair, load_seed_and_pubkey};
 use auths_core::ports::clock::ClockProvider;
 use auths_core::storage::keychain::{
@@ -24,6 +23,7 @@ use auths_id::keri::{
 };
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::witness_config::WitnessConfig;
+use auths_keri::{compute_next_commitment, compute_said, verify_commitment};
 
 use crate::context::AuthsContext;
 use crate::error::RotationError;

@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::schema;
+use auths_keri::{Prefix, Said};
 use auths_verifier::core::{CommitOid, ResourceId};
-use auths_verifier::keri::{Prefix, Said};
 use auths_verifier::types::{CanonicalDid, IdentityDID};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

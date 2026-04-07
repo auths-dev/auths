@@ -400,9 +400,9 @@ pub fn evaluate_with_receipts(
 mod tests {
     use super::*;
     use auths_core::witness::NoOpWitness;
+    use auths_keri::{Prefix, Said};
     use auths_verifier::AttestationBuilder;
     use auths_verifier::core::Capability;
-    use auths_verifier::keri::{Prefix, Said};
     use chrono::Duration;
 
     /// Mock witness for testing

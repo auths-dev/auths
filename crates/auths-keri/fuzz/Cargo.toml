@@ -13,6 +13,7 @@ libfuzzer-sys = "0.4"
 [dependencies.auths_keri]
 package = "auths-keri"
 path = ".."
+features = ["cesr"]
 
 # Prevent this from interfering with workspaces
 [workspace]

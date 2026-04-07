@@ -1,4 +1,5 @@
-use crate::codec::{CesrCodec, DigestType};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
 use crate::error::KeriTranslationError;
 
 /// The 44-character `#` placeholder injected into the `d` field (and `i` field
@@ -14,15 +15,11 @@ pub const SAID_PLACEHOLDER: &str = "############################################
 /// 3. Remove the `x` field entirely (signatures are detached).
 /// 4. Serialize with `serde_json::to_vec` (insertion-order, NOT json-canon).
 /// 5. Blake3-256 hash the bytes.
-/// 6. CESR-encode the digest with the `E` derivation code.
+/// 6. CESR-encode the digest: `E` derivation code + base64url-no-pad (Blake3-256).
 ///
 /// Args:
-/// * `codec`: The CESR codec for digest encoding.
 /// * `event`: The event as a JSON object.
-pub fn compute_spec_said(
-    codec: &dyn CesrCodec,
-    event: &serde_json::Value,
-) -> Result<String, KeriTranslationError> {
+pub fn compute_spec_said(event: &serde_json::Value) -> Result<String, KeriTranslationError> {
     let mut obj = event
         .as_object()
         .ok_or(KeriTranslationError::MissingField {
@@ -45,31 +42,25 @@ pub fn compute_spec_said(
 
     obj.remove("x");
 
-    let placeholder_value = serde_json::Value::Object(obj);
-    let serialized = serde_json::to_vec(&placeholder_value)
+    let serialized = serde_json::to_vec(&serde_json::Value::Object(obj))
         .map_err(KeriTranslationError::SerializationFailed)?;
 
     let hash = blake3::hash(&serialized);
-
-    codec.encode_digest(hash.as_bytes(), DigestType::Blake3_256)
+    Ok(format!("E{}", URL_SAFE_NO_PAD.encode(hash.as_bytes())))
 }
 
 /// Verifies that an event's `d` field matches the spec-compliant SAID.
 ///
 /// Args:
-/// * `codec`: The CESR codec.
 /// * `event`: The event JSON with a populated `d` field.
-pub fn verify_spec_said(
-    codec: &dyn CesrCodec,
-    event: &serde_json::Value,
-) -> Result<(), KeriTranslationError> {
+pub fn verify_spec_said(event: &serde_json::Value) -> Result<(), KeriTranslationError> {
     let found = event
         .get("d")
         .and_then(|v| v.as_str())
         .ok_or(KeriTranslationError::MissingField { field: "d" })?
         .to_string();
 
-    let computed = compute_spec_said(codec, event)?;
+    let computed = compute_spec_said(event)?;
 
     if computed != found {
         return Err(KeriTranslationError::SaidMismatch { computed, found });
@@ -81,11 +72,9 @@ pub fn verify_spec_said(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codec::CesrV1Codec;
 
     #[test]
     fn said_has_correct_length() {
-        let codec = CesrV1Codec::new();
         let event = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "icp",
@@ -100,14 +89,13 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said = compute_spec_said(&codec, &event).unwrap();
+        let said = compute_spec_said(&event).unwrap();
         assert_eq!(said.len(), 44);
         assert!(said.starts_with('E'));
     }
 
     #[test]
     fn said_is_deterministic() {
-        let codec = CesrV1Codec::new();
         let event = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "rot",
@@ -123,14 +111,13 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said1 = compute_spec_said(&codec, &event).unwrap();
-        let said2 = compute_spec_said(&codec, &event).unwrap();
+        let said1 = compute_spec_said(&event).unwrap();
+        let said2 = compute_spec_said(&event).unwrap();
         assert_eq!(said1, said2);
     }
 
     #[test]
     fn said_ignores_x_field() {
-        let codec = CesrV1Codec::new();
         let event_with_x = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "icp",
@@ -160,17 +147,13 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said_with = compute_spec_said(&codec, &event_with_x).unwrap();
-        let said_without = compute_spec_said(&codec, &event_without_x).unwrap();
+        let said_with = compute_spec_said(&event_with_x).unwrap();
+        let said_without = compute_spec_said(&event_without_x).unwrap();
         assert_eq!(said_with, said_without, "x field must not affect SAID");
     }
 
     #[test]
     fn inception_applies_i_placeholder() {
-        let codec = CesrV1Codec::new();
-        // For inception, compute_spec_said replaces both d and i with placeholder
-        // This means two events with different i values but same t=icp should
-        // produce the same SAID (since i gets overwritten)
         let event_a = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "icp",
@@ -199,8 +182,8 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said_a = compute_spec_said(&codec, &event_a).unwrap();
-        let said_b = compute_spec_said(&codec, &event_b).unwrap();
+        let said_a = compute_spec_said(&event_a).unwrap();
+        let said_b = compute_spec_said(&event_b).unwrap();
         assert_eq!(
             said_a, said_b,
             "inception SAID must be independent of initial i value"
@@ -209,7 +192,6 @@ mod tests {
 
     #[test]
     fn verify_spec_said_accepts_correct() {
-        let codec = CesrV1Codec::new();
         let event = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "rot",
@@ -225,15 +207,14 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said = compute_spec_said(&codec, &event).unwrap();
+        let said = compute_spec_said(&event).unwrap();
         let mut event_with_said = event.clone();
         event_with_said["d"] = serde_json::Value::String(said);
-        assert!(verify_spec_said(&codec, &event_with_said).is_ok());
+        assert!(verify_spec_said(&event_with_said).is_ok());
     }
 
     #[test]
     fn verify_spec_said_rejects_wrong() {
-        let codec = CesrV1Codec::new();
         let event = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "rot",
@@ -249,6 +230,6 @@ mod tests {
             "b": [],
             "a": []
         });
-        assert!(verify_spec_said(&codec, &event).is_err());
+        assert!(verify_spec_said(&event).is_err());
     }
 }

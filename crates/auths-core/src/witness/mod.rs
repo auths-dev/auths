@@ -85,15 +85,13 @@ mod server;
 #[cfg(feature = "witness-server")]
 mod storage;
 
-// Sync provider (backward compat)
-pub use hash::{EventHash, EventHashParseError};
+// Re-export KERI witness protocol types from auths-keri
+pub use auths_keri::witness::{
+    AsyncWitnessProvider, DuplicityEvidence, EventHash, EventHashParseError, KERI_VERSION,
+    NoOpAsyncWitness, RECEIPT_TYPE, Receipt, ReceiptBuilder, WitnessError, WitnessProvider,
+    WitnessReport,
+};
 pub use noop::NoOpWitness;
-pub use provider::WitnessProvider;
-
-// Async provider and types
-pub use async_provider::{AsyncWitnessProvider, NoOpAsyncWitness};
-pub use error::{DuplicityEvidence, WitnessError, WitnessReport};
-pub use receipt::{KERI_VERSION, RECEIPT_TYPE, Receipt, ReceiptBuilder};
 
 // Collection and duplicity detection
 pub use collector::{CollectionError, ReceiptCollector, ReceiptCollectorBuilder};

@@ -12,6 +12,7 @@ keywords = ["storage", "git", "sqlite", "identity", "adapter"]
 categories = ["database"]
 
 [dependencies]
+auths-keri.workspace = true
 auths-id = { workspace = true }
 auths-core = { workspace = true }
 auths-crypto = { workspace = true }

@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use auths_id::keri::KeyState;
+use auths_keri::{Prefix, Said};
 use auths_radicle::bridge::BridgeError;
 use auths_radicle::refs::Layout;
 use auths_radicle::verify::AuthsStorage;
 use auths_verifier::AttestationBuilder;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::{Attestation, Capability};
-use auths_verifier::keri::{Prefix, Said};
 use auths_verifier::types::DeviceDID;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;

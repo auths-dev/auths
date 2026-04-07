@@ -1,55 +1,54 @@
 use auths_keri::{CesrV1Codec, export_kel_as_cesr, import_cesr_to_events};
-use auths_verifier::keri::{IcpEvent, IxnEvent, KeriEvent, Prefix, RotEvent, Said, Seal};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-fn make_signed_icp() -> KeriEvent {
-    KeriEvent::Inception(IcpEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "0".into(),
-        kt: "1".into(),
-        k: vec!["DTestKey12345678901234567890123456789012".into()],
-        nt: "1".into(),
-        n: vec!["ETestNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
-        a: vec![],
-        x: URL_SAFE_NO_PAD.encode([10u8; 64]),
+fn make_signed_icp() -> serde_json::Value {
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "icp",
+        "d": "ETestSaid1234567890123456789012345678901",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "0",
+        "kt": "1",
+        "k": ["DTestKey12345678901234567890123456789012"],
+        "nt": "1",
+        "n": ["ETestNext12345678901234567890123456789012"],
+        "bt": "0",
+        "b": [],
+        "a": [],
+        "x": URL_SAFE_NO_PAD.encode([10u8; 64])
     })
 }
 
-fn make_signed_rot() -> KeriEvent {
-    KeriEvent::Rotation(RotEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "1".into(),
-        p: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        kt: "1".into(),
-        k: vec!["DNewKey123456789012345678901234567890123".into()],
-        nt: "1".into(),
-        n: vec!["ENewNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
-        a: vec![],
-        x: URL_SAFE_NO_PAD.encode([20u8; 64]),
+fn make_signed_rot() -> serde_json::Value {
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "rot",
+        "d": "ETestRotSaid23456789012345678901234567890",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "1",
+        "p": "ETestSaid1234567890123456789012345678901",
+        "kt": "1",
+        "k": ["DNewKey123456789012345678901234567890123"],
+        "nt": "1",
+        "n": ["ENewNext12345678901234567890123456789012"],
+        "bt": "0",
+        "b": [],
+        "a": [],
+        "x": URL_SAFE_NO_PAD.encode([20u8; 64])
     })
 }
 
-fn make_signed_ixn() -> KeriEvent {
-    KeriEvent::Interaction(IxnEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestIxnSaid23456789012345678901234567890".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "2".into(),
-        p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
-        a: vec![Seal {
-            d: Said::new_unchecked("ESealDigest234567890123456789012345678901".into()),
-            seal_type: "device-attestation".into(),
-        }],
-        x: URL_SAFE_NO_PAD.encode([30u8; 64]),
+fn make_signed_ixn() -> serde_json::Value {
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "ixn",
+        "d": "ETestIxnSaid23456789012345678901234567890",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "2",
+        "p": "ETestRotSaid23456789012345678901234567890",
+        "a": [{"d": "ESealDigest234567890123456789012345678901", "type": "device-attestation"}],
+        "x": URL_SAFE_NO_PAD.encode([30u8; 64])
     })
 }
 
@@ -80,9 +79,9 @@ fn roundtrip_preserves_event_types() {
     let stream = export_kel_as_cesr(&codec, &events).unwrap();
     let reimported = import_cesr_to_events(&codec, &stream.bytes).unwrap();
 
-    assert!(matches!(reimported[0], KeriEvent::Inception(_)));
-    assert!(matches!(reimported[1], KeriEvent::Rotation(_)));
-    assert!(matches!(reimported[2], KeriEvent::Interaction(_)));
+    assert_eq!(reimported[0].get("t").and_then(|v| v.as_str()), Some("icp"));
+    assert_eq!(reimported[1].get("t").and_then(|v| v.as_str()), Some("rot"));
+    assert_eq!(reimported[2].get("t").and_then(|v| v.as_str()), Some("ixn"));
 }
 
 #[test]
@@ -92,21 +91,20 @@ fn roundtrip_preserves_keys_and_commitments() {
     let stream = export_kel_as_cesr(&codec, &events).unwrap();
     let reimported = import_cesr_to_events(&codec, &stream.bytes).unwrap();
 
-    let KeriEvent::Inception(original) = &events[0] else {
-        panic!()
-    };
-    let KeriEvent::Inception(reimported) = &reimported[0] else {
-        panic!()
-    };
+    let original = &events[0];
+    let reimported = &reimported[0];
 
-    assert_eq!(reimported.k, original.k, "keys must survive round-trip");
     assert_eq!(
-        reimported.n, original.n,
+        reimported["k"], original["k"],
+        "keys must survive round-trip"
+    );
+    assert_eq!(
+        reimported["n"], original["n"],
         "commitments must survive round-trip"
     );
-    assert_eq!(reimported.kt, original.kt);
-    assert_eq!(reimported.nt, original.nt);
-    assert_eq!(reimported.s, "0");
+    assert_eq!(reimported["kt"], original["kt"]);
+    assert_eq!(reimported["nt"], original["nt"]);
+    assert_eq!(reimported["s"], "0");
 }
 
 #[test]
@@ -116,12 +114,12 @@ fn roundtrip_reimported_events_have_x_field() {
     let stream = export_kel_as_cesr(&codec, &events).unwrap();
     let reimported = import_cesr_to_events(&codec, &stream.bytes).unwrap();
 
-    let KeriEvent::Inception(icp) = &reimported[0] else {
-        panic!()
-    };
-    assert!(!icp.x.is_empty(), "reimported event must have x field");
+    let x = reimported[0]["x"]
+        .as_str()
+        .expect("x field must be present");
+    assert!(!x.is_empty(), "reimported event must have x field");
 
-    let sig_bytes = URL_SAFE_NO_PAD.decode(&icp.x).unwrap();
+    let sig_bytes = URL_SAFE_NO_PAD.decode(x).unwrap();
     assert_eq!(sig_bytes.len(), 64, "signature must be 64 bytes");
     assert_eq!(
         sig_bytes,
@@ -137,11 +135,9 @@ fn roundtrip_preserves_seals() {
     let stream = export_kel_as_cesr(&codec, &events).unwrap();
     let reimported = import_cesr_to_events(&codec, &stream.bytes).unwrap();
 
-    let KeriEvent::Interaction(ixn) = &reimported[0] else {
-        panic!()
-    };
-    assert_eq!(ixn.a.len(), 1);
-    assert_eq!(ixn.a[0].seal_type, "device-attestation");
+    let a = reimported[0]["a"].as_array().expect("a must be array");
+    assert_eq!(a.len(), 1);
+    assert_eq!(a[0]["type"], "device-attestation");
 }
 
 #[test]
@@ -151,16 +147,11 @@ fn roundtrip_multi_event_preserves_chain_links() {
     let stream = export_kel_as_cesr(&codec, &events).unwrap();
     let reimported = import_cesr_to_events(&codec, &stream.bytes).unwrap();
 
-    let KeriEvent::Rotation(rot) = &reimported[1] else {
-        panic!()
-    };
-    let KeriEvent::Interaction(ixn) = &reimported[2] else {
-        panic!()
-    };
+    let rot_p = reimported[1]["p"].as_str().expect("rot must have p field");
+    let ixn_p = reimported[2]["p"].as_str().expect("ixn must have p field");
 
-    // Chain links (p fields) should be populated with spec SAIDs, not original SAIDs.
-    assert!(!rot.p.is_empty(), "rotation must have p field");
-    assert!(!ixn.p.is_empty(), "interaction must have p field");
+    assert!(!rot_p.is_empty(), "rotation must have p field");
+    assert!(!ixn_p.is_empty(), "interaction must have p field");
 }
 
 #[test]
@@ -177,5 +168,5 @@ fn export_single_event_roundtrip() {
     let stream = export_kel_as_cesr(&codec, &events).unwrap();
     let reimported = import_cesr_to_events(&codec, &stream.bytes).unwrap();
     assert_eq!(reimported.len(), 1);
-    assert!(matches!(reimported[0], KeriEvent::Rotation(_)));
+    assert_eq!(reimported[0].get("t").and_then(|v| v.as_str()), Some("rot"));
 }

@@ -1,7 +1,8 @@
 use crate::ports::storage::{
     BlobReader, BlobWriter, EventLogReader, EventLogWriter, RefReader, RefWriter, StorageError,
 };
-use auths_verifier::keri::Prefix;
+use auths_keri::Prefix;
+use auths_keri::kel_io::KelStorageError;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -114,7 +115,7 @@ impl RefWriter for InMemoryStorage {
 }
 
 impl EventLogReader for InMemoryStorage {
-    fn read_event_log(&self, prefix: &Prefix) -> Result<Vec<u8>, StorageError> {
+    fn read_event_log(&self, prefix: &Prefix) -> Result<Vec<u8>, KelStorageError> {
         let store = self.event_logs.lock().unwrap();
         match store.get(prefix.as_str()) {
             Some(events) => Ok(events.iter().flatten().cloned().collect()),
@@ -122,19 +123,23 @@ impl EventLogReader for InMemoryStorage {
         }
     }
 
-    fn read_event_at(&self, prefix: &Prefix, seq: u64) -> Result<Vec<u8>, StorageError> {
+    fn read_event_at(&self, prefix: &Prefix, seq: u64) -> Result<Vec<u8>, KelStorageError> {
         let store = self.event_logs.lock().unwrap();
         let key = prefix.as_str();
-        let events = store.get(key).ok_or_else(|| StorageError::not_found(key))?;
+        let events = store.get(key).ok_or_else(|| KelStorageError::NotFound {
+            path: key.to_string(),
+        })?;
         events
             .get(seq as usize)
             .cloned()
-            .ok_or_else(|| StorageError::not_found(format!("{}/seq/{}", key, seq)))
+            .ok_or_else(|| KelStorageError::NotFound {
+                path: format!("{}/seq/{}", key, seq),
+            })
     }
 }
 
 impl EventLogWriter for InMemoryStorage {
-    fn append_event(&self, prefix: &Prefix, event: &[u8]) -> Result<(), StorageError> {
+    fn append_event(&self, prefix: &Prefix, event: &[u8]) -> Result<(), KelStorageError> {
         let mut store = self.event_logs.lock().unwrap();
         store
             .entry(prefix.as_str().to_string())

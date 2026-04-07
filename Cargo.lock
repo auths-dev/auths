@@ -343,6 +343,7 @@ dependencies = [
  "auths-index",
  "auths-infra-git",
  "auths-infra-http",
+ "auths-keri",
  "auths-pairing-daemon",
  "auths-pairing-protocol",
  "auths-policy",
@@ -404,6 +405,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "auths-crypto",
+ "auths-keri",
  "auths-pairing-protocol",
  "auths-verifier",
  "axum",
@@ -482,6 +484,7 @@ dependencies = [
  "auths-crypto",
  "auths-index",
  "auths-infra-http",
+ "auths-keri",
  "auths-policy",
  "auths-test-utils",
  "auths-utils",
@@ -523,6 +526,7 @@ name = "auths-index"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "auths-keri",
  "auths-verifier",
  "chrono",
  "git2",
@@ -539,6 +543,7 @@ name = "auths-infra-git"
 version = "0.1.0"
 dependencies = [
  "auths-core",
+ "auths-keri",
  "auths-sdk",
  "auths-test-utils",
  "auths-verifier",
@@ -556,6 +561,7 @@ dependencies = [
  "async-trait",
  "auths-core",
  "auths-crypto",
+ "auths-keri",
  "auths-oidc-port",
  "auths-verifier",
  "axum",
@@ -589,17 +595,20 @@ dependencies = [
 name = "auths-keri"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "auths-crypto",
- "auths-verifier",
  "base64",
  "blake3",
  "cesride",
  "hex",
  "proptest",
+ "ring",
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "subtle",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -699,6 +708,7 @@ version = "0.1.0"
 dependencies = [
  "auths-crypto",
  "auths-id",
+ "auths-keri",
  "auths-verifier",
  "bs58",
  "chrono",
@@ -734,6 +744,7 @@ dependencies = [
  "auths-crypto",
  "auths-id",
  "auths-infra-http",
+ "auths-keri",
  "auths-oidc-port",
  "auths-pairing-daemon",
  "auths-policy",
@@ -776,6 +787,7 @@ dependencies = [
  "auths-crypto",
  "auths-id",
  "auths-index",
+ "auths-keri",
  "auths-verifier",
  "base64",
  "chrono",
@@ -860,8 +872,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "auths-crypto",
+ "auths-keri",
  "base64",
- "blake3",
  "bs58",
  "chrono",
  "getrandom 0.2.17",
@@ -877,7 +889,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "subtle",
  "thiserror 2.0.18",
  "tokio",
  "wasm-bindgen",

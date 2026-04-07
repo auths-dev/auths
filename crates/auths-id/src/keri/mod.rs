@@ -124,6 +124,7 @@ pub use anchor::{
     AnchorError, AnchorVerification, anchor_attestation, anchor_data, anchor_idp_binding,
     find_anchor_event, verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
 };
+pub use auths_keri::KERI_VERSION;
 pub use event::{Event, EventReceipts, IcpEvent, IxnEvent, KeriSequence, RotEvent};
 #[cfg(feature = "git-storage")]
 pub use inception::{
@@ -148,6 +149,3 @@ pub use validate::{
     ValidationError, compute_event_said, finalize_icp_event, replay_kel, serialize_for_signing,
     validate_for_append, validate_kel, verify_event_crypto, verify_event_said,
 };
-
-/// KERI protocol version string
-pub const KERI_VERSION: &str = "KERI10JSON";

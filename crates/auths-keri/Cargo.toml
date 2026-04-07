@@ -4,29 +4,34 @@ version.workspace = true
 edition = "2024"
 publish = true
 license.workspace = true
-description = "KERI CESR translation layer for Auths"
+description = "KERI protocol types, SAID computation, and validation"
 keywords = ["keri", "cesr", "identity", "cryptography"]
 categories = ["cryptography", "encoding"]
 repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+async-trait = "0.1"
 auths-crypto.workspace = true
-auths-verifier = { workspace = true, features = ["native"] }
 base64.workspace = true
 blake3 = "1.5"
-cesride = "0.6"
-hex = "0.4.3"
+cesride = { version = "0.6", optional = true }
+hex = { version = "0.4.3", features = ["serde"] }
+ring.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = { workspace = true, optional = true }
+subtle.workspace = true
 thiserror.workspace = true
 
 [features]
-schema = ["dep:schemars", "auths-verifier/schema"]
+default = []
+cesr = ["dep:cesride"]
+schema = ["dep:schemars"]
 
 [dev-dependencies]
 proptest = "1.4"
+tokio = { workspace = true }
 
 [lints]
 workspace = true

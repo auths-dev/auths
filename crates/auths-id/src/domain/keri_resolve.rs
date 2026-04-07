@@ -1,4 +1,4 @@
-use auths_crypto::KeriPublicKey;
+use auths_keri::KeriPublicKey;
 use auths_verifier::types::IdentityDID;
 
 use super::kel_port::KelPort;

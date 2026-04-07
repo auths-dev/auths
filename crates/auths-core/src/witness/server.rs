@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use auths_crypto::SecureSeed;
-use auths_verifier::keri::{Prefix, Said};
+use auths_keri::{Prefix, Said};
 use auths_verifier::types::DeviceDID;
 use axum::{
     Json, Router,

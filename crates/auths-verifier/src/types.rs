@@ -743,7 +743,7 @@ impl FromStr for AssuranceLevel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keri::Said;
+    use auths_keri::Said;
 
     #[test]
     fn report_without_witness_quorum_deserializes() {
