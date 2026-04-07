@@ -6,8 +6,8 @@ use auths_core::ports::network::{NetworkError, RegistryClient};
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::identity::IdentityStorage;
+use auths_keri::Prefix;
 use auths_verifier::IdentityDID;
-use auths_verifier::keri::Prefix;
 
 use crate::domains::identity::error::RegistrationError;
 use crate::domains::identity::types::RegistrationOutcome;
@@ -57,7 +57,7 @@ pub async fn register_identity(
         .load_identity()
         .map_err(RegistrationError::IdentityLoadError)?;
 
-    let prefix = Prefix::from_did(&identity.controller_did).map_err(|_| {
+    let prefix = Prefix::new(identity.controller_did.prefix().to_string()).map_err(|_| {
         RegistrationError::InvalidDidFormat {
             did: identity.controller_did.to_string(),
         }

@@ -11,7 +11,7 @@ use auths_verifier::verify::{
     verify_device_authorization as rust_verify_device_authorization,
     verify_with_capability as rust_verify_with_capability, verify_with_keys,
 };
-use auths_verifier::witness::{WitnessReceipt, WitnessVerifyConfig};
+use auths_verifier::witness::{Receipt, WitnessVerifyConfig};
 use chrono::{DateTime, Utc};
 use napi_derive::napi;
 
@@ -384,7 +384,7 @@ pub async fn verify_chain_with_witnesses(
     let root_pk_bytes = decode_pk_hex(&root_pk_hex, "root public key")?;
     let attestations = parse_attestations(&attestations_json)?;
 
-    let receipts: Vec<WitnessReceipt> = receipts_json
+    let receipts: Vec<Receipt> = receipts_json
         .iter()
         .enumerate()
         .map(|(i, json)| {

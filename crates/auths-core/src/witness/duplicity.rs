@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 
-use auths_verifier::keri::{Prefix, Said};
+use auths_keri::{Prefix, Said};
 
 use super::error::{DuplicityEvidence, WitnessReport};
 use super::receipt::Receipt;
@@ -38,7 +38,7 @@ use super::receipt::Receipt;
 ///
 /// ```rust
 /// use auths_core::witness::DuplicityDetector;
-/// use auths_verifier::keri::{Prefix, Said};
+/// use auths_keri::{Prefix, Said};
 ///
 /// let mut detector = DuplicityDetector::new();
 /// let prefix = Prefix::new_unchecked("EPrefix".into());

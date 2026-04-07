@@ -4,7 +4,7 @@
 //! (the leaf dependency shared by all crates). Adds `IdentityDID` conversion
 //! helpers that require `auths-core` types.
 
-pub use auths_verifier::keri::{KeriTypeError, Prefix, Said};
+pub use auths_keri::{KeriTypeError, Prefix, Said};
 
 use auths_core::error::AgentError;
 use auths_core::storage::keychain::IdentityDID;

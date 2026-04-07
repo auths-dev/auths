@@ -8,6 +8,7 @@ use crate::types::{ChainLink, VerificationReport, VerificationStatus};
 #[cfg(feature = "native")]
 use crate::witness::WitnessVerifyConfig;
 use auths_crypto::{CryptoProvider, ED25519_PUBLIC_KEY_LEN};
+use auths_keri::{Event, compute_said, find_seal_in_kel};
 use chrono::{DateTime, Duration, Utc};
 use log::debug;
 use serde::Serialize;
@@ -208,14 +209,14 @@ pub struct DeviceLinkVerification {
     pub error: Option<String>,
     /// The KERI key state after KEL replay (present on success).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_state: Option<crate::keri::KeriKeyState>,
+    pub key_state: Option<auths_keri::KeyState>,
     /// Sequence number of the IXN event anchoring the attestation seal (if found).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seal_sequence: Option<u64>,
 }
 
 impl DeviceLinkVerification {
-    fn success(key_state: crate::keri::KeriKeyState, seal_sequence: Option<u64>) -> Self {
+    fn success(key_state: auths_keri::KeyState, seal_sequence: Option<u64>) -> Self {
         Self {
             valid: true,
             error: None,
@@ -252,13 +253,13 @@ impl DeviceLinkVerification {
 /// if result.valid { /* ... */ }
 /// ```
 pub async fn verify_device_link(
-    events: &[crate::keri::KeriEvent],
+    events: &[Event],
     attestation: &Attestation,
     device_did: &str,
     now: DateTime<Utc>,
     provider: &dyn CryptoProvider,
 ) -> DeviceLinkVerification {
-    let key_state = match crate::keri::verify_kel(events, provider).await {
+    let key_state = match auths_keri::validate_kel(events) {
         Ok(ks) => ks,
         Err(e) => return DeviceLinkVerification::failure(format!("KEL verification failed: {e}")),
     };
@@ -270,15 +271,25 @@ pub async fn verify_device_link(
         ));
     }
 
-    if let Err(e) =
-        verify_with_keys_at(attestation, &key_state.current_key, now, true, provider).await
-    {
+    let current_pk = match key_state.current_keys.first() {
+        Some(encoded) => {
+            match auths_keri::KeriPublicKey::parse(encoded).map(|k| k.into_bytes().to_vec()) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    return DeviceLinkVerification::failure(format!("Invalid current key: {e}"));
+                }
+            }
+        }
+        None => return DeviceLinkVerification::failure("KEL has no current keys"),
+    };
+
+    if let Err(e) = verify_with_keys_at(attestation, &current_pk, now, true, provider).await {
         return DeviceLinkVerification::failure(format!("Attestation verification failed: {e}"));
     }
 
     let seal_sequence = compute_attestation_seal_digest(attestation)
         .ok()
-        .and_then(|digest| crate::keri::find_seal_in_kel(events, digest.as_str()));
+        .and_then(|digest| find_seal_in_kel(events, digest.as_str()));
 
     DeviceLinkVerification::success(key_state, seal_sequence)
 }
@@ -291,7 +302,7 @@ pub fn compute_attestation_seal_digest(
     attestation: &Attestation,
 ) -> Result<String, AttestationError> {
     let canonical = canonicalize_attestation_data(&attestation.canonical_data())?;
-    Ok(crate::keri::compute_said(&canonical).to_string())
+    Ok(compute_said(&canonical).to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -522,11 +533,11 @@ mod tests {
     use super::*;
     use crate::clock::ClockProvider;
     use crate::core::{Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
-    use crate::keri::Said;
     use crate::types::{CanonicalDid, DeviceDID};
     use crate::verifier::Verifier;
     use auths_crypto::RingCryptoProvider;
     use auths_crypto::testing::create_test_keypair;
+    use auths_keri::Said;
     use chrono::{DateTime, Duration, TimeZone, Utc};
     use ring::signature::{Ed25519KeyPair, KeyPair};
     use std::sync::Arc;
@@ -1759,8 +1770,8 @@ mod tests {
         witness_did: &str,
         event_said: &str,
         seq: u64,
-    ) -> crate::witness::WitnessReceipt {
-        let mut receipt = crate::witness::WitnessReceipt {
+    ) -> auths_keri::witness::Receipt {
+        let mut receipt = auths_keri::witness::Receipt {
             v: "KERI10JSON000000_".into(),
             t: "rct".into(),
             d: Said::new_unchecked(format!("EReceipt_{}", seq)),

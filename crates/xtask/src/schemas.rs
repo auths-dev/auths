@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use anyhow::Context;
+use auths_keri::IcpEvent;
 use auths_verifier::core::{Attestation, IdentityBundle};
-use auths_verifier::keri::IcpEvent;
 
 struct SchemaSpec {
     name: &'static str,

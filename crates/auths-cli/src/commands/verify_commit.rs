@@ -1,6 +1,7 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
-use auths_verifier::witness::{WitnessQuorum, WitnessReceipt, WitnessVerifyConfig};
+use auths_keri::witness::Receipt;
+use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     Attestation, IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
 };
@@ -501,7 +502,7 @@ async fn verify_witnesses(
     let receipts_bytes = fs::read(receipts_path)
         .with_context(|| format!("Failed to read witness receipts: {:?}", receipts_path))?;
 
-    let receipts: Vec<WitnessReceipt> =
+    let receipts: Vec<Receipt> =
         serde_json::from_slice(&receipts_bytes).context("Failed to parse witness receipts JSON")?;
 
     let witness_keys = parse_witness_keys(&cmd.witness_keys)?;

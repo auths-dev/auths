@@ -15,7 +15,7 @@
 
 use std::path::Path;
 
-use auths_verifier::keri::{Prefix, Said};
+use auths_keri::{Prefix, Said};
 use chrono::{DateTime, Utc};
 use sqlite::Connection;
 

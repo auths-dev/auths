@@ -16,8 +16,8 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 auths-crypto.workspace = true
+auths-keri.workspace = true
 base64.workspace = true
-blake3 = "1.5"
 bs58 = "0.5.1"
 chrono = { version = "0.4", features = ["serde"] }
 hex = { version = "0.4.3", features = ["serde"] }
@@ -29,7 +29,6 @@ schemars = { workspace = true, optional = true, features = ["chrono"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.149"
 sha2 = "0.10"
-subtle.workspace = true
 thiserror.workspace = true
 
 # Optional dependencies

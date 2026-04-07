@@ -26,6 +26,7 @@ wasm = ["dep:wasm-bindgen", "auths-verifier/wasm"]
 
 [dependencies]
 # WASM-safe: always available
+auths-keri.workspace = true
 auths-verifier = { workspace = true, default-features = false }
 bs58 = "0.5.1"
 json-canon = "=0.1.3"

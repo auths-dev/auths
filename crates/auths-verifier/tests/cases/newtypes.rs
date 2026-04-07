@@ -1,5 +1,5 @@
 use auths_verifier::{
-    CommitOid, CommitOidError, IdentityDID, PolicyId, PublicKeyHex, PublicKeyHexError, keri::Prefix,
+    CommitOid, CommitOidError, IdentityDID, PolicyId, Prefix, PublicKeyHex, PublicKeyHexError,
 };
 
 // =============================================================================
@@ -100,14 +100,14 @@ fn commit_oid_normalizes_to_lowercase() {
 #[test]
 fn prefix_from_did_extracts_keri_prefix() {
     let did = IdentityDID::parse("did:keri:ETest123abc").unwrap();
-    let prefix = Prefix::from_did(&did).unwrap();
+    let prefix = Prefix::new(did.prefix().to_string()).unwrap();
     assert_eq!(prefix.as_str(), "ETest123abc");
 }
 
 #[test]
 fn prefix_from_did_roundtrips_with_identity_did() {
     let did = IdentityDID::parse("did:keri:EMyPrefix456").unwrap();
-    let prefix = Prefix::from_did(&did).unwrap();
+    let prefix = Prefix::new(did.prefix().to_string()).unwrap();
     let reconstructed = IdentityDID::from_prefix(prefix.as_str()).unwrap();
     assert_eq!(did, reconstructed);
 }

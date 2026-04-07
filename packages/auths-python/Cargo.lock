@@ -136,6 +136,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "auths-crypto",
+ "auths-keri",
  "auths-pairing-protocol",
  "auths-verifier",
  "base64",
@@ -195,6 +196,7 @@ dependencies = [
  "async-trait",
  "auths-core",
  "auths-crypto",
+ "auths-keri",
  "auths-policy",
  "auths-utils",
  "auths-verifier",
@@ -229,6 +231,7 @@ name = "auths-infra-git"
 version = "0.1.0"
 dependencies = [
  "auths-core",
+ "auths-keri",
  "auths-sdk",
  "auths-verifier",
  "chrono",
@@ -244,6 +247,7 @@ dependencies = [
  "async-trait",
  "auths-core",
  "auths-crypto",
+ "auths-keri",
  "auths-oidc-port",
  "auths-verifier",
  "chrono",
@@ -261,6 +265,22 @@ dependencies = [
  "url",
  "urlencoding",
  "zeroize",
+]
+
+[[package]]
+name = "auths-keri"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "auths-crypto",
+ "base64",
+ "blake3",
+ "hex",
+ "ring",
+ "serde",
+ "serde_json",
+ "subtle",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -362,6 +382,7 @@ dependencies = [
  "auths-crypto",
  "auths-id",
  "auths-infra-http",
+ "auths-keri",
  "auths-oidc-port",
  "auths-policy",
  "auths-telemetry",
@@ -398,6 +419,7 @@ dependencies = [
  "auths-core",
  "auths-crypto",
  "auths-id",
+ "auths-keri",
  "auths-verifier",
  "base64",
  "chrono",
@@ -462,8 +484,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "auths-crypto",
+ "auths-keri",
  "base64",
- "blake3",
  "bs58",
  "chrono",
  "hex",
@@ -473,7 +495,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "subtle",
  "thiserror 2.0.18",
 ]
 

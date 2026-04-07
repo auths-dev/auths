@@ -22,6 +22,7 @@ test-utils = ["auths-crypto/test-utils", "dep:mockall"]
 async-trait = "0.1"
 auths-core.workspace = true
 auths-crypto.workspace = true
+auths-keri.workspace = true
 auths-policy.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
 base64.workspace = true

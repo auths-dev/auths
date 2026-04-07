@@ -11,6 +11,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+auths-keri.workspace = true
 auths-core = { workspace = true }
 auths-sdk = { workspace = true }
 auths-verifier = { workspace = true, features = ["native"] }

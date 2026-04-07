@@ -53,7 +53,7 @@ use git2::{Oid, Repository, Signature, Tree};
 use auths_id::keri::event::Event;
 use auths_id::keri::state::KeyState;
 use auths_id::keri::validate::{ValidationError, verify_event_crypto, verify_event_said};
-use auths_verifier::keri::Prefix;
+use auths_keri::Prefix;
 
 use super::paths;
 use super::vfs::{OsVfs, Vfs};
@@ -646,7 +646,7 @@ impl GitRegistryBackend {
         for (prefix_str, state) in &state_overlay {
             if let Some(index) = &self.index {
                 let indexed = auths_index::IndexedIdentity {
-                    prefix: auths_verifier::keri::Prefix::new_unchecked(prefix_str.clone()),
+                    prefix: auths_keri::Prefix::new_unchecked(prefix_str.clone()),
                     current_keys: state.current_keys.clone(),
                     sequence: state.sequence,
                     tip_said: state.last_event_said.clone(),
@@ -1393,7 +1393,7 @@ impl RegistryBackend for GitRegistryBackend {
         if let Some(index) = &self.index {
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: org is a validated KERI prefix from registry storage
-            let org_prefix = auths_verifier::keri::Prefix::new_unchecked(org.to_string());
+            let org_prefix = auths_keri::Prefix::new_unchecked(org.to_string());
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: member.issuer is a validated CanonicalDid
             let issuer_did = IdentityDID::new_unchecked(member.issuer.as_str());
@@ -1830,7 +1830,7 @@ pub fn rebuild_org_members_from_registry(
             if let Ok(att) = &entry.attestation {
                 #[allow(clippy::disallowed_methods)]
                 // INVARIANT: org_prefix is a validated KERI prefix from visit_orgs
-                let prefix = auths_verifier::keri::Prefix::new_unchecked(org_prefix.clone());
+                let prefix = auths_keri::Prefix::new_unchecked(org_prefix.clone());
                 #[allow(clippy::disallowed_methods)]
                 // INVARIANT: att.issuer is a validated CanonicalDid from deserialized attestation
                 let issuer_did = IdentityDID::new_unchecked(att.issuer.as_str());
@@ -2095,12 +2095,12 @@ impl StorageDriver for GitRegistryBackend {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_core::crypto::said::compute_next_commitment;
-    use auths_id::keri::KERI_VERSION;
     use auths_id::keri::event::{IcpEvent, IxnEvent, KeriSequence, RotEvent};
     use auths_id::keri::seal::Seal;
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{compute_event_said, finalize_icp_event, serialize_for_signing};
+    use auths_keri::KERI_VERSION;
+    use auths_keri::compute_next_commitment;
     use auths_verifier::AttestationBuilder;
     use auths_verifier::core::{Ed25519PublicKey, Role};
     use base64::Engine;
@@ -3664,12 +3664,12 @@ mod tests {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod index_consistency_tests {
     use super::*;
-    use auths_core::crypto::said::compute_next_commitment;
-    use auths_id::keri::KERI_VERSION;
     use auths_id::keri::event::{IcpEvent, KeriSequence};
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
     use auths_id::storage::registry::org_member::MemberFilter;
+    use auths_keri::KERI_VERSION;
+    use auths_keri::compute_next_commitment;
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::types::CanonicalDid;
     use base64::Engine;
@@ -3919,11 +3919,11 @@ mod tenant_isolation_tests {
     use ring::signature::{Ed25519KeyPair, KeyPair};
     use tempfile::TempDir;
 
-    use auths_core::crypto::said::compute_next_commitment;
-    use auths_id::keri::KERI_VERSION;
     use auths_id::keri::event::{IcpEvent, KeriSequence};
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
+    use auths_keri::KERI_VERSION;
+    use auths_keri::compute_next_commitment;
 
     use super::*;
     use auths_id::storage::registry::backend::TenantIdError;

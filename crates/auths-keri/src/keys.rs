@@ -9,17 +9,21 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum KeriDecodeError {
+    /// The KERI derivation code prefix was not 'D' (Ed25519).
     #[error("Invalid KERI prefix: expected 'D' for Ed25519, got '{0}'")]
     InvalidPrefix(char),
+    /// Input string was empty; no derivation code could be read.
     #[error("Missing KERI prefix: empty string")]
     EmptyInput,
+    /// Base64url decoding of the key payload failed.
     #[error("Base64url decode failed: {0}")]
     DecodeError(String),
+    /// Decoded bytes were not exactly 32 (Ed25519 key size).
     #[error("Invalid Ed25519 key length: expected 32 bytes, got {0}")]
     InvalidLength(usize),
 }
 
-impl crate::AuthsErrorInfo for KeriDecodeError {
+impl auths_crypto::AuthsErrorInfo for KeriDecodeError {
     fn error_code(&self) -> &'static str {
         match self {
             Self::InvalidPrefix(_) => "AUTHS-E1201",
@@ -46,7 +50,7 @@ impl crate::AuthsErrorInfo for KeriDecodeError {
 ///
 /// Usage:
 /// ```
-/// use auths_crypto::KeriPublicKey;
+/// use auths_keri::KeriPublicKey;
 ///
 /// let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
 /// assert_eq!(key.as_bytes(), &[0u8; 32]);
@@ -65,7 +69,7 @@ impl KeriPublicKey {
     ///
     /// Usage:
     /// ```
-    /// use auths_crypto::KeriPublicKey;
+    /// use auths_keri::KeriPublicKey;
     ///
     /// let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
     /// let raw = key.as_bytes();

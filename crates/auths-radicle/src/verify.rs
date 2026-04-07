@@ -469,8 +469,8 @@ pub fn meets_threshold(
 #[allow(clippy::unwrap_used, clippy::disallowed_methods)]
 mod tests {
     use super::*;
+    use auths_keri::{Prefix, Said};
     use auths_verifier::IdentityDID;
-    use auths_verifier::keri::{Prefix, Said};
     use auths_verifier::types::CanonicalDid;
     use auths_verifier::types::DeviceDID as VerifierDeviceDID;
     use chrono::{DateTime, Utc};

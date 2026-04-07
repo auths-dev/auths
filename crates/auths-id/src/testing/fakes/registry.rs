@@ -3,8 +3,8 @@ use std::ops::ControlFlow;
 use std::sync::Mutex;
 
 use auths_core::storage::keychain::IdentityDID;
+use auths_keri::Prefix;
 use auths_verifier::core::Attestation;
-use auths_verifier::keri::Prefix;
 use auths_verifier::types::{CanonicalDid, DeviceDID};
 use chrono::{DateTime, Utc};
 

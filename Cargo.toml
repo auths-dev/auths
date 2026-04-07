@@ -51,6 +51,7 @@ zeroize = { version = "1.8.1", features = ["serde", "derive"] }
 json-canon = "=0.1.3"
 
 auths-core = { path = "crates/auths-core", version = "0.1.0" }
+auths-keri = { path = "crates/auths-keri", version = "0.1.0" }
 auths-id = { path = "crates/auths-id", version = "0.1.0" }
 auths-verifier = { path = "crates/auths-verifier", version = "0.1.0", default-features = false }
 auths-policy = { path = "crates/auths-policy", version = "0.1.0" }

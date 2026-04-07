@@ -1,58 +1,57 @@
 use auths_keri::{CesrV1Codec, serialize_for_cesr};
-use auths_verifier::keri::{IcpEvent, IxnEvent, KeriEvent, Prefix, RotEvent, Said, Seal};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-fn make_test_icp(sig: Option<&[u8; 64]>) -> KeriEvent {
+fn make_test_icp(sig: Option<&[u8; 64]>) -> serde_json::Value {
     let x = sig.map(|s| URL_SAFE_NO_PAD.encode(s)).unwrap_or_default();
-    KeriEvent::Inception(IcpEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "0".into(),
-        kt: "1".into(),
-        k: vec!["DTestKey12345678901234567890123456789012".into()],
-        nt: "1".into(),
-        n: vec!["ETestNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
-        a: vec![],
-        x,
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "icp",
+        "d": "ETestSaid1234567890123456789012345678901",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "0",
+        "kt": "1",
+        "k": ["DTestKey12345678901234567890123456789012"],
+        "nt": "1",
+        "n": ["ETestNext12345678901234567890123456789012"],
+        "bt": "0",
+        "b": [],
+        "a": [],
+        "x": x
     })
 }
 
-fn make_test_rot(sig: Option<&[u8; 64]>) -> KeriEvent {
+fn make_test_rot(sig: Option<&[u8; 64]>) -> serde_json::Value {
     let x = sig.map(|s| URL_SAFE_NO_PAD.encode(s)).unwrap_or_default();
-    KeriEvent::Rotation(RotEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "1".into(),
-        p: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        kt: "1".into(),
-        k: vec!["DNewKey123456789012345678901234567890123".into()],
-        nt: "1".into(),
-        n: vec!["ENewNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
-        a: vec![],
-        x,
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "rot",
+        "d": "ETestRotSaid23456789012345678901234567890",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "1",
+        "p": "ETestSaid1234567890123456789012345678901",
+        "kt": "1",
+        "k": ["DNewKey123456789012345678901234567890123"],
+        "nt": "1",
+        "n": ["ENewNext12345678901234567890123456789012"],
+        "bt": "0",
+        "b": [],
+        "a": [],
+        "x": x
     })
 }
 
-fn make_test_ixn(sig: Option<&[u8; 64]>) -> KeriEvent {
+fn make_test_ixn(sig: Option<&[u8; 64]>) -> serde_json::Value {
     let x = sig.map(|s| URL_SAFE_NO_PAD.encode(s)).unwrap_or_default();
-    KeriEvent::Interaction(IxnEvent {
-        v: "KERI10JSON000000_".into(),
-        d: Said::new_unchecked("ETestIxnSaid23456789012345678901234567890".into()),
-        i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
-        s: "2".into(),
-        p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
-        a: vec![Seal {
-            d: Said::new_unchecked("ESealDigest234567890123456789012345678901".into()),
-            seal_type: "device-attestation".into(),
-        }],
-        x,
+    serde_json::json!({
+        "v": "KERI10JSON000000_",
+        "t": "ixn",
+        "d": "ETestIxnSaid23456789012345678901234567890",
+        "i": "ETestPrefix123456789012345678901234567890",
+        "s": "2",
+        "p": "ETestRotSaid23456789012345678901234567890",
+        "a": [{"d": "ESealDigest234567890123456789012345678901", "type": "device-attestation"}],
+        "x": x
     })
 }
 
@@ -170,7 +169,6 @@ fn rot_serialization_produces_valid_output() {
     let d = body.get("d").and_then(|v| v.as_str()).unwrap();
     assert_eq!(d, result.said);
 
-    // For rotation, i should NOT equal d (it keeps the original prefix).
     let i = body.get("i").and_then(|v| v.as_str()).unwrap();
     assert_ne!(i, result.said, "rotation i should keep original prefix");
 

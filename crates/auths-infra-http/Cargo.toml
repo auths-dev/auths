@@ -11,6 +11,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+auths-keri.workspace = true
 async-trait = "0.1"
 auths-core = { workspace = true }
 auths-crypto = { workspace = true }
