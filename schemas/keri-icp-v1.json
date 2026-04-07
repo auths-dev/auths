@@ -1,18 +1,22 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "IcpEvent",
-  "description": "Inception event.",
+  "description": "Inception event — creates a new KERI identity.\n\nThe inception event establishes the identifier prefix and commits to the first rotation key via the `n` (next) field.\n\nNote: The `t` (type) field is handled by the `Event` enum's serde tag.",
   "type": "object",
   "required": [
+    "b",
+    "bt",
     "i",
     "k",
+    "kt",
     "n",
+    "nt",
     "s",
     "v"
   ],
   "properties": {
     "a": {
-      "description": "Anchored seals (attached data digests).",
+      "description": "Anchored seals",
       "default": [],
       "type": "array",
       "items": {
@@ -20,20 +24,18 @@
       }
     },
     "b": {
-      "description": "Witness list (DIDs or URLs of witnesses).",
-      "default": [],
+      "description": "Witness list (empty)",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "bt": {
-      "description": "Witness threshold.",
-      "default": "",
+      "description": "Witness threshold: \"0\" (no witnesses)",
       "type": "string"
     },
     "d": {
-      "description": "Self-Addressing Identifier (SAID) of this event.",
+      "description": "SAID (Self-Addressing Identifier) — Blake3 hash of event",
       "default": "",
       "allOf": [
         {
@@ -42,7 +44,7 @@
       ]
     },
     "i": {
-      "description": "KERI prefix — same as `d` for inception.",
+      "description": "Identifier prefix (same as `d` for inception)",
       "allOf": [
         {
           "$ref": "#/definitions/Prefix"
@@ -50,44 +52,49 @@
       ]
     },
     "k": {
-      "description": "Current signing keys (base64url-encoded with derivation prefix).",
+      "description": "Current public key(s), Base64url encoded with derivation code",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "kt": {
-      "description": "Signing key threshold.",
-      "default": "",
+      "description": "Key threshold: \"1\" for single-sig",
       "type": "string"
     },
     "n": {
-      "description": "Next-key commitments (Blake3 hashes of the pre-rotation public keys).",
+      "description": "Next key commitment(s) — hash of next public key(s)",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "nt": {
-      "description": "Next-key commitment threshold.",
-      "default": "",
+      "description": "Next key threshold: \"1\"",
       "type": "string"
     },
     "s": {
-      "description": "Sequence number (always `\"0\"` for inception).",
-      "type": "string"
+      "description": "Sequence number (always 0 for inception)",
+      "allOf": [
+        {
+          "$ref": "#/definitions/KeriSequence"
+        }
+      ]
     },
     "v": {
-      "description": "KERI version string (e.g. `\"KERI10JSON\"`).",
+      "description": "Version string: \"KERI10JSON\"",
       "type": "string"
     },
     "x": {
-      "description": "Ed25519 signature over the canonical event body.",
+      "description": "Event signature (Ed25519, base64url-no-pad)",
       "default": "",
       "type": "string"
     }
   },
   "definitions": {
+    "KeriSequence": {
+      "type": "string"
+    },
     "Prefix": {
       "description": "Strongly-typed KERI identifier prefix (e.g., `\"ETest123...\"`).\n\nA prefix is the self-addressing identifier derived from the inception event's Blake3 hash. Always starts with 'E' (Blake3-256 derivation code).\n\nArgs: * Inner `String` should start with `'E'` (enforced by `new()`, not by serde).\n\nUsage: ```ignore let prefix = Prefix::new(\"ETest123abc\".to_string())?; assert_eq!(prefix.as_str(), \"ETest123abc\"); ```",
       "type": "string"
@@ -97,7 +104,7 @@
       "type": "string"
     },
     "Seal": {
-      "description": "A seal anchors external data in a KERI event.",
+      "description": "A seal anchors external data in a KERI event.\n\nSeals are included in the `a` (anchors) field of KERI events. They contain a digest of the anchored data and a type indicator.",
       "type": "object",
       "required": [
         "d",
@@ -105,7 +112,7 @@
       ],
       "properties": {
         "d": {
-          "description": "Digest (SAID) of the anchored data.",
+          "description": "SAID (digest) of the anchored data",
           "allOf": [
             {
               "$ref": "#/definitions/Said"
@@ -113,10 +120,47 @@
           ]
         },
         "type": {
-          "description": "Semantic type label (e.g. `\"device-attestation\"`).",
-          "type": "string"
+          "description": "Type of anchored data",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SealType"
+            }
+          ]
         }
       }
+    },
+    "SealType": {
+      "description": "Type of data anchored by a seal.",
+      "oneOf": [
+        {
+          "description": "Device attestation seal",
+          "type": "string",
+          "enum": [
+            "device-attestation"
+          ]
+        },
+        {
+          "description": "Revocation seal",
+          "type": "string",
+          "enum": [
+            "revocation"
+          ]
+        },
+        {
+          "description": "Capability delegation seal",
+          "type": "string",
+          "enum": [
+            "delegation"
+          ]
+        },
+        {
+          "description": "Identity provider binding seal",
+          "type": "string",
+          "enum": [
+            "idp-binding"
+          ]
+        }
+      ]
     }
   }
 }
