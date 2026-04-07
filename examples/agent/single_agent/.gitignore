@@ -1,0 +1,9 @@
+.venv/
+.auths-demo/
+__pycache__/
+*.pyc
+.agent-key.json
+audit.jsonl
+report.md
+dist/
+.ruff_cache/

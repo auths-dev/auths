@@ -75,7 +75,7 @@ class TestDeviceAttestation:
                 "verify",
                 "--attestation",
                 str(att_file),
-                "--issuer-pk",
+                "--signer-key",
                 issuer_pk,
             ],
             env=init_identity,

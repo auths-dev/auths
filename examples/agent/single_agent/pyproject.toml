@@ -1,0 +1,39 @@
+[project]
+name = "single-agent"
+version = "0.1.0"
+description = "Signed tool-call audit log demo using auths + PydanticAI"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic-ai[openai]>=0.1",
+    "auths>=0.1",
+    "rich>=13",
+]
+
+[project.scripts]
+run-agent  = "single_agent.agent:main"
+verify-log = "single_agent.verify_log:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/single_agent"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4",
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
