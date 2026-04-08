@@ -1,5 +1,4 @@
 # auths:managed — do not edit manually
 # auths:attestation
-z6MkhPJCPXd5A9VN4wScJkxTtz6de7egZQx78vsiAT1vg3PZ@auths.local namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICuPK6OfYp7ngZp40Q+Dsrahhks472v6gPIMD0upCRnM
-z6MkhfnUUc2UJJ5C9sQQ7GvXmSbQJsdtNKV6HNYcQtTjc7xE@auths.local namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC/Ib83sxXogDnEVzLjFBkyC+DhP+cssbPzZAmQhB+Lz
+z6MknkJY66KPDbAEeRVbSJ4MbigiHYGAumVzpgi3QfjhJc6T@auths.local namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHs7L6XhpNR/Qfp4rr+4GoTo6d38rAJKLI1WRtsLXm+Q
 # auths:manual
