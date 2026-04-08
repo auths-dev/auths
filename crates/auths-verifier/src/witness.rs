@@ -17,7 +17,7 @@
 //! assert!(quorum.verified >= quorum.required);
 //! ```
 
-pub use auths_keri::witness::Receipt;
+pub use auths_keri::witness::{Receipt, SignedReceipt};
 
 use auths_crypto::CryptoProvider;
 use auths_keri::Said;
@@ -47,30 +47,30 @@ pub struct WitnessReceiptResult {
 
 /// Configuration for witness receipt verification.
 pub struct WitnessVerifyConfig<'a> {
-    /// The receipts to verify
-    pub receipts: &'a [Receipt],
+    /// The signed receipts to verify
+    pub receipts: &'a [SignedReceipt],
     /// Known witness keys: (witness_did, ed25519_public_key_bytes)
     pub witness_keys: &'a [(String, Vec<u8>)],
     /// Minimum number of valid receipts required
     pub threshold: usize,
 }
 
-/// Verify a single receipt's Ed25519 signature against a public key.
+/// Verify a single signed receipt's Ed25519 signature against a public key.
 ///
-/// Returns `true` if the signature over the canonical payload (excluding `sig`)
+/// Returns `true` if the signature over the canonical receipt body
 /// is valid for the given public key.
 pub async fn verify_receipt_signature(
-    receipt: &Receipt,
+    signed: &SignedReceipt,
     pk: &[u8],
     provider: &dyn CryptoProvider,
 ) -> bool {
-    let payload = match receipt.signing_payload() {
+    let payload = match serde_json::to_vec(&signed.receipt) {
         Ok(p) => p,
         Err(_) => return false,
     };
 
     provider
-        .verify_ed25519(pk, &payload, &receipt.sig)
+        .verify_ed25519(pk, &payload, &signed.signature)
         .await
         .is_ok()
 }
@@ -87,14 +87,14 @@ pub async fn verify_witness_receipts(
     let mut results = Vec::with_capacity(config.receipts.len());
     let mut verified_count = 0;
 
-    for receipt in config.receipts {
+    for signed in config.receipts {
         let matching_key = config
             .witness_keys
             .iter()
-            .find(|(did, _)| *did == receipt.i);
+            .find(|(did, _)| did.as_str() == signed.receipt.i.as_str());
 
         let verified = match matching_key {
-            Some((_, pk)) => verify_receipt_signature(receipt, pk, provider).await,
+            Some((_, pk)) => verify_receipt_signature(signed, pk, provider).await,
             None => false,
         };
 
@@ -103,8 +103,8 @@ pub async fn verify_witness_receipts(
         }
 
         results.push(WitnessReceiptResult {
-            witness_id: receipt.i.clone(),
-            receipt_said: receipt.d.clone(),
+            witness_id: signed.receipt.i.to_string(),
+            receipt_said: signed.receipt.d.clone(),
             verified,
         });
     }
@@ -128,41 +128,42 @@ mod tests {
         RingCryptoProvider
     }
 
+    use auths_keri::{KeriSequence, Prefix, VersionString};
+
     fn create_signed_receipt(
         kp: &Ed25519KeyPair,
         witness_did: &str,
         event_said: &str,
         seq: u64,
-    ) -> Receipt {
-        let mut receipt = Receipt {
-            v: "KERI10JSON000000_".into(),
+    ) -> SignedReceipt {
+        let receipt = Receipt {
+            v: VersionString::placeholder(),
             t: "rct".into(),
-            d: Said::new_unchecked(format!("EReceipt_{}", seq)),
-            i: witness_did.into(),
-            s: seq,
-            a: Said::new_unchecked(event_said.into()),
-            sig: vec![],
+            d: Said::new_unchecked(event_said.to_string()),
+            i: Prefix::new_unchecked(witness_did.to_string()),
+            s: KeriSequence::new(seq),
         };
-        let payload = receipt.signing_payload().unwrap();
-        receipt.sig = kp.sign(&payload).as_ref().to_vec();
-        receipt
+        let payload = serde_json::to_vec(&receipt).unwrap();
+        let sig = kp.sign(&payload).as_ref().to_vec();
+        SignedReceipt {
+            receipt,
+            signature: sig,
+        }
     }
 
     #[test]
-    fn receipt_signing_payload_excludes_sig() {
+    fn receipt_body_has_no_sig_field() {
         let receipt = Receipt {
-            v: "KERI10JSON000000_".into(),
+            v: VersionString::placeholder(),
             t: "rct".into(),
-            d: Said::new_unchecked("EReceipt123".into()),
-            i: "did:key:z6MkWitness".into(),
-            s: 5,
-            a: Said::new_unchecked("EEvent456".into()),
-            sig: vec![0xab; 64],
+            d: Said::new_unchecked("EEvent456".into()),
+            i: Prefix::new_unchecked("did:key:z6MkWitness".to_string()),
+            s: KeriSequence::new(5),
         };
-        let payload = receipt.signing_payload().unwrap();
+        let payload = serde_json::to_vec(&receipt).unwrap();
         let payload_str = String::from_utf8(payload).unwrap();
         assert!(!payload_str.contains("sig"));
-        assert!(payload_str.contains("EReceipt123"));
+        assert!(payload_str.contains("EEvent456"));
         assert!(payload_str.contains("did:key:z6MkWitness"));
     }
 
@@ -185,7 +186,7 @@ mod tests {
     async fn verify_receipt_tampered_signature() {
         let (kp, pk) = create_test_keypair(&[10u8; 32]);
         let mut receipt = create_signed_receipt(&kp, "did:key:z6MkW1", "EEvent1", 1);
-        receipt.sig[0] ^= 0xFF;
+        receipt.signature[0] ^= 0xFF;
         assert!(!verify_receipt_signature(&receipt, &pk, &provider()).await);
     }
 
@@ -263,20 +264,13 @@ mod tests {
 
     #[test]
     fn wire_compat_with_core_receipt() {
-        let sig_hex = "ab".repeat(64);
-        let json = format!(
-            r#"{{"v": "KERI10JSON000000_", "t": "rct", "d": "EReceipt123", "i": "did:key:z6MkWitness", "s": 5, "a": "EEvent456", "sig": "{}"}}"#,
-            sig_hex
-        );
+        let json = r#"{"v": "KERI10JSON000000_", "t": "rct", "d": "EEvent456", "i": "did:key:z6MkWitness", "s": "5"}"#;
 
-        let receipt: Receipt = serde_json::from_str(&json).unwrap();
-        assert_eq!(receipt.v, "KERI10JSON000000_");
+        let receipt: Receipt = serde_json::from_str(json).unwrap();
         assert_eq!(receipt.t, "rct");
-        assert_eq!(receipt.d, "EReceipt123");
-        assert_eq!(receipt.i, "did:key:z6MkWitness");
-        assert_eq!(receipt.s, 5);
-        assert_eq!(receipt.a, "EEvent456");
-        assert_eq!(receipt.sig.len(), 64);
+        assert_eq!(receipt.d, "EEvent456");
+        assert_eq!(receipt.i.as_str(), "did:key:z6MkWitness");
+        assert_eq!(receipt.s.value(), 5);
 
         let json_out = serde_json::to_string(&receipt).unwrap();
         let parsed: Receipt = serde_json::from_str(&json_out).unwrap();

@@ -28,37 +28,42 @@ pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationEr
 
     let placeholder = serde_json::Value::String(SAID_PLACEHOLDER.to_string());
     let event_type = obj.get("t").and_then(|v| v.as_str()).unwrap_or("");
-    let has_d = obj.contains_key("d");
 
-    // Rebuild the map to guarantee spec-compliant field ordering.
-    // With `preserve_order`, IndexMap::insert appends new keys to the end.
-    // If the `d` field was omitted by the serializer (empty Said), we must
-    // inject it immediately after `t`, not at the end.
+    // Rebuild the map with spec-compliant placeholders and field ordering.
     let mut new_obj = serde_json::Map::new();
-    let mut d_injected = false;
 
     for (k, v) in obj {
         if k == "x" {
-            // Signatures are detached from the digest
+            // Signatures are detached from the digest (legacy field, skip)
             continue;
         } else if k == "d" {
             new_obj.insert("d".to_string(), placeholder.clone());
-            d_injected = true;
         } else if k == "i" && event_type == "icp" {
             new_obj.insert("i".to_string(), placeholder.clone());
         } else {
             new_obj.insert(k.clone(), v.clone());
-            // Spec field order: v, t, d, ... — inject d right after t when absent.
-            if k == "t" && !has_d {
-                new_obj.insert("d".to_string(), placeholder.clone());
-                d_injected = true;
-            }
         }
     }
 
-    if !d_injected {
+    // Ensure d is always present (in case input omitted it)
+    if !new_obj.contains_key("d") {
         new_obj.insert("d".to_string(), placeholder.clone());
     }
+
+    // Two-pass version string: compute byte count then re-serialize
+    let version_placeholder = "KERI10JSON000000_";
+    new_obj.insert(
+        "v".to_string(),
+        serde_json::Value::String(version_placeholder.to_string()),
+    );
+
+    let pass1 = serde_json::to_vec(&serde_json::Value::Object(new_obj.clone()))
+        .map_err(KeriTranslationError::SerializationFailed)?;
+
+    // Size is stable: placeholder and real version string are both 17 chars
+    let version_string = format!("KERI10JSON{:06x}_", pass1.len());
+    debug_assert_eq!(version_string.len(), version_placeholder.len());
+    new_obj.insert("v".to_string(), serde_json::Value::String(version_string));
 
     let serialized = serde_json::to_vec(&serde_json::Value::Object(new_obj))
         .map_err(KeriTranslationError::SerializationFailed)?;

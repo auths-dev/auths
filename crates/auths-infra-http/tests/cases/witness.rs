@@ -63,13 +63,13 @@ async fn http_witness_submit_and_retrieve_receipt() {
 
     let receipt = client.submit_event(&prefix, &event_json).await.unwrap();
 
-    assert_eq!(receipt.a, said);
-    assert_eq!(receipt.s, 0);
+    assert_eq!(receipt.d, said);
+    assert_eq!(receipt.s, auths_keri::KeriSequence::new(0));
     assert_eq!(receipt.t, "rct");
 
     let retrieved = client.get_receipt(&prefix, &said).await.unwrap();
     assert!(retrieved.is_some());
-    assert_eq!(retrieved.unwrap().a, said);
+    assert_eq!(retrieved.unwrap().d, said);
 }
 
 #[tokio::test(flavor = "multi_thread")]

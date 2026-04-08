@@ -6,9 +6,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
-use crate::keri::event::{Event, IcpEvent, KeriSequence};
+use crate::keri::event::{CesrKey, Event, IcpEvent, KeriSequence, Threshold, VersionString};
 use crate::keri::types::{Prefix, Said};
-use crate::keri::{KERI_VERSION, finalize_icp_event, serialize_for_signing};
+use crate::keri::{finalize_icp_event, serialize_for_signing};
 
 /// Minimal signed inception event for registry contract tests.
 ///
@@ -40,16 +40,17 @@ pub fn test_inception_event(key_seed: &str) -> Event {
     let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
     let icp = IcpEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: Prefix::default(),
         s: KeriSequence::new(0),
-        kt: "1".to_string(),
-        k: vec![key_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(key_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![next_commitment],
-        bt: "0".to_string(),
+        bt: Threshold::Simple(0),
         b: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };

@@ -464,32 +464,33 @@ impl GitRegistryBackend {
         event: &Event,
     ) -> Result<KeyState, RegistryError> {
         match event {
-            Event::Icp(icp) => {
-                let threshold = icp.kt.parse::<u64>().unwrap_or(1);
-                let next_threshold = icp.nt.parse::<u64>().unwrap_or(1);
-                Ok(KeyState::from_inception(
-                    icp.i.clone(),
-                    icp.k.clone(),
-                    icp.n.clone(),
-                    threshold,
-                    next_threshold,
-                    icp.d.clone(),
-                ))
-            }
+            Event::Icp(icp) => Ok(KeyState::from_inception(
+                icp.i.clone(),
+                icp.k.clone(),
+                icp.n.clone(),
+                icp.kt.clone(),
+                icp.nt.clone(),
+                icp.d.clone(),
+                icp.b.clone(),
+                icp.bt.clone(),
+                icp.c.clone(),
+            )),
             Event::Rot(rot) => {
                 let mut state = current_state.cloned().ok_or_else(|| {
                     RegistryError::Internal("Rotation without prior state".into())
                 })?;
                 let seq = event.sequence().value();
-                let threshold = rot.kt.parse::<u64>().unwrap_or(1);
-                let next_threshold = rot.nt.parse::<u64>().unwrap_or(1);
                 state.apply_rotation(
                     rot.k.clone(),
                     rot.n.clone(),
-                    threshold,
-                    next_threshold,
+                    rot.kt.clone(),
+                    rot.nt.clone(),
                     seq,
                     rot.d.clone(),
+                    &rot.br,
+                    &rot.ba,
+                    rot.bt.clone(),
+                    rot.c.clone(),
                 );
                 Ok(state)
             }
@@ -501,6 +502,20 @@ impl GitRegistryBackend {
                 state.apply_interaction(seq, ixn.d.clone());
                 Ok(state)
             }
+            Event::Dip(dip) => Ok(KeyState::from_inception(
+                dip.i.clone(),
+                dip.k.clone(),
+                dip.n.clone(),
+                dip.kt.clone(),
+                dip.nt.clone(),
+                dip.d.clone(),
+                dip.b.clone(),
+                dip.bt.clone(),
+                dip.c.clone(),
+            )),
+            Event::Drt(_) => Err(RegistryError::Internal(
+                "Delegated rotation not yet supported".into(),
+            )),
         }
     }
 
@@ -647,7 +662,11 @@ impl GitRegistryBackend {
             if let Some(index) = &self.index {
                 let indexed = auths_index::IndexedIdentity {
                     prefix: auths_keri::Prefix::new_unchecked(prefix_str.clone()),
-                    current_keys: state.current_keys.clone(),
+                    current_keys: state
+                        .current_keys
+                        .iter()
+                        .map(|k| k.as_str().to_string())
+                        .collect(),
                     sequence: state.sequence,
                     tip_said: state.last_event_said.clone(),
                     updated_at: self.clock.now(),
@@ -948,7 +967,11 @@ impl RegistryBackend for GitRegistryBackend {
         if let Some(index) = &self.index {
             let indexed = auths_index::IndexedIdentity {
                 prefix: prefix.clone(),
-                current_keys: new_state.current_keys.clone(),
+                current_keys: new_state
+                    .current_keys
+                    .iter()
+                    .map(|k| k.as_str().to_string())
+                    .collect(),
                 sequence: new_state.sequence,
                 tip_said: event.said().clone(),
                 updated_at: self.clock.now(),
@@ -1766,7 +1789,11 @@ pub fn rebuild_identities_from_registry(
             Ok(state) => {
                 let indexed = IndexedIdentity {
                     prefix: state.prefix.clone(),
-                    current_keys: state.current_keys.clone(),
+                    current_keys: state
+                        .current_keys
+                        .iter()
+                        .map(|k| k.as_str().to_string())
+                        .collect(),
                     sequence: state.sequence,
                     tip_said: state.last_event_said.clone(),
                     updated_at: backend.clock.now(),
@@ -2099,8 +2126,8 @@ mod tests {
     use auths_id::keri::seal::Seal;
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{compute_event_said, finalize_icp_event, serialize_for_signing};
-    use auths_keri::KERI_VERSION;
     use auths_keri::compute_next_commitment;
+    use auths_keri::{CesrKey, Threshold, VersionString};
     use auths_verifier::AttestationBuilder;
     use auths_verifier::core::{Ed25519PublicKey, Role};
     use base64::Engine;
@@ -2131,16 +2158,17 @@ mod tests {
         let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
         let icp = IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: Prefix::default(),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec![key_encoded],
-            nt: "1".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(key_encoded)],
+            nt: Threshold::Simple(1),
             n: vec![next_commitment],
-            bt: "0".to_string(),
+            bt: Threshold::Simple(0),
             b: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };
@@ -2173,17 +2201,19 @@ mod tests {
         let nn_commitment = compute_next_commitment(nn_keypair.public_key().as_ref());
 
         let mut rot = RotEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: prefix.clone(),
             s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
-            kt: "1".to_string(),
-            k: vec![new_key_encoded],
-            nt: "1".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(new_key_encoded)],
+            nt: Threshold::Simple(1),
             n: vec![nn_commitment],
-            bt: "0".to_string(),
-            b: vec![],
+            bt: Threshold::Simple(0),
+            br: vec![],
+            ba: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };
@@ -2205,12 +2235,12 @@ mod tests {
         keypair: &Ed25519KeyPair,
     ) -> Event {
         let mut ixn = IxnEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: prefix.clone(),
             s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
-            a: vec![Seal::device_attestation("ETest")],
+            a: vec![Seal::digest("ETest")],
             x: String::new(),
         };
 
@@ -2226,16 +2256,17 @@ mod tests {
     /// Create an unsigned ICP event (for tests that check pre-crypto constraints).
     fn create_unsigned_icp(key: &str, next: &str) -> (Event, Prefix) {
         let icp = IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: Prefix::default(),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec![key.to_string()],
-            nt: "1".to_string(),
-            n: vec![next.to_string()],
-            bt: "0".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(key.to_string())],
+            nt: Threshold::Simple(1),
+            n: vec![Said::new_unchecked(next.to_string())],
+            bt: Threshold::Simple(0),
             b: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };
@@ -2307,17 +2338,19 @@ mod tests {
         let next_commit = compute_next_commitment(kp.public_key().as_ref());
 
         let mut rot = RotEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: prefix.clone(),
             s: KeriSequence::new(1),
             p: Said::new_unchecked("EPrev".to_string()),
-            kt: "1".to_string(),
-            k: vec![key_enc],
-            nt: "1".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(key_enc)],
+            nt: Threshold::Simple(1),
             n: vec![next_commit],
-            bt: "0".to_string(),
-            b: vec![],
+            bt: Threshold::Simple(0),
+            br: vec![],
+            ba: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };
@@ -2354,12 +2387,12 @@ mod tests {
 
         // Create an IXN event with seq 0 — rejected before crypto check
         let mut ixn = IxnEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: prefix.clone(),
             s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
-            a: vec![Seal::device_attestation("ETest")],
+            a: vec![Seal::digest("ETest")],
             x: String::new(),
         };
         let event = Event::Ixn(ixn.clone());
@@ -2392,16 +2425,17 @@ mod tests {
         // because for ICP, i == d. So we use the tampered SAID as the prefix.
         let tampered_said = "ETamperedSaid1234567890";
         let icp = IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::new_unchecked(tampered_said.to_string()),
             i: Prefix::new_unchecked(tampered_said.to_string()),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec!["DKey1".to_string()],
-            nt: "1".to_string(),
-            n: vec!["ENext1".to_string()],
-            bt: "0".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked("DKey1".to_string())],
+            nt: Threshold::Simple(1),
+            n: vec![Said::new_unchecked("ENext1".to_string())],
+            bt: Threshold::Simple(0),
             b: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };
@@ -3616,13 +3650,20 @@ mod tests {
         // Build a modified state: same tip SAID, different current_keys
         let modified_state = KeyState {
             prefix: prefix.clone(),
-            current_keys: vec!["DModifiedKey123456789012345678901234".to_string()],
+            current_keys: vec![CesrKey::new_unchecked(
+                "DModifiedKey123456789012345678901234".to_string(),
+            )],
             next_commitment: original_state.next_commitment.clone(),
             sequence: original_state.sequence,
             last_event_said: original_state.last_event_said.clone(),
             is_abandoned: false,
-            threshold: 1,
-            next_threshold: 1,
+            threshold: Threshold::Simple(1),
+            next_threshold: Threshold::Simple(1),
+            backers: vec![],
+            backer_threshold: Threshold::Simple(0),
+            config_traits: vec![],
+            is_non_transferable: false,
+            delegator: None,
         };
 
         backend.write_key_state(&prefix, &modified_state).unwrap();
@@ -3630,7 +3671,7 @@ mod tests {
         // get_key_state must return the overwritten state (not replay the KEL)
         let retrieved = backend.get_key_state(&prefix).unwrap();
         assert_eq!(
-            retrieved.current_keys[0],
+            retrieved.current_keys[0].as_str(),
             "DModifiedKey123456789012345678901234"
         );
         assert_eq!(retrieved.sequence, original_state.sequence);
@@ -3644,11 +3685,14 @@ mod tests {
         let prefix = Prefix::new_unchecked("EXq5Test1234".to_string());
         let state = KeyState::from_inception(
             prefix.clone(),
-            vec!["DKey1".to_string()],
-            vec!["ENext1".to_string()],
-            1,
-            1,
+            vec![CesrKey::new_unchecked("DKey1".to_string())],
+            vec![Said::new_unchecked("ENext1".to_string())],
+            Threshold::Simple(1),
+            Threshold::Simple(1),
             Said::new_unchecked("ESAID12345".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![],
         );
 
         let result = backend.write_key_state(&prefix, &state);
@@ -3668,8 +3712,8 @@ mod index_consistency_tests {
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
     use auths_id::storage::registry::org_member::MemberFilter;
-    use auths_keri::KERI_VERSION;
     use auths_keri::compute_next_commitment;
+    use auths_keri::{CesrKey, Threshold, VersionString};
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::types::CanonicalDid;
     use base64::Engine;
@@ -3698,16 +3742,17 @@ mod index_consistency_tests {
         let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
         let icp = IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: Prefix::default(),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec![key_encoded],
-            nt: "1".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(key_encoded)],
+            nt: Threshold::Simple(1),
             n: vec![next_commitment],
-            bt: "0".to_string(),
+            bt: Threshold::Simple(0),
             b: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };
@@ -3922,8 +3967,8 @@ mod tenant_isolation_tests {
     use auths_id::keri::event::{IcpEvent, KeriSequence};
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
-    use auths_keri::KERI_VERSION;
     use auths_keri::compute_next_commitment;
+    use auths_keri::{CesrKey, Threshold, VersionString};
 
     use super::*;
     use auths_id::storage::registry::backend::TenantIdError;
@@ -3955,16 +4000,17 @@ mod tenant_isolation_tests {
         let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
         let icp = IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: Prefix::default(),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec![key_encoded],
-            nt: "1".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(key_encoded)],
+            nt: Threshold::Simple(1),
             n: vec![next_commitment],
-            bt: "0".to_string(),
+            bt: Threshold::Simple(0),
             b: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };

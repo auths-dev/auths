@@ -112,7 +112,7 @@ pub use verify::{
 };
 
 // Re-export witness types
-pub use witness::{WitnessQuorum, WitnessReceiptResult, WitnessVerifyConfig};
+pub use witness::{SignedReceipt, WitnessQuorum, WitnessReceiptResult, WitnessVerifyConfig};
 
 // Re-export KERI types directly from auths-keri
 pub use auths_keri::{

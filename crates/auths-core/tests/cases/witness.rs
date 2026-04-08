@@ -71,8 +71,8 @@ async fn http_witness_submit_and_retrieve_receipt() {
         .await
         .unwrap();
 
-    assert_eq!(receipt.a, said);
-    assert_eq!(receipt.s, 0);
+    assert_eq!(receipt.d, said);
+    assert_eq!(receipt.s, auths_keri::KeriSequence::new(0));
     assert_eq!(receipt.t, "rct");
 
     // Retrieve receipt
@@ -80,7 +80,7 @@ async fn http_witness_submit_and_retrieve_receipt() {
 
     assert!(retrieved.is_some());
     let retrieved = retrieved.unwrap();
-    assert_eq!(retrieved.a, said);
+    assert_eq!(retrieved.d, said);
 }
 
 #[tokio::test]

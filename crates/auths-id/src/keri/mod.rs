@@ -124,8 +124,11 @@ pub use anchor::{
     AnchorError, AnchorVerification, anchor_attestation, anchor_data, anchor_idp_binding,
     find_anchor_event, verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
 };
-pub use auths_keri::KERI_VERSION;
-pub use event::{Event, EventReceipts, IcpEvent, IxnEvent, KeriSequence, RotEvent};
+pub use auths_keri::KERI_VERSION_PREFIX;
+pub use event::{
+    CesrKey, ConfigTrait, Event, EventReceipts, IcpEvent, IxnEvent, KeriSequence, RotEvent,
+    Threshold, VersionString,
+};
 #[cfg(feature = "git-storage")]
 pub use inception::{
     InceptionError, InceptionResult, create_keri_identity, create_keri_identity_with_backend,

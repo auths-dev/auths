@@ -37,6 +37,8 @@ mod error;
 mod events;
 pub mod kel_io;
 mod keys;
+/// Routed KERI message types (qry, rpy, pro, bar, xip, exn).
+pub mod messages;
 mod said;
 mod state;
 mod types;
@@ -57,15 +59,22 @@ mod version;
 
 pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::KeriTranslationError;
-pub use events::{Event, IcpEvent, IxnEvent, KERI_VERSION, KeriSequence, RotEvent, Seal, SealType};
+pub use events::{
+    DipEvent, DrtEvent, Event, IcpEvent, IndexedSignature, IxnEvent, KERI_VERSION_PREFIX,
+    KeriSequence, RotEvent, Seal, SealType, SignedEvent,
+};
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};
 pub use state::KeyState;
-pub use types::{KeriTypeError, Prefix, Said};
+pub use types::{
+    CesrKey, ConfigTrait, Fraction, FractionError, KeriTypeError, Prefix, Said, Threshold,
+    VersionString,
+};
 pub use validate::{
-    ValidationError, compute_event_said, finalize_icp_event, find_seal_in_kel, parse_kel_json,
-    replay_kel, serialize_for_signing, validate_for_append, validate_kel, verify_event_crypto,
-    verify_event_said,
+    ValidationError, compute_event_said, finalize_icp_event, finalize_ixn_event,
+    finalize_rot_event, find_seal_in_kel, parse_kel_json, replay_kel, serialize_for_signing,
+    validate_delegation, validate_for_append, validate_kel, validate_signed_event,
+    verify_event_crypto, verify_event_said,
 };
 
 #[cfg(feature = "cesr")]

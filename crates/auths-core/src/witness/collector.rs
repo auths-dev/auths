@@ -243,13 +243,13 @@ impl ReceiptCollector {
             return None;
         }
 
-        let expected_said = &existing[0].a;
-        if new.a != *expected_said {
+        let expected_said = &existing[0].d;
+        if new.d != *expected_said {
             Some(DuplicityEvidence {
                 prefix: Prefix::default(),
-                sequence: new.s,
+                sequence: new.s.value(),
                 event_a_said: expected_said.clone(),
-                event_b_said: new.a.clone(),
+                event_b_said: new.d.clone(),
                 witness_reports: vec![],
             })
         } else {

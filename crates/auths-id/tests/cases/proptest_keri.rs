@@ -1,8 +1,9 @@
 use auths_core::crypto::said::{compute_next_commitment, compute_said};
 use auths_id::keri::{
-    Event, IcpEvent, IxnEvent, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, Seal,
-    ValidationError, finalize_icp_event, serialize_for_signing, validate_kel, verify_event_said,
+    Event, IcpEvent, IxnEvent, KeriSequence, Prefix, RotEvent, Said, Seal, ValidationError,
+    finalize_icp_event, serialize_for_signing, validate_kel, verify_event_said,
 };
+use auths_keri::{CesrKey, Threshold, VersionString};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use proptest::prelude::*;
@@ -24,18 +25,19 @@ fn sign_event(event: &Event, kp: &Ed25519KeyPair) -> String {
     URL_SAFE_NO_PAD.encode(kp.sign(&canonical).as_ref())
 }
 
-fn make_signed_icp(kp: &Ed25519KeyPair, next_commitment: &str) -> IcpEvent {
+fn make_signed_icp(kp: &Ed25519KeyPair, next_commitment: &Said) -> IcpEvent {
     let icp = IcpEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: Prefix::default(),
         s: KeriSequence::new(0),
-        kt: "1".to_string(),
-        k: vec![encode_pubkey(kp)],
-        nt: "1".to_string(),
-        n: vec![next_commitment.to_string()],
-        bt: "0".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(encode_pubkey(kp))],
+        nt: Threshold::Simple(1),
+        n: vec![next_commitment.clone()],
+        bt: Threshold::Simple(0),
         b: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
@@ -53,7 +55,7 @@ fn make_signed_ixn(
     seals: Vec<Seal>,
 ) -> IxnEvent {
     let mut ixn = IxnEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(seq),
@@ -73,20 +75,22 @@ fn make_signed_rot(
     prev_said: &Said,
     seq: u64,
     new_kp: &Ed25519KeyPair,
-    next_commitment: &str,
+    next_commitment: &Said,
 ) -> RotEvent {
     let mut rot = RotEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(seq),
         p: prev_said.clone(),
-        kt: "1".to_string(),
-        k: vec![encode_pubkey(new_kp)],
-        nt: "1".to_string(),
-        n: vec![next_commitment.to_string()],
-        bt: "0".to_string(),
-        b: vec![],
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(encode_pubkey(new_kp))],
+        nt: Threshold::Simple(1),
+        n: vec![next_commitment.clone()],
+        bt: Threshold::Simple(0),
+        br: vec![],
+        ba: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
@@ -113,7 +117,7 @@ fn build_valid_kel(ixn_count: usize) -> Vec<Event> {
             &prev_said,
             (i + 1) as u64,
             &kp,
-            vec![Seal::device_attestation(format!("EAttest{i}"))],
+            vec![Seal::digest(format!("EAttest{i}"))],
         );
         prev_said = ixn.d.clone();
         events.push(Event::Ixn(ixn));
@@ -248,14 +252,14 @@ proptest! {
             &rot_said,
             2,
             &kp2,
-            vec![Seal::device_attestation("EPostRotAttest")],
+            vec![Seal::digest("EPostRotAttest")],
         );
 
         let events = vec![Event::Icp(icp), Event::Rot(rot), Event::Ixn(ixn)];
         let state = validate_kel(&events).expect("valid KEL should validate");
 
         prop_assert_eq!(state.sequence, 2);
-        prop_assert_eq!(state.current_keys, vec![encode_pubkey(&kp2)]);
+        prop_assert_eq!(state.current_keys, vec![CesrKey::new_unchecked(encode_pubkey(&kp2))]);
         prop_assert_eq!(state.next_commitment, vec![commitment3]);
     }
 }

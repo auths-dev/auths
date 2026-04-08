@@ -7,7 +7,10 @@
 //! - Parsing trailers (including RFC 822 folded lines)
 //! - Extracting witness receipts from `Auths-Witness-Receipt` trailers
 
-use auths_core::witness::Receipt;
+use auths_core::witness::SignedReceipt;
+
+/// Re-export for backwards compatibility in this module's public API.
+pub use auths_core::witness::Receipt;
 
 /// The trailer key for witness receipts.
 pub const WITNESS_RECEIPT_KEY: &str = "Auths-Witness-Receipt";
@@ -94,12 +97,12 @@ pub fn parse_trailers(message: &str) -> Vec<(String, String)> {
     trailers
 }
 
-/// Extracts and deserializes witness receipts from commit message trailers.
-pub fn extract_witness_receipts(message: &str) -> Vec<Receipt> {
+/// Extracts and deserializes signed witness receipts from commit message trailers.
+pub fn extract_witness_receipts(message: &str) -> Vec<SignedReceipt> {
     parse_trailers(message)
         .into_iter()
         .filter(|(key, _)| key == WITNESS_RECEIPT_KEY)
-        .filter_map(|(_, value)| Receipt::from_trailer_value(&value).ok())
+        .filter_map(|(_, value)| SignedReceipt::from_trailer_value(&value).ok())
         .collect()
 }
 
@@ -178,18 +181,20 @@ fn parse_trailer_line(line: &str) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_core::witness::{KERI_VERSION, RECEIPT_TYPE};
-    use auths_keri::Said;
+    use auths_core::witness::RECEIPT_TYPE;
+    use auths_keri::{KeriSequence, Prefix, Said, VersionString};
 
-    fn sample_receipt() -> Receipt {
-        Receipt {
-            v: KERI_VERSION.into(),
+    fn sample_signed_receipt() -> SignedReceipt {
+        let receipt = Receipt {
+            v: VersionString::placeholder(),
             t: RECEIPT_TYPE.into(),
-            d: Said::new_unchecked("EReceipt123".into()),
-            i: "did:key:z6MkWitness".into(),
-            s: 5,
-            a: Said::new_unchecked("EEvent456".into()),
-            sig: vec![0xab; 64],
+            d: Said::new_unchecked("EEvent456".into()),
+            i: Prefix::new_unchecked("did:key:z6MkWitness".into()),
+            s: KeriSequence::new(5),
+        };
+        SignedReceipt {
+            receipt,
+            signature: vec![0xab; 64],
         }
     }
 
@@ -274,8 +279,8 @@ mod tests {
 
     #[test]
     fn extract_witness_receipts_roundtrip() {
-        let receipt = sample_receipt();
-        let trailer_value = receipt.to_trailer_value().unwrap();
+        let signed = sample_signed_receipt();
+        let trailer_value = signed.to_trailer_value().unwrap();
         let msg = append_trailer(
             "feat: add agent signing",
             WITNESS_RECEIPT_KEY,
@@ -284,15 +289,15 @@ mod tests {
 
         let receipts = extract_witness_receipts(&msg);
         assert_eq!(receipts.len(), 1);
-        assert_eq!(receipts[0], receipt);
+        assert_eq!(receipts[0], signed);
     }
 
     #[test]
     fn extract_multiple_witness_receipts() {
-        let r1 = sample_receipt();
-        let mut r2 = sample_receipt();
-        r2.i = "did:key:z6MkWitness2".into();
-        r2.d = Said::new_unchecked("EReceipt456".into());
+        let r1 = sample_signed_receipt();
+        let mut r2 = sample_signed_receipt();
+        r2.receipt.i = Prefix::new_unchecked("did:key:z6MkWitness2".into());
+        r2.receipt.d = Said::new_unchecked("EEvent789".into());
 
         let mut msg = "feat: signed commit".to_string();
         msg = append_trailer(&msg, WITNESS_RECEIPT_KEY, &r1.to_trailer_value().unwrap());
@@ -304,13 +309,13 @@ mod tests {
 
     #[test]
     fn extract_witness_receipts_ignores_other_trailers() {
-        let receipt = sample_receipt();
+        let signed = sample_signed_receipt();
         let mut msg = "feat: stuff".to_string();
         msg = append_trailer(&msg, "Signed-off-by", "Alice");
         msg = append_trailer(
             &msg,
             WITNESS_RECEIPT_KEY,
-            &receipt.to_trailer_value().unwrap(),
+            &signed.to_trailer_value().unwrap(),
         );
         msg = append_trailer(&msg, "Co-authored-by", "Bob");
 

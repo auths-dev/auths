@@ -123,7 +123,7 @@ impl DidResolver for RegistryDidResolver {
             let key_encoded = key_state.current_key().ok_or_else(|| {
                 DidResolverError::Repository("No current key in key state".into())
             })?;
-            let public_key = KeriPublicKey::parse(key_encoded)
+            let public_key = KeriPublicKey::parse(key_encoded.as_str())
                 .map(|k| Ed25519PublicKey::from_bytes(*k.as_bytes()))
                 .map_err(|e| DidResolverError::DidKeyDecodingFailed(e.to_string()))?;
             Ok(ResolvedDid::Keri {

@@ -6,7 +6,10 @@
 //! The canonical type definitions live in `auths-keri`. This module
 //! re-exports them and adds `EventReceipts`, which requires `auths-core`.
 
-pub use auths_keri::{Event, IcpEvent, IxnEvent, KERI_VERSION, KeriSequence, RotEvent};
+pub use auths_keri::{
+    CesrKey, ConfigTrait, Event, IcpEvent, IxnEvent, KERI_VERSION_PREFIX, KeriSequence, RotEvent,
+    Threshold, VersionString,
+};
 
 use auths_core::witness::Receipt;
 use std::collections::HashSet;
@@ -78,17 +81,15 @@ impl EventReceipts {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::keri::{KERI_VERSION, Seal};
+    use crate::keri::{Prefix, Seal};
 
     fn make_receipt(witness_id: &str) -> Receipt {
         Receipt {
-            v: "KERI10JSON000000_".into(),
+            v: VersionString::placeholder(),
             t: "rct".into(),
             d: Said::new_unchecked("EReceipt".into()),
-            i: witness_id.into(),
-            s: 0,
-            a: Said::new_unchecked("EEvent".into()),
-            sig: vec![0; 64],
+            i: Prefix::new_unchecked(witness_id.into()),
+            s: KeriSequence::new(0),
         }
     }
 
@@ -131,23 +132,24 @@ mod tests {
 
     #[test]
     fn keri_version_constant_is_correct() {
-        assert_eq!(KERI_VERSION, "KERI10JSON");
+        assert_eq!(KERI_VERSION_PREFIX, "KERI10JSON");
     }
 
     #[test]
     fn icp_event_is_reexported_and_works() {
         let icp = IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: crate::keri::Prefix::new_unchecked("ETest123".to_string()),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec!["DKey123".to_string()],
-            nt: "1".to_string(),
-            n: vec!["ENext456".to_string()],
-            bt: "0".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked("DKey123".to_string())],
+            nt: Threshold::Simple(1),
+            n: vec![Said::new_unchecked("ENext456".to_string())],
+            bt: Threshold::Simple(0),
             b: vec![],
-            a: vec![Seal::device_attestation("EAttest")],
+            c: vec![],
+            a: vec![Seal::digest("EAttest")],
             x: String::new(),
         };
         let json = serde_json::to_string(&icp).unwrap();

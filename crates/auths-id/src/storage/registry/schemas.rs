@@ -159,7 +159,7 @@ impl Default for RegistryMetadata {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::{Prefix, Said};
+    use crate::keri::{CesrKey, Prefix, Said, Threshold};
 
     #[test]
     fn tip_info_new_sets_version() {
@@ -181,11 +181,14 @@ mod tests {
     fn cached_state_is_valid_for_matching_said() {
         let state = KeyState::from_inception(
             Prefix::new_unchecked("EPrefix".to_string()),
-            vec!["DKey".to_string()],
-            vec!["ENext".to_string()],
-            1,
-            1,
+            vec![CesrKey::new_unchecked("DKey".to_string())],
+            vec![Said::new_unchecked("ENext".to_string())],
+            Threshold::Simple(1),
+            Threshold::Simple(1),
             Said::new_unchecked("ESaid".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![],
         );
         let tip_said = Said::new_unchecked("ETipSaid".to_string());
         let cached = CachedStateJson::new(state, tip_said.clone());
@@ -199,11 +202,14 @@ mod tests {
     fn cached_state_roundtrips() {
         let state = KeyState::from_inception(
             Prefix::new_unchecked("EPrefix".to_string()),
-            vec!["DKey".to_string()],
-            vec!["ENext".to_string()],
-            1,
-            1,
+            vec![CesrKey::new_unchecked("DKey".to_string())],
+            vec![Said::new_unchecked("ENext".to_string())],
+            Threshold::Simple(1),
+            Threshold::Simple(1),
             Said::new_unchecked("ESaid".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![],
         );
         let cached =
             CachedStateJson::new(state.clone(), Said::new_unchecked("ETipSaid".to_string()));

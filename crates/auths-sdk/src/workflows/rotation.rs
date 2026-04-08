@@ -19,7 +19,8 @@ use auths_id::identity::helpers::{
     ManagedIdentity, encode_seed_as_pkcs8, extract_seed_bytes, load_keypair_from_der_or_seed,
 };
 use auths_id::keri::{
-    Event, KERI_VERSION, KeriSequence, KeyState, Prefix, RotEvent, Said, serialize_for_signing,
+    CesrKey, Event, KeriSequence, KeyState, Prefix, RotEvent, Said, Threshold, VersionString,
+    serialize_for_signing,
 };
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::witness_config::WitnessConfig;
@@ -63,27 +64,33 @@ pub fn compute_rotation_event(
     );
     let new_next_commitment = compute_next_commitment(new_next_keypair.public_key().as_ref());
 
-    let (bt, b) = match witness_config {
+    let (bt, br, ba) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
-            cfg.threshold.to_string(),
-            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+            Threshold::Simple(cfg.threshold as u64),
+            vec![],
+            cfg.witness_urls
+                .iter()
+                .map(|u| Prefix::new_unchecked(u.to_string()))
+                .collect(),
         ),
-        _ => ("0".to_string(), vec![]),
+        _ => (Threshold::Simple(0), vec![], vec![]),
     };
 
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
-        kt: "1".to_string(),
-        k: vec![new_current_pub_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(new_current_pub_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![new_next_commitment],
         bt,
-        b,
+        br,
+        ba,
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
@@ -642,8 +649,13 @@ mod tests {
             sequence: 999,
             last_event_said: Said::default(),
             is_abandoned: false,
-            threshold: 1,
-            next_threshold: 1,
+            threshold: Threshold::Simple(1),
+            next_threshold: Threshold::Simple(1),
+            backers: vec![],
+            backer_threshold: Threshold::Simple(0),
+            config_traits: vec![],
+            is_non_transferable: false,
+            delegator: None,
         };
 
         let result = retrieve_precommitted_key(
@@ -766,30 +778,37 @@ mod tests {
 
         let state = KeyState {
             prefix: prefix.clone(),
-            current_keys: vec!["D_key".to_string()],
-            next_commitment: vec!["hash".to_string()],
+            current_keys: vec![CesrKey::new_unchecked("D_key".to_string())],
+            next_commitment: vec![Said::new_unchecked("hash".to_string())],
             sequence: 0,
             last_event_said: Said::new_unchecked("EPrior".to_string()),
             is_abandoned: false,
-            threshold: 1,
-            next_threshold: 1,
+            threshold: Threshold::Simple(1),
+            next_threshold: Threshold::Simple(1),
+            backers: vec![],
+            backer_threshold: Threshold::Simple(0),
+            config_traits: vec![],
+            is_non_transferable: false,
+            delegator: None,
         };
 
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
 
         let dummy_rot = RotEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::new_unchecked("E_dummy".to_string()),
             i: prefix.clone(),
             s: KeriSequence::new(1),
             p: Said::default(),
-            kt: "1".to_string(),
+            kt: Threshold::Simple(1),
             k: vec![],
-            nt: "1".to_string(),
+            nt: Threshold::Simple(1),
             n: vec![],
-            bt: "0".to_string(),
-            b: vec![],
+            bt: Threshold::Simple(0),
+            br: vec![],
+            ba: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };

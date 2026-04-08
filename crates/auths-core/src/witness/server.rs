@@ -31,8 +31,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
+use auths_keri::{KeriSequence, VersionString};
+
 use super::error::{DuplicityEvidence, WitnessError};
-use super::receipt::{KERI_VERSION, RECEIPT_TYPE, Receipt};
+use super::receipt::{RECEIPT_TYPE, Receipt, SignedReceipt};
 use super::storage::WitnessStorage;
 
 /// Shared server state.
@@ -41,6 +43,7 @@ pub struct WitnessServerState {
     inner: Arc<WitnessServerInner>,
 }
 
+#[allow(dead_code)]
 struct WitnessServerInner {
     /// Witness identifier (DID)
     witness_did: DeviceDID,
@@ -141,6 +144,7 @@ pub struct ErrorResponse {
     pub duplicity: Option<DuplicityEvidence>,
 }
 
+#[allow(dead_code)]
 impl WitnessServerState {
     /// Create a new server state.
     #[allow(clippy::disallowed_methods)] // Server constructor is a clock boundary
@@ -212,31 +216,35 @@ impl WitnessServerState {
     /// Create a receipt for an event.
     fn create_receipt(
         &self,
-        _prefix: &Prefix,
+        prefix: &Prefix,
         seq: u64,
         event_said: &Said,
     ) -> Result<Receipt, WitnessError> {
-        let mut receipt = Receipt {
-            v: KERI_VERSION.into(),
+        let receipt = Receipt {
+            v: VersionString::placeholder(),
             t: RECEIPT_TYPE.into(),
-            d: Said::default(),
-            i: self.inner.witness_did.to_string(),
-            s: seq,
-            a: event_said.clone(),
-            sig: vec![],
+            d: event_said.clone(),
+            i: prefix.clone(),
+            s: KeriSequence::new(seq),
         };
 
-        let receipt_value = serde_json::to_value(&receipt)
-            .map_err(|e| WitnessError::Serialization(e.to_string()))?;
-        receipt.d = crate::crypto::said::compute_said(&receipt_value)
-            .map_err(|e| WitnessError::Serialization(e.to_string()))?;
-
-        let signing_payload = receipt
-            .signing_payload()
-            .map_err(|e| WitnessError::Serialization(e.to_string()))?;
-        receipt.sig = self.sign_payload(&signing_payload)?;
-
         Ok(receipt)
+    }
+
+    /// Create a signed receipt for an event.
+    fn create_signed_receipt(
+        &self,
+        prefix: &Prefix,
+        seq: u64,
+        event_said: &Said,
+    ) -> Result<SignedReceipt, WitnessError> {
+        let receipt = self.create_receipt(prefix, seq, event_said)?;
+
+        let signing_payload =
+            serde_json::to_vec(&receipt).map_err(|e| WitnessError::Serialization(e.to_string()))?;
+        let signature = self.sign_payload(&signing_payload)?;
+
+        Ok(SignedReceipt { receipt, signature })
     }
 
     /// Sign a payload with the witness Ed25519 keypair.
@@ -930,19 +938,16 @@ mod tests {
     }
 
     #[test]
-    fn receipt_said_is_proper_blake3() {
+    fn receipt_d_matches_event_said() {
         let state = test_state();
         let prefix = Prefix::new_unchecked("EPrefix".into());
-        let receipt = state
-            .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID123".into()))
-            .unwrap();
-        // SAID should be 44 chars: 'E' + 43 base64url chars
-        assert_eq!(receipt.d.as_str().len(), 44);
-        assert!(receipt.d.as_str().starts_with('E'));
+        let event_said = Said::new_unchecked("ESAID123".into());
+        let receipt = state.create_receipt(&prefix, 0, &event_said).unwrap();
+        assert_eq!(receipt.d, event_said);
     }
 
     #[test]
-    fn receipt_said_changes_with_inputs() {
+    fn receipt_d_changes_with_event_said() {
         let state = test_state();
         let prefix = Prefix::new_unchecked("EPrefix".into());
         let receipt_a = state
@@ -952,29 +957,21 @@ mod tests {
             .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID_B".into()))
             .unwrap();
         assert_ne!(receipt_a.d, receipt_b.d);
-
-        let receipt_c = state
-            .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID_A".into()))
-            .unwrap();
-        let receipt_d = state
-            .create_receipt(&prefix, 1, &Said::new_unchecked("ESAID_A".into()))
-            .unwrap();
-        assert_ne!(receipt_c.d, receipt_d.d);
     }
 
     #[test]
-    fn receipt_signature_verifies_against_signing_payload() {
+    fn signed_receipt_signature_verifies() {
         let state = test_state();
         let prefix = Prefix::new_unchecked("EPrefix".into());
-        let receipt = state
-            .create_receipt(&prefix, 0, &Said::new_unchecked("ESAID123".into()))
+        let signed = state
+            .create_signed_receipt(&prefix, 0, &Said::new_unchecked("ESAID123".into()))
             .unwrap();
         let public_key = state.public_key();
-        let payload = receipt.signing_payload().unwrap();
+        let payload = serde_json::to_vec(&signed.receipt).unwrap();
 
         let pk = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &public_key);
-        pk.verify(&payload, &receipt.sig)
-            .expect("receipt signature should verify against signing_payload");
+        pk.verify(&payload, &signed.signature)
+            .expect("signed receipt signature should verify against serialized receipt");
     }
 
     #[test]

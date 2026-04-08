@@ -359,6 +359,7 @@ mod tests {
     use auths_id::keri::KeriSequence;
     use auths_id::keri::event::{Event, IcpEvent};
     use auths_id::keri::types::{Prefix, Said};
+    use auths_keri::{CesrKey, Threshold, VersionString};
     use git2::Signature;
     use std::str::FromStr;
     use tempfile::TempDir;
@@ -371,16 +372,17 @@ mod tests {
 
     fn create_icp_event(prefix: &str) -> IcpEvent {
         IcpEvent {
-            v: "KERI10JSON".into(),
+            v: VersionString::placeholder(),
             d: Said::new_unchecked(prefix.to_string()),
             i: Prefix::new_unchecked(prefix.to_string()),
             s: KeriSequence::new(0),
-            kt: "1".into(),
-            k: vec!["DTestKey123".into()],
-            nt: "1".into(),
-            n: vec!["ENextCommitment".into()],
-            bt: "0".into(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked("DTestKey123".into())],
+            nt: Threshold::Simple(1),
+            n: vec![Said::new_unchecked("ENextCommitment".into())],
+            bt: Threshold::Simple(0),
             b: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         }

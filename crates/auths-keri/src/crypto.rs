@@ -6,6 +6,8 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use subtle::ConstantTimeEq;
 
+use crate::types::Said;
+
 /// Compute next-key commitment hash for pre-rotation.
 ///
 /// The commitment is computed by:
@@ -23,20 +25,20 @@ use subtle::ConstantTimeEq;
 /// ```
 /// use auths_keri::compute_next_commitment;
 /// let commitment = compute_next_commitment(&[0u8; 32]);
-/// assert_eq!(commitment.len(), 44);
-/// assert!(commitment.starts_with('E'));
+/// assert_eq!(commitment.as_str().len(), 44);
+/// assert!(commitment.as_str().starts_with('E'));
 /// ```
-pub fn compute_next_commitment(public_key: &[u8]) -> String {
+pub fn compute_next_commitment(public_key: &[u8]) -> Said {
     let hash = blake3::hash(public_key);
     let encoded = URL_SAFE_NO_PAD.encode(hash.as_bytes());
-    format!("E{}", encoded)
+    Said::new_unchecked(format!("E{}", encoded))
 }
 
 /// Verify that a public key matches a commitment.
 ///
 /// Args:
 /// * `public_key` - The raw public key bytes to verify
-/// * `commitment` - The commitment string from a previous event's 'n' field
+/// * `commitment` - The commitment `Said` from a previous event's 'n' field
 ///
 /// Usage:
 /// ```
@@ -48,9 +50,13 @@ pub fn compute_next_commitment(public_key: &[u8]) -> String {
 /// ```
 // Defense-in-depth: both values are derived from public data, but constant-time
 // comparison prevents timing side-channels on commitment verification.
-pub fn verify_commitment(public_key: &[u8], commitment: &str) -> bool {
+pub fn verify_commitment(public_key: &[u8], commitment: &Said) -> bool {
     let computed = compute_next_commitment(public_key);
-    computed.as_bytes().ct_eq(commitment.as_bytes()).into()
+    computed
+        .as_str()
+        .as_bytes()
+        .ct_eq(commitment.as_str().as_bytes())
+        .into()
 }
 
 #[cfg(test)]
@@ -71,7 +77,7 @@ mod tests {
         let c1 = compute_next_commitment(&key);
         let c2 = compute_next_commitment(&key);
         assert_eq!(c1, c2);
-        assert!(c1.starts_with('E'));
+        assert!(c1.as_str().starts_with('E'));
     }
 
     #[test]
@@ -79,6 +85,6 @@ mod tests {
         let key = [0u8; 32];
         let commitment = compute_next_commitment(&key);
         // 'E' + 43 chars of base64url
-        assert_eq!(commitment.len(), 44);
+        assert_eq!(commitment.as_str().len(), 44);
     }
 }

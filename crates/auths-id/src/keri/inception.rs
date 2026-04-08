@@ -16,9 +16,9 @@ use auths_crypto::Pkcs8Der;
 
 use auths_core::crypto::said::compute_next_commitment;
 
-use super::event::KeriSequence;
+use super::event::{CesrKey, KeriSequence, Threshold, VersionString};
 use super::types::{Prefix, Said};
-use super::{Event, GitKel, IcpEvent, KERI_VERSION, KelError, ValidationError, finalize_icp_event};
+use super::{Event, GitKel, IcpEvent, KelError, ValidationError, finalize_icp_event};
 use crate::witness_config::WitnessConfig;
 
 /// Error type for inception operations.
@@ -148,24 +148,28 @@ pub fn create_keri_identity(
     // Determine witness fields from config
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
-            cfg.threshold.to_string(),
-            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+            Threshold::Simple(cfg.threshold as u64),
+            cfg.witness_urls
+                .iter()
+                .map(|u| Prefix::new_unchecked(u.to_string()))
+                .collect(),
         ),
-        _ => ("0".to_string(), vec![]),
+        _ => (Threshold::Simple(0), vec![]),
     };
 
     // Build inception event (without SAID)
     let icp = IcpEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: Prefix::default(),
         s: KeriSequence::new(0),
-        kt: "1".to_string(),
-        k: vec![current_pub_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(current_pub_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![next_commitment],
         bt,
         b,
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
@@ -243,16 +247,17 @@ pub fn create_keri_identity_with_backend(
     let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
     let icp = IcpEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: Prefix::default(),
         s: KeriSequence::new(0),
-        kt: "1".to_string(),
-        k: vec![current_pub_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(current_pub_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![next_commitment],
-        bt: "0".to_string(),
+        bt: Threshold::Simple(0),
         b: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
@@ -314,23 +319,27 @@ pub fn create_keri_identity_from_key(
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
-            cfg.threshold.to_string(),
-            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+            Threshold::Simple(cfg.threshold as u64),
+            cfg.witness_urls
+                .iter()
+                .map(|u| Prefix::new_unchecked(u.to_string()))
+                .collect(),
         ),
-        _ => ("0".to_string(), vec![]),
+        _ => (Threshold::Simple(0), vec![]),
     };
 
     let icp = IcpEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: Prefix::default(),
         s: KeriSequence::new(0),
-        kt: "1".to_string(),
-        k: vec![current_pub_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(current_pub_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![next_commitment],
         bt,
         b,
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
@@ -444,7 +453,7 @@ mod tests {
 
         if let Event::Icp(icp) = &events[0] {
             // Version
-            assert_eq!(icp.v, KERI_VERSION);
+            assert_eq!(icp.v.kind, "JSON");
 
             // SAID equals prefix
             assert_eq!(icp.d.as_str(), icp.i.as_str());
@@ -455,14 +464,14 @@ mod tests {
 
             // Single key
             assert_eq!(icp.k.len(), 1);
-            assert!(icp.k[0].starts_with('D')); // Ed25519 prefix
+            assert!(icp.k[0].as_str().starts_with('D')); // Ed25519 prefix
 
             // Single next commitment
             assert_eq!(icp.n.len(), 1);
-            assert!(icp.n[0].starts_with('E')); // Blake3 hash prefix
+            assert!(icp.n[0].as_str().starts_with('E')); // Blake3 hash prefix
 
             // No witnesses
-            assert_eq!(icp.bt, "0");
+            assert_eq!(icp.bt, Threshold::Simple(0));
             assert!(icp.b.is_empty());
         } else {
             panic!("Expected inception event");
