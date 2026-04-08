@@ -4,85 +4,67 @@
 //! a specific KEL event. Receipts enable duplicity detection by allowing
 //! verifiers to check that witnesses agree on the event history.
 //!
-//! # KERI Receipt Format
+//! # KERI Receipt Format (spec: `rct` message type)
 //!
-//! This implementation follows the KERI `rct` (non-transferable receipt) format:
-//!
-//! ```json
-//! {
-//!   "v": "KERI10JSON...",
-//!   "t": "rct",
-//!   "d": "<receipt SAID>",
-//!   "i": "<witness identifier>",
-//!   "s": "<event sequence>",
-//!   "a": "<event SAID being receipted>",
-//!   "sig": "<Ed25519 signature>"
-//! }
-//! ```
+//! Per the spec, the receipt body contains only `[v, t, d, i, s]`.
+//! The `d` field is the SAID of the **referenced key event** (NOT the receipt itself).
+//! Signatures are externalized (not in the body).
 
 use crate::Said;
+use crate::events::KeriSequence;
+use crate::types::{Prefix, VersionString};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
-
-/// KERI version string for receipts.
-pub const KERI_VERSION: &str = "KERI10JSON000000_";
 
 /// Receipt type identifier.
 pub const RECEIPT_TYPE: &str = "rct";
 
-/// A witness receipt for a KEL event.
+/// A witness receipt for a KEL event (spec-compliant `rct` message).
 ///
-/// The receipt proves that a witness has observed and acknowledged a specific
-/// event. It includes the witness's signature over the event SAID, enabling
-/// verifiers to check receipt authenticity.
+/// Per the spec, `d` is the SAID of the **referenced key event** (NOT the receipt's own SAID).
+/// Signatures are externalized — use `SignedReceipt` to pair a receipt with its signature.
 ///
-/// # Serialization
-///
-/// The `sig` field uses hex encoding for JSON serialization.
-///
-/// # Example
-///
-/// ```rust
+/// Usage:
+/// ```
 /// use auths_keri::witness::Receipt;
-/// use auths_keri::Said;
+/// use auths_keri::{Said, Prefix, VersionString, KeriSequence};
 ///
 /// let receipt = Receipt {
-///     v: "KERI10JSON000000_".into(),
+///     v: VersionString::placeholder(),
 ///     t: "rct".into(),
-///     d: Said::new_unchecked("EReceipt123".into()),
-///     i: "did:key:z6MkWitness...".into(),
-///     s: 5,
-///     a: Said::new_unchecked("EEvent456".into()),
-///     sig: vec![0u8; 64],
+///     d: Said::new_unchecked("EEventSaid123".into()),
+///     i: Prefix::new_unchecked("EControllerAid".into()),
+///     s: KeriSequence::new(5),
 /// };
-///
-/// let json = serde_json::to_string(&receipt).unwrap();
-/// let parsed: Receipt = serde_json::from_str(&json).unwrap();
-/// assert_eq!(receipt.s, parsed.s);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Receipt {
-    /// Version string (e.g., "KERI10JSON000000_")
-    pub v: String,
+    /// Version string
+    pub v: VersionString,
 
     /// Type identifier ("rct" for receipt)
     pub t: String,
 
-    /// Receipt SAID (Self-Addressing Identifier)
+    /// SAID of the referenced key event (NOT the receipt's own SAID)
     pub d: Said,
 
-    /// Witness identifier (DID)
-    pub i: String,
+    /// Controller AID of the KEL being receipted
+    pub i: Prefix,
 
-    /// Event sequence number being receipted
-    pub s: u64,
+    /// Sequence number of the event being receipted
+    pub s: KeriSequence,
+}
 
-    /// Event SAID being receipted
-    pub a: Said,
-
-    /// Ed25519 signature over the canonical receipt JSON (excluding sig)
-    #[serde(with = "hex")]
-    pub sig: Vec<u8>,
+/// A receipt paired with its detached witness signature.
+///
+/// Per the spec, signatures are not part of the receipt body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignedReceipt {
+    /// The receipt body
+    pub receipt: Receipt,
+    /// Witness signature (externalized, not in body), hex-encoded for JSON
+    #[serde(with = "hex::serde")]
+    pub signature: Vec<u8>,
 }
 
 impl Receipt {
@@ -93,100 +75,84 @@ impl Receipt {
 
     /// Check if this receipt is for the given event SAID.
     pub fn is_for_event(&self, event_said: &Said) -> bool {
-        self.a == *event_said
+        self.d == *event_said
     }
 
-    /// Check if this receipt is from the given witness.
-    pub fn is_from_witness(&self, witness_id: &str) -> bool {
-        self.i == witness_id
+    /// Check if this receipt is from the given controller.
+    pub fn is_for_controller(&self, controller_id: &str) -> bool {
+        self.i.as_str() == controller_id
     }
+}
 
-    /// Formats this receipt as a Git trailer value (base64url-encoded JSON).
+impl SignedReceipt {
+    /// Formats this signed receipt as a Git trailer value (base64url-encoded JSON).
+    ///
+    /// Encodes both the receipt body and the hex-encoded signature.
     pub fn to_trailer_value(&self) -> Result<String, serde_json::Error> {
-        let json = serde_json::to_string(self)?;
+        // Wrap receipt + hex sig for trailer encoding
+        let wrapper = serde_json::json!({
+            "receipt": serde_json::to_value(&self.receipt)?,
+            "sig": hex::encode(&self.signature),
+        });
+        let json = serde_json::to_string(&wrapper)?;
         Ok(URL_SAFE_NO_PAD.encode(json.as_bytes()))
     }
 
-    /// Parses a receipt from a Git trailer value (base64url-encoded JSON).
-    ///
-    /// Strips all whitespace before decoding to handle RFC 822 line folding,
-    /// which may introduce spaces between base64url chunks during unfolding.
+    /// Parses a signed receipt from a Git trailer value (base64url-encoded JSON).
     pub fn from_trailer_value(value: &str) -> Result<Self, String> {
         let clean: String = value.split_whitespace().collect();
         let bytes = URL_SAFE_NO_PAD
             .decode(&clean)
             .map_err(|e| format!("base64 decode failed: {}", e))?;
-        serde_json::from_slice(&bytes).map_err(|e| format!("json parse failed: {}", e))
-    }
-
-    /// Get the canonical JSON for signing (without the sig field).
-    ///
-    /// This produces the JSON that should be signed to create the receipt.
-    pub fn signing_payload(&self) -> Result<Vec<u8>, serde_json::Error> {
-        let payload = ReceiptSigningPayload {
-            v: &self.v,
-            t: &self.t,
-            d: &self.d,
-            i: &self.i,
-            s: self.s,
-            a: &self.a,
-        };
-        serde_json::to_vec(&payload)
+        let wrapper: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|e| format!("json parse failed: {}", e))?;
+        let receipt: Receipt = serde_json::from_value(
+            wrapper
+                .get("receipt")
+                .cloned()
+                .ok_or("missing receipt field")?,
+        )
+        .map_err(|e| format!("receipt parse failed: {}", e))?;
+        let sig_hex = wrapper
+            .get("sig")
+            .and_then(|v| v.as_str())
+            .ok_or("missing sig field")?;
+        let signature =
+            hex::decode(sig_hex).map_err(|e| format!("sig hex decode failed: {}", e))?;
+        Ok(SignedReceipt { receipt, signature })
     }
 }
 
-/// Internal type for signing payload (excludes sig).
-#[derive(Serialize)]
-struct ReceiptSigningPayload<'a> {
-    v: &'a str,
-    t: &'a str,
-    d: &'a Said,
-    i: &'a str,
-    s: u64,
-    a: &'a Said,
-}
-
-/// Builder for constructing receipts.
+/// Builder for constructing signed receipts.
 #[derive(Debug, Default)]
 pub struct ReceiptBuilder {
-    v: Option<String>,
     d: Option<Said>,
-    i: Option<String>,
-    s: Option<u64>,
-    a: Option<Said>,
+    i: Option<Prefix>,
+    s: Option<KeriSequence>,
     sig: Option<Vec<u8>>,
 }
 
 impl ReceiptBuilder {
-    /// Create a new receipt builder with defaults.
+    /// Create a new receipt builder.
     pub fn new() -> Self {
-        Self {
-            v: Some(KERI_VERSION.into()),
-            ..Default::default()
-        }
+        Self::default()
     }
 
-    /// Set the receipt SAID.
+    /// Set the event SAID (the `d` field — SAID of referenced event, NOT the receipt).
     pub fn said(mut self, said: Said) -> Self {
         self.d = Some(said);
         self
     }
 
-    /// Set the witness identifier.
+    /// Set the controller AID (the `i` field).
     pub fn witness(mut self, witness_id: impl Into<String>) -> Self {
-        self.i = Some(witness_id.into());
+        self.i = Some(Prefix::new_unchecked(witness_id.into()));
         self
     }
 
     /// Set the event sequence number.
     pub fn sequence(mut self, seq: u64) -> Self {
-        self.s = Some(seq);
-        self
-    }
-
-    /// Set the event SAID being receipted.
-    pub fn event_said(mut self, event_said: Said) -> Self {
-        self.a = Some(event_said);
+        self.s = Some(KeriSequence::new(seq));
         self
     }
 
@@ -196,18 +162,25 @@ impl ReceiptBuilder {
         self
     }
 
-    /// Build the receipt.
+    /// Build the signed receipt.
     ///
     /// Returns `None` if required fields are missing.
-    pub fn build(self) -> Option<Receipt> {
-        Some(Receipt {
-            v: self.v?,
+    /// Computes the version string with the actual serialized byte count.
+    pub fn build(self) -> Option<SignedReceipt> {
+        let mut receipt = Receipt {
+            v: VersionString::placeholder(),
             t: RECEIPT_TYPE.into(),
             d: self.d?,
             i: self.i?,
             s: self.s?,
-            a: self.a?,
-            sig: self.sig?,
+        };
+        // Compute actual serialized size and set v
+        if let Ok(bytes) = serde_json::to_vec(&receipt) {
+            receipt.v = VersionString::json(bytes.len() as u32);
+        }
+        Some(SignedReceipt {
+            receipt,
+            signature: self.sig?,
         })
     }
 }
@@ -219,13 +192,18 @@ mod tests {
 
     fn sample_receipt() -> Receipt {
         Receipt {
-            v: KERI_VERSION.into(),
+            v: VersionString::json(100),
             t: RECEIPT_TYPE.into(),
-            d: Said::new_unchecked("EReceipt123".into()),
-            i: "did:key:z6MkWitness".into(),
-            s: 5,
-            a: Said::new_unchecked("EEvent456".into()),
-            sig: vec![0xab; 64],
+            d: Said::new_unchecked("EEventSaid123".into()),
+            i: Prefix::new_unchecked("EControllerAid".into()),
+            s: KeriSequence::new(5),
+        }
+    }
+
+    fn sample_signed_receipt() -> SignedReceipt {
+        SignedReceipt {
+            receipt: sample_receipt(),
+            signature: vec![0xab; 64],
         }
     }
 
@@ -238,58 +216,48 @@ mod tests {
     }
 
     #[test]
-    fn receipt_sig_hex_encoded() {
+    fn receipt_body_has_no_sig_field() {
         let receipt = sample_receipt();
         let json = serde_json::to_string(&receipt).unwrap();
-        assert!(json.contains(&"ab".repeat(64)));
+        assert!(!json.contains("sig"));
+        assert!(!json.contains("\"a\""));
     }
 
     #[test]
     fn receipt_is_for_event() {
         let receipt = sample_receipt();
-        assert!(receipt.is_for_event(&Said::new_unchecked("EEvent456".into())));
+        assert!(receipt.is_for_event(&Said::new_unchecked("EEventSaid123".into())));
         assert!(!receipt.is_for_event(&Said::new_unchecked("EWrongEvent".into())));
     }
 
     #[test]
-    fn receipt_is_from_witness() {
+    fn receipt_is_for_controller() {
         let receipt = sample_receipt();
-        assert!(receipt.is_from_witness("did:key:z6MkWitness"));
-        assert!(!receipt.is_from_witness("did:key:z6MkOther"));
-    }
-
-    #[test]
-    fn receipt_signing_payload() {
-        let receipt = sample_receipt();
-        let payload = receipt.signing_payload().unwrap();
-        let payload_str = String::from_utf8(payload).unwrap();
-
-        assert!(!payload_str.contains("sig"));
-        assert!(payload_str.contains("EReceipt123"));
-        assert!(payload_str.contains("did:key:z6MkWitness"));
+        assert!(receipt.is_for_controller("EControllerAid"));
+        assert!(!receipt.is_for_controller("EOtherAid"));
     }
 
     #[test]
     fn receipt_builder() {
-        let receipt = Receipt::builder()
-            .said(Said::new_unchecked("EReceipt123".into()))
-            .witness("did:key:z6MkWitness")
+        let signed = Receipt::builder()
+            .said(Said::new_unchecked("EEventSaid123".into()))
+            .witness("EControllerAid")
             .sequence(5)
-            .event_said(Said::new_unchecked("EEvent456".into()))
             .signature(vec![0u8; 64])
             .build()
             .unwrap();
 
-        assert_eq!(receipt.v, KERI_VERSION);
-        assert_eq!(receipt.t, RECEIPT_TYPE);
-        assert_eq!(receipt.d, "EReceipt123");
-        assert_eq!(receipt.s, 5);
+        assert_eq!(signed.receipt.t, RECEIPT_TYPE);
+        assert_eq!(signed.receipt.d, "EEventSaid123");
+        assert_eq!(signed.receipt.s.value(), 5);
+        // Version string should have non-zero size (computed by builder)
+        assert!(signed.receipt.v.size > 0);
     }
 
     #[test]
     fn receipt_builder_missing_fields() {
         let result = Receipt::builder()
-            .said(Said::new_unchecked("EReceipt123".into()))
+            .said(Said::new_unchecked("EEventSaid123".into()))
             .build();
         assert!(result.is_none());
     }
@@ -299,23 +267,23 @@ mod tests {
         let receipt = sample_receipt();
         let json: serde_json::Value = serde_json::to_value(&receipt).unwrap();
 
-        assert_eq!(json["v"], KERI_VERSION);
         assert_eq!(json["t"], RECEIPT_TYPE);
-        assert_eq!(json["s"], 5);
+        assert!(json["v"].as_str().unwrap().starts_with("KERI10JSON"));
+        assert_eq!(json["s"], "5");
     }
 
     #[test]
-    fn trailer_value_roundtrip() {
-        let receipt = sample_receipt();
-        let encoded = receipt.to_trailer_value().unwrap();
-        let decoded = Receipt::from_trailer_value(&encoded).unwrap();
-        assert_eq!(receipt, decoded);
+    fn signed_receipt_trailer_value_roundtrip() {
+        let signed = sample_signed_receipt();
+        let encoded = signed.to_trailer_value().unwrap();
+        let decoded = SignedReceipt::from_trailer_value(&encoded).unwrap();
+        assert_eq!(signed, decoded);
     }
 
     #[test]
     fn trailer_value_is_base64url() {
-        let receipt = sample_receipt();
-        let encoded = receipt.to_trailer_value().unwrap();
+        let signed = sample_signed_receipt();
+        let encoded = signed.to_trailer_value().unwrap();
         assert!(!encoded.contains('='));
         assert!(!encoded.contains('+'));
         assert!(!encoded.contains('/'));
@@ -323,14 +291,14 @@ mod tests {
 
     #[test]
     fn from_trailer_value_invalid_base64() {
-        let result = Receipt::from_trailer_value("not-valid-base64!!!");
+        let result = SignedReceipt::from_trailer_value("not-valid-base64!!!");
         assert!(result.is_err());
     }
 
     #[test]
     fn from_trailer_value_invalid_json() {
         let encoded = B64.encode(b"not json");
-        let result = Receipt::from_trailer_value(&encoded);
+        let result = SignedReceipt::from_trailer_value(&encoded);
         assert!(result.is_err());
     }
 }

@@ -20,18 +20,19 @@ use crate::identity::helpers::{
     encode_seed_as_pkcs8, extract_seed_bytes, load_keypair_from_der_or_seed,
 };
 use crate::keri::{
-    Event, GitKel, KERI_VERSION, KeriSequence, Prefix, RotEvent, Said, rotate_keys,
-    serialize_for_signing, validate_kel,
+    CesrKey, Event, GitKel, KeriSequence, Prefix, RotEvent, Said, Threshold, VersionString,
+    rotate_keys, serialize_for_signing, validate_kel,
 };
 use std::sync::Arc;
 
 use crate::storage::layout::StorageLayoutConfig;
 use crate::storage::registry::RegistryBackend;
 use crate::witness_config::WitnessConfig;
-use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
+use auths_core::crypto::said::{compute_next_commitment, verify_commitment};
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
+use auths_keri::compute_said;
 
 /// Result of a rotation operation with keychain-specific info.
 pub struct RotationKeyInfo {
@@ -237,34 +238,34 @@ pub fn rotate_registry_identity(
     );
     let new_next_commitment = compute_next_commitment(new_next_keypair.public_key().as_ref());
 
-    let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (
-            cfg.threshold.to_string(),
-            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
-        ),
-        _ => ("0".to_string(), vec![]),
+    let bt = match witness_config {
+        Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
+        _ => Threshold::Simple(0),
     };
 
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
-        kt: "1".to_string(),
-        k: vec![new_current_pub_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(new_current_pub_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![new_next_commitment],
         bt,
-        b,
+        br: vec![],
+        ba: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
 
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| InitError::Keri(format!("Serialization failed: {}", e)))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value)
+        .map_err(|e| InitError::Keri(format!("SAID computation failed: {}", e)))?;
 
     let canonical = serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| InitError::Keri(e.to_string()))?;

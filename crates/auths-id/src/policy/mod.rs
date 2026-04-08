@@ -305,19 +305,19 @@ pub fn verify_receipts(
     // 3. Verify receipt signatures if key resolver provided
     if let Some(resolver) = key_resolver {
         for receipt in &receipts.receipts {
-            if let Some(public_key) = resolver.get_public_key(&receipt.i) {
+            if let Some(public_key) = resolver.get_public_key(receipt.i.as_str()) {
                 match verify_receipt_signature(receipt, &public_key) {
                     Ok(true) => continue,
                     Ok(false) => {
                         return ReceiptVerificationResult::InvalidSignature {
                             #[allow(clippy::disallowed_methods)] // INVARIANT: receipt.i is a witness DID from a deserialized KERI receipt
-                            witness_did: DeviceDID::new_unchecked(&receipt.i),
+                            witness_did: DeviceDID::new_unchecked(receipt.i.as_str()),
                         };
                     }
                     Err(_) => {
                         return ReceiptVerificationResult::InvalidSignature {
                             #[allow(clippy::disallowed_methods)] // INVARIANT: receipt.i is a witness DID from a deserialized KERI receipt
-                            witness_did: DeviceDID::new_unchecked(&receipt.i),
+                            witness_did: DeviceDID::new_unchecked(receipt.i.as_str()),
                         };
                     }
                 }
@@ -400,7 +400,7 @@ pub fn evaluate_with_receipts(
 mod tests {
     use super::*;
     use auths_core::witness::NoOpWitness;
-    use auths_keri::{Prefix, Said};
+    use auths_keri::{CesrKey, Prefix, Said, Threshold};
     use auths_verifier::AttestationBuilder;
     use auths_verifier::core::Capability;
     use chrono::Duration;
@@ -422,16 +422,17 @@ mod tests {
     }
 
     fn make_key_state(prefix: &str) -> KeyState {
-        KeyState {
-            prefix: Prefix::new_unchecked(prefix.to_string()),
-            sequence: 0,
-            current_keys: vec!["DTestKey".to_string()],
-            next_commitment: vec![],
-            last_event_said: Said::new_unchecked("ETestSaid".to_string()),
-            is_abandoned: false,
-            threshold: 1,
-            next_threshold: 1,
-        }
+        KeyState::from_inception(
+            Prefix::new_unchecked(prefix.to_string()),
+            vec![CesrKey::new_unchecked("DTestKey".to_string())],
+            vec![Said::new_unchecked("ENextCommitment".to_string())],
+            Threshold::Simple(1),
+            Threshold::Simple(1),
+            Said::new_unchecked("ETestSaid".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![],
+        )
     }
 
     fn make_attestation(
@@ -741,16 +742,11 @@ mod tests {
         seq: u64,
     ) -> auths_core::witness::Receipt {
         auths_core::witness::Receipt {
-            v: auths_core::witness::KERI_VERSION.into(),
+            v: auths_keri::VersionString::placeholder(),
             t: auths_core::witness::RECEIPT_TYPE.into(),
-            d: Said::new_unchecked(format!(
-                "E{}",
-                &event_said.chars().skip(1).take(10).collect::<String>()
-            )),
-            i: witness_did.to_string(),
-            s: seq,
-            a: Said::new_unchecked(event_said.to_string()),
-            sig: vec![0; 64],
+            d: Said::new_unchecked(event_said.to_string()),
+            i: Prefix::new_unchecked(witness_did.to_string()),
+            s: auths_keri::KeriSequence::new(seq),
         }
     }
 

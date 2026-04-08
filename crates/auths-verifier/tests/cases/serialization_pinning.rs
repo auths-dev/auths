@@ -1,19 +1,25 @@
 use auths_keri::{
-    Event as KeriEvent, IcpEvent, IxnEvent, KeriSequence, Prefix, RotEvent, Said, Seal,
+    CesrKey, Event as KeriEvent, IcpEvent, IxnEvent, KeriSequence, Prefix, RotEvent, Said, Seal,
+    Threshold, VersionString,
 };
 
 fn make_test_icp() -> IcpEvent {
     IcpEvent {
-        v: "KERI10JSON000000_".into(),
+        v: VersionString::placeholder(),
         d: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
         i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
         s: KeriSequence::new(0),
-        kt: "1".into(),
-        k: vec!["DTestKey12345678901234567890123456789012".into()],
-        nt: "1".into(),
-        n: vec!["ETestNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(
+            "DTestKey12345678901234567890123456789012".into(),
+        )],
+        nt: Threshold::Simple(1),
+        n: vec![Said::new_unchecked(
+            "ETestNext12345678901234567890123456789012".into(),
+        )],
+        bt: Threshold::Simple(0),
         b: vec![],
+        c: vec![],
         a: vec![],
         x: "".into(),
     }
@@ -21,17 +27,23 @@ fn make_test_icp() -> IcpEvent {
 
 fn make_test_rot() -> RotEvent {
     RotEvent {
-        v: "KERI10JSON000000_".into(),
+        v: VersionString::placeholder(),
         d: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
         i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
         s: KeriSequence::new(1),
         p: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        kt: "1".into(),
-        k: vec!["DNewKey123456789012345678901234567890123".into()],
-        nt: "1".into(),
-        n: vec!["ENewNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(
+            "DNewKey123456789012345678901234567890123".into(),
+        )],
+        nt: Threshold::Simple(1),
+        n: vec![Said::new_unchecked(
+            "ENewNext12345678901234567890123456789012".into(),
+        )],
+        bt: Threshold::Simple(0),
+        br: vec![],
+        ba: vec![],
+        c: vec![],
         a: vec![],
         x: "".into(),
     }
@@ -39,14 +51,12 @@ fn make_test_rot() -> RotEvent {
 
 fn make_test_ixn() -> IxnEvent {
     IxnEvent {
-        v: "KERI10JSON000000_".into(),
+        v: VersionString::placeholder(),
         d: Said::new_unchecked("ETestIxnSaid23456789012345678901234567890".into()),
         i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
         s: KeriSequence::new(2),
         p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
-        a: vec![Seal::device_attestation(
-            "ESealDigest234567890123456789012345678901",
-        )],
+        a: vec![Seal::digest("ESealDigest234567890123456789012345678901")],
         x: "".into(),
     }
 }
@@ -78,10 +88,11 @@ fn assert_key_order(json: &str, expected_keys: &[&str]) {
 fn icp_field_order_is_pinned() {
     let icp = make_test_icp();
     let json = serde_json::to_string(&KeriEvent::Icp(icp)).unwrap();
-    // `a` is omitted when empty (canonical auths-keri format)
     assert_key_order(
         &json,
-        &["v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b"],
+        &[
+            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c",
+        ],
     );
 }
 
@@ -93,7 +104,7 @@ fn rot_field_order_is_pinned() {
     assert_key_order(
         &json,
         &[
-            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "b",
+            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "c",
         ],
     );
 }
@@ -113,23 +124,26 @@ fn icp_with_x_includes_x_last() {
     assert_key_order(
         &json,
         &[
-            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "x",
+            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c", "x",
         ],
     );
 }
 
 #[test]
-fn icp_without_d_omits_d() {
+fn icp_with_empty_d_still_includes_d() {
     let mut icp = make_test_icp();
     icp.d = Said::default();
     let json = serde_json::to_string(&KeriEvent::Icp(icp)).unwrap();
+    // Per spec, all fields are always present (even with empty d)
     assert!(
-        !json.contains("\"d\":"),
-        "d field should be omitted when empty"
+        json.contains("\"d\":"),
+        "d field must always be present per spec"
     );
     assert_key_order(
         &json,
-        &["v", "t", "i", "s", "kt", "k", "nt", "n", "bt", "b"],
+        &[
+            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c", "a",
+        ],
     );
 }
 
@@ -162,9 +176,9 @@ fn ixn_serialization_roundtrip() {
 
 #[test]
 fn seal_type_is_kebab_case_string() {
-    let seal = Seal::device_attestation("ETest");
+    let seal = Seal::digest("ETest");
     let json = serde_json::to_string(&seal).unwrap();
-    assert!(json.contains(r#""type":"device-attestation""#));
+    assert!(json.contains(r#""d":"ETest""#));
 }
 
 #[test]

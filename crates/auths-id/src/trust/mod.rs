@@ -79,9 +79,10 @@ impl KelContinuityChecker for GitKelContinuityChecker<'_> {
             Some(k) => k,
             None => return Ok(None),
         };
-        let current_key_bytes = KeriPublicKey::parse(current_key_encoded).map_err(|e| {
-            auths_core::error::TrustError::InvalidData(format!("KERI key decode failed: {e}"))
-        })?;
+        let current_key_bytes =
+            KeriPublicKey::parse(current_key_encoded.as_str()).map_err(|e| {
+                auths_core::error::TrustError::InvalidData(format!("KERI key decode failed: {e}"))
+            })?;
 
         if current_key_bytes.as_bytes().as_slice() != presented_pk {
             return Ok(None);

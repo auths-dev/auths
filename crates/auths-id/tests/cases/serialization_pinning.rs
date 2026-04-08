@@ -1,19 +1,25 @@
 use auths_id::keri::event::{Event, IcpEvent, IxnEvent, KeriSequence, RotEvent};
-use auths_id::keri::seal::{Seal, SealType};
+use auths_id::keri::seal::Seal;
 use auths_id::keri::types::{Prefix, Said};
+use auths_keri::{CesrKey, Threshold, VersionString};
 
 fn make_test_icp() -> IcpEvent {
     IcpEvent {
-        v: "KERI10JSON000000_".into(),
+        v: VersionString::placeholder(),
         d: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
         i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
         s: KeriSequence::new(0),
-        kt: "1".into(),
-        k: vec!["DTestKey12345678901234567890123456789012".into()],
-        nt: "1".into(),
-        n: vec!["ETestNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(
+            "DTestKey12345678901234567890123456789012".into(),
+        )],
+        nt: Threshold::Simple(1),
+        n: vec![Said::new_unchecked(
+            "ETestNext12345678901234567890123456789012".into(),
+        )],
+        bt: Threshold::Simple(0),
         b: vec![],
+        c: vec![],
         a: vec![],
         x: "".into(),
     }
@@ -21,17 +27,23 @@ fn make_test_icp() -> IcpEvent {
 
 fn make_test_rot() -> RotEvent {
     RotEvent {
-        v: "KERI10JSON000000_".into(),
+        v: VersionString::placeholder(),
         d: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
         i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
         s: KeriSequence::new(1),
         p: Said::new_unchecked("ETestSaid1234567890123456789012345678901".into()),
-        kt: "1".into(),
-        k: vec!["DNewKey123456789012345678901234567890123".into()],
-        nt: "1".into(),
-        n: vec!["ENewNext12345678901234567890123456789012".into()],
-        bt: "0".into(),
-        b: vec![],
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(
+            "DNewKey123456789012345678901234567890123".into(),
+        )],
+        nt: Threshold::Simple(1),
+        n: vec![Said::new_unchecked(
+            "ENewNext12345678901234567890123456789012".into(),
+        )],
+        bt: Threshold::Simple(0),
+        br: vec![],
+        ba: vec![],
+        c: vec![],
         a: vec![],
         x: "".into(),
     }
@@ -39,15 +51,12 @@ fn make_test_rot() -> RotEvent {
 
 fn make_test_ixn() -> IxnEvent {
     IxnEvent {
-        v: "KERI10JSON000000_".into(),
+        v: VersionString::placeholder(),
         d: Said::new_unchecked("ETestIxnSaid23456789012345678901234567890".into()),
         i: Prefix::new_unchecked("ETestPrefix123456789012345678901234567890".into()),
         s: KeriSequence::new(2),
         p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
-        a: vec![Seal::new(
-            Said::new_unchecked("ESealDigest234567890123456789012345678901".into()),
-            SealType::DeviceAttestation,
-        )],
+        a: vec![Seal::digest("ESealDigest234567890123456789012345678901")],
         x: "".into(),
     }
 }
@@ -81,7 +90,9 @@ fn icp_field_order_is_pinned() {
     let json = serde_json::to_string(&Event::Icp(icp)).unwrap();
     assert_key_order(
         &json,
-        &["v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b"],
+        &[
+            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c", "a",
+        ],
     );
 }
 
@@ -92,7 +103,7 @@ fn rot_field_order_is_pinned() {
     assert_key_order(
         &json,
         &[
-            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "b",
+            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "c", "a",
         ],
     );
 }
@@ -112,7 +123,7 @@ fn icp_with_x_includes_x_last() {
     assert_key_order(
         &json,
         &[
-            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "x",
+            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c", "a", "x",
         ],
     );
 }

@@ -157,7 +157,7 @@ impl RadicleIdentityResolver {
         let mut keys = Vec::with_capacity(key_state.current_keys.len());
 
         for key_str in &key_state.current_keys {
-            let keri_pk = auths_keri::KeriPublicKey::parse(key_str).map_err(|e| {
+            let keri_pk = auths_keri::KeriPublicKey::parse(key_str.as_str()).map_err(|e| {
                 IdentityError::KelValidationFailed(format!("invalid CESR key: {e}"))
             })?;
             let public_key = PublicKey::try_from(keri_pk.into_bytes().as_slice())
@@ -738,7 +738,7 @@ impl DidResolver for RadicleIdentityResolver {
                     .first()
                     .ok_or_else(|| DidResolverError::Resolution("no signing keys in KEL".into()))?;
 
-                let keri_pk = auths_keri::KeriPublicKey::parse(cesr_key)
+                let keri_pk = auths_keri::KeriPublicKey::parse(cesr_key.as_str())
                     .map_err(|e| DidResolverError::Resolution(format!("invalid CESR key: {e}")))?;
 
                 Ok(ResolvedDid::Keri {

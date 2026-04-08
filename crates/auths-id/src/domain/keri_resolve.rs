@@ -29,7 +29,7 @@ pub fn resolve_from_events(
     let state = validate_kel(events)?;
 
     let key_encoded = state.current_key().ok_or(ResolveError::NoCurrentKey)?;
-    let public_key = KeriPublicKey::parse(key_encoded)
+    let public_key = KeriPublicKey::parse(key_encoded.as_str())
         .map(|k| k.as_bytes().to_vec())
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 
@@ -139,7 +139,7 @@ pub fn resolve_did_keri_at_sequence_via_port(
 mod tests {
     use super::*;
     use crate::keri::{
-        Event, IcpEvent, KERI_VERSION, KeriSequence, Said, finalize_icp_event,
+        CesrKey, Event, IcpEvent, KeriSequence, Said, Threshold, VersionString, finalize_icp_event,
         serialize_for_signing,
     };
     use auths_core::crypto::said::compute_next_commitment;
@@ -161,16 +161,17 @@ mod tests {
         let next_commitment = compute_next_commitment(next_kp.public_key().as_ref());
 
         let icp = IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: Prefix::default(),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec![current_pub_encoded],
-            nt: "1".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(current_pub_encoded)],
+            nt: Threshold::Simple(1),
             n: vec![next_commitment],
-            bt: "0".to_string(),
+            bt: Threshold::Simple(0),
             b: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         };

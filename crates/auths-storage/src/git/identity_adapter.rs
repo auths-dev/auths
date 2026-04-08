@@ -109,10 +109,11 @@ impl RegistryIdentityStorage {
         witness_config: Option<&auths_id::witness_config::WitnessConfig>,
     ) -> Result<(String, auths_id::keri::inception::InceptionResult), InitError> {
         use auths_id::keri::{
-            Event, IcpEvent, InceptionResult, KERI_VERSION, KeriSequence, Prefix, Said,
-            finalize_icp_event, serialize_for_signing,
+            Event, IcpEvent, InceptionResult, KeriSequence, Prefix, Said, finalize_icp_event,
+            serialize_for_signing,
         };
         use auths_keri::compute_next_commitment;
+        use auths_keri::{CesrKey, Threshold, VersionString};
         use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
         use ring::rand::SystemRandom;
         use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -146,24 +147,28 @@ impl RegistryIdentityStorage {
         // Determine witness fields from config
         let (bt, b) = match witness_config {
             Some(cfg) if cfg.is_enabled() => (
-                cfg.threshold.to_string(),
-                cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+                Threshold::Simple(cfg.threshold as u64),
+                cfg.witness_urls
+                    .iter()
+                    .map(|u| Prefix::new_unchecked(u.to_string()))
+                    .collect(),
             ),
-            _ => ("0".to_string(), vec![]),
+            _ => (Threshold::Simple(0), vec![]),
         };
 
         // Build inception event
         let icp = IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::default(),
             i: Prefix::default(),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec![current_pub_encoded],
-            nt: "1".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(current_pub_encoded)],
+            nt: Threshold::Simple(1),
             n: vec![next_commitment],
             bt,
             b,
+            c: vec![],
             a: vec![],
             x: String::new(),
         };

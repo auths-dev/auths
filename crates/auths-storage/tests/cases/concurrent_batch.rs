@@ -4,8 +4,9 @@ use std::thread;
 use auths_core::crypto::said::compute_next_commitment;
 use auths_id::keri::event::{Event, IcpEvent, KeriSequence};
 use auths_id::keri::types::{Prefix, Said};
-use auths_id::keri::{KERI_VERSION, finalize_icp_event, serialize_for_signing};
+use auths_id::keri::{finalize_icp_event, serialize_for_signing};
 use auths_id::ports::registry::{RegistryBackend, RegistryError};
+use auths_keri::{CesrKey, Threshold, VersionString};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -26,16 +27,17 @@ fn seeded_inception_event(seed: u8) -> Event {
     let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
     let icp = IcpEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: Prefix::default(),
         s: KeriSequence::new(0),
-        kt: "1".to_string(),
-        k: vec![key_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(key_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![next_commitment],
-        bt: "0".to_string(),
+        bt: Threshold::Simple(0),
         b: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };

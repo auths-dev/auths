@@ -8,7 +8,7 @@ use crate::types::VerificationReport;
 use crate::verify;
 use crate::witness::WitnessVerifyConfig;
 use auths_crypto::{CryptoProvider, ED25519_PUBLIC_KEY_LEN, WebCryptoProvider};
-use auths_keri::witness::Receipt;
+use auths_keri::witness::SignedReceipt;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -305,7 +305,7 @@ async fn verify_chain_with_witnesses_internal(
         AttestationError::SerializationError(format!("Failed to parse attestations JSON: {}", e))
     })?;
 
-    let receipts: Vec<Receipt> = serde_json::from_str(receipts_json).map_err(|e| {
+    let receipts: Vec<SignedReceipt> = serde_json::from_str(receipts_json).map_err(|e| {
         AttestationError::SerializationError(format!("Failed to parse receipts JSON: {}", e))
     })?;
 

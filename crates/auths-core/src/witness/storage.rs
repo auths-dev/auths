@@ -188,7 +188,7 @@ impl WitnessStorage {
 
         stmt.bind((1, prefix.as_str()))
             .map_err(|e| WitnessError::Storage(format!("failed to bind prefix: {}", e)))?;
-        stmt.bind((2, receipt.a.as_str()))
+        stmt.bind((2, receipt.d.as_str()))
             .map_err(|e| WitnessError::Storage(format!("failed to bind event_said: {}", e)))?;
         stmt.bind((3, json.as_str()))
             .map_err(|e| WitnessError::Storage(format!("failed to bind json: {}", e)))?;
@@ -309,14 +309,13 @@ mod tests {
     }
 
     fn sample_receipt(event_said: &str) -> Receipt {
+        use auths_keri::{KeriSequence, VersionString};
         Receipt {
-            v: "KERI10JSON".into(),
+            v: VersionString::placeholder(),
             t: "rct".into(),
-            d: Said::new_unchecked("EReceipt".into()),
-            i: "did:key:witness".into(),
-            s: 5,
-            a: Said::new_unchecked(event_said.into()),
-            sig: vec![0; 64],
+            d: Said::new_unchecked(event_said.into()),
+            i: Prefix::new_unchecked("did:key:witness".into()),
+            s: KeriSequence::new(5),
         }
     }
 
@@ -416,7 +415,7 @@ mod tests {
         let result = storage.get_receipt(&p, &said("EEVENT_SAID")).unwrap();
         assert!(result.is_some());
         let retrieved = result.unwrap();
-        assert_eq!(retrieved.a, "EEVENT_SAID");
+        assert_eq!(retrieved.d.as_str(), "EEVENT_SAID");
     }
 
     #[test]

@@ -234,7 +234,8 @@ impl<'a> GitKel<'a> {
         let msg = match event {
             Event::Rot(e) => format!("KERI rotation: s={}", e.s),
             Event::Ixn(e) => format!("KERI interaction: s={}", e.s),
-            Event::Icp(_) => unreachable!(),
+            Event::Drt(e) => format!("KERI delegated rotation: s={}", e.s),
+            Event::Icp(_) | Event::Dip(_) => unreachable!(),
         };
 
         let sig = self.signature(now)?;
@@ -353,20 +354,16 @@ impl<'a> GitKel<'a> {
             ));
         };
 
-        let threshold = icp.kt.parse::<u64>().map_err(|_| {
-            KelError::InvalidData(format!("Malformed sequence number: {:?}", icp.kt))
-        })?;
-        let next_threshold = icp.nt.parse::<u64>().map_err(|_| {
-            KelError::InvalidData(format!("Malformed sequence number: {:?}", icp.nt))
-        })?;
-
         let mut state = KeyState::from_inception(
             icp.i.clone(),
             icp.k.clone(),
             icp.n.clone(),
-            threshold,
-            next_threshold,
+            icp.kt.clone(),
+            icp.nt.clone(),
             icp.d.clone(),
+            icp.b.clone(),
+            icp.bt.clone(),
+            icp.c.clone(),
         );
 
         // Apply remaining events
@@ -374,29 +371,32 @@ impl<'a> GitKel<'a> {
             match event {
                 Event::Rot(rot) => {
                     let seq = rot.s.value();
-                    let threshold = rot.kt.parse::<u64>().map_err(|_| {
-                        KelError::InvalidData(format!("Malformed sequence number: {:?}", rot.kt))
-                    })?;
-                    let next_threshold = rot.nt.parse::<u64>().map_err(|_| {
-                        KelError::InvalidData(format!("Malformed sequence number: {:?}", rot.nt))
-                    })?;
 
                     state.apply_rotation(
                         rot.k.clone(),
                         rot.n.clone(),
-                        threshold,
-                        next_threshold,
+                        rot.kt.clone(),
+                        rot.nt.clone(),
                         seq,
                         rot.d.clone(),
+                        &rot.br,
+                        &rot.ba,
+                        rot.bt.clone(),
+                        rot.c.clone(),
                     );
                 }
                 Event::Ixn(ixn) => {
                     let seq = ixn.s.value();
                     state.apply_interaction(seq, ixn.d.clone());
                 }
-                Event::Icp(_) => {
+                Event::Icp(_) | Event::Dip(_) => {
                     return Err(KelError::InvalidData(
                         "Multiple inception events in KEL".into(),
+                    ));
+                }
+                Event::Drt(_) => {
+                    return Err(KelError::InvalidData(
+                        "Delegated rotation not yet supported in KEL replay".into(),
                     ));
                 }
             }
@@ -446,42 +446,46 @@ impl<'a> GitKel<'a> {
             ));
         };
 
-        let threshold = icp
-            .kt
-            .parse::<u64>()
-            .map_err(|_| KelError::InvalidData(format!("Malformed threshold: {:?}", icp.kt)))?;
-        let next_threshold = icp
-            .nt
-            .parse::<u64>()
-            .map_err(|_| KelError::InvalidData(format!("Malformed threshold: {:?}", icp.nt)))?;
-
         let mut state = KeyState::from_inception(
             icp.i.clone(),
             icp.k.clone(),
             icp.n.clone(),
-            threshold,
-            next_threshold,
+            icp.kt.clone(),
+            icp.nt.clone(),
             icp.d.clone(),
+            icp.b.clone(),
+            icp.bt.clone(),
+            icp.c.clone(),
         );
 
         for event in events.iter().skip(1) {
             match event {
                 Event::Rot(rot) => {
                     let seq = rot.s.value();
-                    let t = rot.kt.parse::<u64>().map_err(|_| {
-                        KelError::InvalidData(format!("Malformed threshold: {:?}", rot.kt))
-                    })?;
-                    let nt = rot.nt.parse::<u64>().map_err(|_| {
-                        KelError::InvalidData(format!("Malformed threshold: {:?}", rot.nt))
-                    })?;
-                    state.apply_rotation(rot.k.clone(), rot.n.clone(), t, nt, seq, rot.d.clone());
+                    state.apply_rotation(
+                        rot.k.clone(),
+                        rot.n.clone(),
+                        rot.kt.clone(),
+                        rot.nt.clone(),
+                        seq,
+                        rot.d.clone(),
+                        &rot.br,
+                        &rot.ba,
+                        rot.bt.clone(),
+                        rot.c.clone(),
+                    );
                 }
                 Event::Ixn(ixn) => {
                     state.apply_interaction(ixn.s.value(), ixn.d.clone());
                 }
-                Event::Icp(_) => {
+                Event::Icp(_) | Event::Dip(_) => {
                     return Err(KelError::InvalidData(
                         "Multiple inception events in KEL".into(),
+                    ));
+                }
+                Event::Drt(_) => {
+                    return Err(KelError::InvalidData(
+                        "Delegated rotation not yet supported in KEL replay".into(),
                     ));
                 }
             }
@@ -576,7 +580,7 @@ mod tests {
     use super::*;
     use crate::keri::inception::create_keri_identity;
     use crate::keri::rotation::rotate_keys;
-    use crate::keri::{KERI_VERSION, KeriSequence, Prefix, RotEvent, Said};
+    use crate::keri::{CesrKey, KeriSequence, Prefix, RotEvent, Said, Threshold, VersionString};
     use tempfile::TempDir;
 
     fn setup_repo() -> (TempDir, Repository) {
@@ -600,16 +604,17 @@ mod tests {
 
     fn make_icp_event(prefix: &str) -> IcpEvent {
         IcpEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::new_unchecked(prefix.to_string()),
             i: Prefix::new_unchecked(prefix.to_string()),
             s: KeriSequence::new(0),
-            kt: "1".to_string(),
-            k: vec!["DKey1".to_string()],
-            nt: "1".to_string(),
-            n: vec!["ENext1".to_string()],
-            bt: "0".to_string(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked("DKey1".to_string())],
+            nt: Threshold::Simple(1),
+            n: vec![Said::new_unchecked("ENext1".to_string())],
+            bt: Threshold::Simple(0),
             b: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         }
@@ -670,17 +675,19 @@ mod tests {
 
         // Build a fake rotation event with invalid SAID
         let rot = Event::Rot(RotEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::new_unchecked("EFakeSaid".to_string()),
             i: init.prefix.clone(),
             s: KeriSequence::new(1),
             p: Said::new_unchecked(init.prefix.as_str().to_string()),
-            kt: "1".to_string(),
-            k: vec!["DFakeKey".to_string()],
-            nt: "1".to_string(),
-            n: vec!["EFakeNext".to_string()],
-            bt: "0".to_string(),
-            b: vec![],
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked("DFakeKey".to_string())],
+            nt: Threshold::Simple(1),
+            n: vec![Said::new_unchecked("EFakeNext".to_string())],
+            bt: Threshold::Simple(0),
+            br: vec![],
+            ba: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         });
@@ -767,17 +774,19 @@ mod tests {
 
     fn make_rot_event(prefix: &str, seq: u64, prev_said: &str) -> RotEvent {
         RotEvent {
-            v: KERI_VERSION.to_string(),
+            v: VersionString::placeholder(),
             d: Said::new_unchecked(format!("ERot{}", seq)),
             i: Prefix::new_unchecked(prefix.to_string()),
             s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
-            kt: "1".to_string(),
-            k: vec![format!("DKey{}", seq + 1)],
-            nt: "1".to_string(),
-            n: vec![format!("ENext{}", seq + 1)],
-            bt: "0".to_string(),
-            b: vec![],
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(format!("DKey{}", seq + 1))],
+            nt: Threshold::Simple(1),
+            n: vec![Said::new_unchecked(format!("ENext{}", seq + 1))],
+            bt: Threshold::Simple(0),
+            br: vec![],
+            ba: vec![],
+            c: vec![],
             a: vec![],
             x: String::new(),
         }

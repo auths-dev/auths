@@ -62,14 +62,28 @@ fn derive_key_state(prefix: &Prefix, events: &[Event]) -> Option<KeyState> {
                     prefix.clone(),
                     e.k.clone(),
                     e.n.clone(),
-                    1,
-                    1,
+                    e.kt.clone(),
+                    e.nt.clone(),
                     said,
+                    e.b.clone(),
+                    e.bt.clone(),
+                    e.c.clone(),
                 ));
             }
             Event::Rot(e) => {
                 if let Some(ref mut s) = state {
-                    s.apply_rotation(e.k.clone(), e.n.clone(), 1, 1, seq, said);
+                    s.apply_rotation(
+                        e.k.clone(),
+                        e.n.clone(),
+                        e.kt.clone(),
+                        e.nt.clone(),
+                        seq,
+                        said,
+                        &e.br,
+                        &e.ba,
+                        e.bt.clone(),
+                        e.c.clone(),
+                    );
                 }
             }
             Event::Ixn(_) => {
@@ -77,6 +91,20 @@ fn derive_key_state(prefix: &Prefix, events: &[Event]) -> Option<KeyState> {
                     s.apply_interaction(seq, said);
                 }
             }
+            Event::Dip(e) => {
+                state = Some(KeyState::from_inception(
+                    prefix.clone(),
+                    e.k.clone(),
+                    e.n.clone(),
+                    e.kt.clone(),
+                    e.nt.clone(),
+                    said,
+                    e.b.clone(),
+                    e.bt.clone(),
+                    e.c.clone(),
+                ));
+            }
+            Event::Drt(_) => {}
         }
     }
     state

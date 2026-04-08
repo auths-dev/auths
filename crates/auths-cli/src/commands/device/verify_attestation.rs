@@ -1,6 +1,6 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
-use auths_keri::witness::Receipt;
+use auths_keri::witness::SignedReceipt;
 use auths_sdk::trust::{PinnedIdentity, PinnedIdentityStore, RootsFile, TrustLevel, TrustPolicy};
 use auths_verifier::Capability;
 use auths_verifier::core::Attestation;
@@ -313,7 +313,7 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
                 let receipts_bytes = fs::read(receipts_path).with_context(|| {
                     format!("Failed to read witness receipts: {:?}", receipts_path)
                 })?;
-                let receipts: Vec<Receipt> = serde_json::from_slice(&receipts_bytes)
+                let receipts: Vec<SignedReceipt> = serde_json::from_slice(&receipts_bytes)
                     .context("Failed to parse witness receipts JSON")?;
                 let witness_keys = parse_witness_keys(&cmd.witness_keys)?;
 

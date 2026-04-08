@@ -67,6 +67,7 @@ flate2 = "1"
 git2.workspace = true
 tar = "0.4"
 tempfile = "3"
+tokio = { workspace = true }
 
 [lints]
 workspace = true

@@ -273,7 +273,9 @@ pub async fn verify_device_link(
 
     let current_pk = match key_state.current_keys.first() {
         Some(encoded) => {
-            match auths_keri::KeriPublicKey::parse(encoded).map(|k| k.into_bytes().to_vec()) {
+            match auths_keri::KeriPublicKey::parse(encoded.as_str())
+                .map(|k| k.into_bytes().to_vec())
+            {
                 Ok(bytes) => bytes,
                 Err(e) => {
                     return DeviceLinkVerification::failure(format!("Invalid current key: {e}"));
@@ -302,7 +304,11 @@ pub fn compute_attestation_seal_digest(
     attestation: &Attestation,
 ) -> Result<String, AttestationError> {
     let canonical = canonicalize_attestation_data(&attestation.canonical_data())?;
-    Ok(compute_said(&canonical).to_string())
+    let value: serde_json::Value = serde_json::from_slice(&canonical)
+        .map_err(|e| AttestationError::SerializationError(e.to_string()))?;
+    Ok(compute_said(&value)
+        .map_err(|e| AttestationError::SerializationError(e.to_string()))?
+        .into_inner())
 }
 
 // ---------------------------------------------------------------------------
@@ -1770,19 +1776,20 @@ mod tests {
         witness_did: &str,
         event_said: &str,
         seq: u64,
-    ) -> auths_keri::witness::Receipt {
-        let mut receipt = auths_keri::witness::Receipt {
-            v: "KERI10JSON000000_".into(),
+    ) -> auths_keri::witness::SignedReceipt {
+        let receipt = auths_keri::witness::Receipt {
+            v: auths_keri::VersionString::placeholder(),
             t: "rct".into(),
-            d: Said::new_unchecked(format!("EReceipt_{}", seq)),
-            i: witness_did.into(),
-            s: seq,
-            a: Said::new_unchecked(event_said.to_string()),
-            sig: vec![],
+            d: Said::new_unchecked(event_said.to_string()),
+            i: auths_keri::Prefix::new_unchecked(witness_did.to_string()),
+            s: auths_keri::KeriSequence::new(seq),
         };
-        let payload = receipt.signing_payload().unwrap();
-        receipt.sig = witness_kp.sign(&payload).as_ref().to_vec();
-        receipt
+        let payload = serde_json::to_vec(&receipt).unwrap();
+        let sig = witness_kp.sign(&payload).as_ref().to_vec();
+        auths_keri::witness::SignedReceipt {
+            receipt,
+            signature: sig,
+        }
     }
 
     #[tokio::test]

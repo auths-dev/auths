@@ -46,11 +46,9 @@ fn make_test_event(prefix: &str, seq: u64) -> (Vec<u8>, Said) {
     let sig = kp.sign(&payload);
     event["x"] = serde_json::Value::String(hex::encode(sig.as_ref()));
 
-    let mut for_said = event.clone();
-    for_said["d"] = serde_json::Value::String(String::new());
-    let said_payload = serde_json::to_vec(&for_said).unwrap();
-    let said = auths_core::crypto::said::compute_said(&said_payload);
-    event["d"] = serde_json::Value::String(said.to_string());
+    // Compute SAID (x is already set; compute_said ignores x and injects d placeholder)
+    let said = auths_core::crypto::said::compute_said(&event).unwrap();
+    event["d"] = serde_json::Value::String(said.as_str().to_string());
 
     (serde_json::to_vec(&event).unwrap(), said)
 }
@@ -65,13 +63,13 @@ async fn http_witness_submit_and_retrieve_receipt() {
 
     let receipt = client.submit_event(&prefix, &event_json).await.unwrap();
 
-    assert_eq!(receipt.a, said);
-    assert_eq!(receipt.s, 0);
+    assert_eq!(receipt.d, said);
+    assert_eq!(receipt.s, auths_keri::KeriSequence::new(0));
     assert_eq!(receipt.t, "rct");
 
     let retrieved = client.get_receipt(&prefix, &said).await.unwrap();
     assert!(retrieved.is_some());
-    assert_eq!(retrieved.unwrap().a, said);
+    assert_eq!(retrieved.unwrap().d, said);
 }
 
 #[tokio::test(flavor = "multi_thread")]

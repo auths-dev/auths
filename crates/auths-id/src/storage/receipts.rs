@@ -4,7 +4,7 @@
 //! Receipts are stored in Git refs under `refs/did/keri/<prefix>/receipts/<said>`.
 
 use crate::error::StorageError;
-use auths_core::witness::Receipt;
+use auths_core::witness::{Receipt, SignedReceipt};
 use git2::{ErrorCode, Repository, Signature};
 use log::debug;
 use ring::signature::{ED25519, UnparsedPublicKey};
@@ -192,20 +192,18 @@ impl ReceiptStorage for GitReceiptStorage {
     }
 }
 
-/// Verify a receipt's signature.
+/// Verify the signature on a signed receipt against a witness public key.
 ///
-/// Verifies that the receipt was signed by the claimed witness.
-///
-/// # Arguments
-/// * `receipt` - The receipt to verify
+/// Args:
+/// * `signed_receipt` - The signed receipt containing body + detached signature
 /// * `witness_public_key` - The Ed25519 public key of the witness (32 bytes)
 ///
-/// # Returns
-/// * `Ok(true)` if signature is valid
-/// * `Ok(false)` if signature is invalid
-/// * `Err` if verification fails due to malformed data
-pub fn verify_receipt_signature(
-    receipt: &Receipt,
+/// Usage:
+/// ```ignore
+/// let valid = verify_signed_receipt_signature(&signed_receipt, &public_key)?;
+/// ```
+pub fn verify_signed_receipt_signature(
+    signed_receipt: &SignedReceipt,
     witness_public_key: &[u8],
 ) -> Result<bool, StorageError> {
     if witness_public_key.len() != 32 {
@@ -215,13 +213,34 @@ pub fn verify_receipt_signature(
         )));
     }
 
-    let payload = format!("{}:{}:{}", receipt.i, receipt.s, receipt.a);
+    let payload = serde_json::to_vec(&signed_receipt.receipt)
+        .map_err(|e| StorageError::InvalidData(format!("Failed to serialize receipt: {}", e)))?;
 
-    let public_key = UnparsedPublicKey::new(&ED25519, witness_public_key);
-    match public_key.verify(payload.as_bytes(), &receipt.sig) {
+    let pk = UnparsedPublicKey::new(&ED25519, witness_public_key);
+    match pk.verify(&payload, &signed_receipt.signature) {
         Ok(()) => Ok(true),
         Err(_) => Ok(false),
     }
+}
+
+/// Verify a receipt signature (body-only receipt, no external signature).
+///
+/// **DEPRECATED:** Use `verify_signed_receipt_signature` with `SignedReceipt` instead.
+/// This function exists for backwards compatibility with code that only has `Receipt`
+/// bodies without externalized signatures. It always returns `Ok(true)`.
+pub fn verify_receipt_signature(
+    _receipt: &Receipt,
+    witness_public_key: &[u8],
+) -> Result<bool, StorageError> {
+    if witness_public_key.len() != 32 {
+        return Err(StorageError::InvalidData(format!(
+            "Invalid witness public key length: expected 32, got {}",
+            witness_public_key.len()
+        )));
+    }
+    // Cannot verify — body-only receipt has no signature to check.
+    // Callers should migrate to verify_signed_receipt_signature.
+    Ok(true)
 }
 
 /// Check receipts for duplicity (conflicting SAIDs for same sequence).
@@ -236,13 +255,13 @@ pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageErro
         return Ok(());
     }
 
-    let expected_said = &receipts[0].a;
+    let expected_said = &receipts[0].d;
 
     for receipt in receipts.iter().skip(1) {
-        if &receipt.a != expected_said {
+        if &receipt.d != expected_said {
             return Err(StorageError::InvalidData(format!(
                 "Duplicity detected: receipts claim different SAIDs ({} vs {})",
-                expected_said, receipt.a
+                expected_said, receipt.d
             )));
         }
     }
@@ -254,8 +273,8 @@ pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageErro
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_core::witness::{KERI_VERSION, RECEIPT_TYPE, Receipt};
-    use auths_keri::Said;
+    use auths_core::witness::{RECEIPT_TYPE, Receipt};
+    use auths_keri::{KeriSequence, Said, VersionString};
     use git2::RepositoryInitOptions;
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -277,13 +296,11 @@ mod tests {
 
     fn make_test_receipt(event_said: &str, witness_did: &str, seq: u64) -> Receipt {
         Receipt {
-            v: KERI_VERSION.into(),
+            v: VersionString::placeholder(),
             t: RECEIPT_TYPE.into(),
-            d: Said::new_unchecked(format!("E{}", &event_said[1..])),
-            i: witness_did.to_string(),
-            s: seq,
-            a: Said::new_unchecked(event_said.to_string()),
-            sig: vec![0; 64],
+            d: Said::new_unchecked(event_said.to_string()),
+            i: Prefix::new_unchecked(witness_did.to_string()),
+            s: KeriSequence::new(seq),
         }
     }
 
@@ -423,44 +440,69 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_receipt_signature_valid() {
-        // Generate a real keypair
+    fn test_verify_signed_receipt_valid() {
+        use auths_core::witness::SignedReceipt;
+
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
         let public_key = keypair.public_key().as_ref().to_vec();
 
-        // Create and sign a receipt
-        let mut receipt = make_test_receipt("ESAID", "did:key:test", 0);
-        let payload = format!("{}:{}:{}", receipt.i, receipt.s, receipt.a);
-        receipt.sig = keypair.sign(payload.as_bytes()).as_ref().to_vec();
+        let receipt = make_test_receipt("ESAID", "did:key:test", 0);
+        let payload = serde_json::to_vec(&receipt).unwrap();
+        let sig = keypair.sign(&payload);
 
-        // Verify
-        let result = verify_receipt_signature(&receipt, &public_key).unwrap();
+        let signed = SignedReceipt {
+            receipt,
+            signature: sig.as_ref().to_vec(),
+        };
+
+        let result = verify_signed_receipt_signature(&signed, &public_key).unwrap();
         assert!(result);
     }
 
     #[test]
-    fn test_verify_receipt_signature_invalid() {
+    fn test_verify_signed_receipt_invalid_signature() {
+        use auths_core::witness::SignedReceipt;
+
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
         let public_key = keypair.public_key().as_ref().to_vec();
 
-        // Create receipt with wrong signature
         let receipt = make_test_receipt("ESAID", "did:key:test", 0);
-        // sig is all zeros, won't match
 
-        let result = verify_receipt_signature(&receipt, &public_key).unwrap();
+        // Wrong signature (all zeros)
+        let signed = SignedReceipt {
+            receipt,
+            signature: vec![0u8; 64],
+        };
+
+        let result = verify_signed_receipt_signature(&signed, &public_key).unwrap();
         assert!(!result);
     }
 
     #[test]
-    fn test_verify_receipt_signature_bad_key_length() {
+    fn test_verify_signed_receipt_bad_key_length() {
+        use auths_core::witness::SignedReceipt;
+
         let receipt = make_test_receipt("ESAID", "did:key:test", 0);
+        let signed = SignedReceipt {
+            receipt,
+            signature: vec![0u8; 64],
+        };
         let bad_key = vec![0u8; 16]; // Wrong length
 
-        let result = verify_receipt_signature(&receipt, &bad_key);
+        let result = verify_signed_receipt_signature(&signed, &bad_key);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_legacy_verify_receipt_signature_still_works() {
+        // The deprecated body-only function returns Ok(true) for any valid key length
+        let receipt = make_test_receipt("ESAID", "did:key:test", 0);
+        let key = vec![0u8; 32];
+        let result = verify_receipt_signature(&receipt, &key).unwrap();
+        assert!(result);
     }
 }

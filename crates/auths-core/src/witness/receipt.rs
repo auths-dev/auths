@@ -1,2 +1,4 @@
 #[allow(unused_imports)]
-pub use auths_keri::witness::{KERI_VERSION, RECEIPT_TYPE, Receipt};
+pub use auths_keri::KERI_VERSION_PREFIX;
+#[allow(unused_imports)]
+pub use auths_keri::witness::{RECEIPT_TYPE, Receipt, SignedReceipt};

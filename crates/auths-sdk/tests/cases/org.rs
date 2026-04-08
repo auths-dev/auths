@@ -7,8 +7,10 @@ use auths_id::testing::fakes::FakeRegistryBackend;
 use auths_sdk::domains::org::error::OrgError;
 use auths_sdk::testing::fakes::FakeSecureSigner;
 use auths_sdk::workflows::org::{
-    AddMemberCommand, OrgContext, RevokeMemberCommand, Role, UpdateCapabilitiesCommand,
-    add_organization_member, revoke_organization_member, update_member_capabilities,
+    AddMemberCommand, OrgContext, OrgIdentifier, RevokeMemberCommand, Role,
+    UpdateCapabilitiesCommand, UpdateMemberCommand, add_organization_member,
+    get_organization_member, member_role_order, revoke_organization_member,
+    update_member_capabilities, update_organization_member,
 };
 use auths_verifier::AttestationBuilder;
 use auths_verifier::Capability;
@@ -569,4 +571,243 @@ fn update_capabilities_fails_with_invalid_capability() {
     );
 
     assert!(matches!(result, Err(OrgError::InvalidCapability { .. })));
+}
+
+// ── get_organization_member ─────────────────────────────────────────────────
+
+#[test]
+fn get_member_returns_attestation_when_exists() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+    seed_member(&backend);
+
+    let result = get_organization_member(&backend, ORG, MEMBER_DID);
+    assert!(result.is_ok(), "unexpected error: {:?}", result.err());
+    let att = result.unwrap();
+    assert_eq!(att.subject.as_str(), MEMBER_DID);
+}
+
+#[test]
+fn get_member_returns_not_found_when_missing() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+
+    let result = get_organization_member(&backend, ORG, "did:key:z6MkNonexistent");
+    assert!(matches!(result, Err(OrgError::MemberNotFound { .. })));
+}
+
+#[test]
+fn get_member_returns_admin_too() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+
+    let result = get_organization_member(&backend, ORG, ADMIN_DID);
+    assert!(result.is_ok());
+    let att = result.unwrap();
+    assert_eq!(att.subject.as_str(), ADMIN_DID);
+}
+
+// ── update_organization_member ──────────────────────────────────────────────
+
+#[test]
+fn update_member_changes_role() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+    seed_member(&backend);
+
+    let result = update_organization_member(
+        &backend,
+        &MockClock(chrono::Utc::now()),
+        UpdateMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: MEMBER_DID.to_string(),
+            role: Some(Role::Readonly),
+            capabilities: None,
+            admin_public_key_hex: admin_pubkey_hex(),
+        },
+    );
+
+    assert!(result.is_ok(), "unexpected error: {:?}", result.err());
+    let att = result.unwrap();
+    assert_eq!(att.role, Some(Role::Readonly));
+    assert!(att.capabilities.contains(&Capability::sign_commit()));
+}
+
+#[test]
+fn update_member_changes_capabilities() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+    seed_member(&backend);
+
+    let result = update_organization_member(
+        &backend,
+        &MockClock(chrono::Utc::now()),
+        UpdateMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: MEMBER_DID.to_string(),
+            role: None,
+            capabilities: Some(vec!["sign_commit".to_string(), "sign_release".to_string()]),
+            admin_public_key_hex: admin_pubkey_hex(),
+        },
+    );
+
+    assert!(result.is_ok(), "unexpected error: {:?}", result.err());
+    let att = result.unwrap();
+    assert_eq!(att.role, Some(Role::Member));
+    assert_eq!(att.capabilities.len(), 2);
+    assert!(att.capabilities.contains(&Capability::sign_release()));
+}
+
+#[test]
+fn update_member_changes_both_role_and_capabilities() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+    seed_member(&backend);
+
+    let result = update_organization_member(
+        &backend,
+        &MockClock(chrono::Utc::now()),
+        UpdateMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: MEMBER_DID.to_string(),
+            role: Some(Role::Admin),
+            capabilities: Some(vec![
+                "sign_commit".to_string(),
+                "manage_members".to_string(),
+            ]),
+            admin_public_key_hex: admin_pubkey_hex(),
+        },
+    );
+
+    assert!(result.is_ok(), "unexpected error: {:?}", result.err());
+    let att = result.unwrap();
+    assert_eq!(att.role, Some(Role::Admin));
+    assert!(att.capabilities.contains(&Capability::manage_members()));
+}
+
+#[test]
+fn update_member_fails_when_admin_not_found() {
+    let backend = FakeRegistryBackend::new();
+    seed_member(&backend);
+
+    let result = update_organization_member(
+        &backend,
+        &MockClock(chrono::Utc::now()),
+        UpdateMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: MEMBER_DID.to_string(),
+            role: Some(Role::Readonly),
+            capabilities: None,
+            admin_public_key_hex: admin_pubkey_hex(),
+        },
+    );
+
+    assert!(matches!(result, Err(OrgError::AdminNotFound { .. })));
+}
+
+#[test]
+fn update_member_fails_when_member_not_found() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+
+    let result = update_organization_member(
+        &backend,
+        &MockClock(chrono::Utc::now()),
+        UpdateMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: "did:key:z6MkNonexistent".to_string(),
+            role: Some(Role::Readonly),
+            capabilities: None,
+            admin_public_key_hex: admin_pubkey_hex(),
+        },
+    );
+
+    assert!(matches!(result, Err(OrgError::MemberNotFound { .. })));
+}
+
+#[test]
+fn update_member_fails_when_already_revoked() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+
+    let mut att = base_member_attestation();
+    att.revoked_at = Some(chrono::Utc::now());
+    backend
+        .store_org_member(ORG, &att)
+        .expect("seed revoked member");
+
+    let result = update_organization_member(
+        &backend,
+        &MockClock(chrono::Utc::now()),
+        UpdateMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: MEMBER_DID.to_string(),
+            role: Some(Role::Admin),
+            capabilities: None,
+            admin_public_key_hex: admin_pubkey_hex(),
+        },
+    );
+
+    assert!(matches!(result, Err(OrgError::AlreadyRevoked { .. })));
+}
+
+#[test]
+fn update_member_fails_with_invalid_capability() {
+    let backend = FakeRegistryBackend::new();
+    seed_admin(&backend);
+    seed_member(&backend);
+
+    let result = update_organization_member(
+        &backend,
+        &MockClock(chrono::Utc::now()),
+        UpdateMemberCommand {
+            org_prefix: ORG.to_string(),
+            member_did: MEMBER_DID.to_string(),
+            role: None,
+            capabilities: Some(vec!["not a valid cap!!!".to_string()]),
+            admin_public_key_hex: admin_pubkey_hex(),
+        },
+    );
+
+    assert!(matches!(result, Err(OrgError::InvalidCapability { .. })));
+}
+
+// ── member_role_order ───────────────────────────────────────────────────────
+
+#[test]
+fn role_order_admin_before_member_before_readonly_before_none() {
+    assert!(member_role_order(&Some(Role::Admin)) < member_role_order(&Some(Role::Member)));
+    assert!(member_role_order(&Some(Role::Member)) < member_role_order(&Some(Role::Readonly)));
+    assert!(member_role_order(&Some(Role::Readonly)) < member_role_order(&None));
+}
+
+// ── OrgIdentifier ───────────────────────────────────────────────────────────
+
+#[test]
+fn org_identifier_parse_bare_prefix() {
+    let id = OrgIdentifier::parse("EOrg1234567890");
+    assert!(matches!(id, OrgIdentifier::Prefix(_)));
+    assert_eq!(id.prefix(), "EOrg1234567890");
+}
+
+#[test]
+fn org_identifier_parse_full_did() {
+    let id = OrgIdentifier::parse("did:keri:EOrg1234567890");
+    assert!(matches!(id, OrgIdentifier::Did(_)));
+    assert_eq!(id.prefix(), "EOrg1234567890");
+}
+
+#[test]
+fn org_identifier_from_str_delegates_to_parse() {
+    let id: OrgIdentifier = "did:keri:EOrg1234567890".into();
+    assert_eq!(id.prefix(), "EOrg1234567890");
+
+    let id2: OrgIdentifier = "EOrg1234567890".into();
+    assert_eq!(id2.prefix(), "EOrg1234567890");
+}
+
+#[test]
+fn org_identifier_non_keri_did_falls_back() {
+    let id = OrgIdentifier::parse("did:web:example.com");
+    assert_eq!(id.prefix(), "did:web:example.com");
 }

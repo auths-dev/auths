@@ -7,14 +7,13 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::signature::Ed25519KeyPair;
 
-use auths_core::crypto::said::compute_said;
+use auths_keri::compute_said;
 
-use super::event::KeriSequence;
+use super::event::{KeriSequence, VersionString};
 use super::seal::SealType;
 use super::types::{Prefix, Said};
 use super::{
-    Event, GitKel, IxnEvent, KERI_VERSION, KelError, Seal, ValidationError, parse_did_keri,
-    validate_kel,
+    Event, GitKel, IxnEvent, KelError, Seal, ValidationError, parse_did_keri, validate_kel,
 };
 
 /// Error type for anchoring operations.
@@ -92,7 +91,7 @@ pub fn anchor_data<T: serde::Serialize>(
     repo: &Repository,
     prefix: &Prefix,
     data: &T,
-    seal_type: SealType,
+    _seal_type: SealType,
     current_keypair: &Ed25519KeyPair,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Said, AnchorError> {
@@ -105,17 +104,18 @@ pub fn anchor_data<T: serde::Serialize>(
     let state = validate_kel(&events)?;
 
     // Compute data digest
-    let data_json =
-        serde_json::to_vec(data).map_err(|e| AnchorError::Serialization(e.to_string()))?;
-    let data_digest = compute_said(&data_json);
+    let data_value =
+        serde_json::to_value(data).map_err(|e| AnchorError::Serialization(e.to_string()))?;
+    let data_digest =
+        compute_said(&data_value).map_err(|e| AnchorError::Serialization(e.to_string()))?;
 
     // Create seal
-    let seal = Seal::new(data_digest, seal_type);
+    let seal = Seal::digest(data_digest.as_str());
 
     // Build IXN event
     let new_sequence = state.sequence + 1;
     let mut ixn = IxnEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(new_sequence),
@@ -125,9 +125,9 @@ pub fn anchor_data<T: serde::Serialize>(
     };
 
     // Compute SAID
-    let ixn_json = serde_json::to_vec(&Event::Ixn(ixn.clone()))
+    let ixn_value = serde_json::to_value(Event::Ixn(ixn.clone()))
         .map_err(|e| AnchorError::Serialization(e.to_string()))?;
-    ixn.d = compute_said(&ixn_json);
+    ixn.d = compute_said(&ixn_value).map_err(|e| AnchorError::Serialization(e.to_string()))?;
 
     // Sign the event with the current key
     let canonical = super::serialize_for_signing(&Event::Ixn(ixn.clone()))?;
@@ -204,7 +204,7 @@ pub fn find_anchor_event(
     for event in events {
         if let Event::Ixn(ixn) = event {
             for seal in &ixn.a {
-                if seal.d == data_digest {
+                if seal.digest_value().map(|d| d.as_str()) == Some(data_digest) {
                     return Ok(Some(ixn));
                 }
             }
@@ -231,9 +231,10 @@ pub fn verify_anchor<T: serde::Serialize>(
     data: &T,
 ) -> Result<AnchorVerification, AnchorError> {
     // Compute data digest
-    let data_json =
-        serde_json::to_vec(data).map_err(|e| AnchorError::Serialization(e.to_string()))?;
-    let data_digest = compute_said(&data_json);
+    let data_value =
+        serde_json::to_value(data).map_err(|e| AnchorError::Serialization(e.to_string()))?;
+    let data_digest =
+        compute_said(&data_value).map_err(|e| AnchorError::Serialization(e.to_string()))?;
 
     verify_anchor_by_digest(repo, prefix, data_digest.as_str())
 }
@@ -358,7 +359,7 @@ mod tests {
         if let Event::Ixn(ixn) = &events[1] {
             assert_eq!(ixn.d, anchor_said);
             assert_eq!(ixn.a.len(), 1);
-            assert_eq!(ixn.a[0].seal_type, SealType::DeviceAttestation);
+            assert!(ixn.a[0].digest_value().is_some());
         } else {
             panic!("Expected IXN event");
         }
@@ -387,7 +388,7 @@ mod tests {
 
         if let Event::Ixn(ixn) = &events[1] {
             assert_eq!(ixn.d, anchor_said);
-            assert_eq!(ixn.a[0].seal_type, SealType::Delegation);
+            assert!(ixn.a[0].digest_value().is_some());
         } else {
             panic!("Expected IXN event");
         }
@@ -412,12 +413,12 @@ mod tests {
         .unwrap();
 
         // Compute the digest we're looking for
-        let att_json = serde_json::to_vec(&attestation).unwrap();
-        let att_digest = compute_said(&att_json);
+        let att_value = serde_json::to_value(&attestation).unwrap();
+        let att_digest = compute_said(&att_value).unwrap();
 
         let found = find_anchor_event(&repo, &init.prefix, att_digest.as_str()).unwrap();
         assert!(found.is_some());
-        assert_eq!(found.unwrap().a[0].d, att_digest);
+        assert_eq!(found.unwrap().a[0].digest_value().unwrap(), &att_digest);
     }
 
     #[test]

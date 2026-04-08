@@ -8,6 +8,7 @@ use auths_id::keri::seal::Seal;
 use auths_id::keri::types::{Prefix, Said};
 use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
 use auths_id::storage::registry::backend::RegistryBackend;
+use auths_keri::{CesrKey, Threshold, VersionString};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -26,16 +27,17 @@ fn make_signed_icp() -> (Event, Prefix, Ed25519KeyPair) {
     let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
     let icp = IcpEvent {
-        v: "KERI10JSON".to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: Prefix::default(),
         s: KeriSequence::new(0),
-        kt: "1".to_string(),
-        k: vec![key_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(key_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![next_commitment],
-        bt: "0".to_string(),
+        bt: Threshold::Simple(0),
         b: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
@@ -51,17 +53,17 @@ fn make_signed_icp() -> (Event, Prefix, Ed25519KeyPair) {
 
 fn make_signed_ixn(prefix: &Prefix, seq: u64, prev_said: &str, keypair: &Ed25519KeyPair) -> Event {
     let mut ixn = IxnEvent {
-        v: "KERI10JSON".to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(seq),
         p: Said::new_unchecked(prev_said.to_string()),
-        a: vec![Seal::device_attestation("EConcurrent")],
+        a: vec![Seal::digest("EConcurrent")],
         x: String::new(),
     };
 
-    let json = serde_json::to_vec(&Event::Ixn(ixn.clone())).unwrap();
-    ixn.d = compute_said(&json);
+    let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
+    ixn.d = compute_said(&value).unwrap();
 
     let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
     let sig = keypair.sign(&canonical);

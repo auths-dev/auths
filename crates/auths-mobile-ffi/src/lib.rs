@@ -188,11 +188,30 @@ struct IcpEvent {
 // Internal Helpers
 // ============================================================================
 
-/// Compute SAID (Self-Addressing Identifier) using Blake3.
-fn compute_said(event_json: &[u8]) -> String {
-    let hash = blake3::hash(event_json);
-    let encoded = URL_SAFE_NO_PAD.encode(hash.as_bytes());
-    format!("E{}", encoded)
+/// The 44-character `#` placeholder used in SAID computation (Trust over IP KERI v0.9).
+const SAID_PLACEHOLDER: &str = "############################################";
+
+/// Compute a spec-compliant SAID (Self-Addressing Identifier) using Blake3.
+///
+/// Injects the 44-char `#` placeholder into `d` (and `i` for inception events),
+/// removes `x`, serializes with insertion-order serde_json, then Blake3-256 hashes.
+fn compute_said(event: &serde_json::Value) -> Option<String> {
+    let mut obj = event.as_object()?.clone();
+    obj.insert(
+        "d".to_string(),
+        serde_json::Value::String(SAID_PLACEHOLDER.to_string()),
+    );
+    let event_type = obj.get("t").and_then(|v| v.as_str()).unwrap_or("");
+    if event_type == "icp" {
+        obj.insert(
+            "i".to_string(),
+            serde_json::Value::String(SAID_PLACEHOLDER.to_string()),
+        );
+    }
+    obj.remove("x");
+    let serialized = serde_json::to_vec(&serde_json::Value::Object(obj)).ok()?;
+    let hash = blake3::hash(&serialized);
+    Some(format!("E{}", URL_SAFE_NO_PAD.encode(hash.as_bytes())))
 }
 
 /// Compute next-key commitment (Blake3 hash of public key).
@@ -204,16 +223,11 @@ fn compute_next_commitment(public_key: &[u8]) -> String {
 
 /// Finalize an ICP event by computing and setting the SAID.
 fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, MobileError> {
-    // Serialize with empty d and i for SAID computation
-    icp.d = String::new();
-    icp.i = String::new();
-    icp.x = String::new();
+    let value = serde_json::to_value(&icp)
+        .map_err(|e| MobileError::Serialization(e.to_string()))?;
 
-    let canonical =
-        serde_json::to_string(&icp).map_err(|e| MobileError::Serialization(e.to_string()))?;
-
-    // Compute SAID
-    let said = compute_said(canonical.as_bytes());
+    let said = compute_said(&value)
+        .ok_or_else(|| MobileError::Serialization("SAID computation failed".to_string()))?;
 
     // Set both d and i to the SAID (for inception, prefix = SAID)
     icp.d = said.clone();

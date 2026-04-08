@@ -363,34 +363,30 @@ fn apply_event_to_state(state: &mut KeyState, event: &Event) -> Result<(), Incre
     // Apply the event
     match event {
         Event::Rot(rot) => {
-            let threshold =
-                rot.kt
-                    .parse::<u64>()
-                    .map_err(|_| IncrementalError::MalformedSequence {
-                        raw: rot.kt.clone(),
-                    })?;
-            let next_threshold =
-                rot.nt
-                    .parse::<u64>()
-                    .map_err(|_| IncrementalError::MalformedSequence {
-                        raw: rot.nt.clone(),
-                    })?;
-
             state.apply_rotation(
                 rot.k.clone(),
                 rot.n.clone(),
-                threshold,
-                next_threshold,
+                rot.kt.clone(),
+                rot.nt.clone(),
                 actual_sequence,
                 rot.d.clone(),
+                &rot.br,
+                &rot.ba,
+                rot.bt.clone(),
+                rot.c.clone(),
             );
         }
         Event::Ixn(ixn) => {
             state.apply_interaction(actual_sequence, ixn.d.clone());
         }
-        Event::Icp(_) => {
+        Event::Icp(_) | Event::Dip(_) => {
             return Err(IncrementalError::InvalidEventType(
                 "Inception event after KEL start".to_string(),
+            ));
+        }
+        Event::Drt(_) => {
+            return Err(IncrementalError::InvalidEventType(
+                "Delegated rotation not yet supported".to_string(),
             ));
         }
     }
@@ -406,16 +402,21 @@ mod tests {
     // Integration tests for incremental validation are in kel.rs
     // since they need access to a full GitKel setup
 
+    use crate::keri::{CesrKey, Threshold};
+
     #[test]
     fn test_incremental_result_variants() {
         // Just verify the enum compiles and has expected variants
         let state = KeyState::from_inception(
             Prefix::new_unchecked("ETest".to_string()),
-            vec!["DKey".to_string()],
-            vec!["ENext".to_string()],
-            1,
-            1,
+            vec![CesrKey::new_unchecked("DKey".to_string())],
+            vec![Said::new_unchecked("ENext".to_string())],
+            Threshold::Simple(1),
+            Threshold::Simple(1),
             Said::new_unchecked("ESaid".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![],
         );
 
         let _hit = IncrementalResult::CacheHit(state.clone());

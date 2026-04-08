@@ -15,8 +15,8 @@ use crate::error::InitError;
 
 use crate::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
 use crate::keri::{
-    Event, IcpEvent, KERI_VERSION, KeriSequence, Prefix, Said, create_keri_identity,
-    finalize_icp_event, serialize_for_signing,
+    CesrKey, Event, IcpEvent, KeriSequence, Prefix, Said, Threshold, VersionString,
+    create_keri_identity, finalize_icp_event, serialize_for_signing,
 };
 use crate::storage::identity::IdentityStorage;
 use crate::storage::registry::RegistryBackend;
@@ -132,23 +132,27 @@ pub fn initialize_registry_identity(
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
-            cfg.threshold.to_string(),
-            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
+            Threshold::Simple(cfg.threshold as u64),
+            cfg.witness_urls
+                .iter()
+                .map(|u| Prefix::new_unchecked(u.to_string()))
+                .collect(),
         ),
-        _ => ("0".to_string(), vec![]),
+        _ => (Threshold::Simple(0), vec![]),
     };
 
     let icp = IcpEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: Prefix::default(),
         s: KeriSequence::new(0),
-        kt: "1".to_string(),
-        k: vec![current_pub_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(current_pub_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![next_commitment],
         bt,
         b,
+        c: vec![],
         a: vec![],
         x: String::new(),
     };

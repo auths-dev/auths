@@ -86,9 +86,10 @@ mod server;
 mod storage;
 
 // Re-export KERI witness protocol types from auths-keri
+pub use auths_keri::KERI_VERSION_PREFIX;
 pub use auths_keri::witness::{
-    AsyncWitnessProvider, DuplicityEvidence, EventHash, EventHashParseError, KERI_VERSION,
-    NoOpAsyncWitness, RECEIPT_TYPE, Receipt, ReceiptBuilder, WitnessError, WitnessProvider,
+    AsyncWitnessProvider, DuplicityEvidence, EventHash, EventHashParseError, NoOpAsyncWitness,
+    RECEIPT_TYPE, Receipt, ReceiptBuilder, SignedReceipt, WitnessError, WitnessProvider,
     WitnessReport,
 };
 pub use noop::NoOpWitness;

@@ -139,7 +139,7 @@ impl DuplicityDetector {
     /// Verify that a set of receipts are consistent (same event SAID).
     ///
     /// This checks that all receipts are for the same event. If receipts
-    /// have different `a` (event SAID) fields, this indicates duplicity.
+    /// have different `d` (event SAID) fields, this indicates duplicity.
     ///
     /// # Arguments
     ///
@@ -155,21 +155,21 @@ impl DuplicityDetector {
         }
 
         let first = &receipts[0];
-        let expected_said = &first.a;
+        let expected_said = &first.d;
 
         for receipt in receipts.iter().skip(1) {
-            if receipt.a != *expected_said {
+            if receipt.d != *expected_said {
                 // Different receipts claim different SAIDs
                 return Err(DuplicityEvidence {
                     prefix: Prefix::default(),
-                    sequence: first.s,
+                    sequence: first.s.value(),
                     event_a_said: expected_said.clone(),
-                    event_b_said: receipt.a.clone(),
+                    event_b_said: receipt.d.clone(),
                     witness_reports: receipts
                         .iter()
                         .map(|r| WitnessReport {
-                            witness_id: r.i.clone(),
-                            observed_said: r.a.clone(),
+                            witness_id: r.i.as_str().to_string(),
+                            observed_said: r.d.clone(),
                             observed_at: None,
                         })
                         .collect(),
@@ -289,26 +289,23 @@ mod tests {
 
     #[test]
     fn verify_receipts_consistent() {
+        use auths_keri::{KeriSequence, VersionString};
         let detector = DuplicityDetector::new();
 
         let receipts = vec![
             Receipt {
-                v: "KERI".into(),
+                v: VersionString::placeholder(),
                 t: "rct".into(),
-                d: Said::new_unchecked("ER1".into()),
-                i: "W1".into(),
-                s: 5,
-                a: Said::new_unchecked("EEVENT_SAID".into()),
-                sig: vec![0; 64],
+                d: Said::new_unchecked("EEVENT_SAID".into()),
+                i: Prefix::new_unchecked("W1".into()),
+                s: KeriSequence::new(5),
             },
             Receipt {
-                v: "KERI".into(),
+                v: VersionString::placeholder(),
                 t: "rct".into(),
-                d: Said::new_unchecked("ER2".into()),
-                i: "W2".into(),
-                s: 5,
-                a: Said::new_unchecked("EEVENT_SAID".into()),
-                sig: vec![0; 64],
+                d: Said::new_unchecked("EEVENT_SAID".into()),
+                i: Prefix::new_unchecked("W2".into()),
+                s: KeriSequence::new(5),
             },
         ];
 
@@ -317,26 +314,23 @@ mod tests {
 
     #[test]
     fn verify_receipts_inconsistent() {
+        use auths_keri::{KeriSequence, VersionString};
         let detector = DuplicityDetector::new();
 
         let receipts = vec![
             Receipt {
-                v: "KERI".into(),
+                v: VersionString::placeholder(),
                 t: "rct".into(),
-                d: Said::new_unchecked("ER1".into()),
-                i: "W1".into(),
-                s: 5,
-                a: Said::new_unchecked("ESAID_A".into()),
-                sig: vec![0; 64],
+                d: Said::new_unchecked("ESAID_A".into()),
+                i: Prefix::new_unchecked("W1".into()),
+                s: KeriSequence::new(5),
             },
             Receipt {
-                v: "KERI".into(),
+                v: VersionString::placeholder(),
                 t: "rct".into(),
-                d: Said::new_unchecked("ER2".into()),
-                i: "W2".into(),
-                s: 5,
-                a: Said::new_unchecked("ESAID_B".into()),
-                sig: vec![0; 64],
+                d: Said::new_unchecked("ESAID_B".into()),
+                i: Prefix::new_unchecked("W2".into()),
+                s: KeriSequence::new(5),
             },
         ];
 

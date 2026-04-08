@@ -7,7 +7,7 @@ use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::KeyStorage;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole};
 use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
-use auths_id::keri::{KeyState, Prefix, Said};
+use auths_id::keri::{CesrKey, KeyState, Prefix, Said, Threshold, VersionString};
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
 use auths_sdk::domains::identity::error::RotationError;
@@ -201,13 +201,18 @@ fn compute_rotation_event_is_deterministic() {
 
     let state = KeyState {
         prefix: Prefix::new_unchecked("test_prefix_determinism".to_string()),
-        current_keys: vec!["D_testkey_placeholder".to_string()],
-        next_commitment: vec!["hash_placeholder".to_string()],
+        current_keys: vec![CesrKey::new_unchecked("D_testkey_placeholder".to_string())],
+        next_commitment: vec![Said::new_unchecked("hash_placeholder".to_string())],
         sequence: 0,
         last_event_said: Said::new_unchecked("E_prior_said_placeholder".to_string()),
         is_abandoned: false,
-        threshold: 1,
-        next_threshold: 1,
+        threshold: Threshold::Simple(1),
+        next_threshold: Threshold::Simple(1),
+        backers: vec![],
+        backer_threshold: Threshold::Simple(0),
+        config_traits: vec![],
+        is_non_transferable: false,
+        delegator: None,
     };
 
     let kp1 = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
@@ -245,13 +250,18 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
     // Build a KeyState at sequence 0 so compute_rotation_event produces a seq-1 event
     let state = KeyState {
         prefix: prefix.clone(),
-        current_keys: vec!["D_placeholder".to_string()],
-        next_commitment: vec!["hash_placeholder".to_string()],
+        current_keys: vec![CesrKey::new_unchecked("D_placeholder".to_string())],
+        next_commitment: vec![Said::new_unchecked("hash_placeholder".to_string())],
         sequence: 0,
         last_event_said: Said::new_unchecked("E_placeholder_said".to_string()),
         is_abandoned: false,
-        threshold: 1,
-        next_threshold: 1,
+        threshold: Threshold::Simple(1),
+        next_threshold: Threshold::Simple(1),
+        backers: vec![],
+        backer_threshold: Threshold::Simple(0),
+        config_traits: vec![],
+        is_non_transferable: false,
+        delegator: None,
     };
 
     let (rot, _bytes) = compute_rotation_event(&state, &next_kp, &new_next_kp, None).unwrap();
@@ -259,17 +269,19 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
     // Pre-seed the registry with a fake event at seq 0 so the seq-1 RotEvent is accepted
     let registry = Arc::new(FakeRegistryBackend::new());
     let dummy_rot = auths_id::keri::RotEvent {
-        v: auths_id::keri::KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::new_unchecked("E_dummy".to_string()),
         i: prefix.clone(),
         s: auths_id::keri::KeriSequence::new(0),
         p: Said::default(),
-        kt: "1".to_string(),
+        kt: Threshold::Simple(1),
         k: vec![],
-        nt: "1".to_string(),
+        nt: Threshold::Simple(1),
         n: vec![],
-        bt: "0".to_string(),
-        b: vec![],
+        bt: Threshold::Simple(0),
+        br: vec![],
+        ba: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };

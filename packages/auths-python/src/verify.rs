@@ -10,7 +10,7 @@ use auths_verifier::verify::{
     verify_device_authorization as rust_verify_device_authorization,
     verify_with_capability as rust_verify_with_capability, verify_with_keys,
 };
-use auths_verifier::witness::{Receipt, WitnessVerifyConfig};
+use auths_verifier::witness::WitnessVerifyConfig;
 use chrono::{DateTime, Utc};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -533,7 +533,7 @@ pub fn verify_chain_with_witnesses(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
-    let receipts: Vec<Receipt> = receipts_json
+    let receipts: Vec<auths_verifier::SignedReceipt> = receipts_json
         .iter()
         .enumerate()
         .map(|(i, json)| {

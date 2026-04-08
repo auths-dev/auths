@@ -362,7 +362,7 @@ pub fn inspect_cache(auths_home: &Path, did: &str) -> Result<Option<CachedKelSta
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::Prefix;
+    use crate::keri::{CesrKey, Prefix, Threshold};
     use tempfile::TempDir;
 
     const VALID_OID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -370,11 +370,14 @@ mod tests {
     fn create_test_state() -> KeyState {
         KeyState::from_inception(
             Prefix::new_unchecked("ETestPrefix".to_string()),
-            vec!["DKey1".to_string()],
-            vec!["ENext1".to_string()],
-            1,
-            1,
+            vec![CesrKey::new_unchecked("DKey1".to_string())],
+            vec![Said::new_unchecked("ENext1".to_string())],
+            Threshold::Simple(1),
+            Threshold::Simple(1),
             Said::new_unchecked("ESaid123".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![],
         )
     }
 

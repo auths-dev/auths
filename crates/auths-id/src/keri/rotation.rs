@@ -13,13 +13,12 @@ use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
-use auths_core::crypto::said::{compute_next_commitment, compute_said, verify_commitment};
+use auths_core::crypto::said::{compute_next_commitment, verify_commitment};
+use auths_keri::compute_said;
 
-use super::event::KeriSequence;
+use super::event::{CesrKey, KeriSequence, Threshold, VersionString};
 use super::types::{Prefix, Said};
-use super::{
-    Event, GitKel, KERI_VERSION, KelError, KeyState, RotEvent, ValidationError, validate_kel,
-};
+use super::{Event, GitKel, KelError, KeyState, RotEvent, ValidationError, validate_kel};
 use crate::storage::registry::backend::{RegistryBackend, RegistryError};
 use crate::witness_config::WitnessConfig;
 
@@ -180,36 +179,35 @@ pub fn rotate_keys(
     let new_next_commitment = compute_next_commitment(new_next_keypair.public_key().as_ref());
 
     // Determine witness fields from config
-    let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (
-            cfg.threshold.to_string(),
-            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
-        ),
-        _ => ("0".to_string(), vec![]),
+    let bt = match witness_config {
+        Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
+        _ => Threshold::Simple(0),
     };
 
     // Build rotation event
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
-        kt: "1".to_string(),
-        k: vec![new_current_pub_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(new_current_pub_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![new_next_commitment],
         bt,
-        b,
+        br: vec![],
+        ba: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
 
     // Compute SAID
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value).map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     // Sign with the new current key (next_keypair is now the active key)
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))?;
@@ -292,36 +290,35 @@ pub fn abandon_identity(
     );
 
     // Determine witness fields from config
-    let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (
-            cfg.threshold.to_string(),
-            cfg.witness_urls.iter().map(|u| u.to_string()).collect(),
-        ),
-        _ => ("0".to_string(), vec![]),
+    let bt = match witness_config {
+        Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
+        _ => Threshold::Simple(0),
     };
 
     // Build abandonment rotation event (empty next commitment)
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
-        kt: "1".to_string(),
-        k: vec![new_current_pub_encoded], // Rotate to next key
-        nt: "0".to_string(),              // Zero threshold
-        n: vec![],                        // Empty = abandoned
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(new_current_pub_encoded)], // Rotate to next key
+        nt: Threshold::Simple(0),                                 // Zero threshold
+        n: vec![],                                                // Empty = abandoned
         bt,
-        b,
+        br: vec![],
+        ba: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
 
     // Compute SAID
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value).map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     // Sign with the new current key (next_keypair is now the active key)
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))?;
@@ -393,24 +390,26 @@ pub fn rotate_keys_with_backend(
 
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {
-        v: KERI_VERSION.to_string(),
+        v: VersionString::placeholder(),
         d: Said::default(),
         i: prefix.clone(),
         s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
-        kt: "1".to_string(),
-        k: vec![new_current_pub_encoded],
-        nt: "1".to_string(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(new_current_pub_encoded)],
+        nt: Threshold::Simple(1),
         n: vec![new_next_commitment],
-        bt: "0".to_string(),
-        b: vec![],
+        bt: Threshold::Simple(0),
+        br: vec![],
+        ba: vec![],
+        c: vec![],
         a: vec![],
         x: String::new(),
     };
 
-    let rot_json = serde_json::to_vec(&Event::Rot(rot.clone()))
+    let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
-    rot.d = compute_said(&rot_json);
+    rot.d = compute_said(&rot_value).map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
@@ -661,6 +660,6 @@ mod tests {
 
         // Current key should be the former next key
         let expected_key = format!("D{}", URL_SAFE_NO_PAD.encode(&init.next_public_key));
-        assert_eq!(state.current_keys[0], expected_key);
+        assert_eq!(state.current_keys[0].as_str(), expected_key);
     }
 }

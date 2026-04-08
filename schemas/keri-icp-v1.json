@@ -1,10 +1,9 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "IcpEvent",
-  "description": "Inception event — creates a new KERI identity.\n\nThe inception event establishes the identifier prefix and commits to the first rotation key via the `n` (next) field.\n\nNote: The `t` (type) field is handled by the `Event` enum's serde tag.",
+  "description": "Inception event — creates a new KERI identity.\n\nThe inception event establishes the identifier prefix and commits to the first rotation key via the `n` (next) field.\n\nSpec field order: `[v, t, d, i, s, kt, k, nt, n, bt, b, c, a]`",
   "type": "object",
   "required": [
-    "b",
     "bt",
     "i",
     "k",
@@ -24,15 +23,28 @@
       }
     },
     "b": {
-      "description": "Witness list (empty)",
+      "description": "Witness/backer list (ordered AIDs)",
+      "default": [],
       "type": "array",
       "items": {
-        "type": "string"
+        "$ref": "#/definitions/Prefix"
       }
     },
     "bt": {
-      "description": "Witness threshold: \"0\" (no witnesses)",
-      "type": "string"
+      "description": "Witness/backer threshold",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Threshold"
+        }
+      ]
+    },
+    "c": {
+      "description": "Configuration traits (e.g., EstablishmentOnly, DoNotDelegate)",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ConfigTrait"
+      }
     },
     "d": {
       "description": "SAID (Self-Addressing Identifier) — Blake3 hash of event",
@@ -44,7 +56,7 @@
       ]
     },
     "i": {
-      "description": "Identifier prefix (same as `d` for inception)",
+      "description": "Identifier prefix (same as `d` for self-addressing inception)",
       "allOf": [
         {
           "$ref": "#/definitions/Prefix"
@@ -52,26 +64,34 @@
       ]
     },
     "k": {
-      "description": "Current public key(s), Base64url encoded with derivation code",
+      "description": "Current public key(s), CESR-encoded",
       "type": "array",
       "items": {
-        "type": "string"
+        "$ref": "#/definitions/CesrKey"
       }
     },
     "kt": {
-      "description": "Key threshold: \"1\" for single-sig",
-      "type": "string"
+      "description": "Key signing threshold (hex integer or fractional weight list)",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Threshold"
+        }
+      ]
     },
     "n": {
-      "description": "Next key commitment(s) — hash of next public key(s)",
+      "description": "Next key commitment(s) — Blake3 digests of next public key(s)",
       "type": "array",
       "items": {
-        "type": "string"
+        "$ref": "#/definitions/Said"
       }
     },
     "nt": {
-      "description": "Next key threshold: \"1\"",
-      "type": "string"
+      "description": "Next key signing threshold",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Threshold"
+        }
+      ]
     },
     "s": {
       "description": "Sequence number (always 0 for inception)",
@@ -82,85 +102,79 @@
       ]
     },
     "v": {
-      "description": "Version string: \"KERI10JSON\"",
-      "type": "string"
+      "description": "Version string",
+      "allOf": [
+        {
+          "$ref": "#/definitions/VersionString"
+        }
+      ]
     },
     "x": {
-      "description": "Event signature (Ed25519, base64url-no-pad)",
+      "description": "Legacy signature field — DEPRECATED. Use `SignedEvent` with externalized signatures. Retained for backwards compatibility with stored events.",
       "default": "",
       "type": "string"
     }
   },
   "definitions": {
+    "CesrKey": {
+      "description": "A CESR-encoded public key (e.g., `D` + base64url Ed25519).\n\nWraps the qualified string form. Use `parse_ed25519()` to extract the raw 32-byte key for cryptographic operations.\n\nUsage: ``` use auths_keri::CesrKey; let key = CesrKey::new_unchecked(\"DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\".into()); assert!(key.parse_ed25519().is_ok()); ```",
+      "type": "string"
+    },
+    "ConfigTrait": {
+      "description": "KERI configuration trait codes.\n\nThese control identity behavior at inception and may be updated at rotation (for `RB`/`NRB` only). If two conflicting traits appear, the latter supersedes.\n\nUsage: ``` use auths_keri::ConfigTrait; let traits: Vec<ConfigTrait> = serde_json::from_str(r#\"[\"EO\",\"DND\"]\"#).unwrap(); assert!(traits.contains(&ConfigTrait::EstablishmentOnly)); ```",
+      "oneOf": [
+        {
+          "description": "Establishment-Only: only establishment events in KEL.",
+          "type": "string",
+          "enum": [
+            "EO"
+          ]
+        },
+        {
+          "description": "Do-Not-Delegate: cannot act as delegator.",
+          "type": "string",
+          "enum": [
+            "DND"
+          ]
+        },
+        {
+          "description": "Delegate-Is-Delegator: delegated AID treated same as delegator.",
+          "type": "string",
+          "enum": [
+            "DID"
+          ]
+        },
+        {
+          "description": "Registrar Backers: backer list provides registrar backer AIDs.",
+          "type": "string",
+          "enum": [
+            "RB"
+          ]
+        },
+        {
+          "description": "No Registrar Backers: switch back to witnesses.",
+          "type": "string",
+          "enum": [
+            "NRB"
+          ]
+        }
+      ]
+    },
     "KeriSequence": {
       "type": "string"
     },
     "Prefix": {
-      "description": "Strongly-typed KERI identifier prefix (e.g., `\"ETest123...\"`).\n\nA prefix is the self-addressing identifier derived from the inception event's Blake3 hash. Always starts with 'E' (Blake3-256 derivation code).\n\nArgs: * Inner `String` should start with `'E'` (enforced by `new()`, not by serde).\n\nUsage: ```ignore let prefix = Prefix::new(\"ETest123abc\".to_string())?; assert_eq!(prefix.as_str(), \"ETest123abc\"); ```",
+      "description": "Strongly-typed KERI identifier prefix (e.g., `\"ETest123...\"`, `\"DKey456...\"`).\n\nA prefix is the autonomous identifier (AID) for a KERI identity. For self-addressing AIDs it starts with `E` (Blake3-256 digest of the inception event); for key-based AIDs it starts with `D` (Ed25519 public key) or another CESR derivation code.\n\nArgs: * Inner `String` must start with a valid CESR derivation code (uppercase letter or digit). Enforced by `new()`, not by serde.\n\nUsage: ```ignore let prefix = Prefix::new(\"ETest123abc\".to_string())?; assert_eq!(prefix.as_str(), \"ETest123abc\"); ```",
       "type": "string"
     },
     "Said": {
       "description": "KERI Self-Addressing Identifier (SAID).\n\nA Blake3 hash that uniquely identifies a KERI event. Creates the hash chain: each event's `p` (previous) field is the prior event's SAID.\n\nStructurally identical to `Prefix` (both start with 'E') but semantically distinct — a prefix identifies an *identity*, a SAID identifies an *event*.\n\nArgs: * Inner `String` should start with `'E'` (enforced by `new()`, not by serde).\n\nUsage: ```ignore let said = Said::new(\"ESAID123\".to_string())?; assert_eq!(said.as_str(), \"ESAID123\"); ```",
       "type": "string"
     },
-    "Seal": {
-      "description": "A seal anchors external data in a KERI event.\n\nSeals are included in the `a` (anchors) field of KERI events. They contain a digest of the anchored data and a type indicator.",
-      "type": "object",
-      "required": [
-        "d",
-        "type"
-      ],
-      "properties": {
-        "d": {
-          "description": "SAID (digest) of the anchored data",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Said"
-            }
-          ]
-        },
-        "type": {
-          "description": "Type of anchored data",
-          "allOf": [
-            {
-              "$ref": "#/definitions/SealType"
-            }
-          ]
-        }
-      }
-    },
-    "SealType": {
-      "description": "Type of data anchored by a seal.",
-      "oneOf": [
-        {
-          "description": "Device attestation seal",
-          "type": "string",
-          "enum": [
-            "device-attestation"
-          ]
-        },
-        {
-          "description": "Revocation seal",
-          "type": "string",
-          "enum": [
-            "revocation"
-          ]
-        },
-        {
-          "description": "Capability delegation seal",
-          "type": "string",
-          "enum": [
-            "delegation"
-          ]
-        },
-        {
-          "description": "Identity provider binding seal",
-          "type": "string",
-          "enum": [
-            "idp-binding"
-          ]
-        }
-      ]
+    "Seal": true,
+    "Threshold": true,
+    "VersionString": {
+      "type": "string"
     }
   }
 }

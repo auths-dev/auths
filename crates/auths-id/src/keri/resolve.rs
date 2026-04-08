@@ -112,7 +112,7 @@ pub fn resolve_did_keri(repo: &Repository, did: &str) -> Result<DidKeriResolutio
     // Decode current public key
     let key_encoded = state.current_key().ok_or(ResolveError::NoCurrentKey)?;
 
-    let public_key = KeriPublicKey::parse(key_encoded)
+    let public_key = KeriPublicKey::parse(key_encoded.as_str())
         .map(|k| k.as_bytes().to_vec())
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 
@@ -165,7 +165,7 @@ pub fn resolve_did_keri_at_sequence(
     let state = validate_kel(&events_subset)?;
 
     let key_encoded = state.current_key().ok_or(ResolveError::NoCurrentKey)?;
-    let public_key = KeriPublicKey::parse(key_encoded)
+    let public_key = KeriPublicKey::parse(key_encoded.as_str())
         .map(|k| k.as_bytes().to_vec())
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
 

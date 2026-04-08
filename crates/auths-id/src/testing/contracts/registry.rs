@@ -101,11 +101,14 @@ macro_rules! registry_backend_contract_tests {
 
                 let ks = KeyState::from_inception(
                     prefix.clone(),
-                    vec!["DTestKey".to_string()],
-                    vec!["ETestNext".to_string()],
-                    1,
-                    1,
+                    vec![auths_keri::CesrKey::new_unchecked("DTestKey".to_string())],
+                    vec![auths_keri::Said::new_unchecked("ETestNext".to_string())],
+                    auths_keri::Threshold::Simple(1),
+                    auths_keri::Threshold::Simple(1),
                     event.said().clone(),
+                    vec![],
+                    auths_keri::Threshold::Simple(0),
+                    vec![],
                 );
                 store.write_key_state(&prefix, &ks).unwrap();
                 let got = store.get_key_state(&prefix).unwrap();

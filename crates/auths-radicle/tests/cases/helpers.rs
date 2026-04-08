@@ -105,15 +105,21 @@ impl AuthsStorage for MockStorage {
 }
 
 pub fn make_key_state(prefix: &str, seq: u64) -> KeyState {
+    use auths_keri::{CesrKey, Threshold};
     KeyState {
         prefix: Prefix::new_unchecked(prefix.to_string()),
         sequence: seq,
-        current_keys: vec!["DTestKey".to_string()],
+        current_keys: vec![CesrKey::new_unchecked("DTestKey".to_string())],
         next_commitment: vec![],
         last_event_said: Said::new_unchecked(format!("ESaid{seq}")),
         is_abandoned: false,
-        threshold: 1,
-        next_threshold: 1,
+        threshold: Threshold::Simple(1),
+        next_threshold: Threshold::Simple(1),
+        backers: vec![],
+        backer_threshold: Threshold::Simple(0),
+        config_traits: vec![],
+        is_non_transferable: false,
+        delegator: None,
     }
 }
 
