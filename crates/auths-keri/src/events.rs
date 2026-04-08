@@ -846,12 +846,11 @@ pub struct IndexedSignature {
 /// in databases). The event body is what gets hashed for the SAID.
 ///
 /// Usage:
-/// ```
-/// use auths_keri::{SignedEvent, IndexedSignature};
-/// use auths_keri::events::Event;
+/// ```ignore
+/// use auths_keri::{SignedEvent, IndexedSignature, Event};
 ///
 /// // After creating and finalizing an event:
-/// // let signed = SignedEvent::new(event, vec![IndexedSignature { index: 0, sig: sig_bytes }]);
+/// let signed = SignedEvent::new(event, vec![IndexedSignature { index: 0, sig: sig_bytes }]);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedEvent {
