@@ -373,6 +373,161 @@ impl<'de> serde::Deserialize<'de> for Ed25519Signature {
 pub struct SignatureLengthError(pub usize);
 
 // =============================================================================
+// Signature algorithm enum (for configurable checkpoint verification)
+// =============================================================================
+
+/// Signature algorithm used by a transparency log for checkpoint signing.
+///
+/// Each log in a `TrustConfig` specifies which algorithm its checkpoints use.
+/// The verifier dispatches on this when checking checkpoint signatures.
+///
+/// Usage:
+/// ```ignore
+/// match trust_root.signature_algorithm {
+///     SignatureAlgorithm::Ed25519 => verify_ed25519(..),
+///     SignatureAlgorithm::EcdsaP256 => verify_ecdsa_p256(..),
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignatureAlgorithm {
+    /// Ed25519 (RFC 8032). Default for auths-native logs.
+    #[default]
+    Ed25519,
+    /// ECDSA with NIST P-256 and SHA-256. Used by Rekor production shard.
+    EcdsaP256,
+}
+
+impl fmt::Display for SignatureAlgorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ed25519 => f.write_str("ed25519"),
+            Self::EcdsaP256 => f.write_str("ecdsa_p256"),
+        }
+    }
+}
+
+// =============================================================================
+// ECDSA P-256 types (for Rekor checkpoint verification)
+// =============================================================================
+
+/// A DER-encoded ECDSA P-256 public key (PKIX SubjectPublicKeyInfo).
+///
+/// Stores the full DER encoding so `ring::signature::UnparsedPublicKey`
+/// can consume it directly.
+///
+/// Usage:
+/// ```ignore
+/// let pk = EcdsaP256PublicKey::from_der(&der_bytes)?;
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EcdsaP256PublicKey(Vec<u8>);
+
+impl EcdsaP256PublicKey {
+    /// Creates from DER-encoded PKIX SubjectPublicKeyInfo bytes.
+    ///
+    /// Performs minimal validation: checks the ASN.1 OID prefix for P-256
+    /// (`06 08 2a 86 48 ce 3d 03 01 07`).
+    pub fn from_der(der: &[u8]) -> Result<Self, EcdsaP256Error> {
+        // PKIX P-256 key is typically 91 bytes (SEQUENCE { AlgorithmIdentifier, BIT STRING })
+        // The AlgorithmIdentifier contains OID 1.2.840.10045.3.1.7 (P-256)
+        const P256_OID: &[u8] = &[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07];
+        if der.len() < 26 {
+            return Err(EcdsaP256Error::InvalidKey(
+                "DER too short for P-256 PKIX key".into(),
+            ));
+        }
+        if !der.windows(P256_OID.len()).any(|w| w == P256_OID) {
+            return Err(EcdsaP256Error::InvalidKey(
+                "missing P-256 OID in PKIX key".into(),
+            ));
+        }
+        Ok(Self(der.to_vec()))
+    }
+
+    /// Returns the raw DER bytes.
+    pub fn as_der(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Serialize for EcdsaP256PublicKey {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use base64::Engine;
+        s.serialize_str(&base64::engine::general_purpose::STANDARD.encode(&self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for EcdsaP256PublicKey {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use base64::Engine;
+        let s = String::deserialize(d)?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&s)
+            .map_err(|e| serde::de::Error::custom(format!("invalid base64: {e}")))?;
+        Self::from_der(&bytes).map_err(serde::de::Error::custom)
+    }
+}
+
+/// A DER-encoded ECDSA P-256 signature.
+///
+/// ECDSA signatures are variable-length ASN.1 DER (typically 70-72 bytes).
+///
+/// Usage:
+/// ```ignore
+/// let sig = EcdsaP256Signature::from_der(&der_bytes)?;
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EcdsaP256Signature(Vec<u8>);
+
+impl EcdsaP256Signature {
+    /// Creates from DER-encoded signature bytes.
+    pub fn from_der(der: &[u8]) -> Result<Self, EcdsaP256Error> {
+        // Minimal check: ASN.1 SEQUENCE tag (0x30)
+        if der.is_empty() || der[0] != 0x30 {
+            return Err(EcdsaP256Error::InvalidSignature(
+                "not an ASN.1 SEQUENCE".into(),
+            ));
+        }
+        Ok(Self(der.to_vec()))
+    }
+
+    /// Returns the raw DER bytes.
+    pub fn as_der(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Serialize for EcdsaP256Signature {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use base64::Engine;
+        s.serialize_str(&base64::engine::general_purpose::STANDARD.encode(&self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for EcdsaP256Signature {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use base64::Engine;
+        let s = String::deserialize(d)?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&s)
+            .map_err(|e| serde::de::Error::custom(format!("invalid base64: {e}")))?;
+        Self::from_der(&bytes).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Errors from ECDSA P-256 operations.
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum EcdsaP256Error {
+    /// Invalid DER-encoded public key.
+    #[error("invalid ECDSA P-256 key: {0}")]
+    InvalidKey(String),
+    /// Invalid DER-encoded signature.
+    #[error("invalid ECDSA P-256 signature: {0}")]
+    InvalidSignature(String),
+}
+
+// =============================================================================
 // Capability types
 // =============================================================================
 

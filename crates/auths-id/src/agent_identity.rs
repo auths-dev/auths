@@ -308,9 +308,9 @@ fn sign_agent_attestation(
         None,
         config.delegated_by.clone(),
         None, // commit_sha
+        Some(SignerType::Agent),
     )?;
 
-    att.signer_type = Some(SignerType::Agent);
     resign_attestation(
         &mut att,
         &signer,

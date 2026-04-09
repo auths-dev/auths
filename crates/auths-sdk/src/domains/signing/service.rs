@@ -12,13 +12,14 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::core::resign_attestation;
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::storage::git_refs::AttestationMetadata;
-use auths_verifier::core::{Capability, ResourceId};
+use auths_verifier::core::{Capability, ResourceId, SignerType};
 use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use zeroize::Zeroizing;
 
 /// Errors from the signing pipeline.
 #[derive(Debug, thiserror::Error)]
@@ -529,6 +530,7 @@ pub fn sign_artifact(
         None,
         None,
         validated_commit_sha,
+        None,
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
@@ -540,6 +542,133 @@ pub fn sign_artifact(
         &device_alias,
     )
     .map_err(|e| ArtifactSigningError::ResignFailed(e.to_string()))?;
+
+    let attestation_json = serde_json::to_string_pretty(&attestation)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+
+    Ok(ArtifactSigningResult {
+        attestation_json,
+        rid,
+        digest: artifact_meta.digest.hex,
+    })
+}
+
+/// Signs artifact bytes with a one-time ephemeral Ed25519 key. No keychain, no
+/// identity storage, no passphrase — the key is generated, used, and zeroized
+/// within this function call.
+///
+/// The ephemeral key signs "this artifact was built from this commit." Trust
+/// derives transitively: consumers verify the commit is signed by a maintainer,
+/// then verify this attestation's ephemeral signature covers the artifact hash
+/// and commit SHA.
+///
+/// Args:
+/// * `now` - Current UTC time (injected per clock pattern).
+/// * `data` - Raw artifact bytes to sign.
+/// * `artifact_name` - Optional human-readable name for the artifact.
+/// * `commit_sha` - Git commit SHA this artifact was built from (required, 40 or 64 hex chars).
+/// * `expires_in` - Optional TTL in seconds.
+/// * `note` - Optional attestation note.
+/// * `ci_env` - Optional CI environment metadata (serialized into payload, covered by signature).
+///
+/// Usage:
+/// ```ignore
+/// let result = sign_artifact_ephemeral(
+///     Utc::now(), b"artifact bytes", Some("release.tar.gz".into()),
+///     "abc123def456abc123def456abc123def456abc1".into(), None, None, None,
+/// )?;
+/// ```
+pub fn sign_artifact_ephemeral(
+    now: DateTime<Utc>,
+    data: &[u8],
+    artifact_name: Option<String>,
+    commit_sha: String,
+    expires_in: Option<u64>,
+    note: Option<String>,
+    ci_env: Option<serde_json::Value>,
+) -> Result<ArtifactSigningResult, ArtifactSigningError> {
+    // 1. Generate ephemeral seed and zeroize on drop
+    let mut seed_bytes = Zeroizing::new([0u8; 32]);
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), seed_bytes.as_mut())
+        .map_err(|_| ArtifactSigningError::AttestationFailed("RNG failure".into()))?;
+
+    let seed = SecureSeed::new(*seed_bytes);
+
+    // 2. Derive pubkey and DIDs
+    let pubkey = provider_bridge::ed25519_public_key_from_seed_sync(&seed)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+
+    let device_did = DeviceDID::from_ed25519(&pubkey);
+    #[allow(clippy::disallowed_methods)]
+    let identity_did = IdentityDID::new_unchecked(device_did.as_str());
+
+    // 3. Build artifact metadata with optional CI environment in payload
+    let digest_hex = hex::encode(Sha256::digest(data));
+    let artifact_meta = ArtifactMetadata {
+        artifact_type: "file".to_string(),
+        digest: ArtifactDigest {
+            algorithm: "sha256".to_string(),
+            hex: digest_hex,
+        },
+        name: artifact_name,
+        size: Some(data.len() as u64),
+    };
+
+    let mut payload_value = serde_json::to_value(&artifact_meta)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+
+    if let Some(env) = ci_env
+        && let serde_json::Value::Object(ref mut map) = payload_value
+    {
+        map.insert("ci_environment".to_string(), env);
+    }
+
+    let rid = ResourceId::new(format!("sha256:{}", artifact_meta.digest.hex));
+    let meta = AttestationMetadata {
+        timestamp: Some(now),
+        expires_at: expires_in.map(|s| now + chrono::Duration::seconds(s as i64)),
+        note,
+    };
+
+    // 4. Validate commit SHA
+    let validated_sha = validate_commit_sha(&commit_sha)?;
+
+    // 5. Set up ephemeral signer
+    let identity_alias = KeyAlias::new_unchecked("__ephemeral_identity__");
+    let device_alias = KeyAlias::new_unchecked("__ephemeral_device__");
+
+    let mut seeds: HashMap<String, SecureSeed> = HashMap::new();
+    seeds.insert(
+        identity_alias.as_str().to_string(),
+        SecureSeed::new(*seed_bytes),
+    );
+    seeds.insert(
+        device_alias.as_str().to_string(),
+        SecureSeed::new(*seed_bytes),
+    );
+    let signer = SeedMapSigner { seeds };
+    let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
+
+    // 6. Create signed attestation with Workload signer type
+    let attestation = create_signed_attestation(
+        now,
+        &rid,
+        &identity_did,
+        &device_did,
+        &pubkey,
+        Some(payload_value),
+        &meta,
+        &signer,
+        &noop_provider,
+        Some(&identity_alias),
+        Some(&device_alias),
+        vec![Capability::sign_release()],
+        None,
+        None,
+        Some(validated_sha),
+        Some(SignerType::Workload),
+    )
+    .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
     let attestation_json = serde_json::to_string_pretty(&attestation)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
@@ -642,6 +771,7 @@ pub fn sign_artifact_raw(
         None,
         None,
         validated_commit_sha,
+        None,
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 

@@ -376,6 +376,7 @@ pub fn handle_org(
                 Some(Role::Admin),
                 None, // Root admin has no delegator
                 None, // commit_sha
+                None,
             )
             .context("Failed to create admin attestation")?;
 
@@ -495,6 +496,7 @@ pub fn handle_org(
                 None,
                 None,
                 None, // commit_sha
+                None,
             )
             .context("Failed to create signed attestation object")?;
 

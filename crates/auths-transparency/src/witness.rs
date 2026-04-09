@@ -541,6 +541,8 @@ mod tests {
                 log_signature: Ed25519Signature::from_bytes([0xcc; 64]),
                 log_public_key: Ed25519PublicKey::from_bytes([0xdd; 32]),
                 witnesses: vec![],
+                ecdsa_checkpoint_signature: None,
+                ecdsa_checkpoint_key: None,
             },
         };
 

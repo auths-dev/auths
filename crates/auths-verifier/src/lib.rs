@@ -78,10 +78,11 @@ pub use action::ActionEnvelope;
 
 // Re-export core types
 pub use core::{
-    Attestation, Capability, CapabilityError, CommitOid, CommitOidError, Ed25519KeyError,
-    Ed25519PublicKey, Ed25519Signature, IdentityBundle, MAX_ATTESTATION_JSON_SIZE,
-    MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyHex, PublicKeyHexError, ResourceId, Role,
-    RoleParseError, SignatureLengthError, ThresholdPolicy, VerifiedAttestation,
+    Attestation, Capability, CapabilityError, CommitOid, CommitOidError, EcdsaP256Error,
+    EcdsaP256PublicKey, EcdsaP256Signature, Ed25519KeyError, Ed25519PublicKey, Ed25519Signature,
+    IdentityBundle, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId,
+    PublicKeyHex, PublicKeyHexError, ResourceId, Role, RoleParseError, SignatureAlgorithm,
+    SignatureLengthError, ThresholdPolicy, VerifiedAttestation,
 };
 
 // Re-export test utilities

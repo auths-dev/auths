@@ -343,6 +343,7 @@ dependencies = [
  "auths-index",
  "auths-infra-git",
  "auths-infra-http",
+ "auths-infra-rekor",
  "auths-keri",
  "auths-pairing-daemon",
  "auths-pairing-protocol",
@@ -407,6 +408,7 @@ dependencies = [
  "auths-crypto",
  "auths-keri",
  "auths-pairing-protocol",
+ "auths-transparency",
  "auths-verifier",
  "axum",
  "axum-server",
@@ -581,6 +583,30 @@ dependencies = [
  "url",
  "urlencoding",
  "zeroize",
+]
+
+[[package]]
+name = "auths-infra-rekor"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "auths-core",
+ "auths-crypto",
+ "auths-sdk",
+ "auths-transparency",
+ "auths-verifier",
+ "base64",
+ "chrono",
+ "hex",
+ "http 1.4.0",
+ "reqwest",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

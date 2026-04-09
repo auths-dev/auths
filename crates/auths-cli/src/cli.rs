@@ -9,7 +9,7 @@ use crate::commands::approval::ApprovalCommand;
 use crate::commands::artifact::ArtifactCommand;
 use crate::commands::audit::AuditCommand;
 use crate::commands::auth::AuthCommand;
-use crate::commands::ci::CiCommand;
+
 use crate::commands::commit::CommitCmd;
 use crate::commands::completions::CompletionsCommand;
 use crate::commands::config::ConfigCommand;
@@ -102,9 +102,6 @@ pub enum RootCommand {
     // ── Utilities ──
     Config(ConfigCommand),
     Completions(CompletionsCommand),
-
-    // ── CI/CD ──
-    Ci(CiCommand),
 
     // ── Advanced (visible via --help-all) ──
     #[command(hide = true)]

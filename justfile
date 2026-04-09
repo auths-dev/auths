@@ -111,8 +111,3 @@ release-github:
 # Publish all workspace crates to crates.io in dependency order.
 release-crates:
     python scripts/releases/2_crates.py --publish
-
-# One-time setup: create a CI release-signing device and set AUTHS_CI_TOKEN secret.
-# Run this once locally — detects forge from git remote and sets the secret automatically.
-ci-setup:
-    auths ci setup

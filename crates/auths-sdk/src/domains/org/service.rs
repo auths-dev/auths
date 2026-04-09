@@ -373,6 +373,7 @@ pub fn add_organization_member(
             Some(IdentityDID::new_unchecked(admin_att.subject.to_string()))
         },
         None, // commit_sha
+        None,
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 

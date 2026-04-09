@@ -13,6 +13,7 @@ members = [
   "crates/auths-sdk",
   "crates/auths-infra-git",
   "crates/auths-infra-http",
+  "crates/auths-infra-rekor",
   "crates/auths-storage",
   "crates/auths-transparency",
   "crates/auths-keri",

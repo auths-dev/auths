@@ -91,6 +91,13 @@ pub struct SignedCheckpoint {
     pub log_public_key: Ed25519PublicKey,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub witnesses: Vec<WitnessCosignature>,
+    /// ECDSA P-256 checkpoint signature (DER-encoded). Present when the log
+    /// uses ECDSA instead of Ed25519 (e.g., Rekor production shard).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ecdsa_checkpoint_signature: Option<auths_verifier::EcdsaP256Signature>,
+    /// ECDSA P-256 public key for checkpoint verification (PKIX DER).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ecdsa_checkpoint_key: Option<auths_verifier::EcdsaP256PublicKey>,
 }
 
 /// A witness cosignature on a checkpoint.

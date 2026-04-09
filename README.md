@@ -2,16 +2,26 @@
 
 [![CI](https://github.com/auths-dev/auths/actions/workflows/ci.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/ci.yml)
 [![Verify Commits](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml?query=branch%3Amain+event%3Apush)
-[![Sign Commits](https://github.com/auths-dev/auths/actions/workflows/sign-commits.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/sign-commits.yml?query=branch%3Amain)
+
 [![Verified with Auths](https://img.shields.io/badge/identity-verified%20with%20auths-brightgreen)](https://auths.dev)
 
 <!-- Auths Verification Badge (renders in HTML contexts, not on GitHub) -->
 <!-- <auths-verify repo="https://github.com/auths-dev/auths" mode="badge" size="md"></auths-verify> -->
 <!-- <script type="module" src="https://unpkg.com/@auths-dev/verify@0.3.0/dist/auths-verify.mjs"></script> -->
 
-Decentralized identity for individuals, AI agents, and their organizations.
+Cryptographic identity and signing for software supply chains.
 
-One identity, multiple devices, Git-native storage.
+No central authority. No CA. No server. Just Git and cryptography.
+
+## Quick Start
+
+```bash
+brew tap auths-dev/auths-cli
+brew install auths
+auths init                       # create your identity
+auths sign ./release.tar.gz      # sign an artifact
+auths verify ./release.tar.gz    # verify it
+```
 
 ## Install
 
@@ -28,7 +38,7 @@ cargo install --git https://github.com/auths-dev/auths.git auths_cli
 
 This installs `auths`, `auths-sign`, and `auths-verify`.
 
-## Quick Start
+## Walkthrough
 
 ### 1. Initialize your identity (30 seconds)
 
@@ -82,66 +92,6 @@ Commit abc123 is valid
 ```
 
 That's it. Your commits are now cryptographically signed with your decentralized identity.
-
----
-
-## What can you do with Auths?
-
-**Link multiple devices to one identity**
-
-```bash
-# On your laptop
-auths device link --device-did did:key:z6Mk...
-
-# Now both devices can sign as the same identity
-```
-
-**Revoke a compromised device**
-
-```bash
-auths device revoke --device-did did:key:z6Mk...
-```
-
-**Verify any attestation**
-
-```bash
-auths verify attestation.json
-```
-
-**Sync allowed-signers for Git verification**
-
-```bash
-auths signers sync
-```
-
----
-
-## Agent & Workload Identity
-
-Auths treats AI agents and CI/CD runners as first-class identity holders — not borrowers of human credentials.
-
-**Give an agent its own identity:**
-
-```bash
-# Create a dedicated agent identity
-auths init --profile agent
-
-# Issue a scoped, time-limited attestation from a human to the agent
-auths attestation issue \
-  --subject did:key:z6MkAgent... \
-  --signer-type Agent \
-  --capabilities "sign:commit,deploy:staging" \
-  --delegated-by did:keri:EHuman... \
-  --expires-in 24h
-```
-
-The agent now holds a cryptographic attestation chain traceable back to the human who authorized it. Every action the agent takes is signed under its own key, scoped to only the capabilities it was granted, and verifiable by anyone — offline, without contacting a central authority.
-
-**How delegation works:** A human creates a signed attestation granting specific capabilities to an agent. The agent can further delegate a subset of those capabilities to sub-agents. Verifiers walk the chain back to the human sponsor. Capabilities can only narrow at each hop, never widen. See the [Delegation Guide](docs/getting-started/delegation.md) for a full walkthrough.
-
-**Cloud integration via OIDC:** The [OIDC bridge](docs/architecture/oidc-bridge.md) verifies an agent's attestation chain and issues a standard JWT consumable by AWS STS, GCP Workload Identity, and Azure AD — no cloud provider changes required.
-
-**MCP compatibility:** Auths attestations serve as the cryptographic identity layer behind MCP's OAuth-based authorization, providing verifiable delegation chains from human principals to AI agents.
 
 ---
 

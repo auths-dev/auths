@@ -40,15 +40,7 @@ This makes similar checks as the github release. It also includes properly order
 
 ### One-time CI signing setup
 
-Before the first release, GitHub Actions needs a device key and identity token for artifact signing:
-
-```bash
-auths ci setup
-```
-
-This creates a limited-capability CI device key and sets a single `AUTHS_CI_TOKEN` secret on GitHub containing everything CI needs. Artifact signing is skipped gracefully if the secret is missing.
-
-To refresh the token without regenerating the device key, run `auths ci rotate`.
+Artifact signing happens automatically in CI using ephemeral keys — no secrets needed. CI verifies commit signatures before building, then signs artifacts with a throwaway key. See `docs/design/ephemeral-signing-threat-model.md` for the security model.
 
 ### Manual steps (if needed)
 

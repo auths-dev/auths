@@ -322,6 +322,7 @@ fn bind_device(
         None,
         None,
         None, // commit_sha
+        None,
     )
     .map_err(|e| SetupError::StorageError(e.into()))?;
 

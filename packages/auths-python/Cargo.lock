@@ -138,6 +138,7 @@ dependencies = [
  "auths-crypto",
  "auths-keri",
  "auths-pairing-protocol",
+ "auths-transparency",
  "auths-verifier",
  "base64",
  "blake3",

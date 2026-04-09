@@ -28,6 +28,7 @@ multiple-versions = "warn"
 deny = [
   { crate = "reqwest", wrappers = [
     "auths-infra-http",
+    "auths-infra-rekor",
     "auths-api",
     "auths-cli",
     "auths-mcp-server",

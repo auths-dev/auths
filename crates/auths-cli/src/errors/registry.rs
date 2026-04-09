@@ -1066,23 +1066,6 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E6004\n\n**Crate:** `auths-sdk`  \n**Type:** `AuthChallengeError::SigningFailed`\n\n## Message\n\nsigning failed: {0}\n",
         ),
 
-        // --- auths-sdk (CiError) ---
-        "AUTHS-E7001" => Some(
-            "# AUTHS-E7001\n\n**Crate:** `auths-sdk`  \n**Type:** `CiError::EnvironmentNotDetected`\n\n## Message\n\nCI environment not detected\n",
-        ),
-        "AUTHS-E7002" => Some(
-            "# AUTHS-E7002\n\n**Crate:** `auths-sdk`  \n**Type:** `CiError::IdentityBundleInvalid`\n\n## Message\n\nidentity bundle invalid at {path}: {reason}\n",
-        ),
-        "AUTHS-E7003" => Some(
-            "# AUTHS-E7003\n\n**Crate:** `auths-sdk`  \n**Type:** `CiError::NoArtifacts`\n\n## Message\n\nno artifacts to sign\n\n## Suggestion\n\nCheck your glob pattern matches at least one file\n",
-        ),
-        "AUTHS-E7004" => Some(
-            "# AUTHS-E7004\n\n**Crate:** `auths-sdk`  \n**Type:** `CiError::CollectionDirFailed`\n\n## Message\n\nfailed to create attestation directory {path}: {reason}\n",
-        ),
-        "AUTHS-E7005" => Some(
-            "# AUTHS-E7005\n\n**Crate:** `auths-sdk`  \n**Type:** `CiError::CollectionCopyFailed`\n\n## Message\n\nfailed to collect attestation {src} → {dst}: {reason}\n",
-        ),
-
         // --- auths-oidc-port (OidcError) ---
         "AUTHS-E8001" => Some(
             "# AUTHS-E8001\n\n**Crate:** `auths-oidc-port`  \n**Type:** `OidcError::JwtDecode`\n\n## Message\n\nJWT decode failed: {0}\n",
@@ -1431,11 +1414,6 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E6002",
         "AUTHS-E6003",
         "AUTHS-E6004",
-        "AUTHS-E7001",
-        "AUTHS-E7002",
-        "AUTHS-E7003",
-        "AUTHS-E7004",
-        "AUTHS-E7005",
         "AUTHS-E8001",
         "AUTHS-E8002",
         "AUTHS-E8003",

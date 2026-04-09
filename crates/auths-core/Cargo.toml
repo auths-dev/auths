@@ -53,6 +53,7 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 
 auths-verifier = { workspace = true, features = ["native"] }
 auths-keri = { workspace = true }
+auths-transparency = { workspace = true }
 url = { version = "2", features = ["serde"] }
 uuid.workspace = true
 

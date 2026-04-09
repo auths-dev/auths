@@ -373,6 +373,7 @@ pub fn create_pairing_attestation(
         None,
         None,
         None, // commit_sha
+        None,
     )
     .map_err(|e| PairingError::AttestationFailed(e.to_string()))?;
 

@@ -84,6 +84,8 @@ fn verify_bundle_end_to_end_single_entry() {
             log_signature: log_sig,
             log_public_key: Ed25519PublicKey::from_bytes(log_pk),
             witnesses: vec![],
+            ecdsa_checkpoint_signature: None,
+            ecdsa_checkpoint_key: None,
         },
         delegation_chain: vec![],
     };
@@ -92,6 +94,7 @@ fn verify_bundle_end_to_end_single_entry() {
         log_public_key: Ed25519PublicKey::from_bytes(log_pk),
         log_origin: LogOrigin::new("test.dev/log").unwrap(),
         witnesses: vec![],
+        signature_algorithm: Default::default(),
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());
@@ -168,6 +171,8 @@ fn verify_bundle_multi_leaf_tree() {
             log_signature: log_sig,
             log_public_key: Ed25519PublicKey::from_bytes(log_pk),
             witnesses: vec![],
+            ecdsa_checkpoint_signature: None,
+            ecdsa_checkpoint_key: None,
         },
         delegation_chain: vec![],
     };
@@ -176,6 +181,7 @@ fn verify_bundle_multi_leaf_tree() {
         log_public_key: Ed25519PublicKey::from_bytes(log_pk),
         log_origin: LogOrigin::new("test.dev/log").unwrap(),
         witnesses: vec![],
+        signature_algorithm: Default::default(),
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());
@@ -250,6 +256,8 @@ fn verify_bundle_with_witnesses() {
                 signature: w1_sig,
                 timestamp: fixed_ts(),
             }],
+            ecdsa_checkpoint_signature: None,
+            ecdsa_checkpoint_key: None,
         },
         delegation_chain: vec![],
     };
@@ -262,6 +270,7 @@ fn verify_bundle_with_witnesses() {
             name: "w1".into(),
             public_key: Ed25519PublicKey::from_bytes(w1_pk),
         }],
+        signature_algorithm: Default::default(),
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());

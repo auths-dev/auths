@@ -7,6 +7,7 @@ mod git;
 mod git_config;
 mod namespace;
 mod signer;
+mod transparency_log;
 
 pub use agent::FakeAgentProvider;
 pub use agent_persistence::FakeAgentPersistence;
@@ -17,3 +18,4 @@ pub use git::FakeGitLogProvider;
 pub use git_config::{FakeGitConfigProvider, GitConfigSetCall};
 pub use namespace::FakeNamespaceVerifier;
 pub use signer::FakeSecureSigner;
+pub use transparency_log::{FakeLogCall, FakeTransparencyLog};

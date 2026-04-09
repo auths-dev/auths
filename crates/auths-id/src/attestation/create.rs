@@ -4,7 +4,7 @@ use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::Capability;
 use auths_verifier::core::{
-    Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId, Role,
+    Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId, Role, SignerType,
     canonicalize_attestation_data,
 };
 use auths_verifier::error::AttestationError;
@@ -72,6 +72,7 @@ pub fn create_signed_attestation(
     role: Option<Role>,
     delegated_by: Option<IdentityDID>,
     commit_sha: Option<String>,
+    signer_type: Option<SignerType>,
 ) -> Result<Attestation, AttestationError> {
     if device_public_key.len() != ED25519_PUBLIC_KEY_LEN {
         return Err(AttestationError::InvalidInput(format!(
@@ -117,7 +118,7 @@ pub fn create_signed_attestation(
         role,
         capabilities,
         delegated_by: delegated_canonical,
-        signer_type: None,
+        signer_type,
         environment_claim: None,
         commit_sha,
         commit_message: None,

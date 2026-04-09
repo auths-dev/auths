@@ -320,11 +320,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E6002](AUTHS-E6002.md) | `auths-sdk` | `AuthChallengeError::EmptyDomain` | domain must not be empty |
 | [AUTHS-E6003](AUTHS-E6003.md) | `auths-sdk` | `AuthChallengeError::Canonicalization` | canonical JSON serialization failed: {0} |
 | [AUTHS-E6004](AUTHS-E6004.md) | `auths-sdk` | `AuthChallengeError::SigningFailed` | signing failed: {0} |
-| [AUTHS-E7001](AUTHS-E7001.md) | `auths-sdk` | `CiError::EnvironmentNotDetected` | CI environment not detected |
-| [AUTHS-E7002](AUTHS-E7002.md) | `auths-sdk` | `CiError::IdentityBundleInvalid` | identity bundle invalid at {path}: {reason} |
-| [AUTHS-E7003](AUTHS-E7003.md) | `auths-sdk` | `CiError::NoArtifacts` | no artifacts to sign |
-| [AUTHS-E7004](AUTHS-E7004.md) | `auths-sdk` | `CiError::CollectionDirFailed` | failed to create attestation directory {path}: {reason} |
-| [AUTHS-E7005](AUTHS-E7005.md) | `auths-sdk` | `CiError::CollectionCopyFailed` | failed to collect attestation {src} → {dst}: {reason} |
+
 | [AUTHS-E8001](AUTHS-E8001.md) | `auths-oidc-port` | `OidcError::JwtDecode` | JWT decode failed: {0} |
 | [AUTHS-E8002](AUTHS-E8002.md) | `auths-oidc-port` | `OidcError::SignatureVerificationFailed` | signature verification failed |
 | [AUTHS-E8003](AUTHS-E8003.md) | `auths-oidc-port` | `OidcError::ClaimsValidationFailed` | claim validation failed - {claim}: {reason} |
