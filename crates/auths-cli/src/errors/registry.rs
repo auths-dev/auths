@@ -1456,6 +1456,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 328);
+        assert_eq!(all_codes().len(), 323);
     }
 }
