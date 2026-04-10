@@ -75,6 +75,9 @@ impl RekorClient {
     }
 
     /// Build a hashedrekord v0.0.1 request from attestation data.
+    ///
+    /// Wraps the raw public key in PKIX/SPKI DER before base64 encoding,
+    /// which is the format Sigstore tooling (cosign, rekor-cli) expects.
     fn build_hashedrekord(
         &self,
         leaf_data: &[u8],
@@ -82,6 +85,7 @@ impl RekorClient {
         signature: &[u8],
     ) -> HashedRekordRequest {
         let data_hash = hex::encode(Sha256::digest(leaf_data));
+        let der_key = wrap_pubkey_in_spki_der(public_key);
 
         HashedRekordRequest {
             api_version: "0.0.1".to_string(),
@@ -90,7 +94,7 @@ impl RekorClient {
                 signature: HashedRekordSignature {
                     content: BASE64.encode(signature),
                     public_key: HashedRekordPublicKey {
-                        content: BASE64.encode(public_key),
+                        content: BASE64.encode(&der_key),
                     },
                 },
                 data: HashedRekordData {
@@ -458,6 +462,43 @@ impl TransparencyLog for RekorClient {
             log_public_key: Ed25519PublicKey::from_bytes([0u8; 32]), // ECDSA key, not Ed25519
             api_url: Some(self.api_url.clone()),
         }
+    }
+}
+
+/// Wrap raw public key bytes in SPKI DER for Sigstore compatibility.
+///
+/// Sigstore tooling (cosign, rekor-cli) expects PKIX/SPKI DER-encoded keys.
+/// Uses the `p256` crate for P-256 keys to produce correct ASN.1 encoding.
+/// Ed25519 uses RFC 8410 SPKI format (fixed 12-byte header + 32-byte key).
+fn wrap_pubkey_in_spki_der(raw: &[u8]) -> Vec<u8> {
+    match raw.len() {
+        32 => {
+            // Ed25519 SPKI per RFC 8410:
+            //   SEQUENCE { SEQUENCE { OID 1.3.101.112 }, BIT STRING { key } }
+            // Fixed 12-byte header: 30 2a 30 05 06 03 2b6570 03 21 00
+            let mut der = Vec::with_capacity(44);
+            der.extend_from_slice(&[
+                0x30, 0x2a, // SEQUENCE, 42 bytes total
+                0x30, 0x05, // SEQUENCE, 5 bytes (AlgorithmIdentifier)
+                0x06, 0x03, 0x2b, 0x65, 0x70, // OID 1.3.101.112 (id-EdDSA / Ed25519)
+                0x03, 0x21, 0x00, // BIT STRING, 33 bytes, 0 unused bits
+            ]);
+            der.extend_from_slice(raw);
+            der
+        }
+        33 | 65 => {
+            // P-256: use the p256 crate to produce correct SPKI DER
+            use p256::pkcs8::EncodePublicKey;
+            let vk = match p256::ecdsa::VerifyingKey::from_sec1_bytes(raw) {
+                Ok(vk) => vk,
+                Err(_) => return raw.to_vec(),
+            };
+            match vk.to_public_key_der() {
+                Ok(der) => der.as_ref().to_vec(),
+                Err(_) => raw.to_vec(),
+            }
+        }
+        _ => raw.to_vec(),
     }
 }
 
