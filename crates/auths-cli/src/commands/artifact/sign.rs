@@ -10,6 +10,7 @@ use auths_sdk::keychain::KeyAlias;
 use auths_sdk::signing::PassphraseProvider;
 
 use super::file::FileArtifact;
+use super::{dsse_pae, merge_transparency, submit_to_log};
 use crate::factories::storage::build_auths_context;
 
 /// Execute the `artifact sign` command.
@@ -25,10 +26,12 @@ pub fn handle_sign(
     repo_opt: Option<PathBuf>,
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    log: &Option<String>,
+    allow_unlogged: bool,
 ) -> Result<()> {
     let repo_path = auths_sdk::storage_layout::resolve_repo_path(repo_opt)?;
 
-    let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
+    let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider.clone()))?;
 
     let params = ArtifactSigningParams {
         artifact: Arc::new(FileArtifact::new(file)),
@@ -42,6 +45,44 @@ pub fn handle_sign(
     let result = sign_artifact(params, &ctx)
         .with_context(|| format!("Failed to sign artifact {:?}", file))?;
 
+    // Compute DSSE signature if log submission is requested
+    let dsse_sig = if log.is_some() && !allow_unlogged {
+        let pae = dsse_pae(
+            "application/vnd.auths+json",
+            result.attestation_json.as_bytes(),
+        );
+        let alias = KeyAlias::new_unchecked(device_key);
+        let (_, _role, encrypted) = ctx
+            .key_storage
+            .load_key(&alias)
+            .context("Failed to load device key for log signature")?;
+        let passphrase = passphrase_provider
+            .get_passphrase("Re-enter passphrase for log signature:")
+            .map_err(|e| anyhow::anyhow!("Passphrase error: {e}"))?;
+        let pkcs8 = auths_sdk::crypto::decrypt_keypair(&encrypted, &passphrase)
+            .context("Failed to decrypt key for log signature")?;
+        let parsed = auths_crypto::parse_key_material(&pkcs8)
+            .map_err(|e| anyhow::anyhow!("Failed to parse key: {e}"))?;
+        let sig = auths_crypto::typed_sign(&parsed.seed, &pae)
+            .map_err(|e| anyhow::anyhow!("Failed to sign DSSE PAE: {e}"))?;
+        Some(sig)
+    } else {
+        None
+    };
+
+    let transparency_json = submit_to_log(
+        &result.attestation_json,
+        log,
+        allow_unlogged,
+        dsse_sig.as_deref(),
+    )?;
+
+    let final_json = if let Some(transparency) = transparency_json {
+        merge_transparency(&result.attestation_json, transparency)?
+    } else {
+        result.attestation_json.clone()
+    };
+
     let output_path = output.unwrap_or_else(|| {
         let mut p = file.to_path_buf();
         let new_name = format!(
@@ -52,7 +93,7 @@ pub fn handle_sign(
         p
     });
 
-    std::fs::write(&output_path, &result.attestation_json)
+    std::fs::write(&output_path, &final_json)
         .with_context(|| format!("Failed to write signature to {:?}", output_path))?;
 
     println!(

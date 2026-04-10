@@ -12,6 +12,7 @@ This page summarizes the key architectural decisions in Auths and links to the f
 | [ADR-004](#adr-004-async-executor-protection) | Async executor protection | Accepted | 2026-02-27 |
 | [ADR-005](#adr-005-ed25519-only-for-hsm) | Ed25519-only for HSM | Accepted | 2026-03-05 |
 | [ADR-006](#adr-006-c2sp-tlog-tiles-transparency-log) | C2SP tlog-tiles transparency log | Accepted | 2026-03-13 |
+| [ADR-007](#adr-007-sigstore-rekor-as-bootstrap-transparency-log) | Sigstore Rekor as bootstrap transparency log | Accepted | 2026-04-10 |
 
 ## ADR format
 
@@ -243,6 +244,61 @@ Negative:
 | Infrastructure dependency | None (self-hosted) | Sigstore infra | None |
 | Witness protocol | C2SP cosignature | N/A (centralized) | Custom |
 | Ecosystem tooling | Go sumdb, Sigsum | Sigstore clients | None |
+
+## ADR-007: Sigstore Rekor as bootstrap transparency log
+
+**Status:** Accepted
+
+**Context:**
+
+Auths needs a witness network. Without one, a malicious registry operator could present different views of the same identity to different parties (the split-view attack). ADR-006 defined the C2SP tlog-tiles format for a self-hosted transparency log, but running your own log requires infrastructure, uptime guarantees, and a witness ecosystem — all overhead that slows a pre-launch project to a crawl.
+
+Meanwhile, Sigstore's Rekor is a production transparency log that has been running since 2021. It's free, public, append-only, and serves millions of entries. Every entry gets an inclusion proof and a signed checkpoint. The catch: it's centralized infrastructure operated by the Linux Foundation. That's philosophically misaligned with auths' decentralized identity model.
+
+**Decision:** Use Sigstore's production Rekor instance (`rekor.sigstore.dev`) as the default transparency log for auths attestations. Implement this as a pluggable adapter (`auths-infra-rekor`) behind the `TransparencyLog` port trait, so it can be swapped out without changing any core or SDK code.
+
+**Why Rekor despite centralization:**
+
+1. **Meet developers where they are.** Sigstore is the de facto standard for software supply chain transparency. Developers already trust it for container signing (cosign), npm provenance, and Python package attestations. An entry in Rekor is immediately auditable with standard tooling (`rekor-cli get`, `cosign verify`).
+
+2. **Bootstrap without infrastructure.** A pre-launch project cannot credibly operate its own witness network. Rekor gives us cryptographic auditability on day one with zero operational cost. Users get the security property (append-only, publicly auditable) without auths needing to run servers.
+
+3. **Trojan horse strategy.** Auths doesn't adopt Sigstore's identity model (no Fulcio, no OIDC, no short-lived certificates). It only uses Rekor as a public append-only log. Auths attestations land in the same log as every other Sigstore entry, making them discoverable and verifiable by the entire ecosystem — but the identity chain is pure KERI, not Sigstore's CA model. We piggyback on their infrastructure while keeping our own trust model.
+
+4. **The port trait makes it reversible.** The `TransparencyLog` trait in `auths-core/src/ports/transparency_log.rs` defines `submit()`, `get_checkpoint()`, `get_inclusion_proof()`, and `get_consistency_proof()`. The Rekor adapter is one implementation. Switching to a self-hosted C2SP log, a Sigsum log, or a future native auths log is a configuration change, not a code change. No core logic depends on Rekor-specific behavior.
+
+**Implementation: `auths-infra-rekor` crate**
+
+The adapter lives in `crates/auths-infra-rekor/` and implements `TransparencyLog` against Rekor's v1 REST API. Key design decisions:
+
+- **DSSE entry type, not hashedrekord.** Rekor's `hashedrekord` requires the signature to verify against SHA-256 of the submitted data. Auths attestation signatures cover the canonicalized attestation content (our protocol), not a bare hash. DSSE (Dead Simple Signing Envelope) wraps the payload and signature together. The signature covers the DSSE PAE (Pre-Authentication Encoding: `"DSSEv1" || len || payloadType || len || payload`), which the adapter computes at signing time while the key is still in scope.
+
+- **SPKI PEM for public keys.** Rekor expects public keys in PEM-encoded SPKI (SubjectPublicKeyInfo) format. The adapter converts raw key bytes to PEM at the submission boundary using the `p256` crate for P-256 keys and a fixed RFC 8410 header for Ed25519. This conversion is isolated to the adapter — internal auths code never sees PEM.
+
+- **P-256 as default curve.** Sigstore's ecosystem is built on ECDSA P-256. Auths' default curve (since the fn-112 epic) is also P-256. This means auths entries in Rekor use the same key type as native Sigstore entries, maximizing interoperability.
+
+- **Checkpoint signature: ECDSA P-256.** Rekor's production shard signs checkpoints with ECDSA P-256 (not Ed25519). The adapter parses C2SP signed note checkpoints and stores the ECDSA signature for verification against the trust config's public key.
+
+- **409 Conflict = idempotent success.** Re-submitting the same attestation returns HTTP 409 with the existing entry. The adapter fetches the existing entry and returns its inclusion proof — no error, no duplicate.
+
+- **Rate limiting surfaces, not retries.** HTTP 429 returns `LogError::RateLimited { retry_after_secs }`. The SDK does not retry — that's a CLI/caller decision. The CLI retries once, then fails with exit code 4.
+
+**Consequences:**
+
+Positive:
+- Auths attestations are publicly auditable from day one with zero infrastructure.
+- Entries are verifiable by `rekor-cli` and `cosign` — developers can audit auths without installing auths tooling.
+- The adapter is ~500 lines of code. The entire Sigstore dependency is one crate behind a trait boundary.
+
+Negative:
+- Availability dependency on `rekor.sigstore.dev`. If Rekor is down, `--log sigstore-rekor` fails. Mitigated by `--allow-unlogged` for offline/air-gapped environments.
+- Trust dependency on the Linux Foundation's operational security for the Rekor log. A compromised Rekor could present split views — but any party monitoring checkpoints from multiple vantage points would detect it (same threat model as Certificate Transparency).
+- DSSE PAE requires the signing key to be available at log submission time. For ephemeral CI keys this is natural; for device-key signing, the user enters their passphrase a second time (or the key is cached in the agent).
+
+**Future path:**
+- Self-hosted C2SP tlog-tiles log (ADR-006 implementation) as an alternative backend for organizations that cannot depend on Sigstore.
+- Sigsum as a witness network for the self-hosted log (decentralized witnesses, Ed25519).
+- `auths trust log add` CLI command to register custom log backends in the trust config.
 
 ---
 

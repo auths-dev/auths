@@ -195,6 +195,108 @@ fn rate_limit_secs(err: &auths_sdk::workflows::log_submit::LogSubmitError) -> u6
     }
 }
 
+/// Re-export DSSE PAE from the SDK for use in CLI signing paths.
+pub use auths_sdk::domains::signing::service::dsse_pae;
+
+/// Submit an attestation to a transparency log and return the JSON to embed.
+///
+/// The `dsse_signature` is the signature over the DSSE PAE of the attestation,
+/// computed by the caller while the signing key is still available.
+///
+/// Returns `None` if `allow_unlogged` is set or `--log` wasn't passed.
+fn submit_to_log(
+    attestation_json: &str,
+    log: &Option<String>,
+    allow_unlogged: bool,
+    dsse_signature: Option<&[u8]>,
+) -> Result<Option<serde_json::Value>> {
+    if allow_unlogged {
+        eprintln!(
+            "WARNING: Signing without transparency log. \
+             This artifact will not be verifiable against any log."
+        );
+        return Ok(None);
+    }
+
+    // If --log wasn't passed, skip silently (non-CI default behavior)
+    if log.is_none() {
+        return Ok(None);
+    }
+
+    let sig_bytes = dsse_signature
+        .ok_or_else(|| anyhow::anyhow!("DSSE signature required for log submission"))?;
+
+    let attestation_value: serde_json::Value = serde_json::from_str(attestation_json)
+        .map_err(|e| anyhow::anyhow!("Failed to parse attestation: {e}"))?;
+
+    // device_public_key may be a hex string or {"curve": "...", "key": "..."}
+    let pk_hex = if let Some(s) = attestation_value["device_public_key"].as_str() {
+        s.to_string()
+    } else if let Some(key_field) = attestation_value["device_public_key"]["key"].as_str() {
+        key_field.to_string()
+    } else {
+        return Err(anyhow::anyhow!("missing device_public_key"));
+    };
+    let pk_bytes =
+        hex::decode(&pk_hex).map_err(|e| anyhow::anyhow!("invalid public key hex: {e}"))?;
+
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| anyhow::anyhow!("Failed to create async runtime: {e}"))?;
+
+    let log_client: std::sync::Arc<dyn auths_sdk::ports::TransparencyLog> = match log.as_deref() {
+        Some("sigstore-rekor") => std::sync::Arc::new(
+            auths_infra_rekor::RekorClient::public()
+                .map_err(|e| anyhow::anyhow!("Failed to create Rekor client: {e}"))?,
+        ),
+        Some(other) => bail!("Unknown log '{}'. Available: sigstore-rekor", other),
+        None => unreachable!(),
+    };
+
+    let submit = || {
+        rt.block_on(auths_sdk::workflows::log_submit::submit_attestation_to_log(
+            attestation_json.as_bytes(),
+            &pk_bytes,
+            sig_bytes,
+            log_client.as_ref(),
+        ))
+    };
+
+    let submission_result = match submit() {
+        Ok(bundle) => Ok(bundle),
+        Err(ref e) if is_rate_limited(e) => {
+            let secs = rate_limit_secs(e);
+            eprintln!("Rate limited by transparency log. Retrying in {secs}s...");
+            std::thread::sleep(std::time::Duration::from_secs(secs));
+            submit()
+        }
+        Err(e) => Err(e),
+    };
+
+    match submission_result {
+        Ok(bundle) => {
+            eprintln!(
+                "  Logged to {} at index {}",
+                bundle.log_id, bundle.leaf_index
+            );
+            Ok(Some(serde_json::to_value(&bundle).map_err(|e| {
+                anyhow::anyhow!("Failed to serialize: {e}")
+            })?))
+        }
+        Err(e) => Err(anyhow::anyhow!("Transparency log submission failed: {e}")),
+    }
+}
+
+/// Merge transparency JSON into an attestation and return the final JSON string.
+fn merge_transparency(attestation_json: &str, transparency: serde_json::Value) -> Result<String> {
+    let mut attestation: serde_json::Value = serde_json::from_str(attestation_json)
+        .map_err(|e| anyhow::anyhow!("Failed to re-parse attestation: {e}"))?;
+    if let serde_json::Value::Object(ref mut map) = attestation {
+        map.insert("transparency".to_string(), transparency);
+    }
+    serde_json::to_string_pretty(&attestation)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize attestation: {e}"))
+}
+
 /// Resolve the commit SHA from CLI flags.
 fn resolve_commit_sha_from_flags(
     commit: Option<String>,
@@ -290,93 +392,15 @@ pub fn handle_artifact(
                 .map_err(|e| anyhow::anyhow!("Ephemeral signing failed: {}", e))?;
 
                 // Submit to transparency log (unless --allow-unlogged)
-                let transparency_json = if allow_unlogged {
-                    eprintln!(
-                        "WARNING: Signing without transparency log. \
-                         This artifact will not be verifiable against any log."
-                    );
-                    None
-                } else {
-                    // Parse the attestation to extract public key and signature
-                    let attestation_value: serde_json::Value =
-                        serde_json::from_str(&result.attestation_json)
-                            .map_err(|e| anyhow::anyhow!("Failed to parse attestation: {e}"))?;
+                let transparency_json = submit_to_log(
+                    &result.attestation_json,
+                    &log,
+                    allow_unlogged,
+                    result.dsse_signature.as_deref(),
+                )?;
 
-                    let identity_sig_hex = attestation_value["identity_signature"]
-                        .as_str()
-                        .ok_or_else(|| anyhow::anyhow!("missing identity_signature"))?;
-                    let sig_bytes = hex::decode(identity_sig_hex)
-                        .map_err(|e| anyhow::anyhow!("invalid signature hex: {e}"))?;
-
-                    let device_pk_hex = attestation_value["device_public_key"]
-                        .as_str()
-                        .ok_or_else(|| anyhow::anyhow!("missing device_public_key"))?;
-                    let pk_bytes = hex::decode(device_pk_hex)
-                        .map_err(|e| anyhow::anyhow!("invalid public key hex: {e}"))?;
-
-                    let rt = tokio::runtime::Runtime::new()
-                        .map_err(|e| anyhow::anyhow!("Failed to create async runtime: {e}"))?;
-
-                    // Build the transparency log client
-                    let log_client: std::sync::Arc<dyn auths_sdk::ports::TransparencyLog> =
-                        match log.as_deref() {
-                            Some("sigstore-rekor") | None => std::sync::Arc::new(
-                                auths_infra_rekor::RekorClient::public().map_err(|e| {
-                                    anyhow::anyhow!("Failed to create Rekor client: {e}")
-                                })?,
-                            ),
-                            Some(other) => {
-                                bail!("Unknown log '{}'. Available: sigstore-rekor", other)
-                            }
-                        };
-
-                    let submit = || {
-                        rt.block_on(auths_sdk::workflows::log_submit::submit_attestation_to_log(
-                            result.attestation_json.as_bytes(),
-                            &pk_bytes,
-                            &sig_bytes,
-                            log_client.as_ref(),
-                        ))
-                    };
-
-                    let submission_result = match submit() {
-                        Ok(bundle) => Ok(bundle),
-                        Err(ref e) if is_rate_limited(e) => {
-                            let secs = rate_limit_secs(e);
-                            eprintln!("Rate limited by transparency log. Retrying in {secs}s...");
-                            std::thread::sleep(std::time::Duration::from_secs(secs));
-                            submit()
-                        }
-                        Err(e) => Err(e),
-                    };
-
-                    match submission_result {
-                        Ok(bundle) => {
-                            eprintln!(
-                                "  Logged to {} at index {}",
-                                bundle.log_id, bundle.leaf_index
-                            );
-                            Some(
-                                serde_json::to_value(&bundle)
-                                    .map_err(|e| anyhow::anyhow!("Failed to serialize: {e}"))?,
-                            )
-                        }
-                        Err(e) => {
-                            return Err(anyhow::anyhow!("Transparency log submission failed: {e}"));
-                        }
-                    }
-                };
-
-                // Build final .auths.json with optional transparency section
                 let final_json = if let Some(transparency) = transparency_json {
-                    let mut attestation: serde_json::Value =
-                        serde_json::from_str(&result.attestation_json)
-                            .map_err(|e| anyhow::anyhow!("Failed to re-parse attestation: {e}"))?;
-                    if let serde_json::Value::Object(ref mut map) = attestation {
-                        map.insert("transparency".to_string(), transparency);
-                    }
-                    serde_json::to_string_pretty(&attestation)
-                        .map_err(|e| anyhow::anyhow!("Failed to serialize final JSON: {e}"))?
+                    merge_transparency(&result.attestation_json, transparency)?
                 } else {
                     result.attestation_json.clone()
                 };
@@ -424,6 +448,8 @@ pub fn handle_artifact(
                     repo_opt,
                     passphrase_provider,
                     env_config,
+                    &log,
+                    allow_unlogged,
                 )
             }
         }
@@ -465,6 +491,8 @@ pub fn handle_artifact(
                             repo_opt.clone(),
                             passphrase_provider,
                             env_config,
+                            &None,
+                            false,
                         )?;
                         default_sig
                     }

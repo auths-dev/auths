@@ -177,22 +177,34 @@ go install github.com/sigstore/cosign/cmd/cosign@latest
 cargo install --path crates/auths-cli
 auths init
 echo "test artifact" > /tmp/test-artifact.txt
-auths artifact sign --log /tmp/test-artifact.txt
+auths artifact sign --log sigstore-rekor /tmp/test-artifact.txt
 
 # 3. Note the log index from the output (e.g. "Logged at index 12345678")
 
 # 4. Verify the entry exists in Rekor
 rekor-cli get --log-index <INDEX> --rekor_server https://rekor.sigstore.dev
 
+rekor-cli get --log-index 1271709852 --rekor_server https://rekor.sigstore.dev
+
 # 5. Verify the entry is well-formed (public key parses, signature structure valid)
-rekor-cli get --log-index <INDEX> --rekor_server https://rekor.sigstore.dev --format json | jq .
+rekor-cli get --log-index 1271709852 --rekor_server https://rekor.sigstore.dev --format json | jq .
 
 # 6. Search by public key (confirms key format is recognized)
 # Export the device public key in PEM:
-#   openssl ec -pubin -in <(auths key export --format pem) -outform DER | base64
+auths key export --key-alias main --passphrase 'Seamus4444$!' --format pem | openssl ec -pubin -outform DER | base64
+
 # Then:
 rekor-cli search --public-key <base64-der-key> --rekor_server https://rekor.sigstore.dev
 ```
+
+(auths-e2e-tests) (dev-cleanReadme) me@MacBookPro auths % echo "test artifact" > /tmp/test-artifact.txt
+auths artifact sign --log sigstore-rekor /tmp/test-artifact.txt
+  Logged to sigstore-rekor at index 1271709852
+Signed "test-artifact.txt" -> "/tmp/test-artifact.txt.auths.json"
+  RID:    sha256:8308d593eb56527137532595a60255a3fcfbe4b6b068e29b22d99742bad80f6f
+  Digest: sha256:8308d593eb56527137532595a60255a3fcfbe4b6b068e29b22d99742bad80f6f
+
+echo "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFWGhzL1ZldkNZWWpPL2tCSGN2cmd6TldhR2R3cApJbG05U2IrOUZvMFZEbVRySkVTOHNnbkE2WUFqdUo5ejJocE5aMHM1YjhrUDkvSGNETU5HRTBUSTFRPT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==" | base64 -d
 
 **What "success" looks like:**
 - Step 4 returns the entry without errors

@@ -2,6 +2,9 @@
 //!
 //! Composed pipeline: validate freeze → sign data → format SSHSIG.
 //! Agent communication and passphrase prompting remain in the CLI.
+//!
+//! DSSE PAE (Pre-Authentication Encoding) is computed for transparency log
+//! submissions where the signing key is available (ephemeral signing).
 
 use crate::context::AuthsContext;
 use crate::ports::artifact::{ArtifactDigest, ArtifactMetadata, ArtifactSource};
@@ -237,6 +240,9 @@ pub struct ArtifactSigningResult {
     pub rid: ResourceId,
     /// Hex-encoded SHA-256 digest of the attested artifact.
     pub digest: String,
+    /// DSSE signature over the PAE of the attestation JSON (for transparency log submission).
+    /// Present when the signing function has access to the key (e.g., ephemeral signing).
+    pub dsse_signature: Option<Vec<u8>>,
 }
 
 /// Errors from the artifact attestation signing workflow.
@@ -343,6 +349,7 @@ struct ResolvedKey {
     alias: KeyAlias,
     seed: SecureSeed,
     public_key_bytes: Vec<u8>,
+    curve: auths_crypto::CurveType,
 }
 
 fn resolve_optional_key(
@@ -363,12 +370,13 @@ fn resolve_optional_key(
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             let pkcs8 = core_signer::decrypt_keypair(&encrypted, &passphrase)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
-            let (seed, pubkey, _curve) = core_signer::load_seed_and_pubkey(&pkcs8)
+            let (seed, pubkey, curve) = core_signer::load_seed_and_pubkey(&pkcs8)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             Ok(Some(ResolvedKey {
                 alias: alias.clone(),
                 seed,
                 public_key_bytes: pubkey.to_vec(),
+                curve,
             }))
         }
         Some(SigningKeyMaterial::Direct(seed)) => {
@@ -378,6 +386,7 @@ fn resolve_optional_key(
                 alias: KeyAlias::new_unchecked(synthetic_alias),
                 seed: SecureSeed::new(*seed.as_bytes()),
                 public_key_bytes: pubkey.to_vec(),
+                curve: auths_crypto::CurveType::Ed25519,
             }))
         }
     }
@@ -482,10 +491,18 @@ pub fn sign_artifact(
     seeds.insert(device_resolved.alias.into_inner(), device_resolved.seed);
     let device_pk_bytes = device_resolved.public_key_bytes;
 
-    let device_did =
-        DeviceDID::from_ed25519(device_pk_bytes.as_slice().try_into().map_err(|_| {
-            ArtifactSigningError::AttestationFailed("device public key must be 32 bytes".into())
-        })?);
+    let device_did = match device_resolved.curve {
+        auths_crypto::CurveType::Ed25519 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
+            let pk: [u8; 32] = device_pk_bytes.as_slice().try_into().unwrap();
+            DeviceDID::from_ed25519(&pk)
+        }
+        auths_crypto::CurveType::P256 =>
+        {
+            #[allow(clippy::disallowed_methods)]
+            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&device_pk_bytes))
+        }
+    };
 
     let artifact_meta = params
         .artifact
@@ -550,6 +567,7 @@ pub fn sign_artifact(
         attestation_json,
         rid,
         digest: artifact_meta.digest.hex,
+        dsse_signature: None,
     })
 }
 
@@ -587,18 +605,17 @@ pub fn sign_artifact_ephemeral(
     note: Option<String>,
     ci_env: Option<serde_json::Value>,
 ) -> Result<ArtifactSigningResult, ArtifactSigningError> {
-    // 1. Generate ephemeral seed and zeroize on drop
+    // 1. Generate ephemeral P-256 seed and zeroize on drop
     let mut seed_bytes = Zeroizing::new([0u8; 32]);
     ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), seed_bytes.as_mut())
         .map_err(|_| ArtifactSigningError::AttestationFailed("RNG failure".into()))?;
 
-    let seed = SecureSeed::new(*seed_bytes);
-
-    // 2. Derive pubkey and DIDs
-    let pubkey = provider_bridge::ed25519_public_key_from_seed_sync(&seed)
+    // 2. Derive pubkey and DIDs using P-256 (default curve)
+    let typed_seed = auths_crypto::TypedSeed::P256(*seed_bytes);
+    let pubkey_vec = auths_crypto::typed_public_key(&typed_seed)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
-    let device_did = DeviceDID::from_ed25519(&pubkey);
+    let device_did = DeviceDID::from_public_key(&pubkey_vec, auths_crypto::CurveType::P256);
     #[allow(clippy::disallowed_methods)]
     let identity_did = IdentityDID::new_unchecked(device_did.as_str());
 
@@ -655,7 +672,7 @@ pub fn sign_artifact_ephemeral(
         &rid,
         &identity_did,
         &device_did,
-        &pubkey,
+        &pubkey_vec,
         Some(payload_value),
         &meta,
         &signer,
@@ -673,10 +690,16 @@ pub fn sign_artifact_ephemeral(
     let attestation_json = serde_json::to_string_pretty(&attestation)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
+    // Compute DSSE signature for transparency log submission (key still in scope)
+    let pae = dsse_pae("application/vnd.auths+json", attestation_json.as_bytes());
+    let dsse_sig = auths_crypto::typed_sign(&typed_seed, &pae)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(format!("DSSE sign: {e}")))?;
+
     Ok(ArtifactSigningResult {
         attestation_json,
         rid,
         digest: artifact_meta.digest.hex,
+        dsse_signature: Some(dsse_sig),
     })
 }
 
@@ -709,10 +732,17 @@ pub fn sign_artifact_raw(
     note: Option<String>,
     commit_sha: Option<String>,
 ) -> Result<ArtifactSigningResult, ArtifactSigningError> {
-    let pubkey = provider_bridge::ed25519_public_key_from_seed_sync(seed)
-        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+    // Detect curve by trying to derive public key — Ed25519 first, then P-256
+    let (pubkey, curve) = if let Ok(pk) = provider_bridge::ed25519_public_key_from_seed_sync(seed) {
+        (pk.to_vec(), auths_crypto::CurveType::Ed25519)
+    } else {
+        let typed = auths_crypto::TypedSeed::P256(*seed.as_bytes());
+        let pk = auths_crypto::typed_public_key(&typed)
+            .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+        (pk, auths_crypto::CurveType::P256)
+    };
 
-    let device_did = DeviceDID::from_ed25519(&pubkey);
+    let device_did = DeviceDID::from_public_key(&pubkey, curve);
 
     let digest_hex = hex::encode(Sha256::digest(data));
     let artifact_meta = ArtifactMetadata {
@@ -782,5 +812,23 @@ pub fn sign_artifact_raw(
         attestation_json,
         rid,
         digest: artifact_meta.digest.hex,
+        dsse_signature: None,
     })
+}
+
+/// Compute the DSSE Pre-Authentication Encoding (PAE).
+///
+/// Format per the DSSE spec:
+/// `"DSSEv1" SP len(payloadType) SP payloadType SP len(payload) SP payload`
+pub fn dsse_pae(payload_type: &str, payload: &[u8]) -> Vec<u8> {
+    let header = format!(
+        "DSSEv1 {} {} {} ",
+        payload_type.len(),
+        payload_type,
+        payload.len()
+    );
+    let mut result = Vec::with_capacity(header.len() + payload.len());
+    result.extend_from_slice(header.as_bytes());
+    result.extend_from_slice(payload);
+    result
 }

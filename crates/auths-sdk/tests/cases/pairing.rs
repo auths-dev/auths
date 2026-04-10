@@ -80,14 +80,19 @@ fn test_verify_device_did_matches() {
 
     let pubkey = [0x42u8; 32];
     let expected_did = DeviceDID::from_ed25519(&pubkey);
-    let result = pairing::verify_device_did(&pubkey, &expected_did.to_string());
+    let result = pairing::verify_device_did(
+        &pubkey,
+        auths_crypto::CurveType::Ed25519,
+        &expected_did.to_string(),
+    );
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_verify_device_did_mismatch() {
     let pubkey = [0x42u8; 32];
-    let result = pairing::verify_device_did(&pubkey, "did:key:zFAKE");
+    let result =
+        pairing::verify_device_did(&pubkey, auths_crypto::CurveType::Ed25519, "did:key:zFAKE");
     assert!(result.is_err());
     match result.unwrap_err() {
         PairingError::DidMismatch { response, derived } => {

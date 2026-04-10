@@ -337,15 +337,32 @@ impl DeviceDID {
         }
     }
 
+    /// Constructs a `did:key:z...` identifier from a public key and its curve type.
+    ///
+    /// Args:
+    /// * `pubkey`: Raw public key bytes (32 for Ed25519, 33 for P-256 compressed).
+    /// * `curve`: The curve type of the key.
+    pub fn from_public_key(pubkey: &[u8], curve: auths_crypto::CurveType) -> Self {
+        match curve {
+            auths_crypto::CurveType::Ed25519 => {
+                let mut prefixed = vec![0xED, 0x01];
+                prefixed.extend_from_slice(pubkey);
+                let encoded = bs58::encode(prefixed).into_string();
+                Self(format!("did:key:z{}", encoded))
+            }
+            auths_crypto::CurveType::P256 => {
+                #[allow(clippy::disallowed_methods)]
+                // INVARIANT: p256_pubkey_to_did_key produces valid did:key
+                Self::new_unchecked(auths_crypto::p256_pubkey_to_did_key(pubkey))
+            }
+        }
+    }
+
     /// Constructs a `did:key:z...` identifier from a 32-byte Ed25519 public key.
     ///
     /// This uses the multicodec prefix for Ed25519 (0xED 0x01) and encodes it with base58btc.
     pub fn from_ed25519(pubkey: &[u8; 32]) -> Self {
-        let mut prefixed = vec![0xED, 0x01];
-        prefixed.extend_from_slice(pubkey);
-
-        let encoded = bs58::encode(prefixed).into_string();
-        Self(format!("did:key:z{}", encoded))
+        Self::from_public_key(pubkey, auths_crypto::CurveType::Ed25519)
     }
 
     /// Returns a sanitized version of the DID for use in Git refs,

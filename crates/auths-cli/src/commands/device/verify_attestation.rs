@@ -181,12 +181,19 @@ fn resolve_issuer_key(
     if let Some(ref pk_hex) = cmd.issuer_pk {
         let pk_bytes =
             hex::decode(pk_hex).context("Invalid hex string provided for issuer public key")?;
-        if pk_bytes.len() != 32 {
-            return Err(anyhow!(
-                "Issuer public key must be 32 bytes (64 hex chars), got {} bytes",
-                pk_bytes.len()
-            ));
-        }
+        let curve = match pk_bytes.len() {
+            32 => auths_crypto::CurveType::Ed25519,
+            33 | 65 => auths_crypto::CurveType::P256,
+            _ => {
+                return Err(anyhow!(
+                    "Invalid issuer public key length: {}",
+                    pk_bytes.len()
+                ));
+            }
+        };
+        // Validate via DevicePublicKey type system
+        auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
+            .map_err(|e| anyhow!("Invalid issuer public key: {e}"))?;
         return Ok(pk_bytes);
     }
 
@@ -441,12 +448,18 @@ pub async fn handle_verify_attestation(
     let issuer_pk_bytes = hex::decode(issuer_pubkey_hex)
         .context("Invalid hex string provided for issuer public key")?;
 
-    if issuer_pk_bytes.len() != 32 {
-        return Err(anyhow!(
-            "Issuer public key must be 32 bytes (64 hex chars), got {} bytes",
-            issuer_pk_bytes.len()
-        ));
-    }
+    let curve = match issuer_pk_bytes.len() {
+        32 => auths_crypto::CurveType::Ed25519,
+        33 | 65 => auths_crypto::CurveType::P256,
+        _ => {
+            return Err(anyhow!(
+                "Invalid issuer public key length: {}",
+                issuer_pk_bytes.len()
+            ));
+        }
+    };
+    auths_verifier::DevicePublicKey::try_new(curve, &issuer_pk_bytes)
+        .map_err(|e| anyhow!("Invalid issuer public key: {e}"))?;
 
     match verify_with_keys(&att, &issuer_pk_bytes).await {
         Ok(_) => {

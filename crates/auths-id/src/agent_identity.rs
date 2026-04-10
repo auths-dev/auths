@@ -40,8 +40,6 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_verifier::core::{Attestation, SignerType};
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::DeviceDID;
-use ring::signature::KeyPair;
-
 use std::sync::Arc;
 
 use crate::attestation::core::resign_attestation;
@@ -286,8 +284,8 @@ fn sign_agent_attestation(
     passphrase_provider: &dyn PassphraseProvider,
     keychain: Box<dyn KeyStorage + Send + Sync>,
 ) -> Result<Attestation, AgentProvisioningError> {
-    let device_pk = extract_public_key(key_alias, passphrase_provider, &*keychain)?;
-    let device_did = DeviceDID::from_ed25519(&device_pk);
+    let (device_pk, curve) = extract_public_key(key_alias, passphrase_provider, &*keychain)?;
+    let device_did = DeviceDID::from_public_key(&device_pk, curve);
     let meta = build_attestation_meta(now, config);
     let signer = StorageSigner::new(keychain);
 
@@ -327,7 +325,7 @@ fn extract_public_key(
     key_alias: &KeyAlias,
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &dyn KeyStorage,
-) -> Result<[u8; 32], AgentProvisioningError> {
+) -> Result<(Vec<u8>, auths_crypto::CurveType), AgentProvisioningError> {
     let (_did, _role, encrypted) = keychain
         .load_key(key_alias)
         .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
@@ -339,16 +337,10 @@ fn extract_public_key(
     let decrypted = decrypt_keypair(&encrypted, &passphrase)
         .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
 
-    let kp = crate::identity::helpers::load_keypair_from_der_or_seed(&decrypted)
+    let (_seed, pubkey, curve) = auths_core::crypto::signer::load_seed_and_pubkey(&decrypted)
         .map_err(|e| AgentProvisioningError::KeychainAccess(format!("bad pkcs8: {}", e)))?;
 
-    let pk: [u8; 32] = kp
-        .public_key()
-        .as_ref()
-        .try_into()
-        .map_err(|_| AgentProvisioningError::KeychainAccess("unexpected key length".into()))?;
-
-    Ok(pk)
+    Ok((pubkey, curve))
 }
 
 fn build_attestation_meta(

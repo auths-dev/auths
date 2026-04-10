@@ -6,58 +6,54 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Rekor v1 hashedrekord entry for submission.
+/// Rekor v1 DSSE entry for submission.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HashedRekordRequest {
+pub struct DsseRequest {
     /// API version string.
     pub api_version: String,
     /// Entry kind.
     pub kind: String,
     /// Entry specification.
-    pub spec: HashedRekordSpec,
+    pub spec: DsseSpec,
 }
 
-/// hashedrekord v0.0.1 spec.
-#[derive(Debug, Serialize)]
-pub struct HashedRekordSpec {
-    /// Signature information.
-    pub signature: HashedRekordSignature,
-    /// Data hash information.
-    pub data: HashedRekordData,
-}
-
-/// Signature block in a hashedrekord entry.
+/// DSSE v0.0.1 spec.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HashedRekordSignature {
+pub struct DsseSpec {
+    /// Proposed content for the DSSE entry.
+    pub proposed_content: DsseProposedContent,
+}
+
+/// Proposed content block in a DSSE entry.
+#[derive(Debug, Serialize)]
+pub struct DsseProposedContent {
+    /// Base64-encoded DSSE envelope JSON.
+    pub envelope: String,
+    /// PEM-encoded public keys that can verify the signatures.
+    pub verifiers: Vec<String>,
+}
+
+/// DSSE envelope (the inner JSON that gets base64-encoded).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DsseEnvelope {
+    /// Payload type URI.
+    pub payload_type: String,
+    /// Base64-encoded payload.
+    pub payload: String,
+    /// Signatures over the payload.
+    pub signatures: Vec<DsseSignature>,
+}
+
+/// A single signature in a DSSE envelope.
+#[derive(Debug, Serialize)]
+pub struct DsseSignature {
+    /// Key identifier (empty string if not used).
+    pub keyid: String,
     /// Base64-encoded signature bytes.
-    pub content: String,
-    /// Public key information.
-    pub public_key: HashedRekordPublicKey,
-}
-
-/// Public key in a hashedrekord signature block.
-#[derive(Debug, Serialize)]
-pub struct HashedRekordPublicKey {
-    /// Base64-encoded DER public key.
-    pub content: String,
-}
-
-/// Data hash in a hashedrekord entry.
-#[derive(Debug, Serialize)]
-pub struct HashedRekordData {
-    /// Hash information.
-    pub hash: HashedRekordHash,
-}
-
-/// Hash specification.
-#[derive(Debug, Serialize)]
-pub struct HashedRekordHash {
-    /// Hash algorithm (e.g., "sha256").
-    pub algorithm: String,
-    /// Hex-encoded hash value.
-    pub value: String,
+    pub sig: String,
 }
 
 /// Rekor v1 log entry response (keyed by UUID).

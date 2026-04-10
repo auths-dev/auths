@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use reqwest::Client;
-use sha2::{Digest, Sha256};
 use tracing::{debug, error, warn};
 
 use auths_core::ports::transparency_log::{LogError, LogMetadata, LogSubmission, TransparencyLog};
@@ -74,34 +73,32 @@ impl RekorClient {
         })
     }
 
-    /// Build a hashedrekord v0.0.1 request from attestation data.
+    /// Build a DSSE v0.0.1 entry for Rekor submission.
     ///
-    /// Wraps the raw public key in PKIX/SPKI DER before base64 encoding,
-    /// which is the format Sigstore tooling (cosign, rekor-cli) expects.
-    fn build_hashedrekord(
-        &self,
-        leaf_data: &[u8],
-        public_key: &[u8],
-        signature: &[u8],
-    ) -> HashedRekordRequest {
-        let data_hash = hex::encode(Sha256::digest(leaf_data));
-        let der_key = wrap_pubkey_in_spki_der(public_key);
+    /// DSSE wraps the attestation payload and its signature in an envelope.
+    /// Rekor stores the envelope as-is without re-verifying the signature
+    /// against a hash — the correct approach for signed attestation envelopes.
+    fn build_dsse(&self, leaf_data: &[u8], public_key: &[u8], signature: &[u8]) -> DsseRequest {
+        let envelope = DsseEnvelope {
+            payload_type: "application/vnd.auths+json".to_string(),
+            payload: BASE64.encode(leaf_data),
+            signatures: vec![DsseSignature {
+                keyid: String::new(),
+                sig: BASE64.encode(signature),
+            }],
+        };
 
-        HashedRekordRequest {
+        #[allow(clippy::unwrap_used)] // INVARIANT: DsseEnvelope is always serializable
+        let envelope_json = serde_json::to_string(&envelope).unwrap();
+        let pem_key = pubkey_to_pem(public_key);
+
+        DsseRequest {
             api_version: "0.0.1".to_string(),
-            kind: "hashedrekord".to_string(),
-            spec: HashedRekordSpec {
-                signature: HashedRekordSignature {
-                    content: BASE64.encode(signature),
-                    public_key: HashedRekordPublicKey {
-                        content: BASE64.encode(&der_key),
-                    },
-                },
-                data: HashedRekordData {
-                    hash: HashedRekordHash {
-                        algorithm: "sha256".to_string(),
-                        value: data_hash,
-                    },
+            kind: "dsse".to_string(),
+            spec: DsseSpec {
+                proposed_content: DsseProposedContent {
+                    envelope: envelope_json,
+                    verifiers: vec![BASE64.encode(pem_key.as_bytes())],
                 },
             },
         }
@@ -275,7 +272,7 @@ impl TransparencyLog for RekorClient {
             });
         }
 
-        let entry = self.build_hashedrekord(leaf_data, public_key, signature);
+        let entry = self.build_dsse(leaf_data, public_key, signature);
         let url = format!("{}/api/v1/log/entries", self.api_url);
 
         debug!(url = %url, payload_size = leaf_data.len(), "Submitting to Rekor");
@@ -465,40 +462,46 @@ impl TransparencyLog for RekorClient {
     }
 }
 
-/// Wrap raw public key bytes in SPKI DER for Sigstore compatibility.
+/// Convert raw public key bytes to PEM format for Rekor submission.
 ///
-/// Sigstore tooling (cosign, rekor-cli) expects PKIX/SPKI DER-encoded keys.
-/// Uses the `p256` crate for P-256 keys to produce correct ASN.1 encoding.
-/// Ed25519 uses RFC 8410 SPKI format (fixed 12-byte header + 32-byte key).
-fn wrap_pubkey_in_spki_der(raw: &[u8]) -> Vec<u8> {
+/// Rekor's hashedrekord expects the public key as PEM-encoded SPKI.
+/// Uses the `p256` crate for P-256 keys. Ed25519 uses RFC 8410 SPKI.
+fn pubkey_to_pem(raw: &[u8]) -> String {
     match raw.len() {
         32 => {
-            // Ed25519 SPKI per RFC 8410:
-            //   SEQUENCE { SEQUENCE { OID 1.3.101.112 }, BIT STRING { key } }
-            // Fixed 12-byte header: 30 2a 30 05 06 03 2b6570 03 21 00
+            // Ed25519 SPKI per RFC 8410
             let mut der = Vec::with_capacity(44);
             der.extend_from_slice(&[
-                0x30, 0x2a, // SEQUENCE, 42 bytes total
-                0x30, 0x05, // SEQUENCE, 5 bytes (AlgorithmIdentifier)
-                0x06, 0x03, 0x2b, 0x65, 0x70, // OID 1.3.101.112 (id-EdDSA / Ed25519)
-                0x03, 0x21, 0x00, // BIT STRING, 33 bytes, 0 unused bits
+                0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
             ]);
             der.extend_from_slice(raw);
-            der
+            let b64 = BASE64.encode(&der);
+            format!(
+                "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----\n",
+                b64
+            )
         }
         33 | 65 => {
-            // P-256: use the p256 crate to produce correct SPKI DER
+            // P-256: use the p256 crate to produce correct PEM
             use p256::pkcs8::EncodePublicKey;
-            let vk = match p256::ecdsa::VerifyingKey::from_sec1_bytes(raw) {
-                Ok(vk) => vk,
-                Err(_) => return raw.to_vec(),
-            };
-            match vk.to_public_key_der() {
-                Ok(der) => der.as_ref().to_vec(),
-                Err(_) => raw.to_vec(),
+            match p256::ecdsa::VerifyingKey::from_sec1_bytes(raw) {
+                Ok(vk) => match vk.to_public_key_pem(p256::pkcs8::LineEnding::LF) {
+                    Ok(pem) => pem,
+                    Err(_) => format!(
+                        "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----\n",
+                        BASE64.encode(raw)
+                    ),
+                },
+                Err(_) => format!(
+                    "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----\n",
+                    BASE64.encode(raw)
+                ),
             }
         }
-        _ => raw.to_vec(),
+        _ => format!(
+            "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----\n",
+            BASE64.encode(raw)
+        ),
     }
 }
 
@@ -521,17 +524,31 @@ mod tests {
     }
 
     #[test]
-    fn hashedrekord_format() {
+    fn dsse_format() {
         let client = RekorClient::public().unwrap();
-        let entry = client.build_hashedrekord(b"test data", b"public_key", b"signature");
+        let entry = client.build_dsse(b"test data", b"public_key", b"signature");
 
-        assert_eq!(entry.kind, "hashedrekord");
+        assert_eq!(entry.kind, "dsse");
         assert_eq!(entry.api_version, "0.0.1");
-        assert_eq!(entry.spec.data.hash.algorithm, "sha256");
 
-        // Verify the hash is correct
-        let expected_hash = hex::encode(Sha256::digest(b"test data"));
-        assert_eq!(entry.spec.data.hash.value, expected_hash);
+        // Verify the envelope is base64-encoded JSON
+        let envelope_json = String::from_utf8(
+            BASE64
+                .decode(&entry.spec.proposed_content.envelope)
+                .unwrap(),
+        )
+        .unwrap();
+        let envelope: serde_json::Value = serde_json::from_str(&envelope_json).unwrap();
+        assert_eq!(envelope["payloadType"], "application/vnd.auths+json");
+
+        // Verify the payload round-trips
+        let payload = BASE64
+            .decode(envelope["payload"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(payload, b"test data");
+
+        // Verify verifiers list has one PEM key
+        assert_eq!(entry.spec.proposed_content.verifiers.len(), 1);
     }
 
     #[test]

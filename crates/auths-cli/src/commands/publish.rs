@@ -61,6 +61,8 @@ impl ExecutableCommand for PublishCommand {
                         ctx.repo_path.clone(),
                         ctx.passphrase_provider.clone(),
                         &ctx.env_config,
+                        &None,
+                        false,
                     )?;
                 }
                 p
