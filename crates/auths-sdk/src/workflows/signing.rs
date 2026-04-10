@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 
 use auths_core::AgentError;
 use auths_core::crypto::signer::decrypt_keypair;
-use auths_core::crypto::ssh::{SecureSeed, extract_seed_from_pkcs8};
+use auths_core::crypto::ssh::SecureSeed;
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, KeyStorage};
 use auths_crypto::Pkcs8Der;
@@ -163,8 +163,9 @@ impl CommitSigningWorkflow {
         let _ = ctx.agent_signing.ensure_running();
 
         let pkcs8 = load_key_with_passphrase_retry(ctx, &params)?;
-        let seed = extract_seed_from_pkcs8(&pkcs8)
-            .map_err(|e| SigningError::KeyDecryptionFailed(e.to_string()))?;
+        let (seed, _pubkey, curve) =
+            auths_core::crypto::signer::load_seed_and_pubkey(pkcs8.as_ref())
+                .map_err(|e| SigningError::KeyDecryptionFailed(e.to_string()))?;
 
         // Best-effort: load identity into agent for future Tier 1 hits
         let _ = ctx
@@ -172,7 +173,7 @@ impl CommitSigningWorkflow {
             .add_identity(&params.namespace, pkcs8.as_ref());
 
         // Tier 3: direct sign
-        direct_sign(&params, &seed, now)
+        direct_sign(&params, &seed, now, curve)
     }
 }
 
@@ -231,10 +232,11 @@ fn direct_sign(
     params: &CommitSigningParams,
     seed: &SecureSeed,
     now: DateTime<Utc>,
+    curve: auths_crypto::CurveType,
 ) -> Result<String, SigningError> {
     if let Some(ref repo_path) = params.repo_path {
         signing::validate_freeze_state(repo_path, now)?;
     }
 
-    signing::sign_with_seed(seed, &params.data, &params.namespace)
+    signing::sign_with_seed(seed, &params.data, &params.namespace, curve)
 }

@@ -197,15 +197,6 @@ auths key export --key-alias main --passphrase 'Seamus4444$!' --format pem | ope
 rekor-cli search --public-key <base64-der-key> --rekor_server https://rekor.sigstore.dev
 ```
 
-(auths-e2e-tests) (dev-cleanReadme) me@MacBookPro auths % echo "test artifact" > /tmp/test-artifact.txt
-auths artifact sign --log sigstore-rekor /tmp/test-artifact.txt
-  Logged to sigstore-rekor at index 1271709852
-Signed "test-artifact.txt" -> "/tmp/test-artifact.txt.auths.json"
-  RID:    sha256:8308d593eb56527137532595a60255a3fcfbe4b6b068e29b22d99742bad80f6f
-  Digest: sha256:8308d593eb56527137532595a60255a3fcfbe4b6b068e29b22d99742bad80f6f
-
-echo "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFWGhzL1ZldkNZWWpPL2tCSGN2cmd6TldhR2R3cApJbG05U2IrOUZvMFZEbVRySkVTOHNnbkE2WUFqdUo5ejJocE5aMHM1YjhrUDkvSGNETU5HRTBUSTFRPT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==" | base64 -d
-
 **What "success" looks like:**
 - Step 4 returns the entry without errors
 - Step 5 shows `hashedrekord` with `spec.signature.publicKey.content` that decodes to valid SPKI DER

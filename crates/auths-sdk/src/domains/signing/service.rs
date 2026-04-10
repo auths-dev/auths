@@ -176,8 +176,10 @@ pub fn sign_with_seed(
     seed: &SecureSeed,
     data: &[u8],
     namespace: &str,
+    curve: auths_crypto::CurveType,
 ) -> Result<String, SigningError> {
-    ssh::create_sshsig(seed, data, namespace).map_err(|e| SigningError::PemEncoding(e.to_string()))
+    ssh::create_sshsig(seed, data, namespace, curve)
+        .map_err(|e| SigningError::PemEncoding(e.to_string()))
 }
 
 // ---------------------------------------------------------------------------

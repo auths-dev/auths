@@ -428,7 +428,8 @@ mod tests {
         ]);
 
         let data = b"test data to sign";
-        let result = auths_sdk::crypto::create_sshsig(&seed, data, "git");
+        let result =
+            auths_sdk::crypto::create_sshsig(&seed, data, "git", auths_crypto::CurveType::Ed25519);
 
         assert!(result.is_ok(), "SSHSIG creation failed: {:?}", result.err());
 

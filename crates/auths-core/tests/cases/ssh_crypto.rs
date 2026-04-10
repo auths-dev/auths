@@ -23,7 +23,7 @@ fn test_create_sshsig_returns_pem() {
         0x1f, 0x20,
     ]);
 
-    let pem = create_sshsig(&seed, b"test data", "git").unwrap();
+    let pem = create_sshsig(&seed, b"test data", "git", auths_crypto::CurveType::Ed25519).unwrap();
     assert!(pem.starts_with("-----BEGIN SSH SIGNATURE-----"));
     assert!(pem.contains("-----END SSH SIGNATURE-----"));
 }

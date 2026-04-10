@@ -27,14 +27,12 @@ pub fn create_sshsig(
     seed: &SecureSeed,
     data: &[u8],
     namespace: &str,
+    curve: auths_crypto::CurveType,
 ) -> Result<String, CryptoError> {
-    // Detect curve from the stored key context.
-    // For now, try Ed25519 first (most common), then P-256.
-    // TODO: pass CurveType explicitly once the full signing path is curve-aware.
-    if let Ok(pem) = create_sshsig_ed25519(seed, data, namespace) {
-        return Ok(pem);
+    match curve {
+        auths_crypto::CurveType::Ed25519 => create_sshsig_ed25519(seed, data, namespace),
+        auths_crypto::CurveType::P256 => create_sshsig_p256(seed, data, namespace),
     }
-    create_sshsig_p256(seed, data, namespace)
 }
 
 fn create_sshsig_ed25519(

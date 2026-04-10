@@ -538,4 +538,5 @@ nav:
           - Release Process: contributing/release-process.md
       - Reference:
           - Architecture Decisions: contributing/architecture-decisions.md
+          - Adding New Curves: contributing/adding_curves.md
           - Glossary: contributing/glossary.md
