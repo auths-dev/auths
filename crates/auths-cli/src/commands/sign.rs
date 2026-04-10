@@ -192,6 +192,8 @@ pub fn handle_sign_unified(
                 repo_opt,
                 passphrase_provider,
                 env_config,
+                &None,
+                false,
             )
         }
         SignTarget::CommitRange(range) => sign_commit_range(&range),

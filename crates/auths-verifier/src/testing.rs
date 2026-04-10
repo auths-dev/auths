@@ -220,7 +220,7 @@ impl AttestationBuilder {
             rid: self.rid,
             issuer: self.issuer,
             subject: self.subject,
-            device_public_key: self.device_public_key,
+            device_public_key: self.device_public_key.into(),
             identity_signature: self.identity_signature,
             device_signature: self.device_signature,
             revoked_at: self.revoked_at,

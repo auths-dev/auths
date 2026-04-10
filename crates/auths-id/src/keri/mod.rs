@@ -132,7 +132,7 @@ pub use event::{
 #[cfg(feature = "git-storage")]
 pub use inception::{
     InceptionError, InceptionResult, create_keri_identity, create_keri_identity_with_backend,
-    did_to_prefix, prefix_to_did,
+    create_keri_identity_with_curve, did_to_prefix, prefix_to_did,
 };
 #[cfg(feature = "git-storage")]
 pub use kel::{GitKel, KelError};

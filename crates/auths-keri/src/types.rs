@@ -527,7 +527,16 @@ impl CesrKey {
     }
 
     /// Parse the inner CESR string as an Ed25519 public key.
+    #[deprecated(note = "use parse() which dispatches on derivation code prefix")]
     pub fn parse_ed25519(&self) -> Result<KeriPublicKey, KeriDecodeError> {
+        KeriPublicKey::parse(&self.0)
+    }
+
+    /// Parse the inner CESR string, dispatching on the derivation code prefix.
+    ///
+    /// Supports Ed25519 (`D` prefix) and P-256 (`1AAJ`/`1AAI` prefix).
+    /// Returns `Err(UnsupportedKeyType)` for unknown prefixes.
+    pub fn parse(&self) -> Result<KeriPublicKey, KeriDecodeError> {
         KeriPublicKey::parse(&self.0)
     }
 
@@ -911,16 +920,16 @@ mod tests {
     }
 
     #[test]
-    fn cesr_key_parse_ed25519_valid() {
+    fn cesr_key_parse_valid() {
         let key =
             CesrKey::new_unchecked("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string());
-        assert!(key.parse_ed25519().is_ok());
+        assert!(key.parse().is_ok());
     }
 
     #[test]
-    fn cesr_key_parse_ed25519_invalid() {
+    fn cesr_key_parse_invalid() {
         let key = CesrKey::new_unchecked("not-a-valid-key".to_string());
-        assert!(key.parse_ed25519().is_err());
+        assert!(key.parse().is_err());
     }
 
     // ── ConfigTrait ─────────────────────────────────────────────────────

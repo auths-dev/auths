@@ -1,3 +1,4 @@
+use auths_crypto::CurveType;
 use auths_verifier::action::ActionEnvelope;
 use auths_verifier::core::MAX_ATTESTATION_JSON_SIZE;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -5,63 +6,91 @@ use pyo3::prelude::*;
 
 use crate::types::VerificationResult;
 
-/// Sign arbitrary bytes with an Ed25519 private key.
+/// Parse an optional curve string into CurveType. Defaults to P256.
+fn parse_curve(curve: Option<&str>) -> PyResult<CurveType> {
+    match curve {
+        None | Some("p256") => Ok(CurveType::P256),
+        Some("ed25519") => Ok(CurveType::Ed25519),
+        Some(other) => Err(PyValueError::new_err(format!(
+            "Unknown curve: {other}. Supported: \"p256\" (default), \"ed25519\""
+        ))),
+    }
+}
+
+use crate::types::validate_pk_hex;
+
+/// Sign arbitrary bytes with a private key.
 ///
 /// Args:
-/// * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+/// * `private_key_hex`: Seed as hex string (64 chars = 32 bytes).
 /// * `message`: The bytes to sign.
+/// * `curve`: Optional curve name ("p256" or "ed25519"). Defaults to "p256".
 ///
 /// Usage:
 /// ```ignore
-/// let sig = sign_bytes("deadbeef...", b"hello")?;
+/// let sig = sign_bytes("deadbeef...", b"hello", None)?;       // P-256
+/// let sig = sign_bytes("deadbeef...", b"hello", Some("ed25519"))?; // Ed25519
 /// ```
 #[pyfunction]
-pub fn sign_bytes(private_key_hex: &str, message: &[u8]) -> PyResult<String> {
-    let seed = hex::decode(private_key_hex)
+#[pyo3(signature = (private_key_hex, message, curve=None))]
+pub fn sign_bytes(private_key_hex: &str, message: &[u8], curve: Option<&str>) -> PyResult<String> {
+    let seed_bytes = hex::decode(private_key_hex)
         .map_err(|e| PyValueError::new_err(format!("Invalid private key hex: {e}")))?;
 
-    if seed.len() != 32 {
+    if seed_bytes.len() != 32 {
         return Err(PyValueError::new_err(format!(
-            "Invalid private key length: expected 32 bytes (64 hex chars), got {}",
-            seed.len()
+            "Invalid seed length: expected 32 bytes (64 hex chars), got {}",
+            seed_bytes.len()
         )));
     }
 
-    let keypair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed).map_err(|e| {
-        PyRuntimeError::new_err(format!(
-            "[AUTHS_CRYPTO_ERROR] Failed to create keypair: {e}"
-        ))
+    let curve_type = parse_curve(curve)?;
+    let typed_seed = match curve_type {
+        CurveType::Ed25519 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: length checked above
+            auths_crypto::TypedSeed::Ed25519(seed_bytes.as_slice().try_into().unwrap())
+        }
+        CurveType::P256 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: length checked above
+            auths_crypto::TypedSeed::P256(seed_bytes.as_slice().try_into().unwrap())
+        }
+    };
+
+    let sig = auths_crypto::typed_sign(&typed_seed, message).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Signing failed: {e}"))
     })?;
 
-    let sig = keypair.sign(message);
-    Ok(hex::encode(sig.as_ref()))
+    Ok(hex::encode(&sig))
 }
 
 /// Sign an action envelope per the Auths action envelope specification.
 ///
 /// Args:
-/// * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+/// * `private_key_hex`: Seed as hex string (64 chars = 32 bytes).
 /// * `action_type`: Application-defined action type (e.g. "tool_call").
 /// * `payload_json`: JSON string for the payload field.
 /// * `identity_did`: Signer's identity DID (e.g. "did:keri:E...").
+/// * `curve`: Optional curve name ("p256" or "ed25519"). Defaults to "p256".
 ///
 /// Usage:
 /// ```ignore
-/// let envelope = sign_action("deadbeef...", "tool_call", "{}", "did:keri:E...")?;
+/// let envelope = sign_action("deadbeef...", "tool_call", "{}", "did:keri:E...", None)?;
 /// ```
 #[pyfunction]
+#[pyo3(signature = (private_key_hex, action_type, payload_json, identity_did, curve=None))]
 pub fn sign_action(
     private_key_hex: &str,
     action_type: &str,
     payload_json: &str,
     identity_did: &str,
+    curve: Option<&str>,
 ) -> PyResult<String> {
     let seed = hex::decode(private_key_hex)
         .map_err(|e| PyValueError::new_err(format!("Invalid private key hex: {e}")))?;
 
     if seed.len() != 32 {
         return Err(PyValueError::new_err(format!(
-            "Invalid private key length: expected 32 bytes (64 hex chars), got {}",
+            "Invalid seed length: expected 32 bytes (64 hex chars), got {}",
             seed.len()
         )));
     }
@@ -94,14 +123,22 @@ pub fn sign_action(
         .canonical_bytes()
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] {e}")))?;
 
-    let keypair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&seed).map_err(|e| {
-        PyRuntimeError::new_err(format!(
-            "[AUTHS_CRYPTO_ERROR] Failed to create keypair: {e}"
-        ))
-    })?;
+    let curve_type = parse_curve(curve)?;
+    let typed_seed = match curve_type {
+        CurveType::Ed25519 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: length checked above
+            auths_crypto::TypedSeed::Ed25519(seed.as_slice().try_into().unwrap())
+        }
+        CurveType::P256 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: length checked above
+            auths_crypto::TypedSeed::P256(seed.as_slice().try_into().unwrap())
+        }
+    };
 
-    let sig = keypair.sign(&canonical);
-    envelope.signature = hex::encode(sig.as_ref());
+    let sig = auths_crypto::typed_sign(&typed_seed, &canonical).map_err(|e| {
+        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Signing failed: {e}"))
+    })?;
+    envelope.signature = hex::encode(&sig);
 
     serde_json::to_string(&envelope).map_err(|e| {
         PyRuntimeError::new_err(format!(
@@ -125,15 +162,7 @@ pub fn verify_action_envelope(
     envelope_json: &str,
     public_key_hex: &str,
 ) -> PyResult<VerificationResult> {
-    let pk_bytes = hex::decode(public_key_hex)
-        .map_err(|e| PyValueError::new_err(format!("Invalid public key hex: {e}")))?;
-
-    if pk_bytes.len() != 32 {
-        return Err(PyValueError::new_err(format!(
-            "Invalid public key length: expected 32 bytes (64 hex chars), got {}",
-            pk_bytes.len()
-        )));
-    }
+    let (pk_bytes, _curve) = validate_pk_hex(public_key_hex)?;
 
     if envelope_json.len() > MAX_ATTESTATION_JSON_SIZE {
         return Err(PyValueError::new_err(format!(

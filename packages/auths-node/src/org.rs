@@ -17,7 +17,7 @@ use auths_sdk::workflows::org::{
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 use auths_verifier::Capability;
 use auths_verifier::PublicKeyHex;
-use auths_verifier::core::{Ed25519PublicKey, Role};
+use auths_verifier::core::Role;
 use auths_verifier::types::DeviceDID;
 use napi_derive::napi;
 
@@ -127,7 +127,7 @@ pub fn create_org(
     let org_resolved = resolver
         .resolve(controller_did.as_str())
         .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
-    let org_pk_bytes = *org_resolved.public_key();
+    let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
 
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();
@@ -145,14 +145,23 @@ pub fn create_org(
     };
 
     let signer = StorageSigner::new(keychain);
-    let org_did_device = DeviceDID::from_ed25519(org_pk_bytes.as_bytes());
+    // TODO: ResolvedDid should carry CurveType to eliminate this length dispatch
+    let org_did_device = if org_pk_bytes.len() == 32 {
+        #[allow(clippy::unwrap_used)] // INVARIANT: length checked
+        let pk: [u8; 32] = org_pk_bytes.as_slice().try_into().unwrap();
+        DeviceDID::from_ed25519(&pk)
+    } else {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: p256_pubkey_to_did_key always produces valid did:key
+        DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&org_pk_bytes))
+    };
 
     let attestation = create_signed_attestation(
         now,
         &rid,
         &controller_did,
         &org_did_device,
-        org_pk_bytes.as_bytes(),
+        &org_pk_bytes,
         Some(serde_json::json!({
             "org_role": "admin",
             "org_name": label
@@ -166,6 +175,7 @@ pub fn create_org(
         Some(Role::Admin),
         None,
         None, // commit_sha
+        None,
     )
     .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
 
@@ -227,24 +237,21 @@ pub fn add_org_member(
         resolver
             .resolve(&org_did)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?
-            .public_key()
-            .as_bytes(),
+            .public_key_bytes(),
     ));
 
     let member_pk = if let Some(pk_hex) = member_public_key_hex {
-        let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
+        hex::decode(&pk_hex).map_err(|e| {
             format_error(
                 "AUTHS_ORG_ERROR",
                 format!("Invalid member public key hex: {e}"),
             )
-        })?;
-        Ed25519PublicKey::try_from_slice(&pk_bytes)
-            .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?
+        })?
     } else {
         let member_resolved = resolver
             .resolve(&member_did)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
-        *member_resolved.public_key()
+        member_resolved.public_key_bytes().to_vec()
     };
 
     let org_prefix = extract_org_prefix(&org_did);
@@ -314,24 +321,21 @@ pub fn revoke_org_member(
         resolver
             .resolve(&org_did)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?
-            .public_key()
-            .as_bytes(),
+            .public_key_bytes(),
     ));
 
     let member_pk = if let Some(pk_hex) = member_public_key_hex {
-        let pk_bytes = hex::decode(&pk_hex).map_err(|e| {
+        hex::decode(&pk_hex).map_err(|e| {
             format_error(
                 "AUTHS_ORG_ERROR",
                 format!("Invalid member public key hex: {e}"),
             )
-        })?;
-        Ed25519PublicKey::try_from_slice(&pk_bytes)
-            .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?
+        })?
     } else {
         let member_resolved = resolver
             .resolve(&member_did)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
-        *member_resolved.public_key()
+        member_resolved.public_key_bytes().to_vec()
     };
 
     let org_prefix = extract_org_prefix(&org_did);

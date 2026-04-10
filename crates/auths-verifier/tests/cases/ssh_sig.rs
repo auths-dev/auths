@@ -11,7 +11,7 @@ fn parse_real_sshsig_pem() {
     assert_eq!(envelope.hash_algorithm, "sha512");
 
     let expected_key = hex::decode(FIXTURE_PUBKEY_HEX.trim()).unwrap();
-    assert_eq!(envelope.public_key.as_bytes().as_slice(), &expected_key);
+    assert_eq!(envelope.public_key.as_bytes(), expected_key.as_slice());
     assert_eq!(envelope.signature.len(), 64);
 }
 

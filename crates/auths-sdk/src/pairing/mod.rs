@@ -278,10 +278,14 @@ pub fn verify_session_status(
 /// ```ignore
 /// verify_device_did(&pubkey_bytes, "did:key:z...")?;
 /// ```
-pub fn verify_device_did(device_pubkey: &[u8; 32], claimed_did: &str) -> Result<(), PairingError> {
+pub fn verify_device_did(
+    device_pubkey: &[u8],
+    curve: auths_crypto::CurveType,
+    claimed_did: &str,
+) -> Result<(), PairingError> {
     use auths_verifier::types::DeviceDID;
 
-    let derived = DeviceDID::from_ed25519(device_pubkey);
+    let derived = DeviceDID::from_public_key(device_pubkey, curve);
     let claimed = DeviceDID::parse(claimed_did).map_err(|_| PairingError::DidMismatch {
         response: claimed_did.to_string(),
         derived: derived.to_string(),
@@ -332,11 +336,18 @@ pub fn create_pairing_attestation(
     let controller_did = managed_identity.controller_did;
     let rid = managed_identity.storage_id;
 
-    let device_pubkey_32: &[u8; 32] = params.device_pubkey.try_into().map_err(|_| {
-        PairingError::AttestationFailed("device public key must be 32 bytes".into())
-    })?;
+    // Infer curve from key length at pairing boundary
+    let curve = match params.device_pubkey.len() {
+        32 => auths_crypto::CurveType::Ed25519,
+        33 | 65 => auths_crypto::CurveType::P256,
+        n => {
+            return Err(PairingError::AttestationFailed(format!(
+                "invalid device public key length: {n}"
+            )));
+        }
+    };
 
-    verify_device_did(device_pubkey_32, params.device_did_str)?;
+    verify_device_did(params.device_pubkey, curve, params.device_did_str)?;
 
     let meta = AttestationMetadata {
         timestamp: Some(now),
@@ -373,6 +384,7 @@ pub fn create_pairing_attestation(
         None,
         None,
         None, // commit_sha
+        None,
     )
     .map_err(|e| PairingError::AttestationFailed(e.to_string()))?;
 
@@ -530,7 +542,6 @@ pub fn complete_pairing_from_response(
 pub fn load_device_signing_material(
     ctx: &AuthsContext,
 ) -> Result<DeviceSigningMaterial, PairingError> {
-    use auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync;
     use auths_core::crypto::signer::decrypt_keypair;
     use auths_id::identity::helpers::ManagedIdentity;
 
@@ -571,22 +582,16 @@ pub fn load_device_signing_material(
     let pkcs8_bytes = decrypt_keypair(&encrypted_key, passphrase.as_str())
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
 
-    let (seed, pubkey_32) = auths_crypto::parse_ed25519_key_material(&pkcs8_bytes)
-        .ok()
-        .and_then(|(seed, maybe_pk)| maybe_pk.map(|pk| (seed, pk)))
-        .or_else(|| {
-            let seed = auths_crypto::parse_ed25519_seed(&pkcs8_bytes).ok()?;
-            let pk = ed25519_public_key_from_seed_sync(&seed).ok()?;
-            Some((seed, pk))
-        })
-        .ok_or_else(|| {
-            PairingError::KeyExchangeFailed("failed to parse Ed25519 key material".into())
-        })?;
+    let parsed = auths_crypto::parse_key_material(&pkcs8_bytes)
+        .map_err(|e| PairingError::KeyExchangeFailed(format!("failed to parse key: {e}")))?;
+
+    let curve = parsed.seed.curve();
+    let device_did = DeviceDID::from_public_key(&parsed.public_key, curve);
 
     Ok(DeviceSigningMaterial {
-        seed: SecureSeed::new(*seed.as_bytes()),
-        public_key: pubkey_32,
-        device_did: DeviceDID::from_ed25519(&pubkey_32),
+        seed: parsed.seed.to_secure_seed(),
+        public_key: parsed.public_key,
+        device_did,
         controller_did: managed.controller_did.to_string(),
     })
 }
@@ -618,10 +623,10 @@ pub fn load_controller_did(identity_storage: &dyn IdentityStorage) -> Result<Str
 /// join_pairing_session(code, registry, &relay, now, &material, hostname).await?;
 /// ```
 pub struct DeviceSigningMaterial {
-    /// Ed25519 seed bytes for signing and ECDH.
+    /// Seed bytes for signing.
     pub seed: SecureSeed,
-    /// Ed25519 public key (32 bytes).
-    pub public_key: [u8; 32],
+    /// Public key bytes (32 for Ed25519, 33 for P-256 compressed).
+    pub public_key: Vec<u8>,
     /// DID of the local device.
     pub device_did: DeviceDID,
     /// DID of the controller identity this device belongs to.
@@ -837,11 +842,14 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         return Err(PairingError::SessionExpired);
     }
 
+    let pubkey_32: &[u8; 32] = material.public_key.as_slice().try_into().map_err(|_| {
+        PairingError::KeyExchangeFailed("pairing requires Ed25519 (32-byte) key".into())
+    })?;
     let (pairing_response, _shared_secret) = PairingResponse::create(
         now,
         &token,
         &material.seed,
-        &material.public_key,
+        pubkey_32,
         material.device_did.to_string(),
         device_name,
     )

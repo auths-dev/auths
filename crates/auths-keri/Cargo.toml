@@ -18,6 +18,8 @@ blake3 = "1.5"
 cesride = { version = "0.6", optional = true }
 hex = { version = "0.4.3", features = ["serde"] }
 ring.workspace = true
+# P-256 verification for KERI events. Uses compressed SEC1 keys (33 bytes).
+p256 = { version = "0.13", features = ["ecdsa"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 schemars = { workspace = true, optional = true }

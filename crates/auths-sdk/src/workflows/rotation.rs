@@ -247,7 +247,7 @@ pub fn rotate_identity(
         ctx,
     )?;
 
-    let (_, new_pubkey) = load_seed_and_pubkey(&decrypted_next_pkcs8)
+    let (_, new_pubkey, _curve) = load_seed_and_pubkey(&decrypted_next_pkcs8)
         .map_err(|e| RotationError::RotationFailed(e.to_string()))?;
 
     Ok(IdentityRotationResult {
@@ -308,7 +308,7 @@ fn extract_previous_fingerprint(
     ctx: &AuthsContext,
     current_alias: &KeyAlias,
 ) -> Result<String, RotationError> {
-    let old_pubkey_bytes = extract_public_key_bytes(
+    let (old_pubkey_bytes, _curve) = extract_public_key_bytes(
         ctx.key_storage.as_ref(),
         current_alias,
         ctx.passphrase_provider.as_ref(),

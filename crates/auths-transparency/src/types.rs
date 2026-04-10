@@ -133,6 +133,15 @@ impl LogOrigin {
         Ok(Self(s.to_string()))
     }
 
+    /// Create from a compile-time constant. Panics if invalid.
+    ///
+    /// Only for use in `default_config()` and similar contexts where the
+    /// string is a known-good constant.
+    #[allow(clippy::expect_used)] // INVARIANT: only called with compile-time ASCII constants
+    pub fn new_unchecked(s: &str) -> Self {
+        Self::new(s).expect("LogOrigin::new_unchecked called with invalid origin")
+    }
+
     /// The inner string.
     pub fn as_str(&self) -> &str {
         &self.0

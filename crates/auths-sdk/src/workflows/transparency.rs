@@ -116,6 +116,7 @@ pub async fn fetch_trust_root(
         log_public_key: Ed25519PublicKey::from_bytes(log_public_key_bytes),
         log_origin,
         witnesses,
+        signature_algorithm: Default::default(),
     })
 }
 
@@ -364,6 +365,8 @@ mod tests {
             log_signature: Ed25519Signature::from_bytes([0u8; 64]),
             log_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             witnesses: vec![],
+            ecdsa_checkpoint_signature: None,
+            ecdsa_checkpoint_key: None,
         }
     }
 
@@ -372,6 +375,7 @@ mod tests {
             log_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             log_origin: LogOrigin::new("test.dev/log").unwrap(),
             witnesses: vec![],
+            signature_algorithm: Default::default(),
         }
     }
 

@@ -84,7 +84,7 @@ pub fn test_attestation(device_did: &DeviceDID, issuer: &str) -> Attestation {
         rid: ResourceId::new("test-rid"),
         issuer,
         subject: device_did.clone().into(),
-        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+        device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]).into(),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),
         revoked_at: None,

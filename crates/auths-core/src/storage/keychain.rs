@@ -233,11 +233,11 @@ pub trait KeyStorage: Send + Sync {
     fn backend_name(&self) -> &'static str;
 }
 
-/// Decrypt a stored key and return its Ed25519 public key bytes.
+/// Decrypt a stored key and return its public key bytes and curve type.
 ///
 /// Loads the encrypted key for `alias`, calls `passphrase_provider` to obtain
 /// the decryption passphrase, decrypts the PKCS8 blob, and returns the raw
-/// 32-byte public key.
+/// public key along with its curve type.
 ///
 /// Args:
 /// * `keychain`: The key storage backend holding the encrypted key.
@@ -246,14 +246,13 @@ pub trait KeyStorage: Send + Sync {
 ///
 /// Usage:
 /// ```ignore
-/// let pk = extract_public_key_bytes(keychain, "my-key", &provider)?;
-/// let device_did = DeviceDID::from_ed25519(pk.as_slice().try_into()?);
+/// let (pk, curve) = extract_public_key_bytes(keychain, "my-key", &provider)?;
 /// ```
 pub fn extract_public_key_bytes(
     keychain: &dyn KeyStorage,
     alias: &KeyAlias,
     passphrase_provider: &dyn crate::signing::PassphraseProvider,
-) -> Result<Vec<u8>, AgentError> {
+) -> Result<(Vec<u8>, auths_crypto::CurveType), AgentError> {
     use crate::crypto::signer::{decrypt_keypair, load_seed_and_pubkey};
 
     let (_, _role, encrypted) = keychain.load_key(alias)?;
@@ -261,8 +260,8 @@ pub fn extract_public_key_bytes(
         .get_passphrase(&format!("Enter passphrase for key '{alias}':"))
         .map_err(|e| AgentError::SigningFailed(e.to_string()))?;
     let pkcs8 = decrypt_keypair(&encrypted, &passphrase)?;
-    let (_, pubkey) = load_seed_and_pubkey(&pkcs8)?;
-    Ok(pubkey.to_vec())
+    let (_, pubkey, curve) = load_seed_and_pubkey(&pkcs8)?;
+    Ok((pubkey.to_vec(), curve))
 }
 
 /// Return a boxed `KeyStorage` implementation driven by the supplied `EnvironmentConfig`.

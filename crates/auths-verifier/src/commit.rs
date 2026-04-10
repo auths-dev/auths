@@ -8,7 +8,7 @@ use std::path::Path;
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::commit_error::CommitVerificationError;
-use crate::core::Ed25519PublicKey;
+use crate::core::DevicePublicKey;
 use crate::ssh_sig::parse_sshsig_pem;
 
 /// A successfully verified commit signature.
@@ -20,19 +20,20 @@ use crate::ssh_sig::parse_sshsig_pem;
 /// ```
 #[derive(Debug)]
 pub struct VerifiedCommit {
-    /// The Ed25519 public key that produced the valid signature.
-    pub signer_key: Ed25519PublicKey,
+    /// The public key that produced the valid signature (Ed25519 or P-256).
+    pub signer_key: DevicePublicKey,
 }
 
-/// Verify an SSH-signed git commit against a list of allowed Ed25519 keys.
+/// Verify an SSH-signed git commit against a list of allowed keys.
+///
+/// Supports both Ed25519 and ECDSA P-256 signatures. The key type is
+/// auto-detected from the SSHSIG envelope.
 ///
 /// Args:
 /// * `commit_content`: Raw output of `git cat-file commit <sha>`.
-/// * `allowed_keys`: Ed25519 public keys authorized to sign.
+/// * `allowed_keys`: Public keys authorized to sign (Ed25519 or P-256).
 /// * `provider`: Crypto backend for Ed25519 verification.
-/// * `repo_path`: Optional path to the git repository. When provided, the
-///   verifier uses this path for any repo-relative operations instead of
-///   requiring callers to `chdir`.
+/// * `repo_path`: Optional path to the git repository.
 ///
 /// Usage:
 /// ```ignore
@@ -40,7 +41,7 @@ pub struct VerifiedCommit {
 /// ```
 pub async fn verify_commit_signature(
     commit_content: &[u8],
-    allowed_keys: &[Ed25519PublicKey],
+    allowed_keys: &[DevicePublicKey],
     provider: &dyn auths_crypto::CryptoProvider,
     _repo_path: Option<&Path>,
 ) -> Result<VerifiedCommit, CommitVerificationError> {
@@ -71,14 +72,35 @@ pub async fn verify_commit_signature(
         extracted.signed_payload.as_bytes(),
     )?;
 
-    provider
-        .verify_ed25519(
-            envelope.public_key.as_bytes(),
-            &signed_data,
-            &envelope.signature,
-        )
-        .await
-        .map_err(|_| CommitVerificationError::SignatureInvalid)?;
+    match envelope.public_key.curve() {
+        auths_crypto::CurveType::Ed25519 => {
+            provider
+                .verify_ed25519(
+                    envelope.public_key.as_bytes(),
+                    &signed_data,
+                    &envelope.signature,
+                )
+                .await
+                .map_err(|_| CommitVerificationError::SignatureInvalid)?;
+        }
+        auths_crypto::CurveType::P256 => {
+            #[cfg(feature = "native")]
+            {
+                auths_crypto::RingCryptoProvider::p256_verify(
+                    envelope.public_key.as_bytes(),
+                    &signed_data,
+                    &envelope.signature,
+                )
+                .map_err(|_| CommitVerificationError::SignatureInvalid)?;
+            }
+            #[cfg(not(feature = "native"))]
+            {
+                return Err(CommitVerificationError::SshSigParseFailed(
+                    "P-256 verification not available on this platform".into(),
+                ));
+            }
+        }
+    }
 
     Ok(VerifiedCommit {
         signer_key: envelope.public_key,

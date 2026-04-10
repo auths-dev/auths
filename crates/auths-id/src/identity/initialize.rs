@@ -7,8 +7,6 @@ use std::sync::Arc;
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
-use ring::rand::SystemRandom;
-use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::path::Path;
 
 use crate::error::InitError;
@@ -114,21 +112,16 @@ pub fn initialize_registry_identity(
         .init_if_needed()
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    let rng = SystemRandom::new();
-    let current_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
-    let current_keypair = Ed25519KeyPair::from_pkcs8(current_pkcs8.as_ref())
-        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
-    let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
-    let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
-        .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
+    // Generate keypairs using P-256 (default curve)
+    let curve = auths_crypto::CurveType::default();
 
-    let current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
-    );
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+    let current = crate::keri::inception::generate_keypair_for_init(curve)
+        .map_err(|e| InitError::Crypto(e.to_string()))?;
+    let next = crate::keri::inception::generate_keypair_for_init(curve)
+        .map_err(|e| InitError::Crypto(e.to_string()))?;
+
+    let current_pub_encoded = current.cesr_encoded.clone();
+    let next_commitment = compute_next_commitment(&next.public_key);
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
@@ -162,8 +155,10 @@ pub fn initialize_registry_identity(
 
     let canonical = serialize_for_signing(&Event::Icp(finalized.clone()))
         .map_err(|e| InitError::Keri(e.to_string()))?;
-    let sig = current_keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let sig_bytes =
+        crate::keri::inception::sign_with_pkcs8_for_init(curve, &current.pkcs8, &canonical)
+            .map_err(|e| InitError::Crypto(e.to_string()))?;
+    finalized.x = URL_SAFE_NO_PAD.encode(&sig_bytes);
 
     backend
         .append_event(&prefix, &Event::Icp(finalized))
@@ -176,11 +171,9 @@ pub fn initialize_registry_identity(
     let passphrase = passphrase_provider
         .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
 
-    let current_seed = extract_seed_bytes(current_pkcs8.as_ref())?;
-    let next_seed = extract_seed_bytes(next_pkcs8.as_ref())?;
-
-    let encrypted_current = encrypt_keypair(&encode_seed_as_pkcs8(current_seed)?, &passphrase)?;
-    let encrypted_next = encrypt_keypair(&encode_seed_as_pkcs8(next_seed)?, &passphrase)?;
+    // Encrypt the PKCS8 keypairs for keychain storage
+    let encrypted_current = encrypt_keypair(current.pkcs8.as_ref(), &passphrase)?;
+    let encrypted_next = encrypt_keypair(next.pkcs8.as_ref(), &passphrase)?;
 
     keychain.store_key(
         local_key_alias,

@@ -2,17 +2,29 @@
 //!
 //! Parses `-----BEGIN SSH SIGNATURE-----` PEM blocks into their binary
 //! components per the [SSHSIG protocol](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.sshsig).
+//!
+//! Supports both `ssh-ed25519` and `ecdsa-sha2-nistp256` key types.
 
 use base64::Engine;
 
 use crate::commit_error::CommitVerificationError;
-use crate::core::Ed25519PublicKey;
+use crate::core::DevicePublicKey;
 
 const SSHSIG_MAGIC: &[u8] = b"SSHSIG";
 const SSHSIG_VERSION: u32 = 1;
 const ED25519_KEY_TYPE: &str = "ssh-ed25519";
+const ECDSA_P256_KEY_TYPE: &str = "ecdsa-sha2-nistp256";
 const PEM_BEGIN: &str = "-----BEGIN SSH SIGNATURE-----";
 const PEM_END: &str = "-----END SSH SIGNATURE-----";
+
+/// SSH key algorithm detected from the SSHSIG envelope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SshKeyType {
+    /// Ed25519 (32-byte key, 64-byte signature).
+    Ed25519,
+    /// ECDSA with NIST P-256 (uncompressed 65-byte key, 64-byte r||s signature).
+    EcdsaP256,
+}
 
 /// Parsed SSHSIG envelope fields.
 ///
@@ -25,12 +37,14 @@ const PEM_END: &str = "-----END SSH SIGNATURE-----";
 pub struct SshSigEnvelope {
     /// The namespace the signature was created for (e.g. "git").
     pub namespace: String,
-    /// The hash algorithm used (e.g. "sha512").
+    /// The hash algorithm used (e.g. "sha512" or "sha256").
     pub hash_algorithm: String,
-    /// Raw 32-byte Ed25519 public key extracted from the envelope.
-    pub public_key: Ed25519PublicKey,
-    /// Raw 64-byte Ed25519 signature bytes.
-    pub signature: [u8; 64],
+    /// The SSH key algorithm used.
+    pub key_type: SshKeyType,
+    /// Public key extracted from the envelope (32 bytes Ed25519, or 65 bytes P-256 uncompressed).
+    pub public_key: DevicePublicKey,
+    /// Raw signature bytes (64 bytes for both Ed25519 and P-256 r||s).
+    pub signature: Vec<u8>,
 }
 
 /// Parse an SSH signature PEM block into its components.
@@ -97,7 +111,7 @@ fn parse_sshsig_binary(data: &[u8]) -> Result<SshSigEnvelope, CommitVerification
 
     // Public key blob (SSH wire format, length-prefixed)
     let pubkey_blob = cursor.read_string()?;
-    let public_key = parse_ed25519_pubkey_blob(&pubkey_blob)?;
+    let (key_type, public_key) = parse_pubkey_blob(&pubkey_blob)?;
 
     // Namespace
     let namespace_bytes = cursor.read_string()?;
@@ -121,35 +135,75 @@ fn parse_sshsig_binary(data: &[u8]) -> Result<SshSigEnvelope, CommitVerification
 
     // Signature blob (SSH wire format, length-prefixed)
     let sig_blob = cursor.read_string()?;
-    let signature = parse_ed25519_sig_blob(&sig_blob)?;
+    let signature = parse_sig_blob(&sig_blob, key_type)?;
 
     Ok(SshSigEnvelope {
         namespace,
         hash_algorithm,
+        key_type,
         public_key,
         signature,
     })
 }
 
-fn parse_ed25519_pubkey_blob(blob: &[u8]) -> Result<Ed25519PublicKey, CommitVerificationError> {
+fn parse_pubkey_blob(
+    blob: &[u8],
+) -> Result<(SshKeyType, DevicePublicKey), CommitVerificationError> {
     let mut cursor = Cursor::new(blob);
 
     let key_type_bytes = cursor.read_string()?;
-    let key_type = String::from_utf8(key_type_bytes).map_err(|e| {
+    let key_type_str = String::from_utf8(key_type_bytes).map_err(|e| {
         CommitVerificationError::SshSigParseFailed(format!("invalid key type UTF-8: {e}"))
     })?;
 
-    if key_type != ED25519_KEY_TYPE {
-        return Err(CommitVerificationError::UnsupportedKeyType { found: key_type });
+    match key_type_str.as_str() {
+        ED25519_KEY_TYPE => {
+            let raw_key = cursor.read_string()?;
+            if raw_key.len() != 32 {
+                return Err(CommitVerificationError::SshSigParseFailed(format!(
+                    "invalid Ed25519 key length: expected 32, got {}",
+                    raw_key.len()
+                )));
+            }
+            Ok((
+                SshKeyType::Ed25519,
+                DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, &raw_key)
+                    .map_err(|e| CommitVerificationError::SshSigParseFailed(e.to_string()))?,
+            ))
+        }
+        ECDSA_P256_KEY_TYPE => {
+            let curve_name_bytes = cursor.read_string()?;
+            let curve_name = String::from_utf8(curve_name_bytes).map_err(|e| {
+                CommitVerificationError::SshSigParseFailed(format!("invalid curve name UTF-8: {e}"))
+            })?;
+            if curve_name != "nistp256" {
+                return Err(CommitVerificationError::SshSigParseFailed(format!(
+                    "unexpected curve name: {curve_name}"
+                )));
+            }
+            let ec_point = cursor.read_string()?;
+            if ec_point.len() != 65 || ec_point[0] != 0x04 {
+                return Err(CommitVerificationError::SshSigParseFailed(format!(
+                    "invalid P-256 EC point: expected 65-byte uncompressed (0x04 prefix), got {} bytes",
+                    ec_point.len()
+                )));
+            }
+            Ok((
+                SshKeyType::EcdsaP256,
+                DevicePublicKey::try_new(auths_crypto::CurveType::P256, &ec_point)
+                    .map_err(|e| CommitVerificationError::SshSigParseFailed(e.to_string()))?,
+            ))
+        }
+        other => Err(CommitVerificationError::UnsupportedKeyType {
+            found: other.to_string(),
+        }),
     }
-
-    let raw_key = cursor.read_string()?;
-    Ed25519PublicKey::try_from_slice(&raw_key).map_err(|e| {
-        CommitVerificationError::SshSigParseFailed(format!("invalid Ed25519 key: {e}"))
-    })
 }
 
-fn parse_ed25519_sig_blob(blob: &[u8]) -> Result<[u8; 64], CommitVerificationError> {
+fn parse_sig_blob(
+    blob: &[u8],
+    expected_key_type: SshKeyType,
+) -> Result<Vec<u8>, CommitVerificationError> {
     let mut cursor = Cursor::new(blob);
 
     let sig_type_bytes = cursor.read_string()?;
@@ -157,18 +211,62 @@ fn parse_ed25519_sig_blob(blob: &[u8]) -> Result<[u8; 64], CommitVerificationErr
         CommitVerificationError::SshSigParseFailed(format!("invalid sig type UTF-8: {e}"))
     })?;
 
-    if sig_type != ED25519_KEY_TYPE {
-        return Err(CommitVerificationError::UnsupportedKeyType { found: sig_type });
+    match expected_key_type {
+        SshKeyType::Ed25519 => {
+            if sig_type != ED25519_KEY_TYPE {
+                return Err(CommitVerificationError::UnsupportedKeyType { found: sig_type });
+            }
+            let raw_sig = cursor.read_string()?;
+            if raw_sig.len() != 64 {
+                return Err(CommitVerificationError::SshSigParseFailed(format!(
+                    "invalid Ed25519 signature length: expected 64, got {}",
+                    raw_sig.len()
+                )));
+            }
+            Ok(raw_sig)
+        }
+        SshKeyType::EcdsaP256 => {
+            if sig_type != ECDSA_P256_KEY_TYPE {
+                return Err(CommitVerificationError::UnsupportedKeyType { found: sig_type });
+            }
+            let inner_blob = cursor.read_string()?;
+            parse_ecdsa_sig_inner(&inner_blob)
+        }
     }
+}
 
-    let raw_sig = cursor.read_string()?;
-    let sig: [u8; 64] = raw_sig.try_into().map_err(|v: Vec<u8>| {
-        CommitVerificationError::SshSigParseFailed(format!(
-            "invalid Ed25519 signature length: expected 64, got {}",
-            v.len()
-        ))
-    })?;
-    Ok(sig)
+/// Parse ECDSA signature inner blob (mpint r + mpint s) into raw 64-byte r||s.
+fn parse_ecdsa_sig_inner(blob: &[u8]) -> Result<Vec<u8>, CommitVerificationError> {
+    let mut cursor = Cursor::new(blob);
+    let r = mpint_to_fixed(&mut cursor, 32)?;
+    let s = mpint_to_fixed(&mut cursor, 32)?;
+    let mut raw = Vec::with_capacity(64);
+    raw.extend_from_slice(&r);
+    raw.extend_from_slice(&s);
+    Ok(raw)
+}
+
+/// Read an SSH mpint and convert to a fixed-width big-endian byte array.
+fn mpint_to_fixed(
+    cursor: &mut Cursor<'_>,
+    size: usize,
+) -> Result<Vec<u8>, CommitVerificationError> {
+    let bytes = cursor.read_string()?;
+    let trimmed = if !bytes.is_empty() && bytes[0] == 0x00 {
+        &bytes[1..]
+    } else {
+        &bytes[..]
+    };
+    if trimmed.len() > size {
+        return Err(CommitVerificationError::SshSigParseFailed(format!(
+            "mpint too large: {} bytes, max {size}",
+            trimmed.len()
+        )));
+    }
+    let mut fixed = vec![0u8; size];
+    let offset = size - trimmed.len();
+    fixed[offset..].copy_from_slice(trimmed);
+    Ok(fixed)
 }
 
 // Minimal binary cursor for SSH wire format parsing.
@@ -279,6 +377,10 @@ mod tests {
         let envelope = parse_sshsig_pem(&pem).unwrap();
         assert_eq!(envelope.namespace, "git");
         assert_eq!(envelope.hash_algorithm, "sha512");
+        assert_eq!(
+            envelope.public_key.curve(),
+            auths_crypto::CurveType::Ed25519
+        );
         assert_eq!(envelope.public_key.as_bytes(), &key);
         assert_eq!(envelope.signature, sig);
     }

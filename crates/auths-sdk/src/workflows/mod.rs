@@ -8,6 +8,7 @@ pub mod auth;
 pub mod ci;
 pub mod diagnostics;
 pub mod git_integration;
+pub mod log_submit;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod namespace;

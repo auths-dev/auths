@@ -129,7 +129,7 @@ fn add_and_find_member_with_identity_did() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: KERI_MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             role: Role::Member,
             capabilities: vec![],
             admin_public_key_hex: admin_pubkey_hex(),
@@ -176,7 +176,7 @@ fn revoke_member_with_identity_did() {
         RevokeMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: KERI_MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             admin_public_key_hex: admin_pubkey_hex(),
             signer_alias: KeyAlias::new_unchecked("test-alias"),
             note: Some("offboarded".to_string()),
@@ -244,7 +244,7 @@ fn find_admin_returns_attestation_when_admin_exists() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             role: Role::Member,
             capabilities: vec![],
             admin_public_key_hex: admin_pubkey_hex(),
@@ -275,7 +275,7 @@ fn find_admin_returns_not_found_when_pubkey_mismatch() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             role: Role::Member,
             capabilities: vec![],
             admin_public_key_hex: wrong_hex,
@@ -304,7 +304,7 @@ fn find_admin_returns_not_found_when_no_manage_members_capability() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             role: Role::Member,
             capabilities: vec![],
             admin_public_key_hex: admin_pubkey_hex(),
@@ -335,7 +335,7 @@ fn add_member_stores_signed_attestation_with_injected_clock_and_uuid() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             role: Role::Member,
             capabilities: vec!["sign_commit".to_string()],
             admin_public_key_hex: admin_pubkey_hex(),
@@ -366,7 +366,7 @@ fn add_member_creates_attestation_with_signatures() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             role: Role::Member,
             capabilities: vec![],
             admin_public_key_hex: admin_pubkey_hex(),
@@ -380,7 +380,7 @@ fn add_member_creates_attestation_with_signatures() {
     assert!(!att.identity_signature.is_empty());
     assert_eq!(
         att.device_public_key,
-        Ed25519PublicKey::from_bytes(MEMBER_PUBKEY)
+        auths_verifier::DevicePublicKey::ed25519(&MEMBER_PUBKEY)
     );
 }
 
@@ -398,7 +398,7 @@ fn add_member_fails_when_admin_not_found() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             role: Role::Member,
             capabilities: vec![],
             admin_public_key_hex: admin_pubkey_hex(),
@@ -425,7 +425,7 @@ fn add_member_fails_with_invalid_capability() {
         AddMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             role: Role::Member,
             capabilities: vec!["invalid cap!@#".to_string()],
             admin_public_key_hex: admin_pubkey_hex(),
@@ -457,7 +457,7 @@ fn revoke_member_creates_signed_revocation_with_injected_clock() {
         RevokeMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             admin_public_key_hex: admin_pubkey_hex(),
             signer_alias: KeyAlias::new_unchecked("test-alias"),
             note: None,
@@ -487,7 +487,7 @@ fn revoke_member_fails_when_member_not_found() {
         RevokeMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: "did:key:z6MkNonexistent".to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            member_public_key: vec![0u8; 32],
             admin_public_key_hex: admin_pubkey_hex(),
             signer_alias: KeyAlias::new_unchecked("test-alias"),
             note: None,
@@ -517,7 +517,7 @@ fn revoke_member_fails_when_already_revoked() {
         RevokeMemberCommand {
             org_prefix: ORG.to_string(),
             member_did: MEMBER_DID.to_string(),
-            member_public_key: Ed25519PublicKey::from_bytes(MEMBER_PUBKEY),
+            member_public_key: MEMBER_PUBKEY.to_vec(),
             admin_public_key_hex: admin_pubkey_hex(),
             signer_alias: KeyAlias::new_unchecked("test-alias"),
             note: None,

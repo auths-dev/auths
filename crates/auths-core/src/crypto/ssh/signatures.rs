@@ -27,6 +27,18 @@ pub fn create_sshsig(
     seed: &SecureSeed,
     data: &[u8],
     namespace: &str,
+    curve: auths_crypto::CurveType,
+) -> Result<String, CryptoError> {
+    match curve {
+        auths_crypto::CurveType::Ed25519 => create_sshsig_ed25519(seed, data, namespace),
+        auths_crypto::CurveType::P256 => create_sshsig_p256(seed, data, namespace),
+    }
+}
+
+fn create_sshsig_ed25519(
+    seed: &SecureSeed,
+    data: &[u8],
+    namespace: &str,
 ) -> Result<String, CryptoError> {
     let ssh_keypair = SshEd25519Keypair::from_seed(seed.as_bytes());
     let keypair_data = KeypairData::Ed25519(ssh_keypair);
@@ -36,11 +48,39 @@ pub fn create_sshsig(
     let sshsig = SshSig::sign(&private_key, namespace, HashAlg::Sha512, data)
         .map_err(|e| CryptoError::SigningFailed(e.to_string()))?;
 
-    let pem = sshsig
+    sshsig
         .to_pem(LineEnding::LF)
-        .map_err(|e| CryptoError::PemEncoding(e.to_string()))?;
+        .map_err(|e| CryptoError::PemEncoding(e.to_string()))
+}
 
-    Ok(pem)
+fn create_sshsig_p256(
+    seed: &SecureSeed,
+    data: &[u8],
+    namespace: &str,
+) -> Result<String, CryptoError> {
+    use ssh_key::private::EcdsaKeypair;
+
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+
+    let secret_key = p256::SecretKey::from_slice(seed.as_bytes())
+        .map_err(|e| CryptoError::SigningFailed(format!("P-256 seed: {e}")))?;
+    let public_key = secret_key.public_key();
+
+    let ecdsa_keypair = EcdsaKeypair::NistP256 {
+        public: public_key.to_encoded_point(false), // uncompressed
+        private: ssh_key::private::EcdsaPrivateKey::from(secret_key),
+    };
+
+    let keypair_data = KeypairData::Ecdsa(ecdsa_keypair);
+    let private_key = SshPrivateKey::new(keypair_data, "auths-sign")
+        .map_err(|e| CryptoError::SshKeyConstruction(e.to_string()))?;
+
+    let sshsig = SshSig::sign(&private_key, namespace, HashAlg::Sha256, data)
+        .map_err(|e| CryptoError::SigningFailed(e.to_string()))?;
+
+    sshsig
+        .to_pem(LineEnding::LF)
+        .map_err(|e| CryptoError::PemEncoding(e.to_string()))
 }
 
 /// Construct the data blob that SSHSIG signs (the "message to sign").
@@ -86,26 +126,28 @@ pub fn construct_sshsig_signed_data(data: &[u8], namespace: &str) -> Result<Vec<
     Ok(blob)
 }
 
-/// Construct the final SSHSIG PEM from a public key and raw signature.
+/// Construct the final SSHSIG PEM from a public key, curve, and raw signature.
 ///
 /// Builds the full SSHSIG binary structure (magic, version, pubkey,
 /// namespace, signature) and encodes it as base64-wrapped PEM.
 ///
 /// Args:
-/// * `pubkey`: Raw 32-byte Ed25519 public key.
-/// * `signature`: Raw Ed25519 signature bytes.
+/// * `pubkey`: Raw public key bytes.
+/// * `signature`: Raw signature bytes.
 /// * `namespace`: The SSHSIG namespace (e.g., "git").
+/// * `curve`: The curve type of the key/signature.
 ///
 /// Usage:
 /// ```ignore
 /// let sig_data = construct_sshsig_signed_data(data, "git")?;
 /// let raw_sig = agent_sign(&socket, &pubkey, &sig_data)?;
-/// let pem = construct_sshsig_pem(&pubkey, &raw_sig, "git")?;
+/// let pem = construct_sshsig_pem(&pubkey, &raw_sig, "git", CurveType::Ed25519)?;
 /// ```
 pub fn construct_sshsig_pem(
     pubkey: &[u8],
     signature: &[u8],
     namespace: &str,
+    curve: auths_crypto::CurveType,
 ) -> Result<String, CryptoError> {
     let mut blob = Vec::new();
 
@@ -115,7 +157,7 @@ pub fn construct_sshsig_pem(
     blob.extend_from_slice(&1u32.to_be_bytes());
 
     // Public key blob (SSH wire format)
-    let pubkey_blob = encode_ssh_pubkey(pubkey);
+    let pubkey_blob = encode_ssh_pubkey(pubkey, curve);
     blob.extend_from_slice(&(pubkey_blob.len() as u32).to_be_bytes());
     blob.extend_from_slice(&pubkey_blob);
 
@@ -132,7 +174,7 @@ pub fn construct_sshsig_pem(
     blob.extend_from_slice(hash_algo);
 
     // Signature blob (SSH signature format)
-    let sig_blob = encode_ssh_signature(signature);
+    let sig_blob = encode_ssh_signature(signature, curve);
     blob.extend_from_slice(&(sig_blob.len() as u32).to_be_bytes());
     blob.extend_from_slice(&sig_blob);
 

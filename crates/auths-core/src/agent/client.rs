@@ -115,17 +115,10 @@ pub fn agent_sign<P: AsRef<Path>>(
 ) -> Result<Vec<u8>, AgentError> {
     let socket_path = socket_path.as_ref();
 
-    if pubkey.len() != 32 {
-        return Err(AgentError::InvalidInput(format!(
-            "Public key must be 32 bytes, got {}",
-            pubkey.len()
-        )));
-    }
-
     debug!(
         "Signing via agent at {:?} with pubkey {:?}...",
         socket_path,
-        hex::encode(&pubkey[..4])
+        hex::encode(&pubkey[..4.min(pubkey.len())])
     );
 
     // Connect to the agent
@@ -141,12 +134,18 @@ pub fn agent_sign<P: AsRef<Path>>(
         .set_write_timeout(Some(Duration::from_secs(30)))
         .map_err(AgentError::IO)?;
 
-    // Build the sign request
-    let pubkey_array: [u8; 32] = pubkey
-        .try_into()
-        .map_err(|_| AgentError::InvalidInput("Public key must be exactly 32 bytes".to_string()))?;
-
-    let key_data = KeyData::Ed25519(Ed25519PublicKey(pubkey_array));
+    // Build the sign request — detect key type from length
+    // TODO: accept CurveType parameter once agent core carries curve info
+    let key_data = if pubkey.len() == 32 {
+        #[allow(clippy::unwrap_used)] // INVARIANT: length checked
+        let pubkey_array: [u8; 32] = pubkey.try_into().unwrap();
+        KeyData::Ed25519(Ed25519PublicKey(pubkey_array))
+    } else {
+        return Err(AgentError::InvalidInput(format!(
+            "Unsupported public key length for agent signing: {}",
+            pubkey.len()
+        )));
+    };
 
     // Encode the sign request using the wire protocol
     let signature = sign_request_raw(&mut stream, &key_data, data)?;
@@ -426,6 +425,26 @@ fn parse_ssh_pubkey_blob(blob: &[u8]) -> Option<KeyData> {
             }
             let key_bytes: [u8; 32] = rest[4..4 + 32].try_into().ok()?;
             Some(KeyData::Ed25519(Ed25519PublicKey(key_bytes)))
+        }
+        "ecdsa-sha2-nistp256" => {
+            // ECDSA SSH format: curve-name-string + ec-point-string
+            if rest.len() < 4 {
+                return None;
+            }
+            let curve_len = u32::from_be_bytes([rest[0], rest[1], rest[2], rest[3]]) as usize;
+            let after_curve = 4 + curve_len;
+            if rest.len() < after_curve + 4 {
+                return None;
+            }
+            let point_len =
+                u32::from_be_bytes(rest[after_curve..after_curve + 4].try_into().ok()?) as usize;
+            let point_start = after_curve + 4;
+            if rest.len() < point_start + point_len {
+                return None;
+            }
+            let point = &rest[point_start..point_start + point_len];
+            let ecdsa_pk = ssh_key::public::EcdsaPublicKey::from_sec1_bytes(point).ok()?;
+            Some(KeyData::Ecdsa(ecdsa_pk))
         }
         _ => None,
     }

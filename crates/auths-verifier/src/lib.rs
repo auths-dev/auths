@@ -78,10 +78,11 @@ pub use action::ActionEnvelope;
 
 // Re-export core types
 pub use core::{
-    Attestation, Capability, CapabilityError, CommitOid, CommitOidError, Ed25519KeyError,
-    Ed25519PublicKey, Ed25519Signature, IdentityBundle, MAX_ATTESTATION_JSON_SIZE,
+    Attestation, Capability, CapabilityError, CommitOid, CommitOidError, DevicePublicKey,
+    EcdsaP256Error, EcdsaP256PublicKey, EcdsaP256Signature, Ed25519KeyError, Ed25519PublicKey,
+    Ed25519Signature, IdentityBundle, InvalidKeyError, MAX_ATTESTATION_JSON_SIZE,
     MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyHex, PublicKeyHexError, ResourceId, Role,
-    RoleParseError, SignatureLengthError, ThresholdPolicy, VerifiedAttestation,
+    RoleParseError, SignatureAlgorithm, SignatureLengthError, ThresholdPolicy, VerifiedAttestation,
 };
 
 // Re-export test utilities
@@ -123,7 +124,7 @@ pub use auths_keri::{
 
 // Re-export commit verification types
 pub use commit::VerifiedCommit;
-pub use ssh_sig::SshSigEnvelope;
+pub use ssh_sig::{SshKeyType, SshSigEnvelope};
 
 // Re-export crypto provider trait for downstream consumers
 pub use auths_crypto::CryptoProvider;

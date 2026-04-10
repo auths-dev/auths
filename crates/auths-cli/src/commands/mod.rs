@@ -8,7 +8,7 @@ pub mod artifact;
 pub mod audit;
 pub mod auth;
 pub mod cache;
-pub mod ci;
+
 pub mod commit;
 pub mod completions;
 pub mod config;

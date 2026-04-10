@@ -59,28 +59,25 @@ impl SignerKey for SeedSignerKey {
 
 /// Extract a SecureSeed from key bytes in various formats.
 ///
-/// Delegates to [`auths_crypto::parse_ed25519_seed`].
+/// Delegates to [`auths_crypto::parse_key_material`] which detects the curve.
 pub fn extract_seed_from_key_bytes(bytes: &[u8]) -> Result<SecureSeed, AgentError> {
-    auths_crypto::parse_ed25519_seed(bytes)
-        .map_err(|e| AgentError::KeyDeserializationError(format!("{}", e)))
+    let parsed = auths_crypto::parse_key_material(bytes)
+        .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
+    Ok(parsed.seed.to_secure_seed())
 }
 
-/// Extract a SecureSeed and public key from key bytes.
+/// Extract a SecureSeed, public key bytes, and curve type from key bytes.
 ///
-/// For PKCS#8 v2 the public key is extracted from the DER. For other formats,
-/// the public key is derived from the seed via CryptoProvider.
-pub fn load_seed_and_pubkey(bytes: &[u8]) -> Result<(SecureSeed, [u8; 32]), AgentError> {
-    let (seed, maybe_pk) = auths_crypto::parse_ed25519_key_material(bytes)
-        .map_err(|e| AgentError::KeyDeserializationError(format!("{}", e)))?;
-
-    let pubkey = match maybe_pk {
-        Some(pk) => pk,
-        None => provider_bridge::ed25519_public_key_from_seed_sync(&seed).map_err(|e| {
-            AgentError::CryptoError(format!("Failed to derive public key from seed: {}", e))
-        })?,
-    };
-
-    Ok((seed, pubkey))
+/// Delegates to [`auths_crypto::parse_key_material`] which detects the curve
+/// and extracts the public key in one pass. The curve is preserved so callers
+/// never need to infer it from key length.
+pub fn load_seed_and_pubkey(
+    bytes: &[u8],
+) -> Result<(SecureSeed, Vec<u8>, auths_crypto::CurveType), AgentError> {
+    let parsed = auths_crypto::parse_key_material(bytes)
+        .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
+    let curve = parsed.seed.curve();
+    Ok((parsed.seed.to_secure_seed(), parsed.public_key, curve))
 }
 
 /// Encrypts a raw serialized keypair using the configured encryption algorithm and passphrase.

@@ -44,6 +44,7 @@ auths-telemetry = { workspace = true, features = ["sink-http"] }
 auths-verifier = { workspace = true, features = ["native"] }
 auths-infra-git.workspace = true
 auths-infra-http.workspace = true
+auths-infra-rekor = { path = "../auths-infra-rekor" }
 auths-utils.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 ring.workspace = true

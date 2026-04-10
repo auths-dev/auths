@@ -17,7 +17,7 @@ auths-core = { workspace = true, public = true }
 auths-id = { workspace = true, public = true }
 auths-storage = { workspace = true, optional = true, public = true }
 auths-infra-http.workspace = true
-auths-oidc-port = { path = "../auths-oidc-port", version = "0.1.0" }
+auths-oidc-port = { path = "../auths-oidc-port" }
 auths-telemetry.workspace = true
 auths-policy.workspace = true
 auths-crypto.workspace = true
@@ -34,7 +34,8 @@ base64 = "0.22"
 chrono = "0.4"
 hex = "0.4"
 html-escape = "0.2"
-ssh-key = "0.6"
+p256 = { version = "0.13", features = ["ecdsa"] }
+ssh-key = { version = "0.6", features = ["ecdsa"] }
 tempfile = "3"
 url = { version = "2", features = ["serde"] }
 flate2 = "1"

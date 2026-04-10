@@ -21,16 +21,13 @@ use crate::types::{NapiVerificationReport, NapiVerificationResult};
 fn decode_pk_hex(hex_str: &str, label: &str) -> napi::Result<Vec<u8>> {
     let bytes = hex::decode(hex_str)
         .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid {label} hex: {e}")))?;
-    if bytes.len() != 32 {
-        return Err(format_error(
+    match bytes.len() {
+        32 | 33 | 65 => Ok(bytes),
+        n => Err(format_error(
             "AUTHS_INVALID_INPUT",
-            format!(
-                "Invalid {label} length: expected 32 bytes (64 hex chars), got {}",
-                bytes.len()
-            ),
-        ));
+            format!("Invalid {label} length: expected 32 (Ed25519), 33/65 (P-256), got {n}",),
+        )),
     }
-    Ok(bytes)
 }
 
 fn parse_attestations(jsons: &[String]) -> napi::Result<Vec<Attestation>> {
@@ -413,21 +410,7 @@ pub async fn verify_chain_with_witnesses(
                     format!("Failed to parse witness key {i}: {e}"),
                 )
             })?;
-            let pk_bytes = hex::decode(&input.public_key_hex).map_err(|e| {
-                format_error(
-                    "AUTHS_INVALID_INPUT",
-                    format!("Invalid witness key {i} hex: {e}"),
-                )
-            })?;
-            if pk_bytes.len() != 32 {
-                return Err(format_error(
-                    "AUTHS_INVALID_INPUT",
-                    format!(
-                        "Invalid witness key {i} length: expected 32 bytes, got {}",
-                        pk_bytes.len()
-                    ),
-                ));
-            }
+            let pk_bytes = decode_pk_hex(&input.public_key_hex, &format!("witness key {i}"))?;
             Ok((input.did, pk_bytes))
         })
         .collect::<napi::Result<Vec<_>>>()?;

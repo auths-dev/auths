@@ -2,6 +2,10 @@
 # Set a tag, then push it to trigger the release workflow:
 # git tag v0.1.0
 # git push origin v0.1.0
+#
+# Prerequisites:
+# - Commits must be signed by a maintainer listed in .auths/allowed_signers
+# - No signing secrets needed — CI verifies commits, then signs artifacts with ephemeral keys
 
 name: Release
 
@@ -14,7 +18,19 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit signatures
+        uses: auths-dev/verify@v1
+
   build:
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -97,14 +113,28 @@ jobs:
           $hash = (Get-FileHash ${{ matrix.asset_name }}${{ matrix.ext }} -Algorithm SHA256).Hash.ToLower()
           "$hash  ${{ matrix.asset_name }}${{ matrix.ext }}" | Out-File -Encoding ascii ${{ matrix.asset_name }}${{ matrix.ext }}.sha256
 
-      - name: Sign artifact (Unix)
+      - name: Sign artifact and log to Sigstore (ephemeral, Unix)
         if: matrix.ext == '.tar.gz'
-        uses: auths-dev/sign@v1
-        with:
-          token: ${{ secrets.AUTHS_CI_TOKEN }}
-          files: ${{ matrix.asset_name }}${{ matrix.ext }}
-          verify: true
-          note: 'GitHub Actions release — ${{ github.ref_name }}'
+        run: |
+          FILE="${{ matrix.asset_name }}${{ matrix.ext }}"
+          ./staging/auths artifact sign "$FILE" \
+            --ci \
+            --commit "${{ github.sha }}" \
+            --ci-platform github \
+            --log sigstore-rekor \
+            --note "Release ${{ github.ref_name }}"
+
+      - name: Sign artifact and log to Sigstore (ephemeral, Windows)
+        if: matrix.ext == '.zip'
+        shell: pwsh
+        run: |
+          $file = "${{ matrix.asset_name }}${{ matrix.ext }}"
+          .\staging\auths.exe artifact sign $file `
+            --ci `
+            --commit $env:GITHUB_SHA `
+            --ci-platform github `
+            --log sigstore-rekor `
+            --note "Release ${{ github.ref_name }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -142,7 +172,7 @@ jobs:
           for asset in auths-macos-aarch64 auths-linux-x86_64 auths-linux-aarch64; do
             curl -sL "${BASE}/${asset}.tar.gz.auths.json" -o "${asset}.auths.json"
           done
-          extract_hash() { python3 -c "import json; d=json.load(open('$1')); print(d['payload']['digest']['hex'])"; }
+          extract_hash() { jq -r '.payload.digest.hex' "$1"; }
           {
             echo "version=${VERSION}"
             echo "macos_aarch64=$(extract_hash auths-macos-aarch64.auths.json)"
@@ -207,6 +237,6 @@ jobs:
           body: |
             Automated formula update from [release v${{ steps.hashes.outputs.version }}](https://github.com/auths-dev/auths/releases/tag/v${{ steps.hashes.outputs.version }}).
 
-            SHA256 hashes extracted from `.auths.json` attestation files (dogfooding).
+            SHA256 hashes extracted from `.auths.json` provenance files.
           branch: "update-${{ steps.hashes.outputs.version }}"
           base: main

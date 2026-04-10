@@ -1,11 +1,14 @@
-//! DID:key encoding and decoding for Ed25519 public keys.
+//! DID:key encoding and decoding for Ed25519 and P-256 public keys.
 //!
-//! Centralizes all `did:key` ↔ Ed25519 byte conversions in one place.
+//! Centralizes all `did:key` ↔ public key byte conversions in one place.
 //! The `did:key` method encodes a public key directly in the DID string
 //! using multicodec + base58btc, per the [did:key spec](https://w3c-ccg.github.io/did-method-key/).
 
 /// Ed25519 multicodec prefix (varint-encoded `0xED`).
 const ED25519_MULTICODEC: [u8; 2] = [0xED, 0x01];
+
+/// P-256 (secp256r1) compressed multicodec prefix (varint-encoded `0x1200`).
+const P256_MULTICODEC: [u8; 2] = [0x80, 0x24];
 
 /// Errors from parsing or encoding `did:key` strings.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -17,10 +20,10 @@ pub enum DidKeyError {
     #[error("Base58 decoding failed: {0}")]
     Base58DecodeFailed(String),
 
-    #[error("Unsupported or malformed multicodec: expected Ed25519 [0xED, 0x01]")]
+    #[error("Unsupported multicodec: expected Ed25519 [0xED, 0x01] or P-256 [0x80, 0x24]")]
     UnsupportedMulticodec,
 
-    #[error("Invalid Ed25519 key length: expected 32 bytes, got {0}")]
+    #[error("Invalid key length: got {0} bytes")]
     InvalidKeyLength(usize),
 }
 
@@ -37,7 +40,7 @@ impl crate::AuthsErrorInfo for DidKeyError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::InvalidPrefix(_) => Some("DID must start with 'did:key:z'"),
-            Self::UnsupportedMulticodec => Some("Only Ed25519 keys are supported"),
+            Self::UnsupportedMulticodec => Some("Supported key types: Ed25519, P-256 (secp256r1)"),
             _ => None,
         }
     }
@@ -81,6 +84,87 @@ pub fn ed25519_pubkey_to_did_key(public_key: &[u8; 32]) -> String {
 /// * `pk`: Raw public key bytes.
 pub fn ed25519_pubkey_to_did_keri(pk: &[u8]) -> String {
     format!("did:keri:{}", bs58::encode(pk).into_string())
+}
+
+/// Encode a 33-byte compressed P-256 public key as a `did:key:z...` string.
+///
+/// Args:
+/// * `public_key`: A 33-byte SEC1 compressed P-256 public key.
+///
+/// Usage:
+/// ```ignore
+/// let did = p256_pubkey_to_did_key(&compressed_key);
+/// assert!(did.starts_with("did:key:z"));
+/// ```
+pub fn p256_pubkey_to_did_key(public_key: &[u8]) -> String {
+    let mut prefixed = vec![P256_MULTICODEC[0], P256_MULTICODEC[1]];
+    prefixed.extend_from_slice(public_key);
+    let encoded = bs58::encode(prefixed).into_string();
+    format!("did:key:z{encoded}")
+}
+
+/// Decode a `did:key:z...` string to a 33-byte compressed P-256 public key.
+///
+/// Args:
+/// * `did`: A DID string in `did:key:z<base58btc>` format with P-256 multicodec.
+///
+/// Usage:
+/// ```ignore
+/// let pk: Vec<u8> = did_key_to_p256("did:key:zDn...")?;
+/// assert_eq!(pk.len(), 33);
+/// ```
+pub fn did_key_to_p256(did: &str) -> Result<Vec<u8>, DidKeyError> {
+    let encoded = strip_did_key_prefix(did)?;
+    let decoded = decode_base58(encoded)?;
+    if decoded.len() < 2 {
+        return Err(DidKeyError::InvalidKeyLength(decoded.len()));
+    }
+    if decoded[0] != P256_MULTICODEC[0] || decoded[1] != P256_MULTICODEC[1] {
+        return Err(DidKeyError::UnsupportedMulticodec);
+    }
+    let key = decoded[2..].to_vec();
+    if key.len() != 33 {
+        return Err(DidKeyError::InvalidKeyLength(key.len()));
+    }
+    Ok(key)
+}
+
+/// Decoded public key from a `did:key` string, with curve identification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DecodedDidKey {
+    /// Ed25519 public key (32 bytes).
+    Ed25519([u8; 32]),
+    /// P-256 compressed public key (33 bytes).
+    P256(Vec<u8>),
+}
+
+/// Decode a `did:key:z...` string, auto-detecting the curve from the multicodec.
+///
+/// Usage:
+/// ```ignore
+/// match did_key_decode("did:key:z...")? {
+///     DecodedDidKey::Ed25519(pk) => { /* 32 bytes */ }
+///     DecodedDidKey::P256(pk) => { /* 33 bytes */ }
+/// }
+/// ```
+pub fn did_key_decode(did: &str) -> Result<DecodedDidKey, DidKeyError> {
+    let encoded = strip_did_key_prefix(did)?;
+    let decoded = decode_base58(encoded)?;
+    if decoded.len() < 2 {
+        return Err(DidKeyError::InvalidKeyLength(decoded.len()));
+    }
+    if decoded[0] == ED25519_MULTICODEC[0] && decoded[1] == ED25519_MULTICODEC[1] {
+        let key = validate_multicodec_and_extract(&decoded)?;
+        Ok(DecodedDidKey::Ed25519(key))
+    } else if decoded[0] == P256_MULTICODEC[0] && decoded[1] == P256_MULTICODEC[1] {
+        let key = decoded[2..].to_vec();
+        if key.len() != 33 {
+            return Err(DidKeyError::InvalidKeyLength(key.len()));
+        }
+        Ok(DecodedDidKey::P256(key))
+    } else {
+        Err(DidKeyError::UnsupportedMulticodec)
+    }
 }
 
 fn strip_did_key_prefix(did: &str) -> Result<&str, DidKeyError> {

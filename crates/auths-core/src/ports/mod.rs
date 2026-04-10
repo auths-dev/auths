@@ -13,3 +13,5 @@ pub mod pairing;
 pub mod platform;
 pub mod ssh_agent;
 pub mod storage;
+/// Transparency log port trait for pluggable log backends.
+pub mod transparency_log;

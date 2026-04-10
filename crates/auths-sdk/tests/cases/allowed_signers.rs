@@ -51,7 +51,7 @@ fn load_nonexistent_file_returns_empty() {
 #[test]
 fn add_and_list() {
     let mut signers = AllowedSigners::new("/tmp/test");
-    let key = Ed25519PublicKey::from_bytes([1u8; 32]);
+    let key: auths_verifier::DevicePublicKey = Ed25519PublicKey::from_bytes([1u8; 32]).into();
     let principal = SignerPrincipal::Email(EmailAddress::new("user@example.com").unwrap());
     signers
         .add(principal.clone(), key, SignerSource::Manual)
@@ -63,10 +63,10 @@ fn add_and_list() {
 #[test]
 fn add_duplicate_rejected() {
     let mut signers = AllowedSigners::new("/tmp/test");
-    let key = Ed25519PublicKey::from_bytes([1u8; 32]);
+    let key: auths_verifier::DevicePublicKey = Ed25519PublicKey::from_bytes([1u8; 32]).into();
     let principal = SignerPrincipal::Email(EmailAddress::new("user@example.com").unwrap());
     signers
-        .add(principal.clone(), key, SignerSource::Manual)
+        .add(principal.clone(), key.clone(), SignerSource::Manual)
         .unwrap();
     let result = signers.add(principal, key, SignerSource::Manual);
     assert!(result.is_err());
@@ -75,7 +75,7 @@ fn add_duplicate_rejected() {
 #[test]
 fn remove_manual_entry() {
     let mut signers = AllowedSigners::new("/tmp/test");
-    let key = Ed25519PublicKey::from_bytes([1u8; 32]);
+    let key: auths_verifier::DevicePublicKey = Ed25519PublicKey::from_bytes([1u8; 32]).into();
     let principal = SignerPrincipal::Email(EmailAddress::new("user@example.com").unwrap());
     signers
         .add(principal.clone(), key, SignerSource::Manual)
@@ -94,7 +94,7 @@ fn remove_nonexistent_returns_false() {
 #[test]
 fn remove_attestation_entry_rejected() {
     let mut signers = AllowedSigners::new("/tmp/test");
-    let key = Ed25519PublicKey::from_bytes([1u8; 32]);
+    let key: auths_verifier::DevicePublicKey = Ed25519PublicKey::from_bytes([1u8; 32]).into();
     let principal = SignerPrincipal::Email(EmailAddress::new("user@example.com").unwrap());
     signers
         .add(principal.clone(), key, SignerSource::Attestation)
@@ -109,8 +109,8 @@ fn save_and_load_roundtrip() {
     let path = dir.path().join("allowed_signers");
 
     let mut signers = AllowedSigners::new(&path);
-    let key1 = Ed25519PublicKey::from_bytes([1u8; 32]);
-    let key2 = Ed25519PublicKey::from_bytes([2u8; 32]);
+    let key1: auths_verifier::DevicePublicKey = Ed25519PublicKey::from_bytes([1u8; 32]).into();
+    let key2: auths_verifier::DevicePublicKey = Ed25519PublicKey::from_bytes([2u8; 32]).into();
     signers
         .add(
             SignerPrincipal::Email(EmailAddress::new("manual@example.com").unwrap()),
@@ -152,8 +152,8 @@ fn load_unmarked_file_treats_as_manual() {
     let path = dir.path().join("allowed_signers");
 
     // Write a file without section markers
-    let key = Ed25519PublicKey::from_bytes([1u8; 32]);
-    let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(key.as_bytes()).unwrap();
+    let key: auths_verifier::DevicePublicKey = Ed25519PublicKey::from_bytes([1u8; 32]).into();
+    let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(&key).unwrap();
     let content = format!("user@example.com namespaces=\"git\" {}\n", ssh_key);
     let store = FakeAllowedSignersStore::new().with_file(&path, &content);
 

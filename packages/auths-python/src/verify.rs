@@ -42,15 +42,7 @@ pub fn verify_attestation(
         )));
     }
 
-    let issuer_pk_bytes = hex::decode(issuer_pk_hex)
-        .map_err(|e| PyValueError::new_err(format!("Invalid issuer public key hex: {e}")))?;
-
-    if issuer_pk_bytes.len() != 32 {
-        return Err(PyValueError::new_err(format!(
-            "Invalid issuer public key length: expected 32 bytes (64 hex chars), got {}",
-            issuer_pk_bytes.len()
-        )));
-    }
+    let (issuer_pk_bytes, _curve) = crate::types::validate_pk_hex(issuer_pk_hex)?;
 
     let att: Attestation = match serde_json::from_str(attestation_json) {
         Ok(att) => att,
@@ -100,15 +92,7 @@ pub fn verify_chain(
         )));
     }
 
-    let root_pk_bytes = hex::decode(root_pk_hex)
-        .map_err(|e| PyValueError::new_err(format!("Invalid root public key hex: {e}")))?;
-
-    if root_pk_bytes.len() != 32 {
-        return Err(PyValueError::new_err(format!(
-            "Invalid root public key length: expected 32 bytes (64 hex chars), got {}",
-            root_pk_bytes.len()
-        )));
-    }
+    let (root_pk_bytes, _curve) = crate::types::validate_pk_hex(root_pk_hex)?;
 
     let attestations: Vec<Attestation> = attestations_json
         .iter()
@@ -157,15 +141,7 @@ pub fn verify_device_authorization(
         )));
     }
 
-    let identity_pk_bytes = hex::decode(identity_pk_hex)
-        .map_err(|e| PyValueError::new_err(format!("Invalid identity public key hex: {e}")))?;
-
-    if identity_pk_bytes.len() != 32 {
-        return Err(PyValueError::new_err(format!(
-            "Invalid identity public key length: expected 32 bytes (64 hex chars), got {}",
-            identity_pk_bytes.len()
-        )));
-    }
+    let (identity_pk_bytes, _curve) = crate::types::validate_pk_hex(identity_pk_hex)?;
 
     let attestations: Vec<Attestation> = attestations_json
         .iter()
@@ -220,15 +196,7 @@ pub fn verify_attestation_with_capability(
         )));
     }
 
-    let issuer_pk_bytes = hex::decode(issuer_pk_hex)
-        .map_err(|e| PyValueError::new_err(format!("Invalid issuer public key hex: {e}")))?;
-
-    if issuer_pk_bytes.len() != 32 {
-        return Err(PyValueError::new_err(format!(
-            "Invalid issuer public key length: expected 32 bytes (64 hex chars), got {}",
-            issuer_pk_bytes.len()
-        )));
-    }
+    let (issuer_pk_bytes, _curve) = crate::types::validate_pk_hex(issuer_pk_hex)?;
 
     let att: Attestation = match serde_json::from_str(attestation_json) {
         Ok(att) => att,
@@ -286,15 +254,7 @@ pub fn verify_chain_with_capability(
         )));
     }
 
-    let root_pk_bytes = hex::decode(root_pk_hex)
-        .map_err(|e| PyValueError::new_err(format!("Invalid root public key hex: {e}")))?;
-
-    if root_pk_bytes.len() != 32 {
-        return Err(PyValueError::new_err(format!(
-            "Invalid root public key length: expected 32 bytes (64 hex chars), got {}",
-            root_pk_bytes.len()
-        )));
-    }
+    let (root_pk_bytes, _curve) = crate::types::validate_pk_hex(root_pk_hex)?;
 
     let attestations: Vec<Attestation> = attestations_json
         .iter()
@@ -362,15 +322,7 @@ fn validate_attestation_key(attestation_json: &str, issuer_pk_hex: &str) -> PyRe
         )));
     }
 
-    let issuer_pk_bytes = hex::decode(issuer_pk_hex)
-        .map_err(|e| PyValueError::new_err(format!("Invalid issuer public key hex: {e}")))?;
-
-    if issuer_pk_bytes.len() != 32 {
-        return Err(PyValueError::new_err(format!(
-            "Invalid issuer public key length: expected 32 bytes (64 hex chars), got {}",
-            issuer_pk_bytes.len()
-        )));
-    }
+    let (issuer_pk_bytes, _curve) = crate::types::validate_pk_hex(issuer_pk_hex)?;
 
     Ok(issuer_pk_bytes)
 }
@@ -514,15 +466,7 @@ pub fn verify_chain_with_witnesses(
         )));
     }
 
-    let root_pk_bytes = hex::decode(root_pk_hex)
-        .map_err(|e| PyValueError::new_err(format!("Invalid root public key hex: {e}")))?;
-
-    if root_pk_bytes.len() != 32 {
-        return Err(PyValueError::new_err(format!(
-            "Invalid root public key length: expected 32 bytes (64 hex chars), got {}",
-            root_pk_bytes.len()
-        )));
-    }
+    let (root_pk_bytes, _curve) = crate::types::validate_pk_hex(root_pk_hex)?;
 
     let attestations: Vec<Attestation> = attestations_json
         .iter()
@@ -556,14 +500,8 @@ pub fn verify_chain_with_witnesses(
             let input: WitnessKeyInput = serde_json::from_str(json).map_err(|e| {
                 PyValueError::new_err(format!("Failed to parse witness key {i}: {e}"))
             })?;
-            let pk_bytes = hex::decode(&input.public_key_hex)
-                .map_err(|e| PyValueError::new_err(format!("Invalid witness key {i} hex: {e}")))?;
-            if pk_bytes.len() != 32 {
-                return Err(PyValueError::new_err(format!(
-                    "Invalid witness key {i} length: expected 32 bytes, got {}",
-                    pk_bytes.len()
-                )));
-            }
+            let (pk_bytes, _curve) = crate::types::validate_pk_hex(&input.public_key_hex)
+                .map_err(|e| PyValueError::new_err(format!("Invalid witness key {i}: {e}")))?;
             Ok((input.did, pk_bytes))
         })
         .collect::<PyResult<Vec<_>>>()?;

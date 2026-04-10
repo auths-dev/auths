@@ -216,7 +216,8 @@ pub fn sign_action_as_agent(
     })
 }
 
-/// Decode a hex-encoded Ed25519 seed and validate its length.
+/// Decode a hex-encoded seed and validate its length.
+/// Seeds are always 32 bytes for both Ed25519 and P-256.
 fn decode_seed_hex(private_key_hex: &str) -> napi::Result<Vec<u8>> {
     let seed = hex::decode(private_key_hex).map_err(|e| {
         format_error(
@@ -228,7 +229,7 @@ fn decode_seed_hex(private_key_hex: &str) -> napi::Result<Vec<u8>> {
         return Err(format_error(
             "AUTHS_INVALID_INPUT",
             format!(
-                "Invalid private key length: expected 32 bytes (64 hex chars), got {}",
+                "Invalid seed length: expected 32 bytes (64 hex chars), got {}",
                 seed.len()
             ),
         ));

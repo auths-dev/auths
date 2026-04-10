@@ -70,8 +70,7 @@ pub fn pin_identity(
                 ))
             })?;
         #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
-        let public_key_hex =
-            PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes()));
+        let public_key_hex = PublicKeyHex::new_unchecked(hex::encode(resolved.public_key_bytes()));
 
         // Check if already pinned — if so, update label by remove + re-pin
         if let Ok(Some(existing)) = store.lookup(&did) {

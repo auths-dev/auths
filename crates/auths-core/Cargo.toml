@@ -24,7 +24,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "1.0"
 ssh-agent-lib = "0.5.1"
-ssh-key = { version = "0.6.7", features = ["ed25519"] }
+ssh-key = { version = "0.6.7", features = ["ed25519", "ecdsa"] }
 thiserror.workspace = true
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
@@ -53,6 +53,8 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 
 auths-verifier = { workspace = true, features = ["native"] }
 auths-keri = { workspace = true }
+auths-transparency = { workspace = true }
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "arithmetic"] }
 url = { version = "2", features = ["serde"] }
 uuid.workspace = true
 
@@ -84,6 +86,7 @@ windows = { version = "0.58", features = ["Security_Credentials", "Foundation_Co
 [dev-dependencies]
 ring.workspace = true
 anyhow = "1.0"
+p256 = { version = "0.13", features = ["ecdsa"] }
 assert_matches = "1.5.0"
 auths-verifier = { workspace = true, features = ["test-utils"] }
 criterion = { version = "0.5", features = ["html_reports"] }

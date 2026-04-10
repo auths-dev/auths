@@ -1,7 +1,5 @@
 //! Signing abstractions and DID resolution.
 
-use auths_verifier::core::Ed25519PublicKey;
-
 use crate::crypto::provider_bridge;
 use crate::crypto::signer::{decrypt_keypair, extract_seed_from_key_bytes};
 use crate::error::AgentError;
@@ -81,15 +79,15 @@ pub enum ResolvedDid {
     Key {
         /// The resolved DID string.
         did: String,
-        /// The Ed25519 public key.
-        public_key: Ed25519PublicKey,
+        /// Raw public key bytes (32 for Ed25519, 33 for P-256 compressed).
+        public_key_bytes: Vec<u8>,
     },
     /// KERI-based identity with rotation capability.
     Keri {
         /// The resolved DID string.
         did: String,
-        /// The Ed25519 public key.
-        public_key: Ed25519PublicKey,
+        /// Raw public key bytes (32 for Ed25519, 33 for P-256 compressed).
+        public_key_bytes: Vec<u8>,
         /// Current KEL sequence number.
         sequence: u64,
         /// Whether key rotation is available.
@@ -105,12 +103,15 @@ impl ResolvedDid {
         }
     }
 
-    /// Returns the Ed25519 public key.
-    pub fn public_key(&self) -> &Ed25519PublicKey {
+    /// Returns the raw public key bytes.
+    pub fn public_key_bytes(&self) -> &[u8] {
         match self {
-            ResolvedDid::Key { public_key, .. } | ResolvedDid::Keri { public_key, .. } => {
-                public_key
+            ResolvedDid::Key {
+                public_key_bytes, ..
             }
+            | ResolvedDid::Keri {
+                public_key_bytes, ..
+            } => public_key_bytes,
         }
     }
 

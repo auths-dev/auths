@@ -99,7 +99,7 @@ impl AgentSigningPort for FakeAgentProvider {
     fn try_sign(
         &self,
         namespace: &str,
-        pubkey: &[u8],
+        pubkey: &auths_verifier::DevicePublicKey,
         data: &[u8],
     ) -> Result<String, AgentSigningError> {
         self.calls
@@ -107,7 +107,7 @@ impl AgentSigningPort for FakeAgentProvider {
             .unwrap_or_else(|e| e.into_inner())
             .push(AgentCall::TrySign {
                 namespace: namespace.to_string(),
-                pubkey: pubkey.to_vec(),
+                pubkey: pubkey.as_bytes().to_vec(),
                 data: data.to_vec(),
             });
 

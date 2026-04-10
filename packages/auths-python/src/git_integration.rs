@@ -35,7 +35,7 @@ pub fn generate_allowed_signers_file(_py: Python<'_>, repo_path: &str) -> PyResu
             .list()
             .iter()
             .filter_map(|entry| {
-                let ssh_key = public_key_to_ssh(entry.public_key.as_bytes()).ok()?;
+                let ssh_key = public_key_to_ssh(&entry.public_key).ok()?;
                 Some(format!(
                     "{} namespaces=\"git\" {}",
                     entry.principal, ssh_key

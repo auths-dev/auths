@@ -35,7 +35,7 @@ impl AgentCore {
     /// Args:
     /// * `pkcs8_bytes` - The raw, decrypted PKCS#8 bytes for the Ed25519 key, wrapped in `Zeroizing`.
     pub fn register_key(&mut self, pkcs8_bytes: Zeroizing<Vec<u8>>) -> Result<(), AgentError> {
-        let (seed, pubkey) = crate::crypto::signer::load_seed_and_pubkey(&pkcs8_bytes)?;
+        let (seed, pubkey, _curve) = crate::crypto::signer::load_seed_and_pubkey(&pkcs8_bytes)?;
         self.keys.insert(pubkey.to_vec(), seed);
         Ok(())
     }

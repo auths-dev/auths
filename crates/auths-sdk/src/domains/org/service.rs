@@ -101,7 +101,7 @@ pub(crate) fn find_admin(
     backend
         .visit_org_member_attestations(org_prefix, &mut |entry| {
             if let Ok(att) = &entry.attestation
-                && att.device_public_key.as_bytes().as_slice() == signer_bytes.as_slice()
+                && att.device_public_key.as_bytes() == signer_bytes.as_slice()
                 && !att.is_revoked()
                 && att.capabilities.contains(&Capability::manage_members())
             {
@@ -373,6 +373,7 @@ pub fn add_organization_member(
             Some(IdentityDID::new_unchecked(admin_att.subject.to_string()))
         },
         None, // commit_sha
+        None,
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 

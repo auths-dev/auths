@@ -113,12 +113,12 @@ pub enum KeySubcommand {
     ///
     /// Examples:
     ///   # Copy to file keychain (passphrase from env var)
-    ///   AUTHS_PASSPHRASE="$CI_PASS" auths key copy-backend \
-    ///     --alias ci-release-device --dst-backend file --dst-file /tmp/ci-keychain.enc
+    ///   AUTHS_PASSPHRASE="$PASS" auths key copy-backend \
+    ///     --alias main --dst-backend file --dst-file /tmp/keychain.enc
     ///
     ///   # Copy to file keychain (passphrase from flag)
-    ///   auths key copy-backend --alias ci-release-device \
-    ///     --dst-backend file --dst-file /tmp/ci-keychain.enc --dst-passphrase "$CI_PASS"
+    ///   auths key copy-backend --alias main \
+    ///     --dst-backend file --dst-file /tmp/keychain.enc --dst-passphrase "$PASS"
     CopyBackend {
         /// Alias of the key to copy from the current (source) keychain.
         #[arg(long = "key-alias", visible_alias = "alias")]

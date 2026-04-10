@@ -23,6 +23,9 @@ pub use auths_core::ports::namespace::{Ecosystem, NamespaceVerifyError, PackageN
 pub use auths_core::ports::network::RegistryClient;
 pub use auths_core::ports::ssh_agent::{SshAgentError, SshAgentPort};
 pub use auths_core::ports::storage::StorageError as CoreStorageError;
+pub use auths_core::ports::transparency_log::{
+    LogError, LogMetadata, LogSubmission, TransparencyLog,
+};
 
 // Re-exports from auths-id ports
 pub use auths_id::ports::registry::RegistryBackend;

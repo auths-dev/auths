@@ -78,7 +78,7 @@ pub fn pin_identity(
             )
         })?;
     #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
-    let public_key_hex = PublicKeyHex::new_unchecked(hex::encode(resolved.public_key().as_bytes()));
+    let public_key_hex = PublicKeyHex::new_unchecked(hex::encode(resolved.public_key_bytes()));
 
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();

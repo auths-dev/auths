@@ -6,8 +6,8 @@ This checklist validates that the complete OIDC machine identity commit signing 
 
 ## Prerequisites
 
-- [ ] Branch with sign-commit feature changes is ready
-- [ ] Workflow file (`.github/workflows/sign-commits.yml`) is present
+- [ ] Branch with commit verification and ephemeral signing changes is ready
+- [ ] Workflow file (`.github/workflows/release.yml`) includes verify gate and ephemeral signing
 - [ ] All code changes are committed
 - [ ] Repository has write permissions for refs/auths/*
 
@@ -15,7 +15,7 @@ This checklist validates that the complete OIDC machine identity commit signing 
 
 ### Trigger the Workflow
 
-- [ ] Push to main branch or create PR that triggers `.github/workflows/sign-commits.yml`
+- [ ] Push to main branch or create PR that triggers `.github/workflows/release.yml`
 - [ ] Workflow starts automatically in GitHub Actions
 - [ ] No manual token configuration required (GitHub provides OIDC token automatically)
 
@@ -263,7 +263,7 @@ If any step fails, document:
 
 **Workflow doesn't trigger:**
 - Check branch protection rules
-- Verify `.github/workflows/sign-commits.yml` is on main
+- Verify `.github/workflows/release.yml` is on main
 
 **OIDC token not acquired:**
 - Check GitHub Actions OIDC issuer is configured

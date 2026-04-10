@@ -36,7 +36,8 @@ fn test_sign_with_known_seed() {
         0x1f, 0x20,
     ]);
 
-    let pem = signing::sign_with_seed(&seed, b"test data", "git").unwrap();
+    let pem = signing::sign_with_seed(&seed, b"test data", "git", auths_crypto::CurveType::Ed25519)
+        .unwrap();
     assert!(pem.starts_with("-----BEGIN SSH SIGNATURE-----"));
     assert!(pem.contains("-----END SSH SIGNATURE-----"));
 }
@@ -79,7 +80,7 @@ mod workflow {
         let ctx = signing_ctx_with_agent(&ctx, fake.clone());
 
         let params = CommitSigningParams::new(alias.as_str(), "git", b"test data".to_vec())
-            .with_pubkey(vec![0u8; 32]);
+            .with_pubkey(auths_verifier::DevicePublicKey::ed25519(&[0u8; 32]));
 
         let result = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now());
         assert!(result.is_ok());

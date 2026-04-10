@@ -4,10 +4,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use auths_keri::witness::SignedReceipt;
-use auths_transparency::{
-    BundleVerificationReport, CheckpointStatus, DelegationStatus, InclusionStatus, NamespaceStatus,
-    OfflineBundle, SignatureStatus, TrustRoot, WitnessStatus,
-};
 use auths_verifier::core::Attestation;
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
@@ -80,16 +76,6 @@ pub async fn handle_verify(
             );
         }
     };
-
-    let sig_value: serde_json::Value = match serde_json::from_str(&sig_content) {
-        Ok(v) => v,
-        Err(e) => {
-            return output_error(&file_str, 2, &format!("Failed to parse .auths.json: {}", e));
-        }
-    };
-    if sig_value.get("offline_bundle").is_some() {
-        return handle_bundle_verify(file, &sig_content);
-    }
 
     // 2. Parse attestation
     let attestation: Attestation = match serde_json::from_str(&sig_content) {
@@ -209,10 +195,50 @@ pub async fn handle_verify(
         valid = false;
     }
 
+    // 8a. Ephemeral attestation: verify commit signature transitively
+    let is_ephemeral = attestation.issuer.as_str().starts_with("did:key:");
+    if is_ephemeral && valid {
+        match &attestation.commit_sha {
+            None => {
+                if !is_json_mode() {
+                    eprintln!(
+                        "Error: ephemeral attestation (did:key issuer) requires commit_sha. \
+                         This attestation is unsigned provenance without a commit anchor."
+                    );
+                }
+                valid = false;
+            }
+            Some(sha) => {
+                // Verify the commit is signed by a trusted key.
+                // Uses in-process verification via auths-verifier (no git shell-out).
+                let commit_sig_ok = verify_commit_in_process(sha);
+
+                if !commit_sig_ok {
+                    valid = false;
+                }
+
+                if !is_json_mode() {
+                    if commit_sig_ok {
+                        eprintln!(
+                            "  Trust chain: artifact <- ephemeral key <- commit {} <- maintainer",
+                            &sha[..8.min(sha.len())]
+                        );
+                    } else {
+                        eprintln!(
+                            "  Commit {} is not signed by a trusted maintainer.",
+                            &sha[..8.min(sha.len())]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // 8b. Display commit linkage info (always, when present)
     let commit_sha_val = attestation.commit_sha.clone();
     if let Some(ref sha) = commit_sha_val
         && !is_json_mode()
+        && !is_ephemeral
     {
         eprintln!("  Commit: {}", sha);
     }
@@ -296,7 +322,7 @@ fn resolve_identity_key(
     } else {
         // Resolve public key from the issuer DID
         let issuer = &attestation.issuer;
-        let pk = resolve_pk_from_did(issuer)
+        let (pk, _curve) = resolve_pk_from_did(issuer)
             .with_context(|| format!("Failed to resolve public key from issuer DID '{}'. Use --identity-bundle for stateless verification.", issuer))?;
         Ok((pk, issuer.clone()))
     }
@@ -305,22 +331,21 @@ fn resolve_identity_key(
 /// Extract raw Ed25519 public key bytes from a DID string.
 ///
 /// Supports `did:keri:<base58>` and `did:key:z<base58multicodec>`.
-fn resolve_pk_from_did(did: &str) -> Result<Vec<u8>> {
+fn resolve_pk_from_did(did: &str) -> Result<(Vec<u8>, auths_crypto::CurveType)> {
     if let Some(encoded) = did.strip_prefix("did:keri:") {
         let pk = bs58::decode(encoded)
             .into_vec()
             .context("Invalid base58 in did:keri")?;
-        if pk.len() != 32 {
-            return Err(anyhow!(
-                "Expected 32-byte Ed25519 key from did:keri, got {}",
-                pk.len()
-            ));
-        }
-        Ok(pk)
+        // KERI DIDs are currently Ed25519-only
+        Ok((pk, auths_crypto::CurveType::Ed25519))
     } else if did.starts_with("did:key:z") {
-        auths_crypto::did_key_to_ed25519(did)
-            .map(|k| k.to_vec())
-            .map_err(|e| anyhow!("Failed to resolve did:key: {}", e))
+        match auths_crypto::did_key_decode(did) {
+            Ok(auths_crypto::DecodedDidKey::Ed25519(pk)) => {
+                Ok((pk.to_vec(), auths_crypto::CurveType::Ed25519))
+            }
+            Ok(auths_crypto::DecodedDidKey::P256(pk)) => Ok((pk, auths_crypto::CurveType::P256)),
+            Err(e) => Err(anyhow!("Failed to resolve did:key: {}", e)),
+        }
     } else {
         Err(anyhow!(
             "Unsupported DID method: {}. Use --identity-bundle instead.",
@@ -362,7 +387,6 @@ async fn verify_witnesses(
     Ok(report.witness_quorum)
 }
 
-/// Output error with appropriate formatting and exit code.
 fn output_error(file: &str, exit_code: i32, message: &str) -> Result<()> {
     if is_json_mode() {
         let result = VerifyArtifactResult {
@@ -415,145 +439,201 @@ fn output_result(exit_code: i32, result: VerifyArtifactResult) -> Result<()> {
     Ok(())
 }
 
-fn handle_bundle_verify(file: &Path, sig_content: &str) -> Result<()> {
-    let file_str = file.to_string_lossy().to_string();
-
-    let sig_value: serde_json::Value =
-        serde_json::from_str(sig_content).with_context(|| "Failed to parse .auths.json")?;
-    let bundle: OfflineBundle = serde_json::from_value(sig_value["offline_bundle"].clone())
-        .with_context(|| "Failed to parse offline_bundle from .auths.json")?;
-
-    let trust_root: TrustRoot = serde_json::from_str(&default_trust_root_json())
-        .with_context(|| "Failed to parse default trust root")?;
-
-    #[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
-    let now = chrono::Utc::now();
-
-    let report = auths_transparency::verify_bundle(&bundle, &trust_root, now);
-
-    if is_json_mode() {
-        println!(
-            "{}",
-            serde_json::to_string(&report).with_context(|| "Failed to serialize bundle report")?
-        );
-    } else {
-        render_bundle_report(&report);
-    }
-
-    if report.is_valid() {
-        cache_checkpoint_from_bundle(&bundle);
-        Ok(())
-    } else {
-        output_error(&file_str, 1, "Bundle verification failed")
-    }
-}
-
-/// Best-effort checkpoint caching after bundle verification.
-#[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
-fn cache_checkpoint_from_bundle(bundle: &OfflineBundle) {
-    let cache_path = match dirs::home_dir() {
-        Some(home) => home.join(".auths").join("log_checkpoint.json"),
-        None => return,
-    };
-
-    match auths_sdk::workflows::transparency::try_cache_checkpoint(
-        &cache_path,
-        &bundle.signed_checkpoint,
-        None,
-    ) {
-        Ok(report) => {
-            if report.old_size == 0 && !is_json_mode() {
-                eprintln!(
-                    "Cached transparency checkpoint (tree size: {})",
-                    report.new_size
-                );
-            }
-        }
+/// Verify a commit signature in-process using `auths-verifier`.
+///
+/// Reads the commit content via git2, loads allowed signer keys from
+/// `.auths/allowed_signers`, and verifies using the native Rust verifier.
+/// No `git verify-commit --raw` shell-out.
+fn verify_commit_in_process(sha: &str) -> bool {
+    // Open the repository
+    let repo = match git2::Repository::discover(".") {
+        Ok(r) => r,
         Err(e) => {
             if !is_json_mode() {
-                eprintln!("Warning: checkpoint cache update failed: {e}");
+                eprintln!("Failed to open git repository: {e}");
+            }
+            return false;
+        }
+    };
+
+    // Parse the commit SHA
+    let oid = match git2::Oid::from_str(sha) {
+        Ok(o) => o,
+        Err(e) => {
+            if !is_json_mode() {
+                eprintln!("Invalid commit SHA '{}': {e}", &sha[..8.min(sha.len())]);
+            }
+            return false;
+        }
+    };
+
+    // Get the raw commit content (same as `git cat-file commit <sha>`)
+    let commit_obj = match repo.find_object(oid, Some(git2::ObjectType::Commit)) {
+        Ok(obj) => obj,
+        Err(e) => {
+            if !is_json_mode() {
+                eprintln!("Commit {} not found: {e}", &sha[..8.min(sha.len())]);
+            }
+            return false;
+        }
+    };
+
+    // Get raw content including the signature header
+    let commit_content = match repo
+        .find_commit(oid)
+        .ok()
+        .and_then(|c| c.raw_header().map(|h| h.to_string()))
+    {
+        Some(header) => {
+            // Reconstruct full commit content: header + \n\n + message
+            let msg = repo
+                .find_commit(oid)
+                .ok()
+                .and_then(|c| c.message_raw().map(|m| m.to_string()))
+                .unwrap_or_default();
+            format!("{}\n\n{}", header, msg)
+        }
+        None => {
+            // Fallback: use the raw object data
+            match commit_obj.as_blob() {
+                Some(blob) => String::from_utf8_lossy(blob.content()).to_string(),
+                None => {
+                    if !is_json_mode() {
+                        eprintln!(
+                            "Cannot read commit content for {}",
+                            &sha[..8.min(sha.len())]
+                        );
+                    }
+                    return false;
+                }
             }
         }
+    };
+
+    // Load allowed signer keys from .auths/allowed_signers
+    let allowed_signers_path = std::path::Path::new(".auths/allowed_signers");
+    let allowed_keys = if allowed_signers_path.exists() {
+        match std::fs::read_to_string(allowed_signers_path) {
+            Ok(content) => parse_allowed_signer_keys(&content),
+            Err(e) => {
+                if !is_json_mode() {
+                    eprintln!("Failed to read .auths/allowed_signers: {e}");
+                }
+                return false;
+            }
+        }
+    } else {
+        if !is_json_mode() {
+            eprintln!("No .auths/allowed_signers file found. Create one with: auths signers sync");
+        }
+        return false;
+    };
+
+    if allowed_keys.is_empty() {
+        if !is_json_mode() {
+            eprintln!("No signing keys found in .auths/allowed_signers");
+        }
+        return false;
+    }
+
+    // Verify using in-process verifier
+    let provider = auths_crypto::RingCryptoProvider;
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            if !is_json_mode() {
+                eprintln!("Failed to create async runtime: {e}");
+            }
+            return false;
+        }
+    };
+
+    match rt.block_on(auths_verifier::commit::verify_commit_signature(
+        commit_content.as_bytes(),
+        &allowed_keys,
+        &provider,
+        Some(repo.path().parent().unwrap_or(std::path::Path::new("."))),
+    )) {
+        Ok(_verified) => true,
+        Err(e) => {
+            if !is_json_mode() {
+                eprintln!(
+                    "Commit {} signature verification failed: {e}",
+                    &sha[..8.min(sha.len())]
+                );
+            }
+            false
+        }
     }
 }
 
-fn render_bundle_report(report: &BundleVerificationReport) {
-    println!("Bundle Verification:");
+/// Parse public keys from an allowed_signers file.
+///
+/// Format: `email namespaces key-type base64-key`
+/// Supports both `ssh-ed25519` and `ecdsa-sha2-nistp256` key types.
+fn parse_allowed_signer_keys(content: &str) -> Vec<auths_verifier::DevicePublicKey> {
+    content
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            // Find supported key type and extract the base64 key
+            let key_idx = parts
+                .iter()
+                .position(|&p| p == "ssh-ed25519" || p == "ecdsa-sha2-nistp256")?;
+            let key_type = parts[key_idx];
+            let b64_key = parts.get(key_idx + 1)?;
 
-    match &report.signature {
-        SignatureStatus::Verified => println!("  Signature:    \u{2713} Verified"),
-        SignatureStatus::Failed { reason } => {
-            println!("  Signature:    \u{2717} Failed: {reason}")
-        }
-        SignatureStatus::NotProvided => println!("  Signature:    - Not provided"),
-        _ => println!("  Signature:    ? Unknown status"),
-    }
+            use base64::Engine;
+            let key_bytes = base64::engine::general_purpose::STANDARD
+                .decode(b64_key)
+                .ok()?;
+            // SSH key format: 4-byte type-length + type-string + 4-byte key-length + key-data
+            if key_bytes.len() < 4 {
+                return None;
+            }
+            let type_len = u32::from_be_bytes(key_bytes[..4].try_into().ok()?) as usize;
+            let after_type = 4 + type_len;
 
-    match &report.inclusion {
-        InclusionStatus::Verified => println!("  Inclusion:    \u{2713} Verified"),
-        InclusionStatus::Failed { reason } => {
-            println!("  Inclusion:    \u{2717} Failed: {reason}")
-        }
-        InclusionStatus::NotProvided => println!("  Inclusion:    - Not provided"),
-        _ => println!("  Inclusion:    ? Unknown status"),
-    }
-
-    match &report.checkpoint {
-        CheckpointStatus::Verified => println!("  Checkpoint:   \u{2713} Verified"),
-        CheckpointStatus::InvalidSignature => {
-            println!("  Checkpoint:   \u{2717} Invalid signature")
-        }
-        CheckpointStatus::NotProvided => println!("  Checkpoint:   - Not provided"),
-        _ => println!("  Checkpoint:   ? Unknown status"),
-    }
-
-    match &report.witnesses {
-        WitnessStatus::Quorum { verified, required } => {
-            println!("  Witnesses:    \u{2713} Quorum ({verified}/{required} verified)");
-        }
-        WitnessStatus::Insufficient { verified, required } => {
-            println!("  Witnesses:    \u{2717} Insufficient ({verified}/{required} verified)");
-        }
-        WitnessStatus::NotProvided => println!("  Witnesses:    - Not provided"),
-        _ => println!("  Witnesses:    ? Unknown status"),
-    }
-
-    match &report.namespace {
-        NamespaceStatus::Authorized => println!("  Namespace:    \u{2713} Authorized"),
-        NamespaceStatus::Owned => println!("  Namespace:    \u{2713} Owned"),
-        NamespaceStatus::Unowned => println!("  Namespace:    - Unowned"),
-        NamespaceStatus::Unauthorized => println!("  Namespace:    \u{2717} Unauthorized"),
-        _ => println!("  Namespace:    ? Unknown status"),
-    }
-
-    match &report.delegation {
-        DelegationStatus::Direct => println!("  Delegation:   \u{2713} Direct"),
-        DelegationStatus::ChainVerified {
-            org_did,
-            member_did,
-            ..
-        } => {
-            println!("  Delegation:   \u{2713} Chain verified ({org_did} \u{2192} {member_did})");
-        }
-        DelegationStatus::ChainBroken { reason } => {
-            println!("  Delegation:   \u{2717} Chain broken: {reason}");
-        }
-        DelegationStatus::NoDelegationData => println!("  Delegation:   - No delegation data"),
-        _ => println!("  Delegation:   ? Unknown status"),
-    }
-
-    for warning in &report.warnings {
-        println!("  Warning:      \u{26a0} {warning}");
-    }
-}
-
-fn default_trust_root_json() -> String {
-    // Epic 1 hardcoded trust root: no witnesses, placeholder log key.
-    // Will be replaced by TUF-distributed trust root in fn-76.
-    serde_json::json!({
-        "log_public_key": "0000000000000000000000000000000000000000000000000000000000000000",
-        "log_origin": "auths.dev/log",
-        "witnesses": []
-    })
-    .to_string()
+            match key_type {
+                "ssh-ed25519" => {
+                    let key_start = after_type + 4;
+                    if key_bytes.len() < key_start + 32 {
+                        return None;
+                    }
+                    auths_verifier::DevicePublicKey::try_new(
+                        auths_crypto::CurveType::Ed25519,
+                        &key_bytes[key_start..key_start + 32],
+                    )
+                    .ok()
+                }
+                "ecdsa-sha2-nistp256" => {
+                    // ECDSA SSH format: type + curve-name-string + ec-point-string
+                    if key_bytes.len() < after_type + 4 {
+                        return None;
+                    }
+                    let curve_len =
+                        u32::from_be_bytes(key_bytes[after_type..after_type + 4].try_into().ok()?)
+                            as usize;
+                    let after_curve = after_type + 4 + curve_len;
+                    if key_bytes.len() < after_curve + 4 {
+                        return None;
+                    }
+                    let point_len = u32::from_be_bytes(
+                        key_bytes[after_curve..after_curve + 4].try_into().ok()?,
+                    ) as usize;
+                    let point_start = after_curve + 4;
+                    if key_bytes.len() < point_start + point_len {
+                        return None;
+                    }
+                    auths_verifier::DevicePublicKey::try_new(
+                        auths_crypto::CurveType::P256,
+                        &key_bytes[point_start..point_start + point_len],
+                    )
+                    .ok()
+                }
+                _ => None,
+            }
+        })
+        .collect()
 }

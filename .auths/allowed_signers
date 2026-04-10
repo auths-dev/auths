@@ -1,4 +1,4 @@
 # auths:managed — do not edit manually
 # auths:attestation
-z6MknkJY66KPDbAEeRVbSJ4MbigiHYGAumVzpgi3QfjhJc6T@auths.local namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHs7L6XhpNR/Qfp4rr+4GoTo6d38rAJKLI1WRtsLXm+Q
+zDnaeozdqZm6u6rx8pc8RjSFVXRdoyACavgoRMQQx1qCXvsdm@auths.local namespaces="git" ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBF4bP1XrwmGIzv5AR3L64MzVmhncKSJZvUm/vRaNFQ5k6yREvLIJwOmAI7ifc9oaTWdLOW/JD/fx3AzDRhNEyNU=
 # auths:manual

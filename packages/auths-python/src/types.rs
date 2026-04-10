@@ -1,8 +1,29 @@
+use auths_crypto::CurveType;
 use auths_verifier::types::{
     ChainLink as RustChainLink, VerificationReport as RustVerificationReport,
     VerificationStatus as RustVerificationStatus,
 };
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+
+/// Parse hex-encoded public key bytes and infer curve from length.
+///
+/// This is the single length-based inference point at the FFI boundary where
+/// callers pass hex strings without curve metadata.
+pub fn validate_pk_hex(hex_str: &str) -> PyResult<(Vec<u8>, CurveType)> {
+    let bytes =
+        hex::decode(hex_str).map_err(|e| PyValueError::new_err(format!("Invalid hex: {e}")))?;
+    let curve = match bytes.len() {
+        32 => CurveType::Ed25519,
+        33 | 65 => CurveType::P256,
+        n => {
+            return Err(PyValueError::new_err(format!(
+                "Invalid public key length: expected 32 (Ed25519), 33/65 (P-256), got {n}"
+            )));
+        }
+    };
+    Ok((bytes, curve))
+}
 
 #[pyclass(frozen, skip_from_py_object)]
 #[derive(Clone)]

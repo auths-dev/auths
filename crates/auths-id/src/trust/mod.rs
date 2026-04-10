@@ -84,7 +84,7 @@ impl KelContinuityChecker for GitKelContinuityChecker<'_> {
                 auths_core::error::TrustError::InvalidData(format!("KERI key decode failed: {e}"))
             })?;
 
-        if current_key_bytes.as_bytes().as_slice() != presented_pk {
+        if current_key_bytes.as_bytes() != presented_pk {
             return Ok(None);
         }
 

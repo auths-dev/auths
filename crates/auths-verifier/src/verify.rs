@@ -447,7 +447,7 @@ pub(crate) async fn verify_chain_inner(
             ));
         }
 
-        let issuer_pk = prev_att.device_public_key.as_bytes().as_slice();
+        let issuer_pk = prev_att.device_public_key.as_bytes();
 
         match verify_single_attestation(att, issuer_pk, idx, provider, now).await {
             Ok(link) => chain_links.push(link),
@@ -582,7 +582,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: CanonicalDid::new_unchecked(issuer_did),
             subject: CanonicalDid::new_unchecked(subject_did),
-            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk).into(),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
             revoked_at,
@@ -1174,7 +1174,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: CanonicalDid::new_unchecked(issuer_did),
             subject: CanonicalDid::new_unchecked(subject_did),
-            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk).into(),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
             revoked_at: None,
@@ -1507,7 +1507,7 @@ mod tests {
             rid: ResourceId::new("test-rid"),
             issuer: CanonicalDid::new_unchecked(issuer_did),
             subject: CanonicalDid::new_unchecked(subject_did),
-            device_public_key: Ed25519PublicKey::from_bytes(device_pk),
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk).into(),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
             revoked_at: None,

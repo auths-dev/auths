@@ -4,7 +4,7 @@
 //! an [`OfflineBundle`] against a [`TrustRoot`].
 
 use chrono::{DateTime, Duration, Utc};
-use ring::signature::{ED25519, UnparsedPublicKey};
+use ring::signature::{ECDSA_P256_SHA256_ASN1, ED25519, UnparsedPublicKey};
 
 use crate::bundle::{
     BundleVerificationReport, CheckpointStatus, DelegationStatus, InclusionStatus, NamespaceStatus,
@@ -157,10 +157,37 @@ fn verify_checkpoint(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> Check
 
     let note_body = signed.checkpoint.to_note_body();
 
-    let peer_key = UnparsedPublicKey::new(&ED25519, trust_root.log_public_key.as_bytes());
-    match peer_key.verify(note_body.as_bytes(), signed.log_signature.as_bytes()) {
-        Ok(()) => CheckpointStatus::Verified,
-        Err(_) => CheckpointStatus::InvalidSignature,
+    match trust_root.signature_algorithm {
+        auths_verifier::SignatureAlgorithm::Ed25519 => {
+            let peer_key = UnparsedPublicKey::new(&ED25519, trust_root.log_public_key.as_bytes());
+            match peer_key.verify(note_body.as_bytes(), signed.log_signature.as_bytes()) {
+                Ok(()) => CheckpointStatus::Verified,
+                Err(_) => CheckpointStatus::InvalidSignature,
+            }
+        }
+        auths_verifier::SignatureAlgorithm::EcdsaP256 => {
+            // For ECDSA P-256, the checkpoint carries the DER signature in
+            // `log_signature` (repurposed as raw bytes) and the trust root
+            // carries the ECDSA public key in a separate field. Since
+            // SignedCheckpoint.log_signature is Ed25519Signature (64 bytes fixed),
+            // ECDSA requires the raw DER bytes stored differently.
+            //
+            // For now, we use the ecdsa_checkpoint_signature and ecdsa_checkpoint_key
+            // optional fields that the Rekor adapter populates.
+            // Fall through to the raw-bytes verification path.
+            if let (Some(ecdsa_sig), Some(ecdsa_pk)) = (
+                &signed.ecdsa_checkpoint_signature,
+                &signed.ecdsa_checkpoint_key,
+            ) {
+                let peer_key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, ecdsa_pk.as_der());
+                match peer_key.verify(note_body.as_bytes(), ecdsa_sig.as_der()) {
+                    Ok(()) => CheckpointStatus::Verified,
+                    Err(_) => CheckpointStatus::InvalidSignature,
+                }
+            } else {
+                CheckpointStatus::InvalidSignature
+            }
+        }
     }
 }
 
@@ -553,6 +580,7 @@ mod tests {
             log_public_key: Ed25519PublicKey::from_bytes(log_public_key),
             log_origin: LogOrigin::new("test.dev/log").unwrap(),
             witnesses: vec![],
+            signature_algorithm: Default::default(),
         };
 
         TestFixture {
@@ -610,6 +638,8 @@ mod tests {
             log_signature,
             log_public_key: Ed25519PublicKey::from_bytes(fixture.log_public_key),
             witnesses: vec![],
+            ecdsa_checkpoint_signature: None,
+            ecdsa_checkpoint_key: None,
         };
 
         let proof = InclusionProof {
@@ -739,6 +769,7 @@ mod tests {
                     public_key: Ed25519PublicKey::from_bytes(w2_pk),
                 },
             ],
+            signature_algorithm: Default::default(),
         };
 
         let report = verify_bundle(&bundle, &trust_root, fixed_now());

@@ -53,6 +53,17 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
+    // Intercept --version + --json before clap (clap prints plain text and exits)
+    let has_version = raw_args.iter().any(|a| a == "--version" || a == "-V");
+    let has_json = raw_args.iter().any(|a| a == "--json" || a == "-j");
+    if has_version && has_json {
+        println!(
+            "{}",
+            serde_json::json!({ "name": "auths", "version": env!("CARGO_PKG_VERSION") })
+        );
+        return Ok(());
+    }
+
     let cli = AuthsCli::parse();
 
     if cli.json {
@@ -89,8 +100,6 @@ fn run() -> Result<()> {
         // Utilities
         RootCommand::Config(cmd) => cmd.execute(&ctx),
         RootCommand::Completions(cmd) => cmd.execute(&ctx),
-        // CI/CD
-        RootCommand::Ci(cmd) => cmd.execute(&ctx),
         // Advanced
         RootCommand::Reset(cmd) => cmd.execute(&ctx),
         RootCommand::SignCommit(cmd) => cmd.execute(&ctx),

@@ -747,19 +747,12 @@ pub fn handle_id(
                 passphrase_provider.as_ref(),
             );
 
-            if let Ok(pk_bytes) = device_key_result {
-                use base64::Engine;
-
-                // Build OpenSSH wire format for public key blob
-                let key_type = b"ssh-ed25519";
-                let mut wire_format = Vec::new();
-                wire_format.extend_from_slice(&(key_type.len() as u32).to_be_bytes());
-                wire_format.extend_from_slice(key_type);
-                wire_format.extend_from_slice(&(pk_bytes.len() as u32).to_be_bytes());
-                wire_format.extend_from_slice(&pk_bytes);
-
-                let b64_key = base64::engine::general_purpose::STANDARD.encode(&wire_format);
-                let public_key = format!("ssh-ed25519 {}", b64_key);
+            if let Ok((pk_bytes, curve)) = device_key_result {
+                let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
+                    .map_err(|e| anyhow::anyhow!("Invalid device key: {e}"))?;
+                let public_key =
+                    auths_sdk::workflows::git_integration::public_key_to_ssh(&device_pk)
+                        .map_err(|e| anyhow::anyhow!("Failed to encode SSH key: {e}"))?;
 
                 out.println("  Uploading SSH signing key...");
                 #[allow(clippy::disallowed_methods)]

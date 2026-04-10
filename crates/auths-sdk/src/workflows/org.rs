@@ -16,8 +16,8 @@ use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_verifier::Capability;
 use auths_verifier::PublicKeyHex;
+use auths_verifier::core::Attestation;
 pub use auths_verifier::core::Role;
-use auths_verifier::core::{Attestation, Ed25519PublicKey};
 use auths_verifier::types::{DeviceDID, IdentityDID};
 
 use crate::error::OrgError;
@@ -101,7 +101,7 @@ pub(crate) fn find_admin(
     backend
         .visit_org_member_attestations(org_prefix, &mut |entry| {
             if let Ok(att) = &entry.attestation
-                && att.device_public_key.as_bytes().as_slice() == signer_bytes.as_slice()
+                && att.device_public_key.as_bytes() == signer_bytes.as_slice()
                 && !att.is_revoked()
                 && att.capabilities.contains(&Capability::manage_members())
             {
@@ -195,8 +195,8 @@ pub struct AddMemberCommand {
     pub org_prefix: String,
     /// Full DID of the member being added.
     pub member_did: String,
-    /// Ed25519 public key of the member.
-    pub member_public_key: Ed25519PublicKey,
+    /// Public key bytes of the member (32 bytes Ed25519 or 33 bytes P-256).
+    pub member_public_key: Vec<u8>,
     /// Role to assign.
     pub role: Role,
     /// Capability strings to grant.
@@ -235,8 +235,8 @@ pub struct RevokeMemberCommand {
     pub org_prefix: String,
     /// Full DID of the member to revoke.
     pub member_did: String,
-    /// Ed25519 public key of the member (from existing attestation).
-    pub member_public_key: Ed25519PublicKey,
+    /// Public key bytes of the member (from existing attestation).
+    pub member_public_key: Vec<u8>,
     /// Hex-encoded public key of the signing admin.
     pub admin_public_key_hex: PublicKeyHex,
     /// Keychain alias of the admin's signing key.
@@ -355,7 +355,7 @@ pub fn add_organization_member(
         &rid,
         &admin_issuer_did,
         &member_did,
-        cmd.member_public_key.as_bytes(),
+        &cmd.member_public_key,
         Some(serde_json::json!({
             "org_role": cmd.role.to_string(),
             "org_did": format!("did:keri:{}", cmd.org_prefix),
@@ -373,6 +373,7 @@ pub fn add_organization_member(
             Some(IdentityDID::new_unchecked(admin_att.subject.to_string()))
         },
         None, // commit_sha
+        None,
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 
@@ -430,7 +431,7 @@ pub fn revoke_organization_member(
         admin_att.rid.as_str(),
         &admin_issuer_did,
         &member_did,
-        cmd.member_public_key.as_bytes(),
+        &cmd.member_public_key,
         cmd.note,
         None,
         now,

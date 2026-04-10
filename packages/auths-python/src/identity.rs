@@ -165,7 +165,7 @@ pub fn create_identity(
                 })?;
 
         // Extract public key so callers can verify signatures immediately
-        let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+        let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
             keychain.as_ref(),
             &result_alias,
             &provider,
@@ -258,7 +258,7 @@ pub fn create_agent_identity(
         })?;
 
         // Extract public key
-        let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+        let (pub_bytes, curve) = auths_core::storage::keychain::extract_public_key_bytes(
             keychain.as_ref(),
             &result_alias,
             &provider,
@@ -271,10 +271,7 @@ pub fn create_agent_identity(
 
         // Build a self-attestation for the standalone agent
         let attestation_json = {
-            let device_did =
-                DeviceDID::from_ed25519(pub_bytes.as_slice().try_into().map_err(|_| {
-                    PyRuntimeError::new_err("[AUTHS_CRYPTO_ERROR] Invalid public key length")
-                })?);
+            let device_did = DeviceDID::from_public_key(&pub_bytes, curve);
             let att = serde_json::json!({
                 "version": 1,
                 "rid": repo.file_name().unwrap_or_default().to_string_lossy(),

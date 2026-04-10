@@ -1,4 +1,3 @@
-pub mod batch_sign;
 pub mod core;
 pub mod file;
 pub mod publish;
@@ -9,7 +8,7 @@ use clap::{Args, Subcommand};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::signing::validate_commit_sha;
@@ -82,6 +81,23 @@ pub enum ArtifactSubcommand {
         /// Do not embed any commit SHA in the attestation.
         #[arg(long, conflicts_with = "commit")]
         no_commit: bool,
+
+        /// Use ephemeral CI signing (no keychain needed). Requires --commit.
+        #[arg(long)]
+        ci: bool,
+
+        /// CI platform override when --ci is used outside a detected CI environment.
+        #[arg(long, requires = "ci")]
+        ci_platform: Option<String>,
+
+        /// Transparency log to submit to (overrides default from trust config).
+        #[arg(long, value_name = "LOG_ID")]
+        log: Option<String>,
+
+        /// Skip transparency log submission (local testing only).
+        /// Produces an unlogged attestation that verifiers reject by default.
+        #[arg(long)]
+        allow_unlogged: bool,
     },
 
     /// Sign and publish an artifact attestation to a registry.
@@ -129,44 +145,6 @@ pub enum ArtifactSubcommand {
         no_commit: bool,
     },
 
-    /// Sign multiple artifacts matching a glob pattern.
-    ///
-    /// Signs each file, writes `.auths.json` attestations, and optionally
-    /// collects them into a target directory.
-    BatchSign {
-        /// Glob pattern matching artifact files (e.g. "dist/*.tar.gz").
-        #[arg(help = "Glob pattern matching artifact files to sign.")]
-        pattern: String,
-
-        /// Local alias of the device key.
-        #[arg(long)]
-        device_key: Option<String>,
-
-        /// Local alias of the identity key. Omit for device-only CI signing.
-        #[arg(long)]
-        key: Option<String>,
-
-        /// Directory to collect attestation files into.
-        #[arg(long, value_name = "DIR")]
-        attestation_dir: Option<PathBuf>,
-
-        /// Duration in seconds until expiration.
-        #[arg(long = "expires-in", value_name = "N")]
-        expires_in: Option<u64>,
-
-        /// Optional note to embed in each attestation.
-        #[arg(long)]
-        note: Option<String>,
-
-        /// Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted).
-        #[arg(long, conflicts_with = "no_commit")]
-        commit: Option<String>,
-
-        /// Do not embed any commit SHA in the attestation.
-        #[arg(long, conflicts_with = "commit")]
-        no_commit: bool,
-    },
-
     /// Verify an artifact's signature against an Auths identity.
     Verify {
         /// Path to the artifact file to verify.
@@ -197,6 +175,126 @@ pub enum ArtifactSubcommand {
         #[arg(long)]
         verify_commit: bool,
     },
+}
+
+fn is_rate_limited(err: &auths_sdk::workflows::log_submit::LogSubmitError) -> bool {
+    matches!(
+        err,
+        auths_sdk::workflows::log_submit::LogSubmitError::LogError(
+            auths_sdk::ports::LogError::RateLimited { .. }
+        )
+    )
+}
+
+fn rate_limit_secs(err: &auths_sdk::workflows::log_submit::LogSubmitError) -> u64 {
+    match err {
+        auths_sdk::workflows::log_submit::LogSubmitError::LogError(
+            auths_sdk::ports::LogError::RateLimited { retry_after_secs },
+        ) => *retry_after_secs,
+        _ => 10,
+    }
+}
+
+/// Re-export DSSE PAE from the SDK for use in CLI signing paths.
+pub use auths_sdk::domains::signing::service::dsse_pae;
+
+/// Submit an attestation to a transparency log and return the JSON to embed.
+///
+/// The `dsse_signature` is the signature over the DSSE PAE of the attestation,
+/// computed by the caller while the signing key is still available.
+///
+/// Returns `None` if `allow_unlogged` is set or `--log` wasn't passed.
+fn submit_to_log(
+    attestation_json: &str,
+    log: &Option<String>,
+    allow_unlogged: bool,
+    dsse_signature: Option<&[u8]>,
+) -> Result<Option<serde_json::Value>> {
+    if allow_unlogged {
+        eprintln!(
+            "WARNING: Signing without transparency log. \
+             This artifact will not be verifiable against any log."
+        );
+        return Ok(None);
+    }
+
+    // If --log wasn't passed, skip silently (non-CI default behavior)
+    if log.is_none() {
+        return Ok(None);
+    }
+
+    let sig_bytes = dsse_signature
+        .ok_or_else(|| anyhow::anyhow!("DSSE signature required for log submission"))?;
+
+    let attestation_value: serde_json::Value = serde_json::from_str(attestation_json)
+        .map_err(|e| anyhow::anyhow!("Failed to parse attestation: {e}"))?;
+
+    // device_public_key may be a hex string or {"curve": "...", "key": "..."}
+    let pk_hex = if let Some(s) = attestation_value["device_public_key"].as_str() {
+        s.to_string()
+    } else if let Some(key_field) = attestation_value["device_public_key"]["key"].as_str() {
+        key_field.to_string()
+    } else {
+        return Err(anyhow::anyhow!("missing device_public_key"));
+    };
+    let pk_bytes =
+        hex::decode(&pk_hex).map_err(|e| anyhow::anyhow!("invalid public key hex: {e}"))?;
+
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| anyhow::anyhow!("Failed to create async runtime: {e}"))?;
+
+    let log_client: std::sync::Arc<dyn auths_sdk::ports::TransparencyLog> = match log.as_deref() {
+        Some("sigstore-rekor") => std::sync::Arc::new(
+            auths_infra_rekor::RekorClient::public()
+                .map_err(|e| anyhow::anyhow!("Failed to create Rekor client: {e}"))?,
+        ),
+        Some(other) => bail!("Unknown log '{}'. Available: sigstore-rekor", other),
+        None => unreachable!(),
+    };
+
+    let submit = || {
+        rt.block_on(auths_sdk::workflows::log_submit::submit_attestation_to_log(
+            attestation_json.as_bytes(),
+            &pk_bytes,
+            sig_bytes,
+            log_client.as_ref(),
+        ))
+    };
+
+    let submission_result = match submit() {
+        Ok(bundle) => Ok(bundle),
+        Err(ref e) if is_rate_limited(e) => {
+            let secs = rate_limit_secs(e);
+            eprintln!("Rate limited by transparency log. Retrying in {secs}s...");
+            std::thread::sleep(std::time::Duration::from_secs(secs));
+            submit()
+        }
+        Err(e) => Err(e),
+    };
+
+    match submission_result {
+        Ok(bundle) => {
+            eprintln!(
+                "  Logged to {} at index {}",
+                bundle.log_id, bundle.leaf_index
+            );
+            Ok(Some(serde_json::to_value(&bundle).map_err(|e| {
+                anyhow::anyhow!("Failed to serialize: {e}")
+            })?))
+        }
+        Err(e) => Err(anyhow::anyhow!("Transparency log submission failed: {e}")),
+    }
+}
+
+/// Merge transparency JSON into an attestation and return the final JSON string.
+fn merge_transparency(attestation_json: &str, transparency: serde_json::Value) -> Result<String> {
+    let mut attestation: serde_json::Value = serde_json::from_str(attestation_json)
+        .map_err(|e| anyhow::anyhow!("Failed to re-parse attestation: {e}"))?;
+    if let serde_json::Value::Object(ref mut map) = attestation {
+        map.insert("transparency".to_string(), transparency);
+    }
+    serde_json::to_string_pretty(&attestation)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize attestation: {e}"))
 }
 
 /// Resolve the commit SHA from CLI flags.
@@ -231,27 +329,129 @@ pub fn handle_artifact(
             note,
             commit,
             no_commit,
+            ci,
+            ci_platform,
+            log,
+            allow_unlogged,
         } => {
-            let commit_sha = resolve_commit_sha_from_flags(commit, no_commit)?;
-            let resolved_alias = match device_key {
-                Some(alias) => alias,
-                None => crate::commands::key_detect::auto_detect_device_key(
-                    repo_opt.as_deref(),
+            if ci {
+                // Ephemeral CI signing — no keychain, no passphrase
+                use auths_sdk::domains::signing::ci_env::{
+                    CiEnvironment, CiPlatform, detect_ci_environment,
+                };
+
+                let commit_sha = match commit {
+                    Some(sha) => sha,
+                    None => bail!("--ci requires --commit <sha>. Pass the commit SHA explicitly."),
+                };
+
+                let ci_env = match detect_ci_environment() {
+                    Some(env) => env,
+                    None => match ci_platform.as_deref() {
+                        Some("local") => CiEnvironment {
+                            platform: CiPlatform::Local,
+                            workflow_ref: None,
+                            run_id: None,
+                            actor: None,
+                            runner_os: None,
+                        },
+                        Some(name) => CiEnvironment {
+                            platform: CiPlatform::Generic,
+                            workflow_ref: None,
+                            run_id: None,
+                            actor: None,
+                            runner_os: Some(name.to_string()),
+                        },
+                        None => bail!(
+                            "No CI environment detected. If this is intentional (e.g., testing), \
+                             pass --ci-platform local. Otherwise run inside GitHub Actions, \
+                             GitLab CI, or a recognized CI runner."
+                        ),
+                    },
+                };
+
+                let ci_env_json = serde_json::to_value(&ci_env)
+                    .map_err(|e| anyhow::anyhow!("Failed to serialize CI env: {}", e))?;
+
+                let data = std::fs::read(&file)
+                    .with_context(|| format!("Failed to read artifact {:?}", file))?;
+                let artifact_name = file.file_name().map(|n| n.to_string_lossy().to_string());
+
+                #[allow(clippy::disallowed_methods)]
+                let now = chrono::Utc::now();
+
+                let result = auths_sdk::domains::signing::service::sign_artifact_ephemeral(
+                    now,
+                    &data,
+                    artifact_name,
+                    commit_sha,
+                    expires_in,
+                    note,
+                    Some(ci_env_json),
+                )
+                .map_err(|e| anyhow::anyhow!("Ephemeral signing failed: {}", e))?;
+
+                // Submit to transparency log (unless --allow-unlogged)
+                let transparency_json = submit_to_log(
+                    &result.attestation_json,
+                    &log,
+                    allow_unlogged,
+                    result.dsse_signature.as_deref(),
+                )?;
+
+                let final_json = if let Some(transparency) = transparency_json {
+                    merge_transparency(&result.attestation_json, transparency)?
+                } else {
+                    result.attestation_json.clone()
+                };
+
+                let output_path = sig_output.unwrap_or_else(|| {
+                    let mut p = file.clone();
+                    let new_name = format!(
+                        "{}.auths.json",
+                        p.file_name().unwrap_or_default().to_string_lossy()
+                    );
+                    p.set_file_name(new_name);
+                    p
+                });
+
+                std::fs::write(&output_path, &final_json)
+                    .with_context(|| format!("Failed to write signature to {:?}", output_path))?;
+
+                println!(
+                    "Signed {:?} -> {:?} (ephemeral CI key)",
+                    file.file_name().unwrap_or_default(),
+                    output_path
+                );
+                println!("  RID:    {}", result.rid);
+                println!("  Digest: sha256:{}", result.digest);
+
+                Ok(())
+            } else {
+                // Standard device-key signing
+                let commit_sha = resolve_commit_sha_from_flags(commit, no_commit)?;
+                let resolved_alias = match device_key {
+                    Some(alias) => alias,
+                    None => crate::commands::key_detect::auto_detect_device_key(
+                        repo_opt.as_deref(),
+                        env_config,
+                    )?,
+                };
+                sign::handle_sign(
+                    &file,
+                    sig_output,
+                    key.as_deref(),
+                    &resolved_alias,
+                    expires_in,
+                    note,
+                    commit_sha,
+                    repo_opt,
+                    passphrase_provider,
                     env_config,
-                )?,
-            };
-            sign::handle_sign(
-                &file,
-                sig_output,
-                key.as_deref(),
-                &resolved_alias,
-                expires_in,
-                note,
-                commit_sha,
-                repo_opt,
-                passphrase_provider,
-                env_config,
-            )
+                    &log,
+                    allow_unlogged,
+                )
+            }
         }
         ArtifactSubcommand::Publish {
             file,
@@ -291,6 +491,8 @@ pub fn handle_artifact(
                             repo_opt.clone(),
                             passphrase_provider,
                             env_config,
+                            &None,
+                            false,
                         )?;
                         default_sig
                     }
@@ -300,37 +502,6 @@ pub fn handle_artifact(
                 ),
             };
             publish::handle_publish(&sig_path, package.as_deref(), &registry)
-        }
-        ArtifactSubcommand::BatchSign {
-            pattern,
-            device_key,
-            key,
-            attestation_dir,
-            expires_in,
-            note,
-            commit,
-            no_commit,
-        } => {
-            let commit_sha = resolve_commit_sha_from_flags(commit, no_commit)?;
-            let resolved_alias = match device_key {
-                Some(alias) => alias,
-                None => crate::commands::key_detect::auto_detect_device_key(
-                    repo_opt.as_deref(),
-                    env_config,
-                )?,
-            };
-            batch_sign::handle_batch_sign(
-                &pattern,
-                &resolved_alias,
-                key.as_deref(),
-                attestation_dir,
-                expires_in,
-                note,
-                commit_sha,
-                repo_opt,
-                passphrase_provider,
-                env_config,
-            )
         }
         ArtifactSubcommand::Verify {
             file,

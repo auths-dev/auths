@@ -1,7 +1,8 @@
 use auths_core::crypto::said::compute_said;
 use auths_id::keri::{
     Event, GitKel, InceptionResult, RotationResult, anchor_attestation, create_keri_identity,
-    get_key_state, rotate_keys, verify_anchor, verify_anchor_by_digest,
+    create_keri_identity_with_curve, get_key_state, rotate_keys, verify_anchor,
+    verify_anchor_by_digest,
 };
 use auths_id::keri::{
     parse_did_keri, resolve_did_keri, resolve_did_keri_at_sequence, validate_kel,
@@ -338,4 +339,66 @@ fn verify_anchor_by_digest_works() {
     // Verify by digest
     let verification = verify_anchor_by_digest(&repo, &init.prefix, digest.as_str()).unwrap();
     assert!(verification.anchored);
+}
+
+/// Regression test: default identity uses P-256 (key prefix "1AAJ"), not Ed25519 ("D").
+#[test]
+fn default_identity_uses_p256() {
+    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+
+    let kel = GitKel::new(&repo, init.prefix.as_str());
+    let events = kel.get_events().unwrap();
+    let icp = match &events[0] {
+        Event::Icp(icp) => icp,
+        other => panic!("expected inception event, got {:?}", other),
+    };
+
+    let key_str = icp.k[0].as_str();
+    assert!(
+        key_str.starts_with("1AAJ"),
+        "default identity should use P-256 (1AAJ prefix), got: {}",
+        &key_str[..4.min(key_str.len())]
+    );
+
+    assert_eq!(
+        init.current_public_key.len(),
+        33,
+        "P-256 key should be 33 bytes"
+    );
+}
+
+/// Explicit Ed25519 identity uses "D" prefix.
+#[test]
+fn explicit_ed25519_identity() {
+    let (_dir, repo) = auths_test_utils::git::init_test_repo();
+
+    let init = create_keri_identity_with_curve(
+        &repo,
+        None,
+        chrono::Utc::now(),
+        auths_crypto::CurveType::Ed25519,
+    )
+    .unwrap();
+
+    let kel = GitKel::new(&repo, init.prefix.as_str());
+    let events = kel.get_events().unwrap();
+    let icp = match &events[0] {
+        Event::Icp(icp) => icp,
+        other => panic!("expected inception event, got {:?}", other),
+    };
+
+    let key_str = icp.k[0].as_str();
+    assert!(
+        key_str.starts_with('D'),
+        "Ed25519 identity should use D prefix, got: {}",
+        &key_str[..4.min(key_str.len())]
+    );
+
+    assert_eq!(
+        init.current_public_key.len(),
+        32,
+        "Ed25519 key should be 32 bytes"
+    );
 }

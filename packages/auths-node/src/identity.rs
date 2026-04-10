@@ -80,7 +80,7 @@ pub fn create_identity(
             },
         )?;
 
-    let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+    let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
         keychain.as_ref(),
         &result_alias,
         &provider,
@@ -141,7 +141,7 @@ pub fn create_agent_identity(
             )
         })?;
 
-    let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+    let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
         keychain.as_ref(),
         &result_alias,
         &provider,
@@ -454,7 +454,7 @@ pub fn get_identity_public_key(
             format!("No primary key found for identity '{identity_did}'"),
         )
     })?;
-    let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+    let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
         keychain.as_ref(),
         alias,
         &provider,

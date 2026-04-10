@@ -190,7 +190,7 @@ pub fn get_identity_public_key(
                 "[AUTHS_KEY_NOT_FOUND] No primary key found for identity '{identity_did}'"
             ))
         })?;
-        let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+        let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
             signer.inner().as_ref(),
             alias,
             &provider,

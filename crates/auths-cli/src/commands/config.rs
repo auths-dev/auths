@@ -121,9 +121,15 @@ fn execute_get(key: &str) -> Result<()> {
 
 fn execute_show() -> Result<()> {
     let config = load_config(&FileConfigStore);
-    let toml_str = toml::to_string_pretty(&config)
-        .map_err(|e| anyhow::anyhow!("Failed to serialize config: {}", e))?;
-    println!("{}", toml_str);
+    if crate::ux::format::is_json_mode() {
+        let json = serde_json::to_string_pretty(&config)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize config as JSON: {}", e))?;
+        println!("{}", json);
+    } else {
+        let toml_str = toml::to_string_pretty(&config)
+            .map_err(|e| anyhow::anyhow!("Failed to serialize config: {}", e))?;
+        println!("{}", toml_str);
+    }
     Ok(())
 }
 

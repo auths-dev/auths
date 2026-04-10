@@ -36,12 +36,12 @@ fn test_init_github_action_scaffold() {
 
     let content = std::fs::read_to_string(&workflow).unwrap();
     assert!(
-        content.contains("auths-dev/sign@v1"),
-        "workflow should reference sign action"
+        content.contains("auths-dev/verify@v1"),
+        "workflow should reference verify action"
     );
     assert!(
-        content.contains("AUTHS_CI_TOKEN"),
-        "workflow should reference AUTHS_CI_TOKEN secret"
+        content.contains("--ci"),
+        "workflow should reference ephemeral CI signing"
     );
 
     // .auths/.gitkeep should exist
