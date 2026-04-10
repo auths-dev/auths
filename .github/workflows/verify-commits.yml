@@ -18,7 +18,7 @@ jobs:
 
       - uses: auths-dev/verify@v1
         with:
-          allowed-signers: .auths/allowed_signers
+          commits: ${{ github.event.pull_request.head.sha || github.sha }}
           fail-on-unsigned: true
           post-pr-comment: 'true'
           github-token: ${{ secrets.GITHUB_TOKEN }}
