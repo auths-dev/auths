@@ -4,15 +4,13 @@ use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::Capability;
 use auths_verifier::core::{
-    Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId, Role, SignerType,
-    canonicalize_attestation_data,
+    Attestation, Ed25519Signature, ResourceId, Role, SignerType, canonicalize_attestation_data,
 };
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::{CanonicalDid, DeviceDID};
 
 use chrono::{DateTime, Utc};
 use log::debug;
-use ring::signature::ED25519_PUBLIC_KEY_LEN;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -74,10 +72,11 @@ pub fn create_signed_attestation(
     commit_sha: Option<String>,
     signer_type: Option<SignerType>,
 ) -> Result<Attestation, AttestationError> {
-    if device_public_key.len() != ED25519_PUBLIC_KEY_LEN {
+    // Accept both Ed25519 (32 bytes) and P-256 compressed (33 bytes) public keys
+    if device_public_key.len() != 32 && device_public_key.len() != 33 {
         return Err(AttestationError::InvalidInput(format!(
-            "Device public key length must be {}",
-            ED25519_PUBLIC_KEY_LEN
+            "Device public key length must be 32 (Ed25519) or 33 (P-256), got {}",
+            device_public_key.len()
         )));
     }
 
@@ -111,8 +110,7 @@ pub fn create_signed_attestation(
         expires_at: meta.expires_at,
         revoked_at: None,
         note: meta.note.clone(),
-        device_public_key: Ed25519PublicKey::try_from_slice(device_public_key)
-            .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
+        device_public_key: auths_verifier::DevicePublicKey::from_bytes(device_public_key),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),
         role,

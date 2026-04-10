@@ -5,6 +5,7 @@ use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes};
 use crate::crypto::provider_bridge;
 use crate::error::AgentError;
 use auths_crypto::SecureSeed;
+use p256::pkcs8::DecodePrivateKey;
 use ssh_agent_lib::ssh_key::Algorithm as SshAlgorithm;
 use zeroize::Zeroizing;
 
@@ -59,28 +60,61 @@ impl SignerKey for SeedSignerKey {
 
 /// Extract a SecureSeed from key bytes in various formats.
 ///
-/// Delegates to [`auths_crypto::parse_ed25519_seed`].
+/// Tries Ed25519 PKCS8 first, then P-256 PKCS8.
 pub fn extract_seed_from_key_bytes(bytes: &[u8]) -> Result<SecureSeed, AgentError> {
-    auths_crypto::parse_ed25519_seed(bytes)
-        .map_err(|e| AgentError::KeyDeserializationError(format!("{}", e)))
+    // Try Ed25519 first
+    if let Ok(seed) = auths_crypto::parse_ed25519_seed(bytes) {
+        return Ok(seed);
+    }
+
+    // Try P-256: extract the 32-byte private scalar from PKCS8 DER
+    if let Ok(signing_key) = p256::ecdsa::SigningKey::from_pkcs8_der(bytes) {
+        let scalar = signing_key.to_bytes();
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&scalar);
+        return Ok(SecureSeed::new(seed));
+    }
+
+    Err(AgentError::KeyDeserializationError(format!(
+        "Unrecognized key format ({} bytes)",
+        bytes.len()
+    )))
 }
 
 /// Extract a SecureSeed and public key from key bytes.
 ///
 /// For PKCS#8 v2 the public key is extracted from the DER. For other formats,
 /// the public key is derived from the seed via CryptoProvider.
-pub fn load_seed_and_pubkey(bytes: &[u8]) -> Result<(SecureSeed, [u8; 32]), AgentError> {
-    let (seed, maybe_pk) = auths_crypto::parse_ed25519_key_material(bytes)
-        .map_err(|e| AgentError::KeyDeserializationError(format!("{}", e)))?;
+pub fn load_seed_and_pubkey(bytes: &[u8]) -> Result<(SecureSeed, Vec<u8>), AgentError> {
+    // Try Ed25519 first
+    if let Ok((seed, maybe_pk)) = auths_crypto::parse_ed25519_key_material(bytes) {
+        let pubkey = match maybe_pk {
+            Some(pk) => pk.to_vec(),
+            None => provider_bridge::ed25519_public_key_from_seed_sync(&seed)
+                .map_err(|e| {
+                    AgentError::CryptoError(format!("Failed to derive public key from seed: {}", e))
+                })?
+                .to_vec(),
+        };
+        return Ok((seed, pubkey));
+    }
 
-    let pubkey = match maybe_pk {
-        Some(pk) => pk,
-        None => provider_bridge::ed25519_public_key_from_seed_sync(&seed).map_err(|e| {
-            AgentError::CryptoError(format!("Failed to derive public key from seed: {}", e))
-        })?,
-    };
+    // Try P-256
+    if let Ok(signing_key) = p256::ecdsa::SigningKey::from_pkcs8_der(bytes) {
+        let verifying_key = p256::ecdsa::VerifyingKey::from(&signing_key);
+        let compressed = verifying_key.to_encoded_point(true);
+        let pubkey = compressed.as_bytes().to_vec(); // 33 bytes
 
-    Ok((seed, pubkey))
+        let scalar = signing_key.to_bytes();
+        let mut seed_bytes = [0u8; 32];
+        seed_bytes.copy_from_slice(&scalar);
+        return Ok((SecureSeed::new(seed_bytes), pubkey));
+    }
+
+    Err(AgentError::KeyDeserializationError(format!(
+        "Unrecognized key format ({} bytes)",
+        bytes.len()
+    )))
 }
 
 /// Encrypts a raw serialized keypair using the configured encryption algorithm and passphrase.

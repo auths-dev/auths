@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use auths_core::error::AuthsErrorInfo;
 use auths_id::error::StorageError;
 use auths_id::storage::attestation::AttestationSource;
-use auths_verifier::core::Ed25519PublicKey;
 use auths_verifier::types::DeviceDID;
 use serde::{Deserialize, Serialize};
 use ssh_key::PublicKey as SshPublicKey;
@@ -27,8 +26,8 @@ const MANUAL_MARKER: &str = "# auths:manual";
 pub struct SignerEntry {
     /// The principal (email or DID) that identifies this signer.
     pub principal: SignerPrincipal,
-    /// The Ed25519 public key for this signer.
-    pub public_key: Ed25519PublicKey,
+    /// The public key for this signer (Ed25519 or P-256).
+    pub public_key: auths_verifier::DevicePublicKey,
     /// Whether this entry is attestation-managed or user-added.
     pub source: SignerSource,
 }
@@ -323,7 +322,7 @@ impl AllowedSigners {
     pub fn add(
         &mut self,
         principal: SignerPrincipal,
-        pubkey: Ed25519PublicKey,
+        pubkey: auths_verifier::DevicePublicKey,
         source: SignerSource,
     ) -> Result<(), AllowedSignersError> {
         let principal_str = principal.to_string();
@@ -379,7 +378,7 @@ impl AllowedSigners {
                 let principal = principal_from_attestation(att);
                 SignerEntry {
                     principal,
-                    public_key: att.device_public_key,
+                    public_key: att.device_public_key.clone(),
                     source: SignerSource::Attestation,
                 }
             })
@@ -448,8 +447,10 @@ impl AllowedSigners {
         out.push_str(ATTESTATION_MARKER);
         out.push('\n');
         for entry in &self.entries {
-            if entry.source == SignerSource::Attestation {
-                out.push_str(&format_entry(entry));
+            if entry.source == SignerSource::Attestation
+                && let Some(line) = format_entry(entry)
+            {
+                out.push_str(&line);
                 out.push('\n');
             }
         }
@@ -457,8 +458,10 @@ impl AllowedSigners {
         out.push_str(MANUAL_MARKER);
         out.push('\n');
         for entry in &self.entries {
-            if entry.source == SignerSource::Manual {
-                out.push_str(&format_entry(entry));
+            if entry.source == SignerSource::Manual
+                && let Some(line) = format_entry(entry)
+            {
+                out.push_str(&line);
                 out.push('\n');
             }
         }
@@ -532,7 +535,7 @@ fn parse_entry_line(
         }
     };
 
-    let public_key = Ed25519PublicKey::from_bytes(raw_bytes);
+    let public_key = auths_verifier::DevicePublicKey::from_bytes(&raw_bytes);
     let principal =
         parse_principal(principal_str).ok_or_else(|| AllowedSignersError::ParseError {
             line: line_num,
@@ -562,11 +565,12 @@ fn parse_principal(s: &str) -> Option<SignerPrincipal> {
     None
 }
 
-fn format_entry(entry: &SignerEntry) -> String {
-    #[allow(clippy::expect_used)] // INVARIANT: Ed25519PublicKey is always 32 valid bytes
-    let ssh_key = public_key_to_ssh(entry.public_key.as_bytes())
-        .expect("Ed25519PublicKey always encodes to valid SSH key");
-    format!("{} namespaces=\"git\" {}", entry.principal, ssh_key)
+fn format_entry(entry: &SignerEntry) -> Option<String> {
+    let ssh_key = public_key_to_ssh(entry.public_key.as_bytes()).ok()?;
+    Some(format!(
+        "{} namespaces=\"git\" {}",
+        entry.principal, ssh_key
+    ))
 }
 
 #[cfg(test)]

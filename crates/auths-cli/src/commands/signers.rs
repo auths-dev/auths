@@ -5,7 +5,6 @@ use auths_sdk::storage::RegistryAttestationStorage;
 use auths_sdk::workflows::allowed_signers::{
     AllowedSigners, AllowedSignersError, EmailAddress, SignerPrincipal, SignerSource, SyncReport,
 };
-use auths_verifier::core::Ed25519PublicKey;
 use clap::{Parser, Subcommand};
 use ssh_key::PublicKey as SshPublicKey;
 use std::path::PathBuf;
@@ -313,7 +312,7 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
     Ok(())
 }
 
-fn parse_ssh_pubkey(key_str: &str) -> Result<Ed25519PublicKey> {
+fn parse_ssh_pubkey(key_str: &str) -> Result<auths_verifier::DevicePublicKey> {
     let openssh_str = if key_str.starts_with("ssh-ed25519 ") {
         key_str.to_string()
     } else {
@@ -324,7 +323,9 @@ fn parse_ssh_pubkey(key_str: &str) -> Result<Ed25519PublicKey> {
         .map_err(|e| anyhow::anyhow!("Invalid SSH key: {}", e))?;
 
     match ssh_pk.key_data() {
-        ssh_key::public::KeyData::Ed25519(ed) => Ok(Ed25519PublicKey::from_bytes(ed.0)),
+        ssh_key::public::KeyData::Ed25519(ed) => {
+            Ok(auths_verifier::DevicePublicKey::from_bytes(&ed.0))
+        }
         _ => anyhow::bail!("Only ssh-ed25519 keys are supported"),
     }
 }

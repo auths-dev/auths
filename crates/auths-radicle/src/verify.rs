@@ -601,7 +601,7 @@ mod tests {
             rid: ResourceId::new("test"),
             issuer: CanonicalDid::new_unchecked(issuer.to_string()),
             subject: CanonicalDid::new_unchecked(device_did.to_string()),
-            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]).into(),
             identity_signature: Ed25519Signature::empty(),
             device_signature: Ed25519Signature::empty(),
             revoked_at,

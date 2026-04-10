@@ -28,6 +28,20 @@ pub fn create_sshsig(
     data: &[u8],
     namespace: &str,
 ) -> Result<String, CryptoError> {
+    // Detect curve from the stored key context.
+    // For now, try Ed25519 first (most common), then P-256.
+    // TODO: pass CurveType explicitly once the full signing path is curve-aware.
+    if let Ok(pem) = create_sshsig_ed25519(seed, data, namespace) {
+        return Ok(pem);
+    }
+    create_sshsig_p256(seed, data, namespace)
+}
+
+fn create_sshsig_ed25519(
+    seed: &SecureSeed,
+    data: &[u8],
+    namespace: &str,
+) -> Result<String, CryptoError> {
     let ssh_keypair = SshEd25519Keypair::from_seed(seed.as_bytes());
     let keypair_data = KeypairData::Ed25519(ssh_keypair);
     let private_key = SshPrivateKey::new(keypair_data, "auths-sign")
@@ -36,11 +50,39 @@ pub fn create_sshsig(
     let sshsig = SshSig::sign(&private_key, namespace, HashAlg::Sha512, data)
         .map_err(|e| CryptoError::SigningFailed(e.to_string()))?;
 
-    let pem = sshsig
+    sshsig
         .to_pem(LineEnding::LF)
-        .map_err(|e| CryptoError::PemEncoding(e.to_string()))?;
+        .map_err(|e| CryptoError::PemEncoding(e.to_string()))
+}
 
-    Ok(pem)
+fn create_sshsig_p256(
+    seed: &SecureSeed,
+    data: &[u8],
+    namespace: &str,
+) -> Result<String, CryptoError> {
+    use ssh_key::private::EcdsaKeypair;
+
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+
+    let secret_key = p256::SecretKey::from_slice(seed.as_bytes())
+        .map_err(|e| CryptoError::SigningFailed(format!("P-256 seed: {e}")))?;
+    let public_key = secret_key.public_key();
+
+    let ecdsa_keypair = EcdsaKeypair::NistP256 {
+        public: public_key.to_encoded_point(false), // uncompressed
+        private: ssh_key::private::EcdsaPrivateKey::from(secret_key),
+    };
+
+    let keypair_data = KeypairData::Ecdsa(ecdsa_keypair);
+    let private_key = SshPrivateKey::new(keypair_data, "auths-sign")
+        .map_err(|e| CryptoError::SshKeyConstruction(e.to_string()))?;
+
+    let sshsig = SshSig::sign(&private_key, namespace, HashAlg::Sha256, data)
+        .map_err(|e| CryptoError::SigningFailed(e.to_string()))?;
+
+    sshsig
+        .to_pem(LineEnding::LF)
+        .map_err(|e| CryptoError::PemEncoding(e.to_string()))
 }
 
 /// Construct the data blob that SSHSIG signs (the "message to sign").

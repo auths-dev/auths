@@ -1,7 +1,7 @@
 use crate::attestation::create::{CanonicalRevocationData, canonicalize_revocation_data};
 use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
-use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
+use auths_verifier::core::{Attestation, Ed25519Signature, ResourceId};
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::{CanonicalDid, DeviceDID};
 
@@ -98,8 +98,7 @@ pub fn create_signed_revocation(
         expires_at: None,
         revoked_at: Some(timestamp_arg),
         note: note.clone(),
-        device_public_key: Ed25519PublicKey::try_from_slice(device_public_key)
-            .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
+        device_public_key: auths_verifier::DevicePublicKey::from_bytes(device_public_key),
         identity_signature,
         device_signature: Ed25519Signature::empty(),
         role: None,

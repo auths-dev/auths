@@ -11,7 +11,7 @@ use auths_id::attestation::revoke::create_signed_revocation;
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::identity::IdentityStorage;
-use auths_verifier::core::{Capability, Ed25519PublicKey, ResourceId};
+use auths_verifier::core::{Capability, ResourceId};
 use auths_verifier::types::DeviceDID;
 use chrono::{DateTime, Utc};
 
@@ -128,7 +128,15 @@ pub fn revoke_device(
     let device_pk = find_device_public_key(ctx.attestation_source.as_ref(), device_did)?;
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
 
-    let target_did = DeviceDID::from_ed25519(device_pk.as_bytes());
+    let target_did = if device_pk.len() == 32 {
+        #[allow(clippy::unwrap_used)] // INVARIANT: len==32 checked on line 131
+        let pk: [u8; 32] = device_pk.as_bytes().try_into().unwrap();
+        DeviceDID::from_ed25519(&pk)
+    } else {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: p256_pubkey_to_did_key produces valid did:key
+        DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(device_pk.as_bytes()))
+    };
 
     let revocation = create_signed_revocation(
         &identity.storage_id,
@@ -335,14 +343,14 @@ fn sign_and_persist_attestation(
 fn find_device_public_key(
     attestation_source: &dyn AttestationSource,
     device_did: &str,
-) -> Result<Ed25519PublicKey, DeviceError> {
+) -> Result<auths_verifier::DevicePublicKey, DeviceError> {
     let attestations = attestation_source
         .load_all_attestations()
         .map_err(|e| DeviceError::StorageError(e.into()))?;
 
     for att in &attestations {
         if att.subject.as_str() == device_did {
-            return Ok(att.device_public_key);
+            return Ok(att.device_public_key.clone());
         }
     }
 

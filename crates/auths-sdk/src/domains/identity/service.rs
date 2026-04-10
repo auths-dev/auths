@@ -266,11 +266,18 @@ fn derive_device_did(
         passphrase_provider,
     )?;
 
-    let device_did = DeviceDID::from_ed25519(pk_bytes.as_slice().try_into().map_err(|_| {
-        SetupError::CryptoError(auths_core::AgentError::InvalidInput(
-            "public key is not 32 bytes".into(),
-        ))
-    })?);
+    let device_did = if pk_bytes.len() == 32 {
+        let pk: [u8; 32] = pk_bytes.as_slice().try_into().map_err(|_| {
+            SetupError::CryptoError(auths_core::AgentError::InvalidInput(
+                "public key is not 32 bytes".into(),
+            ))
+        })?;
+        DeviceDID::from_ed25519(&pk)
+    } else {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: p256_pubkey_to_did_key produces valid did:key
+        DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
+    };
 
     Ok(device_did)
 }
@@ -294,11 +301,18 @@ fn bind_device(
         passphrase_provider,
     )?;
 
-    let device_did = DeviceDID::from_ed25519(pk_bytes.as_slice().try_into().map_err(|_| {
-        SetupError::CryptoError(auths_core::AgentError::InvalidInput(
-            "public key is not 32 bytes".into(),
-        ))
-    })?);
+    let device_did = if pk_bytes.len() == 32 {
+        let pk: [u8; 32] = pk_bytes.as_slice().try_into().map_err(|_| {
+            SetupError::CryptoError(auths_core::AgentError::InvalidInput(
+                "public key is not 32 bytes".into(),
+            ))
+        })?;
+        DeviceDID::from_ed25519(&pk)
+    } else {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: p256_pubkey_to_did_key produces valid did:key
+        DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
+    };
 
     let meta = AttestationMetadata {
         timestamp: Some(now),

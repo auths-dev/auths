@@ -380,7 +380,7 @@ fn add_member_creates_attestation_with_signatures() {
     assert!(!att.identity_signature.is_empty());
     assert_eq!(
         att.device_public_key,
-        Ed25519PublicKey::from_bytes(MEMBER_PUBKEY)
+        auths_verifier::DevicePublicKey::from_bytes(&MEMBER_PUBKEY)
     );
 }
 

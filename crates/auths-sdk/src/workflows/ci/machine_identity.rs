@@ -4,9 +4,7 @@ use std::sync::Arc;
 use auths_oidc_port::{
     JwksClient, JwtValidator, OidcError, OidcValidationConfig, TimestampClient, TimestampConfig,
 };
-use auths_verifier::core::{
-    Attestation, Ed25519PublicKey, Ed25519Signature, OidcBinding, ResourceId,
-};
+use auths_verifier::core::{Attestation, Ed25519Signature, OidcBinding, ResourceId};
 use auths_verifier::types::{CanonicalDid, DeviceDID};
 use ring::signature::Ed25519KeyPair;
 
@@ -254,7 +252,7 @@ pub fn sign_commit_with_identity(
     let subject =
         DeviceDID::parse(&params.device_did).map_err(|e| format!("Invalid device DID: {}", e))?;
 
-    let device_pk = Ed25519PublicKey::from_bytes(*device_public_key);
+    let device_pk = auths_verifier::DevicePublicKey::from_bytes(device_public_key);
 
     let oidc_binding = params.oidc_binding.as_ref().map(|mi| OidcBinding {
         issuer: mi.issuer.clone(),

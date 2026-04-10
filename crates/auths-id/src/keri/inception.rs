@@ -17,6 +17,15 @@ use crate::storage::registry::backend::{RegistryBackend, RegistryError};
 use auths_crypto::Pkcs8Der;
 
 /// Sign a message using a PKCS8-encoded key, dispatching on curve.
+/// Public alias for use by `identity/initialize.rs`.
+pub fn sign_with_pkcs8_for_init(
+    curve: CurveType,
+    pkcs8: &Pkcs8Der,
+    message: &[u8],
+) -> Result<Vec<u8>, InceptionError> {
+    sign_with_pkcs8(curve, pkcs8, message)
+}
+
 fn sign_with_pkcs8(
     curve: CurveType,
     pkcs8: &Pkcs8Der,
@@ -41,13 +50,18 @@ fn sign_with_pkcs8(
 }
 
 /// Output of curve-agnostic key generation.
-struct GeneratedKeypair {
+pub struct GeneratedKeypair {
     /// PKCS8 DER encoded keypair (zeroed on drop).
-    pkcs8: Pkcs8Der,
+    pub pkcs8: Pkcs8Der,
     /// Raw public key bytes (32 for Ed25519, 33 for P-256 compressed).
-    public_key: Vec<u8>,
+    pub public_key: Vec<u8>,
     /// CESR-encoded public key string (e.g., "D..." or "1AAJ...").
-    cesr_encoded: String,
+    pub cesr_encoded: String,
+}
+
+/// Public alias for use by `identity/initialize.rs`.
+pub fn generate_keypair_for_init(curve: CurveType) -> Result<GeneratedKeypair, InceptionError> {
+    generate_keypair(curve)
 }
 
 /// Generate a keypair for the specified curve.

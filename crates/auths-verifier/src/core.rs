@@ -372,6 +372,81 @@ impl<'de> serde::Deserialize<'de> for Ed25519Signature {
 #[error("expected 64 bytes, got {0}")]
 pub struct SignatureLengthError(pub usize);
 
+/// A device public key that supports both Ed25519 (32 bytes) and P-256 (33 bytes).
+/// Serializes as hex for JSON compatibility.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct DevicePublicKey(#[cfg_attr(feature = "schema", schemars(with = "String"))] Vec<u8>);
+
+impl DevicePublicKey {
+    /// Create from raw bytes (32 or 33).
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        Self(bytes.to_vec())
+    }
+
+    /// Returns the raw bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Returns true if all bytes are zero.
+    pub fn is_zero(&self) -> bool {
+        self.0.iter().all(|&b| b == 0)
+    }
+
+    /// Returns the byte length.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns true if empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl From<Ed25519PublicKey> for DevicePublicKey {
+    fn from(pk: Ed25519PublicKey) -> Self {
+        Self(pk.as_bytes().to_vec())
+    }
+}
+
+impl Serialize for DevicePublicKey {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&hex::encode(&self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for DevicePublicKey {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        if s.is_empty() {
+            return Ok(Self(vec![]));
+        }
+        let bytes =
+            hex::decode(&s).map_err(|e| serde::de::Error::custom(format!("invalid hex: {e}")))?;
+        if bytes.len() != 32 && bytes.len() != 33 {
+            return Err(serde::de::Error::custom(format!(
+                "device public key must be 32 or 33 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        Ok(Self(bytes))
+    }
+}
+
+impl Default for DevicePublicKey {
+    fn default() -> Self {
+        Self(vec![0u8; 32])
+    }
+}
+
+impl fmt::Display for DevicePublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(&self.0))
+    }
+}
+
 // =============================================================================
 // Signature algorithm enum (for configurable checkpoint verification)
 // =============================================================================
@@ -862,8 +937,8 @@ pub struct Attestation {
     pub issuer: CanonicalDid,
     /// DID of the attested subject (device `did:key:` or identity `did:keri:`).
     pub subject: CanonicalDid,
-    /// Ed25519 public key of the device (32 bytes, hex-encoded in JSON).
-    pub device_public_key: Ed25519PublicKey,
+    /// Device public key (32 bytes Ed25519 or 33 bytes P-256 compressed, hex-encoded in JSON).
+    pub device_public_key: DevicePublicKey,
     /// Issuer's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).
     #[serde(default, skip_serializing_if = "Ed25519Signature::is_empty")]
     pub identity_signature: Ed25519Signature,

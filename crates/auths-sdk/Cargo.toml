@@ -34,7 +34,8 @@ base64 = "0.22"
 chrono = "0.4"
 hex = "0.4"
 html-escape = "0.2"
-ssh-key = "0.6"
+p256 = { version = "0.13", features = ["ecdsa"] }
+ssh-key = { version = "0.6", features = ["ecdsa"] }
 tempfile = "3"
 url = { version = "2", features = ["serde"] }
 flate2 = "1"

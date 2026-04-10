@@ -25,7 +25,7 @@ use auths_sdk::workflows::org::{
     member_role_order, revoke_organization_member,
 };
 use auths_verifier::types::DeviceDID;
-use auths_verifier::{Capability, Ed25519PublicKey, Prefix, PublicKeyHex};
+use auths_verifier::{Capability, Prefix, PublicKeyHex};
 
 use clap::ValueEnum;
 
@@ -559,8 +559,8 @@ pub fn handle_org(
             let device_public_key = existing
                 .iter()
                 .find(|a| !a.device_public_key.is_zero())
-                .map(|a| a.device_public_key)
-                .unwrap_or_else(|| Ed25519PublicKey::from_bytes([0u8; 32]));
+                .map(|a| a.device_public_key.clone())
+                .unwrap_or_default();
 
             println!("🔏 Creating signed revocation...");
             let signer = StorageSigner::new(get_platform_keychain()?);

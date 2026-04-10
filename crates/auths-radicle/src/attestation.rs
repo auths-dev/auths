@@ -11,7 +11,7 @@
 //! to prevent the core from becoming a "God Object." The bridge converts
 //! between formats at the boundary via `TryFrom` impls.
 
-use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
+use auths_verifier::core::{Attestation, Ed25519Signature, ResourceId};
 use auths_verifier::types::CanonicalDid;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
@@ -233,12 +233,9 @@ impl TryFrom<RadAttestation> for Attestation {
             rid: ResourceId::new(rad.canonical_payload.rid.to_string()),
             issuer,
             subject,
-            device_public_key: Ed25519PublicKey::try_from_slice(rad.device_public_key.as_ref())
-                .map_err(|_e| {
-                    AttestationConversionError::InvalidPublicKeyLength(
-                        rad.device_public_key.as_ref().len(),
-                    )
-                })?,
+            device_public_key: auths_verifier::DevicePublicKey::from_bytes(
+                rad.device_public_key.as_ref(),
+            ),
             identity_signature: Ed25519Signature::try_from_slice(&rad.identity_signature).map_err(
                 |_| {
                     AttestationConversionError::InvalidPublicKeyLength(rad.identity_signature.len())
@@ -273,9 +270,8 @@ impl TryFrom<&Attestation> for RadAttestation {
     type Error = AttestationConversionError;
 
     fn try_from(att: &Attestation) -> Result<Self, Self::Error> {
-        let device_public_key: PublicKey =
-            PublicKey::try_from(att.device_public_key.as_bytes().as_slice())
-                .map_err(|_| AttestationConversionError::InvalidPublicKeyLength(32))?;
+        let device_public_key: PublicKey = PublicKey::try_from(att.device_public_key.as_bytes())
+            .map_err(|_| AttestationConversionError::InvalidPublicKeyLength(32))?;
 
         let canonical_payload = RadCanonicalPayload {
             did: att.issuer.as_str().parse()?,
@@ -300,6 +296,7 @@ impl TryFrom<&Attestation> for RadAttestation {
 mod tests {
     use super::*;
 
+    use auths_verifier::core::Ed25519PublicKey;
     use ring::signature::KeyPair;
 
     fn make_keypair() -> ring::signature::Ed25519KeyPair {
@@ -480,10 +477,7 @@ mod tests {
         assert_eq!(core.rid.as_str(), rid.to_string());
         assert_eq!(core.issuer.as_str(), identity_did.to_string());
         assert_eq!(core.subject.as_str(), device_did.to_string());
-        assert_eq!(
-            core.device_public_key.as_bytes().as_slice(),
-            device_pk.as_ref()
-        );
+        assert_eq!(core.device_public_key.as_bytes(), device_pk.as_ref());
         assert_eq!(
             core.device_signature.as_bytes().as_slice(),
             device_sig.as_slice()
@@ -505,7 +499,7 @@ mod tests {
             rid: ResourceId::new("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5"),
             issuer: CanonicalDid::new_unchecked("did:keri:EXq5abc"),
             subject: CanonicalDid::new_unchecked(device_did.to_string()),
-            device_public_key: Ed25519PublicKey::from_bytes(device_pk_bytes),
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk_bytes).into(),
             identity_signature: Ed25519Signature::from_bytes([0xCD; 64]),
             device_signature: Ed25519Signature::from_bytes([0xEF; 64]),
             revoked_at: None,
