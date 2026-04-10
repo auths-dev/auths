@@ -130,7 +130,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auths-core"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -177,12 +177,13 @@ dependencies = [
 
 [[package]]
 name = "auths-crypto"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "base64",
  "bs58",
  "hex",
+ "p256",
  "ring",
  "ssh-key",
  "thiserror 2.0.18",
@@ -192,7 +193,7 @@ dependencies = [
 
 [[package]]
 name = "auths-id"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -212,6 +213,7 @@ dependencies = [
  "jsonschema",
  "log",
  "multibase",
+ "p256",
  "pkcs8",
  "rand 0.10.0",
  "ring",
@@ -229,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-git"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "auths-core",
  "auths-keri",
@@ -243,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-http"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -270,13 +272,14 @@ dependencies = [
 
 [[package]]
 name = "auths-keri"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-crypto",
  "base64",
  "blake3",
  "hex",
+ "p256",
  "ring",
  "serde",
  "serde_json",
@@ -286,7 +289,7 @@ dependencies = [
 
 [[package]]
 name = "auths-oidc-port"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -299,7 +302,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-daemon"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "auths-core",
  "axum",
@@ -317,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-protocol"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "auths-crypto",
  "base64",
@@ -336,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "auths-policy"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "auths-verifier",
  "blake3",
@@ -376,7 +379,7 @@ dependencies = [
 
 [[package]]
 name = "auths-sdk"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -414,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "auths-storage"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -438,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "auths-telemetry"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "chrono",
  "metrics",
@@ -453,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "auths-transparency"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -473,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "auths-utils"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "dirs",
  "thiserror 2.0.18",
@@ -481,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "auths-verifier"
-version = "0.1.0"
+version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -1018,6 +1021,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
 dependencies = [
  "const-oid",
+ "pem-rfc7468",
  "zeroize",
 ]
 
@@ -1139,6 +1143,7 @@ dependencies = [
  "ff",
  "generic-array",
  "group",
+ "pem-rfc7468",
  "pkcs8",
  "rand_core 0.6.4",
  "sec1",

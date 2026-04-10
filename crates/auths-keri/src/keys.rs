@@ -1,104 +1,188 @@
-//! KERI CESR Ed25519 key parsing.
+//! KERI CESR public key parsing for Ed25519 and P-256.
 //!
-//! Decodes KERI-encoded public keys: 'D' derivation code prefix + base64url-no-pad
-//! encoded 32-byte Ed25519 key, as defined by the KERI CESR specification.
+//! Decodes KERI-encoded public keys from their CESR-qualified string form.
+//! Ed25519: 'D' prefix + base64url(32 bytes) = 44 chars.
+//! P-256:   '1AAJ' prefix + base64url(33 bytes) = 48 chars.
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
-/// Errors from decoding a KERI-encoded Ed25519 public key.
+/// Errors from decoding a KERI-encoded public key.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum KeriDecodeError {
-    /// The KERI derivation code prefix was not 'D' (Ed25519).
-    #[error("Invalid KERI prefix: expected 'D' for Ed25519, got '{0}'")]
-    InvalidPrefix(char),
+    /// The KERI derivation code prefix was not recognized.
+    #[error("Unsupported KERI key type: prefix '{0}'")]
+    UnsupportedKeyType(String),
     /// Input string was empty; no derivation code could be read.
     #[error("Missing KERI prefix: empty string")]
     EmptyInput,
     /// Base64url decoding of the key payload failed.
     #[error("Base64url decode failed: {0}")]
     DecodeError(String),
-    /// Decoded bytes were not exactly 32 (Ed25519 key size).
-    #[error("Invalid Ed25519 key length: expected 32 bytes, got {0}")]
-    InvalidLength(usize),
+    /// Decoded bytes were not the expected length for the key type.
+    #[error("Invalid key length: expected {expected} bytes, got {actual}")]
+    InvalidLength {
+        /// Expected byte count.
+        expected: usize,
+        /// Actual byte count.
+        actual: usize,
+    },
 }
 
 impl auths_crypto::AuthsErrorInfo for KeriDecodeError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::InvalidPrefix(_) => "AUTHS-E1201",
+            Self::UnsupportedKeyType(_) => "AUTHS-E1201",
             Self::EmptyInput => "AUTHS-E1202",
             Self::DecodeError(_) => "AUTHS-E1203",
-            Self::InvalidLength(_) => "AUTHS-E1204",
+            Self::InvalidLength { .. } => "AUTHS-E1204",
         }
     }
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::InvalidPrefix(_) => Some("KERI Ed25519 keys must start with 'D' prefix"),
+            Self::UnsupportedKeyType(_) => {
+                Some("Supported key prefixes: 'D' (Ed25519), '1AAJ'/'1AAI' (P-256)")
+            }
             Self::EmptyInput => Some("Provide a non-empty KERI-encoded key string"),
             _ => None,
         }
     }
 }
 
-/// A validated KERI Ed25519 public key (32 bytes).
+/// A validated KERI public key supporting Ed25519 and P-256.
 ///
-/// Args:
-/// * The inner `[u8; 32]` is the raw Ed25519 public key bytes, decoded from
-///   a KERI CESR-encoded string with 'D' derivation code prefix.
+/// Parsed from a CESR-qualified string. The derivation code prefix
+/// determines the curve and key size.
 ///
 /// Usage:
 /// ```
 /// use auths_keri::KeriPublicKey;
 ///
+/// // Ed25519 (D prefix, 32 bytes)
 /// let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
-/// assert_eq!(key.as_bytes(), &[0u8; 32]);
+/// assert_eq!(key.as_bytes().len(), 32);
+///
+/// // P-256 would use "1AAJ" prefix (33 bytes compressed SEC1)
 /// ```
-#[derive(Debug)]
-pub struct KeriPublicKey([u8; 32]);
-
-impl KeriPublicKey {
-    /// Parses a KERI-encoded Ed25519 public key string into a validated type.
-    ///
-    /// The input must be a 'D'-prefixed base64url-no-pad encoded 32-byte Ed25519 key,
-    /// as defined by the KERI CESR specification.
-    ///
-    /// Args:
-    /// * `encoded`: The KERI-encoded string (e.g., `"D<base64url>"`).
-    ///
-    /// Usage:
-    /// ```
-    /// use auths_keri::KeriPublicKey;
-    ///
-    /// let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
-    /// let raw = key.as_bytes();
-    /// ```
-    pub fn parse(encoded: &str) -> Result<Self, KeriDecodeError> {
-        let payload = validate_and_strip_prefix(encoded)?;
-        let bytes = decode_base64url(payload)?;
-        let array = enforce_key_length(bytes)?;
-        Ok(Self(array))
-    }
-
-    /// Returns the raw 32-byte Ed25519 public key.
-    pub fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-
-    /// Consumes self and returns the inner 32-byte array.
-    pub fn into_bytes(self) -> [u8; 32] {
-        self.0
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeriPublicKey {
+    /// Ed25519 public key (32 bytes).
+    Ed25519([u8; 32]),
+    /// P-256 compressed public key (33 bytes, SEC1: 0x02/0x03 + x-coordinate).
+    P256([u8; 33]),
 }
 
-fn validate_and_strip_prefix(encoded: &str) -> Result<&str, KeriDecodeError> {
-    match encoded.strip_prefix('D') {
-        Some(payload) => Ok(payload),
-        None => match encoded.chars().next() {
-            Some(c) => Err(KeriDecodeError::InvalidPrefix(c)),
-            None => Err(KeriDecodeError::EmptyInput),
-        },
+impl KeriPublicKey {
+    /// Parse a CESR-qualified key string, dispatching on the derivation code prefix.
+    ///
+    /// - `D` prefix → Ed25519 (32 bytes)
+    /// - `1AAJ` or `1AAI` prefix → P-256 (33 bytes compressed)
+    ///
+    /// Unknown prefixes return `Err(UnsupportedKeyType)`.
+    pub fn parse(encoded: &str) -> Result<Self, KeriDecodeError> {
+        if encoded.is_empty() {
+            return Err(KeriDecodeError::EmptyInput);
+        }
+
+        // Try P-256 4-char prefixes first (longer match wins)
+        if encoded.starts_with("1AAJ") || encoded.starts_with("1AAI") {
+            let payload = &encoded[4..];
+            let bytes = decode_base64url(payload)?;
+            if bytes.len() != 33 {
+                return Err(KeriDecodeError::InvalidLength {
+                    expected: 33,
+                    actual: bytes.len(),
+                });
+            }
+            let mut arr = [0u8; 33];
+            arr.copy_from_slice(&bytes);
+            return Ok(KeriPublicKey::P256(arr));
+        }
+
+        // Try Ed25519 1-char prefix
+        if let Some(payload) = encoded.strip_prefix('D') {
+            let bytes = decode_base64url(payload)?;
+            if bytes.len() != 32 {
+                return Err(KeriDecodeError::InvalidLength {
+                    expected: 32,
+                    actual: bytes.len(),
+                });
+            }
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            return Ok(KeriPublicKey::Ed25519(arr));
+        }
+
+        // Unknown prefix
+        let prefix = if encoded.len() >= 4 {
+            &encoded[..4]
+        } else {
+            encoded
+        };
+        Err(KeriDecodeError::UnsupportedKeyType(prefix.to_string()))
+    }
+
+    /// Returns the raw public key bytes (32 for Ed25519, 33 for P-256).
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            KeriPublicKey::Ed25519(b) => b,
+            KeriPublicKey::P256(b) => b,
+        }
+    }
+
+    /// Consume self and return the raw bytes as a Vec.
+    pub fn into_bytes(self) -> Vec<u8> {
+        match self {
+            KeriPublicKey::Ed25519(b) => b.to_vec(),
+            KeriPublicKey::P256(b) => b.to_vec(),
+        }
+    }
+
+    /// Returns the curve type.
+    pub fn curve(&self) -> auths_crypto::CurveType {
+        match self {
+            KeriPublicKey::Ed25519(_) => auths_crypto::CurveType::Ed25519,
+            KeriPublicKey::P256(_) => auths_crypto::CurveType::P256,
+        }
+    }
+
+    /// Returns the CESR derivation code prefix for this key type.
+    pub fn cesr_prefix(&self) -> &'static str {
+        match self {
+            KeriPublicKey::Ed25519(_) => "D",
+            KeriPublicKey::P256(_) => "1AAJ",
+        }
+    }
+
+    /// Verify a signature against this public key.
+    ///
+    /// Dispatches to the correct algorithm based on the key's curve:
+    /// - Ed25519 → `ring::signature::ED25519`
+    /// - P-256 → `p256::ecdsa` (handles compressed SEC1 keys natively)
+    ///
+    /// This method keeps the curve dispatch in one place so validation code
+    /// doesn't need to know about specific algorithms.
+    pub fn verify_signature(&self, message: &[u8], signature: &[u8]) -> Result<(), String> {
+        match self {
+            KeriPublicKey::Ed25519(pk) => {
+                use ring::signature::UnparsedPublicKey;
+                let verifier = UnparsedPublicKey::new(&ring::signature::ED25519, pk);
+                verifier
+                    .verify(message, signature)
+                    .map_err(|_| "Ed25519 signature verification failed".to_string())
+            }
+            KeriPublicKey::P256(pk) => {
+                use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
+                // p256 crate handles compressed SEC1 (33 bytes) natively
+                let vk = VerifyingKey::from_sec1_bytes(pk)
+                    .map_err(|e| format!("P-256 key parse failed: {e}"))?;
+                let sig = Signature::from_slice(signature)
+                    .map_err(|e| format!("P-256 signature parse failed: {e}"))?;
+                vk.verify(message, &sig)
+                    .map_err(|e| format!("P-256 signature verification failed: {e}"))
+            }
+        }
     }
 }
 
@@ -108,28 +192,37 @@ fn decode_base64url(payload: &str) -> Result<Vec<u8>, KeriDecodeError> {
         .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))
 }
 
-fn enforce_key_length(bytes: Vec<u8>) -> Result<[u8; 32], KeriDecodeError> {
-    let len = bytes.len();
-    bytes
-        .try_into()
-        .map_err(|_| KeriDecodeError::InvalidLength(len))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parse_all_zeros() {
+    fn parse_ed25519_all_zeros() {
         let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
         assert_eq!(key.as_bytes(), &[0u8; 32]);
+        assert!(matches!(key, KeriPublicKey::Ed25519(_)));
+        assert_eq!(key.curve(), auths_crypto::CurveType::Ed25519);
+        assert_eq!(key.cesr_prefix(), "D");
     }
 
     #[test]
-    fn roundtrip_into_bytes() {
-        let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
-        let bytes = key.into_bytes();
-        assert_eq!(bytes, [0u8; 32]);
+    fn parse_p256_key() {
+        // Construct a valid P-256 CESR string: "1AAJ" + base64url(33 zero bytes)
+        let zeros_33 = [0u8; 33];
+        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(zeros_33));
+        let key = KeriPublicKey::parse(&encoded).unwrap();
+        assert_eq!(key.as_bytes().len(), 33);
+        assert!(matches!(key, KeriPublicKey::P256(_)));
+        assert_eq!(key.curve(), auths_crypto::CurveType::P256);
+        assert_eq!(key.cesr_prefix(), "1AAJ");
+    }
+
+    #[test]
+    fn parse_p256_non_transferable() {
+        let zeros_33 = [0u8; 33];
+        let encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(zeros_33));
+        let key = KeriPublicKey::parse(&encoded).unwrap();
+        assert!(matches!(key, KeriPublicKey::P256(_)));
     }
 
     #[test]
@@ -139,14 +232,57 @@ mod tests {
     }
 
     #[test]
-    fn rejects_wrong_prefix() {
+    fn rejects_unknown_prefix() {
         let err = KeriPublicKey::parse("Xsomething").unwrap_err();
-        assert!(matches!(err, KeriDecodeError::InvalidPrefix('X')));
+        assert!(matches!(err, KeriDecodeError::UnsupportedKeyType(_)));
     }
 
     #[test]
     fn rejects_invalid_base64() {
         let err = KeriPublicKey::parse("D!!!invalid!!!").unwrap_err();
         assert!(matches!(err, KeriDecodeError::DecodeError(_)));
+    }
+
+    #[test]
+    fn rejects_wrong_length_ed25519() {
+        // 31 bytes instead of 32
+        let short = [0u8; 31];
+        let encoded = format!("D{}", URL_SAFE_NO_PAD.encode(short));
+        let err = KeriPublicKey::parse(&encoded).unwrap_err();
+        assert!(matches!(
+            err,
+            KeriDecodeError::InvalidLength {
+                expected: 32,
+                actual: 31
+            }
+        ));
+    }
+
+    #[test]
+    fn rejects_wrong_length_p256() {
+        // 32 bytes instead of 33
+        let short = [0u8; 32];
+        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(short));
+        let err = KeriPublicKey::parse(&encoded).unwrap_err();
+        assert!(matches!(
+            err,
+            KeriDecodeError::InvalidLength {
+                expected: 33,
+                actual: 32
+            }
+        ));
+    }
+
+    // Backward compatibility: the old API had `as_bytes()` returning `&[u8; 32]`.
+    // The new API returns `&[u8]`. Test that Ed25519 keys still work with the
+    // 32-byte slice pattern.
+    #[test]
+    fn ed25519_as_bytes_is_32() {
+        let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
+        let bytes = key.as_bytes();
+        assert_eq!(bytes.len(), 32);
+        // Can still convert to [u8; 32] for backward compat
+        let arr: [u8; 32] = bytes.try_into().unwrap();
+        assert_eq!(arr, [0u8; 32]);
     }
 }

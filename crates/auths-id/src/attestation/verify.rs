@@ -70,7 +70,7 @@ pub fn verify_with_resolver(
     let resolved = resolver.resolve(&att.issuer).map_err(|e| {
         AttestationError::DidResolutionError(format!("Resolver error for {}: {}", att.issuer, e))
     })?;
-    let issuer_pk_bytes = *resolved.public_key();
+    let issuer_pk_bytes = resolved.public_key_bytes();
 
     // 3. Reconstruct canonical data (single source of truth via canonical_data())
     let canonical_json_string = json_canon::to_string(&att.canonical_data()).map_err(|e| {

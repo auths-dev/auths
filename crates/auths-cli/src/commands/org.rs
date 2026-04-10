@@ -338,7 +338,7 @@ pub fn handle_org(
                     controller_did
                 )
             })?;
-            let org_pk_bytes = *org_resolved.public_key();
+            let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
 
             let admin_capabilities = vec![
                 Capability::sign_commit(),
@@ -362,7 +362,7 @@ pub fn handle_org(
                 &rid,
                 &controller_did,
                 &org_did,
-                org_pk_bytes.as_bytes(),
+                &org_pk_bytes,
                 Some(serde_json::json!({
                     "org_role": "admin",
                     "org_name": name
@@ -466,7 +466,7 @@ pub fn handle_org(
             let device_resolved = resolver.resolve(&subject_did).with_context(|| {
                 format!("Failed to resolve public key for subject: {}", subject_did)
             })?;
-            let device_pk_bytes = *device_resolved.public_key();
+            let device_pk_bytes = device_resolved.public_key_bytes().to_vec();
 
             let meta = AttestationMetadata {
                 note,
@@ -485,7 +485,7 @@ pub fn handle_org(
                 &rid,
                 &controller_did,
                 &subject_device_did,
-                device_pk_bytes.as_bytes(),
+                &device_pk_bytes,
                 Some(payload),
                 &meta,
                 &signer,
@@ -694,14 +694,13 @@ pub fn handle_org(
                     .with_context(|| {
                         format!("Failed to resolve public key for admin: {}", stored_did)
                     })?
-                    .public_key()
-                    .as_bytes(),
+                    .public_key_bytes(),
             ));
 
             let member_resolved = resolver
                 .resolve(&member)
                 .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
-            let member_pk = *member_resolved.public_key();
+            let member_pk = member_resolved.public_key_bytes().to_vec();
 
             let capability_strings = if let Some(cap_strs) = capabilities {
                 cap_strs
@@ -732,8 +731,7 @@ pub fn handle_org(
                 AddMemberCommand {
                     org_prefix: org_prefix.clone(),
                     member_did: member.clone(),
-                    member_public_key: Ed25519PublicKey::try_from_slice(member_pk.as_bytes())
-                        .context("Invalid member public key")?,
+                    member_public_key: member_pk.clone(),
                     role,
                     capabilities: capability_strings.clone(),
                     admin_public_key_hex: admin_pk_hex,
@@ -810,14 +808,13 @@ pub fn handle_org(
                     .with_context(|| {
                         format!("Failed to resolve public key for admin: {}", stored_did)
                     })?
-                    .public_key()
-                    .as_bytes(),
+                    .public_key_bytes(),
             ));
 
             let member_resolved = resolver
                 .resolve(&member)
                 .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
-            let member_pk = *member_resolved.public_key();
+            let member_pk = member_resolved.public_key_bytes().to_vec();
 
             let org_prefix = org.strip_prefix("did:keri:").unwrap_or(&org).to_string();
 
@@ -841,8 +838,7 @@ pub fn handle_org(
                 RevokeMemberCommand {
                     org_prefix: org_prefix.clone(),
                     member_did: member.clone(),
-                    member_public_key: Ed25519PublicKey::try_from_slice(member_pk.as_bytes())
-                        .context("Invalid member public key")?,
+                    member_public_key: member_pk.clone(),
                     admin_public_key_hex: admin_pk_hex,
                     signer_alias,
                     note: note.clone(),

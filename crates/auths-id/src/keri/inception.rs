@@ -1,7 +1,7 @@
 //! KERI identity inception with proper pre-rotation.
 //!
 //! Creates a new KERI identity by:
-//! 1. Generating two Ed25519 keypairs (current + next)
+//! 1. Generating two keypairs (current + next) for the chosen curve
 //! 2. Computing next-key commitment
 //! 3. Building and finalizing inception event with SAID
 //! 4. Storing event in Git-backed KEL
@@ -11,8 +11,91 @@ use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
+use auths_crypto::CurveType;
+
 use crate::storage::registry::backend::{RegistryBackend, RegistryError};
 use auths_crypto::Pkcs8Der;
+
+/// Sign a message using a PKCS8-encoded key, dispatching on curve.
+fn sign_with_pkcs8(
+    curve: CurveType,
+    pkcs8: &Pkcs8Der,
+    message: &[u8],
+) -> Result<Vec<u8>, InceptionError> {
+    match curve {
+        CurveType::Ed25519 => {
+            let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())
+                .map_err(|e| InceptionError::KeyGeneration(format!("Ed25519 sign: {e}")))?;
+            Ok(keypair.sign(message).as_ref().to_vec())
+        }
+        CurveType::P256 => {
+            use p256::ecdsa::{SigningKey, signature::Signer};
+            use p256::pkcs8::DecodePrivateKey;
+
+            let signing_key = SigningKey::from_pkcs8_der(pkcs8.as_ref())
+                .map_err(|e| InceptionError::KeyGeneration(format!("P-256 sign: {e}")))?;
+            let sig: p256::ecdsa::Signature = signing_key.sign(message);
+            Ok(sig.to_bytes().to_vec())
+        }
+    }
+}
+
+/// Output of curve-agnostic key generation.
+struct GeneratedKeypair {
+    /// PKCS8 DER encoded keypair (zeroed on drop).
+    pkcs8: Pkcs8Der,
+    /// Raw public key bytes (32 for Ed25519, 33 for P-256 compressed).
+    public_key: Vec<u8>,
+    /// CESR-encoded public key string (e.g., "D..." or "1AAJ...").
+    cesr_encoded: String,
+}
+
+/// Generate a keypair for the specified curve.
+fn generate_keypair(curve: CurveType) -> Result<GeneratedKeypair, InceptionError> {
+    match curve {
+        CurveType::Ed25519 => {
+            let rng = SystemRandom::new();
+            let pkcs8_doc = Ed25519KeyPair::generate_pkcs8(&rng)
+                .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
+            let keypair = Ed25519KeyPair::from_pkcs8(pkcs8_doc.as_ref())
+                .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
+            let public_key = keypair.public_key().as_ref().to_vec();
+            let cesr_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(&public_key));
+            Ok(GeneratedKeypair {
+                pkcs8: Pkcs8Der::new(pkcs8_doc.as_ref().to_vec()),
+                public_key,
+                cesr_encoded,
+            })
+        }
+        CurveType::P256 => {
+            use p256::ecdsa::SigningKey;
+            use p256::elliptic_curve::rand_core::OsRng;
+            use p256::pkcs8::EncodePrivateKey;
+
+            let signing_key = SigningKey::random(&mut OsRng);
+            let verifying_key = p256::ecdsa::VerifyingKey::from(&signing_key);
+
+            // Compressed SEC1 public key (33 bytes)
+            let compressed = verifying_key.to_encoded_point(true);
+            let public_key = compressed.as_bytes().to_vec();
+
+            // CESR encode with 1AAJ prefix (P-256 transferable)
+            let cesr_encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(&public_key));
+
+            // PKCS8 DER encoding
+            let pkcs8_doc = signing_key
+                .to_pkcs8_der()
+                .map_err(|e| InceptionError::KeyGeneration(format!("P-256 PKCS8: {e}")))?;
+            let pkcs8 = Pkcs8Der::new(pkcs8_doc.as_bytes().to_vec());
+
+            Ok(GeneratedKeypair {
+                pkcs8,
+                public_key,
+                cesr_encoded,
+            })
+        }
+    }
+}
 
 use auths_core::crypto::said::compute_next_commitment;
 
@@ -121,29 +204,31 @@ pub fn create_keri_identity(
     witness_config: Option<&WitnessConfig>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<InceptionResult, InceptionError> {
-    let rng = SystemRandom::new();
+    create_keri_identity_with_curve(repo, witness_config, now, CurveType::P256)
+}
 
-    // Generate current keypair
-    let current_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
-    let current_keypair = Ed25519KeyPair::from_pkcs8(current_pkcs8.as_ref())
-        .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
+/// Create a KERI identity with a specific curve type.
+///
+/// Args:
+/// * `repo` — Git repository for KEL storage.
+/// * `witness_config` — Optional witness configuration.
+/// * `now` — Current time (injected, never use `Utc::now()` directly).
+/// * `curve` — The elliptic curve to use (`P256` default, `Ed25519` available).
+pub fn create_keri_identity_with_curve(
+    repo: &Repository,
+    witness_config: Option<&WitnessConfig>,
+    now: chrono::DateTime<chrono::Utc>,
+    curve: CurveType,
+) -> Result<InceptionResult, InceptionError> {
+    // Generate current and next keypairs for the chosen curve
+    let current = generate_keypair(curve)?;
+    let next = generate_keypair(curve)?;
 
-    // Generate next keypair (for pre-rotation)
-    let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
-    let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
-        .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
+    let current_pub_encoded = current.cesr_encoded.clone();
 
-    // Encode current public key with derivation code prefix
-    // 'D' prefix indicates Ed25519 in KERI
-    let current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
-    );
-
-    // Compute next-key commitment (Blake3 hash of next public key)
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+    // Compute next-key commitment (Blake3 hash of the CESR-qualified next public key bytes)
+    // The commitment is curve-agnostic: Blake3(raw_public_key_bytes)
+    let next_commitment = compute_next_commitment(&next.public_key);
 
     // Determine witness fields from config
     let (bt, b) = match witness_config {
@@ -180,8 +265,8 @@ pub fn create_keri_identity(
 
     // Sign the event with the current key
     let canonical = super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
-    let sig = current_keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let sig_bytes = sign_with_pkcs8(curve, &current.pkcs8, &canonical)?;
+    finalized.x = URL_SAFE_NO_PAD.encode(&sig_bytes);
 
     // Store in Git KEL
     let kel = GitKel::new(repo, prefix.as_str());
@@ -206,10 +291,10 @@ pub fn create_keri_identity(
 
     Ok(InceptionResult {
         prefix,
-        current_keypair_pkcs8: Pkcs8Der::new(current_pkcs8.as_ref()),
-        next_keypair_pkcs8: Pkcs8Der::new(next_pkcs8.as_ref()),
-        current_public_key: current_keypair.public_key().as_ref().to_vec(),
-        next_public_key: next_keypair.public_key().as_ref().to_vec(),
+        current_keypair_pkcs8: current.pkcs8,
+        next_keypair_pkcs8: next.pkcs8,
+        current_public_key: current.public_key,
+        next_public_key: next.public_key,
     })
 }
 

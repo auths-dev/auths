@@ -6,16 +6,24 @@ use crate::error::KeriTranslationError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyType {
     /// Ed25519 public verification key (transferable).
-    /// CESR code: `D` (1 char) + 43 chars base64url = 44 chars.
+    /// CESR code: `D` (1 char) + 43 chars base64url = 44 chars total.
     Ed25519,
+    /// ECDSA P-256 (secp256r1) public verification key (transferable).
+    /// CESR code: `1AAJ` (4 chars) + 44 chars base64url = 48 chars total.
+    /// Raw: 33 bytes SEC1 compressed (0x02/0x03 prefix + 32-byte x-coordinate).
+    P256,
 }
 
 /// The signature algorithm for encoding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SigType {
     /// Ed25519 signature (indexed, for controller signatures).
-    /// CESR code: 2 chars + 86 chars base64url = 88 chars.
+    /// CESR code: 2 chars + 86 chars base64url = 88 chars total.
     Ed25519,
+    /// ECDSA P-256 signature (indexed, for controller signatures).
+    /// CESR code: 2 chars + 86 chars base64url = 88 chars total.
+    /// Raw: 64 bytes (r || s, each 32 bytes big-endian).
+    P256,
 }
 
 /// The digest algorithm for encoding.
@@ -110,6 +118,8 @@ impl CesrCodec for CesrV1Codec {
     ) -> Result<String, KeriTranslationError> {
         let code = match key_type {
             KeyType::Ed25519 => matter::Codex::Ed25519,
+            // P-256 transferable key: code "1AAJ", 33 raw bytes → 48 chars
+            KeyType::P256 => matter::Codex::ECDSA_256r1,
         };
         let verfer = Verfer::new(Some(code), Some(key_bytes), None, None, None).map_err(|e| {
             KeriTranslationError::EncodingFailed {
@@ -133,6 +143,8 @@ impl CesrCodec for CesrV1Codec {
     ) -> Result<String, KeriTranslationError> {
         let code = match sig_type {
             SigType::Ed25519 => indexer::Codex::Ed25519,
+            // P-256 indexed signature: 64 raw bytes (r||s) → 88 chars
+            SigType::P256 => indexer::Codex::ECDSA_256r1,
         };
         let siger = Siger::new(
             None,

@@ -6,8 +6,6 @@
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
-use ring::signature::UnparsedPublicKey;
-
 use crate::crypto::verify_commitment;
 use crate::events::{Event, IcpEvent, IxnEvent, RotEvent, Seal};
 use crate::keys::KeriPublicKey;
@@ -335,7 +333,7 @@ fn validate_rotation(
         let mut matched_count = 0u64;
         for commitment in &state.next_commitment {
             let matched = rot.k.iter().any(|key| {
-                key.parse_ed25519()
+                key.parse()
                     .map(|pk| verify_commitment(pk.as_bytes(), commitment))
                     .unwrap_or(false)
             });
@@ -446,7 +444,7 @@ pub fn verify_event_crypto(
             let mut matched_count = 0u64;
             for commitment in &state.next_commitment {
                 let matched = rot.k.iter().any(|key| {
-                    key.parse_ed25519()
+                    key.parse()
                         .map(|pk| verify_commitment(pk.as_bytes(), commitment))
                         .unwrap_or(false)
                 });
@@ -600,13 +598,12 @@ fn verify_signature_bytes(
 ) -> Result<(), ValidationError> {
     let sequence = event.sequence().value();
 
-    let key_bytes = KeriPublicKey::parse(signing_key)
+    let key = KeriPublicKey::parse(signing_key)
         .map_err(|_| ValidationError::SignatureFailed { sequence })?;
 
     let canonical = serialize_for_signing(event)?;
 
-    let pk = UnparsedPublicKey::new(&ring::signature::ED25519, key_bytes.as_bytes());
-    pk.verify(&canonical, sig_bytes)
+    key.verify_signature(&canonical, sig_bytes)
         .map_err(|_| ValidationError::SignatureFailed { sequence })?;
 
     Ok(())
@@ -674,12 +671,10 @@ pub fn validate_signed_event(
             continue; // out-of-range index, skip
         }
         let key = &keys[idx];
-        if let Ok(pk) = key.parse_ed25519() {
-            let verifier =
-                ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, pk.as_bytes());
-            if verifier.verify(&canonical, &sig.sig).is_ok() {
-                verified_indices.push(sig.index);
-            }
+        if let Ok(pk) = key.parse()
+            && pk.verify_signature(&canonical, &sig.sig).is_ok()
+        {
+            verified_indices.push(sig.index);
         }
     }
 

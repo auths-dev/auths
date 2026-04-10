@@ -18,14 +18,15 @@ pub mod ssh;
 pub mod webcrypto_provider;
 
 pub use did_key::{
-    DidKeyError, did_key_to_ed25519, ed25519_pubkey_to_did_keri, ed25519_pubkey_to_did_key,
+    DecodedDidKey, DidKeyError, did_key_decode, did_key_to_ed25519, did_key_to_p256,
+    ed25519_pubkey_to_did_keri, ed25519_pubkey_to_did_key, p256_pubkey_to_did_key,
 };
 pub use error::AuthsErrorInfo;
 pub use key_material::{build_ed25519_pkcs8_v2, parse_ed25519_key_material, parse_ed25519_seed};
 pub use pkcs8::Pkcs8Der;
 pub use provider::{
-    CryptoError, CryptoProvider, ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN, SecureSeed,
-    SeedDecodeError, decode_seed_hex,
+    CryptoError, CryptoProvider, CurveType, ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN,
+    P256_PUBLIC_KEY_LEN, P256_SIGNATURE_LEN, SecureSeed, SeedDecodeError, decode_seed_hex,
 };
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use ring_provider::RingCryptoProvider;

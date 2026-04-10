@@ -4,7 +4,7 @@ use crate::provider::{CryptoError, CryptoProvider, ED25519_PUBLIC_KEY_LEN, Secur
 use ring::rand::SystemRandom;
 use ring::signature::{ED25519, Ed25519KeyPair, KeyPair, UnparsedPublicKey};
 
-/// Native Ed25519 provider powered by the `ring` crate.
+/// Native crypto provider powered by `ring` (Ed25519) and `p256` (ECDSA P-256).
 ///
 /// Offloads CPU-bound operations to Tokio's blocking pool via
 /// `spawn_blocking` to prevent async reactor starvation under load.
@@ -17,6 +17,64 @@ use ring::signature::{ED25519, Ed25519KeyPair, KeyPair, UnparsedPublicKey};
 /// provider.verify_ed25519(&pubkey, &msg, &sig).await.unwrap();
 /// ```
 pub struct RingCryptoProvider;
+
+impl RingCryptoProvider {
+    /// Generate a P-256 keypair. Returns (seed, compressed_public_key).
+    pub fn p256_generate() -> Result<(SecureSeed, Vec<u8>), CryptoError> {
+        use p256::ecdsa::SigningKey;
+        use p256::elliptic_curve::rand_core::OsRng;
+
+        let signing_key = SigningKey::random(&mut OsRng);
+        let verifying_key = p256::ecdsa::VerifyingKey::from(&signing_key);
+
+        // Compressed SEC1 public key (33 bytes: 0x02/0x03 + x-coordinate)
+        let compressed = verifying_key.to_encoded_point(true);
+        let pubkey_bytes = compressed.as_bytes().to_vec();
+
+        // Extract the raw 32-byte scalar as the seed
+        let scalar_bytes = signing_key.to_bytes();
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&scalar_bytes);
+
+        Ok((SecureSeed::new(seed), pubkey_bytes))
+    }
+
+    /// Sign with P-256. Returns 64-byte raw r||s.
+    pub fn p256_sign(seed: &[u8; 32], message: &[u8]) -> Result<Vec<u8>, CryptoError> {
+        use p256::ecdsa::{SigningKey, signature::Signer};
+
+        let signing_key = SigningKey::from_slice(seed)
+            .map_err(|e| CryptoError::InvalidPrivateKey(format!("P-256: {e}")))?;
+
+        let signature: p256::ecdsa::Signature = signing_key.sign(message);
+        Ok(signature.to_bytes().to_vec())
+    }
+
+    /// Verify a P-256 signature. Accepts 33-byte compressed or 65-byte uncompressed pubkey.
+    pub fn p256_verify(pubkey: &[u8], message: &[u8], signature: &[u8]) -> Result<(), CryptoError> {
+        use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
+
+        let vk = VerifyingKey::from_sec1_bytes(pubkey)
+            .map_err(|e| CryptoError::OperationFailed(format!("P-256 key parse: {e}")))?;
+
+        let sig = Signature::from_slice(signature)
+            .map_err(|e| CryptoError::OperationFailed(format!("P-256 sig parse: {e}")))?;
+
+        vk.verify(message, &sig)
+            .map_err(|_| CryptoError::InvalidSignature)
+    }
+
+    /// Derive compressed public key from P-256 seed.
+    pub fn p256_public_key_from_seed(seed: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
+        use p256::ecdsa::SigningKey;
+
+        let signing_key = SigningKey::from_slice(seed)
+            .map_err(|e| CryptoError::InvalidPrivateKey(format!("P-256: {e}")))?;
+        let verifying_key = p256::ecdsa::VerifyingKey::from(&signing_key);
+        let compressed = verifying_key.to_encoded_point(true);
+        Ok(compressed.as_bytes().to_vec())
+    }
+}
 
 #[async_trait]
 impl CryptoProvider for RingCryptoProvider {

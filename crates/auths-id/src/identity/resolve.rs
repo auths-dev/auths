@@ -32,10 +32,16 @@ impl DefaultDidResolver {
     }
 
     fn resolve_did_key(&self, did: &str) -> Result<ResolvedDid, DidResolverError> {
-        let public_key = did_key_to_ed25519(did)?;
+        // Decode did:key for any supported curve
+        let decoded = auths_crypto::did_key_decode(did)
+            .map_err(|e| DidResolverError::DidKeyDecodingFailed(e.to_string()))?;
+        let public_key_bytes = match decoded {
+            auths_crypto::DecodedDidKey::Ed25519(pk) => pk.to_vec(),
+            auths_crypto::DecodedDidKey::P256(pk) => pk,
+        };
         Ok(ResolvedDid::Key {
             did: did.to_string(),
-            public_key,
+            public_key_bytes,
         })
     }
 
@@ -50,11 +56,9 @@ impl DefaultDidResolver {
         let resolution: DidKeriResolution = resolve_did_keri(&repo, did)
             .map_err(|e| DidResolverError::Resolution(e.to_string()))?;
 
-        let public_key = Ed25519PublicKey::try_from_slice(&resolution.public_key)
-            .map_err(|e| DidResolverError::DidKeyDecodingFailed(e.to_string()))?;
         Ok(ResolvedDid::Keri {
             did: did.to_string(),
-            public_key,
+            public_key_bytes: resolution.public_key,
             sequence: resolution.sequence,
             can_rotate: resolution.can_rotate,
         })
@@ -123,20 +127,24 @@ impl DidResolver for RegistryDidResolver {
             let key_encoded = key_state.current_key().ok_or_else(|| {
                 DidResolverError::Repository("No current key in key state".into())
             })?;
-            let public_key = KeriPublicKey::parse(key_encoded.as_str())
-                .map(|k| Ed25519PublicKey::from_bytes(*k.as_bytes()))
+            let parsed = KeriPublicKey::parse(key_encoded.as_str())
                 .map_err(|e| DidResolverError::DidKeyDecodingFailed(e.to_string()))?;
             Ok(ResolvedDid::Keri {
                 did: did.to_string(),
-                public_key,
+                public_key_bytes: parsed.into_bytes(),
                 sequence: key_state.sequence,
                 can_rotate: key_state.can_rotate(),
             })
         } else if did.starts_with("did:key:") {
-            let public_key = did_key_to_ed25519(did)?;
+            let decoded = auths_crypto::did_key_decode(did)
+                .map_err(|e| DidResolverError::DidKeyDecodingFailed(e.to_string()))?;
+            let public_key_bytes = match decoded {
+                auths_crypto::DecodedDidKey::Ed25519(pk) => pk.to_vec(),
+                auths_crypto::DecodedDidKey::P256(pk) => pk,
+            };
             Ok(ResolvedDid::Key {
                 did: did.to_string(),
-                public_key,
+                public_key_bytes,
             })
         } else {
             let method = did.split(':').nth(1).unwrap_or("unknown");
@@ -191,7 +199,7 @@ mod tests {
         let did = ed25519_to_did_key(&key);
 
         let resolved = resolver.resolve(&did).unwrap();
-        assert_eq!(*resolved.public_key().as_bytes(), key);
+        assert_eq!(resolved.public_key_bytes(), &key);
         assert!(resolved.is_key());
     }
 
@@ -206,7 +214,7 @@ mod tests {
         let resolved = resolver.resolve(&did).unwrap();
 
         assert_eq!(
-            resolved.public_key().as_bytes().as_slice(),
+            resolved.public_key_bytes(),
             init.current_public_key.as_slice()
         );
         assert!(matches!(

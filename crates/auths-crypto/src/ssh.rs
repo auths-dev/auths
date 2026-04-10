@@ -1,15 +1,15 @@
-//! OpenSSH public key parsing for Ed25519 keys.
+//! OpenSSH public key parsing for Ed25519 and P-256 keys.
 
 use ssh_key::PublicKey;
 
-/// Errors from parsing an OpenSSH Ed25519 public key.
+/// Errors from parsing an OpenSSH public key.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SshKeyError {
     #[error("Malformed or invalid OpenSSH public key: {0}")]
     InvalidFormat(String),
 
-    #[error("Unsupported key type: expected ssh-ed25519")]
+    #[error("Unsupported key type: expected ssh-ed25519 or ecdsa-sha2-nistp256")]
     UnsupportedKeyType,
 }
 
@@ -24,7 +24,9 @@ impl crate::AuthsErrorInfo for SshKeyError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::InvalidFormat(_) => Some("Check that the public key is a valid OpenSSH format"),
-            Self::UnsupportedKeyType => Some("Only ssh-ed25519 keys are supported"),
+            Self::UnsupportedKeyType => {
+                Some("Supported key types: ssh-ed25519, ecdsa-sha2-nistp256")
+            }
         }
     }
 }

@@ -15,7 +15,7 @@ auths-keri.workspace = true
 async-trait = "0.1"
 auths-core = { workspace = true }
 auths-crypto = { workspace = true }
-auths-oidc-port = { path = "../auths-oidc-port", version = "0.1.0" }
+auths-oidc-port = { path = "../auths-oidc-port" }
 auths-verifier = { workspace = true, features = ["native"] }
 futures-util = "0.3"
 jsonwebtoken = { version = "10.3.0", features = ["use_pem"] }

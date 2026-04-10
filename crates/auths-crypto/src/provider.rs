@@ -1,7 +1,7 @@
-//! Pluggable cryptographic abstraction for Ed25519 operations.
+//! Pluggable cryptographic abstraction for Ed25519 and ECDSA P-256 operations.
 //!
-//! Defines the [`CryptoProvider`] trait for Ed25519 verification, signing, and
-//! key generation — enabling `ring` on native targets and `WebCrypto` on WASM.
+//! Defines the [`CryptoProvider`] trait for signature verification, signing, and
+//! key generation — enabling `ring`/`p256` on native targets and `WebCrypto` on WASM.
 
 use async_trait::async_trait;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -215,3 +215,56 @@ pub const ED25519_PUBLIC_KEY_LEN: usize = 32;
 
 /// Ed25519 signature length in bytes.
 pub const ED25519_SIGNATURE_LEN: usize = 64;
+
+/// ECDSA P-256 compressed public key length in bytes (SEC1: 0x02/0x03 + 32-byte x).
+pub const P256_PUBLIC_KEY_LEN: usize = 33;
+
+/// ECDSA P-256 raw r||s signature length in bytes (32 + 32).
+pub const P256_SIGNATURE_LEN: usize = 64;
+
+/// Supported elliptic curve types for identity and signing operations.
+///
+/// P-256 is the default for all operations (identity keys, ephemeral CI keys).
+/// Ed25519 is available for compatibility with existing KERI deployments.
+///
+/// Usage:
+/// ```ignore
+/// let curve = CurveType::P256; // default
+/// let (seed, pubkey) = provider.generate_keypair(curve).await?;
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CurveType {
+    /// Ed25519 (RFC 8032). 32-byte keys, 64-byte signatures.
+    Ed25519,
+    /// ECDSA P-256 / secp256r1. 33-byte compressed keys, 64-byte r||s signatures.
+    /// Default for all operations.
+    #[default]
+    P256,
+}
+
+impl std::fmt::Display for CurveType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ed25519 => f.write_str("ed25519"),
+            Self::P256 => f.write_str("p256"),
+        }
+    }
+}
+
+impl CurveType {
+    /// Returns the expected public key length for this curve.
+    pub fn public_key_len(&self) -> usize {
+        match self {
+            Self::Ed25519 => ED25519_PUBLIC_KEY_LEN,
+            Self::P256 => P256_PUBLIC_KEY_LEN,
+        }
+    }
+
+    /// Returns the expected signature length for this curve.
+    pub fn signature_len(&self) -> usize {
+        match self {
+            Self::Ed25519 => ED25519_SIGNATURE_LEN,
+            Self::P256 => P256_SIGNATURE_LEN,
+        }
+    }
+}
