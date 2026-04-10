@@ -95,10 +95,10 @@
           ]
         },
         "device_public_key": {
-          "description": "Ed25519 public key of the device (32 bytes, hex-encoded in JSON).",
+          "description": "Device public key (32 bytes Ed25519 or 33 bytes P-256 compressed, hex-encoded in JSON).",
           "allOf": [
             {
-              "$ref": "#/definitions/Ed25519PublicKey"
+              "$ref": "#/definitions/DevicePublicKey"
             }
           ]
         },
@@ -212,10 +212,17 @@
       "description": "A validated capability identifier.\n\nCapabilities are the atomic unit of authorization in Auths. They follow a namespace convention:\n\n- Well-known capabilities: `sign_commit`, `sign_release`, `manage_members`, `rotate_keys` - Custom capabilities: any valid string (alphanumeric + `:` + `-` + `_`, max 64 chars)\n\nThe `auths:` prefix is reserved for future well-known capabilities and cannot be used in custom capabilities created via `parse()`.\n\n# Examples\n\n``` use auths_verifier::Capability;\n\n// Well-known capabilities let cap = Capability::sign_commit(); assert_eq!(cap.as_str(), \"sign_commit\");\n\n// Custom capabilities let custom = Capability::parse(\"acme:deploy\").unwrap(); assert_eq!(custom.as_str(), \"acme:deploy\");\n\n// Reserved namespace is rejected assert!(Capability::parse(\"auths:custom\").is_err()); ```",
       "type": "string"
     },
-    "Ed25519PublicKey": {
-      "description": "Ed25519 public key (32 bytes, hex-encoded)",
-      "type": "string",
-      "format": "hex"
+    "DevicePublicKey": {
+      "description": "A device public key carrying its curve type explicitly.\n\nCurve is stored alongside the raw key bytes so dispatch never relies on key length — adding a new curve that shares a byte length (e.g. secp256k1, also 33 bytes compressed) won't break existing match arms.\n\nAccepted byte lengths per curve: - Ed25519: 32 - P-256: 33 (compressed SEC1) or 65 (uncompressed SEC1)",
+      "type": "object",
+      "required": [
+        "bytes"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "string"
+        }
+      }
     },
     "Ed25519Signature": {
       "description": "Ed25519 signature (64 bytes, hex-encoded)",
