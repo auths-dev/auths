@@ -277,12 +277,18 @@ fn run_sign(args: &Args) -> Result<()> {
     let data = fs::read(buffer_file)
         .with_context(|| format!("Failed to read input file: {}", buffer_file.display()))?;
 
-    let pubkey = get_cached_pubkey(&alias).ok().flatten().unwrap_or_default();
+    let cached_pk = get_cached_pubkey(&alias)
+        .ok()
+        .flatten()
+        .and_then(|(bytes, curve)| auths_verifier::DevicePublicKey::try_new(curve, &bytes).ok());
 
     let repo_path = auths_sdk::storage_layout::resolve_repo_path(None).ok();
 
     let ctx = build_signing_context(&alias)?;
-    let mut params = CommitSigningParams::new(&alias, namespace, data).with_pubkey(pubkey);
+    let mut params = CommitSigningParams::new(&alias, namespace, data);
+    if let Some(pk) = cached_pk {
+        params = params.with_pubkey(pk);
+    }
     if let Some(path) = repo_path {
         params = params.with_repo_path(path);
     }
@@ -436,7 +442,7 @@ mod tests {
         use auths_sdk::crypto::encode_ssh_pubkey;
 
         let pubkey = [0x42u8; 32];
-        let blob = encode_ssh_pubkey(&pubkey);
+        let blob = encode_ssh_pubkey(&pubkey, auths_crypto::CurveType::Ed25519);
 
         assert_eq!(&blob[0..4], &11u32.to_be_bytes());
         assert_eq!(&blob[4..15], b"ssh-ed25519");

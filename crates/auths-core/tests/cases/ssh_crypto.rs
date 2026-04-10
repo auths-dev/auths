@@ -31,7 +31,7 @@ fn test_create_sshsig_returns_pem() {
 #[test]
 fn test_encode_ssh_pubkey_format() {
     let pubkey = [0x42u8; 32];
-    let blob = encode_ssh_pubkey(&pubkey);
+    let blob = encode_ssh_pubkey(&pubkey, auths_crypto::CurveType::Ed25519);
 
     assert_eq!(&blob[0..4], &11u32.to_be_bytes());
     assert_eq!(&blob[4..15], b"ssh-ed25519");
@@ -42,7 +42,7 @@ fn test_encode_ssh_pubkey_format() {
 #[test]
 fn test_encode_ssh_signature_format() {
     let sig = [0xBB; 64];
-    let blob = encode_ssh_signature(&sig);
+    let blob = encode_ssh_signature(&sig, auths_crypto::CurveType::Ed25519);
 
     assert_eq!(&blob[0..4], &11u32.to_be_bytes());
     assert_eq!(&blob[4..15], b"ssh-ed25519");
@@ -88,7 +88,8 @@ fn test_construct_sshsig_signed_data_format() {
 fn test_construct_sshsig_pem_format() {
     let pubkey = [0x42u8; 32];
     let signature = [0xBB; 64];
-    let pem = construct_sshsig_pem(&pubkey, &signature, "git").unwrap();
+    let pem =
+        construct_sshsig_pem(&pubkey, &signature, "git", auths_crypto::CurveType::Ed25519).unwrap();
 
     assert!(pem.starts_with("-----BEGIN SSH SIGNATURE-----"));
     assert!(pem.contains("-----END SSH SIGNATURE-----"));

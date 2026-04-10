@@ -128,14 +128,17 @@ pub fn revoke_device(
     let device_pk = find_device_public_key(ctx.attestation_source.as_ref(), device_did)?;
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
 
-    let target_did = if device_pk.len() == 32 {
-        #[allow(clippy::unwrap_used)] // INVARIANT: len==32 checked on line 131
-        let pk: [u8; 32] = device_pk.as_bytes().try_into().unwrap();
-        DeviceDID::from_ed25519(&pk)
-    } else {
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-        DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(device_pk.as_bytes()))
+    let target_did = match device_pk.curve() {
+        auths_crypto::CurveType::Ed25519 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
+            let pk: [u8; 32] = device_pk.as_bytes().try_into().unwrap();
+            DeviceDID::from_ed25519(&pk)
+        }
+        auths_crypto::CurveType::P256 => {
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
+            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(device_pk.as_bytes()))
+        }
     };
 
     let revocation = create_signed_revocation(
@@ -278,18 +281,25 @@ fn extract_device_key(
         .as_ref()
         .unwrap_or(&config.identity_key_alias);
 
-    let pk_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+    let (pk_bytes, curve) = auths_core::storage::keychain::extract_public_key_bytes(
         keychain,
         alias,
         passphrase_provider,
     )
     .map_err(DeviceError::CryptoError)?;
 
-    let device_did = DeviceDID::from_ed25519(pk_bytes.as_slice().try_into().map_err(|_| {
-        DeviceError::CryptoError(auths_core::AgentError::InvalidInput(
-            "public key is not 32 bytes".into(),
-        ))
-    })?);
+    let device_did = match curve {
+        auths_crypto::CurveType::Ed25519 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
+            let pk: [u8; 32] = pk_bytes.as_slice().try_into().unwrap();
+            DeviceDID::from_ed25519(&pk)
+        }
+        auths_crypto::CurveType::P256 => {
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
+            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
+        }
+    };
 
     if let Some(ref expected) = config.device_did
         && expected != &device_did.to_string()

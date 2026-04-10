@@ -110,7 +110,16 @@ pub fn create_signed_attestation(
         expires_at: meta.expires_at,
         revoked_at: None,
         note: meta.note.clone(),
-        device_public_key: auths_verifier::DevicePublicKey::from_bytes(device_public_key),
+        // TODO: take DevicePublicKey directly instead of inferring curve from length
+        device_public_key: auths_verifier::DevicePublicKey::try_new(
+            if device_public_key.len() == 32 {
+                auths_crypto::CurveType::Ed25519
+            } else {
+                auths_crypto::CurveType::P256
+            },
+            device_public_key,
+        )
+        .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),
         role,

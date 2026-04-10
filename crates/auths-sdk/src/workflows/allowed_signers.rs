@@ -229,12 +229,12 @@ impl AuthsErrorInfo for AllowedSignersError {
         match self {
             Self::InvalidEmail(_) => Some("Email must be in user@domain.tld format"),
             Self::InvalidKey(_) => {
-                Some("Key must be a valid ssh-ed25519 public key (ssh-ed25519 AAAA...)")
+                Some("Key must be a valid SSH public key (ssh-ed25519 or ecdsa-sha2-nistp256)")
             }
             Self::FileRead { .. } => Some("Check file exists and has correct permissions"),
             Self::FileWrite { .. } => Some("Check directory exists and has write permissions"),
             Self::ParseError { .. } => Some(
-                "Check the allowed_signers file format: <email> namespaces=\"git\" ssh-ed25519 <key>",
+                "Check the allowed_signers file format: <email> namespaces=\"git\" <key-type> <key>",
             ),
             Self::DuplicatePrincipal(_) => {
                 Some("Remove the existing entry first with `auths signers remove`")
@@ -503,21 +503,23 @@ fn parse_entry_line(
 
     let key_type_idx = parts
         .iter()
-        .position(|&p| p == "ssh-ed25519")
+        .position(|&p| p == "ssh-ed25519" || p == "ecdsa-sha2-nistp256")
         .ok_or_else(|| AllowedSignersError::ParseError {
             line: line_num,
-            detail: "only ssh-ed25519 keys are supported".to_string(),
+            detail: "unsupported key type (expected ssh-ed25519 or ecdsa-sha2-nistp256)"
+                .to_string(),
         })?;
 
     if key_type_idx + 1 >= parts.len() {
         return Err(AllowedSignersError::ParseError {
             line: line_num,
-            detail: "missing base64 key data after ssh-ed25519".to_string(),
+            detail: "missing base64 key data after key type".to_string(),
         });
     }
 
+    let key_type_str = parts[key_type_idx];
     let key_data = parts[key_type_idx + 1];
-    let openssh_str = format!("ssh-ed25519 {}", key_data);
+    let openssh_str = format!("{} {}", key_type_str, key_data);
 
     let ssh_pk =
         SshPublicKey::from_openssh(&openssh_str).map_err(|e| AllowedSignersError::ParseError {
@@ -525,17 +527,41 @@ fn parse_entry_line(
             detail: format!("invalid SSH key: {}", e),
         })?;
 
-    let raw_bytes = match ssh_pk.key_data() {
-        ssh_key::public::KeyData::Ed25519(ed) => ed.0,
+    let public_key = match ssh_pk.key_data() {
+        ssh_key::public::KeyData::Ed25519(ed) => auths_verifier::DevicePublicKey::ed25519(&ed.0),
+        ssh_key::public::KeyData::Ecdsa(ec) => {
+            use p256::elliptic_curve::sec1::ToEncodedPoint;
+            match ec {
+                ssh_key::public::EcdsaPublicKey::NistP256(point) => {
+                    let pk = p256::PublicKey::from_sec1_bytes(point.as_ref()).map_err(|e| {
+                        AllowedSignersError::ParseError {
+                            line: line_num,
+                            detail: format!("invalid P-256 key: {e}"),
+                        }
+                    })?;
+                    let uncompressed = pk.to_encoded_point(false).as_bytes().to_vec();
+                    auths_verifier::DevicePublicKey::p256(&uncompressed).map_err(|e| {
+                        AllowedSignersError::ParseError {
+                            line: line_num,
+                            detail: format!("invalid P-256 key length: {e}"),
+                        }
+                    })?
+                }
+                _ => {
+                    return Err(AllowedSignersError::ParseError {
+                        line: line_num,
+                        detail: "only P-256 ECDSA keys are supported".to_string(),
+                    });
+                }
+            }
+        }
         _ => {
             return Err(AllowedSignersError::ParseError {
                 line: line_num,
-                detail: "expected Ed25519 key".to_string(),
+                detail: "expected Ed25519 or ECDSA key".to_string(),
             });
         }
     };
-
-    let public_key = auths_verifier::DevicePublicKey::from_bytes(&raw_bytes);
     let principal =
         parse_principal(principal_str).ok_or_else(|| AllowedSignersError::ParseError {
             line: line_num,
@@ -566,7 +592,7 @@ fn parse_principal(s: &str) -> Option<SignerPrincipal> {
 }
 
 fn format_entry(entry: &SignerEntry) -> Option<String> {
-    let ssh_key = public_key_to_ssh(entry.public_key.as_bytes()).ok()?;
+    let ssh_key = public_key_to_ssh(&entry.public_key).ok()?;
     Some(format!(
         "{} namespaces=\"git\" {}",
         entry.principal, ssh_key

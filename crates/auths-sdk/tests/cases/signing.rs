@@ -79,7 +79,7 @@ mod workflow {
         let ctx = signing_ctx_with_agent(&ctx, fake.clone());
 
         let params = CommitSigningParams::new(alias.as_str(), "git", b"test data".to_vec())
-            .with_pubkey(vec![0u8; 32]);
+            .with_pubkey(auths_verifier::DevicePublicKey::ed25519(&[0u8; 32]));
 
         let result = CommitSigningWorkflow::execute(&ctx, params, chrono::Utc::now());
         assert!(result.is_ok());

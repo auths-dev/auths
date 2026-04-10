@@ -77,8 +77,8 @@ pub struct CommitSigningParams {
     pub namespace: String,
     /// Raw bytes to sign.
     pub data: Vec<u8>,
-    /// Cached Ed25519 public key bytes for agent signing.
-    pub pubkey: Vec<u8>,
+    /// Cached public key for agent signing.
+    pub pubkey: Option<auths_verifier::DevicePublicKey>,
     /// Optional auths repository path for freeze validation.
     pub repo_path: Option<PathBuf>,
     /// Maximum number of passphrase attempts before returning `PassphraseExhausted`.
@@ -97,15 +97,15 @@ impl CommitSigningParams {
             key_alias: key_alias.into(),
             namespace: namespace.into(),
             data,
-            pubkey: Vec::new(),
+            pubkey: None,
             repo_path: None,
             max_passphrase_attempts: DEFAULT_MAX_PASSPHRASE_ATTEMPTS,
         }
     }
 
     /// Set the cached public key for agent signing.
-    pub fn with_pubkey(mut self, pubkey: Vec<u8>) -> Self {
-        self.pubkey = pubkey;
+    pub fn with_pubkey(mut self, pubkey: auths_verifier::DevicePublicKey) -> Self {
+        self.pubkey = Some(pubkey);
         self
     }
 
@@ -180,8 +180,11 @@ fn try_agent_sign(
     ctx: &CommitSigningContext,
     params: &CommitSigningParams,
 ) -> Result<String, SigningError> {
+    let pubkey = params.pubkey.as_ref().ok_or_else(|| {
+        SigningError::AgentUnavailable("no cached public key for agent signing".into())
+    })?;
     ctx.agent_signing
-        .try_sign(&params.namespace, &params.pubkey, &params.data)
+        .try_sign(&params.namespace, pubkey, &params.data)
         .map_err(|e| match e {
             AgentSigningError::Unavailable(msg) | AgentSigningError::ConnectionFailed(msg) => {
                 SigningError::AgentUnavailable(msg)

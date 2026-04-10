@@ -71,31 +71,31 @@ impl Session for AgentSession {
         let identities = pubkey_byte_vectors
             .into_iter()
             .filter_map(|pubkey_bytes| {
-                if pubkey_bytes.len() == 32 {
-                    match <&[u8] as TryInto<&[u8; 32]>>::try_into(pubkey_bytes.as_slice()) {
-                        Ok(key_bytes_array) => {
-                            let ed_pubkey = Ed25519PublicKey(*key_bytes_array);
-                            let key_data = KeyData::Ed25519(ed_pubkey);
-                            let comment =
-                                format!("auths-key-{}", hex::encode(&pubkey_bytes[..4]));
-                            debug!("Adding identity with comment: {}", comment);
-                            Some(Identity {
-                                pubkey: key_data,
-                                comment,
-                            })
-                        }
-                        Err(_) => {
-                            warn!("request_identities: Key is 32 bytes but failed TryInto<&[u8; 32]>. Skipping.");
-                            None
-                        }
+                let key_data = match pubkey_bytes.len() {
+                    32 => {
+                        let key_bytes_array: &[u8; 32] = pubkey_bytes.as_slice().try_into().ok()?;
+                        KeyData::Ed25519(Ed25519PublicKey(*key_bytes_array))
                     }
-                } else {
-                    warn!(
-                        "request_identities: Found key with unexpected length ({}) in agent core. Skipping.",
-                        pubkey_bytes.len()
-                    );
-                    None
-                }
+                    33 | 65 => {
+                        // P-256: try to parse as ECDSA SEC1 point
+                        let ecdsa_pk =
+                            ssh_key::public::EcdsaPublicKey::from_sec1_bytes(&pubkey_bytes).ok()?;
+                        KeyData::Ecdsa(ecdsa_pk)
+                    }
+                    n => {
+                        warn!("request_identities: unsupported key length ({n}). Skipping.");
+                        return None;
+                    }
+                };
+                let comment = format!(
+                    "auths-key-{}",
+                    hex::encode(&pubkey_bytes[..4.min(pubkey_bytes.len())])
+                );
+                debug!("Adding identity with comment: {}", comment);
+                Some(Identity {
+                    pubkey: key_data,
+                    comment,
+                })
             })
             .collect();
 
@@ -108,8 +108,17 @@ impl Session for AgentSession {
             request.pubkey.algorithm()
         );
 
-        let pubkey_bytes_to_sign_with = match &request.pubkey {
-            KeyData::Ed25519(key) => key.as_ref().to_vec(),
+        let (pubkey_bytes_to_sign_with, algorithm) = match &request.pubkey {
+            KeyData::Ed25519(key) => (key.as_ref().to_vec(), Algorithm::Ed25519),
+            KeyData::Ecdsa(ecdsa_key) => {
+                let point_bytes = ecdsa_key.as_ref();
+                (
+                    point_bytes.to_vec(),
+                    Algorithm::Ecdsa {
+                        curve: ssh_key::EcdsaCurve::NistP256,
+                    },
+                )
+            }
             other_key_type => {
                 let err_msg = format!(
                     "Unsupported key type requested for signing: {:?}",
@@ -131,7 +140,7 @@ impl Session for AgentSession {
         match core.sign(&pubkey_bytes_to_sign_with, &request.data) {
             Ok(signature_bytes) => {
                 debug!("Successfully signed data using agent core.");
-                Signature::new(Algorithm::Ed25519, signature_bytes).map_err(|e| {
+                Signature::new(algorithm, signature_bytes).map_err(|e| {
                     let err_msg = format!(
                         "Internal error: Failed to create ssh_key::Signature from core signature: {}",
                         e

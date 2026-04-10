@@ -28,7 +28,7 @@ pub enum CommitVerificationError {
     #[error("SSHSIG parse failed: {0}")]
     SshSigParseFailed(String),
 
-    /// The SSH key type is not Ed25519.
+    /// The SSH key type is not supported (must be Ed25519 or ECDSA P-256).
     #[error("unsupported SSH key type: {found}")]
     UnsupportedKeyType {
         /// The key type string found in the envelope.
@@ -80,7 +80,9 @@ impl AuthsErrorInfo for CommitVerificationError {
         match self {
             Self::UnsignedCommit => Some("Sign commits with: git commit -S"),
             Self::GpgNotSupported => Some("Configure SSH signing: git config gpg.format ssh"),
-            Self::UnsupportedKeyType { .. } => Some("Use an Ed25519 SSH key for signing"),
+            Self::UnsupportedKeyType { .. } => {
+                Some("Use an Ed25519 or ECDSA P-256 SSH key for signing")
+            }
             Self::UnknownSigner => Some("Add the signer's key to the allowed signers list"),
             Self::SshSigParseFailed(_) => Some(
                 "The SSH signature could not be parsed; verify the commit was signed correctly",

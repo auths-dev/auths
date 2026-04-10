@@ -145,11 +145,12 @@ pub fn create_org(
     };
 
     let signer = StorageSigner::new(keychain);
+    // TODO: ResolvedDid should carry CurveType to eliminate this length dispatch
     let org_did_device = if org_pk_bytes.len() == 32 {
+        #[allow(clippy::unwrap_used)] // INVARIANT: length checked
         let pk: [u8; 32] = org_pk_bytes.as_slice().try_into().unwrap();
         DeviceDID::from_ed25519(&pk)
     } else {
-        // P-256 (33 bytes) — encode as did:key with P-256 multicodec
         #[allow(clippy::disallowed_methods)]
         // INVARIANT: p256_pubkey_to_did_key always produces valid did:key
         DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&org_pk_bytes))

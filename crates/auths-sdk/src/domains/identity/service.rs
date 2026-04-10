@@ -260,23 +260,23 @@ fn derive_device_did(
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
 ) -> Result<DeviceDID, SetupError> {
-    let pk_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+    let (pk_bytes, curve) = auths_core::storage::keychain::extract_public_key_bytes(
         keychain,
         key_alias,
         passphrase_provider,
     )?;
 
-    let device_did = if pk_bytes.len() == 32 {
-        let pk: [u8; 32] = pk_bytes.as_slice().try_into().map_err(|_| {
-            SetupError::CryptoError(auths_core::AgentError::InvalidInput(
-                "public key is not 32 bytes".into(),
-            ))
-        })?;
-        DeviceDID::from_ed25519(&pk)
-    } else {
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-        DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
+    let device_did = match curve {
+        auths_crypto::CurveType::Ed25519 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
+            let pk: [u8; 32] = pk_bytes.as_slice().try_into().unwrap();
+            DeviceDID::from_ed25519(&pk)
+        }
+        auths_crypto::CurveType::P256 => {
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
+            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
+        }
     };
 
     Ok(device_did)
@@ -295,23 +295,23 @@ fn bind_device(
         .load_identity()
         .map_err(|e| SetupError::StorageError(e.into()))?;
 
-    let pk_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+    let (pk_bytes, curve) = auths_core::storage::keychain::extract_public_key_bytes(
         keychain,
         key_alias,
         passphrase_provider,
     )?;
 
-    let device_did = if pk_bytes.len() == 32 {
-        let pk: [u8; 32] = pk_bytes.as_slice().try_into().map_err(|_| {
-            SetupError::CryptoError(auths_core::AgentError::InvalidInput(
-                "public key is not 32 bytes".into(),
-            ))
-        })?;
-        DeviceDID::from_ed25519(&pk)
-    } else {
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-        DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
+    let device_did = match curve {
+        auths_crypto::CurveType::Ed25519 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
+            let pk: [u8; 32] = pk_bytes.as_slice().try_into().unwrap();
+            DeviceDID::from_ed25519(&pk)
+        }
+        auths_crypto::CurveType::P256 => {
+            #[allow(clippy::disallowed_methods)]
+            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
+            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
+        }
     };
 
     let meta = AttestationMetadata {

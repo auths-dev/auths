@@ -1,14 +1,14 @@
 use auths_verifier::commit::{extract_ssh_signature, verify_commit_signature};
 use auths_verifier::commit_error::CommitVerificationError;
-use auths_verifier::core::Ed25519PublicKey;
+use auths_verifier::core::DevicePublicKey;
 
 const FIXTURE_COMMIT: &str = include_str!("../fixtures/signed_commit.txt");
 const FIXTURE_PAYLOAD: &str = include_str!("../fixtures/payload.txt");
 const FIXTURE_PUBKEY_HEX: &str = include_str!("../fixtures/pubkey.hex");
 
-fn fixture_pubkey() -> Ed25519PublicKey {
+fn fixture_pubkey() -> DevicePublicKey {
     let bytes = hex::decode(FIXTURE_PUBKEY_HEX.trim()).unwrap();
-    Ed25519PublicKey::try_from_slice(&bytes).unwrap()
+    DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, &bytes).unwrap()
 }
 
 #[test]
@@ -64,7 +64,13 @@ fn extract_returns_unsigned_for_empty() {
 async fn verify_real_signed_commit() {
     let provider = auths_crypto::RingCryptoProvider;
     let key = fixture_pubkey();
-    let result = verify_commit_signature(FIXTURE_COMMIT.as_bytes(), &[key], &provider, None).await;
+    let result = verify_commit_signature(
+        FIXTURE_COMMIT.as_bytes(),
+        std::slice::from_ref(&key),
+        &provider,
+        None,
+    )
+    .await;
     let verified = result.unwrap();
     assert_eq!(verified.signer_key, key);
 }
@@ -72,7 +78,7 @@ async fn verify_real_signed_commit() {
 #[tokio::test]
 async fn verify_rejects_unknown_signer() {
     let provider = auths_crypto::RingCryptoProvider;
-    let wrong_key = Ed25519PublicKey::from_bytes([0x99; 32]);
+    let wrong_key = DevicePublicKey::ed25519(&[0x99; 32]);
     let result =
         verify_commit_signature(FIXTURE_COMMIT.as_bytes(), &[wrong_key], &provider, None).await;
     assert!(matches!(

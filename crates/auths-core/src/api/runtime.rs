@@ -460,8 +460,8 @@ pub fn export_key_openssh_pub(
     let pkcs8_bytes = decrypt_keypair(&encrypted_pkcs8, passphrase)?;
 
     // 3. Extract seed and derive public key via CryptoProvider
-    let (seed, pubkey_bytes) =
-        crate::crypto::signer::load_seed_and_pubkey(&pkcs8_bytes).map_err(|e| {
+    let (seed, pubkey_bytes, _curve) = crate::crypto::signer::load_seed_and_pubkey(&pkcs8_bytes)
+        .map_err(|e| {
             AgentError::CryptoError(format!(
                 "Failed to extract key for alias '{}': {}",
                 alias, e

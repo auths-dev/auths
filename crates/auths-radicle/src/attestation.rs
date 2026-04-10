@@ -233,9 +233,15 @@ impl TryFrom<RadAttestation> for Attestation {
             rid: ResourceId::new(rad.canonical_payload.rid.to_string()),
             issuer,
             subject,
-            device_public_key: auths_verifier::DevicePublicKey::from_bytes(
+            device_public_key: auths_verifier::DevicePublicKey::try_new(
+                auths_crypto::CurveType::Ed25519,
                 rad.device_public_key.as_ref(),
-            ),
+            )
+            .map_err(|_| {
+                AttestationConversionError::InvalidPublicKeyLength(
+                    rad.device_public_key.as_ref().len(),
+                )
+            })?,
             identity_signature: Ed25519Signature::try_from_slice(&rad.identity_signature).map_err(
                 |_| {
                     AttestationConversionError::InvalidPublicKeyLength(rad.identity_signature.len())

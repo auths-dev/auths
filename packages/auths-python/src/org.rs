@@ -129,7 +129,9 @@ pub fn create_org(
         };
 
         let signer = StorageSigner::new(keychain);
+        // TODO: ResolvedDid should carry CurveType to eliminate this length dispatch
         let org_did_device = if org_pk_bytes.len() == 32 {
+            #[allow(clippy::unwrap_used)] // INVARIANT: length checked
             let pk: [u8; 32] = org_pk_bytes.as_slice().try_into().unwrap();
             DeviceDID::from_ed25519(&pk)
         } else {

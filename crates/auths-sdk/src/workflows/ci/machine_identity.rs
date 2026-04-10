@@ -252,7 +252,7 @@ pub fn sign_commit_with_identity(
     let subject =
         DeviceDID::parse(&params.device_did).map_err(|e| format!("Invalid device DID: {}", e))?;
 
-    let device_pk = auths_verifier::DevicePublicKey::from_bytes(device_public_key);
+    let device_pk = auths_verifier::DevicePublicKey::ed25519(device_public_key);
 
     let oidc_binding = params.oidc_binding.as_ref().map(|mi| OidcBinding {
         issuer: mi.issuer.clone(),

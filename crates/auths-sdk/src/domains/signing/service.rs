@@ -363,7 +363,7 @@ fn resolve_optional_key(
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             let pkcs8 = core_signer::decrypt_keypair(&encrypted, &passphrase)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
-            let (seed, pubkey) = core_signer::load_seed_and_pubkey(&pkcs8)
+            let (seed, pubkey, _curve) = core_signer::load_seed_and_pubkey(&pkcs8)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             Ok(Some(ResolvedKey {
                 alias: alias.clone(),

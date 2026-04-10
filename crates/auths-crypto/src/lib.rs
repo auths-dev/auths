@@ -9,6 +9,7 @@
 pub mod did_key;
 pub mod error;
 pub mod key_material;
+pub mod key_ops;
 pub mod pkcs8;
 pub mod provider;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
@@ -23,6 +24,9 @@ pub use did_key::{
 };
 pub use error::AuthsErrorInfo;
 pub use key_material::{build_ed25519_pkcs8_v2, parse_ed25519_key_material, parse_ed25519_seed};
+pub use key_ops::{ParsedKey, TypedSeed, parse_key_material};
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub use key_ops::{public_key as typed_public_key, sign as typed_sign};
 pub use pkcs8::Pkcs8Der;
 pub use provider::{
     CryptoError, CryptoProvider, CurveType, ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN,
@@ -30,7 +34,9 @@ pub use provider::{
 };
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use ring_provider::RingCryptoProvider;
-pub use ssh::{SshKeyError, openssh_pub_to_raw_ed25519};
+#[allow(deprecated)]
+pub use ssh::openssh_pub_to_raw_ed25519;
+pub use ssh::{SshKeyError, openssh_pub_to_raw};
 #[cfg(all(any(test, feature = "test-utils"), not(target_arch = "wasm32")))]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 pub mod testing;

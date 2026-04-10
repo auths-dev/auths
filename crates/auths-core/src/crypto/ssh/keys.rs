@@ -1,7 +1,7 @@
 //! SSH key parsing, seed extraction, and public key derivation.
 
 pub use auths_crypto::SecureSeed;
-use auths_crypto::{Pkcs8Der, build_ed25519_pkcs8_v2, parse_ed25519_key_material};
+use auths_crypto::{Pkcs8Der, build_ed25519_pkcs8_v2};
 use ssh_key::private::Ed25519Keypair as SshEd25519Keypair;
 
 use super::CryptoError;
@@ -20,23 +20,8 @@ use super::CryptoError;
 /// let sshsig = create_sshsig(&seed, data, "git")?;
 /// ```
 pub fn extract_seed_from_pkcs8(pkcs8: &Pkcs8Der) -> Result<SecureSeed, CryptoError> {
-    // Try Ed25519 first, then P-256
-    if let Ok(seed) = auths_crypto::parse_ed25519_seed(pkcs8.as_ref()) {
-        return Ok(seed);
-    }
-    use p256::pkcs8::DecodePrivateKey;
-    if let Ok(sk) = p256::ecdsa::SigningKey::from_pkcs8_der(pkcs8.as_ref()) {
-        let scalar = sk.to_bytes();
-        let mut seed = [0u8; 32];
-        seed.copy_from_slice(&scalar);
-        return Ok(SecureSeed::new(seed));
-    }
-    Err(CryptoError::from(
-        auths_crypto::CryptoError::InvalidPrivateKey(format!(
-            "Unrecognized key format ({} bytes)",
-            pkcs8.as_ref().len()
-        )),
-    ))
+    let parsed = auths_crypto::parse_key_material(pkcs8.as_ref()).map_err(CryptoError::from)?;
+    Ok(parsed.seed.to_secure_seed())
 }
 
 /// Build a PKCS#8 v2 DER document from a seed, deriving the public key internally.
@@ -68,29 +53,6 @@ pub fn build_ed25519_pkcs8_v2_from_seed(seed: &SecureSeed) -> Result<Pkcs8Der, C
 /// let pubkey = extract_pubkey_from_key_bytes(pkcs8.as_ref())?;
 /// ```
 pub fn extract_pubkey_from_key_bytes(key_bytes: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    // Try Ed25519 first
-    if let Ok((seed, maybe_pubkey)) = parse_ed25519_key_material(key_bytes) {
-        return match maybe_pubkey {
-            Some(pk) => Ok(pk.to_vec()),
-            None => {
-                let ssh_kp = SshEd25519Keypair::from_seed(seed.as_bytes());
-                Ok(ssh_kp.public.0.to_vec())
-            }
-        };
-    }
-
-    // Try P-256
-    use p256::pkcs8::DecodePrivateKey;
-    if let Ok(sk) = p256::ecdsa::SigningKey::from_pkcs8_der(key_bytes) {
-        let vk = p256::ecdsa::VerifyingKey::from(&sk);
-        let compressed = vk.to_encoded_point(true);
-        return Ok(compressed.as_bytes().to_vec());
-    }
-
-    Err(CryptoError::from(
-        auths_crypto::CryptoError::InvalidPrivateKey(format!(
-            "Unrecognized key format ({} bytes)",
-            key_bytes.len()
-        )),
-    ))
+    let parsed = auths_crypto::parse_key_material(key_bytes).map_err(CryptoError::from)?;
+    Ok(parsed.public_key)
 }

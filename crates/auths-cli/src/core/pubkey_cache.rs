@@ -28,31 +28,22 @@ fn get_cache_path(alias: &str) -> Result<PathBuf> {
 
 /// Cache a public key for the given alias.
 ///
-/// The public key is stored as hex-encoded bytes in `~/.auths/pubkeys/<alias>.pub`.
+/// The public key is stored in `~/.auths/pubkeys/<alias>.pub` as `<curve>:<hex>`,
+/// e.g. `ed25519:abcdef...` or `p256:02abcdef...`.
 ///
-/// # Arguments
+/// Args:
 /// * `alias` - The key alias (e.g., "default").
-/// * `pubkey` - The 32-byte Ed25519 public key bytes.
-///
-/// # Returns
-/// * `Ok(())` on success.
-/// * `Err` if the cache directory cannot be created or the file cannot be written.
-pub fn cache_pubkey(alias: &str, pubkey: &[u8]) -> Result<()> {
-    if pubkey.len() != 32 {
-        return Err(anyhow!(
-            "Invalid public key length: expected 32 bytes, got {}",
-            pubkey.len()
-        ));
-    }
-
+/// * `pubkey` - Raw public key bytes.
+/// * `curve` - The curve type of the key.
+pub fn cache_pubkey(alias: &str, pubkey: &[u8], curve: auths_crypto::CurveType) -> Result<()> {
     let cache_dir = get_pubkey_cache_dir()?;
     create_restricted_dir(&cache_dir)
         .with_context(|| format!("Failed to create pubkey cache directory: {:?}", cache_dir))?;
 
     let cache_path = get_cache_path(alias)?;
-    let hex_pubkey = hex::encode(pubkey);
+    let content = format!("{}:{}", curve, hex::encode(pubkey));
 
-    write_sensitive_file(&cache_path, &hex_pubkey)
+    write_sensitive_file(&cache_path, &content)
         .with_context(|| format!("Failed to write pubkey cache file: {:?}", cache_path))?;
 
     Ok(())
@@ -60,35 +51,44 @@ pub fn cache_pubkey(alias: &str, pubkey: &[u8]) -> Result<()> {
 
 /// Get a cached public key for the given alias.
 ///
-/// # Arguments
-/// * `alias` - The key alias (e.g., "default").
+/// Returns the raw key bytes and curve type. Handles legacy cache files
+/// (plain hex without curve prefix) by assuming Ed25519.
 ///
-/// # Returns
-/// * `Ok(Some(Vec<u8>))` - The 32-byte public key if cached.
-/// * `Ok(None)` - If no cache exists for this alias.
-/// * `Err` - If there's an error reading or parsing the cache.
-pub fn get_cached_pubkey(alias: &str) -> Result<Option<Vec<u8>>> {
+/// Args:
+/// * `alias` - The key alias (e.g., "default").
+pub fn get_cached_pubkey(alias: &str) -> Result<Option<(Vec<u8>, auths_crypto::CurveType)>> {
     let cache_path = get_cache_path(alias)?;
 
     if !cache_path.exists() {
         return Ok(None);
     }
 
-    let hex_pubkey = fs::read_to_string(&cache_path)
+    let content = fs::read_to_string(&cache_path)
         .with_context(|| format!("Failed to read pubkey cache file: {:?}", cache_path))?;
 
-    let pubkey = hex::decode(hex_pubkey.trim())
+    let trimmed = content.trim();
+
+    let (curve, hex_str) = if let Some((curve_tag, hex_part)) = trimmed.split_once(':') {
+        let curve = match curve_tag {
+            "ed25519" => auths_crypto::CurveType::Ed25519,
+            "p256" => auths_crypto::CurveType::P256,
+            other => {
+                return Err(anyhow!(
+                    "Unknown curve in cache file {:?}: {other}",
+                    cache_path
+                ));
+            }
+        };
+        (curve, hex_part)
+    } else {
+        // Legacy format: plain hex, assume Ed25519
+        (auths_crypto::CurveType::Ed25519, trimmed)
+    };
+
+    let pubkey = hex::decode(hex_str)
         .with_context(|| format!("Invalid hex in pubkey cache file: {:?}", cache_path))?;
 
-    if pubkey.len() != 32 {
-        return Err(anyhow!(
-            "Invalid cached public key length in {:?}: expected 32 bytes, got {}",
-            cache_path,
-            pubkey.len()
-        ));
-    }
-
-    Ok(Some(pubkey))
+    Ok(Some((pubkey, curve)))
 }
 
 /// Clear the cached public key for the given alias.
@@ -159,14 +159,8 @@ mod tests {
     }
 
     #[test]
-    fn test_cache_pubkey_validates_length() {
-        let result = cache_pubkey("test", &[0u8; 16]);
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("expected 32 bytes")
-        );
+    fn test_get_cache_path_returns_pub_extension() {
+        let path = get_cache_path("mykey").unwrap();
+        assert!(path.to_string_lossy().ends_with("mykey.pub"));
     }
 }

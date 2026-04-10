@@ -2,7 +2,7 @@
 
 use auths_verifier::commit::verify_commit_signature;
 use auths_verifier::commit_error::CommitVerificationError;
-use auths_verifier::core::Ed25519PublicKey;
+use auths_verifier::core::DevicePublicKey;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -62,11 +62,11 @@ fn error_to_code(err: &CommitVerificationError) -> &'static str {
     }
 }
 
-/// Verify an SSH-signed git commit against allowed Ed25519 public keys.
+/// Verify an SSH-signed git commit against allowed public keys.
 ///
 /// Args:
 /// * `commit_content`: Raw bytes from `git cat-file commit <sha>`.
-/// * `allowed_keys_hex`: List of hex-encoded 32-byte Ed25519 public keys.
+/// * `allowed_keys_hex`: List of hex-encoded public keys (32 bytes Ed25519 or 33 bytes P-256).
 ///
 /// Usage:
 /// ```python
@@ -79,15 +79,14 @@ pub fn verify_commit_native(
     commit_content: &[u8],
     allowed_keys_hex: Vec<String>,
 ) -> PyResult<PyCommitVerificationResult> {
-    let keys: Vec<Ed25519PublicKey> = allowed_keys_hex
+    let keys: Vec<DevicePublicKey> = allowed_keys_hex
         .iter()
         .enumerate()
         .map(|(i, h)| {
-            let bytes = hex::decode(h)
-                .map_err(|e| PyValueError::new_err(format!("invalid hex key at index {i}: {e}")))?;
-            Ed25519PublicKey::try_from_slice(&bytes).map_err(|e| {
-                PyValueError::new_err(format!("invalid Ed25519 key at index {i}: {e}"))
-            })
+            let (bytes, curve) = crate::types::validate_pk_hex(h)
+                .map_err(|e| PyValueError::new_err(format!("invalid key at index {i}: {e}")))?;
+            DevicePublicKey::try_new(curve, &bytes)
+                .map_err(|e| PyValueError::new_err(format!("invalid public key at index {i}: {e}")))
         })
         .collect::<PyResult<Vec<_>>>()?;
 

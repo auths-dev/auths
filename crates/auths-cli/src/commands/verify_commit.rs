@@ -5,7 +5,6 @@ use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     Attestation, IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
 };
-use base64;
 use chrono::{DateTime, Duration, Utc};
 use clap::Parser;
 use serde::Serialize;
@@ -172,7 +171,16 @@ fn resolve_signers_source(cmd: &VerifyCommitCommand) -> Result<SignersSource> {
         let public_key_bytes = hex::decode(bundle.public_key_hex.as_str())
             .context("Invalid public key hex in bundle")?;
 
-        let ssh_key = format_ed25519_as_ssh(&public_key_bytes)?;
+        // TODO: IdentityBundle should carry CurveType explicitly
+        let curve = match public_key_bytes.len() {
+            32 => auths_crypto::CurveType::Ed25519,
+            33 | 65 => auths_crypto::CurveType::P256,
+            n => anyhow::bail!("Invalid public key length in bundle: {n}"),
+        };
+        let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &public_key_bytes)
+            .context("Invalid public key in bundle")?;
+        let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(&device_pk)
+            .context("Failed to encode public key as SSH")?;
         let temp_signers_content = format!("{} {}", bundle.identity_did, ssh_key);
 
         let mut temp_signers =
@@ -692,28 +700,6 @@ fn print_chain_witness_summary_stderr(r: &VerifyCommitResult) {
 // ============================================================================
 // Internal helpers (unchanged SSH / Git plumbing)
 // ============================================================================
-
-/// Format an Ed25519 public key as an SSH public key string.
-fn format_ed25519_as_ssh(public_key: &[u8]) -> Result<String> {
-    use base64::Engine;
-
-    if public_key.len() != 32 {
-        return Err(anyhow!(
-            "Invalid Ed25519 public key length: expected 32, got {}",
-            public_key.len()
-        ));
-    }
-
-    let key_type = b"ssh-ed25519";
-    let mut blob = Vec::new();
-    blob.extend_from_slice(&(key_type.len() as u32).to_be_bytes());
-    blob.extend_from_slice(key_type);
-    blob.extend_from_slice(&(public_key.len() as u32).to_be_bytes());
-    blob.extend_from_slice(public_key);
-
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&blob);
-    Ok(format!("ssh-ed25519 {}", encoded))
-}
 
 enum SignatureInfo {
     None,

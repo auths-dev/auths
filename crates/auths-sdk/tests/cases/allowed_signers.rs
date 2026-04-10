@@ -153,7 +153,7 @@ fn load_unmarked_file_treats_as_manual() {
 
     // Write a file without section markers
     let key: auths_verifier::DevicePublicKey = Ed25519PublicKey::from_bytes([1u8; 32]).into();
-    let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(key.as_bytes()).unwrap();
+    let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(&key).unwrap();
     let content = format!("user@example.com namespaces=\"git\" {}\n", ssh_key);
     let store = FakeAllowedSignersStore::new().with_file(&path, &content);
 

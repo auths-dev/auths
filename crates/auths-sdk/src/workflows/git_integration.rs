@@ -8,45 +8,48 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum GitIntegrationError {
     /// Raw public key bytes have an unexpected length.
-    #[error("invalid Ed25519 public key length: expected 32, got {0}")]
+    #[error("invalid public key length: expected 32 (Ed25519), 33/65 (P-256), got {0}")]
     InvalidKeyLength(usize),
     /// SSH key encoding failed.
     #[error("failed to encode SSH public key: {0}")]
     SshKeyEncoding(String),
 }
 
-/// Convert raw Ed25519 public key bytes to an OpenSSH public key string.
+/// Convert a device public key to an OpenSSH public key string.
 ///
 /// Args:
-/// * `public_key_bytes`: 32-byte Ed25519 or 33-byte P-256 compressed public key.
+/// * `key`: Device public key carrying its curve type.
 ///
 /// Usage:
 /// ```ignore
-/// let openssh = public_key_to_ssh(&bytes)?;
+/// let openssh = public_key_to_ssh(&device_pk)?;
 /// ```
-pub fn public_key_to_ssh(public_key_bytes: &[u8]) -> Result<String, GitIntegrationError> {
-    match public_key_bytes.len() {
-        32 => {
-            // Ed25519
-            let ed25519_pk = Ed25519PublicKey::try_from(public_key_bytes)
+pub fn public_key_to_ssh(
+    key: &auths_verifier::DevicePublicKey,
+) -> Result<String, GitIntegrationError> {
+    match key.curve() {
+        auths_crypto::CurveType::Ed25519 => {
+            let ed25519_pk = Ed25519PublicKey::try_from(key.as_bytes())
                 .map_err(|e| GitIntegrationError::SshKeyEncoding(e.to_string()))?;
             let ssh_pk = SshPublicKey::from(ed25519_pk);
             ssh_pk
                 .to_openssh()
                 .map_err(|e| GitIntegrationError::SshKeyEncoding(e.to_string()))
         }
-        33 => {
-            // P-256 compressed SEC1 — decompress to uncompressed for SSH encoding
-            use p256::ecdsa::VerifyingKey;
+        auths_crypto::CurveType::P256 => {
             use ssh_key::public::{EcdsaPublicKey, KeyData};
 
-            let vk = VerifyingKey::from_sec1_bytes(public_key_bytes).map_err(|e| {
-                GitIntegrationError::SshKeyEncoding(format!("P-256 key parse: {e}"))
-            })?;
+            let uncompressed_bytes = if key.len() == 33 {
+                use p256::ecdsa::VerifyingKey;
+                let vk = VerifyingKey::from_sec1_bytes(key.as_bytes()).map_err(|e| {
+                    GitIntegrationError::SshKeyEncoding(format!("P-256 key parse: {e}"))
+                })?;
+                vk.to_encoded_point(false).as_bytes().to_vec()
+            } else {
+                key.as_bytes().to_vec()
+            };
 
-            // SSH needs the uncompressed SEC1 point (65 bytes: 04 || x || y)
-            let uncompressed = vk.to_encoded_point(false);
-            let ecdsa_pk = EcdsaPublicKey::from_sec1_bytes(uncompressed.as_bytes())
+            let ecdsa_pk = EcdsaPublicKey::from_sec1_bytes(&uncompressed_bytes)
                 .map_err(|e| GitIntegrationError::SshKeyEncoding(format!("ECDSA SSH key: {e}")))?;
 
             let ssh_pk = SshPublicKey::from(KeyData::Ecdsa(ecdsa_pk));
@@ -54,6 +57,5 @@ pub fn public_key_to_ssh(public_key_bytes: &[u8]) -> Result<String, GitIntegrati
                 .to_openssh()
                 .map_err(|e| GitIntegrationError::SshKeyEncoding(e.to_string()))
         }
-        other => Err(GitIntegrationError::InvalidKeyLength(other)),
     }
 }

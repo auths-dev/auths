@@ -324,7 +324,7 @@ fn parse_ssh_pubkey(key_str: &str) -> Result<auths_verifier::DevicePublicKey> {
 
     match ssh_pk.key_data() {
         ssh_key::public::KeyData::Ed25519(ed) => {
-            Ok(auths_verifier::DevicePublicKey::from_bytes(&ed.0))
+            Ok(auths_verifier::DevicePublicKey::ed25519(&ed.0))
         }
         _ => anyhow::bail!("Only ssh-ed25519 keys are supported"),
     }

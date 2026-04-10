@@ -128,26 +128,28 @@ pub fn construct_sshsig_signed_data(data: &[u8], namespace: &str) -> Result<Vec<
     Ok(blob)
 }
 
-/// Construct the final SSHSIG PEM from a public key and raw signature.
+/// Construct the final SSHSIG PEM from a public key, curve, and raw signature.
 ///
 /// Builds the full SSHSIG binary structure (magic, version, pubkey,
 /// namespace, signature) and encodes it as base64-wrapped PEM.
 ///
 /// Args:
-/// * `pubkey`: Raw 32-byte Ed25519 public key.
-/// * `signature`: Raw Ed25519 signature bytes.
+/// * `pubkey`: Raw public key bytes.
+/// * `signature`: Raw signature bytes.
 /// * `namespace`: The SSHSIG namespace (e.g., "git").
+/// * `curve`: The curve type of the key/signature.
 ///
 /// Usage:
 /// ```ignore
 /// let sig_data = construct_sshsig_signed_data(data, "git")?;
 /// let raw_sig = agent_sign(&socket, &pubkey, &sig_data)?;
-/// let pem = construct_sshsig_pem(&pubkey, &raw_sig, "git")?;
+/// let pem = construct_sshsig_pem(&pubkey, &raw_sig, "git", CurveType::Ed25519)?;
 /// ```
 pub fn construct_sshsig_pem(
     pubkey: &[u8],
     signature: &[u8],
     namespace: &str,
+    curve: auths_crypto::CurveType,
 ) -> Result<String, CryptoError> {
     let mut blob = Vec::new();
 
@@ -157,7 +159,7 @@ pub fn construct_sshsig_pem(
     blob.extend_from_slice(&1u32.to_be_bytes());
 
     // Public key blob (SSH wire format)
-    let pubkey_blob = encode_ssh_pubkey(pubkey);
+    let pubkey_blob = encode_ssh_pubkey(pubkey, curve);
     blob.extend_from_slice(&(pubkey_blob.len() as u32).to_be_bytes());
     blob.extend_from_slice(&pubkey_blob);
 
@@ -174,7 +176,7 @@ pub fn construct_sshsig_pem(
     blob.extend_from_slice(hash_algo);
 
     // Signature blob (SSH signature format)
-    let sig_blob = encode_ssh_signature(signature);
+    let sig_blob = encode_ssh_signature(signature, curve);
     blob.extend_from_slice(&(sig_blob.len() as u32).to_be_bytes());
     blob.extend_from_slice(&sig_blob);
 

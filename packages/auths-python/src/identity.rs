@@ -165,7 +165,7 @@ pub fn create_identity(
                 })?;
 
         // Extract public key so callers can verify signatures immediately
-        let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+        let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
             keychain.as_ref(),
             &result_alias,
             &provider,
@@ -258,7 +258,7 @@ pub fn create_agent_identity(
         })?;
 
         // Extract public key
-        let pub_bytes = auths_core::storage::keychain::extract_public_key_bytes(
+        let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
             keychain.as_ref(),
             &result_alias,
             &provider,

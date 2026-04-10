@@ -46,16 +46,16 @@ pub trait AgentSigningPort: Send + Sync + 'static {
     /// Attempt to sign `data` via the running agent.
     ///
     /// Returns an SSHSIG PEM string on success. The adapter is responsible for
-    /// converting raw Ed25519 bytes from the agent wire protocol into PEM.
+    /// converting raw signature bytes from the agent wire protocol into PEM.
     ///
     /// Args:
     /// * `namespace`: The SSH namespace for the signature (e.g. `"git"`).
-    /// * `pubkey`: The Ed25519 public key bytes to identify the signing key.
+    /// * `pubkey`: The public key identifying the signing key (carries curve type).
     /// * `data`: The raw bytes to sign.
     fn try_sign(
         &self,
         namespace: &str,
-        pubkey: &[u8],
+        pubkey: &auths_verifier::DevicePublicKey,
         data: &[u8],
     ) -> Result<String, AgentSigningError>;
 
@@ -141,7 +141,7 @@ impl AgentSigningPort for NoopAgentProvider {
     fn try_sign(
         &self,
         _namespace: &str,
-        _pubkey: &[u8],
+        _pubkey: &auths_verifier::DevicePublicKey,
         _data: &[u8],
     ) -> Result<String, AgentSigningError> {
         Err(AgentSigningError::Unavailable(

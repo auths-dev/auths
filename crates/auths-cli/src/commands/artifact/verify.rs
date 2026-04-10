@@ -322,7 +322,7 @@ fn resolve_identity_key(
     } else {
         // Resolve public key from the issuer DID
         let issuer = &attestation.issuer;
-        let pk = resolve_pk_from_did(issuer)
+        let (pk, _curve) = resolve_pk_from_did(issuer)
             .with_context(|| format!("Failed to resolve public key from issuer DID '{}'. Use --identity-bundle for stateless verification.", issuer))?;
         Ok((pk, issuer.clone()))
     }
@@ -331,22 +331,21 @@ fn resolve_identity_key(
 /// Extract raw Ed25519 public key bytes from a DID string.
 ///
 /// Supports `did:keri:<base58>` and `did:key:z<base58multicodec>`.
-fn resolve_pk_from_did(did: &str) -> Result<Vec<u8>> {
+fn resolve_pk_from_did(did: &str) -> Result<(Vec<u8>, auths_crypto::CurveType)> {
     if let Some(encoded) = did.strip_prefix("did:keri:") {
         let pk = bs58::decode(encoded)
             .into_vec()
             .context("Invalid base58 in did:keri")?;
-        if pk.len() != 32 {
-            return Err(anyhow!(
-                "Expected 32-byte Ed25519 key from did:keri, got {}",
-                pk.len()
-            ));
-        }
-        Ok(pk)
+        // KERI DIDs are currently Ed25519-only
+        Ok((pk, auths_crypto::CurveType::Ed25519))
     } else if did.starts_with("did:key:z") {
-        auths_crypto::did_key_to_ed25519(did)
-            .map(|k| k.to_vec())
-            .map_err(|e| anyhow!("Failed to resolve did:key: {}", e))
+        match auths_crypto::did_key_decode(did) {
+            Ok(auths_crypto::DecodedDidKey::Ed25519(pk)) => {
+                Ok((pk.to_vec(), auths_crypto::CurveType::Ed25519))
+            }
+            Ok(auths_crypto::DecodedDidKey::P256(pk)) => Ok((pk, auths_crypto::CurveType::P256)),
+            Err(e) => Err(anyhow!("Failed to resolve did:key: {}", e)),
+        }
     } else {
         Err(anyhow!(
             "Unsupported DID method: {}. Use --identity-bundle instead.",
@@ -532,7 +531,7 @@ fn verify_commit_in_process(sha: &str) -> bool {
 
     if allowed_keys.is_empty() {
         if !is_json_mode() {
-            eprintln!("No Ed25519 keys found in .auths/allowed_signers");
+            eprintln!("No signing keys found in .auths/allowed_signers");
         }
         return false;
     }
@@ -568,36 +567,73 @@ fn verify_commit_in_process(sha: &str) -> bool {
     }
 }
 
-/// Parse Ed25519 public keys from an allowed_signers file.
+/// Parse public keys from an allowed_signers file.
 ///
 /// Format: `email namespaces key-type base64-key`
-/// We extract keys where key-type is `ssh-ed25519`.
-fn parse_allowed_signer_keys(content: &str) -> Vec<auths_verifier::Ed25519PublicKey> {
+/// Supports both `ssh-ed25519` and `ecdsa-sha2-nistp256` key types.
+fn parse_allowed_signer_keys(content: &str) -> Vec<auths_verifier::DevicePublicKey> {
     content
         .lines()
         .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
         .filter_map(|line| {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            // Find ssh-ed25519 key type and extract the base64 key
-            let key_idx = parts.iter().position(|&p| p == "ssh-ed25519")?;
+            // Find supported key type and extract the base64 key
+            let key_idx = parts
+                .iter()
+                .position(|&p| p == "ssh-ed25519" || p == "ecdsa-sha2-nistp256")?;
+            let key_type = parts[key_idx];
             let b64_key = parts.get(key_idx + 1)?;
 
             use base64::Engine;
             let key_bytes = base64::engine::general_purpose::STANDARD
                 .decode(b64_key)
                 .ok()?;
-            // SSH key format: 4-byte length + "ssh-ed25519" + 4-byte length + 32-byte key
-            // Skip the type prefix to get the raw 32-byte key
+            // SSH key format: 4-byte type-length + type-string + 4-byte key-length + key-data
             if key_bytes.len() < 4 {
                 return None;
             }
             let type_len = u32::from_be_bytes(key_bytes[..4].try_into().ok()?) as usize;
-            let key_start = 4 + type_len + 4; // skip type string + second length prefix
-            if key_bytes.len() < key_start + 32 {
-                return None;
+            let after_type = 4 + type_len;
+
+            match key_type {
+                "ssh-ed25519" => {
+                    let key_start = after_type + 4;
+                    if key_bytes.len() < key_start + 32 {
+                        return None;
+                    }
+                    auths_verifier::DevicePublicKey::try_new(
+                        auths_crypto::CurveType::Ed25519,
+                        &key_bytes[key_start..key_start + 32],
+                    )
+                    .ok()
+                }
+                "ecdsa-sha2-nistp256" => {
+                    // ECDSA SSH format: type + curve-name-string + ec-point-string
+                    if key_bytes.len() < after_type + 4 {
+                        return None;
+                    }
+                    let curve_len =
+                        u32::from_be_bytes(key_bytes[after_type..after_type + 4].try_into().ok()?)
+                            as usize;
+                    let after_curve = after_type + 4 + curve_len;
+                    if key_bytes.len() < after_curve + 4 {
+                        return None;
+                    }
+                    let point_len = u32::from_be_bytes(
+                        key_bytes[after_curve..after_curve + 4].try_into().ok()?,
+                    ) as usize;
+                    let point_start = after_curve + 4;
+                    if key_bytes.len() < point_start + point_len {
+                        return None;
+                    }
+                    auths_verifier::DevicePublicKey::try_new(
+                        auths_crypto::CurveType::P256,
+                        &key_bytes[point_start..point_start + point_len],
+                    )
+                    .ok()
+                }
+                _ => None,
             }
-            let raw_key: [u8; 32] = key_bytes[key_start..key_start + 32].try_into().ok()?;
-            Some(auths_verifier::Ed25519PublicKey::from_bytes(raw_key))
         })
         .collect()
 }

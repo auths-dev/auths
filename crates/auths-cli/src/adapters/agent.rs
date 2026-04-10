@@ -31,15 +31,9 @@ impl AgentSigningPort for CliAgentAdapter {
     fn try_sign(
         &self,
         namespace: &str,
-        pubkey: &[u8],
+        pubkey: &auths_verifier::DevicePublicKey,
         data: &[u8],
     ) -> Result<String, AgentSigningError> {
-        if pubkey.len() != 32 {
-            return Err(AgentSigningError::Unavailable(
-                "no public key available for agent signing".into(),
-            ));
-        }
-
         let socket_path =
             get_default_socket_path().map_err(|e| AgentSigningError::Unavailable(e.to_string()))?;
 
@@ -63,10 +57,10 @@ impl AgentSigningPort for CliAgentAdapter {
         let sig_data = construct_sshsig_signed_data(data, namespace)
             .map_err(|e| AgentSigningError::SigningFailed(e.to_string()))?;
 
-        let raw_sig = agent_sign(&socket_path, pubkey, &sig_data)
+        let raw_sig = agent_sign(&socket_path, pubkey.as_bytes(), &sig_data)
             .map_err(|e| AgentSigningError::SigningFailed(e.to_string()))?;
 
-        construct_sshsig_pem(pubkey, &raw_sig, namespace)
+        construct_sshsig_pem(pubkey.as_bytes(), &raw_sig, namespace, pubkey.curve())
             .map_err(|e| AgentSigningError::SigningFailed(e.to_string()))
     }
 
