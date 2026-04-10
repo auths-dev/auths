@@ -113,16 +113,18 @@ jobs:
           $hash = (Get-FileHash ${{ matrix.asset_name }}${{ matrix.ext }} -Algorithm SHA256).Hash.ToLower()
           "$hash  ${{ matrix.asset_name }}${{ matrix.ext }}" | Out-File -Encoding ascii ${{ matrix.asset_name }}${{ matrix.ext }}.sha256
 
-      - name: Sign artifact (ephemeral, Unix)
+      - name: Sign artifact and log to Sigstore (ephemeral, Unix)
         if: matrix.ext == '.tar.gz'
         run: |
           FILE="${{ matrix.asset_name }}${{ matrix.ext }}"
           ./staging/auths artifact sign "$FILE" \
             --ci \
             --commit "${{ github.sha }}" \
+            --ci-platform github \
+            --log sigstore-rekor \
             --note "Release ${{ github.ref_name }}"
 
-      - name: Sign artifact (ephemeral, Windows)
+      - name: Sign artifact and log to Sigstore (ephemeral, Windows)
         if: matrix.ext == '.zip'
         shell: pwsh
         run: |
@@ -130,6 +132,8 @@ jobs:
           .\staging\auths.exe artifact sign $file `
             --ci `
             --commit $env:GITHUB_SHA `
+            --ci-platform github `
+            --log sigstore-rekor `
             --note "Release ${{ github.ref_name }}"
 
       - name: Upload artifact
