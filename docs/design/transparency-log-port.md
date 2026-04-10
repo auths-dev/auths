@@ -162,6 +162,48 @@ The adapter submits:
 
 **Fallback:** If testing reveals that Rekor rejects pure Ed25519 hashedrekord entries on the production instance or they cannot be verified by standard tooling, switch to `dsse`. The adapter boundary isolates this decision — no core code changes needed.
 
+### Sigstore Compatibility Validation
+
+The Rekor adapter wraps raw public keys in SPKI DER before submission (see `wrap_pubkey_in_spki_der` in `auths-infra-rekor/src/client.rs`). This makes entries verifiable by standard Sigstore tooling. No Fulcio or OIDC is needed — auths bootstraps its own identity model onto Sigstore's public log.
+
+**Manual validation steps (run once before launch):**
+
+```bash
+# 1. Install Sigstore CLI tools
+go install github.com/sigstore/rekor/cmd/rekor-cli@latest
+go install github.com/sigstore/cosign/cmd/cosign@latest
+
+# 2. Create a P-256 identity and sign an artifact
+cargo install --path crates/auths-cli
+auths init
+echo "test artifact" > /tmp/test-artifact.txt
+auths artifact sign --log /tmp/test-artifact.txt
+
+# 3. Note the log index from the output (e.g. "Logged at index 12345678")
+
+# 4. Verify the entry exists in Rekor
+rekor-cli get --log-index <INDEX> --rekor_server https://rekor.sigstore.dev
+
+# 5. Verify the entry is well-formed (public key parses, signature structure valid)
+rekor-cli get --log-index <INDEX> --rekor_server https://rekor.sigstore.dev --format json | jq .
+
+# 6. Search by public key (confirms key format is recognized)
+# Export the device public key in PEM:
+#   openssl ec -pubin -in <(auths key export --format pem) -outform DER | base64
+# Then:
+rekor-cli search --public-key <base64-der-key> --rekor_server https://rekor.sigstore.dev
+```
+
+**What "success" looks like:**
+- Step 4 returns the entry without errors
+- Step 5 shows `hashedrekord` with `spec.signature.publicKey.content` that decodes to valid SPKI DER
+- Step 6 returns the entry's UUID (proves Rekor indexed the key correctly)
+
+**What "failure" looks like and what to do:**
+- Step 4 returns 404 → submission didn't land; check `auths artifact sign --log` output for errors
+- Step 5 shows the entry but key is raw bytes (not DER) → `wrap_pubkey_in_spki_der` isn't being called; check the adapter code path
+- Step 6 returns empty → Rekor couldn't index the key format; switch to `dsse` entry type per the fallback plan above
+
 ## 6. Rekor API Version Commitment
 
 **Decision: Target Rekor v1 API for entry submission.**
