@@ -555,6 +555,47 @@ pub fn sign_artifact(
         .map(|sha| validate_commit_sha(&sha))
         .transpose()?;
 
+    let attestation_json = create_and_sign_attestation(
+        ctx,
+        seeds,
+        device_is_hardware,
+        now,
+        &rid,
+        &managed.controller_did,
+        &device_did,
+        &device_pk_bytes,
+        payload,
+        &meta,
+        identity_alias.as_ref(),
+        &device_alias,
+        validated_commit_sha,
+    )?;
+
+    Ok(ArtifactSigningResult {
+        attestation_json,
+        rid,
+        digest: artifact_meta.digest.hex,
+        dsse_signature: None,
+    })
+}
+
+/// Create, sign, and serialize an attestation. Handles both hardware and software signers.
+#[allow(clippy::too_many_arguments)]
+fn create_and_sign_attestation(
+    ctx: &AuthsContext,
+    seeds: HashMap<String, SecureSeed>,
+    device_is_hardware: bool,
+    now: DateTime<Utc>,
+    rid: &ResourceId,
+    controller_did: &IdentityDID,
+    device_did: &DeviceDID,
+    device_pk_bytes: &[u8],
+    payload: serde_json::Value,
+    meta: &AttestationMetadata,
+    identity_alias: Option<&KeyAlias>,
+    device_alias: &KeyAlias,
+    commit_sha: Option<String>,
+) -> Result<String, ArtifactSigningError> {
     let seed_signer = SeedMapSigner { seeds };
     let storage_signer = auths_core::signing::StorageSigner::new(Arc::clone(&ctx.key_storage));
     let signer: &dyn SecureSigner = if device_is_hardware {
@@ -566,20 +607,20 @@ pub fn sign_artifact(
 
     let mut attestation = create_signed_attestation(
         now,
-        &rid,
-        &managed.controller_did,
-        &device_did,
-        &device_pk_bytes,
+        rid,
+        controller_did,
+        device_did,
+        device_pk_bytes,
         Some(payload),
-        &meta,
+        meta,
         signer,
         &noop_provider,
-        identity_alias.as_ref(),
-        Some(&device_alias),
+        identity_alias,
+        Some(device_alias),
         vec![Capability::sign_release()],
         None,
         None,
-        validated_commit_sha,
+        commit_sha,
         None,
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
@@ -588,20 +629,13 @@ pub fn sign_artifact(
         &mut attestation,
         signer,
         &noop_provider,
-        identity_alias.as_ref(),
-        &device_alias,
+        identity_alias,
+        device_alias,
     )
     .map_err(|e| ArtifactSigningError::ResignFailed(e.to_string()))?;
 
-    let attestation_json = serde_json::to_string_pretty(&attestation)
-        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
-
-    Ok(ArtifactSigningResult {
-        attestation_json,
-        rid,
-        digest: artifact_meta.digest.hex,
-        dsse_signature: None,
-    })
+    serde_json::to_string_pretty(&attestation)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))
 }
 
 /// Signs artifact bytes with a one-time ephemeral Ed25519 key. No keychain, no
