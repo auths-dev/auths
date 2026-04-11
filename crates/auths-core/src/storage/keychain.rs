@@ -263,10 +263,10 @@ pub fn extract_public_key_bytes(
 ) -> Result<(Vec<u8>, auths_crypto::CurveType), AgentError> {
     if keychain.is_hardware_backend() {
         // Hardware backends store opaque handles — get public key from hardware
-        let (_, _role, handle) = keychain.load_key(alias)?;
+        let (_, _role, _handle) = keychain.load_key(alias)?;
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
         {
-            let pubkey = super::secure_enclave::public_key_from_handle(&handle)?;
+            let pubkey = super::secure_enclave::public_key_from_handle(&_handle)?;
             return Ok((pubkey, auths_crypto::CurveType::P256));
         }
         #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
@@ -308,11 +308,11 @@ pub fn sign_with_key(
     message: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>, auths_crypto::CurveType), AgentError> {
     if keychain.is_hardware_backend() {
-        let (_, _role, handle) = keychain.load_key(alias)?;
+        let (_, _role, _handle) = keychain.load_key(alias)?;
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
         {
-            let sig = super::secure_enclave::sign_with_handle(&handle, message)?;
-            let pubkey = super::secure_enclave::public_key_from_handle(&handle)?;
+            let sig = super::secure_enclave::sign_with_handle(&_handle, message)?;
+            let pubkey = super::secure_enclave::public_key_from_handle(&_handle)?;
             return Ok((sig, pubkey, auths_crypto::CurveType::P256));
         }
         #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
