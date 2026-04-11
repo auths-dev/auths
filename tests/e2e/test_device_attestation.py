@@ -66,7 +66,8 @@ class TestDeviceAttestation:
     def test_device_verify(self, auths_bin, init_identity, tmp_path):
         att_file = tmp_path / "attestation.json"
         att_data = export_attestation(init_identity, att_file)
-        issuer_pk = att_data["device_public_key"]
+        dpk = att_data["device_public_key"]
+        issuer_pk = dpk["key"] if isinstance(dpk, dict) else dpk
 
         verify = run_auths(
             auths_bin,

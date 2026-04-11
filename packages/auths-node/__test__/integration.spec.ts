@@ -49,7 +49,8 @@ describe('identity lifecycle', () => {
     expect(identity.did).toMatch(/^did:keri:/)
     expect(identity.keyAlias).toBeDefined()
     expect(identity.publicKey).toBeDefined()
-    expect(identity.publicKey.length).toBe(64)
+    // 64 hex chars (Ed25519, 32 bytes) or 66 hex chars (P-256 compressed, 33 bytes)
+    expect([64, 66]).toContain(identity.publicKey.length)
   })
 
   it('getPublicKey returns hex string', () => {
