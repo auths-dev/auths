@@ -14,6 +14,8 @@ pub mod memory;
 pub mod passphrase_cache;
 #[cfg(feature = "keychain-pkcs11")]
 pub mod pkcs11;
+#[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
+pub mod secure_enclave;
 #[cfg(all(target_os = "windows", feature = "keychain-windows"))]
 pub mod windows_credential;
 

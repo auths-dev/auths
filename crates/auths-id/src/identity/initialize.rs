@@ -57,28 +57,48 @@ pub fn initialize_keri_identity(
     // INVARIANT: create_keri_identity returns a valid did:keri: DID
     let controller_did = IdentityDID::new_unchecked(result.did());
 
-    let passphrase = passphrase_provider
-        .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
+    let is_hardware_backend = keychain.is_hardware_backend();
 
-    let current_seed = extract_seed_bytes(result.current_keypair_pkcs8.as_ref())?;
-    let next_seed = extract_seed_bytes(result.next_keypair_pkcs8.as_ref())?;
+    if is_hardware_backend {
+        // Hardware backends generate keys internally — no passphrase needed,
+        // Touch ID / HSM PIN replaces the passphrase
+        keychain.store_key(
+            local_key_alias,
+            &controller_did,
+            KeyRole::Primary,
+            &[], // ignored by hardware backends
+        )?;
+        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
+        keychain.store_key(
+            &next_alias,
+            &controller_did,
+            KeyRole::NextRotation,
+            &[], // ignored by hardware backends
+        )?;
+    } else {
+        let passphrase = passphrase_provider
+            .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
 
-    let encrypted_current = encrypt_keypair(&encode_seed_as_pkcs8(current_seed)?, &passphrase)?;
-    let encrypted_next = encrypt_keypair(&encode_seed_as_pkcs8(next_seed)?, &passphrase)?;
+        let current_seed = extract_seed_bytes(result.current_keypair_pkcs8.as_ref())?;
+        let next_seed = extract_seed_bytes(result.next_keypair_pkcs8.as_ref())?;
 
-    keychain.store_key(
-        local_key_alias,
-        &controller_did,
-        KeyRole::Primary,
-        &encrypted_current,
-    )?;
-    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-    keychain.store_key(
-        &next_alias,
-        &controller_did,
-        KeyRole::NextRotation,
-        &encrypted_next,
-    )?;
+        let encrypted_current = encrypt_keypair(&encode_seed_as_pkcs8(current_seed)?, &passphrase)?;
+        let encrypted_next = encrypt_keypair(&encode_seed_as_pkcs8(next_seed)?, &passphrase)?;
+
+        keychain.store_key(
+            local_key_alias,
+            &controller_did,
+            KeyRole::Primary,
+            &encrypted_current,
+        )?;
+        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
+        keychain.store_key(
+            &next_alias,
+            &controller_did,
+            KeyRole::NextRotation,
+            &encrypted_next,
+        )?;
+    }
 
     identity_storage.create_identity(controller_did.as_str(), metadata)?;
 
@@ -168,26 +188,33 @@ pub fn initialize_registry_identity(
     // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format
     let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
 
-    let passphrase = passphrase_provider
-        .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
+    let is_hardware_backend = keychain.is_hardware_backend();
 
-    // Encrypt the PKCS8 keypairs for keychain storage
-    let encrypted_current = encrypt_keypair(current.pkcs8.as_ref(), &passphrase)?;
-    let encrypted_next = encrypt_keypair(next.pkcs8.as_ref(), &passphrase)?;
+    if is_hardware_backend {
+        keychain.store_key(local_key_alias, &controller_did, KeyRole::Primary, &[])?;
+        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
+        keychain.store_key(&next_alias, &controller_did, KeyRole::NextRotation, &[])?;
+    } else {
+        let passphrase = passphrase_provider
+            .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
 
-    keychain.store_key(
-        local_key_alias,
-        &controller_did,
-        KeyRole::Primary,
-        &encrypted_current,
-    )?;
-    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-    keychain.store_key(
-        &next_alias,
-        &controller_did,
-        KeyRole::NextRotation,
-        &encrypted_next,
-    )?;
+        let encrypted_current = encrypt_keypair(current.pkcs8.as_ref(), &passphrase)?;
+        let encrypted_next = encrypt_keypair(next.pkcs8.as_ref(), &passphrase)?;
+
+        keychain.store_key(
+            local_key_alias,
+            &controller_did,
+            KeyRole::Primary,
+            &encrypted_current,
+        )?;
+        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
+        keychain.store_key(
+            &next_alias,
+            &controller_did,
+            KeyRole::NextRotation,
+            &encrypted_next,
+        )?;
+    }
 
     Ok((controller_did, local_key_alias.clone()))
 }

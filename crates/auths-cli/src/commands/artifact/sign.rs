@@ -52,19 +52,13 @@ pub fn handle_sign(
             result.attestation_json.as_bytes(),
         );
         let alias = KeyAlias::new_unchecked(device_key);
-        let (_, _role, encrypted) = ctx
-            .key_storage
-            .load_key(&alias)
-            .context("Failed to load device key for log signature")?;
-        let passphrase = passphrase_provider
-            .get_passphrase("Re-enter passphrase for log signature:")
-            .map_err(|e| anyhow::anyhow!("Passphrase error: {e}"))?;
-        let pkcs8 = auths_sdk::crypto::decrypt_keypair(&encrypted, &passphrase)
-            .context("Failed to decrypt key for log signature")?;
-        let parsed = auths_crypto::parse_key_material(&pkcs8)
-            .map_err(|e| anyhow::anyhow!("Failed to parse key: {e}"))?;
-        let sig = auths_crypto::typed_sign(&parsed.seed, &pae)
-            .map_err(|e| anyhow::anyhow!("Failed to sign DSSE PAE: {e}"))?;
+        let (sig, _pubkey, _curve) = auths_sdk::keychain::sign_with_key(
+            ctx.key_storage.as_ref(),
+            &alias,
+            passphrase_provider.as_ref(),
+            &pae,
+        )
+        .context("Failed to sign DSSE PAE for log submission")?;
         Some(sig)
     } else {
         None

@@ -37,7 +37,7 @@ glob.workspace = true
 auths-policy.workspace = true
 auths-index.workspace = true
 auths-crypto.workspace = true
-auths-sdk = { workspace = true, features = ["backend-git", "witness-server", "witness-client", "indexed-storage"] }
+auths-sdk = { workspace = true, features = ["backend-git", "witness-server", "witness-client", "indexed-storage", "keychain-secure-enclave"] }
 auths-transparency = { workspace = true, features = ["native"] }
 auths-pairing-protocol.workspace = true
 auths-telemetry = { workspace = true, features = ["sink-http"] }

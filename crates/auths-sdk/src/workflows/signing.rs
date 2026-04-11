@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 
 use auths_core::AgentError;
 use auths_core::crypto::signer::decrypt_keypair;
+use auths_core::crypto::ssh;
 use auths_core::crypto::ssh::SecureSeed;
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, KeyStorage};
@@ -161,6 +162,33 @@ impl CommitSigningWorkflow {
 
         // Tier 2: auto-start agent + decrypt key + load into agent + direct sign
         let _ = ctx.agent_signing.ensure_running();
+
+        // Hardware backends (Secure Enclave): sign directly via keychain, skip decrypt
+        if ctx.key_storage.is_hardware_backend() {
+            if let Some(ref repo_path) = params.repo_path {
+                signing::validate_freeze_state(repo_path, now)?;
+            }
+
+            let alias = KeyAlias::new_unchecked(&params.key_alias);
+
+            // Build SSHSIG signed data (the message SSH signs over)
+            let sshsig_data =
+                ssh::construct_sshsig_signed_data(&params.data, &params.namespace)
+                    .map_err(|e| SigningError::PemEncoding(e.to_string()))?;
+
+            // Sign the SSHSIG data with hardware key (Touch ID)
+            let (sig, pubkey, curve) = auths_core::storage::keychain::sign_with_key(
+                ctx.key_storage.as_ref(),
+                &alias,
+                ctx.passphrase_provider.as_ref(),
+                &sshsig_data,
+            )
+            .map_err(|e| SigningError::KeyDecryptionFailed(e.to_string()))?;
+
+            // Build the SSHSIG PEM from raw pubkey + signature
+            return ssh::construct_sshsig_pem(&pubkey, &sig, &params.namespace, curve)
+                .map_err(|e| SigningError::PemEncoding(e.to_string()));
+        }
 
         let pkcs8 = load_key_with_passphrase_retry(ctx, &params)?;
         let (seed, _pubkey, curve) =

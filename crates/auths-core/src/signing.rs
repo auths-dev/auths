@@ -261,6 +261,22 @@ impl<S: KeyStorage + Send + Sync + 'static> SecureSigner for StorageSigner<S> {
         passphrase_provider: &dyn PassphraseProvider,
         message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
+        // Hardware backends (Secure Enclave, HSM) handle signing internally
+        if self.storage.is_hardware_backend() {
+            #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
+            {
+                let (_identity_did, _role, handle) = self.storage.load_key(alias)?;
+                return crate::storage::secure_enclave::sign_with_handle(&handle, message);
+            }
+            #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
+            {
+                return Err(AgentError::BackendUnavailable {
+                    backend: self.storage.backend_name(),
+                    reason: "hardware signing not available on this platform".into(),
+                });
+            }
+        }
+
         let (_identity_did, _role, encrypted_data) = self.storage.load_key(alias)?;
 
         const MAX_ATTEMPTS: u8 = 3;

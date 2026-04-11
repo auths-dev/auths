@@ -349,9 +349,12 @@ impl SecureSigner for SeedMapSigner {
 
 struct ResolvedKey {
     alias: KeyAlias,
-    seed: SecureSeed,
+    /// None for hardware backends (SE) — signing goes through the keychain directly.
+    seed: Option<SecureSeed>,
     public_key_bytes: Vec<u8>,
     curve: auths_crypto::CurveType,
+    /// True if this key is backed by hardware (Secure Enclave, HSM).
+    is_hardware: bool,
 }
 
 fn resolve_optional_key(
@@ -364,31 +367,49 @@ fn resolve_optional_key(
     match material {
         None => Ok(None),
         Some(SigningKeyMaterial::Alias(alias)) => {
-            let (_, _role, encrypted) = keychain
-                .load_key(alias)
+            if keychain.is_hardware_backend() {
+                let (pubkey, curve) = auths_core::storage::keychain::extract_public_key_bytes(
+                    keychain,
+                    alias,
+                    passphrase_provider,
+                )
                 .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
-            let passphrase = passphrase_provider
-                .get_passphrase(passphrase_prompt)
-                .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
-            let pkcs8 = core_signer::decrypt_keypair(&encrypted, &passphrase)
-                .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
-            let (seed, pubkey, curve) = core_signer::load_seed_and_pubkey(&pkcs8)
-                .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
-            Ok(Some(ResolvedKey {
-                alias: alias.clone(),
-                seed,
-                public_key_bytes: pubkey.to_vec(),
-                curve,
-            }))
+                Ok(Some(ResolvedKey {
+                    alias: alias.clone(),
+                    seed: None,
+                    public_key_bytes: pubkey,
+                    curve,
+                    is_hardware: true,
+                }))
+            } else {
+                let (_, _role, encrypted) = keychain
+                    .load_key(alias)
+                    .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
+                let passphrase = passphrase_provider
+                    .get_passphrase(passphrase_prompt)
+                    .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
+                let pkcs8 = core_signer::decrypt_keypair(&encrypted, &passphrase)
+                    .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
+                let (seed, pubkey, curve) = core_signer::load_seed_and_pubkey(&pkcs8)
+                    .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
+                Ok(Some(ResolvedKey {
+                    alias: alias.clone(),
+                    seed: Some(seed),
+                    public_key_bytes: pubkey.to_vec(),
+                    curve,
+                    is_hardware: false,
+                }))
+            }
         }
         Some(SigningKeyMaterial::Direct(seed)) => {
             let pubkey = provider_bridge::ed25519_public_key_from_seed_sync(seed)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             Ok(Some(ResolvedKey {
                 alias: KeyAlias::new_unchecked(synthetic_alias),
-                seed: SecureSeed::new(*seed.as_bytes()),
+                seed: Some(SecureSeed::new(*seed.as_bytes())),
                 public_key_bytes: pubkey.to_vec(),
                 curve: auths_crypto::CurveType::Ed25519,
+                is_hardware: false,
             }))
         }
     }
@@ -486,11 +507,16 @@ pub fn sign_artifact(
     let mut seeds: HashMap<String, SecureSeed> = HashMap::new();
     let identity_alias: Option<KeyAlias> = identity_resolved.map(|r| {
         let alias = r.alias.clone();
-        seeds.insert(r.alias.into_inner(), r.seed);
+        if let Some(seed) = r.seed {
+            seeds.insert(r.alias.into_inner(), seed);
+        }
         alias
     });
     let device_alias = device_resolved.alias.clone();
-    seeds.insert(device_resolved.alias.into_inner(), device_resolved.seed);
+    let device_is_hardware = device_resolved.is_hardware;
+    if let Some(seed) = device_resolved.seed {
+        seeds.insert(device_resolved.alias.into_inner(), seed);
+    }
     let device_pk_bytes = device_resolved.public_key_bytes;
 
     let device_did = match device_resolved.curve {
@@ -529,8 +555,13 @@ pub fn sign_artifact(
         .map(|sha| validate_commit_sha(&sha))
         .transpose()?;
 
-    let signer = SeedMapSigner { seeds };
-    // Seeds are already resolved — passphrase provider will not be called.
+    let seed_signer = SeedMapSigner { seeds };
+    let storage_signer = auths_core::signing::StorageSigner::new(Arc::clone(&ctx.key_storage));
+    let signer: &dyn SecureSigner = if device_is_hardware {
+        &storage_signer
+    } else {
+        &seed_signer
+    };
     let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
 
     let mut attestation = create_signed_attestation(
@@ -541,7 +572,7 @@ pub fn sign_artifact(
         &device_pk_bytes,
         Some(payload),
         &meta,
-        &signer,
+        signer,
         &noop_provider,
         identity_alias.as_ref(),
         Some(&device_alias),
@@ -555,7 +586,7 @@ pub fn sign_artifact(
 
     resign_attestation(
         &mut attestation,
-        &signer,
+        signer,
         &noop_provider,
         identity_alias.as_ref(),
         &device_alias,
