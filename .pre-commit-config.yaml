@@ -97,7 +97,7 @@ repos:
 
       - id: cargo-test
         name: cargo test
-        entry: cargo nextest run --workspace --profile pre-commit
+        entry: cargo nextest run --workspace --profile pre-commit --no-fail-fast
         language: system
         types: [rust]
         pass_filenames: false
