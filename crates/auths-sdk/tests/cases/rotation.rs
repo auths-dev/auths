@@ -31,6 +31,7 @@ fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
+        .with_curve(auths_crypto::CurveType::Ed25519)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
     let result = match initialize(
