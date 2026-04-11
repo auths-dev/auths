@@ -578,7 +578,7 @@ impl<'a> GitKel<'a> {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::inception::{create_keri_identity_with_curve};
+    use crate::keri::inception::create_keri_identity_with_curve;
     use crate::keri::rotation::rotate_keys;
     use crate::keri::{CesrKey, KeriSequence, Prefix, RotEvent, Said, Threshold, VersionString};
     use tempfile::TempDir;

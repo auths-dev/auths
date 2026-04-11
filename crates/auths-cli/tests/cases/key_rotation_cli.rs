@@ -67,7 +67,10 @@ fn test_key_rotation_preserves_old_commit_verification() {
         // Known issues:
         // - rotate-now uses GitKel backend but init uses registry storage
         // - P-256 keys can't be rotated yet (rotation code assumes Ed25519)
-        if stderr.contains("KEL not found") || stderr.contains("Unrecognized Ed25519") || stderr.contains("key decryption failed") {
+        if stderr.contains("KEL not found")
+            || stderr.contains("Unrecognized Ed25519")
+            || stderr.contains("key decryption failed")
+        {
             eprintln!(
                 "Skipping post-rotation assertions: \
                  rotation not yet supported for current key type/backend"

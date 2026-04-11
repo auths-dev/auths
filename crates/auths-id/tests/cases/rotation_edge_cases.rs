@@ -1,9 +1,9 @@
 use std::ops::ControlFlow;
 
 use auths_id::keri::{
-    Event, GitKel, RotationError, anchor_attestation,
-    create_keri_identity_with_backend, create_keri_identity_with_curve, get_key_state, rotate_keys,
-    rotate_keys_with_backend, validate_kel,
+    Event, GitKel, RotationError, anchor_attestation, create_keri_identity_with_backend,
+    create_keri_identity_with_curve, get_key_state, rotate_keys, rotate_keys_with_backend,
+    validate_kel,
 };
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
