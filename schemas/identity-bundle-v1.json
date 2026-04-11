@@ -285,7 +285,7 @@
       }
     },
     "PublicKeyHex": {
-      "description": "A validated hex-encoded Ed25519 public key (64 hex chars = 32 bytes).\n\nUse `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.",
+      "description": "A validated hex-encoded public key (64 hex chars for Ed25519, 66 for P-256 compressed).\n\nUse `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.",
       "type": "string"
     },
     "Role": {

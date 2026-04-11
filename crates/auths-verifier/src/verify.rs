@@ -7,7 +7,7 @@ use crate::error::AttestationError;
 use crate::types::{ChainLink, VerificationReport, VerificationStatus};
 #[cfg(feature = "native")]
 use crate::witness::WitnessVerifyConfig;
-use auths_crypto::{CryptoProvider, ED25519_PUBLIC_KEY_LEN};
+use auths_crypto::CryptoProvider;
 use auths_keri::{Event, compute_said, find_seal_in_kel};
 use chrono::{DateTime, Duration, Utc};
 use log::debug;
@@ -351,11 +351,19 @@ pub(crate) async fn verify_with_keys_at(
     }
 
     // --- 4. Check provided issuer public key length ---
-    if !att.identity_signature.is_empty() && issuer_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::InvalidInput(format!(
-            "Provided issuer public key has invalid length: {}",
-            issuer_pk_bytes.len()
-        )));
+    if !att.identity_signature.is_empty() {
+        let curve = match issuer_pk_bytes.len() {
+            32 => auths_crypto::CurveType::Ed25519,
+            33 | 65 => auths_crypto::CurveType::P256,
+            n => {
+                return Err(AttestationError::InvalidInput(format!(
+                    "Provided issuer public key has invalid length: {n}"
+                )));
+            }
+        };
+        crate::core::DevicePublicKey::try_new(curve, issuer_pk_bytes).map_err(|e| {
+            AttestationError::InvalidInput(format!("Invalid issuer public key: {e}"))
+        })?;
     }
 
     // --- 5. Reconstruct and canonicalize data ---

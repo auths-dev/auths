@@ -26,7 +26,7 @@ def test_ephemeral_sign_and_verify():
 
         # Sign with ephemeral CI key
         sign_result = run([
-            "cargo", "run", "-p", "auths-cli", "--",
+            "cargo", "run", "-p", "auths-cli", "--bin", "auths", "--",
             "artifact", "sign", artifact_path,
             "--ci",
             "--ci-platform", "local",
