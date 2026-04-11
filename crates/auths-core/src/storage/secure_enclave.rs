@@ -91,16 +91,14 @@ impl SecureEnclaveKeyStorage {
         let keys_dir = auths_home.join("se_keys");
         if !keys_dir.exists() {
             fs::create_dir_all(&keys_dir).map_err(|e| {
-                AgentError::IO(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("failed to create SE keys directory: {e}"),
-                ))
+                AgentError::IO(std::io::Error::other(format!(
+                    "failed to create SE keys directory: {e}"
+                )))
             })?;
             fs::set_permissions(&keys_dir, fs::Permissions::from_mode(0o700)).map_err(|e| {
-                AgentError::IO(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("failed to set SE keys directory permissions: {e}"),
-                ))
+                AgentError::IO(std::io::Error::other(format!(
+                    "failed to set SE keys directory permissions: {e}"
+                )))
             })?;
         }
         Ok(Self {
@@ -165,17 +163,16 @@ impl KeyStorage for SecureEnclaveKeyStorage {
         // Write handle file
         let path = self.handle_path(alias);
         fs::write(&path, &handle_buf).map_err(|e| {
-            AgentError::IO(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("failed to write SE key handle: {e}"),
-            ))
+            AgentError::IO(std::io::Error::other(format!(
+                "failed to write SE key handle: {e}"
+            )))
         })?;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).ok();
 
         // Write metadata
         let meta = KeyMetadata {
             identity_did: identity_did.to_string(),
-            role: format!("{:?}", role),
+            role: format!("{role:?}"),
         };
         let meta_json = serde_json::to_string_pretty(&meta).unwrap_or_default();
         fs::write(self.meta_path(alias), meta_json).ok();
@@ -211,6 +208,8 @@ impl KeyStorage for SecureEnclaveKeyStorage {
             }
         };
 
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: identity_did was stored by store_key from a validated IdentityDID
         let identity_did = IdentityDID::new_unchecked(&meta.identity_did);
         let role = if meta.role.contains("NextRotation") {
             KeyRole::NextRotation
@@ -220,8 +219,6 @@ impl KeyStorage for SecureEnclaveKeyStorage {
             KeyRole::Primary
         };
 
-        // Return the handle as the "encrypted" key data — the caller
-        // doesn't need the actual key (it's in SE hardware)
         Ok((identity_did, role, handle))
     }
 
@@ -229,10 +226,9 @@ impl KeyStorage for SecureEnclaveKeyStorage {
         let path = self.handle_path(alias);
         if path.exists() {
             fs::remove_file(&path).map_err(|e| {
-                AgentError::IO(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("failed to delete SE key handle: {e}"),
-                ))
+                AgentError::IO(std::io::Error::other(format!(
+                    "failed to delete SE key handle: {e}"
+                )))
             })?;
         }
         let meta_path = self.meta_path(alias);
@@ -250,6 +246,8 @@ impl KeyStorage for SecureEnclaveKeyStorage {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if let Some(alias) = name.strip_suffix(".se") {
+                    #[allow(clippy::disallowed_methods)]
+                    // INVARIANT: alias comes from a filename we created in store_key
                     aliases.push(KeyAlias::new_unchecked(alias));
                 }
             }
@@ -264,12 +262,11 @@ impl KeyStorage for SecureEnclaveKeyStorage {
         let all = self.list_aliases()?;
         let mut matching = Vec::new();
         for alias in all {
-            if let Ok(meta_str) = fs::read_to_string(self.meta_path(&alias)) {
-                if let Ok(meta) = serde_json::from_str::<KeyMetadata>(&meta_str) {
-                    if meta.identity_did == identity_did.as_str() {
-                        matching.push(alias);
-                    }
-                }
+            if let Ok(meta_str) = fs::read_to_string(self.meta_path(&alias))
+                && let Ok(meta) = serde_json::from_str::<KeyMetadata>(&meta_str)
+                && meta.identity_did == identity_did.as_str()
+            {
+                matching.push(alias);
             }
         }
         Ok(matching)
@@ -297,26 +294,7 @@ impl SecureSigner for SecureEnclaveKeyStorage {
         message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
         let handle = self.load_handle(alias)?;
-
-        let mut sig_buf = vec![0u8; 64];
-        let mut sig_len: usize = 0;
-
-        let code = unsafe {
-            se_sign(
-                handle.as_ptr(),
-                handle.len(),
-                message.as_ptr(),
-                message.len(),
-                sig_buf.as_mut_ptr(),
-                &mut sig_len,
-            )
-        };
-        if code != 0 {
-            return Err(se_error(code));
-        }
-
-        sig_buf.truncate(sig_len);
-        Ok(sig_buf)
+        sign_with_handle(&handle, message)
     }
 
     fn sign_for_identity(

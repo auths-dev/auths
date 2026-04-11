@@ -402,19 +402,19 @@ fn get_platform_default(
         // Try Secure Enclave first (fingerprint signing), fall back to macOS Keychain
         #[cfg(feature = "keychain-secure-enclave")]
         {
-            if super::secure_enclave::is_available() {
-                if let Ok(home) = auths_home_with_config(config) {
-                    match super::secure_enclave::SecureEnclaveKeyStorage::new(&home) {
-                        Ok(storage) => {
-                            log::info!("Using Secure Enclave (Touch ID signing)");
-                            return Ok(Box::new(storage));
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "Secure Enclave available but init failed ({}), using macOS Keychain",
-                                e
-                            );
-                        }
+            if super::secure_enclave::is_available()
+                && let Ok(home) = auths_home_with_config(config)
+            {
+                match super::secure_enclave::SecureEnclaveKeyStorage::new(&home) {
+                    Ok(storage) => {
+                        log::info!("Using Secure Enclave (Touch ID signing)");
+                        return Ok(Box::new(storage));
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Secure Enclave available but init failed ({}), using macOS Keychain",
+                            e
+                        );
                     }
                 }
             }
