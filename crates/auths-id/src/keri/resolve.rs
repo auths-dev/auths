@@ -211,7 +211,7 @@ pub fn parse_did_keri(did: &str) -> Result<Prefix, ResolveError> {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::{create_keri_identity, create_keri_identity_with_curve, rotate_keys};
+    use crate::keri::{create_keri_identity_with_curve, rotate_keys};
     use tempfile::TempDir;
 
     fn setup_repo() -> (TempDir, Repository) {
@@ -253,7 +253,13 @@ mod tests {
     fn resolves_after_inception() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let did = format!("did:keri:{}", init.prefix);
 
         let resolution = resolve_did_keri(&repo, &did).unwrap();
@@ -269,7 +275,13 @@ mod tests {
     fn resolves_after_rotation() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let rot = rotate_keys(
             &repo,
             &init.prefix,
@@ -291,7 +303,13 @@ mod tests {
     fn resolves_at_historical_sequence() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let _rot = rotate_keys(
             &repo,
             &init.prefix,

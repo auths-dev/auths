@@ -169,7 +169,7 @@ pub fn ed25519_to_did_key(public_key: &[u8; 32]) -> String {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::{create_keri_identity, create_keri_identity_with_curve};
+    use crate::keri::{create_keri_identity_with_curve};
     use tempfile::TempDir;
 
     fn setup_repo() -> (TempDir, Repository) {
@@ -207,7 +207,13 @@ mod tests {
     fn resolves_did_keri_with_repo() {
         let (dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let did = format!("did:keri:{}", init.prefix);
 
         let resolver = DefaultDidResolver::with_repo(dir.path());

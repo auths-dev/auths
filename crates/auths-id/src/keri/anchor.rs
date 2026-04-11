@@ -299,7 +299,7 @@ pub fn verify_attestation_anchor_by_issuer<T: serde::Serialize>(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::{Prefix, create_keri_identity, create_keri_identity_with_curve};
+    use crate::keri::{Prefix, create_keri_identity_with_curve};
     use ring::signature::Ed25519KeyPair as TestKeyPair;
     use serde::{Deserialize, Serialize};
     use tempfile::TempDir;
@@ -334,7 +334,13 @@ mod tests {
     fn anchor_creates_ixn_event() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
         let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -369,7 +375,13 @@ mod tests {
     fn anchor_with_delegation_seal_type() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         let data = serde_json::json!({"delegation": "data"});
@@ -398,7 +410,13 @@ mod tests {
     fn find_anchor_locates_attestation() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
         let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -425,7 +443,13 @@ mod tests {
     fn verify_anchor_works() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
         let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -450,7 +474,13 @@ mod tests {
     fn unanchored_attestation_not_found() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
 
         let attestation = make_test_attestation(&issuer_did, "did:key:device123");
@@ -465,7 +495,13 @@ mod tests {
     fn multiple_anchors_work() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
         let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -505,7 +541,13 @@ mod tests {
     fn verify_by_issuer_did() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let issuer_did = format!("did:keri:{}", init.prefix);
         let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -529,7 +571,13 @@ mod tests {
         let (_dir, repo) = setup_repo();
 
         // Create an identity to get a valid keypair (for the signature requirement)
-        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         let current_keypair = TestKeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
         // Try to anchor to a non-existent KEL
