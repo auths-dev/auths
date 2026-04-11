@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use crate::keri::inception::create_keri_identity_with_curve;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use std::path::Path;
@@ -14,7 +15,7 @@ use crate::error::InitError;
 use crate::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
 use crate::keri::{
     CesrKey, Event, IcpEvent, KeriSequence, Prefix, Said, Threshold, VersionString,
-    create_keri_identity, finalize_icp_event, serialize_for_signing,
+    finalize_icp_event, serialize_for_signing,
 };
 use crate::storage::identity::IdentityStorage;
 use crate::storage::registry::RegistryBackend;
@@ -41,6 +42,7 @@ use auths_core::{
 /// ```ignore
 /// let (did, alias) = initialize_keri_identity(&path, "my-key", None, &provider, &storage, &keychain)?;
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub fn initialize_keri_identity(
     repo_path: &Path,
     local_key_alias: &KeyAlias,
@@ -49,10 +51,11 @@ pub fn initialize_keri_identity(
     identity_storage: &dyn IdentityStorage,
     keychain: &(dyn KeyStorage + Send + Sync),
     now: chrono::DateTime<chrono::Utc>,
+    curve: auths_crypto::CurveType,
 ) -> Result<(IdentityDID, KeyAlias), InitError> {
     let repo = Repository::open(repo_path)?;
-    let result =
-        create_keri_identity(&repo, None, now).map_err(|e| InitError::Keri(e.to_string()))?;
+    let result = create_keri_identity_with_curve(&repo, None, now, curve)
+        .map_err(|e| InitError::Keri(e.to_string()))?;
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: create_keri_identity returns a valid did:keri: DID
     let controller_did = IdentityDID::new_unchecked(result.did());
@@ -127,13 +130,11 @@ pub fn initialize_registry_identity(
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
     witness_config: Option<&WitnessConfig>,
+    curve: auths_crypto::CurveType,
 ) -> Result<(IdentityDID, KeyAlias), InitError> {
     backend
         .init_if_needed()
         .map_err(|e| InitError::Registry(e.to_string()))?;
-
-    // Generate keypairs using P-256 (default curve)
-    let curve = auths_crypto::CurveType::default();
 
     let current = crate::keri::inception::generate_keypair_for_init(curve)
         .map_err(|e| InitError::Crypto(e.to_string()))?;

@@ -41,6 +41,7 @@ fn init_identity(
         &identity_storage,
         keychain,
         chrono::Utc::now(),
+        auths_crypto::CurveType::Ed25519,
     )
     .expect("Failed to initialize identity");
     (did.to_string(), alias.into_inner())

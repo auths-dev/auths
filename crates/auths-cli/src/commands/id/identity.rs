@@ -402,6 +402,7 @@ pub fn handle_id(
                 passphrase_provider.as_ref(),
                 &get_platform_keychain()?,
                 None,
+                auths_crypto::CurveType::default(),
             ) {
                 Ok((controller_did_keri, alias)) => {
                     println!("\n✅ Identity created.");

@@ -64,6 +64,8 @@ pub struct CreateDeveloperIdentityConfig {
     /// Path to the `auths-sign` binary, required when git signing is configured.
     /// The CLI resolves this via `which::which("auths-sign")`.
     pub sign_binary_path: Option<PathBuf>,
+    /// Override the default curve for key generation. Defaults to `CurveType::default()` (P-256).
+    pub curve: auths_crypto::CurveType,
 }
 
 impl CreateDeveloperIdentityConfig {
@@ -87,6 +89,7 @@ impl CreateDeveloperIdentityConfig {
             witness_config: None,
             metadata: None,
             sign_binary_path: None,
+            curve: auths_crypto::CurveType::default(),
         }
     }
 }
@@ -103,6 +106,7 @@ pub struct CreateDeveloperIdentityConfigBuilder {
     witness_config: Option<auths_id::witness_config::WitnessConfig>,
     metadata: Option<serde_json::Value>,
     sign_binary_path: Option<PathBuf>,
+    curve: auths_crypto::CurveType,
 }
 
 impl CreateDeveloperIdentityConfigBuilder {
@@ -229,6 +233,12 @@ impl CreateDeveloperIdentityConfigBuilder {
         self
     }
 
+    /// Override the curve for key generation (default: P-256).
+    pub fn with_curve(mut self, curve: auths_crypto::CurveType) -> Self {
+        self.curve = curve;
+        self
+    }
+
     /// Builds the final [`CreateDeveloperIdentityConfig`].
     ///
     /// Usage:
@@ -246,6 +256,7 @@ impl CreateDeveloperIdentityConfigBuilder {
             witness_config: self.witness_config,
             metadata: self.metadata,
             sign_binary_path: self.sign_binary_path,
+            curve: self.curve,
         }
     }
 }

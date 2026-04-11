@@ -354,10 +354,10 @@ fn retrieve_precommitted_key(
     let decrypted = decrypt_keypair(&encrypted_next, &pass)
         .map_err(|e| RotationError::KeyDecryptionFailed(e.to_string()))?;
 
-    let keypair = load_keypair_from_der_or_seed(&decrypted)
+    let parsed = auths_crypto::parse_key_material(&decrypted)
         .map_err(|e| RotationError::KeyDecryptionFailed(e.to_string()))?;
 
-    if !verify_commitment(keypair.public_key().as_ref(), &state.next_commitment[0]) {
+    if !verify_commitment(&parsed.public_key, &state.next_commitment[0]) {
         return Err(RotationError::RotationFailed(
             "commitment mismatch: next key does not match previous commitment".into(),
         ));
@@ -517,6 +517,7 @@ mod tests {
         let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
         let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
             .with_git_signing_scope(GitSigningScope::Skip)
+            .with_curve(auths_crypto::CurveType::Ed25519)
             .build();
         let result = match initialize(
             IdentityConfig::Developer(config),

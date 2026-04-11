@@ -261,8 +261,14 @@ fn get_or_create_identity(
         return Ok(did);
     }
 
-    let (did, _) =
-        initialize_registry_identity(backend, key_alias, passphrase_provider, keychain, None)?;
+    let (did, _) = initialize_registry_identity(
+        backend,
+        key_alias,
+        passphrase_provider,
+        keychain,
+        None,
+        auths_crypto::CurveType::default(),
+    )?;
 
     Ok(did)
 }

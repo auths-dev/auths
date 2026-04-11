@@ -244,6 +244,7 @@ fn derive_keys(
         passphrase_provider,
         keychain,
         config.witness_config.as_ref(),
+        config.curve,
     )
     .map_err(|e| SetupError::StorageError(e.into()))?;
 
@@ -419,6 +420,7 @@ fn initialize_ci_keys(
         passphrase_provider,
         keychain,
         None,
+        auths_crypto::CurveType::default(),
     )
     .map_err(|e| SetupError::StorageError(e.into()))?;
 

@@ -70,15 +70,20 @@ pub fn create_identity(
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
 
-    let (identity_did, result_alias) =
-        initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None).map_err(
-            |e| {
-                format_error(
-                    "AUTHS_IDENTITY_ERROR",
-                    format!("Identity creation failed: {e}"),
-                )
-            },
-        )?;
+    let (identity_did, result_alias) = initialize_registry_identity(
+        backend,
+        &alias,
+        &provider,
+        keychain.as_ref(),
+        None,
+        auths_crypto::CurveType::default(),
+    )
+    .map_err(|e| {
+        format_error(
+            "AUTHS_IDENTITY_ERROR",
+            format!("Identity creation failed: {e}"),
+        )
+    })?;
 
     let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
         keychain.as_ref(),
@@ -132,14 +137,20 @@ pub fn create_agent_identity(
         })
         .collect::<napi::Result<Vec<_>>>()?;
 
-    let (identity_did, result_alias) =
-        initialize_registry_identity(backend.clone(), &alias, &provider, keychain.as_ref(), None)
-            .map_err(|e| {
-            format_error(
-                "AUTHS_IDENTITY_ERROR",
-                format!("Agent identity creation failed: {e}"),
-            )
-        })?;
+    let (identity_did, result_alias) = initialize_registry_identity(
+        backend.clone(),
+        &alias,
+        &provider,
+        keychain.as_ref(),
+        None,
+        auths_crypto::CurveType::default(),
+    )
+    .map_err(|e| {
+        format_error(
+            "AUTHS_IDENTITY_ERROR",
+            format!("Agent identity creation failed: {e}"),
+        )
+    })?;
 
     let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
         keychain.as_ref(),

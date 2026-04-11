@@ -79,9 +79,25 @@ static KEYS: LazyLock<TestKeys> = LazyLock::new(|| {
     }
 });
 
+/// Shared mock JWKS server — started once per process, reused across tests.
+static SHARED_JWKS_URL: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+
 /// Starts a mock JWKS server serving the static test key.
-/// Returns (base_url, join_handle).
+/// First call starts the server; subsequent calls return the cached URL.
 pub(super) async fn start_mock_jwks_server() -> (String, tokio::task::JoinHandle<()>) {
+    let url = SHARED_JWKS_URL
+        .get_or_init(|| async {
+            let (url, handle) = start_mock_jwks_server_inner().await;
+            std::mem::forget(handle); // keep server alive for process lifetime
+            url
+        })
+        .await
+        .clone();
+    let noop_handle = tokio::spawn(async {});
+    (url, noop_handle)
+}
+
+async fn start_mock_jwks_server_inner() -> (String, tokio::task::JoinHandle<()>) {
     let jwks = KEYS.jwks_json.clone();
 
     let app = axum::Router::new().route(

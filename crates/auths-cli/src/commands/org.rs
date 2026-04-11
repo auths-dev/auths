@@ -319,6 +319,7 @@ pub fn handle_org(
                 passphrase_provider.as_ref(),
                 &get_platform_keychain()?,
                 None,
+                auths_crypto::CurveType::default(),
             )
             .context("Failed to initialize org identity")?;
 

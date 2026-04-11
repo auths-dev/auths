@@ -100,9 +100,15 @@ pub fn create_org(
         let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let provider = auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
-        let (controller_did, alias) =
-            initialize_registry_identity(backend.clone(), &key_alias, &provider, &*keychain, None)
-                .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
+        let (controller_did, alias) = initialize_registry_identity(
+            backend.clone(),
+            &key_alias,
+            &provider,
+            &*keychain,
+            None,
+            auths_crypto::CurveType::default(),
+        )
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
         #[allow(clippy::disallowed_methods)] // Presentation boundary: UUID generation
         let rid = uuid::Uuid::new_v4().to_string();
