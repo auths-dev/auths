@@ -24,6 +24,7 @@ fn test_passphrase_cache_store_and_load_no_biometric() {
 
 #[cfg(target_os = "macos")]
 #[test]
+#[ignore] // Requires Touch ID interaction — run manually with --nocapture
 fn test_passphrase_cache_biometric_falls_back_to_plain() {
     use auths_core::storage::passphrase_cache::get_passphrase_cache;
 
