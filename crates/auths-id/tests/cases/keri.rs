@@ -398,15 +398,11 @@ fn verify_anchor_by_digest_works() {
 /// Regression test: default identity uses P-256 (key prefix "1AAJ"), not Ed25519 ("D").
 #[test]
 fn default_identity_uses_p256() {
+    use auths_id::keri::create_keri_identity;
+
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity_with_curve(
-        &repo,
-        None,
-        chrono::Utc::now(),
-        auths_crypto::CurveType::Ed25519,
-    )
-    .unwrap();
+    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
 
     let kel = GitKel::new(&repo, init.prefix.as_str());
     let events = kel.get_events().unwrap();
