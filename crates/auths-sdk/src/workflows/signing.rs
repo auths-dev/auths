@@ -172,9 +172,8 @@ impl CommitSigningWorkflow {
             let alias = KeyAlias::new_unchecked(&params.key_alias);
 
             // Build SSHSIG signed data (the message SSH signs over)
-            let sshsig_data =
-                ssh::construct_sshsig_signed_data(&params.data, &params.namespace)
-                    .map_err(|e| SigningError::PemEncoding(e.to_string()))?;
+            let sshsig_data = ssh::construct_sshsig_signed_data(&params.data, &params.namespace)
+                .map_err(|e| SigningError::PemEncoding(e.to_string()))?;
 
             // Sign the SSHSIG data with hardware key (Touch ID)
             let (sig, pubkey, curve) = auths_core::storage::keychain::sign_with_key(
