@@ -578,7 +578,7 @@ impl<'a> GitKel<'a> {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::inception::create_keri_identity;
+    use crate::keri::inception::{create_keri_identity, create_keri_identity_with_curve};
     use crate::keri::rotation::rotate_keys;
     use crate::keri::{CesrKey, KeriSequence, Prefix, RotEvent, Said, Threshold, VersionString};
     use tempfile::TempDir;
@@ -650,7 +650,7 @@ mod tests {
     #[test]
     fn append_rotation_event() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let _rot = rotate_keys(
             &repo,
             &init.prefix,
@@ -670,7 +670,7 @@ mod tests {
     #[test]
     fn append_rejects_invalid_signature() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         // Build a fake rotation event with invalid SAID
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn get_state_after_inception() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let state = kel.get_state(chrono::Utc::now()).unwrap();
@@ -712,7 +712,7 @@ mod tests {
     #[test]
     fn get_state_after_rotation() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let rot = rotate_keys(
             &repo,
             &init.prefix,
@@ -731,7 +731,7 @@ mod tests {
     #[test]
     fn get_latest_event() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let latest = kel.get_latest_event().unwrap();
@@ -762,7 +762,7 @@ mod tests {
     #[test]
     fn cannot_append_icp_event() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let icp2 = Event::Icp(make_icp_event("EFake"));
@@ -795,7 +795,7 @@ mod tests {
     #[test]
     fn test_cold_cache_full_replay() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let state = kel.get_state(chrono::Utc::now()).unwrap();
@@ -811,7 +811,7 @@ mod tests {
     #[test]
     fn test_warm_cache_hit() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let state1 = kel.get_state(chrono::Utc::now()).unwrap();
@@ -824,7 +824,7 @@ mod tests {
     #[test]
     fn test_incremental_validation_after_rotation() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         // Prime cache
@@ -860,7 +860,7 @@ mod tests {
     #[test]
     fn test_cache_divergence_fallback() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let _ = kel.get_state(chrono::Utc::now()).unwrap();
@@ -883,7 +883,7 @@ mod tests {
     #[test]
     fn test_get_state_matches_full_replay() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let rot1 = rotate_keys(
             &repo,
             &init.prefix,
@@ -920,7 +920,7 @@ mod tests {
     #[test]
     fn test_cache_said_mismatch_forces_replay() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let _ = kel.get_state(chrono::Utc::now()).unwrap();
@@ -952,7 +952,7 @@ mod tests {
     #[test]
     fn test_commit_hash_helpers() {
         let (_dir, repo) = setup_repo();
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, init.prefix.as_str());
 
         let tip_hash = kel.tip_commit_hash().unwrap();

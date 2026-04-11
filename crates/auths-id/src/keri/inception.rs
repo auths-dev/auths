@@ -497,7 +497,7 @@ mod tests {
     fn create_identity_returns_valid_result() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let result = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
 
         // Prefix should start with 'E' (Blake3 SAID prefix)
         assert!(result.prefix.as_str().starts_with('E'));
@@ -516,7 +516,7 @@ mod tests {
     fn create_identity_stores_kel() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let result = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
 
         // Verify KEL exists and has one event
         let kel = GitKel::new(&repo, result.prefix.as_str());
@@ -531,7 +531,7 @@ mod tests {
     fn inception_event_is_valid() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let result = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, result.prefix.as_str());
         let events = kel.get_events().unwrap();
 
@@ -546,7 +546,7 @@ mod tests {
     fn inception_event_has_correct_structure() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let result = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, result.prefix.as_str());
         let events = kel.get_events().unwrap();
 
@@ -581,7 +581,7 @@ mod tests {
     fn next_key_commitment_is_correct() {
         let (_dir, repo) = setup_repo();
 
-        let result = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let result = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
         let kel = GitKel::new(&repo, result.prefix.as_str());
         let events = kel.get_events().unwrap();
 
@@ -609,11 +609,11 @@ mod tests {
     fn multiple_identities_have_different_prefixes() {
         let (_dir, repo) = setup_repo();
 
-        let result1 = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let result1 = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
 
         // Create second repo for second identity
         let (_dir2, repo2) = setup_repo();
-        let result2 = create_keri_identity(&repo2, None, chrono::Utc::now()).unwrap();
+        let result2 = create_keri_identity_with_curve(&repo2, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
 
         // Prefixes should be different
         assert_ne!(result1.prefix, result2.prefix);

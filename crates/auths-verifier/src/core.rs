@@ -499,23 +499,50 @@ impl Serialize for DevicePublicKey {
 
 impl<'de> Deserialize<'de> for DevicePublicKey {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct Raw {
-            curve: String,
-            key: String,
+        // Accept both formats:
+        // - New: {"curve": "p256", "key": "hex..."}
+        // - Legacy: "hex..." (bare string, infer curve from length)
+        let value = serde_json::Value::deserialize(d)?;
+
+        if let Some(s) = value.as_str() {
+            // Legacy format: bare hex string
+            if s.is_empty() {
+                return Ok(Self::default());
+            }
+            let bytes = hex::decode(s)
+                .map_err(|e| serde::de::Error::custom(format!("invalid hex: {e}")))?;
+            let curve = match bytes.len() {
+                32 => auths_crypto::CurveType::Ed25519,
+                33 | 65 => auths_crypto::CurveType::P256,
+                n => {
+                    return Err(serde::de::Error::custom(format!(
+                        "invalid device public key length: {n}"
+                    )));
+                }
+            };
+            return Self::try_new(curve, &bytes)
+                .map_err(|e| serde::de::Error::custom(e.to_string()));
         }
-        let raw = Raw::deserialize(d)?;
-        let curve = match raw.curve.as_str() {
+
+        // New format: {"curve": "...", "key": "..."}
+        let curve_str = value["curve"]
+            .as_str()
+            .ok_or_else(|| serde::de::Error::custom("missing 'curve' field"))?;
+        let key_hex = value["key"]
+            .as_str()
+            .ok_or_else(|| serde::de::Error::custom("missing 'key' field"))?;
+
+        let curve = match curve_str {
             "ed25519" => auths_crypto::CurveType::Ed25519,
             "p256" => auths_crypto::CurveType::P256,
             other => {
                 return Err(serde::de::Error::custom(format!("unknown curve: {other}")));
             }
         };
-        if raw.key.is_empty() {
+        if key_hex.is_empty() {
             return Err(serde::de::Error::custom("empty key"));
         }
-        let bytes = hex::decode(&raw.key)
+        let bytes = hex::decode(key_hex)
             .map_err(|e| serde::de::Error::custom(format!("invalid hex: {e}")))?;
         Self::try_new(curve, &bytes).map_err(|e| serde::de::Error::custom(e.to_string()))
     }

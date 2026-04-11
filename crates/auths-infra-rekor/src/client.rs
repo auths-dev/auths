@@ -531,14 +531,9 @@ mod tests {
         assert_eq!(entry.kind, "dsse");
         assert_eq!(entry.api_version, "0.0.1");
 
-        // Verify the envelope is base64-encoded JSON
-        let envelope_json = String::from_utf8(
-            BASE64
-                .decode(&entry.spec.proposed_content.envelope)
-                .unwrap(),
-        )
-        .unwrap();
-        let envelope: serde_json::Value = serde_json::from_str(&envelope_json).unwrap();
+        // Verify the envelope is raw JSON
+        let envelope: serde_json::Value =
+            serde_json::from_str(&entry.spec.proposed_content.envelope).unwrap();
         assert_eq!(envelope["payloadType"], "application/vnd.auths+json");
 
         // Verify the payload round-trips

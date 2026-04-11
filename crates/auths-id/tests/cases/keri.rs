@@ -33,7 +33,7 @@ fn full_keri_lifecycle() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
     // === Phase 1: Inception ===
-    let init: InceptionResult = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init: InceptionResult = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
 
     // Verify KEL has one event
     let kel = GitKel::new(&repo, init.prefix.as_str());
@@ -114,7 +114,7 @@ fn device_enrollment_with_anchoring() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
     // Create identity
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let current_keypair = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -152,7 +152,7 @@ fn device_enrollment_with_anchoring() {
 fn multiple_device_attestations() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let current_keypair = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -215,7 +215,7 @@ fn multiple_device_attestations() {
 fn rotation_requires_commitment() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
 
     // Try to rotate with a wrong key (not the committed one)
     let wrong_key = auths_crypto::Pkcs8Der::new([99u8; 85].to_vec());
@@ -229,7 +229,7 @@ fn rotation_requires_commitment() {
 fn kel_validation_rejects_sequence_tampering() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
     let _rot = rotate_keys(
         &repo,
         &init.prefix,
@@ -258,7 +258,7 @@ fn kel_validation_rejects_sequence_tampering() {
 fn unanchored_attestation_not_found() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
 
     let attestation = make_test_attestation(&identity_did, "did:key:device");
@@ -274,7 +274,7 @@ fn unanchored_attestation_not_found() {
 fn key_state_reflects_operations() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
 
     // Initial state
     let state = get_key_state(&repo, &init.prefix).unwrap();
@@ -301,7 +301,7 @@ fn key_state_reflects_operations() {
 fn did_keri_parsing() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
     let did = format!("did:keri:{}", init.prefix);
 
     let parsed_prefix = parse_did_keri(&did).unwrap();
@@ -318,7 +318,7 @@ fn did_keri_parsing() {
 fn verify_anchor_by_digest_works() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let current_keypair = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -346,7 +346,7 @@ fn verify_anchor_by_digest_works() {
 fn default_identity_uses_p256() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(&repo, None, chrono::Utc::now(), auths_crypto::CurveType::Ed25519).unwrap();
 
     let kel = GitKel::new(&repo, init.prefix.as_str());
     let events = kel.get_events().unwrap();
