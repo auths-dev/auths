@@ -34,9 +34,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
-use auths_core::crypto::signer::decrypt_keypair;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage, extract_public_key_bytes};
 use auths_verifier::core::{Attestation, SignerType};
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::DeviceDID;
@@ -290,7 +289,8 @@ fn sign_agent_attestation(
     passphrase_provider: &dyn PassphraseProvider,
     keychain: Box<dyn KeyStorage + Send + Sync>,
 ) -> Result<Attestation, AgentProvisioningError> {
-    let (device_pk, curve) = extract_public_key(key_alias, passphrase_provider, &*keychain)?;
+    let (device_pk, curve) = extract_public_key_bytes(&*keychain, key_alias, passphrase_provider)
+        .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
     let device_did = DeviceDID::from_public_key(&device_pk, curve);
     let meta = build_attestation_meta(now, config);
     let signer = StorageSigner::new(keychain);
@@ -324,29 +324,6 @@ fn sign_agent_attestation(
     )?;
 
     Ok(att)
-}
-
-/// Decrypt the stored key and return the 32-byte Ed25519 public key.
-fn extract_public_key(
-    key_alias: &KeyAlias,
-    passphrase_provider: &dyn PassphraseProvider,
-    keychain: &dyn KeyStorage,
-) -> Result<(Vec<u8>, auths_crypto::CurveType), AgentProvisioningError> {
-    let (_did, _role, encrypted) = keychain
-        .load_key(key_alias)
-        .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
-
-    let passphrase = passphrase_provider
-        .get_passphrase("agent key passphrase")
-        .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
-
-    let decrypted = decrypt_keypair(&encrypted, &passphrase)
-        .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
-
-    let (_seed, pubkey, curve) = auths_core::crypto::signer::load_seed_and_pubkey(&decrypted)
-        .map_err(|e| AgentProvisioningError::KeychainAccess(format!("bad pkcs8: {}", e)))?;
-
-    Ok((pubkey, curve))
 }
 
 fn build_attestation_meta(

@@ -582,6 +582,12 @@ pub unsafe extern "C" fn ffi_export_private_key_with_passphrase(
         };
         let alias = KeyAlias::new_unchecked(alias_str);
         let export_result = || -> Result<Vec<u8>, AgentError> {
+            if keychain.is_hardware_backend() {
+                return Err(AgentError::BackendUnavailable {
+                    backend: keychain.backend_name(),
+                    reason: "hardware-backed keys (e.g. Secure Enclave) cannot be exported via this FFI path".to_string(),
+                });
+            }
             let (_controller_did, _role, encrypted_bytes) = keychain.load_key(&alias)?;
             // Attempt decryption only to verify passphrase
             let _decrypted_pkcs8 = decrypt_keypair(&encrypted_bytes, pass_str)?;

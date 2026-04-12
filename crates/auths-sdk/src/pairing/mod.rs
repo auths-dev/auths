@@ -63,6 +63,15 @@ pub enum PairingError {
     /// A storage operation failed during pairing.
     #[error("storage error: {0}")]
     StorageError(String),
+    /// The selected key is hardware-backed (e.g. Secure Enclave) and cannot
+    /// export the raw seed material pairing requires.
+    #[error(
+        "pairing requires a software-backed key; alias '{alias}' is hardware-backed and cannot export raw material"
+    )]
+    HardwareKeyNotExportable {
+        /// The key alias whose backend refused to export.
+        alias: String,
+    },
     /// The LAN pairing daemon could not be constructed.
     #[cfg(feature = "lan-pairing")]
     #[error("pairing daemon error: {0}")]
@@ -567,6 +576,12 @@ pub fn load_device_signing_material(
                 managed.controller_did
             ))
         })?;
+
+    if ctx.key_storage.is_hardware_backend() {
+        return Err(PairingError::HardwareKeyNotExportable {
+            alias: key_alias.to_string(),
+        });
+    }
 
     let (_did, _role, encrypted_key) = ctx
         .key_storage

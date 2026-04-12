@@ -6,8 +6,6 @@
 //! 3. `rotate_identity` — high-level orchestrator (calls both phases in order).
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use ring::rand::SystemRandom;
-use ring::signature::{Ed25519KeyPair, KeyPair};
 use zeroize::Zeroizing;
 
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair, load_seed_and_pubkey};
@@ -15,9 +13,9 @@ use auths_core::ports::clock::ClockProvider;
 use auths_core::storage::keychain::{
     IdentityDID, KeyAlias, KeyRole, KeyStorage, extract_public_key_bytes,
 };
-use auths_id::identity::helpers::{
-    ManagedIdentity, encode_seed_as_pkcs8, extract_seed_bytes, load_keypair_from_der_or_seed,
-};
+use auths_crypto::Pkcs8Der;
+use auths_id::identity::helpers::ManagedIdentity;
+use auths_id::keri::inception::generate_keypair_for_init;
 use auths_id::keri::{
     CesrKey, Event, KeriSequence, KeyState, Prefix, RotEvent, Said, Threshold, VersionString,
     serialize_for_signing,
@@ -34,13 +32,15 @@ use crate::domains::identity::types::IdentityRotationResult;
 /// Computes a KERI rotation event and its canonical serialization.
 ///
 /// Pure function — deterministic given fixed inputs. Signs the event bytes with
-/// `next_keypair` (the pre-committed future key becoming the new current key).
-/// `new_next_keypair` is the freshly generated key committed for the next rotation.
+/// `next_signer` (the pre-committed future key becoming the new current key).
+/// `new_next_public_key` is the raw public key bytes of the freshly generated
+/// key committed for the next rotation.
 ///
 /// Args:
 /// * `state`: Current key state from the registry.
-/// * `next_keypair`: Pre-committed next key (becomes new current signer after rotation).
-/// * `new_next_keypair`: Freshly generated keypair committed for the next rotation.
+/// * `next_signer`: Pre-committed next signer (becomes new current signer after rotation).
+/// * `new_next_public_key`: Raw public key bytes for the next rotation commitment.
+/// * `new_next_curve`: Curve type of the next rotation key (plumbed for future use).
 /// * `witness_config`: Optional witness configuration.
 ///
 /// Returns `(event, canonical_bytes)` where `canonical_bytes` is the exact
@@ -48,21 +48,25 @@ use crate::domains::identity::types::IdentityRotationResult;
 ///
 /// Usage:
 /// ```ignore
-/// let (rot, bytes) = compute_rotation_event(&state, &next_kp, &new_next_kp, None)?;
+/// let (rot, bytes) = compute_rotation_event(
+///     &state,
+///     &next_signer,
+///     &new_next_signer.public_key,
+///     new_next_signer.curve(),
+///     None,
+/// )?;
 /// ```
 pub fn compute_rotation_event(
     state: &KeyState,
-    next_keypair: &Ed25519KeyPair,
-    new_next_keypair: &Ed25519KeyPair,
+    next_signer: &auths_crypto::RotationSigner,
+    new_next_public_key: &[u8],
+    _new_next_curve: auths_crypto::CurveType,
     witness_config: Option<&WitnessConfig>,
 ) -> Result<(RotEvent, Vec<u8>), RotationError> {
     let prefix = &state.prefix;
 
-    let new_current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(next_keypair.public_key().as_ref())
-    );
-    let new_next_commitment = compute_next_commitment(new_next_keypair.public_key().as_ref());
+    let new_current_pub_encoded = next_signer.cesr_encoded();
+    let new_next_commitment = compute_next_commitment(new_next_public_key);
 
     let (bt, br, ba) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
@@ -102,8 +106,10 @@ pub fn compute_rotation_event(
 
     let canonical = serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| RotationError::RotationFailed(format!("serialize for signing failed: {e}")))?;
-    let sig = next_keypair.sign(&canonical);
-    rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let sig = next_signer
+        .sign(&canonical)
+        .map_err(|e| RotationError::RotationFailed(format!("sign: {e}")))?;
+    rot.x = URL_SAFE_NO_PAD.encode(&sig);
 
     let event_bytes = serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| RotationError::RotationFailed(format!("final serialization failed: {e}")))?;
@@ -336,6 +342,12 @@ fn retrieve_precommitted_key(
             ))
         })?;
 
+    if ctx.key_storage.is_hardware_backend() {
+        return Err(RotationError::HardwareKeyNotRotatable {
+            alias: target_alias.to_string(),
+        });
+    }
+
     if did != &did_check {
         return Err(RotationError::RotationFailed(format!(
             "DID mismatch for pre-committed key '{}': expected {}, found {}",
@@ -371,30 +383,28 @@ fn generate_rotation_keys(
     identity: &ManagedIdentity,
     state: &KeyState,
     current_key_pkcs8: &[u8],
-) -> Result<(RotEvent, ring::pkcs8::Document), RotationError> {
+) -> Result<(RotEvent, Pkcs8Der), RotationError> {
     let witness_config: Option<WitnessConfig> = identity
         .metadata
         .as_ref()
         .and_then(|m| m.get("witness_config"))
         .and_then(|wc| serde_json::from_value(wc.clone()).ok());
 
-    let rng = SystemRandom::new();
-    let new_next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| RotationError::RotationFailed(format!("key generation failed: {e}")))?;
-    let new_next_keypair = Ed25519KeyPair::from_pkcs8(new_next_pkcs8.as_ref())
-        .map_err(|e| RotationError::RotationFailed(format!("key construction failed: {e}")))?;
-
-    let next_keypair = load_keypair_from_der_or_seed(current_key_pkcs8)
+    let next_signer = auths_crypto::RotationSigner::from_pkcs8(current_key_pkcs8)
         .map_err(|e| RotationError::KeyDecryptionFailed(e.to_string()))?;
+
+    let generated = generate_keypair_for_init(next_signer.curve())
+        .map_err(|e| RotationError::RotationFailed(format!("key generation failed: {e}")))?;
 
     let (rot, _event_bytes) = compute_rotation_event(
         state,
-        &next_keypair,
-        &new_next_keypair,
+        &next_signer,
+        &generated.public_key,
+        next_signer.curve(),
         witness_config.as_ref(),
     )?;
 
-    Ok((rot, new_next_pkcs8))
+    Ok((rot, generated.pkcs8))
 }
 
 struct FinalizeParams<'a> {
@@ -436,11 +446,7 @@ fn finalize_rotation_storage(
     let encrypted_new_current = encrypt_keypair(params.current_pkcs8, &new_pass)
         .map_err(|e| RotationError::RotationFailed(format!("encrypt new current key: {e}")))?;
 
-    let new_next_seed = extract_seed_bytes(params.new_next_pkcs8)
-        .map_err(|e| RotationError::RotationFailed(format!("extract new next seed: {e}")))?;
-    let new_next_seed_pkcs8 = encode_seed_as_pkcs8(new_next_seed)
-        .map_err(|e| RotationError::RotationFailed(format!("encode new next seed: {e}")))?;
-    let encrypted_new_next = encrypt_keypair(&new_next_seed_pkcs8, &new_pass)
+    let encrypted_new_next = encrypt_keypair(params.new_next_pkcs8, &new_pass)
         .map_err(|e| RotationError::RotationFailed(format!("encrypt new next key: {e}")))?;
 
     let new_sequence = params.state.sequence + 1;
@@ -753,6 +759,8 @@ mod tests {
 
     #[test]
     fn finalize_rotation_storage_rejects_mismatched_passphrases() {
+        use ring::rand::SystemRandom;
+        use ring::signature::Ed25519KeyPair;
         use std::sync::atomic::{AtomicU32, Ordering};
 
         struct AlternatingProvider {
@@ -856,6 +864,53 @@ mod tests {
             matches!(result, Err(RotationError::RotationFailed(ref msg)) if msg.contains("passphrases do not match")),
             "Expected passphrase mismatch error, got: {:?}",
             result
+        );
+    }
+
+    // -- rotate_identity preserves curve for the pre-committed next key --
+
+    #[test]
+    fn rotate_identity_stores_p256_next_key_as_p256_pkcs8() {
+        let ctx = fake_ctx("Test-passphrase1!");
+
+        let signer = StorageSigner::new(MemoryKeychainHandle);
+        let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
+        let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
+            .with_git_signing_scope(GitSigningScope::Skip)
+            .with_curve(auths_crypto::CurveType::P256)
+            .build();
+        let key_alias = match initialize(
+            IdentityConfig::Developer(config),
+            &ctx,
+            Arc::new(MemoryKeychainHandle),
+            &signer,
+            &provider,
+            None,
+        )
+        .unwrap()
+        {
+            InitializeResult::Developer(r) => r.key_alias,
+            _ => unreachable!(),
+        };
+
+        let rotation_config = IdentityRotationConfig {
+            repo_path: std::path::PathBuf::from("/unused"),
+            identity_key_alias: Some(key_alias),
+            next_key_alias: Some(KeyAlias::new_unchecked("rotated-key")),
+        };
+
+        rotate_identity(rotation_config, &ctx, &SystemClock).unwrap();
+
+        let new_next_alias = KeyAlias::new_unchecked("rotated-key--next-1");
+        let (_, _, encrypted_blob) = ctx.key_storage.load_key(&new_next_alias).unwrap();
+        let decrypted_pkcs8 = decrypt_keypair(&encrypted_blob, "Test-passphrase1!").unwrap();
+
+        let parsed = auths_crypto::parse_key_material(&decrypted_pkcs8).unwrap();
+        assert_eq!(parsed.seed.curve(), auths_crypto::CurveType::P256);
+        assert_eq!(
+            parsed.public_key.len(),
+            33,
+            "P-256 compressed public key must be 33 bytes"
         );
     }
 }

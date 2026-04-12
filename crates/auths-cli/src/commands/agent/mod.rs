@@ -541,6 +541,17 @@ fn unlock_agent(key_alias: &str) -> Result<()> {
 
     let keychain = auths_sdk::keychain::get_platform_keychain()
         .map_err(|e| anyhow!("Failed to get platform keychain: {}", e))?;
+
+    if keychain.is_hardware_backend() {
+        return Err(anyhow!(
+            "Agent-mode signing requires a software-backed key. Key '{}' is hardware-backed \
+             (Secure Enclave) and cannot export raw key material needed by the SSH agent. \
+             Use direct signing instead (which dispatches through the Secure Enclave), \
+             or initialize a separate software-backed identity for agent use.",
+            key_alias
+        ));
+    }
+
     let (_identity_did, _role, encrypted_data) = keychain
         .load_key(&auths_sdk::keychain::KeyAlias::new_unchecked(key_alias))
         .map_err(|e| anyhow!("Failed to load key '{}': {}", key_alias, e))?;

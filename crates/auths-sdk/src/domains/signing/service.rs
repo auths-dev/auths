@@ -367,6 +367,9 @@ fn resolve_optional_key(
     match material {
         None => Ok(None),
         Some(SigningKeyMaterial::Alias(alias)) => {
+            // Hardware backends (Secure Enclave): resolve pubkey only; signing happens
+            // later via StorageSigner so private key material never leaves the enclave.
+            // MIRROR: keep in sync with workflows/signing.rs (SE branch)
             if keychain.is_hardware_backend() {
                 let (pubkey, curve) = auths_core::storage::keychain::extract_public_key_bytes(
                     keychain,
@@ -374,32 +377,37 @@ fn resolve_optional_key(
                     passphrase_provider,
                 )
                 .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
-                Ok(Some(ResolvedKey {
+                return Ok(Some(ResolvedKey {
                     alias: alias.clone(),
                     seed: None,
                     public_key_bytes: pubkey,
                     curve,
                     is_hardware: true,
-                }))
-            } else {
-                let (_, _role, encrypted) = keychain
-                    .load_key(alias)
-                    .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
-                let passphrase = passphrase_provider
-                    .get_passphrase(passphrase_prompt)
-                    .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
-                let pkcs8 = core_signer::decrypt_keypair(&encrypted, &passphrase)
-                    .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
-                let (seed, pubkey, curve) = core_signer::load_seed_and_pubkey(&pkcs8)
-                    .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
-                Ok(Some(ResolvedKey {
-                    alias: alias.clone(),
-                    seed: Some(seed),
-                    public_key_bytes: pubkey.to_vec(),
-                    curve,
-                    is_hardware: false,
-                }))
+                }));
             }
+
+            let (_, _role, encrypted) = keychain
+                .load_key(alias)
+                .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
+            let passphrase = passphrase_provider
+                .get_passphrase(passphrase_prompt)
+                .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
+            // Defense-in-depth: SE keys must never reach the software decrypt path.
+            debug_assert!(
+                !keychain.is_hardware_backend(),
+                "SE keys must never reach decrypt_keypair"
+            );
+            let pkcs8 = core_signer::decrypt_keypair(&encrypted, &passphrase)
+                .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
+            let (seed, pubkey, curve) = core_signer::load_seed_and_pubkey(&pkcs8)
+                .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
+            Ok(Some(ResolvedKey {
+                alias: alias.clone(),
+                seed: Some(seed),
+                public_key_bytes: pubkey.to_vec(),
+                curve,
+                is_hardware: false,
+            }))
         }
         Some(SigningKeyMaterial::Direct(seed)) => {
             let pubkey = provider_bridge::ed25519_public_key_from_seed_sync(seed)

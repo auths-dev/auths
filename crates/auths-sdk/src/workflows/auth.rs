@@ -1,5 +1,3 @@
-use auths_core::crypto::provider_bridge;
-use auths_core::crypto::ssh::SecureSeed;
 use auths_core::error::AuthsErrorInfo;
 use thiserror::Error;
 
@@ -12,8 +10,13 @@ use thiserror::Error;
 ///
 /// Usage:
 /// ```ignore
-/// let result = sign_auth_challenge("abc123", "auths.dev", &seed, "deadbeef...", "did:keri:E...")?;
-/// println!("Signature: {}", result.signature_hex);
+/// let msg = build_auth_challenge_message("abc123", "auths.dev")?;
+/// let (sig, pubkey, _curve) = sign_with_key(&keychain, &alias, &provider, msg.as_bytes())?;
+/// let result = SignedAuthChallenge {
+///     signature_hex: hex::encode(sig),
+///     public_key_hex: hex::encode(pubkey),
+///     did: "did:keri:E...".to_string(),
+/// };
 /// ```
 #[derive(Debug, Clone)]
 pub struct SignedAuthChallenge {
@@ -40,10 +43,6 @@ pub enum AuthChallengeError {
     /// Canonical JSON serialization failed.
     #[error("canonical JSON serialization failed: {0}")]
     Canonicalization(String),
-
-    /// The Ed25519 signing operation failed.
-    #[error("signing failed: {0}")]
-    SigningFailed(String),
 }
 
 impl AuthsErrorInfo for AuthChallengeError {
@@ -52,7 +51,6 @@ impl AuthsErrorInfo for AuthChallengeError {
             Self::EmptyNonce => "AUTHS-E6001",
             Self::EmptyDomain => "AUTHS-E6002",
             Self::Canonicalization(_) => "AUTHS-E6003",
-            Self::SigningFailed(_) => "AUTHS-E6004",
         }
     }
 
@@ -63,118 +61,45 @@ impl AuthsErrorInfo for AuthChallengeError {
             Self::Canonicalization(_) => {
                 Some("This is an internal error; please report it as a bug")
             }
-            Self::SigningFailed(_) => {
-                Some("Check that your identity key is accessible with `auths key list`")
-            }
         }
     }
 }
 
-/// Signs an authentication challenge for DID-based login.
+/// Builds the canonical JSON message for an auth challenge signature.
 ///
-/// Constructs a canonical JSON payload `{"domain":"...","nonce":"..."}` and signs
-/// it with Ed25519. The output matches the auth-server's expected `VerifyRequest` format.
+/// The auth-server verifies the signature over exactly these bytes. Callers
+/// that sign through a keychain (SE-safe) should use this helper to get the
+/// message, then feed it into `keychain::sign_with_key`.
 ///
 /// Args:
 /// * `nonce`: The challenge nonce from the authentication server.
 /// * `domain`: The domain requesting authentication (e.g. `"auths.dev"`).
-/// * `seed`: The Ed25519 signing seed.
-/// * `public_key_hex`: Hex-encoded Ed25519 public key of the signer.
-/// * `did`: The signer's identity DID.
 ///
 /// Usage:
 /// ```ignore
-/// let result = sign_auth_challenge("abc123", "auths.dev", &seed, "deadbeef...", "did:keri:E...")?;
+/// let msg = build_auth_challenge_message("abc123", "auths.dev")?;
+/// let (sig, pubkey, _curve) = sign_with_key(&keychain, &alias, &provider, msg.as_bytes())?;
 /// ```
-pub fn sign_auth_challenge(
+pub fn build_auth_challenge_message(
     nonce: &str,
     domain: &str,
-    seed: &SecureSeed,
-    public_key_hex: &str,
-    did: &str,
-) -> Result<SignedAuthChallenge, AuthChallengeError> {
+) -> Result<String, AuthChallengeError> {
     if nonce.is_empty() {
         return Err(AuthChallengeError::EmptyNonce);
     }
     if domain.is_empty() {
         return Err(AuthChallengeError::EmptyDomain);
     }
-
     let payload = serde_json::json!({
         "domain": domain,
         "nonce": nonce,
     });
-    let canonical = json_canon::to_string(&payload)
-        .map_err(|e| AuthChallengeError::Canonicalization(e.to_string()))?;
-
-    let signature_bytes = provider_bridge::sign_ed25519_sync(seed, canonical.as_bytes())
-        .map_err(|e| AuthChallengeError::SigningFailed(e.to_string()))?;
-
-    Ok(SignedAuthChallenge {
-        signature_hex: hex::encode(&signature_bytes),
-        public_key_hex: public_key_hex.to_string(),
-        did: did.to_string(),
-    })
+    json_canon::to_string(&payload).map_err(|e| AuthChallengeError::Canonicalization(e.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_core::crypto::provider_bridge;
-
-    #[test]
-    fn sign_and_verify_roundtrip() {
-        let (seed, pubkey_bytes) =
-            provider_bridge::generate_ed25519_keypair_sync().expect("keygen should succeed");
-        let public_key_hex = hex::encode(pubkey_bytes);
-        let did = "did:keri:Etest1234";
-
-        let result = sign_auth_challenge("test-nonce-42", "auths.dev", &seed, &public_key_hex, did)
-            .expect("signing should succeed");
-
-        assert_eq!(result.public_key_hex, public_key_hex);
-        assert_eq!(result.did, did);
-        assert!(!result.signature_hex.is_empty());
-
-        let canonical = json_canon::to_string(&serde_json::json!({
-            "domain": "auths.dev",
-            "nonce": "test-nonce-42",
-        }))
-        .expect("canonical JSON");
-
-        let sig_bytes = hex::decode(&result.signature_hex).expect("valid hex");
-        let verify_result =
-            provider_bridge::verify_ed25519_sync(&pubkey_bytes, canonical.as_bytes(), &sig_bytes);
-        assert!(verify_result.is_ok(), "signature should verify");
-    }
-
-    #[test]
-    fn empty_nonce_rejected() {
-        let (seed, pubkey_bytes) =
-            provider_bridge::generate_ed25519_keypair_sync().expect("keygen should succeed");
-        let result = sign_auth_challenge(
-            "",
-            "auths.dev",
-            &seed,
-            &hex::encode(pubkey_bytes),
-            "did:keri:E1",
-        );
-        assert!(matches!(result, Err(AuthChallengeError::EmptyNonce)));
-    }
-
-    #[test]
-    fn empty_domain_rejected() {
-        let (seed, pubkey_bytes) =
-            provider_bridge::generate_ed25519_keypair_sync().expect("keygen should succeed");
-        let result = sign_auth_challenge(
-            "nonce",
-            "",
-            &seed,
-            &hex::encode(pubkey_bytes),
-            "did:keri:E1",
-        );
-        assert!(matches!(result, Err(AuthChallengeError::EmptyDomain)));
-    }
 
     #[test]
     fn canonical_json_sorts_keys_alphabetically() {
@@ -184,5 +109,23 @@ mod tests {
         });
         let canonical = json_canon::to_string(&payload).expect("canonical");
         assert_eq!(canonical, r#"{"domain":"xyz","nonce":"abc"}"#);
+    }
+
+    #[test]
+    fn build_auth_challenge_message_produces_canonical_json() {
+        let msg = build_auth_challenge_message("abc123", "auths.dev").unwrap();
+        assert_eq!(msg, r#"{"domain":"auths.dev","nonce":"abc123"}"#);
+    }
+
+    #[test]
+    fn build_auth_challenge_message_rejects_empty_nonce() {
+        let err = build_auth_challenge_message("", "auths.dev").unwrap_err();
+        assert!(matches!(err, AuthChallengeError::EmptyNonce));
+    }
+
+    #[test]
+    fn build_auth_challenge_message_rejects_empty_domain() {
+        let err = build_auth_challenge_message("abc", "").unwrap_err();
+        assert!(matches!(err, AuthChallengeError::EmptyDomain));
     }
 }

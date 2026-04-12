@@ -24,7 +24,7 @@ pub use did_key::{
 };
 pub use error::AuthsErrorInfo;
 pub use key_material::{build_ed25519_pkcs8_v2, parse_ed25519_key_material, parse_ed25519_seed};
-pub use key_ops::{ParsedKey, TypedSeed, parse_key_material};
+pub use key_ops::{ParsedKey, RotationSigner, TypedSeed, parse_key_material};
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use key_ops::{public_key as typed_public_key, sign as typed_sign};
 pub use pkcs8::Pkcs8Der;

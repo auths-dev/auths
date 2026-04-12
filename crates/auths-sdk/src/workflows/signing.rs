@@ -164,6 +164,7 @@ impl CommitSigningWorkflow {
         let _ = ctx.agent_signing.ensure_running();
 
         // Hardware backends (Secure Enclave): sign directly via keychain, skip decrypt
+        // MIRROR: keep in sync with domains/signing/service.rs (SE branch)
         if ctx.key_storage.is_hardware_backend() {
             if let Some(ref repo_path) = params.repo_path {
                 signing::validate_freeze_state(repo_path, now)?;

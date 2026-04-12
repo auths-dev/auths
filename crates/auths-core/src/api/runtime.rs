@@ -13,7 +13,7 @@ use crate::crypto::provider_bridge;
 use crate::crypto::signer::extract_seed_from_key_bytes;
 use crate::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use crate::error::AgentError;
-use crate::signing::PassphraseProvider;
+use crate::signing::{PassphraseProvider, PrefilledPassphraseProvider};
 use crate::storage::keychain::{KeyAlias, KeyRole, KeyStorage};
 use log::{debug, error, info, warn};
 #[cfg(target_os = "macos")]
@@ -189,6 +189,11 @@ pub fn load_keys_into_agent_with_handle(
         };
 
         let load_result = || -> Result<Zeroizing<Vec<u8>>, AgentError> {
+            if keychain.is_hardware_backend() {
+                return Err(AgentError::HardwareKeyNotExportable {
+                    operation: "agent key load".to_string(),
+                });
+            }
             let (_controller_did, _role, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
             let prompt = format!(
                 "Enter passphrase to unlock key '{}' for agent session:",
@@ -388,6 +393,11 @@ pub fn export_key_openssh_pem(
             "Alias cannot be empty".to_string(),
         ));
     }
+    if keychain.is_hardware_backend() {
+        return Err(AgentError::HardwareKeyNotExportable {
+            operation: "OpenSSH private key export".to_string(),
+        });
+    }
     // 1. Load encrypted key data
     let key_alias = KeyAlias::new_unchecked(alias);
     let (_controller_did, _role, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
@@ -452,22 +462,14 @@ pub fn export_key_openssh_pub(
             "Alias cannot be empty".to_string(),
         ));
     }
-    // 1. Load encrypted key data
+    // 1. Obtain public key bytes (hardware-aware; SE returns pubkey without decryption)
     let key_alias = KeyAlias::new_unchecked(alias);
-    let (_controller_did, _role, encrypted_pkcs8) = keychain.load_key(&key_alias)?;
-
-    // 2. Decrypt key data
-    let pkcs8_bytes = decrypt_keypair(&encrypted_pkcs8, passphrase)?;
-
-    // 3. Extract seed and derive public key via CryptoProvider
-    let (seed, pubkey_bytes, _curve) = crate::crypto::signer::load_seed_and_pubkey(&pkcs8_bytes)
-        .map_err(|e| {
-            AgentError::CryptoError(format!(
-                "Failed to extract key for alias '{}': {}",
-                alias, e
-            ))
-        })?;
-    let _ = seed; // seed not needed for public key export
+    let passphrase_provider = PrefilledPassphraseProvider::new(passphrase);
+    let (pubkey_bytes, _curve) = crate::storage::keychain::extract_public_key_bytes(
+        keychain,
+        &key_alias,
+        &passphrase_provider,
+    )?;
     let ssh_ed25519_pubkey =
         SshEd25519PublicKey::try_from(pubkey_bytes.as_slice()).map_err(|e| {
             AgentError::CryptoError(format!(

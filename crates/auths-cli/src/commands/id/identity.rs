@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{ArgAction, Parser, Subcommand};
-use ring::signature::KeyPair;
 use serde::Serialize;
 use serde_json;
 use std::fs;
@@ -593,23 +592,19 @@ pub fn handle_id(
                 .load_all_attestations()
                 .unwrap_or_default();
 
-            // Load the public key from keychain
+            // Load the public key from keychain (handles SE and software keys)
             let keychain = get_platform_keychain()?;
-            let (_, _role, encrypted_key) = keychain
-                .load_key(&KeyAlias::new_unchecked(&alias))
-                .with_context(|| format!("Key '{}' not found in keychain", alias))?;
-
-            // Decrypt to get public key
-            let pass = passphrase_provider
-                .get_passphrase(&format!("Enter passphrase for key '{}':", alias))?;
-            let pkcs8_bytes = auths_sdk::crypto::decrypt_keypair(&encrypted_key, &pass)
-                .context("Failed to decrypt key")?;
-            let keypair = auths_sdk::identity::load_keypair_from_der_or_seed(&pkcs8_bytes)?;
+            let alias_typed = KeyAlias::new_unchecked(&alias);
+            let (public_key_bytes, _curve) = auths_sdk::keychain::extract_public_key_bytes(
+                keychain.as_ref(),
+                &alias_typed,
+                passphrase_provider.as_ref(),
+            )
+            .with_context(|| format!("Failed to extract public key for '{}'", alias))?;
             #[allow(clippy::disallowed_methods)]
-            // INVARIANT: hex::encode of Ed25519 pubkey always produces valid hex
-            let public_key_hex = auths_verifier::PublicKeyHex::new_unchecked(hex::encode(
-                keypair.public_key().as_ref(),
-            ));
+            // INVARIANT: hex::encode of pubkey bytes always produces valid hex
+            let public_key_hex =
+                auths_verifier::PublicKeyHex::new_unchecked(hex::encode(&public_key_bytes));
 
             // Create the bundle
             let bundle = IdentityBundle {
