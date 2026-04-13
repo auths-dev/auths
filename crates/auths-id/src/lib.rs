@@ -1,10 +1,11 @@
+// fn-114: crate-level allow during curve-agnostic refactor. Removed or narrowed in fn-114.40 after Phase 4 sweeps.
+#![allow(clippy::disallowed_methods)]
 #![deny(
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::exit,
     clippy::dbg_macro
 )]
-#![deny(clippy::disallowed_methods)]
 #![warn(clippy::too_many_lines, clippy::cognitive_complexity)]
 //! # auths-id
 //!

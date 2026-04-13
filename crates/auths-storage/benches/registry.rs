@@ -1,3 +1,6 @@
+// fn-114: allow during curve-agnostic refactor; removed in fn-114.40.
+#![allow(clippy::disallowed_methods)]
+
 //! Benchmarks for registry operations.
 //!
 //! Run with: cargo bench --package auths-storage

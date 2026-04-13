@@ -10,6 +10,19 @@ disallowed-methods = [
   { path = "auths_verifier::types::CanonicalDid::new_unchecked", reason = "Use CanonicalDid::parse() for external input. Use #[allow(clippy::disallowed_methods)] with INVARIANT comment for proven-safe paths.", allow-invalid = true },
   { path = "auths_verifier::core::CommitOid::new_unchecked", reason = "Use CommitOid::parse() for external input. Use #[allow(clippy::disallowed_methods)] with INVARIANT comment for proven-safe paths.", allow-invalid = true },
   { path = "auths_verifier::core::PublicKeyHex::new_unchecked", reason = "Use PublicKeyHex::parse() for external input. Use #[allow(clippy::disallowed_methods)] with INVARIANT comment for proven-safe paths.", allow-invalid = true },
+
+  # === Curve-agnostic refactor (fn-114) — ban Ed25519-hardcoded APIs ===
+  # Removed in fn-114.40 cleanup after all sweeps complete.
+  { path = "ring::signature::Ed25519KeyPair::from_pkcs8", reason = "fn-114: use TypedSignerKey::from_pkcs8 — dispatches on curve.", allow-invalid = true },
+  { path = "ring::signature::Ed25519KeyPair::from_seed_unchecked", reason = "fn-114: use auths_crypto::sign(&TypedSeed, msg).", allow-invalid = true },
+  { path = "ring::signature::Ed25519KeyPair::generate_pkcs8", reason = "fn-114: use inception::generate_keypair_for_init(curve).", allow-invalid = true },
+  { path = "ring::signature::UnparsedPublicKey::new", reason = "fn-114: use DevicePublicKey::verify — dispatches on curve.", allow-invalid = true },
+  { path = "auths_crypto::parse_ed25519_seed", reason = "fn-114: use parse_key_material — returns TypedSeed.", allow-invalid = true },
+  { path = "auths_crypto::parse_ed25519_key_material", reason = "fn-114: use parse_key_material — returns TypedSeed.", allow-invalid = true },
+  { path = "auths_core::crypto::provider_bridge::sign_ed25519_sync", reason = "fn-114: use auths_crypto::sign(&TypedSeed, msg).", allow-invalid = true },
+  { path = "auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync", reason = "fn-114: use auths_crypto::public_key(&TypedSeed) or TypedSignerKey::public_key().", allow-invalid = true },
+  { path = "auths_crypto::did_key_to_ed25519", reason = "fn-114: use did_key_decode — returns DecodedDidKey.", allow-invalid = true },
+  { path = "auths_id::identity::resolve::ed25519_to_did_key", reason = "fn-114: use did_key_decode + DecodedDidKey::P256/Ed25519.", allow-invalid = true },
 ]
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true

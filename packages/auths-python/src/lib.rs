@@ -1,3 +1,5 @@
+// fn-114: crate-level allow during curve-agnostic refactor. Removed or narrowed in fn-114.40 after Phase 4 sweeps.
+#![allow(clippy::disallowed_methods)]
 // PyO3 0.21 generates unsafe calls inside macro-expanded code that Edition 2024
 // flags; fixed in PyO3 0.22+. Suppress until we upgrade.
 #![allow(unsafe_op_in_unsafe_fn)]

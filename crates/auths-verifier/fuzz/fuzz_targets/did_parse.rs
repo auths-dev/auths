@@ -1,3 +1,6 @@
+// fn-114: allow during curve-agnostic refactor; removed in fn-114.40.
+#![allow(clippy::disallowed_methods)]
+
 #![no_main]
 
 use auths_crypto::did_key_to_ed25519;

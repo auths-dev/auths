@@ -1,3 +1,8 @@
+// INVARIANT: sanctioned crypto boundary — the one place ring is allowed to
+// live. All curve-dispatched verify / sign / keypair-generate paths bottom
+// out here. Permanent allow; do NOT remove in fn-114.40.
+#![allow(clippy::disallowed_methods)]
+
 use async_trait::async_trait;
 
 use crate::provider::{CryptoError, CryptoProvider, ED25519_PUBLIC_KEY_LEN, SecureSeed};
@@ -78,6 +83,15 @@ impl RingCryptoProvider {
 
 #[async_trait]
 impl CryptoProvider for RingCryptoProvider {
+    async fn verify_p256(
+        &self,
+        pubkey: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> Result<(), CryptoError> {
+        Self::p256_verify(pubkey, message, signature)
+    }
+
     async fn verify_ed25519(
         &self,
         pubkey: &[u8],

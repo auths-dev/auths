@@ -1,3 +1,6 @@
+// fn-114: crate-level allow during curve-agnostic refactor. Removed or narrowed in fn-114.40 after Phase 4 sweeps.
+#![allow(clippy::disallowed_methods)]
+
 //! Storage adapters for auths-id ports.
 //!
 //! This crate provides concrete implementations of the storage port traits

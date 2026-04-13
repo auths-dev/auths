@@ -3,6 +3,8 @@
 //! Extracts [`SecureSeed`] (and optionally the public key) from PKCS#8 v1, v2,
 //! raw 32-byte seeds, and OCTET-STRING-wrapped seeds — pure byte parsing with
 //! no backend dependency.
+// fn-114: allow during curve-agnostic refactor; removed in fn-114.40.
+#![allow(clippy::disallowed_methods)]
 
 use crate::provider::{CryptoError, SecureSeed};
 
