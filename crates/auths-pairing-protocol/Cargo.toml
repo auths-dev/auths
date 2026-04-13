@@ -11,7 +11,7 @@ keywords = ["pairing", "identity", "x25519", "ecdh", "protocol"]
 categories = ["cryptography"]
 
 [dependencies]
-auths-crypto = { workspace = true }
+auths-crypto = { workspace = true, features = ["native"] }
 ring.workspace = true
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand = "0.8"

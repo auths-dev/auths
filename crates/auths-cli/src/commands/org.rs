@@ -9,7 +9,7 @@ use serde_json;
 use std::fs;
 use std::path::PathBuf;
 
-use auths_sdk::attestation::{AttestationGroup, AttestationSink, verify_with_resolver};
+use auths_sdk::attestation::{AttestationGroup, AttestationSink};
 use auths_sdk::identity::DefaultDidResolver;
 use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
 use auths_sdk::ports::{AttestationMetadata, AttestationSource, IdentityStorage};
@@ -192,6 +192,36 @@ pub enum OrgSubcommand {
         #[arg(long, default_value = "https://auths-registry.fly.dev")]
         registry: String,
     },
+}
+
+/// fn-114.20: post-fn-114.20 single-verifier helper. Resolves the issuer DID,
+/// constructs a typed `DevicePublicKey`, and calls `auths_verifier::verify_with_keys`.
+/// Returns one of: "✅ valid", "🛑 revoked", "⌛ expired", "❌ invalid".
+fn verify_attestation_via_resolver(
+    att: &auths_verifier::Attestation,
+    resolver: &auths_sdk::identity::DefaultDidResolver,
+) -> &'static str {
+    use auths_sdk::identity::DidResolver;
+    let resolved = match resolver.resolve(att.issuer.as_str()) {
+        Ok(r) => r,
+        Err(_) => return "❌ invalid",
+    };
+    let pk_bytes: Vec<u8> = resolved.public_key_bytes().to_vec();
+    let issuer_pk = match auths_verifier::decode_public_key_bytes(&pk_bytes) {
+        Ok(pk) => pk,
+        Err(_) => return "❌ invalid",
+    };
+    #[allow(clippy::expect_used)]
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    match rt.block_on(auths_verifier::verify_with_keys(att, &issuer_pk)) {
+        Ok(_) => "✅ valid",
+        Err(e) if e.to_string().contains("revoked") => "🛑 revoked",
+        Err(e) if e.to_string().contains("expired") => "⌛ expired",
+        Err(_) => "❌ invalid",
+    }
 }
 
 /// Handles `org` commands for issuing or revoking member authorizations.
@@ -589,12 +619,7 @@ pub fn handle_org(
                         continue;
                     }
 
-                    let status = match verify_with_resolver(now, &resolver, att, None) {
-                        Ok(_) => "✅ valid",
-                        Err(e) if e.to_string().contains("revoked") => "🛑 revoked",
-                        Err(e) if e.to_string().contains("expired") => "⌛ expired",
-                        Err(_) => "❌ invalid",
-                    };
+                    let status = verify_attestation_via_resolver(att, &resolver);
 
                     println!("{i}. [{}] @ {}", status, att.timestamp.unwrap_or(now));
                     if let Some(note) = &att.note {
@@ -626,12 +651,7 @@ pub fn handle_org(
                     continue;
                 }
 
-                let status = match verify_with_resolver(now, &resolver, latest, None) {
-                    Ok(_) => "✅ valid",
-                    Err(e) if e.to_string().contains("revoked") => "🛑 revoked",
-                    Err(e) if e.to_string().contains("expired") => "⌛ expired",
-                    Err(_) => "❌ invalid",
-                };
+                let status = verify_attestation_via_resolver(latest, &resolver);
 
                 println!("- {} [{}]", subject, status);
             }
