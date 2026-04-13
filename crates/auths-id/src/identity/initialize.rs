@@ -12,8 +12,6 @@ use std::path::Path;
 
 use crate::error::InitError;
 
-// fn-114.18: removed encode_seed_as_pkcs8, extract_seed_bytes imports —
-// rotation + initialization now pass the curve-tagged PKCS8 blob through directly.
 use crate::keri::{
     CesrKey, Event, IcpEvent, KeriSequence, Prefix, Said, Threshold, VersionString,
     finalize_icp_event, serialize_for_signing,
@@ -83,7 +81,7 @@ pub fn initialize_keri_identity(
         let passphrase = passphrase_provider
             .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
 
-        // fn-114.18: pass the curve-tagged PKCS8 blob through unchanged. The old
+        // pass the curve-tagged PKCS8 blob through unchanged. The old
         // extract-seed + encode_seed_as_pkcs8 pattern silently wrapped P-256
         // scalars in an Ed25519 OID.
         let encrypted_current =

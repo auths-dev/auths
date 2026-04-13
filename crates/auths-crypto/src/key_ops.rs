@@ -252,7 +252,7 @@ impl TypedSignerKey {
     /// - `D` + base64url(32 bytes) for Ed25519
     /// - `1AAI` + base64url(33 bytes compressed SEC1) for P-256
     ///
-    /// fn-114.10 audit corrected a prior `1AAJ` emission (which is the CESR
+    /// audit corrected a prior `1AAJ` emission (which is the CESR
     /// spec's P-256 *signature* prefix, not verkey). `KeriPublicKey::parse`
     /// remains tolerant of legacy `1AAJ` so pre-fn-114.37 identities still
     /// deserialize.

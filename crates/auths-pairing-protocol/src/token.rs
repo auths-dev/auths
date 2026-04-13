@@ -205,7 +205,7 @@ impl PairingSession {
         message.extend_from_slice(&initiator_pubkey);
         message.extend_from_slice(device_x25519_pubkey);
 
-        // fn-114.21: curve dispatch via byte length (pairing-boundary ingestion).
+        // curve dispatch via byte length (pairing-boundary ingestion).
         match device_ed25519_pubkey.len() {
             32 => {
                 let peer = UnparsedPublicKey::new(&ED25519, device_ed25519_pubkey);

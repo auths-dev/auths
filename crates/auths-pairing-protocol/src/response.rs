@@ -100,7 +100,7 @@ impl PairingResponse {
         message.extend_from_slice(&initiator_x25519_bytes);
         message.extend_from_slice(&device_x25519_bytes);
 
-        // fn-114.21: dispatch on device-signing pubkey length (curve travels with bytes
+        // dispatch on device-signing pubkey length (curve travels with bytes
         // at this boundary — the device DID encodes curve via multicodec, but the raw
         // bytes here come from the pairing response; length is safe because Ed25519=32
         // and P-256 compressed=33).

@@ -491,7 +491,7 @@ fn list_devices(
             .last()
             .expect("Grouped attestations should not be empty");
 
-        // fn-114.20: single verifier path via auths_verifier::verify_with_keys.
+        // single verifier path via auths_verifier::verify_with_keys.
         // Callers resolve the DID and pass the typed key directly.
         let verification_result: Result<(), auths_verifier::AttestationError> = {
             use auths_sdk::identity::DidResolver;

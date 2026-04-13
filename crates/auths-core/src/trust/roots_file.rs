@@ -121,11 +121,12 @@ mod tests {
     #[test]
     fn test_load_valid_roots_file() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:ETest123",
                     "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+                    "curve": "ed25519",
                     "kel_tip_said": "ETip",
                     "note": "Test maintainer"
                 }
@@ -135,7 +136,7 @@ mod tests {
         let (_dir, path) = create_temp_roots_file(content);
         let roots = RootsFile::load(&path).unwrap();
 
-        assert_eq!(roots.version, 1);
+        assert_eq!(roots.version, 2);
         assert_eq!(roots.roots.len(), 1);
         assert_eq!(roots.roots[0].did, "did:keri:ETest123");
         assert_eq!(roots.roots[0].kel_tip_said, Some("ETip".to_string()));
@@ -145,11 +146,12 @@ mod tests {
     #[test]
     fn test_load_minimal_entry() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:ETest",
-                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -163,8 +165,9 @@ mod tests {
 
     #[test]
     fn test_load_rejects_wrong_version() {
+        // version 2 is the only supported; v1 or any other must reject.
         let content = r#"{
-            "version": 2,
+            "version": 1,
             "roots": []
         }"#;
 
@@ -178,11 +181,12 @@ mod tests {
     #[test]
     fn test_load_rejects_invalid_hex() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:ETest",
-                    "public_key_hex": "not-valid-hex"
+                    "public_key_hex": "not-valid-hex",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -196,11 +200,12 @@ mod tests {
     #[test]
     fn test_load_rejects_wrong_key_length() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:ETest",
-                    "public_key_hex": "0102030405"
+                    "public_key_hex": "0102030405",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -214,15 +219,17 @@ mod tests {
     #[test]
     fn test_find_by_did() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:E111",
-                    "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+                    "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+                    "curve": "ed25519"
                 },
                 {
                     "did": "did:keri:E222",
-                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -238,15 +245,17 @@ mod tests {
     #[test]
     fn test_dids() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:E111",
-                    "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+                    "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+                    "curve": "ed25519"
                 },
                 {
                     "did": "did:keri:E222",
-                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "curve": "ed25519"
                 }
             ]
         }"#;

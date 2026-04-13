@@ -87,7 +87,11 @@ async fn rekor_get_checkpoint() {
 #[tokio::test]
 async fn unreachable_endpoint_returns_network_error() {
     let client = RekorClient::new("https://localhost:1", "test", "test.dev/log").unwrap();
-    let result = client.submit(b"test", b"pk", b"sig").await;
+    // build_dsse validates pubkey length via decode_public_key_bytes;
+    // supply a 32-byte Ed25519-shaped placeholder so the check passes and the
+    // test actually exercises the network path.
+    let pk = [0u8; 32];
+    let result = client.submit(b"test", &pk, b"sig").await;
     assert!(matches!(result, Err(LogError::NetworkError(_))));
 }
 
@@ -95,7 +99,8 @@ async fn unreachable_endpoint_returns_network_error() {
 async fn payload_size_rejection_is_local() {
     let client = &*TEST_REKOR;
     let big = vec![0u8; 101 * 1024]; // > 100KB
-    let result = client.submit(&big, b"pk", b"sig").await;
+    let pk = [0u8; 32];
+    let result = client.submit(&big, &pk, b"sig").await;
     match result {
         Err(LogError::SubmissionRejected { reason }) => {
             assert!(reason.contains("exceeds max size"));

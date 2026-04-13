@@ -194,7 +194,7 @@ pub enum OrgSubcommand {
     },
 }
 
-/// fn-114.20: post-fn-114.20 single-verifier helper. Resolves the issuer DID,
+/// single-verifier helper. Resolves the issuer DID,
 /// constructs a typed `DevicePublicKey`, and calls `auths_verifier::verify_with_keys`.
 /// Returns one of: "✅ valid", "🛑 revoked", "⌛ expired", "❌ invalid".
 fn verify_attestation_via_resolver(

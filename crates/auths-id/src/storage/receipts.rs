@@ -7,7 +7,6 @@ use crate::error::StorageError;
 use auths_core::witness::{Receipt, SignedReceipt};
 use git2::{ErrorCode, Repository, Signature};
 use log::debug;
-// fn-114.19: ring verify moved to DevicePublicKey::verify via provider.
 use std::path::PathBuf;
 
 use crate::keri::event::EventReceipts;

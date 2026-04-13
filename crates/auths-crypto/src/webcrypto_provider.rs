@@ -107,7 +107,8 @@ impl CryptoProvider for WebCryptoProvider {
 
             // WebCrypto P-256 wants an uncompressed SEC1 (65-byte) or a JWK.
             // If caller supplied compressed SEC1 (33 bytes), decompress first.
-            let uncompressed_owned: Vec<u8>;
+            #[allow(unused_assignments)]
+            let mut uncompressed_owned: Vec<u8> = Vec::new();
             let pubkey_bytes: &[u8] = match pubkey.len() {
                 65 => pubkey,
                 33 => {
@@ -120,10 +121,11 @@ impl CryptoProvider for WebCryptoProvider {
                         let vk = VerifyingKey::from_sec1_bytes(pubkey)
                             .map_err(|e| CryptoError::InvalidPrivateKey(format!("{e}")))?;
                         uncompressed_owned = vk.to_encoded_point(false).as_bytes().to_vec();
-                        &uncompressed_owned
+                        uncompressed_owned.as_slice()
                     }
                     #[cfg(not(feature = "native"))]
                     {
+                        let _ = &uncompressed_owned;
                         return Err(CryptoError::OperationFailed(
                             "WebCrypto P-256 requires uncompressed SEC1 (65 bytes); \
                              compressed->uncompressed conversion not wired in pure-wasm \

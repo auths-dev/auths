@@ -59,7 +59,7 @@
       "description": "Device's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).",
       "allOf": [
         {
-          "$ref": "#/definitions/Ed25519Signature"
+          "$ref": "#/definitions/TypedSignature"
         }
       ]
     },
@@ -78,7 +78,7 @@
       "description": "Issuer's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).",
       "allOf": [
         {
-          "$ref": "#/definitions/Ed25519Signature"
+          "$ref": "#/definitions/TypedSignature"
         }
       ]
     },
@@ -176,11 +176,6 @@
           "type": "string"
         }
       }
-    },
-    "Ed25519Signature": {
-      "description": "Ed25519 signature (64 bytes, hex-encoded)",
-      "type": "string",
-      "format": "hex"
     },
     "OidcBinding": {
       "description": "OIDC token binding information for machine identity attestations.\n\nProves that the attestation was created by a CI/CD workload with a specific OIDC token. Contains the issuer, subject, audience, and expiration so verifiers can reconstruct the identity without needing the ephemeral private key.",
@@ -284,6 +279,11 @@
           ]
         }
       ]
+    },
+    "TypedSignature": {
+      "description": "Curve-agnostic 64-byte signature (Ed25519 or P-256 r||s, hex-encoded). Curve is determined by the companion DevicePublicKey.",
+      "type": "string",
+      "format": "hex"
     }
   }
 }

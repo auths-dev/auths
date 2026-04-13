@@ -306,7 +306,7 @@ pub fn verify_receipts(
     if let Some(resolver) = key_resolver {
         for receipt in &receipts.receipts {
             if let Some(public_key) = resolver.get_public_key(receipt.i.as_str()) {
-                // fn-114.19: body-only receipt — DevicePublicKey construction here is
+                // body-only receipt — DevicePublicKey construction here is
                 // nominal; verify_receipt_signature is deprecated and always returns Ok(true).
                 let typed_pk = match auths_verifier::decode_public_key_bytes(&public_key) {
                     Ok(pk) => pk,

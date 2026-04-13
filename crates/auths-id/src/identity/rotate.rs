@@ -134,7 +134,7 @@ pub fn rotate_keri_identity(
     let encrypted_new_current = encrypt_keypair(decrypted_next_pkcs8.as_ref(), &new_pass)?;
     keychain.store_key(next_alias, &did, KeyRole::Primary, &encrypted_new_current)?;
 
-    // fn-114.18: pass through the curve-tagged PKCS8 blob directly.
+    // pass through the curve-tagged PKCS8 blob directly.
     let encrypted_future =
         encrypt_keypair(rotation_result.new_next_keypair_pkcs8.as_ref(), &new_pass)?;
 
@@ -336,7 +336,7 @@ fn store_rotated_keys(
     let encrypted_new_current = encrypt_keypair(current_pkcs8, &new_pass)?;
     keychain.store_key(next_alias, did, KeyRole::Primary, &encrypted_new_current)?;
 
-    // fn-114.18: pass-through avoids the extract-then-re-encode silent-Ed25519 hazard.
+    // pass-through avoids the extract-then-re-encode silent-Ed25519 hazard.
     let encrypted_future = encrypt_keypair(new_next_pkcs8, &new_pass)?;
 
     let future_key_alias =
