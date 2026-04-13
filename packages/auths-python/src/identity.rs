@@ -156,13 +156,19 @@ pub fn create_identity(
     })?;
 
     {
-        let (identity_did, result_alias) =
-            initialize_registry_identity(backend, &alias, &provider, keychain.as_ref(), None)
-                .map_err(|e| {
-                    PyRuntimeError::new_err(format!(
-                        "[AUTHS_IDENTITY_ERROR] Identity creation failed: {e}"
-                    ))
-                })?;
+        let (identity_did, result_alias) = initialize_registry_identity(
+            backend,
+            &alias,
+            &provider,
+            keychain.as_ref(),
+            None,
+            auths_crypto::CurveType::default(),
+        )
+        .map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_IDENTITY_ERROR] Identity creation failed: {e}"
+            ))
+        })?;
 
         // Extract public key so callers can verify signatures immediately
         let (pub_bytes, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
@@ -250,6 +256,7 @@ pub fn create_agent_identity(
             &provider,
             keychain.as_ref(),
             None,
+            auths_crypto::CurveType::default(),
         )
         .map_err(|e| {
             PyRuntimeError::new_err(format!(

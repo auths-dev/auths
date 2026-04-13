@@ -31,6 +31,7 @@ fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
+        .with_curve(auths_crypto::CurveType::Ed25519)
         .build();
     let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
     let result = match initialize(
@@ -215,13 +216,29 @@ fn compute_rotation_event_is_deterministic() {
         delegator: None,
     };
 
-    let kp1 = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-    let new_next_kp1 = Ed25519KeyPair::from_pkcs8(new_next_pkcs8.as_ref()).unwrap();
-    let (_, bytes1) = compute_rotation_event(&state, &kp1, &new_next_kp1, None).unwrap();
+    let signer1 = auths_crypto::RotationSigner::from_pkcs8(pkcs8.as_ref()).unwrap();
+    let new_next_signer1 =
+        auths_crypto::RotationSigner::from_pkcs8(new_next_pkcs8.as_ref()).unwrap();
+    let (_, bytes1) = compute_rotation_event(
+        &state,
+        &signer1,
+        &new_next_signer1.public_key,
+        new_next_signer1.curve(),
+        None,
+    )
+    .unwrap();
 
-    let kp2 = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-    let new_next_kp2 = Ed25519KeyPair::from_pkcs8(new_next_pkcs8.as_ref()).unwrap();
-    let (_, bytes2) = compute_rotation_event(&state, &kp2, &new_next_kp2, None).unwrap();
+    let signer2 = auths_crypto::RotationSigner::from_pkcs8(pkcs8.as_ref()).unwrap();
+    let new_next_signer2 =
+        auths_crypto::RotationSigner::from_pkcs8(new_next_pkcs8.as_ref()).unwrap();
+    let (_, bytes2) = compute_rotation_event(
+        &state,
+        &signer2,
+        &new_next_signer2.public_key,
+        new_next_signer2.curve(),
+        None,
+    )
+    .unwrap();
 
     assert_eq!(
         bytes1, bytes2,
@@ -241,9 +258,10 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
 
     let rng = SystemRandom::new();
     let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-    let next_kp = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
+    let next_signer = auths_crypto::RotationSigner::from_pkcs8(next_pkcs8.as_ref()).unwrap();
     let new_next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-    let new_next_kp = Ed25519KeyPair::from_pkcs8(new_next_pkcs8.as_ref()).unwrap();
+    let new_next_signer =
+        auths_crypto::RotationSigner::from_pkcs8(new_next_pkcs8.as_ref()).unwrap();
 
     let prefix = Prefix::new_unchecked("test_prefix_partial_rotation".to_string());
 
@@ -264,7 +282,14 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
         delegator: None,
     };
 
-    let (rot, _bytes) = compute_rotation_event(&state, &next_kp, &new_next_kp, None).unwrap();
+    let (rot, _bytes) = compute_rotation_event(
+        &state,
+        &next_signer,
+        &new_next_signer.public_key,
+        new_next_signer.curve(),
+        None,
+    )
+    .unwrap();
 
     // Pre-seed the registry with a fake event at seq 0 so the seq-1 RotEvent is accepted
     let registry = Arc::new(FakeRegistryBackend::new());

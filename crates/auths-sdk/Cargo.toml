@@ -56,6 +56,7 @@ backend-git = ["dep:auths-storage", "auths-storage/backend-git"]
 witness-server = ["auths-core/witness-server"]
 witness-client = ["auths-id/witness-client"]
 indexed-storage = ["auths-id/indexed-storage"]
+keychain-secure-enclave = ["auths-core/keychain-secure-enclave"]
 
 [dev-dependencies]
 auths-sdk = { path = ".", features = ["test-utils"] }

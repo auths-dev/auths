@@ -1,11 +1,17 @@
 use auths_crypto::testing::create_test_keypair;
 use auths_verifier::AttestationBuilder;
+use auths_verifier::DevicePublicKey;
 use auths_verifier::core::{
     Attestation, Ed25519PublicKey, Ed25519Signature, canonicalize_attestation_data,
 };
 use auths_verifier::verify::verify_with_keys;
 use chrono::{DateTime, Duration, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
+
+/// Wrap a raw 32-byte Ed25519 key into a `DevicePublicKey` for tests.
+fn ed(pk: &[u8; 32]) -> DevicePublicKey {
+    DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, pk).unwrap()
+}
 
 const FIXED_TS: fn() -> DateTime<Utc> = || DateTime::UNIX_EPOCH + Duration::days(1000);
 
@@ -60,7 +66,7 @@ async fn tamper_revoked_at_to_null_is_rejected() {
 
     att.revoked_at = None;
 
-    let result = verify_with_keys(&att, &issuer_pk).await;
+    let result = verify_with_keys(&att, &ed(&issuer_pk)).await;
     assert!(
         result.is_err(),
         "Stripping revoked_at must invalidate the attestation"
@@ -93,7 +99,7 @@ async fn tamper_revoked_at_to_different_time_is_rejected() {
 
     att.revoked_at = Some(fixed_ts + Duration::days(30));
 
-    let result = verify_with_keys(&att, &issuer_pk).await;
+    let result = verify_with_keys(&att, &ed(&issuer_pk)).await;
     assert!(
         result.is_err(),
         "Changing revoked_at timestamp must invalidate the attestation"
@@ -120,7 +126,7 @@ async fn inject_revoked_at_into_unrevoked_is_rejected() {
 
     att.revoked_at = Some(fixed_ts + Duration::days(1));
 
-    let result = verify_with_keys(&att, &issuer_pk).await;
+    let result = verify_with_keys(&att, &ed(&issuer_pk)).await;
     assert!(
         result.is_err(),
         "Injecting revoked_at must invalidate the attestation"

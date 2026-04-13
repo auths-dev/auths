@@ -154,6 +154,7 @@ pub fn enforce_identity_state(
         passphrase_provider,
         keychain,
         witness_config.as_ref(),
+        auths_crypto::CurveType::default(),
     )
     .map_err(|e| ProvisionError::IdentityInit(e.to_string()))?;
 

@@ -462,7 +462,7 @@ fn collect_events_from_backend(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use crate::keri::create_keri_identity;
+    use crate::keri::create_keri_identity_with_curve;
     use tempfile::TempDir;
 
     fn setup_repo() -> (TempDir, Repository) {
@@ -481,7 +481,13 @@ mod tests {
         let (_dir, repo) = setup_repo();
 
         // Create identity
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
 
         // Rotate using the next key
         let rot = rotate_keys(
@@ -508,7 +514,13 @@ mod tests {
     fn rotation_verifies_commitment() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
 
         // Try to rotate with a wrong key
         let rng = SystemRandom::new();
@@ -524,7 +536,13 @@ mod tests {
         let (_dir, repo) = setup_repo();
 
         // Create identity
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
 
         // First rotation
         let rot1 = rotate_keys(
@@ -562,7 +580,13 @@ mod tests {
     fn abandonment_works() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
 
         // Abandon the identity (must use next key)
         let seq = abandon_identity(
@@ -585,7 +609,13 @@ mod tests {
     fn abandoned_identity_cannot_rotate() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
 
         // Abandon first (uses next key)
         abandon_identity(
@@ -609,7 +639,13 @@ mod tests {
     fn double_abandonment_fails() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
 
         abandon_identity(
             &repo,
@@ -632,7 +668,13 @@ mod tests {
     fn get_key_state_works() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
 
         let state = get_key_state(&repo, &init.prefix).unwrap();
         assert_eq!(state.prefix, init.prefix);
@@ -645,7 +687,13 @@ mod tests {
     fn state_reflects_rotation() {
         let (_dir, repo) = setup_repo();
 
-        let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+        let init = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
         rotate_keys(
             &repo,
             &init.prefix,

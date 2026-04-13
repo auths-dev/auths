@@ -40,7 +40,7 @@ pub struct ResetCommand {
 }
 
 impl ExecutableCommand for ResetCommand {
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
         let out = Output::new();
 
         if !self.force {
@@ -61,6 +61,7 @@ impl ExecutableCommand for ResetCommand {
         out.newline();
 
         remove_auths_directory(&out)?;
+        clear_keychain_keys(&out, &ctx.env_config);
         unset_git_signing_config(&out)?;
 
         out.newline();
@@ -97,4 +98,42 @@ fn unset_git_signing_config(out: &Output) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Clear all keys from the keychain backend.
+fn clear_keychain_keys(out: &Output, env_config: &auths_sdk::core_config::EnvironmentConfig) {
+    let keychain = match auths_sdk::keychain::get_platform_keychain_with_config(env_config) {
+        Ok(k) => k,
+        Err(e) => {
+            out.print_warn(&format!("Could not access keychain to clear keys: {e}"));
+            return;
+        }
+    };
+
+    let aliases = match keychain.list_aliases() {
+        Ok(a) => a,
+        Err(e) => {
+            out.print_warn(&format!("Could not list keychain keys: {e}"));
+            return;
+        }
+    };
+
+    if aliases.is_empty() {
+        return;
+    }
+
+    for alias in &aliases {
+        match keychain.delete_key(alias) {
+            Ok(()) => {}
+            Err(e) => {
+                out.print_warn(&format!("Could not delete key '{}': {e}", alias.as_str()));
+            }
+        }
+    }
+
+    out.print_success(&format!(
+        "Cleared {} key(s) from {} keychain",
+        aliases.len(),
+        keychain.backend_name()
+    ));
 }

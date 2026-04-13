@@ -120,6 +120,16 @@ pub enum AgentError {
     /// HSM does not support the requested cryptographic mechanism.
     #[error("HSM does not support mechanism: {0}")]
     HsmUnsupportedMechanism(String),
+
+    /// Operation cannot be completed because the key is hardware-backed (SE/HSM)
+    /// and the operation requires raw key material.
+    #[error(
+        "Operation '{operation}' requires a software-backed key; hardware-backed keys (e.g. Secure Enclave) cannot export raw material"
+    )]
+    HardwareKeyNotExportable {
+        /// Name of the operation that requires raw key material.
+        operation: String,
+    },
 }
 
 impl AuthsErrorInfo for AgentError {
@@ -149,6 +159,7 @@ impl AuthsErrorInfo for AgentError {
             Self::HsmDeviceRemoved => "AUTHS-E3022",
             Self::HsmSessionExpired => "AUTHS-E3023",
             Self::HsmUnsupportedMechanism(_) => "AUTHS-E3024",
+            Self::HardwareKeyNotExportable { .. } => "AUTHS-E3025",
         }
     }
 
@@ -206,6 +217,9 @@ impl AuthsErrorInfo for AgentError {
             Self::HsmUnsupportedMechanism(_) => {
                 Some("Check that your HSM supports Ed25519 (CKM_EDDSA)")
             }
+            Self::HardwareKeyNotExportable { .. } => Some(
+                "Use a software-backed keychain backend for this operation, or re-initialize your identity without Secure Enclave",
+            ),
         }
     }
 }
@@ -274,5 +288,20 @@ impl From<AgentError> for ssh_agent_lib::error::AgentError {
             AgentError::IncorrectPassphrase => Self::Failure,
             _ => Self::Failure,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hardware_key_not_exportable_has_actionable_display() {
+        let err = AgentError::HardwareKeyNotExportable {
+            operation: "pairing".into(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("hardware"), "msg={msg}");
+        assert!(msg.contains("pairing"), "msg={msg}");
     }
 }

@@ -2,12 +2,14 @@
 
 #[cfg(feature = "native")]
 use crate::core::Capability;
-use crate::core::{Attestation, VerifiedAttestation, canonicalize_attestation_data};
+use crate::core::{
+    Attestation, DevicePublicKey, VerifiedAttestation, canonicalize_attestation_data,
+};
 use crate::error::AttestationError;
 use crate::types::{ChainLink, VerificationReport, VerificationStatus};
 #[cfg(feature = "native")]
 use crate::witness::WitnessVerifyConfig;
-use auths_crypto::{CryptoProvider, ED25519_PUBLIC_KEY_LEN};
+use auths_crypto::CryptoProvider;
 use auths_keri::{Event, compute_said, find_seal_in_kel};
 use chrono::{DateTime, Duration, Utc};
 use log::debug;
@@ -24,14 +26,14 @@ const MAX_SKEW_SECS: i64 = 5 * 60;
 ///
 /// Args:
 /// * `att`: The attestation to verify.
-/// * `issuer_pk_bytes`: Raw Ed25519 public key of the issuer.
+/// * `issuer_pk`: Typed issuer public key (Ed25519 or P-256).
 #[cfg(feature = "native")]
 pub async fn verify_with_keys(
     att: &Attestation,
-    issuer_pk_bytes: &[u8],
+    issuer_pk: &DevicePublicKey,
 ) -> Result<VerifiedAttestation, AttestationError> {
     crate::verifier::Verifier::native()
-        .verify_with_keys(att, issuer_pk_bytes)
+        .verify_with_keys(att, issuer_pk)
         .await
 }
 
@@ -40,15 +42,15 @@ pub async fn verify_with_keys(
 /// Args:
 /// * `att`: The attestation to verify.
 /// * `required`: The capability that must be present.
-/// * `issuer_pk_bytes`: Raw Ed25519 public key of the issuer.
+/// * `issuer_pk`: Typed issuer public key (Ed25519 or P-256).
 #[cfg(feature = "native")]
 pub async fn verify_with_capability(
     att: &Attestation,
     required: &Capability,
-    issuer_pk_bytes: &[u8],
+    issuer_pk: &DevicePublicKey,
 ) -> Result<VerifiedAttestation, AttestationError> {
     crate::verifier::Verifier::native()
-        .verify_with_capability(att, required, issuer_pk_bytes)
+        .verify_with_capability(att, required, issuer_pk)
         .await
 }
 
@@ -57,12 +59,12 @@ pub async fn verify_with_capability(
 /// Args:
 /// * `attestations`: Ordered attestation chain (root first).
 /// * `required`: The capability that must appear in every link.
-/// * `root_pk`: Raw Ed25519 public key of the root identity.
+/// * `root_pk`: Typed root identity public key (Ed25519 or P-256).
 #[cfg(feature = "native")]
 pub async fn verify_chain_with_capability(
     attestations: &[Attestation],
     required: &Capability,
-    root_pk: &[u8],
+    root_pk: &DevicePublicKey,
 ) -> Result<VerificationReport, AttestationError> {
     crate::verifier::Verifier::native()
         .verify_chain_with_capability(attestations, required, root_pk)
@@ -73,16 +75,16 @@ pub async fn verify_chain_with_capability(
 ///
 /// Args:
 /// * `att`: The attestation to verify.
-/// * `issuer_pk_bytes`: Raw Ed25519 public key of the issuer.
+/// * `issuer_pk`: Typed issuer public key (Ed25519 or P-256).
 /// * `at`: The reference timestamp for expiry evaluation.
 #[cfg(feature = "native")]
 pub async fn verify_at_time(
     att: &Attestation,
-    issuer_pk_bytes: &[u8],
+    issuer_pk: &DevicePublicKey,
     at: DateTime<Utc>,
 ) -> Result<VerifiedAttestation, AttestationError> {
     crate::verifier::Verifier::native()
-        .verify_at_time(att, issuer_pk_bytes, at)
+        .verify_at_time(att, issuer_pk, at)
         .await
 }
 
@@ -90,12 +92,12 @@ pub async fn verify_at_time(
 ///
 /// Args:
 /// * `attestations`: Ordered attestation chain (root first).
-/// * `root_pk`: Raw Ed25519 public key of the root identity.
+/// * `root_pk`: Typed root identity public key (Ed25519 or P-256).
 /// * `witness_config`: Witness receipts and quorum threshold to validate.
 #[cfg(feature = "native")]
 pub async fn verify_chain_with_witnesses(
     attestations: &[Attestation],
-    root_pk: &[u8],
+    root_pk: &DevicePublicKey,
     witness_config: &WitnessVerifyConfig<'_>,
 ) -> Result<VerificationReport, AttestationError> {
     crate::verifier::Verifier::native()
@@ -107,11 +109,11 @@ pub async fn verify_chain_with_witnesses(
 ///
 /// Args:
 /// * `attestations`: Ordered attestation chain (root first).
-/// * `root_pk`: Raw Ed25519 public key of the root identity.
+/// * `root_pk`: Typed root identity public key (Ed25519 or P-256).
 #[cfg(feature = "native")]
 pub async fn verify_chain(
     attestations: &[Attestation],
-    root_pk: &[u8],
+    root_pk: &DevicePublicKey,
 ) -> Result<VerificationReport, AttestationError> {
     crate::verifier::Verifier::native()
         .verify_chain(attestations, root_pk)
@@ -124,13 +126,13 @@ pub async fn verify_chain(
 /// * `identity_did`: The DID of the authorizing identity.
 /// * `device_did`: The device DID to check authorization for.
 /// * `attestations`: Pool of attestations to search.
-/// * `identity_pk`: Raw Ed25519 public key of the identity.
+/// * `identity_pk`: Typed identity public key (Ed25519 or P-256).
 #[cfg(feature = "native")]
 pub async fn verify_device_authorization(
     identity_did: &str,
     device_did: &crate::types::DeviceDID,
     attestations: &[Attestation],
-    identity_pk: &[u8],
+    identity_pk: &DevicePublicKey,
 ) -> Result<VerificationReport, AttestationError> {
     crate::verifier::Verifier::native()
         .verify_device_authorization(identity_did, device_did, attestations, identity_pk)
@@ -272,16 +274,22 @@ pub async fn verify_device_link(
     }
 
     let current_pk = match key_state.current_keys.first() {
-        Some(encoded) => {
-            match auths_keri::KeriPublicKey::parse(encoded.as_str())
-                .map(|k| k.into_bytes().to_vec())
-            {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    return DeviceLinkVerification::failure(format!("Invalid current key: {e}"));
+        Some(encoded) => match auths_keri::KeriPublicKey::parse(encoded.as_str()) {
+            Ok(keri_pk) => {
+                let bytes = keri_pk.into_bytes().to_vec();
+                match DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, &bytes) {
+                    Ok(dpk) => dpk,
+                    Err(e) => {
+                        return DeviceLinkVerification::failure(format!(
+                            "Invalid current key: {e}"
+                        ));
+                    }
                 }
             }
-        }
+            Err(e) => {
+                return DeviceLinkVerification::failure(format!("Invalid current key: {e}"));
+            }
+        },
         None => return DeviceLinkVerification::failure("KEL has no current keys"),
     };
 
@@ -317,7 +325,7 @@ pub fn compute_attestation_seal_digest(
 
 pub(crate) async fn verify_with_keys_at(
     att: &Attestation,
-    issuer_pk_bytes: &[u8],
+    issuer_pk: &DevicePublicKey,
     at: DateTime<Utc>,
     check_skew: bool,
     provider: &dyn CryptoProvider,
@@ -350,15 +358,7 @@ pub(crate) async fn verify_with_keys_at(
         });
     }
 
-    // --- 4. Check provided issuer public key length ---
-    if !att.identity_signature.is_empty() && issuer_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::InvalidInput(format!(
-            "Provided issuer public key has invalid length: {}",
-            issuer_pk_bytes.len()
-        )));
-    }
-
-    // --- 5. Reconstruct and canonicalize data ---
+    // --- 4. Reconstruct and canonicalize data ---
     let canonical_json_bytes = canonicalize_attestation_data(&att.canonical_data())?;
     let data_to_verify = canonical_json_bytes.as_slice();
     debug!(
@@ -366,16 +366,16 @@ pub(crate) async fn verify_with_keys_at(
         String::from_utf8_lossy(&canonical_json_bytes)
     );
 
-    // --- 6. Verify issuer signature ---
+    // --- 5. Verify issuer signature (dispatched on curve) ---
     if !att.identity_signature.is_empty() {
-        provider
-            .verify_ed25519(
-                issuer_pk_bytes,
-                data_to_verify,
-                att.identity_signature.as_bytes(),
-            )
-            .await
-            .map_err(|e| AttestationError::IssuerSignatureFailed(e.to_string()))?;
+        verify_signature_by_curve(
+            issuer_pk,
+            data_to_verify,
+            att.identity_signature.as_bytes(),
+            provider,
+            SignatureRole::Issuer,
+        )
+        .await?;
         debug!("(Verify) Issuer signature verified successfully.");
     } else {
         debug!(
@@ -383,23 +383,68 @@ pub(crate) async fn verify_with_keys_at(
         );
     }
 
-    // --- 7. Verify device signature ---
-    provider
-        .verify_ed25519(
-            att.device_public_key.as_bytes(),
-            data_to_verify,
-            att.device_signature.as_bytes(),
-        )
-        .await
-        .map_err(|e| AttestationError::DeviceSignatureFailed(e.to_string()))?;
+    // --- 6. Verify device signature (dispatched on curve) ---
+    verify_signature_by_curve(
+        &att.device_public_key,
+        data_to_verify,
+        att.device_signature.as_bytes(),
+        provider,
+        SignatureRole::Device,
+    )
+    .await?;
     debug!("(Verify) Device signature verified successfully.");
 
     Ok(())
 }
 
+/// Which signature slot a curve-dispatch error should be attributed to.
+#[derive(Clone, Copy)]
+enum SignatureRole {
+    Issuer,
+    Device,
+}
+
+/// Verify a signature, dispatching on the key's curve type.
+///
+/// Ed25519 goes through the async provider; P-256 uses the ring-backed static
+/// verifier when built with `native`.
+async fn verify_signature_by_curve(
+    pk: &DevicePublicKey,
+    message: &[u8],
+    signature: &[u8],
+    provider: &dyn CryptoProvider,
+    role: SignatureRole,
+) -> Result<(), AttestationError> {
+    let map_err = |e: String| match role {
+        SignatureRole::Issuer => AttestationError::IssuerSignatureFailed(e),
+        SignatureRole::Device => AttestationError::DeviceSignatureFailed(e),
+    };
+
+    match pk.curve() {
+        auths_crypto::CurveType::Ed25519 => provider
+            .verify_ed25519(pk.as_bytes(), message, signature)
+            .await
+            .map_err(|e| map_err(e.to_string())),
+        auths_crypto::CurveType::P256 => {
+            #[cfg(feature = "native")]
+            {
+                auths_crypto::RingCryptoProvider::p256_verify(pk.as_bytes(), message, signature)
+                    .map_err(|e| map_err(e.to_string()))
+            }
+            #[cfg(not(feature = "native"))]
+            {
+                let _ = (provider, message, signature);
+                Err(map_err(
+                    "P-256 verification not available on this platform".into(),
+                ))
+            }
+        }
+    }
+}
+
 pub(crate) async fn verify_chain_inner(
     attestations: &[Attestation],
-    root_pk: &[u8],
+    root_pk: &DevicePublicKey,
     provider: &dyn CryptoProvider,
     now: DateTime<Utc>,
 ) -> Result<VerificationReport, AttestationError> {
@@ -447,7 +492,7 @@ pub(crate) async fn verify_chain_inner(
             ));
         }
 
-        let issuer_pk = prev_att.device_public_key.as_bytes();
+        let issuer_pk = &prev_att.device_public_key;
 
         match verify_single_attestation(att, issuer_pk, idx, provider, now).await {
             Ok(link) => chain_links.push(link),
@@ -465,7 +510,7 @@ pub(crate) async fn verify_device_authorization_inner(
     identity_did: &str,
     device_did: &DeviceDID,
     attestations: &[Attestation],
-    identity_pk: &[u8],
+    identity_pk: &DevicePublicKey,
     provider: &dyn CryptoProvider,
     now: DateTime<Utc>,
 ) -> Result<VerificationReport, AttestationError> {
@@ -496,7 +541,7 @@ pub(crate) async fn verify_device_authorization_inner(
 
 async fn verify_single_attestation(
     att: &Attestation,
-    issuer_pk: &[u8],
+    issuer_pk: &DevicePublicKey,
     step: usize,
     provider: &dyn CryptoProvider,
     now: DateTime<Utc>,
@@ -547,6 +592,11 @@ mod tests {
     use chrono::{DateTime, Duration, TimeZone, Utc};
     use ring::signature::{Ed25519KeyPair, KeyPair};
     use std::sync::Arc;
+
+    /// Wrap a raw 32-byte Ed25519 key into a `DevicePublicKey` for tests.
+    fn ed(pk: &[u8]) -> DevicePublicKey {
+        DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, pk).unwrap()
+    }
 
     struct TestClock(DateTime<Utc>);
     impl ClockProvider for TestClock {
@@ -613,7 +663,10 @@ mod tests {
 
     #[tokio::test]
     async fn verify_chain_empty_returns_broken_chain() {
-        let result = test_verifier().verify_chain(&[], &[0u8; 32]).await.unwrap();
+        let result = test_verifier()
+            .verify_chain(&[], &ed(&[0u8; 32]))
+            .await
+            .unwrap();
         assert!(!result.is_valid());
         match result.status {
             VerificationStatus::BrokenChain { missing_link } => {
@@ -641,7 +694,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_chain(&[att], &root_pk)
+            .verify_chain(&[att], &ed(&root_pk))
             .await
             .unwrap();
         assert!(result.is_valid());
@@ -666,7 +719,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_chain(&[att], &root_pk)
+            .verify_chain(&[att], &ed(&root_pk))
             .await
             .unwrap();
         assert!(!result.is_valid());
@@ -693,7 +746,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_chain(&[att], &root_pk)
+            .verify_chain(&[att], &ed(&root_pk))
             .await
             .unwrap();
         assert!(!result.is_valid());
@@ -723,7 +776,7 @@ mod tests {
         att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
-            .verify_chain(&[att], &root_pk)
+            .verify_chain(&[att], &ed(&root_pk))
             .await
             .unwrap();
         assert!(!result.is_valid());
@@ -762,7 +815,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_chain(&[att1, att2], &root_pk)
+            .verify_chain(&[att1, att2], &ed(&root_pk))
             .await
             .unwrap();
         assert!(!result.is_valid());
@@ -801,7 +854,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_chain(&[att1, att2], &root_pk)
+            .verify_chain(&[att1, att2], &ed(&root_pk))
             .await
             .unwrap();
         assert!(result.is_valid());
@@ -837,7 +890,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_chain(&[att1, att2], &root_pk)
+            .verify_chain(&[att1, att2], &ed(&root_pk))
             .await
             .unwrap();
         assert!(!result.is_valid());
@@ -869,7 +922,7 @@ mod tests {
 
         let verification_time = fixed_now() + Duration::days(10);
         let result = test_verifier()
-            .verify_at_time(&att, &root_pk, verification_time)
+            .verify_at_time(&att, &ed(&root_pk), verification_time)
             .await;
         assert!(result.is_ok());
     }
@@ -893,7 +946,7 @@ mod tests {
 
         let verification_time = fixed_now() + Duration::days(60);
         let result = test_verifier()
-            .verify_at_time(&att, &root_pk, verification_time)
+            .verify_at_time(&att, &ed(&root_pk), verification_time)
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("expired"));
@@ -920,7 +973,7 @@ mod tests {
 
         let verification_time = fixed_now() - Duration::days(10);
         let result = test_verifier()
-            .verify_at_time(&att, &root_pk, verification_time)
+            .verify_at_time(&att, &ed(&root_pk), verification_time)
             .await;
         assert!(result.is_err());
         assert!(
@@ -949,7 +1002,7 @@ mod tests {
 
         let verification_time = fixed_now() - Duration::days(30);
         let result = test_verifier()
-            .verify_at_time(&att, &root_pk, verification_time)
+            .verify_at_time(&att, &ed(&root_pk), verification_time)
             .await;
         assert!(result.is_ok());
     }
@@ -970,7 +1023,7 @@ mod tests {
             Some(fixed_now() + Duration::days(365)),
         );
 
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(result.is_ok());
     }
 
@@ -1236,7 +1289,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_with_capability(&att, &Capability::sign_commit(), &root_pk)
+            .verify_with_capability(&att, &Capability::sign_commit(), &ed(&root_pk))
             .await;
         assert!(result.is_ok());
     }
@@ -1257,7 +1310,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_with_capability(&att, &Capability::manage_members(), &root_pk)
+            .verify_with_capability(&att, &Capability::manage_members(), &ed(&root_pk))
             .await;
         assert!(result.is_err());
         match result {
@@ -1291,7 +1344,7 @@ mod tests {
         att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
-            .verify_with_capability(&att, &Capability::sign_commit(), &root_pk)
+            .verify_with_capability(&att, &Capability::sign_commit(), &ed(&root_pk))
             .await;
         assert!(result.is_err());
         match result {
@@ -1316,7 +1369,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_chain_with_capability(&[att], &Capability::sign_commit(), &root_pk)
+            .verify_chain_with_capability(&[att], &Capability::sign_commit(), &ed(&root_pk))
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_valid());
@@ -1352,13 +1405,17 @@ mod tests {
             .verify_chain_with_capability(
                 &[att1.clone(), att2.clone()],
                 &Capability::sign_commit(),
-                &root_pk,
+                &ed(&root_pk),
             )
             .await;
         assert!(result.is_ok());
 
         let result = test_verifier()
-            .verify_chain_with_capability(&[att1, att2], &Capability::manage_members(), &root_pk)
+            .verify_chain_with_capability(
+                &[att1, att2],
+                &Capability::manage_members(),
+                &ed(&root_pk),
+            )
             .await;
         assert!(result.is_err());
         match result {
@@ -1372,7 +1429,7 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_with_capability_returns_report_on_invalid_chain() {
         let result = test_verifier()
-            .verify_chain_with_capability(&[], &Capability::sign_commit(), &[0u8; 32])
+            .verify_chain_with_capability(&[], &Capability::sign_commit(), &ed(&[0u8; 32]))
             .await;
         assert!(result.is_ok());
         let report = result.unwrap();
@@ -1395,11 +1452,11 @@ mod tests {
             vec![Capability::sign_commit()],
         );
 
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(result.is_ok(), "Attestation should verify before tampering");
 
         att.role = Some(Role::Admin);
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(result.is_err(), "Attestation should reject tampered role");
         let err_msg = result.unwrap_err().to_string();
         assert!(
@@ -1426,13 +1483,13 @@ mod tests {
         );
         assert!(
             test_verifier()
-                .verify_with_keys(&att, &root_pk)
+                .verify_with_keys(&att, &ed(&root_pk))
                 .await
                 .is_ok()
         );
 
         att.capabilities.push(Capability::manage_members());
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(
             result.is_err(),
             "Attestation should reject tampered capabilities"
@@ -1456,13 +1513,13 @@ mod tests {
         );
         assert!(
             test_verifier()
-                .verify_with_keys(&att, &root_pk)
+                .verify_with_keys(&att, &ed(&root_pk))
                 .await
                 .is_ok()
         );
 
         att.delegated_by = Some(CanonicalDid::new_unchecked("did:keri:Eattacker"));
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(
             result.is_err(),
             "Attestation should reject tampered delegated_by"
@@ -1485,7 +1542,7 @@ mod tests {
             vec![Capability::sign_commit(), Capability::manage_members()],
         );
 
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(
             result.is_ok(),
             "Attestation with org fields should verify: {:?}",
@@ -1552,7 +1609,7 @@ mod tests {
             Some(one_hour_ago),
         );
 
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(
             result.is_ok(),
             "Attestation created 1 hour ago should verify: {:?}",
@@ -1576,7 +1633,7 @@ mod tests {
             Some(thirty_days_ago),
         );
 
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(
             result.is_ok(),
             "Attestation created 30 days ago should verify: {:?}",
@@ -1600,7 +1657,7 @@ mod tests {
             Some(ten_minutes_future),
         );
 
-        let result = test_verifier().verify_with_keys(&att, &root_pk).await;
+        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(
             result.is_err(),
             "Attestation with future timestamp should fail"
@@ -1631,7 +1688,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_device_authorization(&root_did, &device_did, &[att], &root_pk)
+            .verify_device_authorization(&root_did, &device_did, &[att], &ed(&root_pk))
             .await;
         assert!(result.is_ok());
         let report = result.unwrap();
@@ -1649,7 +1706,7 @@ mod tests {
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let result = test_verifier()
-            .verify_device_authorization(&root_did, &device_did, &[], &root_pk)
+            .verify_device_authorization(&root_did, &device_did, &[], &ed(&root_pk))
             .await;
         assert!(result.is_ok());
         let report = result.unwrap();
@@ -1683,7 +1740,7 @@ mod tests {
         att.identity_signature = Ed25519Signature::from_bytes(tampered);
 
         let result = test_verifier()
-            .verify_device_authorization(&root_did, &device_did, &[att], &root_pk)
+            .verify_device_authorization(&root_did, &device_did, &[att], &ed(&root_pk))
             .await;
         assert!(result.is_ok());
         let report = result.unwrap();
@@ -1713,7 +1770,7 @@ mod tests {
         );
 
         let result = test_verifier()
-            .verify_device_authorization(&root_did, &device_did, &[att], &wrong_pk)
+            .verify_device_authorization(&root_did, &device_did, &[att], &ed(&wrong_pk))
             .await;
         assert!(result.is_ok());
         let report = result.unwrap();
@@ -1741,7 +1798,7 @@ mod tests {
             Some(fixed_now() - Duration::days(1)),
         );
         let result = test_verifier()
-            .verify_device_authorization(&root_did, &device_did, &[att_expired], &root_pk)
+            .verify_device_authorization(&root_did, &device_did, &[att_expired], &ed(&root_pk))
             .await;
         assert!(result.is_ok());
         let report = result.unwrap();
@@ -1760,7 +1817,7 @@ mod tests {
             Some(fixed_now() + Duration::days(365)),
         );
         let result = test_verifier()
-            .verify_device_authorization(&root_did, &device_did, &[att_revoked], &root_pk)
+            .verify_device_authorization(&root_did, &device_did, &[att_revoked], &ed(&root_pk))
             .await;
         assert!(result.is_ok());
         let report = result.unwrap();
@@ -1826,7 +1883,7 @@ mod tests {
         };
 
         let report = test_verifier()
-            .verify_chain_with_witnesses(&[att], &root_pk, &config)
+            .verify_chain_with_witnesses(&[att], &ed(&root_pk), &config)
             .await
             .unwrap();
         assert!(report.is_valid());
@@ -1848,7 +1905,7 @@ mod tests {
         };
 
         let report = test_verifier()
-            .verify_chain_with_witnesses(&[], &[0u8; 32], &config)
+            .verify_chain_with_witnesses(&[], &ed(&[0u8; 32]), &config)
             .await
             .unwrap();
         assert!(!report.is_valid());
@@ -1885,7 +1942,7 @@ mod tests {
         };
 
         let report = test_verifier()
-            .verify_chain_with_witnesses(&[att], &root_pk, &config)
+            .verify_chain_with_witnesses(&[att], &ed(&root_pk), &config)
             .await
             .unwrap();
         assert!(!report.is_valid());
@@ -1898,5 +1955,78 @@ mod tests {
         }
         assert!(report.witness_quorum.is_some());
         assert!(!report.warnings.is_empty());
+    }
+
+    /// Verify an attestation signed by a P-256 identity using a P-256 `DevicePublicKey`.
+    ///
+    /// Reproduces the production CI flow where a P-256 identity signs an Ed25519-device
+    /// attestation, and ensures the curve-dispatched verifier accepts a 33-byte compressed
+    /// P-256 public key.
+    #[tokio::test]
+    async fn verify_p256_identity_signed_attestation() {
+        use auths_crypto::RingCryptoProvider;
+
+        // Generate a P-256 identity keypair (compressed 33-byte pubkey).
+        let (p256_seed, p256_pk_bytes) = RingCryptoProvider::p256_generate().unwrap();
+        assert_eq!(
+            p256_pk_bytes.len(),
+            33,
+            "P-256 compressed pubkey is 33 bytes"
+        );
+        let seed_arr: [u8; 32] = *p256_seed.as_bytes();
+
+        // Use a KERI-style DID for the issuer; the DID value is opaque to the verifier
+        // (it does not re-derive the issuer key from the DID).
+        let issuer_did = "did:keri:Etest-p256-identity";
+
+        // Device remains Ed25519 for this test — matches real-world usage.
+        let (device_kp, device_pk) = create_test_keypair(&[42u8; 32]);
+        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+
+        let mut att = Attestation {
+            version: 1,
+            rid: ResourceId::new("test-rid"),
+            issuer: CanonicalDid::new_unchecked(issuer_did),
+            subject: CanonicalDid::new_unchecked(&device_did),
+            device_public_key: Ed25519PublicKey::from_bytes(device_pk).into(),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
+            revoked_at: None,
+            expires_at: Some(fixed_now() + Duration::days(365)),
+            timestamp: Some(fixed_now()),
+            note: None,
+            payload: None,
+            role: None,
+            capabilities: vec![],
+            delegated_by: None,
+            signer_type: None,
+            environment_claim: None,
+            commit_sha: None,
+            commit_message: None,
+            author: None,
+            oidc_binding: None,
+        };
+
+        let canonical_bytes = canonicalize_attestation_data(&att.canonical_data()).unwrap();
+
+        // P-256 identity signature over canonical bytes (64 bytes: r||s).
+        let p256_sig = RingCryptoProvider::p256_sign(&seed_arr, &canonical_bytes).unwrap();
+        // Ed25519Signature holds exactly 64 bytes, matching P-256 r||s.
+        assert_eq!(p256_sig.len(), 64);
+        att.identity_signature = Ed25519Signature::try_from_slice(&p256_sig).unwrap();
+
+        // Device signature is Ed25519.
+        att.device_signature =
+            Ed25519Signature::try_from_slice(device_kp.sign(&canonical_bytes).as_ref()).unwrap();
+
+        let issuer_dpk =
+            DevicePublicKey::try_new(auths_crypto::CurveType::P256, &p256_pk_bytes).unwrap();
+
+        let result = test_verifier().verify_with_keys(&att, &issuer_dpk).await;
+        assert!(
+            result.is_ok(),
+            "P-256-signed attestation should verify with a P-256 DevicePublicKey: {:?}",
+            result.err()
+        );
     }
 }

@@ -1,8 +1,8 @@
 use std::ops::ControlFlow;
 
 use auths_id::keri::{
-    Event, GitKel, RotationError, anchor_attestation, create_keri_identity,
-    create_keri_identity_with_backend, get_key_state, rotate_keys, rotate_keys_with_backend,
+    Event, GitKel, RotationError, anchor_attestation, create_keri_identity_with_backend,
+    create_keri_identity_with_curve, get_key_state, rotate_keys, rotate_keys_with_backend,
     validate_kel,
 };
 use auths_id::storage::registry::backend::RegistryBackend;
@@ -130,7 +130,13 @@ fn double_rotation_does_not_corrupt_kel() {
 fn rotation_after_interaction_events_preserves_kel_integrity() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(
+        &repo,
+        None,
+        chrono::Utc::now(),
+        auths_crypto::CurveType::Ed25519,
+    )
+    .unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let current_kp = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -172,7 +178,13 @@ fn rotation_after_interaction_events_preserves_kel_integrity() {
 fn anchoring_works_with_rotated_key_after_ixn() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(
+        &repo,
+        None,
+        chrono::Utc::now(),
+        auths_crypto::CurveType::Ed25519,
+    )
+    .unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let current_kp = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
@@ -212,7 +224,13 @@ fn anchoring_works_with_rotated_key_after_ixn() {
 fn multiple_rotations_interleaved_with_ixn() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
 
-    let init = create_keri_identity(&repo, None, chrono::Utc::now()).unwrap();
+    let init = create_keri_identity_with_curve(
+        &repo,
+        None,
+        chrono::Utc::now(),
+        auths_crypto::CurveType::Ed25519,
+    )
+    .unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
     let kp0 = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 

@@ -1,14 +1,28 @@
-use crate::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
+use crate::core::{Attestation, DevicePublicKey, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use crate::error::AttestationError;
 use crate::types::DeviceDID;
 use crate::verifier::Verifier;
 use crate::witness::WitnessVerifyConfig;
-use auths_crypto::ED25519_PUBLIC_KEY_LEN;
 use auths_keri::witness::SignedReceipt;
 use log::error;
 use std::os::raw::c_int;
 use std::panic;
 use std::slice;
+
+/// Infer curve from byte length at the FFI boundary and construct a typed key.
+///
+/// Accepts:
+/// - 32 bytes → Ed25519
+/// - 33 bytes → P-256 (SEC1 compressed)
+/// - 65 bytes → P-256 (SEC1 uncompressed)
+fn pk_from_bytes_ffi(bytes: &[u8]) -> Result<DevicePublicKey, c_int> {
+    let curve = match bytes.len() {
+        32 => auths_crypto::CurveType::Ed25519,
+        33 | 65 => auths_crypto::CurveType::P256,
+        _ => return Err(ERR_VERIFY_INVALID_PK_LEN),
+    };
+    DevicePublicKey::try_new(curve, bytes).map_err(|_| ERR_VERIFY_INVALID_PK_LEN)
+}
 
 // INVARIANT: Tokio runtime creation is fatal at FFI boundary; cannot propagate Result across FFI
 #[allow(clippy::expect_used)]
@@ -178,15 +192,6 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
             error!("FFI verify failed: Received null pointer argument.");
             return ERR_VERIFY_NULL_ARGUMENT;
         }
-        // Check issuer public key length immediately
-        if issuer_pk_len != ED25519_PUBLIC_KEY_LEN {
-            error!(
-                "FFI verify failed: Issuer PK length must be {}, got {}",
-                ED25519_PUBLIC_KEY_LEN, issuer_pk_len
-            );
-            return ERR_VERIFY_INVALID_PK_LEN;
-        }
-
         // --- Size check ---
         if attestation_json_len > MAX_ATTESTATION_JSON_SIZE {
             error!(
@@ -203,6 +208,18 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
             unsafe { slice::from_raw_parts(attestation_json_ptr, attestation_json_len) };
         let issuer_pk_slice = unsafe { slice::from_raw_parts(issuer_pk_ptr, issuer_pk_len) };
 
+        // --- Infer curve from length and construct typed key ---
+        let issuer_pk = match pk_from_bytes_ffi(issuer_pk_slice) {
+            Ok(pk) => pk,
+            Err(code) => {
+                error!(
+                    "FFI verify failed: invalid issuer PK length ({} bytes)",
+                    issuer_pk_len
+                );
+                return code;
+            }
+        };
+
         // --- Deserialize Attestation ---
         let att: Attestation = match serde_json::from_slice(attestation_json_slice) {
             Ok(a) => a,
@@ -214,7 +231,7 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
 
         // --- Call Core Verification Logic ---
         let verifier = Verifier::native();
-        match with_runtime(verifier.verify_with_keys(&att, issuer_pk_slice)) {
+        match with_runtime(verifier.verify_with_keys(&att, &issuer_pk)) {
             Ok(_) => VERIFY_SUCCESS,
             Err(e) => {
                 error!("FFI verify failed: Verification logic error: {}", e);
@@ -270,11 +287,6 @@ pub unsafe extern "C" fn ffi_verify_chain_with_witnesses(
             return ERR_VERIFY_NULL_ARGUMENT;
         }
 
-        if root_pk_len != ED25519_PUBLIC_KEY_LEN {
-            error!("FFI verify_chain_with_witnesses: invalid root PK length");
-            return ERR_VERIFY_INVALID_PK_LEN;
-        }
-
         if let Some(code) = check_batch_sizes(
             &[chain_json_len, receipts_json_len, witness_keys_json_len],
             "verify_chain_with_witnesses",
@@ -283,10 +295,21 @@ pub unsafe extern "C" fn ffi_verify_chain_with_witnesses(
         }
 
         let chain_json = unsafe { slice::from_raw_parts(chain_json_ptr, chain_json_len) };
-        let root_pk = unsafe { slice::from_raw_parts(root_pk_ptr, root_pk_len) };
+        let root_pk_slice = unsafe { slice::from_raw_parts(root_pk_ptr, root_pk_len) };
         let receipts_json = unsafe { slice::from_raw_parts(receipts_json_ptr, receipts_json_len) };
         let witness_keys_json =
             unsafe { slice::from_raw_parts(witness_keys_json_ptr, witness_keys_json_len) };
+
+        let root_pk = match pk_from_bytes_ffi(root_pk_slice) {
+            Ok(pk) => pk,
+            Err(code) => {
+                error!(
+                    "FFI verify_chain_with_witnesses: invalid root PK length ({} bytes)",
+                    root_pk_len
+                );
+                return code;
+            }
+        };
 
         let attestations: Vec<Attestation> = match serde_json::from_slice(chain_json) {
             Ok(a) => a,
@@ -314,7 +337,7 @@ pub unsafe extern "C" fn ffi_verify_chain_with_witnesses(
         let verifier = Verifier::native();
         let report = match with_runtime(verifier.verify_chain_with_witnesses(
             &attestations,
-            root_pk,
+            &root_pk,
             &config,
         )) {
             Ok(r) => r,
@@ -373,11 +396,6 @@ pub unsafe extern "C" fn ffi_verify_chain_json(
             return ERR_VERIFY_NULL_ARGUMENT;
         }
 
-        if root_pk_len != ED25519_PUBLIC_KEY_LEN {
-            error!("FFI verify_chain_json: invalid root PK length");
-            return ERR_VERIFY_INVALID_PK_LEN;
-        }
-
         if chain_json_len > MAX_JSON_BATCH_SIZE {
             error!(
                 "FFI verify_chain_json: chain JSON too large ({} bytes)",
@@ -387,7 +405,18 @@ pub unsafe extern "C" fn ffi_verify_chain_json(
         }
 
         let chain_json = unsafe { slice::from_raw_parts(chain_json_ptr, chain_json_len) };
-        let root_pk = unsafe { slice::from_raw_parts(root_pk_ptr, root_pk_len) };
+        let root_pk_slice = unsafe { slice::from_raw_parts(root_pk_ptr, root_pk_len) };
+
+        let root_pk = match pk_from_bytes_ffi(root_pk_slice) {
+            Ok(pk) => pk,
+            Err(code) => {
+                error!(
+                    "FFI verify_chain_json: invalid root PK length ({} bytes)",
+                    root_pk_len
+                );
+                return code;
+            }
+        };
 
         let attestations: Vec<Attestation> = match serde_json::from_slice(chain_json) {
             Ok(a) => a,
@@ -398,7 +427,7 @@ pub unsafe extern "C" fn ffi_verify_chain_json(
         };
 
         let verifier = Verifier::native();
-        let report = match with_runtime(verifier.verify_chain(&attestations, root_pk)) {
+        let report = match with_runtime(verifier.verify_chain(&attestations, &root_pk)) {
             Ok(r) => r,
             Err(e) => {
                 error!("FFI verify_chain_json: verification error: {}", e);
@@ -433,6 +462,7 @@ pub unsafe extern "C" fn ffi_verify_chain_json(
 ///
 /// # Safety
 /// All pointers must be valid for the specified lengths.
+#[allow(clippy::too_many_lines)] // FFI boilerplate: 6 pointer-pair decodes + panic::catch_unwind wrapper
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ffi_verify_device_authorization_json(
     identity_did_ptr: *const u8,
@@ -458,11 +488,6 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
             return ERR_VERIFY_NULL_ARGUMENT;
         }
 
-        if identity_pk_len != ED25519_PUBLIC_KEY_LEN {
-            error!("FFI verify_device_authorization_json: invalid identity PK length");
-            return ERR_VERIFY_INVALID_PK_LEN;
-        }
-
         if chain_json_len > MAX_JSON_BATCH_SIZE {
             error!(
                 "FFI verify_device_authorization_json: chain JSON too large ({} bytes)",
@@ -475,7 +500,18 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
             unsafe { slice::from_raw_parts(identity_did_ptr, identity_did_len) };
         let device_did_bytes = unsafe { slice::from_raw_parts(device_did_ptr, device_did_len) };
         let chain_json = unsafe { slice::from_raw_parts(chain_json_ptr, chain_json_len) };
-        let identity_pk = unsafe { slice::from_raw_parts(identity_pk_ptr, identity_pk_len) };
+        let identity_pk_slice = unsafe { slice::from_raw_parts(identity_pk_ptr, identity_pk_len) };
+
+        let identity_pk = match pk_from_bytes_ffi(identity_pk_slice) {
+            Ok(pk) => pk,
+            Err(code) => {
+                error!(
+                    "FFI verify_device_authorization_json: invalid identity PK length ({} bytes)",
+                    identity_pk_len
+                );
+                return code;
+            }
+        };
 
         let identity_did = match std::str::from_utf8(identity_did_bytes) {
             Ok(s) => s,
@@ -525,7 +561,7 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
             identity_did,
             &device_did,
             &attestations,
-            identity_pk,
+            &identity_pk,
         )) {
             Ok(r) => r,
             Err(e) => {

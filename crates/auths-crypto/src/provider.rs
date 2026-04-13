@@ -267,4 +267,22 @@ impl CurveType {
             Self::P256 => P256_SIGNATURE_LEN,
         }
     }
+
+    /// Infer the curve from a raw public key's byte length.
+    ///
+    /// Used only at external ingestion boundaries (FFI, WASM, CLI flags) where
+    /// the caller supplies raw bytes and no typed curve signal is available.
+    /// Returns `None` for lengths that do not match any supported curve.
+    ///
+    /// Accepts:
+    /// - 32 bytes → Ed25519
+    /// - 33 bytes → P-256 (compressed SEC1)
+    /// - 65 bytes → P-256 (uncompressed SEC1)
+    pub fn from_public_key_len(len: usize) -> Option<Self> {
+        match len {
+            ED25519_PUBLIC_KEY_LEN => Some(Self::Ed25519),
+            P256_PUBLIC_KEY_LEN | 65 => Some(Self::P256),
+            _ => None,
+        }
+    }
 }

@@ -326,6 +326,16 @@ pub async fn join_pairing_session(
         .next()
         .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No primary signing key found"))?;
 
+    if keychain.is_hardware_backend() {
+        return Err(format_error(
+            "AUTHS_PAIRING_ERROR",
+            format!(
+                "pairing requires a software-backed key; alias '{}' is hardware-backed and cannot export raw material",
+                key_alias_str
+            ),
+        ));
+    }
+
     let (_did, _role, encrypted_key) = keychain
         .load_key(&key_alias_str)
         .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;

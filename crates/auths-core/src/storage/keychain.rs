@@ -231,6 +231,14 @@ pub trait KeyStorage: Send + Sync {
 
     /// Returns the name of the storage backend.
     fn backend_name(&self) -> &'static str;
+
+    /// Returns true if this backend manages keys in hardware (SE, HSM).
+    ///
+    /// Hardware backends generate keys internally, don't need passphrases,
+    /// and store opaque handles instead of encrypted PKCS8.
+    fn is_hardware_backend(&self) -> bool {
+        false
+    }
 }
 
 /// Decrypt a stored key and return its public key bytes and curve type.
@@ -253,6 +261,23 @@ pub fn extract_public_key_bytes(
     alias: &KeyAlias,
     passphrase_provider: &dyn crate::signing::PassphraseProvider,
 ) -> Result<(Vec<u8>, auths_crypto::CurveType), AgentError> {
+    if keychain.is_hardware_backend() {
+        // Hardware backends store opaque handles — get public key from hardware
+        let (_, _role, _handle) = keychain.load_key(alias)?;
+        #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
+        {
+            let pubkey = super::secure_enclave::public_key_from_handle(&_handle)?;
+            return Ok((pubkey, auths_crypto::CurveType::P256));
+        }
+        #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
+        {
+            return Err(AgentError::BackendUnavailable {
+                backend: keychain.backend_name(),
+                reason: "hardware backend not available on this platform".into(),
+            });
+        }
+    }
+
     use crate::crypto::signer::{decrypt_keypair, load_seed_and_pubkey};
 
     let (_, _role, encrypted) = keychain.load_key(alias)?;
@@ -262,6 +287,61 @@ pub fn extract_public_key_bytes(
     let pkcs8 = decrypt_keypair(&encrypted, &passphrase)?;
     let (_, pubkey, curve) = load_seed_and_pubkey(&pkcs8)?;
     Ok((pubkey.to_vec(), curve))
+}
+
+/// Sign a message using the key for `alias`, handling both software and hardware backends.
+///
+/// - Software: prompts for passphrase, decrypts PKCS8, signs with `TypedSeed`
+/// - Hardware (Secure Enclave): loads handle, signs via biometric (Touch ID)
+///
+/// Returns `(signature, public_key, curve)`. Callers never need to know the backend type.
+///
+/// Args:
+/// * `keychain`: The key storage backend.
+/// * `alias`: The key alias to sign with.
+/// * `passphrase_provider`: Provider for passphrase prompts (ignored on hardware backends).
+/// * `message`: The raw bytes to sign.
+pub fn sign_with_key(
+    keychain: &dyn KeyStorage,
+    alias: &KeyAlias,
+    passphrase_provider: &dyn crate::signing::PassphraseProvider,
+    message: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>, auths_crypto::CurveType), AgentError> {
+    if keychain.is_hardware_backend() {
+        let (_, _role, _handle) = keychain.load_key(alias)?;
+        #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
+        {
+            let sig = super::secure_enclave::sign_with_handle(&_handle, message)?;
+            let pubkey = super::secure_enclave::public_key_from_handle(&_handle)?;
+            return Ok((sig, pubkey, auths_crypto::CurveType::P256));
+        }
+        #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
+        {
+            return Err(AgentError::BackendUnavailable {
+                backend: keychain.backend_name(),
+                reason: "hardware signing not available on this platform".into(),
+            });
+        }
+    }
+
+    use crate::crypto::signer::{decrypt_keypair, load_seed_and_pubkey};
+
+    let (_, _role, encrypted) = keychain.load_key(alias)?;
+    let passphrase = passphrase_provider
+        .get_passphrase(&format!("Enter passphrase for key '{}' to sign:", alias))
+        .map_err(|e| AgentError::SigningFailed(e.to_string()))?;
+    let pkcs8 = decrypt_keypair(&encrypted, &passphrase)?;
+    let (seed, pubkey, curve) = load_seed_and_pubkey(&pkcs8)?;
+
+    let typed_seed = match curve {
+        auths_crypto::CurveType::Ed25519 => auths_crypto::TypedSeed::Ed25519(*seed.as_bytes()),
+        auths_crypto::CurveType::P256 => auths_crypto::TypedSeed::P256(*seed.as_bytes()),
+    };
+
+    let sig = auths_crypto::typed_sign(&typed_seed, message)
+        .map_err(|e| AgentError::SigningFailed(e.to_string()))?;
+
+    Ok((sig, pubkey, curve))
 }
 
 /// Return a boxed `KeyStorage` implementation driven by the supplied `EnvironmentConfig`.
@@ -319,6 +399,26 @@ fn get_platform_default(
 
     #[cfg(target_os = "macos")]
     {
+        // Try Secure Enclave first (fingerprint signing), fall back to macOS Keychain
+        #[cfg(feature = "keychain-secure-enclave")]
+        {
+            if super::secure_enclave::is_available()
+                && let Ok(home) = auths_home_with_config(config)
+            {
+                match super::secure_enclave::SecureEnclaveKeyStorage::new(&home) {
+                    Ok(storage) => {
+                        log::info!("Using Secure Enclave (Touch ID signing)");
+                        return Ok(Box::new(storage));
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Secure Enclave available but init failed ({}), using macOS Keychain",
+                            e
+                        );
+                    }
+                }
+            }
+        }
         return Ok(Box::new(MacOSKeychain::new(SERVICE_NAME)));
     }
 
@@ -403,6 +503,17 @@ fn get_backend_by_name(
                         error: "PKCS#11 configuration required (set AUTHS_PKCS11_LIBRARY)".into(),
                     })?;
             let storage = super::pkcs11::Pkcs11KeyRef::new(pkcs11_config)?;
+            Ok(Box::new(storage))
+        }
+        #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
+        "secure-enclave" => {
+            info!("Using Secure Enclave backend (AUTHS_KEYCHAIN_BACKEND=secure-enclave)");
+            let home =
+                auths_home_with_config(config).map_err(|e| AgentError::BackendInitFailed {
+                    backend: "secure-enclave",
+                    error: format!("failed to resolve auths home: {e}"),
+                })?;
+            let storage = super::secure_enclave::SecureEnclaveKeyStorage::new(&home)?;
             Ok(Box::new(storage))
         }
         _ => {
@@ -519,6 +630,9 @@ impl KeyStorage for Arc<dyn KeyStorage + Send + Sync> {
     fn backend_name(&self) -> &'static str {
         self.as_ref().backend_name()
     }
+    fn is_hardware_backend(&self) -> bool {
+        self.as_ref().is_hardware_backend()
+    }
 }
 
 impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
@@ -560,6 +674,9 @@ impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
     }
     fn backend_name(&self) -> &'static str {
         self.as_ref().backend_name()
+    }
+    fn is_hardware_backend(&self) -> bool {
+        self.as_ref().is_hardware_backend()
     }
 }
 

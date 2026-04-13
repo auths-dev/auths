@@ -116,9 +116,15 @@ pub fn create_org(
     let keychain = get_keychain(&passphrase_str, &repo_path)?;
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
 
-    let (controller_did, alias) =
-        initialize_registry_identity(backend.clone(), &key_alias, &provider, &*keychain, None)
-            .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
+    let (controller_did, alias) = initialize_registry_identity(
+        backend.clone(),
+        &key_alias,
+        &provider,
+        &*keychain,
+        None,
+        auths_crypto::CurveType::default(),
+    )
+    .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
 
     let uuid_provider = SystemUuidProvider;
     let rid = auths_core::ports::id::UuidProvider::new_id(&uuid_provider).to_string();

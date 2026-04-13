@@ -105,6 +105,7 @@ keychain-windows = ["dep:windows"]
 keychain-file-fallback = []
 crypto-secp256k1 = ["dep:k256"]
 keychain-pkcs11 = ["dep:cryptoki"]
+keychain-secure-enclave = []
 witness-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:sqlite"]
 tls = ["dep:axum-server", "witness-server"]
 

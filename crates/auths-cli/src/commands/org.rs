@@ -1,7 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use auths_sdk::attestation::create_signed_attestation;
 use auths_sdk::attestation::create_signed_revocation;
-use auths_sdk::crypto::decrypt_keypair;
 use auths_sdk::identity::DidResolver;
 use auths_sdk::identity::initialize_registry_identity;
 use chrono::{DateTime, Utc};
@@ -319,6 +318,7 @@ pub fn handle_org(
                 passphrase_provider.as_ref(),
                 &get_platform_keychain()?,
                 None,
+                auths_crypto::CurveType::default(),
             )
             .context("Failed to initialize org identity")?;
 
@@ -438,7 +438,7 @@ pub fn handle_org(
                 serde_json::from_str(&payload_str).context("Invalid JSON in payload file")?;
 
             let key_storage = get_platform_keychain()?;
-            let (stored_did, _role, encrypted_key) = key_storage
+            let (stored_did, _role, _encrypted_key) = key_storage
                 .load_key(&signer_alias)
                 .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
 
@@ -450,13 +450,6 @@ pub fn handle_org(
                     controller_did
                 ));
             }
-
-            let passphrase = passphrase_provider.get_passphrase(&format!(
-                "Enter passphrase for org identity key '{}':",
-                signer_alias
-            ))?;
-            let _pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase)
-                .context("Failed to decrypt signer key (invalid passphrase?)")?;
 
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: subject_did accepts both did:key and did:keri
@@ -536,17 +529,6 @@ pub fn handle_org(
                 .context("Failed to load identity from Git repository")?;
             let controller_did = managed_identity.controller_did;
             let rid = managed_identity.storage_id;
-
-            let encrypted_key = get_platform_keychain()?
-                .load_key(&signer_alias)
-                .context("Failed to load signer key")?
-                .2;
-            let pass = passphrase_provider.get_passphrase(&format!(
-                "Enter passphrase for identity key '{}':",
-                signer_alias
-            ))?;
-            let _pkcs8_bytes =
-                decrypt_keypair(&encrypted_key, &pass).context("Failed to decrypt identity key")?;
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: accepts both did:key and did:keri
             let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
@@ -964,13 +946,30 @@ pub fn handle_org(
             Ok(())
         }
 
-        OrgSubcommand::Join { code, registry } => handle_join(&code, &registry),
+        OrgSubcommand::Join { code, registry } => {
+            handle_join(&code, &registry, passphrase_provider.as_ref())
+        }
     }
 }
 
 /// Handles the `org join` subcommand by looking up and accepting an invite
 /// via the registry HTTP API.
-fn handle_join(code: &str, registry: &str) -> Result<()> {
+///
+/// Args:
+/// * `code`: Invite code to redeem.
+/// * `registry`: Base URL of the registry HTTP API.
+/// * `passphrase_provider`: Injected provider used to unlock the signing key
+///   when producing the bearer token; respects SE-backed and P-256 keys.
+///
+/// Usage:
+/// ```ignore
+/// handle_join(&code, &registry, ctx.passphrase_provider.as_ref())?;
+/// ```
+fn handle_join(
+    code: &str,
+    registry: &str,
+    passphrase_provider: &dyn auths_sdk::signing::PassphraseProvider,
+) -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     let client = reqwest::Client::new();
     let base = registry.trim_end_matches('/');
@@ -1023,30 +1022,21 @@ fn handle_join(code: &str, registry: &str) -> Result<()> {
 
     let key_storage = get_platform_keychain()?;
     let primary_alias = KeyAlias::new_unchecked("main");
-    let (_stored_did, _role, encrypted_key) = key_storage
-        .load_key(&primary_alias)
-        .context("failed to load signing key — run `auths init` first")?;
 
-    let passphrase =
-        rpassword::prompt_password("Enter passphrase: ").context("failed to read passphrase")?;
-    let pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase).context("wrong passphrase")?;
-
-    let pkcs8 = auths_crypto::Pkcs8Der::new(&pkcs8_bytes[..]);
-    let seed = auths_sdk::crypto::extract_seed_from_pkcs8(&pkcs8)
-        .context("failed to extract seed from key material")?;
-
-    // Create a signed bearer payload: { did, timestamp, signature }
     #[allow(clippy::disallowed_methods)] // CLI is the presentation boundary
     let timestamp = Utc::now().to_rfc3339();
     let message = format!("{}\n{}", did, timestamp);
-    let signature = {
-        use ring::signature::Ed25519KeyPair;
-        let kp = Ed25519KeyPair::from_seed_unchecked(seed.as_bytes())
-            .map_err(|e| anyhow!("invalid key: {e}"))?;
-        let sig = kp.sign(message.as_bytes());
-        use base64::Engine;
-        base64::engine::general_purpose::STANDARD.encode(sig.as_ref())
-    };
+
+    let (sig_bytes, _pubkey, _curve) = auths_sdk::keychain::sign_with_key(
+        key_storage.as_ref(),
+        &primary_alias,
+        passphrase_provider,
+        message.as_bytes(),
+    )
+    .context("failed to sign invite bearer token")?;
+
+    use base64::Engine;
+    let signature = base64::engine::general_purpose::STANDARD.encode(&sig_bytes);
 
     let bearer_payload = serde_json::json!({
         "did": did,

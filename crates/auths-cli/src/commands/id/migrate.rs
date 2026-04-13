@@ -436,6 +436,7 @@ fn perform_gpg_migration(
         &passphrase_provider,
         keychain.as_ref(),
         None,
+        auths_crypto::CurveType::default(),
     ) {
         Ok((controller_did, alias)) => {
             out.print_success(&format!("Created Auths identity: {}", controller_did));
@@ -832,6 +833,7 @@ fn perform_ssh_migration(
         &passphrase_provider,
         keychain.as_ref(),
         None,
+        auths_crypto::CurveType::default(),
     ) {
         Ok((controller_did, alias)) => {
             out.print_success(&format!("Created Auths identity: {}", controller_did));

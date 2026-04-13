@@ -168,6 +168,64 @@ pub fn public_key(seed: &TypedSeed) -> Result<Vec<u8>, CryptoError> {
     }
 }
 
+/// A parsed signing key with its curve carried explicitly — used by rotation
+/// workflows and any other code that needs to sign arbitrary bytes without
+/// re-inferring the curve.
+///
+/// Constructed from PKCS8 DER bytes via [`RotationSigner::from_pkcs8`], which
+/// delegates to [`parse_key_material`] for curve detection.
+///
+/// Args on construction:
+/// * `bytes`: PKCS8 DER (Ed25519 v1/v2 or P-256).
+///
+/// Usage:
+/// ```ignore
+/// let s = RotationSigner::from_pkcs8(&pkcs8)?;
+/// let sig = s.sign(b"rotation event bytes")?;
+/// let cesr = s.cesr_encoded(); // "D..." for Ed25519, "1AAJ..." for P-256
+/// ```
+pub struct RotationSigner {
+    /// The private seed, tagged with its curve.
+    pub seed: TypedSeed,
+    /// The public key bytes (32 Ed25519, 33 P-256 compressed).
+    pub public_key: Vec<u8>,
+}
+
+impl RotationSigner {
+    /// Parse a PKCS8 DER blob into a curve-tagged signer.
+    pub fn from_pkcs8(bytes: &[u8]) -> Result<Self, CryptoError> {
+        let parsed = parse_key_material(bytes)?;
+        Ok(Self {
+            seed: parsed.seed,
+            public_key: parsed.public_key,
+        })
+    }
+
+    /// CESR-encoded public key string.
+    ///
+    /// Uses the derivation codes defined in `auths_keri::KeriPublicKey`:
+    /// - `D` + base64url(32 bytes) for Ed25519
+    /// - `1AAJ` + base64url(33 bytes compressed SEC1) for P-256
+    pub fn cesr_encoded(&self) -> String {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        match self.seed.curve() {
+            CurveType::Ed25519 => format!("D{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
+            CurveType::P256 => format!("1AAJ{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
+        }
+    }
+
+    /// Sign bytes using the signer's curve.
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+    pub fn sign(&self, message: &[u8]) -> Result<Vec<u8>, CryptoError> {
+        sign(&self.seed, message)
+    }
+
+    /// Returns the curve this signer uses.
+    pub fn curve(&self) -> CurveType {
+        self.seed.curve()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,6 +381,34 @@ mod tests {
             let vk = VerifyingKey::from_sec1_bytes(&parsed.public_key).unwrap();
             let sig = Signature::from_slice(&sig_bytes).unwrap();
             assert!(vk.verify(msg, &sig).is_ok());
+        }
+
+        #[test]
+        fn rotation_signer_ed25519_roundtrip() {
+            use ring::rand::SystemRandom;
+            use ring::signature::Ed25519KeyPair;
+            let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+            let s = RotationSigner::from_pkcs8(pkcs8.as_ref()).unwrap();
+            assert_eq!(s.curve(), CurveType::Ed25519);
+            assert!(s.cesr_encoded().starts_with('D'));
+            assert_eq!(s.public_key.len(), 32);
+            let sig = s.sign(b"msg").unwrap();
+            assert_eq!(sig.len(), 64);
+        }
+
+        #[test]
+        fn rotation_signer_p256_roundtrip() {
+            use p256::ecdsa::SigningKey;
+            use p256::elliptic_curve::rand_core::OsRng;
+            use p256::pkcs8::EncodePrivateKey;
+            let sk = SigningKey::random(&mut OsRng);
+            let pkcs8 = sk.to_pkcs8_der().unwrap();
+            let s = RotationSigner::from_pkcs8(pkcs8.as_bytes()).unwrap();
+            assert_eq!(s.curve(), CurveType::P256);
+            assert!(s.cesr_encoded().starts_with("1AAJ"));
+            assert_eq!(s.public_key.len(), 33);
+            let sig = s.sign(b"msg").unwrap();
+            assert_eq!(sig.len(), 64);
         }
     }
 }

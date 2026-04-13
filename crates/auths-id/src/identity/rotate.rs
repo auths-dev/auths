@@ -74,6 +74,14 @@ pub fn rotate_keri_identity(
 
     let (did, _role, _encrypted_current) = keychain.load_key(current_alias)?;
 
+    if keychain.is_hardware_backend() {
+        return Err(InitError::InvalidData(
+            "Rotation requires a software-backed key; current key is hardware-backed \
+             (Secure Enclave). Rotate by initializing a new identity."
+                .into(),
+        ));
+    }
+
     let prefix = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
         InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
     })?;
@@ -181,6 +189,14 @@ pub fn rotate_registry_identity(
     let rng = SystemRandom::new();
 
     let (did, _role, _encrypted_current) = keychain.load_key(current_alias)?;
+
+    if keychain.is_hardware_backend() {
+        return Err(InitError::InvalidData(
+            "Rotation requires a software-backed key; current key is hardware-backed \
+             (Secure Enclave). Rotate by initializing a new identity."
+                .into(),
+        ));
+    }
 
     let prefix_str = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
         InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))

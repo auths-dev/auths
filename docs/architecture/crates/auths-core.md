@@ -148,7 +148,7 @@ Two key derivation strategies exist:
 | Function/Type | Module | Purpose |
 |--------------|--------|---------|
 | `SignerKey` | `crypto::signer` | Ed25519 key pair wrapper with encrypt/decrypt |
-| `encrypt_keypair` / `decrypt_keypair` | `crypto::signer` | PKCS#8 blob encryption/decryption |
+| `encrypt_keypair` / `decrypt_keypair` | `crypto::signer` | PKCS#8 blob encryption/decryption. **Never call `decrypt_keypair` without an `is_hardware_backend()` guard** — for SE/HSM backends, `load_key` returns an opaque handle, not ciphertext. Prefer `storage::keychain::sign_with_key` / `extract_public_key_bytes`, which dispatch correctly. |
 | `compute_said` / `verify_commitment` | `crypto::said` | Self-Addressing Identifier computation (BLAKE3-based) |
 | `EncryptionAlgorithm` | `crypto` | Enum with `AesGcm256` and `ChaCha20Poly1305` variants |
 | `Secp256k1KeyPair` | `crypto::secp256k1` | BIP340 Schnorr support (feature-gated) |

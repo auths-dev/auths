@@ -508,11 +508,15 @@ fn pubkey_to_pem(raw: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::LazyLock;
+
+    /// Shared RekorClient — TLS client construction is expensive (~10s).
+    static TEST_CLIENT: LazyLock<RekorClient> = LazyLock::new(|| RekorClient::public().unwrap());
 
     #[test]
     fn payload_size_limit() {
         let big = vec![0u8; MAX_PAYLOAD_SIZE + 1];
-        let client = RekorClient::public().unwrap();
+        let client = &*TEST_CLIENT;
         let rt = tokio::runtime::Runtime::new().unwrap();
         let result = rt.block_on(client.submit(&big, b"pk", b"sig"));
         match result {
@@ -525,20 +529,15 @@ mod tests {
 
     #[test]
     fn dsse_format() {
-        let client = RekorClient::public().unwrap();
+        let client = &*TEST_CLIENT;
         let entry = client.build_dsse(b"test data", b"public_key", b"signature");
 
         assert_eq!(entry.kind, "dsse");
         assert_eq!(entry.api_version, "0.0.1");
 
-        // Verify the envelope is base64-encoded JSON
-        let envelope_json = String::from_utf8(
-            BASE64
-                .decode(&entry.spec.proposed_content.envelope)
-                .unwrap(),
-        )
-        .unwrap();
-        let envelope: serde_json::Value = serde_json::from_str(&envelope_json).unwrap();
+        // Verify the envelope is raw JSON
+        let envelope: serde_json::Value =
+            serde_json::from_str(&entry.spec.proposed_content.envelope).unwrap();
         assert_eq!(envelope["payloadType"], "application/vnd.auths+json");
 
         // Verify the payload round-trips

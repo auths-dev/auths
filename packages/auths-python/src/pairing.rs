@@ -242,6 +242,13 @@ pub fn join_pairing_session_ffi(
             PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
         })?;
 
+        if keychain.is_hardware_backend() {
+            return Err(PyRuntimeError::new_err(format!(
+                "[AUTHS_PAIRING_ERROR] pairing requires a software-backed key; alias '{}' is hardware-backed and cannot export raw material",
+                key_alias
+            )));
+        }
+
         let (_did, _role, encrypted_key) = keychain
             .load_key(&key_alias)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;

@@ -3,8 +3,13 @@
 //! Tests that require real Rekor are gated on `AUTHS_TEST_REKOR=1`.
 //! Tests using the FakeTransparencyLog run always.
 
+use std::sync::LazyLock;
+
 use auths_core::ports::transparency_log::{LogError, TransparencyLog};
 use auths_infra_rekor::RekorClient;
+
+/// Shared RekorClient across all integration tests in this file.
+static TEST_REKOR: LazyLock<RekorClient> = LazyLock::new(|| RekorClient::public().unwrap());
 use auths_transparency::TrustConfig;
 use auths_transparency::merkle::hash_leaf;
 use ring::signature::KeyPair;
@@ -25,7 +30,7 @@ async fn rekor_happy_path_submit_and_verify() {
         return;
     }
 
-    let client = RekorClient::public().unwrap();
+    let client = &*TEST_REKOR;
 
     // Generate a throwaway Ed25519 key
     let keypair = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[99u8; 32]).unwrap();
@@ -68,7 +73,7 @@ async fn rekor_get_checkpoint() {
         return;
     }
 
-    let client = RekorClient::public().unwrap();
+    let client = &*TEST_REKOR;
     let checkpoint = client.get_checkpoint().await;
     assert!(checkpoint.is_ok(), "should fetch Rekor checkpoint");
     let cp = checkpoint.unwrap();
@@ -88,7 +93,7 @@ async fn unreachable_endpoint_returns_network_error() {
 
 #[tokio::test]
 async fn payload_size_rejection_is_local() {
-    let client = RekorClient::public().unwrap();
+    let client = &*TEST_REKOR;
     let big = vec![0u8; 101 * 1024]; // > 100KB
     let result = client.submit(&big, b"pk", b"sig").await;
     match result {
@@ -226,9 +231,9 @@ async fn pluggability_same_flow_different_backends() {
         let real_pk = keypair.public_key().as_ref();
         let real_sig = keypair.sign(attestation);
 
-        let rekor = RekorClient::public().unwrap();
+        let rekor = &*TEST_REKOR;
         let rekor_result =
-            submit_attestation_to_log(attestation, real_pk, real_sig.as_ref(), &rekor).await;
+            submit_attestation_to_log(attestation, real_pk, real_sig.as_ref(), rekor).await;
 
         match rekor_result {
             Ok(bundle) => {

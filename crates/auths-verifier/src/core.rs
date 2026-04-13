@@ -499,23 +499,50 @@ impl Serialize for DevicePublicKey {
 
 impl<'de> Deserialize<'de> for DevicePublicKey {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct Raw {
-            curve: String,
-            key: String,
+        // Accept both formats:
+        // - New: {"curve": "p256", "key": "hex..."}
+        // - Legacy: "hex..." (bare string, infer curve from length)
+        let value = serde_json::Value::deserialize(d)?;
+
+        if let Some(s) = value.as_str() {
+            // Legacy format: bare hex string
+            if s.is_empty() {
+                return Ok(Self::default());
+            }
+            let bytes = hex::decode(s)
+                .map_err(|e| serde::de::Error::custom(format!("invalid hex: {e}")))?;
+            let curve = match bytes.len() {
+                32 => auths_crypto::CurveType::Ed25519,
+                33 | 65 => auths_crypto::CurveType::P256,
+                n => {
+                    return Err(serde::de::Error::custom(format!(
+                        "invalid device public key length: {n}"
+                    )));
+                }
+            };
+            return Self::try_new(curve, &bytes)
+                .map_err(|e| serde::de::Error::custom(e.to_string()));
         }
-        let raw = Raw::deserialize(d)?;
-        let curve = match raw.curve.as_str() {
+
+        // New format: {"curve": "...", "key": "..."}
+        let curve_str = value["curve"]
+            .as_str()
+            .ok_or_else(|| serde::de::Error::custom("missing 'curve' field"))?;
+        let key_hex = value["key"]
+            .as_str()
+            .ok_or_else(|| serde::de::Error::custom("missing 'key' field"))?;
+
+        let curve = match curve_str {
             "ed25519" => auths_crypto::CurveType::Ed25519,
             "p256" => auths_crypto::CurveType::P256,
             other => {
                 return Err(serde::de::Error::custom(format!("unknown curve: {other}")));
             }
         };
-        if raw.key.is_empty() {
+        if key_hex.is_empty() {
             return Err(serde::de::Error::custom("empty key"));
         }
-        let bytes = hex::decode(&raw.key)
+        let bytes = hex::decode(key_hex)
             .map_err(|e| serde::de::Error::custom(format!("invalid hex: {e}")))?;
         Self::try_new(curve, &bytes).map_err(|e| serde::de::Error::custom(e.to_string()))
     }
@@ -1555,15 +1582,15 @@ impl<'de> Deserialize<'de> for CommitOid {
 /// Error type for `PublicKeyHex` construction.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PublicKeyHexError {
-    /// The hex string has the wrong length (not 64 chars / 32 bytes).
-    #[error("expected 64 hex chars (32 bytes), got {0} chars")]
+    /// The hex string has the wrong length (not 64 or 66 chars).
+    #[error("expected 64 (Ed25519) or 66 (P-256) hex chars, got {0} chars")]
     InvalidLength(usize),
     /// The string contains non-hex characters.
     #[error("invalid hex: {0}")]
     InvalidHex(String),
 }
 
-/// A validated hex-encoded Ed25519 public key (64 hex chars = 32 bytes).
+/// A validated hex-encoded public key (64 hex chars for Ed25519, 66 for P-256 compressed).
 ///
 /// Use `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -1585,7 +1612,7 @@ impl PublicKeyHex {
     pub fn parse(raw: &str) -> Result<Self, PublicKeyHexError> {
         let s = raw.trim().to_lowercase();
         let bytes = hex::decode(&s).map_err(|e| PublicKeyHexError::InvalidHex(e.to_string()))?;
-        if bytes.len() != 32 {
+        if bytes.len() != 32 && bytes.len() != 33 {
             return Err(PublicKeyHexError::InvalidLength(s.len()));
         }
         Ok(Self(s))

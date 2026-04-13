@@ -349,9 +349,12 @@ impl SecureSigner for SeedMapSigner {
 
 struct ResolvedKey {
     alias: KeyAlias,
-    seed: SecureSeed,
+    /// None for hardware backends (SE) — signing goes through the keychain directly.
+    seed: Option<SecureSeed>,
     public_key_bytes: Vec<u8>,
     curve: auths_crypto::CurveType,
+    /// True if this key is backed by hardware (Secure Enclave, HSM).
+    is_hardware: bool,
 }
 
 fn resolve_optional_key(
@@ -364,21 +367,46 @@ fn resolve_optional_key(
     match material {
         None => Ok(None),
         Some(SigningKeyMaterial::Alias(alias)) => {
+            // Hardware backends (Secure Enclave): resolve pubkey only; signing happens
+            // later via StorageSigner so private key material never leaves the enclave.
+            // MIRROR: keep in sync with workflows/signing.rs (SE branch)
+            if keychain.is_hardware_backend() {
+                let (pubkey, curve) = auths_core::storage::keychain::extract_public_key_bytes(
+                    keychain,
+                    alias,
+                    passphrase_provider,
+                )
+                .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
+                return Ok(Some(ResolvedKey {
+                    alias: alias.clone(),
+                    seed: None,
+                    public_key_bytes: pubkey,
+                    curve,
+                    is_hardware: true,
+                }));
+            }
+
             let (_, _role, encrypted) = keychain
                 .load_key(alias)
                 .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
             let passphrase = passphrase_provider
                 .get_passphrase(passphrase_prompt)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
+            // Defense-in-depth: SE keys must never reach the software decrypt path.
+            debug_assert!(
+                !keychain.is_hardware_backend(),
+                "SE keys must never reach decrypt_keypair"
+            );
             let pkcs8 = core_signer::decrypt_keypair(&encrypted, &passphrase)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             let (seed, pubkey, curve) = core_signer::load_seed_and_pubkey(&pkcs8)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             Ok(Some(ResolvedKey {
                 alias: alias.clone(),
-                seed,
+                seed: Some(seed),
                 public_key_bytes: pubkey.to_vec(),
                 curve,
+                is_hardware: false,
             }))
         }
         Some(SigningKeyMaterial::Direct(seed)) => {
@@ -386,9 +414,10 @@ fn resolve_optional_key(
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             Ok(Some(ResolvedKey {
                 alias: KeyAlias::new_unchecked(synthetic_alias),
-                seed: SecureSeed::new(*seed.as_bytes()),
+                seed: Some(SecureSeed::new(*seed.as_bytes())),
                 public_key_bytes: pubkey.to_vec(),
                 curve: auths_crypto::CurveType::Ed25519,
+                is_hardware: false,
             }))
         }
     }
@@ -486,11 +515,16 @@ pub fn sign_artifact(
     let mut seeds: HashMap<String, SecureSeed> = HashMap::new();
     let identity_alias: Option<KeyAlias> = identity_resolved.map(|r| {
         let alias = r.alias.clone();
-        seeds.insert(r.alias.into_inner(), r.seed);
+        if let Some(seed) = r.seed {
+            seeds.insert(r.alias.into_inner(), seed);
+        }
         alias
     });
     let device_alias = device_resolved.alias.clone();
-    seeds.insert(device_resolved.alias.into_inner(), device_resolved.seed);
+    let device_is_hardware = device_resolved.is_hardware;
+    if let Some(seed) = device_resolved.seed {
+        seeds.insert(device_resolved.alias.into_inner(), seed);
+    }
     let device_pk_bytes = device_resolved.public_key_bytes;
 
     let device_did = match device_resolved.curve {
@@ -529,41 +563,21 @@ pub fn sign_artifact(
         .map(|sha| validate_commit_sha(&sha))
         .transpose()?;
 
-    let signer = SeedMapSigner { seeds };
-    // Seeds are already resolved — passphrase provider will not be called.
-    let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
-
-    let mut attestation = create_signed_attestation(
+    let attestation_json = create_and_sign_attestation(
+        ctx,
+        seeds,
+        device_is_hardware,
         now,
         &rid,
         &managed.controller_did,
         &device_did,
         &device_pk_bytes,
-        Some(payload),
+        payload,
         &meta,
-        &signer,
-        &noop_provider,
-        identity_alias.as_ref(),
-        Some(&device_alias),
-        vec![Capability::sign_release()],
-        None,
-        None,
-        validated_commit_sha,
-        None,
-    )
-    .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
-
-    resign_attestation(
-        &mut attestation,
-        &signer,
-        &noop_provider,
         identity_alias.as_ref(),
         &device_alias,
-    )
-    .map_err(|e| ArtifactSigningError::ResignFailed(e.to_string()))?;
-
-    let attestation_json = serde_json::to_string_pretty(&attestation)
-        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+        validated_commit_sha,
+    )?;
 
     Ok(ArtifactSigningResult {
         attestation_json,
@@ -571,6 +585,65 @@ pub fn sign_artifact(
         digest: artifact_meta.digest.hex,
         dsse_signature: None,
     })
+}
+
+/// Create, sign, and serialize an attestation. Handles both hardware and software signers.
+#[allow(clippy::too_many_arguments)]
+fn create_and_sign_attestation(
+    ctx: &AuthsContext,
+    seeds: HashMap<String, SecureSeed>,
+    device_is_hardware: bool,
+    now: DateTime<Utc>,
+    rid: &ResourceId,
+    controller_did: &IdentityDID,
+    device_did: &DeviceDID,
+    device_pk_bytes: &[u8],
+    payload: serde_json::Value,
+    meta: &AttestationMetadata,
+    identity_alias: Option<&KeyAlias>,
+    device_alias: &KeyAlias,
+    commit_sha: Option<String>,
+) -> Result<String, ArtifactSigningError> {
+    let seed_signer = SeedMapSigner { seeds };
+    let storage_signer = auths_core::signing::StorageSigner::new(Arc::clone(&ctx.key_storage));
+    let signer: &dyn SecureSigner = if device_is_hardware {
+        &storage_signer
+    } else {
+        &seed_signer
+    };
+    let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
+
+    let mut attestation = create_signed_attestation(
+        now,
+        rid,
+        controller_did,
+        device_did,
+        device_pk_bytes,
+        Some(payload),
+        meta,
+        signer,
+        &noop_provider,
+        identity_alias,
+        Some(device_alias),
+        vec![Capability::sign_release()],
+        None,
+        None,
+        commit_sha,
+        None,
+    )
+    .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+
+    resign_attestation(
+        &mut attestation,
+        signer,
+        &noop_provider,
+        identity_alias,
+        device_alias,
+    )
+    .map_err(|e| ArtifactSigningError::ResignFailed(e.to_string()))?;
+
+    serde_json::to_string_pretty(&attestation)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))
 }
 
 /// Signs artifact bytes with a one-time ephemeral Ed25519 key. No keychain, no

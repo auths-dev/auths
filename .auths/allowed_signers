@@ -1,4 +1,8 @@
 # auths:managed — do not edit manually
 # auths:attestation
-zDnaeozdqZm6u6rx8pc8RjSFVXRdoyACavgoRMQQx1qCXvsdm@auths.local namespaces="git" ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBF4bP1XrwmGIzv5AR3L64MzVmhncKSJZvUm/vRaNFQ5k6yREvLIJwOmAI7ifc9oaTWdLOW/JD/fx3AzDRhNEyNU=
+<<<<<<< Updated upstream
+zDnaeTDAGwQd8YFykWwyeQEQC8hrHHWbeb9AsoJanKqheTQ9g@auths.local namespaces="git" ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBClLNRlBdgjEEPozFdM4rZh556aLyLCJLj77b+Ru5ACTaqMmXLuRlUWkonba8LKP2NKBWNme+4+tRLYngOaDDxo=
+=======
+zDnaeQaiejhv26gSRpcw2GuXyFwnBsg5d4LnEYmwswkL6xqNq@auths.local namespaces="git" ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBAI983sl/v/wrXA3Eh6z1pbEUrSISl90Ydt6pagriWA6af/KRqhnahp5ZfUFLDxBNRRLHj8y/aWvWO9NqCQWRXI=
+>>>>>>> Stashed changes
 # auths:manual

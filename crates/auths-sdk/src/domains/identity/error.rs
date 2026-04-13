@@ -97,6 +97,15 @@ pub enum RotationError {
         "rotation event committed to KEL but keychain write failed — manual recovery required: {0}"
     )]
     PartialRotation(String),
+
+    /// Rotation requires a software-backed key but the current key is hardware-backed (SE/HSM).
+    #[error(
+        "rotation requires a software-backed key; alias '{alias}' is hardware-backed (Secure Enclave) and cannot export the raw key material rotation needs"
+    )]
+    HardwareKeyNotRotatable {
+        /// The alias whose backend refused to export.
+        alias: String,
+    },
 }
 
 /// Errors from remote registry operations.
@@ -208,6 +217,7 @@ impl AuthsErrorInfo for RotationError {
             Self::KelHistoryFailed(_) => "AUTHS-E5304",
             Self::RotationFailed(_) => "AUTHS-E5305",
             Self::PartialRotation(_) => "AUTHS-E5306",
+            Self::HardwareKeyNotRotatable { .. } => "AUTHS-E5307",
         }
     }
 
@@ -223,6 +233,9 @@ impl AuthsErrorInfo for RotationError {
             Self::PartialRotation(_) => {
                 Some("Re-run the rotation with the same new key to complete the keychain write")
             }
+            Self::HardwareKeyNotRotatable { .. } => Some(
+                "Hardware-backed keys (Secure Enclave / HSM) cannot be rotated in-place; provision a software-backed identity or rotate by creating a new identity",
+            ),
         }
     }
 }

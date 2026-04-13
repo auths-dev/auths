@@ -9,7 +9,14 @@ use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::layout::StorageLayoutConfig;
 use auths_id::testing::fakes::FakeIdentityStorage;
 use auths_verifier::verify::{verify_at_time, verify_with_keys};
-use auths_verifier::{DeviceDID, VerificationStatus, verify_chain, verify_device_authorization};
+use auths_verifier::{
+    DeviceDID, DevicePublicKey, VerificationStatus, verify_chain, verify_device_authorization,
+};
+
+/// Wrap a raw Ed25519 public key (32 bytes) into a `DevicePublicKey` for tests.
+fn ed(pk: &[u8]) -> DevicePublicKey {
+    DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, pk).unwrap()
+}
 
 use chrono::Utc;
 use git2::Repository;
@@ -41,6 +48,7 @@ fn init_identity(
         &identity_storage,
         keychain,
         chrono::Utc::now(),
+        auths_crypto::CurveType::Ed25519,
     )
     .expect("Failed to initialize identity");
     (did.to_string(), alias.into_inner())
@@ -210,7 +218,7 @@ async fn test_full_identity_lifecycle() {
     );
 
     // 4. Verify the attestation with the identity's public key
-    verify_with_keys(&attestation, &identity_pk)
+    verify_with_keys(&attestation, &ed(&identity_pk))
         .await
         .expect("Attestation should verify");
 
@@ -220,7 +228,7 @@ async fn test_full_identity_lifecycle() {
     // 6. Verify OLD attestation still passes with historical key (sequence 0)
     let old_pk = resolve_identity_public_key_at_sequence(&repo_path, &identity_did, 0);
     assert_eq!(old_pk, identity_pk, "Historical key should match original");
-    verify_at_time(&attestation, &old_pk, attestation.timestamp.unwrap())
+    verify_at_time(&attestation, &ed(&old_pk), attestation.timestamp.unwrap())
         .await
         .expect("Old attestation should verify with historical key");
 
@@ -245,7 +253,7 @@ async fn test_full_identity_lifecycle() {
     );
 
     // 8. Verify new attestation with new public key
-    verify_with_keys(&new_attestation, &new_identity_pk)
+    verify_with_keys(&new_attestation, &ed(&new_identity_pk))
         .await
         .expect("New attestation should verify with rotated key");
 }
@@ -293,7 +301,7 @@ async fn test_attestation_chain_after_rotation() {
     );
 
     // Verify 2-link chain
-    let report = verify_chain(&[att1.clone(), att2], &identity_pk)
+    let report = verify_chain(&[att1.clone(), att2], &ed(&identity_pk))
         .await
         .expect("Chain verify failed");
     assert!(report.is_valid(), "Chain should be valid");
@@ -304,7 +312,7 @@ async fn test_attestation_chain_after_rotation() {
 
     // Verify the first link still works with historical key
     let old_pk = resolve_identity_public_key_at_sequence(&repo_path, &identity_did, 0);
-    verify_at_time(&att1, &old_pk, att1.timestamp.unwrap())
+    verify_at_time(&att1, &ed(&old_pk), att1.timestamp.unwrap())
         .await
         .expect("First chain link should still verify with historical key");
 }
@@ -340,7 +348,7 @@ async fn test_verify_device_authorization_lifecycle() {
         &identity_did,
         &device_did,
         std::slice::from_ref(&attestation),
-        &identity_pk,
+        &ed(&identity_pk),
     )
     .await
     .expect("verify_device_authorization failed");
@@ -350,10 +358,14 @@ async fn test_verify_device_authorization_lifecycle() {
     let mut revoked_att = attestation;
     revoked_att.revoked_at = Some(Utc::now());
 
-    let report =
-        verify_device_authorization(&identity_did, &device_did, &[revoked_att], &identity_pk)
-            .await
-            .expect("verify_device_authorization failed");
+    let report = verify_device_authorization(
+        &identity_did,
+        &device_did,
+        &[revoked_att],
+        &ed(&identity_pk),
+    )
+    .await
+    .expect("verify_device_authorization failed");
     assert!(
         !report.is_valid(),
         "Revoked device should not be authorized"
@@ -392,7 +404,7 @@ async fn test_multiple_rotations_maintain_verification() {
     );
 
     // Verify initial attestation
-    verify_with_keys(&original_attestation, &original_pk)
+    verify_with_keys(&original_attestation, &ed(&original_pk))
         .await
         .expect("Original attestation should verify");
 
@@ -406,7 +418,7 @@ async fn test_multiple_rotations_maintain_verification() {
     assert_eq!(historical_pk, original_pk);
     verify_at_time(
         &original_attestation,
-        &historical_pk,
+        &ed(&historical_pk),
         original_attestation.timestamp.unwrap(),
     )
     .await
@@ -433,7 +445,7 @@ async fn test_multiple_rotations_maintain_verification() {
     );
 
     // Verify new attestation with current key
-    verify_with_keys(&new_attestation, &current_pk)
+    verify_with_keys(&new_attestation, &ed(&current_pk))
         .await
         .expect("New attestation should verify with current key");
 }

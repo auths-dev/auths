@@ -1,15 +1,9 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 
-use auths_crypto::Pkcs8Der;
-use auths_sdk::crypto::decrypt_keypair;
-use auths_sdk::crypto::extract_seed_from_pkcs8;
-use auths_sdk::crypto::provider_bridge;
-use auths_sdk::keychain::KeyStorage;
 use auths_sdk::storage_layout::layout;
 
 use crate::factories::storage::build_auths_context;
-use auths_sdk::workflows::auth::sign_auth_challenge;
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
@@ -76,33 +70,22 @@ fn handle_auth_challenge(nonce: &str, domain: &str, ctx: &CliConfig) -> Result<(
     let key_alias = auths_sdk::keychain::KeyAlias::new(&key_alias_str)
         .map_err(|e| anyhow!("Invalid key alias: {e}"))?;
 
-    let (_stored_did, _role, encrypted_key) = auths_ctx
-        .key_storage
-        .load_key(&key_alias)
-        .with_context(|| format!("Failed to load key '{}'", key_alias_str))?;
+    let message = auths_sdk::workflows::auth::build_auth_challenge_message(nonce, domain)
+        .context("Failed to build auth challenge payload")?;
 
-    let passphrase =
-        passphrase_provider.get_passphrase(&format!("Enter passphrase for '{}':", key_alias))?;
-    let pkcs8_bytes = decrypt_keypair(&encrypted_key, &passphrase)
-        .context("Failed to decrypt key (invalid passphrase?)")?;
-
-    let pkcs8 = Pkcs8Der::new(&pkcs8_bytes[..]);
-    let seed =
-        extract_seed_from_pkcs8(&pkcs8).context("Failed to extract seed from key material")?;
-
-    // Derive public key from the seed instead of resolving via KEL
-    let public_key_bytes = provider_bridge::ed25519_public_key_from_seed_sync(&seed)
-        .context("Failed to derive public key from seed")?;
-    let public_key_hex = hex::encode(public_key_bytes);
-
-    let result = sign_auth_challenge(
-        nonce,
-        domain,
-        &seed,
-        &public_key_hex,
-        controller_did.as_str(),
+    let (signature_bytes, public_key_bytes, _curve) = auths_sdk::keychain::sign_with_key(
+        auths_ctx.key_storage.as_ref(),
+        &key_alias,
+        passphrase_provider.as_ref(),
+        message.as_bytes(),
     )
-    .context("Failed to sign auth challenge")?;
+    .with_context(|| format!("Failed to sign auth challenge with key '{}'", key_alias))?;
+
+    let result = auths_sdk::workflows::auth::SignedAuthChallenge {
+        signature_hex: hex::encode(&signature_bytes),
+        public_key_hex: hex::encode(&public_key_bytes),
+        did: controller_did.to_string(),
+    };
 
     if is_json_mode() {
         JsonResponse::success(

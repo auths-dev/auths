@@ -175,7 +175,15 @@ fn tamper_commit_sha_breaks_signature() {
 
     // Extract the pubkey from the issuer DID for verification
     let issuer_did = att.issuer.as_str();
-    let pk = auths_crypto::did_key_to_ed25519(issuer_did).expect("should resolve did:key");
+    let (pk_bytes, curve): (Vec<u8>, auths_crypto::CurveType) =
+        match auths_crypto::did_key_decode(issuer_did).expect("should resolve did:key") {
+            auths_crypto::DecodedDidKey::Ed25519(k) => {
+                (k.to_vec(), auths_crypto::CurveType::Ed25519)
+            }
+            auths_crypto::DecodedDidKey::P256(k) => (k, auths_crypto::CurveType::P256),
+        };
+    let pk =
+        auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes).expect("valid device pubkey");
 
     // Verify the tampered attestation — should fail because signature covers commit_sha
     let rt = tokio::runtime::Runtime::new().unwrap();
