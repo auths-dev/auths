@@ -237,6 +237,7 @@ mod tests {
             public_key_hex: PublicKeyHex::new_unchecked(
                 "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
             ),
+            curve: auths_crypto::CurveType::Ed25519,
             kel_tip_said: Some("ETip".to_string()),
             kel_sequence: Some(0),
             first_seen: Utc::now(),

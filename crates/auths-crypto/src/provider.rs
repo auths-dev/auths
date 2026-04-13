@@ -247,7 +247,9 @@ pub const P256_SIGNATURE_LEN: usize = 64;
 /// let curve = CurveType::P256; // default
 /// let (seed, pubkey) = provider.generate_keypair(curve).await?;
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum CurveType {
     /// Ed25519 (RFC 8032). 32-byte keys, 64-byte signatures.

@@ -51,7 +51,7 @@ use crate::types::IdentityRotationConfig;
 /// let (rot, bytes) = compute_rotation_event(
 ///     &state,
 ///     &next_signer,
-///     &new_next_signer.public_key,
+///     new_next_signer.public_key(),
 ///     new_next_signer.curve(),
 ///     None,
 /// )?;
@@ -902,7 +902,7 @@ mod tests {
         let (rot, _bytes) = compute_rotation_event(
             &state,
             &next_signer,
-            &new_next_signer.public_key,
+            new_next_signer.public_key(),
             auths_crypto::CurveType::P256,
             None,
         )

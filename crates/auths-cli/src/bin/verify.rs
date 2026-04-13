@@ -1,4 +1,4 @@
-// fn-114: allow during curve-agnostic refactor; removed in fn-114.40.
+// allow during curve-agnostic refactor
 #![allow(clippy::disallowed_methods)]
 #![allow(clippy::print_stdout, clippy::print_stderr, clippy::exit)]
 //! auths-verify: SSH signature verification for Auths identities

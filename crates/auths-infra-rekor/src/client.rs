@@ -506,9 +506,8 @@ fn pubkey_to_pem(pk: &DevicePublicKey) -> Result<String, LogError> {
         }
         auths_crypto::CurveType::P256 => {
             use p256::pkcs8::EncodePublicKey;
-            let vk = p256::ecdsa::VerifyingKey::from_sec1_bytes(raw).map_err(|e| {
-                LogError::InvalidResponse(format!("invalid P-256 SEC1 bytes: {e}"))
-            })?;
+            let vk = p256::ecdsa::VerifyingKey::from_sec1_bytes(raw)
+                .map_err(|e| LogError::InvalidResponse(format!("invalid P-256 SEC1 bytes: {e}")))?;
             vk.to_public_key_pem(p256::pkcs8::LineEnding::LF)
                 .map_err(|e| LogError::InvalidResponse(format!("P-256 PEM encode: {e}")))
         }
@@ -541,9 +540,7 @@ mod tests {
     fn dsse_format() {
         let client = &*TEST_CLIENT;
         let pk = [0u8; 32]; // Ed25519-length placeholder so decode succeeds
-        let entry = client
-            .build_dsse(b"test data", &pk, b"signature")
-            .unwrap();
+        let entry = client.build_dsse(b"test data", &pk, b"signature").unwrap();
 
         assert_eq!(entry.kind, "dsse");
         assert_eq!(entry.api_version, "0.0.1");

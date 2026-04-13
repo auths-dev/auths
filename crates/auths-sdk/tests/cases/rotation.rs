@@ -222,7 +222,7 @@ fn compute_rotation_event_is_deterministic() {
     let (_, bytes1) = compute_rotation_event(
         &state,
         &signer1,
-        &new_next_signer1.public_key,
+        new_next_signer1.public_key(),
         new_next_signer1.curve(),
         None,
     )
@@ -234,7 +234,7 @@ fn compute_rotation_event_is_deterministic() {
     let (_, bytes2) = compute_rotation_event(
         &state,
         &signer2,
-        &new_next_signer2.public_key,
+        new_next_signer2.public_key(),
         new_next_signer2.curve(),
         None,
     )
@@ -285,7 +285,7 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
     let (rot, _bytes) = compute_rotation_event(
         &state,
         &next_signer,
-        &new_next_signer.public_key,
+        new_next_signer.public_key(),
         new_next_signer.curve(),
         None,
     )

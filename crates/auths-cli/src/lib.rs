@@ -1,4 +1,4 @@
-// fn-114: crate-level allow during curve-agnostic refactor. Removed or narrowed in fn-114.40 after Phase 4 sweeps.
+// crate-level allow during curve-agnostic refactor.
 #![allow(clippy::disallowed_methods)]
 // CLI is the presentation boundary — printing and exit are expected here.
 #![allow(clippy::print_stdout, clippy::print_stderr, clippy::exit)]

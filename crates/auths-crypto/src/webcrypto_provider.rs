@@ -127,7 +127,8 @@ impl CryptoProvider for WebCryptoProvider {
                         return Err(CryptoError::OperationFailed(
                             "WebCrypto P-256 requires uncompressed SEC1 (65 bytes); \
                              compressed->uncompressed conversion not wired in pure-wasm \
-                             build. Supply 65-byte key.".into(),
+                             build. Supply 65-byte key."
+                                .into(),
                         ));
                     }
                 }

@@ -86,7 +86,8 @@ pub fn initialize_keri_identity(
         // fn-114.18: pass the curve-tagged PKCS8 blob through unchanged. The old
         // extract-seed + encode_seed_as_pkcs8 pattern silently wrapped P-256
         // scalars in an Ed25519 OID.
-        let encrypted_current = encrypt_keypair(result.current_keypair_pkcs8.as_ref(), &passphrase)?;
+        let encrypted_current =
+            encrypt_keypair(result.current_keypair_pkcs8.as_ref(), &passphrase)?;
         let encrypted_next = encrypt_keypair(result.next_keypair_pkcs8.as_ref(), &passphrase)?;
 
         keychain.store_key(

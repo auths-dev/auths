@@ -452,7 +452,9 @@ mod tests {
         let provider = auths_crypto::RingCryptoProvider;
         let result = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(verify_signed_receipt_signature(&signed, &typed_pk, &provider))
+            .block_on(verify_signed_receipt_signature(
+                &signed, &typed_pk, &provider,
+            ))
             .unwrap();
         assert!(result);
     }
@@ -478,7 +480,9 @@ mod tests {
         let provider = auths_crypto::RingCryptoProvider;
         let result = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(verify_signed_receipt_signature(&signed, &typed_pk, &provider))
+            .block_on(verify_signed_receipt_signature(
+                &signed, &typed_pk, &provider,
+            ))
             .unwrap();
         assert!(!result);
     }
