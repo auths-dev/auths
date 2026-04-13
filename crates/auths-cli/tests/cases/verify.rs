@@ -197,11 +197,12 @@ fn test_verify_with_roots_json_explicit_policy() {
     let roots_path = roots_dir.path().join("roots.json");
     let roots_content = format!(
         r#"{{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {{
                     "did": "{}",
                     "public_key_hex": "{}",
+                    "curve": "ed25519",
                     "note": "Test issuer"
                 }}
             ]
@@ -234,7 +235,7 @@ fn test_verify_explicit_rejects_unknown_identity() {
     // Create an empty roots.json file (no matching identity)
     let roots_dir = tempfile::tempdir().unwrap();
     let roots_path = roots_dir.path().join("roots.json");
-    std::fs::write(&roots_path, r#"{"version": 1, "roots": []}"#).unwrap();
+    std::fs::write(&roots_path, r#"{"version": 2, "roots": []}"#).unwrap();
 
     // --trust and --roots-file are on the device verify command
     let mut cmd = Command::cargo_bin("auths").unwrap();

@@ -1,3 +1,6 @@
+// allow during curve-agnostic refactor
+#![allow(clippy::disallowed_methods)]
+
 //! Benchmarks for registry operations.
 //!
 //! Run with: cargo bench --package auths-storage

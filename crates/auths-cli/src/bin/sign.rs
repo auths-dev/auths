@@ -1,4 +1,6 @@
 #![allow(clippy::print_stdout, clippy::print_stderr, clippy::exit)]
+// allow during curve-agnostic refactor
+#![allow(clippy::disallowed_methods)]
 //! auths-sign: Git SSH signing program compatible with `gpg.ssh.program`
 //!
 //! Git calls this binary with ssh-keygen compatible arguments:

@@ -106,7 +106,7 @@
           "description": "Device's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).",
           "allOf": [
             {
-              "$ref": "#/definitions/Ed25519Signature"
+              "$ref": "#/definitions/TypedSignature"
             }
           ]
         },
@@ -125,7 +125,7 @@
           "description": "Issuer's Ed25519 signature over the canonical attestation data (hex-encoded in JSON).",
           "allOf": [
             {
-              "$ref": "#/definitions/Ed25519Signature"
+              "$ref": "#/definitions/TypedSignature"
             }
           ]
         },
@@ -223,11 +223,6 @@
           "type": "string"
         }
       }
-    },
-    "Ed25519Signature": {
-      "description": "Ed25519 signature (64 bytes, hex-encoded)",
-      "type": "string",
-      "format": "hex"
     },
     "IdentityDID": {
       "description": "Strongly-typed wrapper for identity DIDs (e.g., `\"did:keri:E...\"`).\n\nUsage: ```rust # use auths_verifier::IdentityDID; let did = IdentityDID::parse(\"did:keri:Eabc123\").unwrap(); assert_eq!(did.as_str(), \"did:keri:Eabc123\");\n\nlet s: String = did.into_inner(); ```",
@@ -339,6 +334,11 @@
           ]
         }
       ]
+    },
+    "TypedSignature": {
+      "description": "Curve-agnostic 64-byte signature (Ed25519 or P-256 r||s, hex-encoded). Curve is determined by the companion DevicePublicKey.",
+      "type": "string",
+      "format": "hex"
     }
   }
 }

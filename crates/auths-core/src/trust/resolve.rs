@@ -155,10 +155,13 @@ pub fn resolve_trust(
                     &pk_hex[..16.min(pk_hex.len())]
                 );
                 if prompt(&msg) {
+                    let curve = auths_crypto::CurveType::from_public_key_len(presented_pk.len())
+                        .unwrap_or(auths_crypto::CurveType::Ed25519);
                     let pin = PinnedIdentity {
                         did,
                         #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode on line 151 guarantees valid hex output
                         public_key_hex: PublicKeyHex::new_unchecked(pk_hex),
+                        curve,
                         kel_tip_said: None,
                         kel_sequence: None,
                         first_seen: now,
@@ -191,6 +194,8 @@ pub fn resolve_trust(
                 did: old_pin.did,
                 #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid lowercase hex
                 public_key_hex: PublicKeyHex::new_unchecked(hex::encode(&proof.new_public_key)),
+                curve: auths_crypto::CurveType::from_public_key_len(proof.new_public_key.len())
+                    .unwrap_or(old_pin.curve),
                 kel_tip_said: Some(proof.new_kel_tip),
                 kel_sequence: Some(proof.new_sequence),
                 first_seen: old_pin.first_seen,
@@ -232,6 +237,7 @@ mod tests {
             public_key_hex: PublicKeyHex::new_unchecked(
                 "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
             ),
+            curve: auths_crypto::CurveType::Ed25519,
             kel_tip_said: Some("ETip".to_string()),
             kel_sequence: Some(0),
             first_seen: Utc::now(),

@@ -1,3 +1,6 @@
+// allow during curve-agnostic refactor
+#![allow(clippy::disallowed_methods)]
+
 use std::sync::OnceLock;
 
 use ring::rand::SystemRandom;

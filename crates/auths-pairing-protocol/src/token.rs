@@ -205,10 +205,23 @@ impl PairingSession {
         message.extend_from_slice(&initiator_pubkey);
         message.extend_from_slice(device_x25519_pubkey);
 
-        let peer_public_key = UnparsedPublicKey::new(&ED25519, device_ed25519_pubkey);
-        peer_public_key
-            .verify(&message, signature)
-            .map_err(|_| ProtocolError::InvalidSignature)?;
+        // curve dispatch via byte length (pairing-boundary ingestion).
+        match device_ed25519_pubkey.len() {
+            32 => {
+                let peer = UnparsedPublicKey::new(&ED25519, device_ed25519_pubkey);
+                peer.verify(&message, signature)
+                    .map_err(|_| ProtocolError::InvalidSignature)?;
+            }
+            33 | 65 => {
+                auths_crypto::RingCryptoProvider::p256_verify(
+                    device_ed25519_pubkey,
+                    &message,
+                    signature,
+                )
+                .map_err(|_| ProtocolError::InvalidSignature)?;
+            }
+            _ => return Err(ProtocolError::InvalidSignature),
+        }
 
         Ok(())
     }

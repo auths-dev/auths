@@ -491,8 +491,35 @@ fn list_devices(
             .last()
             .expect("Grouped attestations should not be empty");
 
-        let verification_result =
-            auths_sdk::attestation::verify_with_resolver(now, &resolver, latest, None);
+        // single verifier path via auths_verifier::verify_with_keys.
+        // Callers resolve the DID and pass the typed key directly.
+        let verification_result: Result<(), auths_verifier::AttestationError> = {
+            use auths_sdk::identity::DidResolver;
+            use auths_verifier::AttestationError;
+            match resolver.resolve(latest.issuer.as_str()) {
+                Ok(resolved) => {
+                    let pk_bytes: Vec<u8> = resolved.public_key_bytes().to_vec();
+                    match auths_verifier::decode_public_key_bytes(&pk_bytes) {
+                        Ok(issuer_pk) => {
+                            #[allow(clippy::expect_used)]
+                            let rt = tokio::runtime::Builder::new_current_thread()
+                                .enable_all()
+                                .build()
+                                .expect("tokio runtime");
+                            rt.block_on(auths_verifier::verify_with_keys(latest, &issuer_pk))
+                                .map(|_| ())
+                        }
+                        Err(e) => Err(AttestationError::DidResolutionError(format!(
+                            "invalid issuer key: {e}"
+                        ))),
+                    }
+                }
+                Err(e) => Err(AttestationError::DidResolutionError(format!(
+                    "Resolver error for {}: {}",
+                    latest.issuer, e
+                ))),
+            }
+        };
 
         let status_string = match verification_result {
             Ok(()) => {

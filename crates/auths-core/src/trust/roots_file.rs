@@ -44,8 +44,12 @@ pub struct RootEntry {
     /// The DID of the trusted identity (e.g., "did:keri:EXq5...")
     pub did: String,
 
-    /// The public key in hex format (64 chars, 32 bytes for Ed25519).
+    /// The public key in hex format (32 bytes Ed25519 or 33 bytes P-256 compressed).
     pub public_key_hex: PublicKeyHex,
+
+    /// Curve of the root's public key (fn-114.35). Required — pre-launch hard
+    /// break, no v1 fallback.
+    pub curve: auths_crypto::CurveType,
 
     /// Optional KEL tip SAID for rotation-aware matching.
     #[serde(default)]
@@ -63,9 +67,9 @@ impl RootsFile {
     pub fn parse(content: &str) -> Result<Self, TrustError> {
         let file: Self = serde_json::from_str(content)?;
 
-        if file.version != 1 {
+        if file.version != 2 {
             return Err(TrustError::InvalidData(format!(
-                "Unsupported roots.json version: {}. Expected version 1.",
+                "Unsupported roots.json version: {}. Expected version 2 (fn-114.35 hard break).",
                 file.version
             )));
         }
@@ -117,11 +121,12 @@ mod tests {
     #[test]
     fn test_load_valid_roots_file() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:ETest123",
                     "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+                    "curve": "ed25519",
                     "kel_tip_said": "ETip",
                     "note": "Test maintainer"
                 }
@@ -131,7 +136,7 @@ mod tests {
         let (_dir, path) = create_temp_roots_file(content);
         let roots = RootsFile::load(&path).unwrap();
 
-        assert_eq!(roots.version, 1);
+        assert_eq!(roots.version, 2);
         assert_eq!(roots.roots.len(), 1);
         assert_eq!(roots.roots[0].did, "did:keri:ETest123");
         assert_eq!(roots.roots[0].kel_tip_said, Some("ETip".to_string()));
@@ -141,11 +146,12 @@ mod tests {
     #[test]
     fn test_load_minimal_entry() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:ETest",
-                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -159,8 +165,9 @@ mod tests {
 
     #[test]
     fn test_load_rejects_wrong_version() {
+        // version 2 is the only supported; v1 or any other must reject.
         let content = r#"{
-            "version": 2,
+            "version": 1,
             "roots": []
         }"#;
 
@@ -174,11 +181,12 @@ mod tests {
     #[test]
     fn test_load_rejects_invalid_hex() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:ETest",
-                    "public_key_hex": "not-valid-hex"
+                    "public_key_hex": "not-valid-hex",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -192,11 +200,12 @@ mod tests {
     #[test]
     fn test_load_rejects_wrong_key_length() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:ETest",
-                    "public_key_hex": "0102030405"
+                    "public_key_hex": "0102030405",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -210,15 +219,17 @@ mod tests {
     #[test]
     fn test_find_by_did() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:E111",
-                    "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+                    "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+                    "curve": "ed25519"
                 },
                 {
                     "did": "did:keri:E222",
-                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -234,15 +245,17 @@ mod tests {
     #[test]
     fn test_dids() {
         let content = r#"{
-            "version": 1,
+            "version": 2,
             "roots": [
                 {
                     "did": "did:keri:E111",
-                    "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+                    "public_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+                    "curve": "ed25519"
                 },
                 {
                     "did": "did:keri:E222",
-                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    "public_key_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "curve": "ed25519"
                 }
             ]
         }"#;
@@ -263,6 +276,7 @@ mod tests {
             public_key_hex: PublicKeyHex::new_unchecked(
                 "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
             ),
+            curve: auths_crypto::CurveType::Ed25519,
             kel_tip_said: None,
             note: None,
         };

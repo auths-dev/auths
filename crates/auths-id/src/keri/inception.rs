@@ -94,7 +94,7 @@ fn generate_keypair(curve: CurveType) -> Result<GeneratedKeypair, InceptionError
             let public_key = compressed.as_bytes().to_vec();
 
             // CESR encode with 1AAJ prefix (P-256 transferable)
-            let cesr_encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(&public_key));
+            let cesr_encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(&public_key));
 
             // PKCS8 DER encoding
             let pkcs8_doc = signing_key

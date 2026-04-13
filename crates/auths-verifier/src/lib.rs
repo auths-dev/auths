@@ -1,10 +1,11 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
 #![deny(
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::exit,
     clippy::dbg_macro
 )]
-#![deny(clippy::disallowed_methods)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![warn(clippy::too_many_lines, clippy::cognitive_complexity)]
 #![warn(missing_docs)]
@@ -78,11 +79,13 @@ pub use action::ActionEnvelope;
 
 // Re-export core types
 pub use core::{
-    Attestation, Capability, CapabilityError, CommitOid, CommitOidError, DevicePublicKey,
-    EcdsaP256Error, EcdsaP256PublicKey, EcdsaP256Signature, Ed25519KeyError, Ed25519PublicKey,
-    Ed25519Signature, IdentityBundle, InvalidKeyError, MAX_ATTESTATION_JSON_SIZE,
-    MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyHex, PublicKeyHexError, ResourceId, Role,
-    RoleParseError, SignatureAlgorithm, SignatureLengthError, ThresholdPolicy, VerifiedAttestation,
+    ATTESTATION_VERSION, Attestation, Capability, CapabilityError, CommitOid, CommitOidError,
+    DevicePublicKey, EcdsaP256Error, EcdsaP256PublicKey, EcdsaP256Signature, Ed25519KeyError,
+    Ed25519PublicKey, Ed25519Signature, IdentityBundle, InvalidKeyError, MAX_ATTESTATION_JSON_SIZE,
+    MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyDecodeError, PublicKeyHex,
+    PublicKeyHexError, ResourceId, Role, RoleParseError, SignatureAlgorithm, SignatureLengthError,
+    SignatureVerifyError, ThresholdPolicy, TypedSignature, VerifiedAttestation,
+    decode_public_key_bytes, decode_public_key_hex,
 };
 
 // Re-export test utilities

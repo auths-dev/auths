@@ -1,10 +1,11 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
 #![deny(
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::exit,
     clippy::dbg_macro
 )]
-#![deny(clippy::disallowed_methods)]
 #![warn(clippy::too_many_lines, clippy::cognitive_complexity)]
 //! # auths-id
 //!

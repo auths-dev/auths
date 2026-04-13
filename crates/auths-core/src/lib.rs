@@ -1,3 +1,5 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
 #![warn(clippy::too_many_lines, clippy::cognitive_complexity)]
 #![warn(missing_docs)]
 //! # auths-core

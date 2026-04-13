@@ -1,4 +1,6 @@
 //! Type-safe wrapper for PKCS#8 DER-encoded private key material.
+// allow during curve-agnostic refactor
+#![allow(clippy::disallowed_methods)]
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

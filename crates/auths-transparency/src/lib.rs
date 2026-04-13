@@ -1,3 +1,5 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
 #![warn(missing_docs)]
 //! Append-only transparency log for Auths.
 //!

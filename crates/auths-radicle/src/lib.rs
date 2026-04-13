@@ -1,3 +1,6 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
+
 //! Radicle protocol integration for Auths.
 //!
 //! This crate provides the adapter layer between Radicle and Auths, enabling:

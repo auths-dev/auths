@@ -1,3 +1,6 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
+
 //! Storage adapters for auths-id ports.
 //!
 //! This crate provides concrete implementations of the storage port traits

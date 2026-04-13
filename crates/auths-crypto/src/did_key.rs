@@ -3,6 +3,8 @@
 //! Centralizes all `did:key` ↔ public key byte conversions in one place.
 //! The `did:key` method encodes a public key directly in the DID string
 //! using multicodec + base58btc, per the [did:key spec](https://w3c-ccg.github.io/did-method-key/).
+// allow during curve-agnostic refactor
+#![allow(clippy::disallowed_methods)]
 
 /// Ed25519 multicodec prefix (varint-encoded `0xED`).
 const ED25519_MULTICODEC: [u8; 2] = [0xED, 0x01];

@@ -469,6 +469,7 @@ dependencies = [
  "js-sys",
  "p256 0.13.2",
  "ring",
+ "serde",
  "ssh-key",
  "thiserror 2.0.18",
  "tokio",

@@ -186,6 +186,7 @@ dependencies = [
  "hex",
  "p256",
  "ring",
+ "serde",
  "ssh-key",
  "thiserror 2.0.18",
  "tokio",

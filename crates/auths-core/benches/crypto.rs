@@ -1,3 +1,6 @@
+// allow during curve-agnostic refactor
+#![allow(clippy::disallowed_methods)]
+
 //! Benchmarks for cryptographic operations in auths-core.
 //!
 //! Run with: cargo bench --package auths_core

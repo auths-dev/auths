@@ -51,7 +51,7 @@ use crate::domains::identity::types::IdentityRotationResult;
 /// let (rot, bytes) = compute_rotation_event(
 ///     &state,
 ///     &next_signer,
-///     &new_next_signer.public_key,
+///     new_next_signer.public_key(),
 ///     new_next_signer.curve(),
 ///     None,
 /// )?;

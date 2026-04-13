@@ -345,23 +345,25 @@ pub fn handle_artifact(
                     None => bail!("--ci requires --commit <sha>. Pass the commit SHA explicitly."),
                 };
 
-                let ci_env = match detect_ci_environment() {
-                    Some(env) => env,
-                    None => match ci_platform.as_deref() {
-                        Some("local") => CiEnvironment {
-                            platform: CiPlatform::Local,
-                            workflow_ref: None,
-                            run_id: None,
-                            actor: None,
-                            runner_os: None,
-                        },
-                        Some(name) => CiEnvironment {
-                            platform: CiPlatform::Generic,
-                            workflow_ref: None,
-                            run_id: None,
-                            actor: None,
-                            runner_os: Some(name.to_string()),
-                        },
+                // Explicit --ci-platform takes precedence over auto-detection so
+                // tests can opt out of the CI runner's auto-detected platform.
+                let ci_env = match ci_platform.as_deref() {
+                    Some("local") => CiEnvironment {
+                        platform: CiPlatform::Local,
+                        workflow_ref: None,
+                        run_id: None,
+                        actor: None,
+                        runner_os: None,
+                    },
+                    Some(name) => CiEnvironment {
+                        platform: CiPlatform::Generic,
+                        workflow_ref: None,
+                        run_id: None,
+                        actor: None,
+                        runner_os: Some(name.to_string()),
+                    },
+                    None => match detect_ci_environment() {
+                        Some(env) => env,
                         None => bail!(
                             "No CI environment detected. If this is intentional (e.g., testing), \
                              pass --ci-platform local. Otherwise run inside GitHub Actions, \

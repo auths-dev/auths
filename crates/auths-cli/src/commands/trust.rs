@@ -195,7 +195,13 @@ fn handle_pin(cmd: TrustPinCommand, now: DateTime<Utc>) -> Result<()> {
 
     let pin = PinnedIdentity {
         did: cmd.did.clone(),
-        public_key_hex,
+        public_key_hex: public_key_hex.clone(),
+        curve: auths_crypto::CurveType::from_public_key_len(
+            hex::decode(public_key_hex.as_str())
+                .map(|b| b.len())
+                .unwrap_or(0),
+        )
+        .unwrap_or(auths_crypto::CurveType::Ed25519),
         kel_tip_said: cmd.kel_tip,
         kel_sequence: None,
         first_seen: now,

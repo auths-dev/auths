@@ -4,6 +4,12 @@
 //! across Ed25519 and P-256. The [`TypedSeed`] enum carries the curve with
 //! the key material — callers never need to guess which curve a key uses.
 
+// INVARIANT: sanctioned crypto boundary — the only legitimate caller of ring
+// Ed25519 APIs inside the workspace. Every other crate must route through
+// auths_crypto::sign / public_key / TypedSignerKey. Permanent allow; do NOT
+// remove in fn-114.40.
+#![allow(clippy::disallowed_methods)]
+
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::provider::{CryptoError, CurveType, SecureSeed};
@@ -168,11 +174,15 @@ pub fn public_key(seed: &TypedSeed) -> Result<Vec<u8>, CryptoError> {
     }
 }
 
-/// A parsed signing key with its curve carried explicitly — used by rotation
-/// workflows and any other code that needs to sign arbitrary bytes without
-/// re-inferring the curve.
+/// Parsed signing key with curve carried explicitly — the authoritative owner
+/// of a private-key + curve pair across sign / verify / PKCS8 export / CESR
+/// encoding flows.
 ///
-/// Constructed from PKCS8 DER bytes via [`RotationSigner::from_pkcs8`], which
+/// `TypedSignerKey` replaces every `(SecureSeed, CurveType)` pair, every
+/// `[u8; 32]` seed passed alongside an implicit "assume Ed25519", and every
+/// ad-hoc `RotationSigner` (kept as a type alias during the fn-114 refactor).
+///
+/// Constructed from PKCS8 DER bytes via [`TypedSignerKey::from_pkcs8`], which
 /// delegates to [`parse_key_material`] for curve detection.
 ///
 /// Args on construction:
@@ -180,18 +190,27 @@ pub fn public_key(seed: &TypedSeed) -> Result<Vec<u8>, CryptoError> {
 ///
 /// Usage:
 /// ```ignore
-/// let s = RotationSigner::from_pkcs8(&pkcs8)?;
-/// let sig = s.sign(b"rotation event bytes")?;
-/// let cesr = s.cesr_encoded(); // "D..." for Ed25519, "1AAJ..." for P-256
+/// let s = TypedSignerKey::from_pkcs8(&pkcs8)?;
+/// let sig = s.sign(b"payload bytes")?;
+/// let cesr = s.cesr_encoded_pubkey(); // "D..." for Ed25519, "1AAI..." for P-256 (spec-correct)
+/// let pkcs8 = s.to_pkcs8()?;          // curve-aware encode (replaces build_ed25519_pkcs8_v2)
 /// ```
-pub struct RotationSigner {
-    /// The private seed, tagged with its curve.
-    pub seed: TypedSeed,
-    /// The public key bytes (32 Ed25519, 33 P-256 compressed).
-    pub public_key: Vec<u8>,
+#[derive(Debug)]
+pub struct TypedSignerKey {
+    /// The private seed, tagged with its curve. Private — access via [`TypedSignerKey::curve`]
+    /// or the typed sign/to_pkcs8 methods. Prevents callers from grabbing raw bytes and
+    /// re-introducing curve-less dispatch.
+    seed: TypedSeed,
+    /// The public key bytes (32 Ed25519, 33 P-256 compressed). Private — access via
+    /// [`TypedSignerKey::public_key`].
+    public_key: Vec<u8>,
 }
 
-impl RotationSigner {
+/// Transitional alias. Callers that haven't migrated yet keep working. Remove
+/// in fn-114.40 once every caller has switched to `TypedSignerKey`.
+pub type RotationSigner = TypedSignerKey;
+
+impl TypedSignerKey {
     /// Parse a PKCS8 DER blob into a curve-tagged signer.
     pub fn from_pkcs8(bytes: &[u8]) -> Result<Self, CryptoError> {
         let parsed = parse_key_material(bytes)?;
@@ -201,16 +220,82 @@ impl RotationSigner {
         })
     }
 
+    /// Construct directly from a typed seed and its derived public key.
+    /// Caller must ensure the public key matches the seed's curve; if the
+    /// lengths disagree with the curve, returns `InvalidPrivateKey`.
+    pub fn from_parts(seed: TypedSeed, public_key: Vec<u8>) -> Result<Self, CryptoError> {
+        let expected = seed.curve().public_key_len();
+        if public_key.len() != expected {
+            return Err(CryptoError::InvalidPrivateKey(format!(
+                "public key length {} does not match {} expected {} bytes",
+                public_key.len(),
+                seed.curve(),
+                expected
+            )));
+        }
+        Ok(Self { seed, public_key })
+    }
+
+    /// Derive from a typed seed by recomputing the public key.
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+    pub fn from_seed(seed: TypedSeed) -> Result<Self, CryptoError> {
+        let pk = public_key(&seed)?;
+        Ok(Self {
+            seed,
+            public_key: pk,
+        })
+    }
+
     /// CESR-encoded public key string.
     ///
-    /// Uses the derivation codes defined in `auths_keri::KeriPublicKey`:
+    /// Uses the spec-correct derivation codes:
     /// - `D` + base64url(32 bytes) for Ed25519
-    /// - `1AAJ` + base64url(33 bytes compressed SEC1) for P-256
-    pub fn cesr_encoded(&self) -> String {
+    /// - `1AAI` + base64url(33 bytes compressed SEC1) for P-256
+    ///
+    /// audit corrected a prior `1AAJ` emission (which is the CESR
+    /// spec's P-256 *signature* prefix, not verkey). `KeriPublicKey::parse`
+    /// remains tolerant of legacy `1AAJ` so pre-fn-114.37 identities still
+    /// deserialize.
+    pub fn cesr_encoded_pubkey(&self) -> String {
         use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
         match self.seed.curve() {
             CurveType::Ed25519 => format!("D{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
-            CurveType::P256 => format!("1AAJ{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
+            CurveType::P256 => format!("1AAI{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
+        }
+    }
+
+    /// Legacy alias; callers should prefer [`cesr_encoded_pubkey`].
+    pub fn cesr_encoded(&self) -> String {
+        self.cesr_encoded_pubkey()
+    }
+
+    /// Curve-aware PKCS8 DER encode — replaces `build_ed25519_pkcs8_v2` and
+    /// `encode_seed_as_pkcs8`. Dispatches on the seed's curve so a P-256 seed
+    /// never silently wraps as an Ed25519 PKCS8 blob (hazard S3/S4).
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+    pub fn to_pkcs8(&self) -> Result<crate::pkcs8::Pkcs8Der, CryptoError> {
+        match &self.seed {
+            TypedSeed::Ed25519(seed_bytes) => {
+                if self.public_key.len() != crate::provider::ED25519_PUBLIC_KEY_LEN {
+                    return Err(CryptoError::InvalidPrivateKey(
+                        "Ed25519 public key must be 32 bytes".to_string(),
+                    ));
+                }
+                let mut pk = [0u8; 32];
+                pk.copy_from_slice(&self.public_key);
+                let bytes = crate::key_material::build_ed25519_pkcs8_v2(seed_bytes, &pk);
+                Ok(crate::pkcs8::Pkcs8Der::new(bytes))
+            }
+            TypedSeed::P256(scalar) => {
+                use p256::ecdsa::SigningKey;
+                use p256::pkcs8::EncodePrivateKey;
+                let sk = SigningKey::from_slice(scalar)
+                    .map_err(|e| CryptoError::InvalidPrivateKey(format!("P-256 scalar: {e}")))?;
+                let doc = sk
+                    .to_pkcs8_der()
+                    .map_err(|e| CryptoError::OperationFailed(format!("P-256 PKCS8: {e}")))?;
+                Ok(crate::pkcs8::Pkcs8Der::new(doc.as_bytes().to_vec()))
+            }
         }
     }
 
@@ -223,6 +308,18 @@ impl RotationSigner {
     /// Returns the curve this signer uses.
     pub fn curve(&self) -> CurveType {
         self.seed.curve()
+    }
+
+    /// Returns the public key bytes (32 for Ed25519, 33 for P-256 compressed).
+    pub fn public_key(&self) -> &[u8] {
+        &self.public_key
+    }
+
+    /// Returns a reference to the typed seed. Scoped access for signing paths that
+    /// need the `TypedSeed` directly (e.g. `auths_crypto::sign(&seed, msg)`) without
+    /// exposing the raw bytes.
+    pub fn seed(&self) -> &TypedSeed {
+        &self.seed
     }
 }
 
@@ -384,31 +481,77 @@ mod tests {
         }
 
         #[test]
-        fn rotation_signer_ed25519_roundtrip() {
+        fn typed_signer_key_ed25519_roundtrip() {
             use ring::rand::SystemRandom;
             use ring::signature::Ed25519KeyPair;
             let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
-            let s = RotationSigner::from_pkcs8(pkcs8.as_ref()).unwrap();
+            let s = TypedSignerKey::from_pkcs8(pkcs8.as_ref()).unwrap();
             assert_eq!(s.curve(), CurveType::Ed25519);
-            assert!(s.cesr_encoded().starts_with('D'));
-            assert_eq!(s.public_key.len(), 32);
+            assert!(s.cesr_encoded_pubkey().starts_with('D'));
+            assert_eq!(s.public_key().len(), 32);
             let sig = s.sign(b"msg").unwrap();
             assert_eq!(sig.len(), 64);
         }
 
         #[test]
-        fn rotation_signer_p256_roundtrip() {
+        fn typed_signer_key_p256_roundtrip() {
             use p256::ecdsa::SigningKey;
             use p256::elliptic_curve::rand_core::OsRng;
             use p256::pkcs8::EncodePrivateKey;
             let sk = SigningKey::random(&mut OsRng);
             let pkcs8 = sk.to_pkcs8_der().unwrap();
-            let s = RotationSigner::from_pkcs8(pkcs8.as_bytes()).unwrap();
+            let s = TypedSignerKey::from_pkcs8(pkcs8.as_bytes()).unwrap();
             assert_eq!(s.curve(), CurveType::P256);
-            assert!(s.cesr_encoded().starts_with("1AAJ"));
-            assert_eq!(s.public_key.len(), 33);
+            assert!(s.cesr_encoded_pubkey().starts_with("1AAI"));
+            assert_eq!(s.public_key().len(), 33);
             let sig = s.sign(b"msg").unwrap();
             assert_eq!(sig.len(), 64);
+        }
+
+        #[test]
+        fn typed_signer_key_to_pkcs8_ed25519_roundtrip() {
+            use ring::rand::SystemRandom;
+            use ring::signature::Ed25519KeyPair;
+            let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+            let s = TypedSignerKey::from_pkcs8(pkcs8.as_ref()).unwrap();
+            let encoded = s.to_pkcs8().unwrap();
+            let reparsed = TypedSignerKey::from_pkcs8(encoded.as_ref()).unwrap();
+            assert_eq!(reparsed.curve(), CurveType::Ed25519);
+            assert_eq!(reparsed.public_key(), s.public_key());
+            assert_eq!(reparsed.seed.as_bytes(), s.seed.as_bytes());
+        }
+
+        #[test]
+        fn typed_signer_key_to_pkcs8_p256_roundtrip() {
+            let seed = TypedSeed::P256({
+                let mut scalar = [9u8; 32];
+                scalar[0] |= 1;
+                scalar
+            });
+            let s = TypedSignerKey::from_seed(seed).unwrap();
+            let encoded = s.to_pkcs8().unwrap();
+            let reparsed = TypedSignerKey::from_pkcs8(encoded.as_ref()).unwrap();
+            assert_eq!(reparsed.curve(), CurveType::P256);
+            assert_eq!(reparsed.public_key(), s.public_key());
+            assert_eq!(reparsed.seed.as_bytes(), s.seed.as_bytes());
+        }
+
+        #[test]
+        fn rotation_signer_alias_still_works() {
+            use ring::rand::SystemRandom;
+            use ring::signature::Ed25519KeyPair;
+            let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+            // Via the transitional alias
+            let s: RotationSigner = RotationSigner::from_pkcs8(pkcs8.as_ref()).unwrap();
+            assert_eq!(s.curve(), CurveType::Ed25519);
+        }
+
+        #[test]
+        fn typed_signer_key_from_parts_rejects_mismatched_pubkey_length() {
+            let seed = TypedSeed::Ed25519([1u8; 32]);
+            let wrong_len_pk = vec![0u8; 33]; // 33 bytes, expected 32 for Ed25519
+            let err = TypedSignerKey::from_parts(seed, wrong_len_pk).unwrap_err();
+            assert!(matches!(err, CryptoError::InvalidPrivateKey(_)));
         }
     }
 }

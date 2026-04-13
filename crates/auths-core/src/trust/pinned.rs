@@ -25,6 +25,11 @@ pub struct PinnedIdentity {
     /// Root public key, raw bytes stored as lowercase hex.
     pub public_key_hex: PublicKeyHex,
 
+    /// Curve of the pinned key (fn-114.34). Required — pre-launch hard break, no
+    /// v1 fallback. Old pin files without this field fail to deserialize; users
+    /// re-pin.
+    pub curve: auths_crypto::CurveType,
+
     /// KEL tip SAID at the time of pinning (enables rotation continuity check).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kel_tip_said: Option<String>,
@@ -279,6 +284,7 @@ mod tests {
             public_key_hex: PublicKeyHex::new_unchecked(
                 "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
             ),
+            curve: auths_crypto::CurveType::Ed25519,
             kel_tip_said: Some("ETip".to_string()),
             kel_sequence: Some(0),
             first_seen: Utc::now(),

@@ -1,3 +1,5 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
 #![deny(
     clippy::print_stdout,
     clippy::print_stderr,

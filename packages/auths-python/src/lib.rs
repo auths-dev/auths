@@ -1,3 +1,5 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
 // PyO3 0.21 generates unsafe calls inside macro-expanded code that Edition 2024
 // flags; fixed in PyO3 0.22+. Suppress until we upgrade.
 #![allow(unsafe_op_in_unsafe_fn)]

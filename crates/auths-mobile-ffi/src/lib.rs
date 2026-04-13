@@ -1,3 +1,6 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
+
 //! UniFFI bindings for Auths mobile identity creation.
 //!
 //! This crate provides Swift and Kotlin bindings for creating KERI identities

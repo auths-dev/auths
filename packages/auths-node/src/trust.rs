@@ -92,6 +92,7 @@ pub fn pin_identity(
             } else {
                 public_key_hex
             },
+            curve: existing.curve,
             kel_tip_said: existing.kel_tip_said,
             kel_sequence: existing.kel_sequence,
             first_seen: existing.first_seen,
@@ -113,7 +114,13 @@ pub fn pin_identity(
 
     let pin = PinnedIdentity {
         did: did.clone(),
-        public_key_hex,
+        public_key_hex: public_key_hex.clone(),
+        curve: auths_crypto::CurveType::from_public_key_len(
+            hex::decode(public_key_hex.as_str())
+                .map(|b| b.len())
+                .unwrap_or(0),
+        )
+        .unwrap_or(auths_crypto::CurveType::Ed25519),
         kel_tip_said: None,
         kel_sequence: None,
         first_seen: now,

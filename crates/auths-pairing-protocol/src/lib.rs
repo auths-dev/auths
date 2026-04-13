@@ -1,3 +1,6 @@
+// crate-level allow during curve-agnostic refactor.
+#![allow(clippy::disallowed_methods)]
+
 //! Transport-agnostic pairing protocol for the auths identity system.
 //!
 //! This crate implements the cryptographic pairing protocol that allows

@@ -404,10 +404,12 @@ enum SignatureRole {
     Device,
 }
 
-/// Verify a signature, dispatching on the key's curve type.
+/// Verify a signature via the canonical `DevicePublicKey::verify`, attributing
+/// failures to the appropriate role (issuer vs device) at the boundary.
 ///
-/// Ed25519 goes through the async provider; P-256 uses the ring-backed static
-/// verifier when built with `native`.
+/// Thin wrapper preserved so that existing chain-verification code can keep
+/// its role-attributed error enum; the dispatch itself now lives in
+/// `DevicePublicKey::verify` (fn-114.14).
 async fn verify_signature_by_curve(
     pk: &DevicePublicKey,
     message: &[u8],
@@ -420,26 +422,9 @@ async fn verify_signature_by_curve(
         SignatureRole::Device => AttestationError::DeviceSignatureFailed(e),
     };
 
-    match pk.curve() {
-        auths_crypto::CurveType::Ed25519 => provider
-            .verify_ed25519(pk.as_bytes(), message, signature)
-            .await
-            .map_err(|e| map_err(e.to_string())),
-        auths_crypto::CurveType::P256 => {
-            #[cfg(feature = "native")]
-            {
-                auths_crypto::RingCryptoProvider::p256_verify(pk.as_bytes(), message, signature)
-                    .map_err(|e| map_err(e.to_string()))
-            }
-            #[cfg(not(feature = "native"))]
-            {
-                let _ = (provider, message, signature);
-                Err(map_err(
-                    "P-256 verification not available on this platform".into(),
-                ))
-            }
-        }
-    }
+    pk.verify(message, signature, provider)
+        .await
+        .map_err(|e| map_err(e.to_string()))
 }
 
 pub(crate) async fn verify_chain_inner(

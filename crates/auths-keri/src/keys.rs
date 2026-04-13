@@ -148,10 +148,15 @@ impl KeriPublicKey {
     }
 
     /// Returns the CESR derivation code prefix for this key type.
+    ///
+    /// Per the fn-114.10 CESR audit: `1AAI` is the spec-correct prefix for
+    /// P-256 verkeys. The parser (`KeriPublicKey::parse`) remains tolerant of
+    /// legacy `1AAJ` emissions so pre-fn-114.37 on-disk identities still
+    /// deserialize.
     pub fn cesr_prefix(&self) -> &'static str {
         match self {
             KeriPublicKey::Ed25519(_) => "D",
-            KeriPublicKey::P256(_) => "1AAJ",
+            KeriPublicKey::P256(_) => "1AAI",
         }
     }
 
@@ -207,14 +212,17 @@ mod tests {
 
     #[test]
     fn parse_p256_key() {
-        // Construct a valid P-256 CESR string: "1AAJ" + base64url(33 zero bytes)
+        // Construct a legacy-format P-256 CESR string: "1AAJ" + base64url(33 zero bytes).
+        // Tests the tolerant parser; emitters now use "1AAI" (fn-114.37).
         let zeros_33 = [0u8; 33];
         let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(zeros_33));
         let key = KeriPublicKey::parse(&encoded).unwrap();
         assert_eq!(key.as_bytes().len(), 33);
         assert!(matches!(key, KeriPublicKey::P256(_)));
         assert_eq!(key.curve(), auths_crypto::CurveType::P256);
-        assert_eq!(key.cesr_prefix(), "1AAJ");
+        // cesr_prefix() returns the canonical (spec-correct) prefix, not the
+        // one the input happened to use.
+        assert_eq!(key.cesr_prefix(), "1AAI");
     }
 
     #[test]

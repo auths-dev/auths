@@ -100,10 +100,26 @@ impl PairingResponse {
         message.extend_from_slice(&initiator_x25519_bytes);
         message.extend_from_slice(&device_x25519_bytes);
 
-        let peer_public_key = UnparsedPublicKey::new(&ED25519, &device_signing_bytes);
-        peer_public_key
-            .verify(&message, &signature_bytes)
-            .map_err(|_| ProtocolError::InvalidSignature)?;
+        // dispatch on device-signing pubkey length (curve travels with bytes
+        // at this boundary — the device DID encodes curve via multicodec, but the raw
+        // bytes here come from the pairing response; length is safe because Ed25519=32
+        // and P-256 compressed=33).
+        match device_signing_bytes.len() {
+            32 => {
+                let peer = UnparsedPublicKey::new(&ED25519, &device_signing_bytes);
+                peer.verify(&message, &signature_bytes)
+                    .map_err(|_| ProtocolError::InvalidSignature)?;
+            }
+            33 | 65 => {
+                auths_crypto::RingCryptoProvider::p256_verify(
+                    &device_signing_bytes,
+                    &message,
+                    &signature_bytes,
+                )
+                .map_err(|_| ProtocolError::InvalidSignature)?;
+            }
+            _ => return Err(ProtocolError::InvalidSignature),
+        }
 
         Ok(())
     }
