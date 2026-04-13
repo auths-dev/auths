@@ -12,7 +12,8 @@ use std::path::Path;
 
 use crate::error::InitError;
 
-use crate::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
+// fn-114.18: removed encode_seed_as_pkcs8, extract_seed_bytes imports —
+// rotation + initialization now pass the curve-tagged PKCS8 blob through directly.
 use crate::keri::{
     CesrKey, Event, IcpEvent, KeriSequence, Prefix, Said, Threshold, VersionString,
     finalize_icp_event, serialize_for_signing,
@@ -82,11 +83,11 @@ pub fn initialize_keri_identity(
         let passphrase = passphrase_provider
             .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
 
-        let current_seed = extract_seed_bytes(result.current_keypair_pkcs8.as_ref())?;
-        let next_seed = extract_seed_bytes(result.next_keypair_pkcs8.as_ref())?;
-
-        let encrypted_current = encrypt_keypair(&encode_seed_as_pkcs8(current_seed)?, &passphrase)?;
-        let encrypted_next = encrypt_keypair(&encode_seed_as_pkcs8(next_seed)?, &passphrase)?;
+        // fn-114.18: pass the curve-tagged PKCS8 blob through unchanged. The old
+        // extract-seed + encode_seed_as_pkcs8 pattern silently wrapped P-256
+        // scalars in an Ed25519 OID.
+        let encrypted_current = encrypt_keypair(result.current_keypair_pkcs8.as_ref(), &passphrase)?;
+        let encrypted_next = encrypt_keypair(result.next_keypair_pkcs8.as_ref(), &passphrase)?;
 
         keychain.store_key(
             local_key_alias,

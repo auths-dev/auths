@@ -53,7 +53,7 @@ impl Default for AttestationBuilder {
         #[allow(clippy::disallowed_methods)]
         let subject = CanonicalDid::new_unchecked("did:key:ztest");
         Self {
-            version: 1,
+            version: crate::core::ATTESTATION_VERSION,
             rid: ResourceId::new("test-rid"),
             issuer,
             subject,

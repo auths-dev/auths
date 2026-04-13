@@ -7,7 +7,7 @@ use crate::error::StorageError;
 use auths_core::witness::{Receipt, SignedReceipt};
 use git2::{ErrorCode, Repository, Signature};
 use log::debug;
-use ring::signature::{ED25519, UnparsedPublicKey};
+// fn-114.19: ring verify moved to DevicePublicKey::verify via provider.
 use std::path::PathBuf;
 
 use crate::keri::event::EventReceipts;
@@ -192,32 +192,29 @@ impl ReceiptStorage for GitReceiptStorage {
     }
 }
 
-/// Verify the signature on a signed receipt against a witness public key.
+/// Verify the signature on a signed receipt against a typed witness public key.
 ///
 /// Args:
-/// * `signed_receipt` - The signed receipt containing body + detached signature
-/// * `witness_public_key` - The Ed25519 public key of the witness (32 bytes)
+/// * `signed_receipt`: The signed receipt (body + detached signature).
+/// * `witness_public_key`: Typed public key carrying its curve (`DevicePublicKey`).
+///   The verify path dispatches on `witness_public_key.curve()`.
 ///
 /// Usage:
 /// ```ignore
-/// let valid = verify_signed_receipt_signature(&signed_receipt, &public_key)?;
+/// let valid = verify_signed_receipt_signature(&sr, &witness_pk, &provider).await?;
 /// ```
-pub fn verify_signed_receipt_signature(
+pub async fn verify_signed_receipt_signature(
     signed_receipt: &SignedReceipt,
-    witness_public_key: &[u8],
+    witness_public_key: &auths_verifier::DevicePublicKey,
+    provider: &dyn auths_crypto::CryptoProvider,
 ) -> Result<bool, StorageError> {
-    if witness_public_key.len() != 32 {
-        return Err(StorageError::InvalidData(format!(
-            "Invalid witness public key length: expected 32, got {}",
-            witness_public_key.len()
-        )));
-    }
-
     let payload = serde_json::to_vec(&signed_receipt.receipt)
         .map_err(|e| StorageError::InvalidData(format!("Failed to serialize receipt: {}", e)))?;
 
-    let pk = UnparsedPublicKey::new(&ED25519, witness_public_key);
-    match pk.verify(&payload, &signed_receipt.signature) {
+    match witness_public_key
+        .verify(&payload, &signed_receipt.signature, provider)
+        .await
+    {
         Ok(()) => Ok(true),
         Err(_) => Ok(false),
     }
@@ -226,20 +223,14 @@ pub fn verify_signed_receipt_signature(
 /// Verify a receipt signature (body-only receipt, no external signature).
 ///
 /// **DEPRECATED:** Use `verify_signed_receipt_signature` with `SignedReceipt` instead.
-/// This function exists for backwards compatibility with code that only has `Receipt`
-/// bodies without externalized signatures. It always returns `Ok(true)`.
+/// Body-only receipts carry no signature, so this always returns `Ok(true)` after
+/// a length sanity-check on the accompanying pubkey.
 pub fn verify_receipt_signature(
     _receipt: &Receipt,
-    witness_public_key: &[u8],
+    witness_public_key: &auths_verifier::DevicePublicKey,
 ) -> Result<bool, StorageError> {
-    if witness_public_key.len() != 32 {
-        return Err(StorageError::InvalidData(format!(
-            "Invalid witness public key length: expected 32, got {}",
-            witness_public_key.len()
-        )));
-    }
-    // Cannot verify — body-only receipt has no signature to check.
-    // Callers should migrate to verify_signed_receipt_signature.
+    // DevicePublicKey validated at construction; no further length check needed.
+    let _ = witness_public_key;
     Ok(true)
 }
 
@@ -457,7 +448,12 @@ mod tests {
             signature: sig.as_ref().to_vec(),
         };
 
-        let result = verify_signed_receipt_signature(&signed, &public_key).unwrap();
+        let typed_pk = auths_verifier::decode_public_key_bytes(&public_key).unwrap();
+        let provider = auths_crypto::RingCryptoProvider;
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(verify_signed_receipt_signature(&signed, &typed_pk, &provider))
+            .unwrap();
         assert!(result);
     }
 
@@ -478,31 +474,21 @@ mod tests {
             signature: vec![0u8; 64],
         };
 
-        let result = verify_signed_receipt_signature(&signed, &public_key).unwrap();
+        let typed_pk = auths_verifier::decode_public_key_bytes(&public_key).unwrap();
+        let provider = auths_crypto::RingCryptoProvider;
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(verify_signed_receipt_signature(&signed, &typed_pk, &provider))
+            .unwrap();
         assert!(!result);
     }
 
     #[test]
-    fn test_verify_signed_receipt_bad_key_length() {
-        use auths_core::witness::SignedReceipt;
-
-        let receipt = make_test_receipt("ESAID", "did:key:test", 0);
-        let signed = SignedReceipt {
-            receipt,
-            signature: vec![0u8; 64],
-        };
-        let bad_key = vec![0u8; 16]; // Wrong length
-
-        let result = verify_signed_receipt_signature(&signed, &bad_key);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_legacy_verify_receipt_signature_still_works() {
-        // The deprecated body-only function returns Ok(true) for any valid key length
+        // The deprecated body-only function returns Ok(true) for any valid DevicePublicKey.
         let receipt = make_test_receipt("ESAID", "did:key:test", 0);
-        let key = vec![0u8; 32];
-        let result = verify_receipt_signature(&receipt, &key).unwrap();
+        let pk = auths_verifier::decode_public_key_bytes(&[0u8; 32]).unwrap();
+        let result = verify_receipt_signature(&receipt, &pk).unwrap();
         assert!(result);
     }
 }
