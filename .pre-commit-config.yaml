@@ -51,14 +51,14 @@ repos:
 
       - id: cargo-clippy
         name: cargo clippy
-        entry: cargo clippy --all-targets --all-features -- -D warnings
+        entry: cargo clippy --all-targets --all-features --keep-going -- -D warnings
         language: system
         types: [rust]
         pass_filenames: false
 
       - id: cargo-clippy-packages
         name: cargo clippy (packages/)
-        entry: bash -c 'for d in packages/auths-node packages/auths-python packages/auths-verifier-swift; do [ -f "$d/Cargo.toml" ] && CARGO_TARGET_DIR=../../target cargo clippy --manifest-path "$d/Cargo.toml" --all-targets -- -D warnings || exit 1; done'
+        entry: bash -c 'failed=0; for d in packages/auths-node packages/auths-python packages/auths-verifier-swift; do [ -f "$d/Cargo.toml" ] || continue; CARGO_TARGET_DIR=../../target cargo clippy --manifest-path "$d/Cargo.toml" --all-targets --keep-going -- -D warnings || failed=1; done; exit $failed'
         language: system
         types: [rust]
         pass_filenames: false

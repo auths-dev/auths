@@ -1,3 +1,5 @@
+use auths_crypto::CurveType;
+use auths_verifier::DevicePublicKey;
 use auths_verifier::action::ActionEnvelope;
 use auths_verifier::core::{
     Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
@@ -28,6 +30,30 @@ fn decode_pk_hex(hex_str: &str, label: &str) -> napi::Result<Vec<u8>> {
             format!("Invalid {label} length: expected 32 (Ed25519), 33/65 (P-256), got {n}",),
         )),
     }
+}
+
+fn curve_from_len(len: usize) -> Option<CurveType> {
+    match len {
+        32 => Some(CurveType::Ed25519),
+        33 | 65 => Some(CurveType::P256),
+        _ => None,
+    }
+}
+
+fn decode_device_public_key(hex_str: &str, label: &str) -> napi::Result<DevicePublicKey> {
+    let bytes = decode_pk_hex(hex_str, label)?;
+    let curve = curve_from_len(bytes.len()).ok_or_else(|| {
+        format_error(
+            "AUTHS_INVALID_INPUT",
+            format!("Invalid {label} length: {}", bytes.len()),
+        )
+    })?;
+    DevicePublicKey::try_new(curve, &bytes).map_err(|e| {
+        format_error(
+            "AUTHS_INVALID_INPUT",
+            format!("Invalid {label} public key: {e}"),
+        )
+    })
 }
 
 fn parse_attestations(jsons: &[String]) -> napi::Result<Vec<Attestation>> {
@@ -72,7 +98,7 @@ pub async fn verify_attestation(
         ));
     }
 
-    let issuer_pk_bytes = decode_pk_hex(&issuer_pk_hex, "issuer public key")?;
+    let issuer_pk = decode_device_public_key(&issuer_pk_hex, "issuer public key")?;
 
     let att: Attestation = match serde_json::from_str(&attestation_json) {
         Ok(att) => att,
@@ -85,7 +111,7 @@ pub async fn verify_attestation(
         }
     };
 
-    match verify_with_keys(&att, &issuer_pk_bytes).await {
+    match verify_with_keys(&att, &issuer_pk).await {
         Ok(_) => Ok(NapiVerificationResult {
             valid: true,
             error: None,
@@ -105,10 +131,10 @@ pub async fn verify_chain(
     root_pk_hex: String,
 ) -> napi::Result<NapiVerificationReport> {
     check_batch_size(&attestations_json)?;
-    let root_pk_bytes = decode_pk_hex(&root_pk_hex, "root public key")?;
+    let root_pk = decode_device_public_key(&root_pk_hex, "root public key")?;
     let attestations = parse_attestations(&attestations_json)?;
 
-    match rust_verify_chain(&attestations, &root_pk_bytes).await {
+    match rust_verify_chain(&attestations, &root_pk).await {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(format_error(
             e.error_code(),
@@ -125,18 +151,13 @@ pub async fn verify_device_authorization(
     identity_pk_hex: String,
 ) -> napi::Result<NapiVerificationReport> {
     check_batch_size(&attestations_json)?;
-    let identity_pk_bytes = decode_pk_hex(&identity_pk_hex, "identity public key")?;
+    let identity_pk = decode_device_public_key(&identity_pk_hex, "identity public key")?;
     let attestations = parse_attestations(&attestations_json)?;
     let device =
         DeviceDID::parse(&device_did).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
 
-    match rust_verify_device_authorization(
-        &identity_did,
-        &device,
-        &attestations,
-        &identity_pk_bytes,
-    )
-    .await
+    match rust_verify_device_authorization(&identity_did, &device, &attestations, &identity_pk)
+        .await
     {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(format_error(
@@ -163,7 +184,7 @@ pub async fn verify_attestation_with_capability(
         ));
     }
 
-    let issuer_pk_bytes = decode_pk_hex(&issuer_pk_hex, "issuer public key")?;
+    let issuer_pk = decode_device_public_key(&issuer_pk_hex, "issuer public key")?;
 
     let att: Attestation = match serde_json::from_str(&attestation_json) {
         Ok(att) => att,
@@ -183,7 +204,7 @@ pub async fn verify_attestation_with_capability(
         )
     })?;
 
-    match rust_verify_with_capability(&att, &cap, &issuer_pk_bytes).await {
+    match rust_verify_with_capability(&att, &cap, &issuer_pk).await {
         Ok(_) => Ok(NapiVerificationResult {
             valid: true,
             error: None,
@@ -204,7 +225,7 @@ pub async fn verify_chain_with_capability(
     required_capability: String,
 ) -> napi::Result<NapiVerificationReport> {
     check_batch_size(&attestations_json)?;
-    let root_pk_bytes = decode_pk_hex(&root_pk_hex, "root public key")?;
+    let root_pk = decode_device_public_key(&root_pk_hex, "root public key")?;
     let attestations = parse_attestations(&attestations_json)?;
 
     let cap = Capability::parse(&required_capability).map_err(|e| {
@@ -214,7 +235,7 @@ pub async fn verify_chain_with_capability(
         )
     })?;
 
-    match rust_verify_chain_with_capability(&attestations, &cap, &root_pk_bytes).await {
+    match rust_verify_chain_with_capability(&attestations, &cap, &root_pk).await {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(format_error(
             e.error_code(),
@@ -277,7 +298,7 @@ pub async fn verify_at_time(
     }
 
     let at = parse_rfc3339_timestamp(&at_rfc3339)?;
-    let issuer_pk_bytes = decode_pk_hex(&issuer_pk_hex, "issuer public key")?;
+    let issuer_pk = decode_device_public_key(&issuer_pk_hex, "issuer public key")?;
 
     let att: Attestation = match serde_json::from_str(&attestation_json) {
         Ok(att) => att,
@@ -290,7 +311,7 @@ pub async fn verify_at_time(
         }
     };
 
-    match rust_verify_at_time(&att, &issuer_pk_bytes, at).await {
+    match rust_verify_at_time(&att, &issuer_pk, at).await {
         Ok(_) => Ok(NapiVerificationResult {
             valid: true,
             error: None,
@@ -323,7 +344,7 @@ pub async fn verify_at_time_with_capability(
     }
 
     let at = parse_rfc3339_timestamp(&at_rfc3339)?;
-    let issuer_pk_bytes = decode_pk_hex(&issuer_pk_hex, "issuer public key")?;
+    let issuer_pk = decode_device_public_key(&issuer_pk_hex, "issuer public key")?;
 
     let att: Attestation = match serde_json::from_str(&attestation_json) {
         Ok(att) => att,
@@ -343,7 +364,7 @@ pub async fn verify_at_time_with_capability(
         )
     })?;
 
-    match rust_verify_at_time(&att, &issuer_pk_bytes, at).await {
+    match rust_verify_at_time(&att, &issuer_pk, at).await {
         Ok(_) => {
             if att.capabilities.contains(&cap) {
                 Ok(NapiVerificationResult {
@@ -378,7 +399,7 @@ pub async fn verify_chain_with_witnesses(
     threshold: u32,
 ) -> napi::Result<NapiVerificationReport> {
     check_batch_size(&attestations_json)?;
-    let root_pk_bytes = decode_pk_hex(&root_pk_hex, "root public key")?;
+    let root_pk = decode_device_public_key(&root_pk_hex, "root public key")?;
     let attestations = parse_attestations(&attestations_json)?;
 
     let receipts: Vec<auths_verifier::SignedReceipt> = receipts_json
@@ -421,7 +442,7 @@ pub async fn verify_chain_with_witnesses(
         threshold: threshold as usize,
     };
 
-    match rust_verify_chain_with_witnesses(&attestations, &root_pk_bytes, &config).await {
+    match rust_verify_chain_with_witnesses(&attestations, &root_pk, &config).await {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(format_error(
             e.error_code(),

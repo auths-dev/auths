@@ -18,6 +18,7 @@ uniffi = { version = "0.31.0", features = ["cli"] }
 
 # Auths verifier
 auths-verifier = { path = "../../crates/auths-verifier" }
+auths-crypto = { path = "../../crates/auths-crypto" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

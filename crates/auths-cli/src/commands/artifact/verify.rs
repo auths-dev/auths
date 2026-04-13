@@ -310,20 +310,26 @@ pub async fn handle_verify(
 fn resolve_identity_key(
     identity_bundle: &Option<PathBuf>,
     attestation: &Attestation,
-) -> Result<(Vec<u8>, CanonicalDid)> {
+) -> Result<(auths_verifier::DevicePublicKey, CanonicalDid)> {
     if let Some(bundle_path) = identity_bundle {
         let bundle_content = fs::read_to_string(bundle_path)
             .with_context(|| format!("Failed to read identity bundle: {:?}", bundle_path))?;
         let bundle: IdentityBundle = serde_json::from_str(&bundle_content)
             .with_context(|| format!("Failed to parse identity bundle: {:?}", bundle_path))?;
-        let pk = hex::decode(bundle.public_key_hex.as_str())
+        let pk_bytes = hex::decode(bundle.public_key_hex.as_str())
             .context("Invalid public key hex in bundle")?;
+        let curve = auths_crypto::CurveType::from_public_key_len(pk_bytes.len())
+            .ok_or_else(|| anyhow!("Invalid bundle public key length: {}", pk_bytes.len()))?;
+        let pk = auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
+            .map_err(|e| anyhow!("Invalid bundle public key: {e}"))?;
         Ok((pk, bundle.identity_did.into()))
     } else {
         // Resolve public key from the issuer DID
         let issuer = &attestation.issuer;
-        let (pk, _curve) = resolve_pk_from_did(issuer)
+        let (pk_bytes, curve) = resolve_pk_from_did(issuer)
             .with_context(|| format!("Failed to resolve public key from issuer DID '{}'. Use --identity-bundle for stateless verification.", issuer))?;
+        let pk = auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
+            .map_err(|e| anyhow!("Invalid issuer public key resolved from DID: {e}"))?;
         Ok((pk, issuer.clone()))
     }
 }
@@ -357,7 +363,7 @@ fn resolve_pk_from_did(did: &str) -> Result<(Vec<u8>, auths_crypto::CurveType)> 
 /// Verify witness receipts if provided.
 async fn verify_witnesses(
     chain: &[Attestation],
-    root_pk: &[u8],
+    root_pk: &auths_verifier::DevicePublicKey,
     receipts_path: &Option<PathBuf>,
     witness_keys_raw: &[String],
     threshold: usize,

@@ -42,7 +42,7 @@ pub fn verify_attestation(
         )));
     }
 
-    let (issuer_pk_bytes, _curve) = crate::types::validate_pk_hex(issuer_pk_hex)?;
+    let issuer_pk = crate::types::device_public_key_from_hex(issuer_pk_hex, "issuer")?;
 
     let att: Attestation = match serde_json::from_str(attestation_json) {
         Ok(att) => att,
@@ -55,7 +55,7 @@ pub fn verify_attestation(
         }
     };
 
-    match runtime().block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
+    match runtime().block_on(verify_with_keys(&att, &issuer_pk)) {
         Ok(_) => Ok(VerificationResult {
             valid: true,
             error: None,
@@ -92,7 +92,7 @@ pub fn verify_chain(
         )));
     }
 
-    let (root_pk_bytes, _curve) = crate::types::validate_pk_hex(root_pk_hex)?;
+    let root_pk = crate::types::device_public_key_from_hex(root_pk_hex, "root")?;
 
     let attestations: Vec<Attestation> = attestations_json
         .iter()
@@ -104,7 +104,7 @@ pub fn verify_chain(
         .collect::<PyResult<Vec<_>>>()?;
 
     {
-        match runtime().block_on(rust_verify_chain(&attestations, &root_pk_bytes)) {
+        match runtime().block_on(rust_verify_chain(&attestations, &root_pk)) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
                 "[{}] Chain verification failed: {e}",
@@ -141,7 +141,7 @@ pub fn verify_device_authorization(
         )));
     }
 
-    let (identity_pk_bytes, _curve) = crate::types::validate_pk_hex(identity_pk_hex)?;
+    let identity_pk = crate::types::device_public_key_from_hex(identity_pk_hex, "identity")?;
 
     let attestations: Vec<Attestation> = attestations_json
         .iter()
@@ -159,7 +159,7 @@ pub fn verify_device_authorization(
             identity_did,
             &device,
             &attestations,
-            &identity_pk_bytes,
+            &identity_pk,
         )) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
@@ -196,7 +196,7 @@ pub fn verify_attestation_with_capability(
         )));
     }
 
-    let (issuer_pk_bytes, _curve) = crate::types::validate_pk_hex(issuer_pk_hex)?;
+    let issuer_pk = crate::types::device_public_key_from_hex(issuer_pk_hex, "issuer")?;
 
     let att: Attestation = match serde_json::from_str(attestation_json) {
         Ok(att) => att,
@@ -214,7 +214,7 @@ pub fn verify_attestation_with_capability(
     })?;
 
     {
-        match runtime().block_on(rust_verify_with_capability(&att, &cap, &issuer_pk_bytes)) {
+        match runtime().block_on(rust_verify_with_capability(&att, &cap, &issuer_pk)) {
             Ok(_) => Ok(VerificationResult {
                 valid: true,
                 error: None,
@@ -254,7 +254,7 @@ pub fn verify_chain_with_capability(
         )));
     }
 
-    let (root_pk_bytes, _curve) = crate::types::validate_pk_hex(root_pk_hex)?;
+    let root_pk = crate::types::device_public_key_from_hex(root_pk_hex, "root")?;
 
     let attestations: Vec<Attestation> = attestations_json
         .iter()
@@ -273,7 +273,7 @@ pub fn verify_chain_with_capability(
         match runtime().block_on(rust_verify_chain_with_capability(
             &attestations,
             &cap,
-            &root_pk_bytes,
+            &root_pk,
         )) {
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
@@ -313,7 +313,10 @@ fn parse_rfc3339_timestamp(at_rfc3339: &str) -> PyResult<DateTime<Utc>> {
     Ok(at)
 }
 
-fn validate_attestation_key(attestation_json: &str, issuer_pk_hex: &str) -> PyResult<Vec<u8>> {
+fn validate_attestation_key(
+    attestation_json: &str,
+    issuer_pk_hex: &str,
+) -> PyResult<auths_verifier::DevicePublicKey> {
     if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
         return Err(PyValueError::new_err(format!(
             "Attestation JSON too large: {} bytes, max {}",
@@ -322,9 +325,7 @@ fn validate_attestation_key(attestation_json: &str, issuer_pk_hex: &str) -> PyRe
         )));
     }
 
-    let (issuer_pk_bytes, _curve) = crate::types::validate_pk_hex(issuer_pk_hex)?;
-
-    Ok(issuer_pk_bytes)
+    crate::types::device_public_key_from_hex(issuer_pk_hex, "issuer")
 }
 
 /// Verify an attestation at a specific historical timestamp.
@@ -346,7 +347,7 @@ pub fn verify_at_time(
     at_rfc3339: &str,
 ) -> PyResult<VerificationResult> {
     let at = parse_rfc3339_timestamp(at_rfc3339)?;
-    let issuer_pk_bytes = validate_attestation_key(attestation_json, issuer_pk_hex)?;
+    let issuer_pk = validate_attestation_key(attestation_json, issuer_pk_hex)?;
 
     let att: Attestation = match serde_json::from_str(attestation_json) {
         Ok(att) => att,
@@ -359,7 +360,7 @@ pub fn verify_at_time(
         }
     };
 
-    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk, at)) {
         Ok(_) => Ok(VerificationResult {
             valid: true,
             error: None,
@@ -394,7 +395,7 @@ pub fn verify_at_time_with_capability(
     required_capability: &str,
 ) -> PyResult<VerificationResult> {
     let at = parse_rfc3339_timestamp(at_rfc3339)?;
-    let issuer_pk_bytes = validate_attestation_key(attestation_json, issuer_pk_hex)?;
+    let issuer_pk = validate_attestation_key(attestation_json, issuer_pk_hex)?;
 
     let att: Attestation = match serde_json::from_str(attestation_json) {
         Ok(att) => att,
@@ -411,7 +412,7 @@ pub fn verify_at_time_with_capability(
         PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
     })?;
 
-    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk_bytes, at)) {
+    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk, at)) {
         Ok(_) => {
             if att.capabilities.contains(&cap) {
                 Ok(VerificationResult {
@@ -466,7 +467,7 @@ pub fn verify_chain_with_witnesses(
         )));
     }
 
-    let (root_pk_bytes, _curve) = crate::types::validate_pk_hex(root_pk_hex)?;
+    let root_pk = crate::types::device_public_key_from_hex(root_pk_hex, "root")?;
 
     let attestations: Vec<Attestation> = attestations_json
         .iter()
@@ -515,7 +516,7 @@ pub fn verify_chain_with_witnesses(
     {
         match runtime().block_on(rust_verify_chain_with_witnesses(
             &attestations,
-            &root_pk_bytes,
+            &root_pk,
             &config,
         )) {
             Ok(report) => Ok(report.into()),

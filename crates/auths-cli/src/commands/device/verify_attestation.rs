@@ -165,36 +165,38 @@ fn effective_trust_policy(cmd: &VerifyCommand) -> TrustPolicy {
     }
 }
 
+/// Wrap raw pubkey bytes from a trust store (pin or roots.json) into a curve-tagged
+/// `DevicePublicKey`. Infers the curve from length via `CurveType::from_public_key_len`.
+fn bytes_to_device_public_key(
+    bytes: &[u8],
+    source: &str,
+) -> Result<auths_verifier::DevicePublicKey> {
+    let curve = auths_crypto::CurveType::from_public_key_len(bytes.len())
+        .ok_or_else(|| anyhow!("Invalid {} public key length: {}", source, bytes.len()))?;
+    auths_verifier::DevicePublicKey::try_new(curve, bytes)
+        .map_err(|e| anyhow!("Invalid {} public key: {e}", source))
+}
+
 /// Resolve the issuer public key from various sources.
 ///
 /// Resolution precedence:
-/// 1. --issuer-pk (direct key, bypasses trust)
+/// 1. `--issuer-pk` (direct key, bypasses trust)
 /// 2. Pinned identity store
-/// 3. roots.json file
+/// 3. `roots.json` file
 /// 4. Trust policy (TOFU prompt or explicit rejection)
 fn resolve_issuer_key(
     now: chrono::DateTime<Utc>,
     cmd: &VerifyCommand,
     att: &Attestation,
-) -> Result<Vec<u8>> {
+) -> Result<auths_verifier::DevicePublicKey> {
     // 1. Direct key takes precedence
     if let Some(ref pk_hex) = cmd.issuer_pk {
         let pk_bytes =
             hex::decode(pk_hex).context("Invalid hex string provided for issuer public key")?;
-        let curve = match pk_bytes.len() {
-            32 => auths_crypto::CurveType::Ed25519,
-            33 | 65 => auths_crypto::CurveType::P256,
-            _ => {
-                return Err(anyhow!(
-                    "Invalid issuer public key length: {}",
-                    pk_bytes.len()
-                ));
-            }
-        };
-        // Validate via DevicePublicKey type system
-        auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
-            .map_err(|e| anyhow!("Invalid issuer public key: {e}"))?;
-        return Ok(pk_bytes);
+        let curve = auths_crypto::CurveType::from_public_key_len(pk_bytes.len())
+            .ok_or_else(|| anyhow!("Invalid issuer public key length: {}", pk_bytes.len()))?;
+        return auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
+            .map_err(|e| anyhow!("Invalid issuer public key: {e}"));
     }
 
     // Determine the DID to look up
@@ -209,7 +211,7 @@ fn resolve_issuer_key(
         if !is_json_mode() {
             println!("Using pinned identity: {}", did);
         }
-        return Ok(pin.public_key_bytes()?);
+        return bytes_to_device_public_key(&pin.public_key_bytes()?, "pinned identity");
     }
 
     // 3. Check roots.json file
@@ -240,7 +242,7 @@ fn resolve_issuer_key(
                 trust_level: TrustLevel::OrgPolicy,
             };
             store.pin(pin)?;
-            return Ok(root.public_key_bytes()?);
+            return bytes_to_device_public_key(&root.public_key_bytes()?, "roots.json");
         }
     }
 
@@ -297,7 +299,7 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
     }
 
     // 3. Resolve issuer public key
-    let issuer_pk_bytes = resolve_issuer_key(now, cmd, &att)?;
+    let issuer_pk = resolve_issuer_key(now, cmd, &att)?;
 
     let required_capability: Option<Capability> = cmd.require_capability.as_ref().map(|cap| {
         cap.parse::<Capability>().unwrap_or_else(|e| {
@@ -308,9 +310,9 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
 
     // 5. Verify the attestation (with or without capability check)
     let verify_result = if let Some(ref cap) = required_capability {
-        verify_with_capability(&att, cap, &issuer_pk_bytes).await
+        verify_with_capability(&att, cap, &issuer_pk).await
     } else {
-        verify_with_keys(&att, &issuer_pk_bytes).await
+        verify_with_keys(&att, &issuer_pk).await
     };
 
     match verify_result {
@@ -330,13 +332,10 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
                     threshold: cmd.witness_threshold,
                 };
 
-                let report = verify_chain_with_witnesses(
-                    std::slice::from_ref(&att),
-                    &issuer_pk_bytes,
-                    &config,
-                )
-                .await
-                .context("Witness chain verification failed")?;
+                let report =
+                    verify_chain_with_witnesses(std::slice::from_ref(&att), &issuer_pk, &config)
+                        .await
+                        .context("Witness chain verification failed")?;
 
                 if !report.is_valid() {
                     if !is_json_mode()
@@ -447,21 +446,9 @@ pub async fn handle_verify_attestation(
 
     let issuer_pk_bytes = hex::decode(issuer_pubkey_hex)
         .context("Invalid hex string provided for issuer public key")?;
+    let issuer_pk = bytes_to_device_public_key(&issuer_pk_bytes, "issuer")?;
 
-    let curve = match issuer_pk_bytes.len() {
-        32 => auths_crypto::CurveType::Ed25519,
-        33 | 65 => auths_crypto::CurveType::P256,
-        _ => {
-            return Err(anyhow!(
-                "Invalid issuer public key length: {}",
-                issuer_pk_bytes.len()
-            ));
-        }
-    };
-    auths_verifier::DevicePublicKey::try_new(curve, &issuer_pk_bytes)
-        .map_err(|e| anyhow!("Invalid issuer public key: {e}"))?;
-
-    match verify_with_keys(&att, &issuer_pk_bytes).await {
+    match verify_with_keys(&att, &issuer_pk).await {
         Ok(_) => {
             println!("Attestation verified successfully.");
             Ok(())

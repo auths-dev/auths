@@ -3,6 +3,7 @@
 //! This crate provides Swift and Kotlin bindings for the Auths attestation
 //! verification library using Mozilla's UniFFI.
 
+use ::auths_crypto::CurveType;
 use ::auths_verifier::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use ::auths_verifier::types::{
     ChainLink as RustChainLink, DeviceDID, VerificationReport as RustVerificationReport,
@@ -12,6 +13,26 @@ use ::auths_verifier::verify::{
     verify_chain as rust_verify_chain,
     verify_device_authorization as rust_verify_device_authorization, verify_with_keys,
 };
+use ::auths_verifier::DevicePublicKey;
+
+/// Decode a hex-encoded public key and wrap it into a curve-tagged `DevicePublicKey`.
+///
+/// Curve is inferred from decoded byte length: 32 → Ed25519, 33/65 → P-256.
+fn decode_device_public_key(hex_str: &str, label: &str) -> Result<DevicePublicKey, VerifierError> {
+    let bytes = hex::decode(hex_str)
+        .map_err(|e| VerifierError::InvalidPublicKey(format!("Invalid {label} hex: {e}")))?;
+    let curve = match bytes.len() {
+        32 => CurveType::Ed25519,
+        33 | 65 => CurveType::P256,
+        n => {
+            return Err(VerifierError::InvalidPublicKey(format!(
+                "Invalid {label} length: expected 32 (Ed25519) or 33/65 (P-256), got {n}"
+            )));
+        }
+    };
+    DevicePublicKey::try_new(curve, &bytes)
+        .map_err(|e| VerifierError::InvalidPublicKey(format!("Invalid {label}: {e}")))
+}
 
 // Use proc-macro based approach (no UDL)
 uniffi::setup_scaffolding!();
@@ -146,26 +167,16 @@ pub fn verify_attestation(attestation_json: String, issuer_pk_hex: String) -> Ve
         };
     }
 
-    // Decode hex
-    let issuer_pk_bytes = match hex::decode(&issuer_pk_hex) {
-        Ok(bytes) => bytes,
+    // Decode hex → curve-tagged public key
+    let issuer_pk = match decode_device_public_key(&issuer_pk_hex, "issuer public key") {
+        Ok(pk) => pk,
         Err(e) => {
             return VerificationResult {
                 valid: false,
-                error: Some(format!("Invalid issuer public key hex: {}", e)),
+                error: Some(e.to_string()),
             };
         }
     };
-
-    if issuer_pk_bytes.len() != 32 {
-        return VerificationResult {
-            valid: false,
-            error: Some(format!(
-                "Invalid issuer public key length: expected 32 bytes (64 hex chars), got {}",
-                issuer_pk_bytes.len()
-            )),
-        };
-    }
 
     // Parse attestation
     let att: Attestation = match serde_json::from_str(&attestation_json) {
@@ -188,7 +199,7 @@ pub fn verify_attestation(attestation_json: String, issuer_pk_hex: String) -> Ve
             };
         }
     };
-    match rt.block_on(verify_with_keys(&att, &issuer_pk_bytes)) {
+    match rt.block_on(verify_with_keys(&att, &issuer_pk)) {
         Ok(_verified) => VerificationResult {
             valid: true,
             error: None,
@@ -221,16 +232,8 @@ pub fn verify_chain(
         )));
     }
 
-    // Decode hex
-    let root_pk_bytes = hex::decode(&root_pk_hex)
-        .map_err(|e| VerifierError::InvalidPublicKey(format!("Invalid hex: {}", e)))?;
-
-    if root_pk_bytes.len() != 32 {
-        return Err(VerifierError::InvalidPublicKey(format!(
-            "Expected 32 bytes (64 hex chars), got {}",
-            root_pk_bytes.len()
-        )));
-    }
+    // Decode hex → curve-tagged public key
+    let root_pk = decode_device_public_key(&root_pk_hex, "root public key")?;
 
     // Parse attestations
     let attestations: Vec<Attestation> = attestations_json
@@ -245,7 +248,7 @@ pub fn verify_chain(
     // Verify chain (bridge sync UniFFI boundary → async verifier)
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| VerifierError::VerificationFailed(format!("Async runtime: {e}")))?;
-    match rt.block_on(rust_verify_chain(&attestations, &root_pk_bytes)) {
+    match rt.block_on(rust_verify_chain(&attestations, &root_pk)) {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(VerifierError::VerificationFailed(format!(
             "Chain verification failed: {}",
@@ -282,16 +285,8 @@ pub fn verify_device_authorization(
         )));
     }
 
-    // Decode hex
-    let identity_pk_bytes = hex::decode(&identity_pk_hex)
-        .map_err(|e| VerifierError::InvalidPublicKey(format!("Invalid hex: {}", e)))?;
-
-    if identity_pk_bytes.len() != 32 {
-        return Err(VerifierError::InvalidPublicKey(format!(
-            "Expected 32 bytes (64 hex chars), got {}",
-            identity_pk_bytes.len()
-        )));
-    }
+    // Decode hex → curve-tagged public key
+    let identity_pk = decode_device_public_key(&identity_pk_hex, "identity public key")?;
 
     // Parse attestations
     let attestations: Vec<Attestation> = attestations_json
@@ -313,7 +308,7 @@ pub fn verify_device_authorization(
         &identity_did,
         &device,
         &attestations,
-        &identity_pk_bytes,
+        &identity_pk,
     )) {
         Ok(report) => Ok(report.into()),
         Err(e) => Err(VerifierError::VerificationFailed(format!(

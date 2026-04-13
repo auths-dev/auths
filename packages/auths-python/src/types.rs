@@ -1,4 +1,5 @@
 use auths_crypto::CurveType;
+use auths_verifier::DevicePublicKey;
 use auths_verifier::types::{
     ChainLink as RustChainLink, VerificationReport as RustVerificationReport,
     VerificationStatus as RustVerificationStatus,
@@ -23,6 +24,13 @@ pub fn validate_pk_hex(hex_str: &str) -> PyResult<(Vec<u8>, CurveType)> {
         }
     };
     Ok((bytes, curve))
+}
+
+/// Parse a hex-encoded public key and wrap it into a curve-tagged `DevicePublicKey`.
+pub fn device_public_key_from_hex(hex_str: &str, label: &str) -> PyResult<DevicePublicKey> {
+    let (bytes, curve) = validate_pk_hex(hex_str)?;
+    DevicePublicKey::try_new(curve, &bytes)
+        .map_err(|e| PyValueError::new_err(format!("Invalid {label} public key: {e}")))
 }
 
 #[pyclass(frozen, skip_from_py_object)]

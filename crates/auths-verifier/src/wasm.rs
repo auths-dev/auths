@@ -1,7 +1,7 @@
 use crate::clock::{ClockProvider, SystemClock};
 use crate::core::{
-    Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_FILE_HASH_HEX_LEN, MAX_JSON_BATCH_SIZE,
-    MAX_PUBLIC_KEY_HEX_LEN, MAX_SIGNATURE_HEX_LEN,
+    Attestation, DevicePublicKey, MAX_ATTESTATION_JSON_SIZE, MAX_FILE_HASH_HEX_LEN,
+    MAX_JSON_BATCH_SIZE, MAX_PUBLIC_KEY_HEX_LEN, MAX_SIGNATURE_HEX_LEN,
 };
 use crate::error::{AttestationError, AuthsErrorInfo};
 use crate::types::VerificationReport;
@@ -11,6 +11,25 @@ use auths_crypto::{CryptoProvider, ED25519_PUBLIC_KEY_LEN, WebCryptoProvider};
 use auths_keri::witness::SignedReceipt;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+/// Decode a hex-encoded public key and infer its curve from length.
+///
+/// Accepts 32 bytes (Ed25519), 33 or 65 bytes (P-256).
+fn pk_from_hex_wasm(pk_hex: &str) -> Result<DevicePublicKey, AttestationError> {
+    let bytes = hex::decode(pk_hex)
+        .map_err(|e| AttestationError::InvalidInput(format!("Invalid public key hex: {}", e)))?;
+    let curve = match bytes.len() {
+        32 => auths_crypto::CurveType::Ed25519,
+        33 | 65 => auths_crypto::CurveType::P256,
+        n => {
+            return Err(AttestationError::InvalidInput(format!(
+                "Invalid public key length: expected 32 (Ed25519) or 33/65 (P-256), got {n}"
+            )));
+        }
+    };
+    DevicePublicKey::try_new(curve, &bytes)
+        .map_err(|e| AttestationError::InvalidInput(e.to_string()))
+}
 
 #[wasm_bindgen]
 extern "C" {
@@ -52,21 +71,13 @@ pub async fn wasm_verify_attestation_json(
         )));
     }
 
-    let issuer_pk_bytes = hex::decode(issuer_pk_hex)
-        .map_err(|e| JsValue::from_str(&format!("Invalid issuer public key hex: {}", e)))?;
-    if issuer_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(JsValue::from_str(&format!(
-            "Invalid issuer public key length: expected {}, got {}",
-            ED25519_PUBLIC_KEY_LEN,
-            issuer_pk_bytes.len()
-        )));
-    }
+    let issuer_pk =
+        pk_from_hex_wasm(issuer_pk_hex).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let att: Attestation = serde_json::from_str(attestation_json_str)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse attestation JSON: {}", e)))?;
 
-    match verify::verify_with_keys_at(&att, &issuer_pk_bytes, SystemClock.now(), true, &provider())
-        .await
+    match verify::verify_with_keys_at(&att, &issuer_pk, SystemClock.now(), true, &provider()).await
     {
         Ok(()) => {
             console_log!("WASM: Verification successful.");
@@ -115,23 +126,13 @@ async fn verify_attestation_internal(
         )));
     }
 
-    let issuer_pk_bytes = hex::decode(issuer_pk_hex).map_err(|e| {
-        AttestationError::InvalidInput(format!("Invalid issuer public key hex: {}", e))
-    })?;
-
-    if issuer_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::InvalidInput(format!(
-            "Invalid issuer public key length: expected {}, got {}",
-            ED25519_PUBLIC_KEY_LEN,
-            issuer_pk_bytes.len()
-        )));
-    }
+    let issuer_pk = pk_from_hex_wasm(issuer_pk_hex)?;
 
     let att: Attestation = serde_json::from_str(attestation_json_str).map_err(|e| {
         AttestationError::SerializationError(format!("Failed to parse attestation JSON: {}", e))
     })?;
 
-    verify::verify_with_keys_at(&att, &issuer_pk_bytes, SystemClock.now(), true, provider).await
+    verify::verify_with_keys_at(&att, &issuer_pk, SystemClock.now(), true, provider).await
 }
 
 /// Verifies a detached Ed25519 signature over a file hash (all inputs hex-encoded).
@@ -203,17 +204,7 @@ async fn verify_chain_internal(
         )));
     }
 
-    let root_pk_bytes = hex::decode(root_pk_hex).map_err(|e| {
-        AttestationError::InvalidInput(format!("Invalid root public key hex: {}", e))
-    })?;
-
-    if root_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::InvalidInput(format!(
-            "Invalid root public key length: expected {}, got {}",
-            ED25519_PUBLIC_KEY_LEN,
-            root_pk_bytes.len()
-        )));
-    }
+    let root_pk = pk_from_hex_wasm(root_pk_hex)?;
 
     let attestations: Vec<Attestation> =
         serde_json::from_str(attestations_json_array).map_err(|e| {
@@ -223,7 +214,7 @@ async fn verify_chain_internal(
             ))
         })?;
 
-    verify::verify_chain_inner(&attestations, &root_pk_bytes, provider, SystemClock.now()).await
+    verify::verify_chain_inner(&attestations, &root_pk, provider, SystemClock.now()).await
 }
 
 /// Verifies a chain of attestations with witness quorum checking.
@@ -289,17 +280,7 @@ async fn verify_chain_with_witnesses_internal(
         )));
     }
 
-    let root_pk_bytes = hex::decode(root_pk_hex).map_err(|e| {
-        AttestationError::InvalidInput(format!("Invalid root public key hex: {}", e))
-    })?;
-
-    if root_pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
-        return Err(AttestationError::InvalidInput(format!(
-            "Invalid root public key length: expected {}, got {}",
-            ED25519_PUBLIC_KEY_LEN,
-            root_pk_bytes.len()
-        )));
-    }
+    let root_pk = pk_from_hex_wasm(root_pk_hex)?;
 
     let attestations: Vec<Attestation> = serde_json::from_str(chain_json).map_err(|e| {
         AttestationError::SerializationError(format!("Failed to parse attestations JSON: {}", e))
@@ -338,8 +319,7 @@ async fn verify_chain_with_witnesses_internal(
     };
 
     let mut report =
-        verify::verify_chain_inner(&attestations, &root_pk_bytes, provider, SystemClock.now())
-            .await?;
+        verify::verify_chain_inner(&attestations, &root_pk, provider, SystemClock.now()).await?;
 
     if report.is_valid() {
         let quorum = crate::witness::verify_witness_receipts(&config, provider).await;

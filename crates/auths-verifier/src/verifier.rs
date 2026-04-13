@@ -5,7 +5,7 @@ use std::sync::Arc;
 use auths_crypto::CryptoProvider;
 
 use crate::clock::ClockProvider;
-use crate::core::{Attestation, Capability, VerifiedAttestation};
+use crate::core::{Attestation, Capability, DevicePublicKey, VerifiedAttestation};
 use crate::error::AttestationError;
 use crate::types::{DeviceDID, VerificationReport};
 use crate::verify;
@@ -54,15 +54,15 @@ impl Verifier {
     ///
     /// Args:
     /// * `att`: The attestation to verify.
-    /// * `issuer_pk_bytes`: Raw Ed25519 public key of the issuer.
+    /// * `issuer_pk`: Typed issuer public key (Ed25519 or P-256).
     pub async fn verify_with_keys(
         &self,
         att: &Attestation,
-        issuer_pk_bytes: &[u8],
+        issuer_pk: &DevicePublicKey,
     ) -> Result<VerifiedAttestation, AttestationError> {
         verify::verify_with_keys_at(
             att,
-            issuer_pk_bytes,
+            issuer_pk,
             self.clock.now(),
             true,
             self.provider.as_ref(),
@@ -76,14 +76,14 @@ impl Verifier {
     /// Args:
     /// * `att`: The attestation to verify.
     /// * `required`: The capability that must be present.
-    /// * `issuer_pk_bytes`: Raw Ed25519 public key of the issuer.
+    /// * `issuer_pk`: Typed issuer public key (Ed25519 or P-256).
     pub async fn verify_with_capability(
         &self,
         att: &Attestation,
         required: &Capability,
-        issuer_pk_bytes: &[u8],
+        issuer_pk: &DevicePublicKey,
     ) -> Result<VerifiedAttestation, AttestationError> {
-        let verified = self.verify_with_keys(att, issuer_pk_bytes).await?;
+        let verified = self.verify_with_keys(att, issuer_pk).await?;
         if !att.capabilities.contains(required) {
             return Err(AttestationError::MissingCapability {
                 required: required.clone(),
@@ -97,16 +97,15 @@ impl Verifier {
     ///
     /// Args:
     /// * `att`: The attestation to verify.
-    /// * `issuer_pk_bytes`: Raw Ed25519 public key of the issuer.
+    /// * `issuer_pk`: Typed issuer public key (Ed25519 or P-256).
     /// * `at`: The reference timestamp for expiry evaluation.
     pub async fn verify_at_time(
         &self,
         att: &Attestation,
-        issuer_pk_bytes: &[u8],
+        issuer_pk: &DevicePublicKey,
         at: chrono::DateTime<chrono::Utc>,
     ) -> Result<VerifiedAttestation, AttestationError> {
-        verify::verify_with_keys_at(att, issuer_pk_bytes, at, false, self.provider.as_ref())
-            .await?;
+        verify::verify_with_keys_at(att, issuer_pk, at, false, self.provider.as_ref()).await?;
         Ok(VerifiedAttestation::from_verified(att.clone()))
     }
 
@@ -114,11 +113,11 @@ impl Verifier {
     ///
     /// Args:
     /// * `attestations`: Ordered attestation chain (root first).
-    /// * `root_pk`: Raw Ed25519 public key of the root identity.
+    /// * `root_pk`: Typed root identity public key (Ed25519 or P-256).
     pub async fn verify_chain(
         &self,
         attestations: &[Attestation],
-        root_pk: &[u8],
+        root_pk: &DevicePublicKey,
     ) -> Result<VerificationReport, AttestationError> {
         verify::verify_chain_inner(
             attestations,
@@ -134,12 +133,12 @@ impl Verifier {
     /// Args:
     /// * `attestations`: Ordered attestation chain (root first).
     /// * `required`: The capability that must appear in every link.
-    /// * `root_pk`: Raw Ed25519 public key of the root identity.
+    /// * `root_pk`: Typed root identity public key (Ed25519 or P-256).
     pub async fn verify_chain_with_capability(
         &self,
         attestations: &[Attestation],
         required: &Capability,
-        root_pk: &[u8],
+        root_pk: &DevicePublicKey,
     ) -> Result<VerificationReport, AttestationError> {
         let report = self.verify_chain(attestations, root_pk).await?;
         if !report.is_valid() {
@@ -169,12 +168,12 @@ impl Verifier {
     ///
     /// Args:
     /// * `attestations`: Ordered attestation chain (root first).
-    /// * `root_pk`: Raw Ed25519 public key of the root identity.
+    /// * `root_pk`: Typed root identity public key (Ed25519 or P-256).
     /// * `witness_config`: Witness receipts and quorum threshold to validate.
     pub async fn verify_chain_with_witnesses(
         &self,
         attestations: &[Attestation],
-        root_pk: &[u8],
+        root_pk: &DevicePublicKey,
         witness_config: &WitnessVerifyConfig<'_>,
     ) -> Result<VerificationReport, AttestationError> {
         let mut report = self.verify_chain(attestations, root_pk).await?;
@@ -204,13 +203,13 @@ impl Verifier {
     /// * `identity_did`: The DID of the authorizing identity.
     /// * `device_did`: The device DID to check authorization for.
     /// * `attestations`: Pool of attestations to search.
-    /// * `identity_pk`: Raw Ed25519 public key of the identity.
+    /// * `identity_pk`: Typed identity public key (Ed25519 or P-256).
     pub async fn verify_device_authorization(
         &self,
         identity_did: &str,
         device_did: &DeviceDID,
         attestations: &[Attestation],
-        identity_pk: &[u8],
+        identity_pk: &DevicePublicKey,
     ) -> Result<VerificationReport, AttestationError> {
         verify::verify_device_authorization_inner(
             identity_did,
