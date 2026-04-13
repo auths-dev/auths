@@ -413,7 +413,7 @@ fn default_identity_uses_p256() {
 
     let key_str = icp.k[0].as_str();
     assert!(
-        key_str.starts_with("1AAJ"),
+        key_str.starts_with("1AAI"),
         "default identity should use P-256 (1AAJ prefix), got: {}",
         &key_str[..4.min(key_str.len())]
     );

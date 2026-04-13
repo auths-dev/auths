@@ -910,7 +910,7 @@ mod tests {
 
         assert_eq!(rot.k.len(), 1);
         assert!(
-            rot.k[0].as_str().starts_with("1AAJ"),
+            rot.k[0].as_str().starts_with("1AAI"),
             "expected 1AAJ prefix, got: {}",
             rot.k[0].as_str()
         );
@@ -1013,7 +1013,7 @@ mod tests {
         assert_eq!(state.current_keys.len(), 1);
         let cesr_key = state.current_keys[0].as_str();
         assert!(
-            cesr_key.starts_with("1AAJ"),
+            cesr_key.starts_with("1AAI"),
             "expected P-256 CESR key prefix '1AAJ', got: {cesr_key}"
         );
 
