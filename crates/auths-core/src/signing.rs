@@ -1,7 +1,6 @@
 //! Signing abstractions and DID resolution.
 
-use crate::crypto::provider_bridge;
-use crate::crypto::signer::{decrypt_keypair, extract_seed_from_key_bytes};
+use crate::crypto::signer::decrypt_keypair;
 use crate::error::AgentError;
 use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 
@@ -304,10 +303,13 @@ impl<S: KeyStorage + Send + Sync + 'static> SecureSigner for StorageSigner<S> {
             }
         };
 
-        let seed = extract_seed_from_key_bytes(&key_bytes)?;
-
-        provider_bridge::sign_ed25519_sync(&seed, message)
-            .map_err(|e| AgentError::CryptoError(format!("Ed25519 signing failed: {}", e)))
+        // fn-114.23: parse curve-tagged seed and dispatch sign on curve.
+        // Previously hardcoded sign_ed25519_sync which silently produced garbage
+        // signatures for P-256 identities.
+        let parsed = auths_crypto::parse_key_material(&key_bytes)
+            .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
+        auths_crypto::typed_sign(&parsed.seed, message)
+            .map_err(|e| AgentError::CryptoError(format!("signing failed: {}", e)))
     }
 
     fn sign_for_identity(
