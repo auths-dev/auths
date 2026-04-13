@@ -235,6 +235,7 @@ fn resolve_issuer_key(
             let pin = PinnedIdentity {
                 did: did.to_string(),
                 public_key_hex: root.public_key_hex.clone(),
+                curve: root.curve,
                 kel_tip_said: root.kel_tip_said.clone(),
                 kel_sequence: None,
                 first_seen: now,

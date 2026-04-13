@@ -44,8 +44,12 @@ pub struct RootEntry {
     /// The DID of the trusted identity (e.g., "did:keri:EXq5...")
     pub did: String,
 
-    /// The public key in hex format (64 chars, 32 bytes for Ed25519).
+    /// The public key in hex format (32 bytes Ed25519 or 33 bytes P-256 compressed).
     pub public_key_hex: PublicKeyHex,
+
+    /// Curve of the root's public key (fn-114.35). Required — pre-launch hard
+    /// break, no v1 fallback.
+    pub curve: auths_crypto::CurveType,
 
     /// Optional KEL tip SAID for rotation-aware matching.
     #[serde(default)]
@@ -63,9 +67,9 @@ impl RootsFile {
     pub fn parse(content: &str) -> Result<Self, TrustError> {
         let file: Self = serde_json::from_str(content)?;
 
-        if file.version != 1 {
+        if file.version != 2 {
             return Err(TrustError::InvalidData(format!(
-                "Unsupported roots.json version: {}. Expected version 1.",
+                "Unsupported roots.json version: {}. Expected version 2 (fn-114.35 hard break).",
                 file.version
             )));
         }

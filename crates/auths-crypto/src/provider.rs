@@ -120,6 +120,21 @@ pub trait CryptoProvider: Send + Sync {
         signature: &[u8],
     ) -> Result<(), CryptoError>;
 
+    /// Verify an ECDSA P-256 signature (r||s, 64 bytes) against a public key
+    /// (33-byte compressed or 65-byte uncompressed SEC1) and message.
+    ///
+    /// Default impl returns `UnsupportedTarget`; override in providers that
+    /// support P-256 (`RingCryptoProvider` via `p256` crate on native,
+    /// `WebCryptoProvider` via `SubtleCrypto.verify("ECDSA", …)` on WASM).
+    async fn verify_p256(
+        &self,
+        _pubkey: &[u8],
+        _message: &[u8],
+        _signature: &[u8],
+    ) -> Result<(), CryptoError> {
+        Err(CryptoError::UnsupportedTarget)
+    }
+
     /// Sign a message using a raw 32-byte Ed25519 seed.
     ///
     /// The provider materializes the internal keypair from the seed on each
@@ -232,7 +247,8 @@ pub const P256_SIGNATURE_LEN: usize = 64;
 /// let curve = CurveType::P256; // default
 /// let (seed, pubkey) = provider.generate_keypair(curve).await?;
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CurveType {
     /// Ed25519 (RFC 8032). 32-byte keys, 64-byte signatures.
     Ed25519,
