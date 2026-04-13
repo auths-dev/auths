@@ -316,10 +316,11 @@ impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
 
 /// A `SecureSigner` backed by pre-resolved in-memory seeds.
 ///
-/// Seeds are keyed by alias. The passphrase provider is never called because
-/// all key material was resolved before construction.
+/// Seeds are keyed by alias and carry their curve so sign dispatches correctly
+/// for Ed25519 + P-256 identities. The passphrase provider is never called
+/// because all key material was resolved before construction.
 struct SeedMapSigner {
-    seeds: HashMap<String, SecureSeed>,
+    seeds: HashMap<String, (SecureSeed, auths_crypto::CurveType)>,
 }
 
 impl SecureSigner for SeedMapSigner {
@@ -329,11 +330,15 @@ impl SecureSigner for SeedMapSigner {
         _passphrase_provider: &dyn PassphraseProvider,
         message: &[u8],
     ) -> Result<Vec<u8>, auths_core::AgentError> {
-        let seed = self
+        let (seed, curve) = self
             .seeds
             .get(alias.as_str())
             .ok_or(auths_core::AgentError::KeyNotFound)?;
-        provider_bridge::sign_ed25519_sync(seed, message)
+        let typed = match curve {
+            auths_crypto::CurveType::Ed25519 => auths_crypto::TypedSeed::Ed25519(*seed.as_bytes()),
+            auths_crypto::CurveType::P256 => auths_crypto::TypedSeed::P256(*seed.as_bytes()),
+        };
+        auths_crypto::typed_sign(&typed, message)
             .map_err(|e| auths_core::AgentError::CryptoError(e.to_string()))
     }
 
@@ -512,18 +517,20 @@ pub fn sign_artifact(
         "Enter passphrase for device key:",
     )?;
 
-    let mut seeds: HashMap<String, SecureSeed> = HashMap::new();
+    let mut seeds: HashMap<String, (SecureSeed, auths_crypto::CurveType)> = HashMap::new();
     let identity_alias: Option<KeyAlias> = identity_resolved.map(|r| {
         let alias = r.alias.clone();
+        let curve = r.curve;
         if let Some(seed) = r.seed {
-            seeds.insert(r.alias.into_inner(), seed);
+            seeds.insert(r.alias.into_inner(), (seed, curve));
         }
         alias
     });
     let device_alias = device_resolved.alias.clone();
     let device_is_hardware = device_resolved.is_hardware;
+    let device_curve = device_resolved.curve;
     if let Some(seed) = device_resolved.seed {
-        seeds.insert(device_resolved.alias.into_inner(), seed);
+        seeds.insert(device_resolved.alias.into_inner(), (seed, device_curve));
     }
     let device_pk_bytes = device_resolved.public_key_bytes;
 
@@ -591,7 +598,7 @@ pub fn sign_artifact(
 #[allow(clippy::too_many_arguments)]
 fn create_and_sign_attestation(
     ctx: &AuthsContext,
-    seeds: HashMap<String, SecureSeed>,
+    seeds: HashMap<String, (SecureSeed, auths_crypto::CurveType)>,
     device_is_hardware: bool,
     now: DateTime<Utc>,
     rid: &ResourceId,
@@ -729,14 +736,14 @@ pub fn sign_artifact_ephemeral(
     let identity_alias = KeyAlias::new_unchecked("__ephemeral_identity__");
     let device_alias = KeyAlias::new_unchecked("__ephemeral_device__");
 
-    let mut seeds: HashMap<String, SecureSeed> = HashMap::new();
+    let mut seeds: HashMap<String, (SecureSeed, auths_crypto::CurveType)> = HashMap::new();
     seeds.insert(
         identity_alias.as_str().to_string(),
-        SecureSeed::new(*seed_bytes),
+        (SecureSeed::new(*seed_bytes), auths_crypto::CurveType::P256),
     );
     seeds.insert(
         device_alias.as_str().to_string(),
-        SecureSeed::new(*seed_bytes),
+        (SecureSeed::new(*seed_bytes), auths_crypto::CurveType::P256),
     );
     let signer = SeedMapSigner { seeds };
     let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
@@ -843,14 +850,14 @@ pub fn sign_artifact_raw(
     let identity_alias = KeyAlias::new_unchecked("__raw_identity__");
     let device_alias = KeyAlias::new_unchecked("__raw_device__");
 
-    let mut seeds: HashMap<String, SecureSeed> = HashMap::new();
+    let mut seeds: HashMap<String, (SecureSeed, auths_crypto::CurveType)> = HashMap::new();
     seeds.insert(
         identity_alias.as_str().to_string(),
-        SecureSeed::new(*seed.as_bytes()),
+        (SecureSeed::new(*seed.as_bytes()), curve),
     );
     seeds.insert(
         device_alias.as_str().to_string(),
-        SecureSeed::new(*seed.as_bytes()),
+        (SecureSeed::new(*seed.as_bytes()), curve),
     );
     let signer = SeedMapSigner { seeds };
     // Seeds are already resolved — passphrase provider will not be called.
