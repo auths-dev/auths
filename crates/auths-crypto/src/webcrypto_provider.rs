@@ -107,14 +107,16 @@ impl CryptoProvider for WebCryptoProvider {
 
             // WebCrypto P-256 wants an uncompressed SEC1 (65-byte) or a JWK.
             // If caller supplied compressed SEC1 (33 bytes), decompress first.
-            #[allow(unused_assignments)]
-            let mut uncompressed_owned: Vec<u8> = Vec::new();
+            // The decompressed buffer must outlive `pubkey_bytes`, so it's declared
+            // in the feature-gated branch that actually populates it.
+            #[cfg(feature = "native")]
+            let uncompressed_owned: Vec<u8>;
             let pubkey_bytes: &[u8] = match pubkey.len() {
                 65 => pubkey,
                 33 => {
                     // Best-effort decompression via the p256 crate (compiled into wasm
-                    // only if the p256 feature is pulled in — in WASM-only builds we
-                    // may lack the decompression path. Fall back to a clear error.)
+                    // only if the p256 feature is pulled in — in pure-wasm builds
+                    // without native we fall back to a clear error.)
                     #[cfg(feature = "native")]
                     {
                         use p256::ecdsa::VerifyingKey;
@@ -125,7 +127,6 @@ impl CryptoProvider for WebCryptoProvider {
                     }
                     #[cfg(not(feature = "native"))]
                     {
-                        let _ = &uncompressed_owned;
                         return Err(CryptoError::OperationFailed(
                             "WebCrypto P-256 requires uncompressed SEC1 (65 bytes); \
                              compressed->uncompressed conversion not wired in pure-wasm \
