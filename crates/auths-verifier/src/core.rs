@@ -275,14 +275,31 @@ pub enum Ed25519KeyError {
 }
 
 // =============================================================================
-// Ed25519Signature newtype
+// TypedSignature newtype (fn-114: was Ed25519Signature)
 // =============================================================================
 
-/// A validated Ed25519 signature (64 bytes).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ed25519Signature([u8; 64]);
+/// Attestation schema version.
+///
+/// Bumped to 2 in fn-114.15 as part of the curve-agnostic refactor (hard break,
+/// pre-launch posture). Attestations serialized under older versions are not
+/// readable — fn-114 has no v1 tolerant reader by design.
+pub const ATTESTATION_VERSION: u32 = 2;
 
-impl Ed25519Signature {
+/// A validated 64-byte signature. Curve is determined by the companion
+/// [`DevicePublicKey`] — both Ed25519 and ECDSA P-256 r||s are 64 bytes.
+///
+/// Previously named `Ed25519Signature`. The new name reflects that the byte
+/// container is curve-agnostic; the receiver dispatches verify by looking at
+/// the associated key's curve. If/when a curve with a different signature
+/// length joins the workspace (e.g. ML-DSA-44 at 2420 bytes), this type
+/// graduates to an enum variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedSignature([u8; 64]);
+
+/// Transitional alias for pre-fn-114 callers. Removed in fn-114.40.
+pub type Ed25519Signature = TypedSignature;
+
+impl TypedSignature {
     /// Creates a signature from a 64-byte array.
     pub fn from_bytes(bytes: [u8; 64]) -> Self {
         Self(bytes)
@@ -312,28 +329,28 @@ impl Ed25519Signature {
     }
 }
 
-impl Default for Ed25519Signature {
+impl Default for TypedSignature {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl std::fmt::Display for Ed25519Signature {
+impl std::fmt::Display for TypedSignature {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", hex::encode(self.0))
     }
 }
 
-impl AsRef<[u8]> for Ed25519Signature {
+impl AsRef<[u8]> for TypedSignature {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
 #[cfg(feature = "schema")]
-impl schemars::JsonSchema for Ed25519Signature {
+impl schemars::JsonSchema for TypedSignature {
     fn schema_name() -> String {
-        "Ed25519Signature".to_owned()
+        "TypedSignature".to_owned()
     }
 
     fn json_schema(_gen: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
@@ -341,7 +358,11 @@ impl schemars::JsonSchema for Ed25519Signature {
             instance_type: Some(schemars::schema::InstanceType::String.into()),
             format: Some("hex".to_owned()),
             metadata: Some(Box::new(schemars::schema::Metadata {
-                description: Some("Ed25519 signature (64 bytes, hex-encoded)".to_owned()),
+                description: Some(
+                    "Curve-agnostic 64-byte signature (Ed25519 or P-256 r||s, hex-encoded). \
+                     Curve is determined by the companion DevicePublicKey."
+                        .to_owned(),
+                ),
                 ..Default::default()
             })),
             ..Default::default()
@@ -350,13 +371,13 @@ impl schemars::JsonSchema for Ed25519Signature {
     }
 }
 
-impl serde::Serialize for Ed25519Signature {
+impl serde::Serialize for TypedSignature {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&hex::encode(self.0))
     }
 }
 
-impl<'de> serde::Deserialize<'de> for Ed25519Signature {
+impl<'de> serde::Deserialize<'de> for TypedSignature {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
         if s.is_empty() {
@@ -476,6 +497,117 @@ impl DevicePublicKey {
     pub fn is_empty(&self) -> bool {
         self.bytes.is_empty()
     }
+
+    /// Verify a signature against this key, dispatching on curve.
+    ///
+    /// This is the single canonical verify method — every caller that holds
+    /// a `DevicePublicKey` should call this rather than branching on curve
+    /// themselves. Adding a new curve means updating this one impl; the
+    /// compiler then flags every call site still assuming only Ed25519.
+    ///
+    /// Args:
+    /// * `message`: Payload bytes that were signed.
+    /// * `signature`: Raw signature bytes (64 for Ed25519 / P-256).
+    /// * `provider`: Pluggable crypto provider (`RingCryptoProvider` native,
+    ///   `WebCryptoProvider` wasm) — used for Ed25519. P-256 routes through
+    ///   `RingCryptoProvider::p256_verify` on native.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// issuer_pk.verify(&payload, &signature, provider).await?;
+    /// ```
+    pub async fn verify(
+        &self,
+        message: &[u8],
+        signature: &[u8],
+        provider: &dyn auths_crypto::CryptoProvider,
+    ) -> Result<(), SignatureVerifyError> {
+        let result = match self.curve {
+            auths_crypto::CurveType::Ed25519 => {
+                provider
+                    .verify_ed25519(&self.bytes, message, signature)
+                    .await
+            }
+            auths_crypto::CurveType::P256 => {
+                provider.verify_p256(&self.bytes, message, signature).await
+            }
+        };
+        result.map_err(|e| SignatureVerifyError::VerificationFailed(e.to_string()))
+    }
+}
+
+/// Error returned by the typed ingestion helpers
+/// [`decode_public_key_hex`] / [`decode_public_key_bytes`].
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PublicKeyDecodeError {
+    /// The input hex string failed to decode.
+    #[error("invalid hex: {0}")]
+    InvalidHex(String),
+
+    /// The decoded byte length does not match any supported curve (32 Ed25519,
+    /// 33 or 65 P-256).
+    #[error("invalid public key length {len} — expected 32 (Ed25519) or 33/65 (P-256)")]
+    InvalidLength {
+        /// Number of bytes supplied.
+        len: usize,
+    },
+
+    /// `DevicePublicKey::try_new` rejected the bytes even after curve
+    /// inference succeeded.
+    #[error("DevicePublicKey validation failed: {0}")]
+    Validation(String),
+}
+
+/// Decode a hex-encoded public key string into a typed, curve-tagged
+/// `DevicePublicKey`.
+///
+/// Intended for external ingestion boundaries ONLY (FFI hex strings, WASM
+/// entry points, `--signer-key` CLI flags). Internal code threads
+/// `DevicePublicKey` end-to-end.
+///
+/// Args:
+/// * `hex_str`: Hex-encoded public key (32, 33, or 65 bytes after decode).
+///
+/// Usage:
+/// ```ignore
+/// let pk = decode_public_key_hex(user_supplied_hex)?;
+/// issuer_pk.verify(msg, sig, provider).await?;
+/// ```
+pub fn decode_public_key_hex(hex_str: &str) -> Result<DevicePublicKey, PublicKeyDecodeError> {
+    let bytes =
+        hex::decode(hex_str.trim()).map_err(|e| PublicKeyDecodeError::InvalidHex(e.to_string()))?;
+    decode_public_key_bytes(&bytes)
+}
+
+/// Decode raw public key bytes into a typed, curve-tagged `DevicePublicKey`
+/// by length inference. Same boundary-only caveat as
+/// [`decode_public_key_hex`].
+///
+/// Args:
+/// * `bytes`: Raw public key bytes.
+///
+/// Usage:
+/// ```ignore
+/// let pk = decode_public_key_bytes(&ffi_bytes[..len])?;
+/// ```
+pub fn decode_public_key_bytes(bytes: &[u8]) -> Result<DevicePublicKey, PublicKeyDecodeError> {
+    let curve = auths_crypto::CurveType::from_public_key_len(bytes.len())
+        .ok_or(PublicKeyDecodeError::InvalidLength { len: bytes.len() })?;
+    DevicePublicKey::try_new(curve, bytes)
+        .map_err(|e| PublicKeyDecodeError::Validation(e.to_string()))
+}
+
+/// Error returned by [`DevicePublicKey::verify`].
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SignatureVerifyError {
+    /// Underlying signature check failed. Argument contains provider-specific detail.
+    #[error("signature verification failed: {0}")]
+    VerificationFailed(String),
+
+    /// The target platform does not support the requested curve (e.g. WASM
+    /// without the `native` feature bundled).
+    #[error("{0}")]
+    UnsupportedOnTarget(String),
 }
 
 impl From<Ed25519PublicKey> for DevicePublicKey {
@@ -2284,5 +2416,53 @@ mod tests {
             original.attestation_chain.len(),
             deserialized.attestation_chain.len()
         );
+    }
+}
+
+#[cfg(test)]
+mod decode_public_key_tests {
+    use super::*;
+
+    #[test]
+    fn hex_ed25519_32_bytes() {
+        let hex = "00".repeat(32);
+        let pk = decode_public_key_hex(&hex).unwrap();
+        assert_eq!(pk.curve(), auths_crypto::CurveType::Ed25519);
+        assert_eq!(pk.len(), 32);
+    }
+
+    #[test]
+    fn hex_p256_33_bytes_compressed() {
+        // Need a valid-ish compressed SEC1 for try_new to accept: starts with 0x02 or 0x03
+        let mut bytes = [0u8; 33];
+        bytes[0] = 0x02;
+        let hex = hex::encode(bytes);
+        let pk = decode_public_key_hex(&hex).unwrap();
+        assert_eq!(pk.curve(), auths_crypto::CurveType::P256);
+        assert_eq!(pk.len(), 33);
+    }
+
+    #[test]
+    fn bytes_p256_65_uncompressed() {
+        let mut bytes = [0u8; 65];
+        bytes[0] = 0x04;
+        let pk = decode_public_key_bytes(&bytes).unwrap();
+        assert_eq!(pk.curve(), auths_crypto::CurveType::P256);
+        assert_eq!(pk.len(), 65);
+    }
+
+    #[test]
+    fn rejects_invalid_length() {
+        let err = decode_public_key_bytes(&[0u8; 50]).unwrap_err();
+        assert!(matches!(
+            err,
+            PublicKeyDecodeError::InvalidLength { len: 50 }
+        ));
+    }
+
+    #[test]
+    fn rejects_malformed_hex() {
+        let err = decode_public_key_hex("zz").unwrap_err();
+        assert!(matches!(err, PublicKeyDecodeError::InvalidHex(_)));
     }
 }
