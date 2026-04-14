@@ -287,7 +287,7 @@ mod tests {
     fn rejects_wrong_length_p256() {
         // 32 bytes instead of 33
         let short = [0u8; 32];
-        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(short));
+        let encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(short));
         let err = KeriPublicKey::parse(&encoded).unwrap_err();
         assert!(matches!(
             err,
