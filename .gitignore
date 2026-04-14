@@ -141,3 +141,6 @@ tests/e2e/.auths-ci/
 .jnkn/
 jnkn.db
 .gitnexus
+.chunkhound
+.mcp.json
+.chunkhound.json
