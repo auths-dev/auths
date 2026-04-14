@@ -283,7 +283,7 @@ pub fn sign_artifact_bytes(
     }
 }
 
-/// Sign raw bytes with a raw Ed25519 private key, producing a dual-signed attestation.
+/// Sign raw bytes with a private key seed, producing a dual-signed attestation.
 ///
 /// No keychain or filesystem access required.
 ///

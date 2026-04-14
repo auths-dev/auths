@@ -132,3 +132,18 @@ fn encode_mpint(bytes: &[u8]) -> Vec<u8> {
     }
     buf
 }
+
+/// Encode a big integer for the SSH agent `add_identity` wire format.
+///
+/// Args:
+/// * `bytes`: Big-endian integer bytes (leading zeros are stripped).
+///
+/// Usage:
+/// ```
+/// use auths_core::crypto::ssh::encode_mpint_for_agent;
+/// let encoded = encode_mpint_for_agent(&[0x00, 0x01, 0x02]);
+/// assert_eq!(&encoded[..4], &2u32.to_be_bytes());
+/// ```
+pub fn encode_mpint_for_agent(bytes: &[u8]) -> Vec<u8> {
+    encode_mpint(bytes)
+}

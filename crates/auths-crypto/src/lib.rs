@@ -8,6 +8,7 @@
 
 pub mod did_key;
 pub mod error;
+pub mod hash256;
 pub mod key_material;
 pub mod key_ops;
 pub mod pkcs8;
@@ -23,8 +24,9 @@ pub use did_key::{
     ed25519_pubkey_to_did_keri, ed25519_pubkey_to_did_key, p256_pubkey_to_did_key,
 };
 pub use error::AuthsErrorInfo;
+pub use hash256::Hash256;
 pub use key_material::{build_ed25519_pkcs8_v2, parse_ed25519_key_material, parse_ed25519_seed};
-pub use key_ops::{ParsedKey, RotationSigner, TypedSeed, TypedSignerKey, parse_key_material};
+pub use key_ops::{ParsedKey, TypedSeed, TypedSignerKey, parse_key_material};
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use key_ops::{public_key as typed_public_key, sign as typed_sign};
 pub use pkcs8::Pkcs8Der;

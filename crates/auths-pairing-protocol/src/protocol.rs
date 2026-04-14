@@ -23,7 +23,7 @@ pub struct CompletedPairing {
     /// Single-use transport encryption key.
     pub transport_key: TransportKey,
     /// The initiator's X25519 ephemeral public key.
-    pub initiator_x25519_pub: [u8; 32],
+    pub initiator_x25519_pub: crate::X25519PublicKey,
 }
 
 /// Result of a successful pairing response (responder side).
@@ -147,7 +147,7 @@ impl PairingProtocol {
             response,
             sas: sas_bytes,
             transport_key,
-            initiator_x25519_pub,
+            initiator_x25519_pub: crate::X25519PublicKey::new(initiator_x25519_pub),
         })
     }
 

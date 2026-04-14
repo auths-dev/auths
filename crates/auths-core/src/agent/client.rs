@@ -135,16 +135,22 @@ pub fn agent_sign<P: AsRef<Path>>(
         .map_err(AgentError::IO)?;
 
     // Build the sign request — detect key type from length
-    // TODO: accept CurveType parameter once agent core carries curve info
-    let key_data = if pubkey.len() == 32 {
-        #[allow(clippy::unwrap_used)] // INVARIANT: length checked
-        let pubkey_array: [u8; 32] = pubkey.try_into().unwrap();
-        KeyData::Ed25519(Ed25519PublicKey(pubkey_array))
-    } else {
-        return Err(AgentError::InvalidInput(format!(
-            "Unsupported public key length for agent signing: {}",
-            pubkey.len()
-        )));
+    let key_data = match pubkey.len() {
+        32 => {
+            #[allow(clippy::unwrap_used)] // INVARIANT: length checked
+            let pubkey_array: [u8; 32] = pubkey.try_into().unwrap();
+            KeyData::Ed25519(Ed25519PublicKey(pubkey_array))
+        }
+        33 | 65 => {
+            let ecdsa_pk = ssh_key::public::EcdsaPublicKey::from_sec1_bytes(pubkey)
+                .map_err(|e| AgentError::InvalidInput(format!("Invalid P-256 public key: {e}")))?;
+            KeyData::Ecdsa(ecdsa_pk)
+        }
+        n => {
+            return Err(AgentError::InvalidInput(format!(
+                "Unsupported public key length for agent signing: {n}"
+            )));
+        }
     };
 
     // Encode the sign request using the wire protocol
@@ -174,10 +180,10 @@ pub fn add_identity<P: AsRef<Path>>(
 
     debug!("Adding identity to agent at {:?}", socket_path);
 
-    // Parse the PKCS#8 bytes to extract the seed
-    let seed = extract_ed25519_seed(pkcs8_bytes)?;
+    // Parse the PKCS#8 to detect curve + extract seed+public
+    let parsed = auths_crypto::parse_key_material(pkcs8_bytes)
+        .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
 
-    // Connect to the agent
     let mut stream = UnixStream::connect(socket_path).map_err(|e| {
         error!("Failed to connect to agent: {}", e);
         AgentError::IO(e)
@@ -190,19 +196,35 @@ pub fn add_identity<P: AsRef<Path>>(
         .set_write_timeout(Some(Duration::from_secs(30)))
         .map_err(AgentError::IO)?;
 
-    // Create SSH key from seed
-    let ssh_keypair = SshEd25519Keypair::from_seed(&seed);
-    let pubkey_bytes = ssh_keypair.public.0.to_vec();
-    let keypair_data = KeypairData::Ed25519(ssh_keypair);
+    let (keypair_data, pubkey_bytes) = match parsed.seed.curve() {
+        auths_crypto::CurveType::Ed25519 => {
+            let ssh_keypair = SshEd25519Keypair::from_seed(parsed.seed.as_bytes());
+            let pubkey = ssh_keypair.public.0.to_vec();
+            (KeypairData::Ed25519(ssh_keypair), pubkey)
+        }
+        auths_crypto::CurveType::P256 => {
+            use p256::elliptic_curve::sec1::ToEncodedPoint;
+            use ssh_key::private::{EcdsaKeypair, EcdsaPrivateKey};
+
+            let secret = p256::SecretKey::from_slice(parsed.seed.as_bytes())
+                .map_err(|e| AgentError::CryptoError(format!("P-256 secret key parse: {e}")))?;
+            let public = secret.public_key();
+            let keypair = EcdsaKeypair::NistP256 {
+                public: public.to_encoded_point(false),
+                private: EcdsaPrivateKey::from(secret),
+            };
+            (KeypairData::Ecdsa(keypair), parsed.public_key.clone())
+        }
+    };
+
     let private_key = SshPrivateKey::new(keypair_data, "auths-key")
         .map_err(|e| AgentError::CryptoError(format!("Failed to create SSH key: {}", e)))?;
 
-    // Send add identity request
     add_identity_raw(&mut stream, &private_key)?;
 
     info!(
         "Successfully added identity to agent: {:?}...",
-        hex::encode(&pubkey_bytes[..4])
+        hex::encode(&pubkey_bytes[..4.min(pubkey_bytes.len())])
     );
     Ok(pubkey_bytes)
 }
@@ -236,6 +258,7 @@ pub fn list_identities<P: AsRef<Path>>(socket_path: P) -> Result<Vec<Vec<u8>>, A
         .into_iter()
         .filter_map(|id| match id.pubkey {
             KeyData::Ed25519(pk) => Some(pk.0.to_vec()),
+            KeyData::Ecdsa(pk) => Some(pk.as_ref().to_vec()),
             _ => None,
         })
         .collect();
@@ -294,37 +317,6 @@ pub fn remove_all_identities<P: AsRef<Path>>(socket_path: P) -> Result<(), Agent
 }
 
 // --- Internal protocol helpers ---
-
-/// Extract Ed25519 seed from PKCS#8 bytes.
-fn extract_ed25519_seed(pkcs8_bytes: &[u8]) -> Result<[u8; 32], AgentError> {
-    use pkcs8::PrivateKeyInfo;
-    use pkcs8::der::Decode;
-
-    // Try to parse as PKCS#8
-    let pk_info = PrivateKeyInfo::from_der(pkcs8_bytes).map_err(|e| {
-        AgentError::KeyDeserializationError(format!("Failed to parse PKCS#8: {}", e))
-    })?;
-
-    let seed = pk_info.private_key;
-    if seed.len() == 32 {
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(seed);
-        return Ok(arr);
-    }
-
-    // For ring's PKCS#8 format, the seed might be wrapped differently
-    // Try to extract from the raw bytes
-    if pkcs8_bytes.len() >= 48 {
-        let mut arr = [0u8; 32];
-        arr.copy_from_slice(&pkcs8_bytes[16..48]);
-        return Ok(arr);
-    }
-
-    Err(AgentError::KeyDeserializationError(format!(
-        "Could not extract Ed25519 seed (got {} bytes)",
-        seed.len()
-    )))
-}
 
 /// Send SSH_AGENTC_REQUEST_IDENTITIES and parse response.
 fn request_identities_raw(stream: &mut UnixStream) -> Result<Vec<Identity>, AgentError> {
@@ -532,22 +524,16 @@ fn parse_sign_response(data: &[u8]) -> Result<Vec<u8>, AgentError> {
 /// Encode a public key as an SSH blob.
 fn encode_pubkey_blob(pubkey: &KeyData) -> Result<Vec<u8>, AgentError> {
     match pubkey {
-        KeyData::Ed25519(pk) => {
-            let mut blob = Vec::new();
-
-            // Key type string
-            let key_type = b"ssh-ed25519";
-            blob.extend_from_slice(&(key_type.len() as u32).to_be_bytes());
-            blob.extend_from_slice(key_type);
-
-            // Public key bytes
-            blob.extend_from_slice(&32u32.to_be_bytes());
-            blob.extend_from_slice(&pk.0);
-
-            Ok(blob)
-        }
+        KeyData::Ed25519(pk) => Ok(crate::crypto::ssh::encode_ssh_pubkey(
+            &pk.0,
+            auths_crypto::CurveType::Ed25519,
+        )),
+        KeyData::Ecdsa(pk) => Ok(crate::crypto::ssh::encode_ssh_pubkey(
+            pk.as_ref(),
+            auths_crypto::CurveType::P256,
+        )),
         _ => Err(AgentError::InvalidInput(
-            "Only Ed25519 keys are supported".to_string(),
+            "Only Ed25519 and NistP256 keys are supported".to_string(),
         )),
     }
 }
@@ -573,21 +559,47 @@ fn add_identity_raw(
             msg.extend_from_slice(&kp.public.0);
 
             // Private key (64 bytes = seed + public, length-prefixed)
-            // Ed25519 private key in SSH format is seed || public
             let mut priv_bytes = Vec::with_capacity(64);
             priv_bytes.extend_from_slice(&kp.private.to_bytes());
             priv_bytes.extend_from_slice(&kp.public.0);
             msg.extend_from_slice(&(priv_bytes.len() as u32).to_be_bytes());
             msg.extend_from_slice(&priv_bytes);
 
-            // Comment (empty)
+            // Comment
+            let comment = b"auths-key";
+            msg.extend_from_slice(&(comment.len() as u32).to_be_bytes());
+            msg.extend_from_slice(comment);
+        }
+        KeypairData::Ecdsa(ssh_key::private::EcdsaKeypair::NistP256 { public, private }) => {
+            // Key type string
+            let key_type = b"ecdsa-sha2-nistp256";
+            msg.extend_from_slice(&(key_type.len() as u32).to_be_bytes());
+            msg.extend_from_slice(key_type);
+
+            // Curve name
+            let curve_name = b"nistp256";
+            msg.extend_from_slice(&(curve_name.len() as u32).to_be_bytes());
+            msg.extend_from_slice(curve_name);
+
+            // Public key (SEC1 uncompressed encoding)
+            let public_bytes = public.as_bytes();
+            msg.extend_from_slice(&(public_bytes.len() as u32).to_be_bytes());
+            msg.extend_from_slice(public_bytes);
+
+            // Private scalar (mpint-encoded — RFC 5656 §3.1.2)
+            let scalar_bytes = private.as_slice();
+            let mpint = crate::crypto::ssh::encode_mpint_for_agent(scalar_bytes);
+            msg.extend_from_slice(&(mpint.len() as u32).to_be_bytes());
+            msg.extend_from_slice(&mpint);
+
+            // Comment
             let comment = b"auths-key";
             msg.extend_from_slice(&(comment.len() as u32).to_be_bytes());
             msg.extend_from_slice(comment);
         }
         _ => {
             return Err(AgentError::InvalidInput(
-                "Only Ed25519 keys are supported".to_string(),
+                "Only Ed25519 and NistP256 keys are supported".to_string(),
             ));
         }
     }
@@ -683,10 +695,8 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ed25519_seed_pkcs8() {
-        // This tests the PKCS#8 parsing with a valid structure
-        // For now, just test that invalid input returns an error
-        let result = extract_ed25519_seed(&[0u8; 10]);
+    fn test_parse_invalid_pkcs8() {
+        let result = auths_crypto::parse_key_material(&[0u8; 10]);
         assert!(result.is_err());
     }
 }

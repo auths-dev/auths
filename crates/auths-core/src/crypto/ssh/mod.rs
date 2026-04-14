@@ -5,7 +5,7 @@ mod error;
 mod keys;
 mod signatures;
 
-pub use encoding::{encode_ssh_pubkey, encode_ssh_signature};
+pub use encoding::{encode_mpint_for_agent, encode_ssh_pubkey, encode_ssh_signature};
 pub use error::CryptoError;
 pub use keys::{
     SecureSeed, build_ed25519_pkcs8_v2_from_seed, extract_pubkey_from_key_bytes,

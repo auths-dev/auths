@@ -183,14 +183,14 @@ pub enum ResolvedIdentity {
     Key {
         /// The resolved DID string.
         did: String,
-        /// The Ed25519 public key.
+        /// The public key.
         public_key: Ed25519PublicKey,
     },
     /// KERI-based identity with rotation capability.
     Keri {
         /// The resolved DID string.
         did: String,
-        /// The Ed25519 public key.
+        /// The public key.
         public_key: Ed25519PublicKey,
         /// Current KEL sequence number.
         sequence: u64,
@@ -207,7 +207,7 @@ impl ResolvedIdentity {
         }
     }
 
-    /// Returns the Ed25519 public key.
+    /// Returns the public key.
     pub fn public_key(&self) -> &Ed25519PublicKey {
         match self {
             ResolvedIdentity::Key { public_key, .. }

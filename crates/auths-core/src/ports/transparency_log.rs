@@ -37,7 +37,7 @@ pub struct LogSubmission {
 /// Args:
 /// * `log_id` — Stable identifier for trust config lookup (e.g., `"sigstore-rekor"`).
 /// * `log_origin` — C2SP checkpoint origin string.
-/// * `log_public_key` — The log's Ed25519 public key for checkpoint verification.
+/// * `log_public_key` — The log's public key for checkpoint verification.
 /// * `api_url` — Optional API endpoint URL.
 ///
 /// Usage:
@@ -150,7 +150,7 @@ pub trait TransparencyLog: Send + Sync {
     ///
     /// Args:
     /// * `leaf_data` — Raw bytes to log (typically serialized attestation JSON).
-    /// * `public_key` — Signer's public key (Ed25519, DER-encoded).
+    /// * `public_key` — Signer's public key (Ed25519 DER or P-256 SEC1).
     /// * `signature` — Signature over `leaf_data`.
     async fn submit(
         &self,

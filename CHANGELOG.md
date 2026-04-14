@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Curve-agnostic refactor Round 2 (fn-116) + fn-115 follow-up
+
+- **Witness server** (`crates/auths-core/src/witness/server.rs`) — P-256 witnesses now supported end-to-end. `WitnessServerInner.{seed, public_key}` replaced with `signer: TypedSignerKey` (curve-tagged); `WitnessServerConfig::with_generated_keypair(db_path, curve: CurveType)` accepts curve parameter; DID derivation uses `auths_crypto::{ed25519,p256}_pubkey_to_did_key` per curve (no more `z6Mk` hardcode). CLI layer defaults to P-256 witnesses.
+- **KERI event-submission validator** now parses `k[0]` via `KeriPublicKey::parse` (CESR-aware); dispatches signature verify on parsed curve. Hex-encoded `k[0]` retained as legacy back-compat branch for Ed25519-only.
+- **CESR strict parser** — `KeriPublicKey::parse` rejects legacy `1AAJ` P-256 verkey prefix (CESR spec's `1AAJ` is the P-256 *signature* code, not a verkey code). `1AAI` is the only accepted P-256 verkey prefix. Pre-launch posture — no on-disk v1 identities to protect.
+- **Typed newtypes** for non-signing 32-byte fields:
+  - `auths_crypto::Hash256` (re-exported via `auths_verifier::Hash256`) for content digests. `ApprovalAttestation.request_hash` migrated.
+  - `auths_pairing_protocol::X25519PublicKey` for X25519 ECDH keys. `CompletedPairing.initiator_x25519_pub` migrated.
+  - Both use `#[serde(transparent)]` — byte-identical wire format.
+- **`SeedSignerKey`** now holds `DevicePublicKey` + `curve: CurveType` instead of `[u8; 32]`. Sign path dispatches via `TypedSignerKey::sign` (curve-aware).
+- **`RotationSigner` type alias deleted** — all workspace callers migrated to `TypedSignerKey`.
+- **`did_key_to_ed25519` and `ed25519_to_did_key` wrappers deleted** from `auths_id::identity::resolve`. Callers use `auths_crypto::did_key_decode` + `DecodedDidKey` variants. Deny-list entry removed from all 7 `clippy.toml` files.
+- **`ED25519_PUBLIC_KEY_LEN`** no longer used outside `auths_crypto` — `wasm.rs` migrated to `CurveType::from_public_key_len` for curve-aware length validation.
+- **Doc comment sweep** — `auths-core/src/ports/{network,transparency_log}` and `packages/auths-python` docstrings updated to not claim Ed25519-specificity in curve-agnostic functions.
+- **Pairing-protocol test helper** — `generate_ed25519_keypair_sync` no longer byte-slices ring PKCS8 internals; routes through `auths_crypto::parse_key_material` (curve-detecting).
+
+### SSH P-256 wire format (fn-117)
+
+- **RFC 5656 `ecdsa-sha2-nistp256` SSH support landed.** Agent-mode signing, `add_identity`, `request_identities`, `sign`, `remove_identity`, OpenSSH PEM export (`export_key_openssh_pem`), and `.pub` line export (`export_key_openssh_pub`) all curve-dispatch. `SeedSignerKey::kind()` reports the correct `SshAlgorithm::Ecdsa { curve: NistP256 }` for P-256 seeds; `SeedSignerKey::sign()` produces DER-encoded `(r, s)` signatures via `typed_sign`.
+- **`AgentError::P256SshUnsupported` variant deleted** (was error code `AUTHS-E3026`, introduced in fn-116.18 as a loud-fail placeholder). P-256 identities now work with the SSH agent flow with no caller-visible errors.
+- **`AgentCore` stores curve alongside seed** (`StoredKey { seed, curve }`) so the sign path dispatches on the curve of the key that was registered — no more inference from public-key length.
+- **macOS system agent registration** (`register_keys_with_macos_agent_with_handle`) propagates curve through to PEM conversion; both Ed25519 and P-256 keys can be `ssh-add`ed via the platform agent.
+
+### Deferred follow-up (tracked in `.flow/fn-114-dirty-crates.txt`)
+
+- `TypedSignature` enum graduation (variant-per-curve) — deferred. Current newtype covers the 64-byte coincidence (Ed25519 = P-256 r||s). Full enum becomes load-bearing when a curve with a different signature length arrives (ML-DSA-44 = 2420 bytes).
+- B3 typed-wrapper sweep (`Ed25519PublicKey` / `Ed25519Signature` struct fields across ~20 production files) — deferred alongside the enum graduation.
+- Per-site migration of remaining banned-API call sites across production crates. Workspace clippy green via the crate-level transitional allows that fn-115 was scoped to remove.
+
 ### Removed
 
 - **xtask:** Removed `cargo xt ci-setup`. Use `auths ci setup` (or `just ci-setup`) instead.

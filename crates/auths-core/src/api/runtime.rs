@@ -17,6 +17,8 @@ use crate::signing::{PassphraseProvider, PrefilledPassphraseProvider};
 use crate::storage::keychain::{KeyAlias, KeyRole, KeyStorage};
 use log::{debug, error, info, warn};
 #[cfg(target_os = "macos")]
+use p256::pkcs8::DecodePrivateKey;
+#[cfg(target_os = "macos")]
 use pkcs8::PrivateKeyInfo;
 #[cfg(target_os = "macos")]
 use pkcs8::der::Decode;
@@ -27,8 +29,6 @@ use serde::Serialize;
 use ssh_agent_lib;
 #[cfg(unix)]
 use ssh_agent_lib::agent::listen;
-#[cfg(target_os = "macos")]
-use ssh_key::Fingerprint;
 use ssh_key::private::{Ed25519Keypair as SshEdKeypair, KeypairData};
 use ssh_key::{
     self, LineEnding, PrivateKey as SshPrivateKey, PublicKey as SshPublicKey,
@@ -71,6 +71,66 @@ impl std::fmt::Display for SshRegError {
             Self::BadSeedLength(n) => {
                 write!(f, "invalid PKCS#8 seed length: expected 32 bytes, got {n}")
             }
+        }
+    }
+}
+
+/// Compute the SSH fingerprint for a public key of the given curve.
+#[cfg(target_os = "macos")]
+fn compute_ssh_fingerprint(pubkey_bytes: &[u8], curve: auths_crypto::CurveType) -> String {
+    let key_data = match curve {
+        auths_crypto::CurveType::Ed25519 => SshEd25519PublicKey::try_from(pubkey_bytes)
+            .map(ssh_key::public::KeyData::Ed25519)
+            .ok(),
+        auths_crypto::CurveType::P256 => {
+            ssh_key::public::EcdsaPublicKey::from_sec1_bytes(pubkey_bytes)
+                .ok()
+                .map(ssh_key::public::KeyData::Ecdsa)
+        }
+    };
+    match key_data {
+        Some(kd) => SshPublicKey::new(kd, "")
+            .fingerprint(Default::default())
+            .to_string(),
+        None => {
+            warn!("Could not build public key for fingerprint computation");
+            "unknown_fingerprint".to_string()
+        }
+    }
+}
+
+/// Parse a PKCS#8 key blob into an `ssh_key::private::KeypairData` variant matching the curve.
+#[cfg(target_os = "macos")]
+fn build_ssh_keypair_data(
+    pkcs8_bytes: &[u8],
+    curve: auths_crypto::CurveType,
+) -> Result<KeypairData, SshRegError> {
+    match curve {
+        auths_crypto::CurveType::Ed25519 => {
+            let private_key_info = PrivateKeyInfo::from_der(pkcs8_bytes)
+                .map_err(|e| SshRegError::Conversion(e.to_string()))?;
+            let seed_octet_string = OctetString::from_der(private_key_info.private_key)
+                .map_err(|e| SshRegError::Conversion(e.to_string()))?;
+            let seed_bytes = seed_octet_string.as_bytes();
+            if seed_bytes.len() != 32 {
+                return Err(SshRegError::BadSeedLength(seed_bytes.len()));
+            }
+            #[allow(clippy::expect_used)]
+            // INVARIANT: length validated by the 32-byte check above.
+            let seed_array: [u8; 32] = seed_bytes.try_into().expect("Length checked");
+            Ok(KeypairData::Ed25519(SshEdKeypair::from_seed(&seed_array)))
+        }
+        auths_crypto::CurveType::P256 => {
+            use p256::elliptic_curve::sec1::ToEncodedPoint;
+            use ssh_key::private::{EcdsaKeypair, EcdsaPrivateKey};
+
+            let secret = p256::SecretKey::from_pkcs8_der(pkcs8_bytes)
+                .map_err(|e| SshRegError::Conversion(format!("P-256 PKCS#8 parse failed: {e}")))?;
+            let public = secret.public_key();
+            Ok(KeypairData::Ecdsa(EcdsaKeypair::NistP256 {
+                public: public.to_encoded_point(false),
+                private: EcdsaPrivateKey::from(secret),
+            }))
         }
     }
 }
@@ -405,30 +465,29 @@ pub fn export_key_openssh_pem(
     // 2. Decrypt key data
     let pkcs8_bytes = decrypt_keypair(&encrypted_pkcs8, passphrase)?;
 
-    // 3. Extract seed via the consolidated SSH crypto module
-    let pkcs8 = auths_crypto::Pkcs8Der::new(&pkcs8_bytes[..]);
-    let secure_seed = crate::crypto::ssh::extract_seed_from_pkcs8(&pkcs8).map_err(|e| {
+    // 3. Parse the key material (auto-detects curve)
+    let parsed = auths_crypto::parse_key_material(&pkcs8_bytes[..]).map_err(|e| {
         AgentError::KeyDeserializationError(format!(
-            "Failed to extract Ed25519 seed for alias '{}': {}",
+            "Failed to parse key material for alias '{}': {}",
             alias, e
         ))
     })?;
 
-    let ssh_ed_keypair = SshEdKeypair::from_seed(secure_seed.as_bytes());
-    let keypair_data = KeypairData::Ed25519(ssh_ed_keypair);
-    // Create the private key object (comment is typically empty for PEM)
-    let ssh_private_key = SshPrivateKey::new(keypair_data, "") // Empty comment
-        .map_err(|e| {
-            // Use CryptoError for ssh-key object creation failure
-            AgentError::CryptoError(format!(
-                "Failed to create ssh_key::PrivateKey for alias '{}': {}",
-                alias, e
-            ))
-        })?;
+    let keypair_data = build_openssh_keypair_data(&parsed).map_err(|e| {
+        AgentError::CryptoError(format!(
+            "Failed to build SSH keypair for alias '{}': {}",
+            alias, e
+        ))
+    })?;
 
-    // 5. Format as OpenSSH PEM (uses LF line endings by default)
+    let ssh_private_key = SshPrivateKey::new(keypair_data, "").map_err(|e| {
+        AgentError::CryptoError(format!(
+            "Failed to create ssh_key::PrivateKey for alias '{}': {}",
+            alias, e
+        ))
+    })?;
+
     let pem = ssh_private_key.to_openssh(LineEnding::LF).map_err(|e| {
-        // Use CryptoError for formatting failure
         AgentError::CryptoError(format!(
             "Failed to encode OpenSSH PEM for alias '{}': {}",
             alias, e
@@ -436,7 +495,28 @@ pub fn export_key_openssh_pem(
     })?;
 
     debug!("Successfully generated PEM for alias '{}'", alias);
-    Ok(pem) // Returns Zeroizing<String>
+    Ok(pem)
+}
+
+/// Build `ssh_key::private::KeypairData` from a parsed key material, dispatching on curve.
+fn build_openssh_keypair_data(parsed: &auths_crypto::ParsedKey) -> Result<KeypairData, String> {
+    match parsed.seed.curve() {
+        auths_crypto::CurveType::Ed25519 => Ok(KeypairData::Ed25519(SshEdKeypair::from_seed(
+            parsed.seed.as_bytes(),
+        ))),
+        auths_crypto::CurveType::P256 => {
+            use p256::elliptic_curve::sec1::ToEncodedPoint;
+            use ssh_key::private::{EcdsaKeypair, EcdsaPrivateKey};
+
+            let secret = p256::SecretKey::from_slice(parsed.seed.as_bytes())
+                .map_err(|e| format!("P-256 secret key parse: {e}"))?;
+            let public = secret.public_key();
+            Ok(KeypairData::Ecdsa(EcdsaKeypair::NistP256 {
+                public: public.to_encoded_point(false),
+                private: EcdsaPrivateKey::from(secret),
+            }))
+        }
+    }
 }
 
 /// Exports the public key in OpenSSH `.pub` format.
@@ -465,19 +545,32 @@ pub fn export_key_openssh_pub(
     // 1. Obtain public key bytes (hardware-aware; SE returns pubkey without decryption)
     let key_alias = KeyAlias::new_unchecked(alias);
     let passphrase_provider = PrefilledPassphraseProvider::new(passphrase);
-    let (pubkey_bytes, _curve) = crate::storage::keychain::extract_public_key_bytes(
+    let (pubkey_bytes, curve) = crate::storage::keychain::extract_public_key_bytes(
         keychain,
         &key_alias,
         &passphrase_provider,
     )?;
-    let ssh_ed25519_pubkey =
-        SshEd25519PublicKey::try_from(pubkey_bytes.as_slice()).map_err(|e| {
-            AgentError::CryptoError(format!(
-                "Failed to create Ed25519PublicKey from bytes: {}",
-                e
-            ))
-        })?;
-    let key_data = ssh_key::public::KeyData::Ed25519(ssh_ed25519_pubkey);
+    let key_data = match curve {
+        auths_crypto::CurveType::Ed25519 => {
+            let pk = SshEd25519PublicKey::try_from(pubkey_bytes.as_slice()).map_err(|e| {
+                AgentError::CryptoError(format!(
+                    "Failed to create Ed25519PublicKey from bytes: {}",
+                    e
+                ))
+            })?;
+            ssh_key::public::KeyData::Ed25519(pk)
+        }
+        auths_crypto::CurveType::P256 => {
+            let pk = ssh_key::public::EcdsaPublicKey::from_sec1_bytes(pubkey_bytes.as_slice())
+                .map_err(|e| {
+                    AgentError::CryptoError(format!(
+                        "Failed to create EcdsaPublicKey from bytes: {}",
+                        e
+                    ))
+                })?;
+            ssh_key::public::KeyData::Ecdsa(pk)
+        }
+    };
 
     // 5. Create the ssh-key PublicKey object (comment is optional here)
     let ssh_pub_key = SshPublicKey::new(key_data, ""); // Use empty comment for base formatting
@@ -541,15 +634,27 @@ pub fn register_keys_with_macos_agent_with_handle(
         warn!("SSH_AUTH_SOCK not configured. System ssh-agent may not be running or configured.");
     }
 
-    let keys_to_register: Vec<(Vec<u8>, Zeroizing<Vec<u8>>)> = {
+    let keys_to_register: Vec<(Vec<u8>, auths_crypto::CurveType, Zeroizing<Vec<u8>>)> = {
         let agent_guard = handle.lock()?;
         agent_guard
             .keys
             .iter()
-            .map(|(pubkey, seed)| {
-                let pubkey_arr: [u8; 32] = pubkey.as_slice().try_into().unwrap_or([0u8; 32]);
-                let pkcs8 = auths_crypto::build_ed25519_pkcs8_v2(seed.as_bytes(), &pubkey_arr);
-                (pubkey.clone(), Zeroizing::new(pkcs8))
+            .filter_map(|(pubkey, stored)| {
+                let typed_seed = match stored.curve {
+                    auths_crypto::CurveType::Ed25519 => {
+                        auths_crypto::TypedSeed::Ed25519(*stored.seed.as_bytes())
+                    }
+                    auths_crypto::CurveType::P256 => {
+                        auths_crypto::TypedSeed::P256(*stored.seed.as_bytes())
+                    }
+                };
+                let signer = auths_crypto::TypedSignerKey::from_seed(typed_seed).ok()?;
+                let pkcs8 = signer.to_pkcs8().ok()?;
+                Some((
+                    pubkey.clone(),
+                    stored.curve,
+                    Zeroizing::new(pkcs8.as_ref().to_vec()),
+                ))
             })
             .collect()
     };
@@ -575,7 +680,7 @@ pub fn register_keys_with_macos_agent_with_handle(
 #[cfg(target_os = "macos")]
 #[allow(clippy::too_many_lines)]
 fn register_keys_with_macos_agent_internal(
-    keys_to_register: Vec<(Vec<u8>, Zeroizing<Vec<u8>>)>,
+    keys_to_register: Vec<(Vec<u8>, auths_crypto::CurveType, Zeroizing<Vec<u8>>)>,
     ssh_agent: &dyn crate::ports::ssh_agent::SshAgentPort,
 ) -> Result<Vec<KeyRegistrationStatus>, AgentError> {
     use crate::ports::ssh_agent::SshAgentError;
@@ -591,26 +696,8 @@ fn register_keys_with_macos_agent_internal(
 
     let mut results = Vec::with_capacity(keys_to_register.len());
 
-    for (pubkey_bytes, pkcs8_bytes_zeroizing) in keys_to_register.into_iter() {
-        let fingerprint_str = (|| -> Result<String, AgentError> {
-            let pk = SshEd25519PublicKey::try_from(pubkey_bytes.as_slice()).map_err(|e| {
-                AgentError::KeyDeserializationError(format!(
-                    "Invalid pubkey bytes for fingerprint: {}",
-                    e
-                ))
-            })?;
-            let ssh_pub_key: SshPublicKey =
-                SshPublicKey::new(ssh_key::public::KeyData::Ed25519(pk), "");
-            let fp: Fingerprint = ssh_pub_key.fingerprint(Default::default());
-            Ok(fp.to_string())
-        })()
-        .unwrap_or_else(|e| {
-            warn!(
-                "Could not calculate fingerprint for key being registered: {}",
-                e
-            );
-            "unknown_fingerprint".to_string()
-        });
+    for (pubkey_bytes, curve, pkcs8_bytes_zeroizing) in keys_to_register.into_iter() {
+        let fingerprint_str = compute_ssh_fingerprint(&pubkey_bytes, curve);
 
         let mut status = KeyRegistrationStatus {
             fingerprint: fingerprint_str.clone(),
@@ -620,19 +707,7 @@ fn register_keys_with_macos_agent_internal(
 
         let result: Result<(), SshRegError> = (|| {
             let pkcs8_bytes = pkcs8_bytes_zeroizing.as_ref();
-            let private_key_info = PrivateKeyInfo::from_der(pkcs8_bytes)
-                .map_err(|e| SshRegError::Conversion(e.to_string()))?;
-            let seed_octet_string = OctetString::from_der(private_key_info.private_key)
-                .map_err(|e| SshRegError::Conversion(e.to_string()))?;
-            let seed_bytes = seed_octet_string.as_bytes();
-            if seed_bytes.len() != 32 {
-                return Err(SshRegError::BadSeedLength(seed_bytes.len()));
-            }
-            // SAFETY: length validated by the 32-byte check above
-            #[allow(clippy::expect_used)]
-            let seed_array: [u8; 32] = seed_bytes.try_into().expect("Length checked");
-            let ssh_ed_keypair = SshEdKeypair::from_seed(&seed_array);
-            let keypair_data = KeypairData::Ed25519(ssh_ed_keypair);
+            let keypair_data = build_ssh_keypair_data(pkcs8_bytes, curve)?;
             let ssh_private_key = SshPrivateKey::new(keypair_data, "")
                 .map_err(|e| SshRegError::Conversion(e.to_string()))?;
             let pem_zeroizing = ssh_private_key

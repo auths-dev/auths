@@ -1,7 +1,6 @@
 //! DID resolution for did:key and did:keri.
 
 use auths_keri::KeriPublicKey;
-use auths_verifier::core::Ed25519PublicKey;
 use git2::Repository;
 use std::path::Path;
 
@@ -153,17 +152,10 @@ impl DidResolver for RegistryDidResolver {
     }
 }
 
-/// Parse a did:key to extract the Ed25519 public key.
-pub fn did_key_to_ed25519(did: &str) -> Result<Ed25519PublicKey, DidResolverError> {
-    auths_crypto::did_key_to_ed25519(did)
-        .map(Ed25519PublicKey::from_bytes)
-        .map_err(|e| DidResolverError::InvalidDidKey(e.to_string()))
-}
-
-/// Convert a 32-byte Ed25519 public key to `did:key` format.
-pub fn ed25519_to_did_key(public_key: &[u8; 32]) -> String {
-    auths_crypto::ed25519_pubkey_to_did_key(public_key)
-}
+// fn-116.2: `did_key_to_ed25519` and `ed25519_to_did_key` wrappers were deleted.
+// Callers should use `auths_crypto::did_key_decode` (returns curve-tagged
+// `DecodedDidKey`) and `auths_crypto::{ed25519_pubkey_to_did_key, p256_pubkey_to_did_key}`
+// directly — there is no need for a re-export layer that hardcodes Ed25519.
 
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
@@ -186,9 +178,9 @@ mod tests {
     #[test]
     fn did_key_roundtrip() {
         let key_bytes = [42u8; 32];
-        let did = ed25519_to_did_key(&key_bytes);
-        let decoded = did_key_to_ed25519(&did).unwrap();
-        assert_eq!(*decoded.as_bytes(), key_bytes);
+        let did = auths_crypto::ed25519_pubkey_to_did_key(&key_bytes);
+        let decoded = auths_crypto::did_key_to_ed25519(&did).unwrap();
+        assert_eq!(decoded, key_bytes);
     }
 
     #[test]
@@ -196,7 +188,7 @@ mod tests {
         let resolver = DefaultDidResolver::new();
 
         let key = [1u8; 32];
-        let did = ed25519_to_did_key(&key);
+        let did = auths_crypto::ed25519_pubkey_to_did_key(&key);
 
         let resolved = resolver.resolve(&did).unwrap();
         assert_eq!(resolved.public_key_bytes(), &key);
@@ -252,13 +244,13 @@ mod tests {
 
     #[test]
     fn rejects_invalid_did_key() {
-        let result = did_key_to_ed25519("did:key:invalid");
-        assert!(matches!(result, Err(DidResolverError::InvalidDidKey(_))));
+        let result = auths_crypto::did_key_decode("did:key:invalid");
+        assert!(result.is_err());
     }
 
     #[test]
     fn rejects_non_did_key_prefix() {
-        let result = did_key_to_ed25519("did:web:example.com");
-        assert!(matches!(result, Err(DidResolverError::InvalidDidKey(_))));
+        let result = auths_crypto::did_key_decode("did:web:example.com");
+        assert!(result.is_err());
     }
 }

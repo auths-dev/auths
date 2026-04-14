@@ -9,7 +9,4 @@ pub mod resolve;
 pub mod rotate;
 
 #[cfg(feature = "git-storage")]
-pub use resolve::{
-    DefaultDidResolver, DidResolver, DidResolverError, ResolvedDid, did_key_to_ed25519,
-    ed25519_to_did_key,
-};
+pub use resolve::{DefaultDidResolver, DidResolver, DidResolverError, ResolvedDid};

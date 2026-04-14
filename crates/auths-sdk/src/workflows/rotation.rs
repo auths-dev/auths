@@ -58,7 +58,7 @@ use crate::types::IdentityRotationConfig;
 /// ```
 pub fn compute_rotation_event(
     state: &KeyState,
-    next_signer: &auths_crypto::RotationSigner,
+    next_signer: &auths_crypto::TypedSignerKey,
     new_next_public_key: &[u8],
     _new_next_curve: auths_crypto::CurveType,
     witness_config: Option<&WitnessConfig>,
@@ -390,7 +390,7 @@ fn generate_rotation_keys(
         .and_then(|m| m.get("witness_config"))
         .and_then(|wc| serde_json::from_value(wc.clone()).ok());
 
-    let next_signer = auths_crypto::RotationSigner::from_pkcs8(current_key_pkcs8)
+    let next_signer = auths_crypto::TypedSignerKey::from_pkcs8(current_key_pkcs8)
         .map_err(|e| RotationError::KeyDecryptionFailed(e.to_string()))?;
 
     let generated = generate_keypair_for_init(next_signer.curve())
@@ -876,12 +876,12 @@ mod tests {
 
         let sk = SigningKey::random(&mut OsRng);
         let pkcs8 = sk.to_pkcs8_der().unwrap();
-        let next_signer = auths_crypto::RotationSigner::from_pkcs8(pkcs8.as_bytes()).unwrap();
+        let next_signer = auths_crypto::TypedSignerKey::from_pkcs8(pkcs8.as_bytes()).unwrap();
 
         let new_next_sk = SigningKey::random(&mut OsRng);
         let new_next_pkcs8 = new_next_sk.to_pkcs8_der().unwrap();
         let new_next_signer =
-            auths_crypto::RotationSigner::from_pkcs8(new_next_pkcs8.as_bytes()).unwrap();
+            auths_crypto::TypedSignerKey::from_pkcs8(new_next_pkcs8.as_bytes()).unwrap();
 
         let state = KeyState {
             prefix: Prefix::new_unchecked("EtestP256".to_string()),

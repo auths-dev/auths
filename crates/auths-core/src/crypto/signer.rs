@@ -4,8 +4,9 @@ use crate::config::current_algorithm;
 use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes};
 use crate::crypto::provider_bridge;
 use crate::error::AgentError;
-use auths_crypto::SecureSeed;
-use ssh_agent_lib::ssh_key::Algorithm as SshAlgorithm;
+use auths_crypto::{CurveType, SecureSeed, TypedSeed};
+use auths_verifier::DevicePublicKey;
+use ssh_agent_lib::ssh_key::{Algorithm as SshAlgorithm, EcdsaCurve};
 use zeroize::Zeroizing;
 
 /// A trait implemented by key types that can sign messages and return their public key.
@@ -20,40 +21,98 @@ pub trait SignerKey: Send + Sync + 'static {
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, AgentError>;
 }
 
-/// SignerKey implementation backed by a SecureSeed, routing through CryptoProvider.
+/// SignerKey implementation backed by a curve-tagged seed.
+///
+/// fn-116.14: carries `DevicePublicKey` instead of bare `[u8; 32]` so callers
+/// can't accidentally drop curve information.
 pub struct SeedSignerKey {
     seed: SecureSeed,
-    public_key: [u8; 32],
+    public_key: DevicePublicKey,
+    curve: CurveType,
 }
 
 impl SeedSignerKey {
-    /// Create a `SignerKey` from a seed and pre-computed public key.
+    /// Create a `SignerKey` from a seed and pre-computed 32-byte Ed25519 pubkey.
+    /// Back-compat constructor — prefer [`SeedSignerKey::new_typed`] when curve
+    /// is known.
     pub fn new(seed: SecureSeed, public_key: [u8; 32]) -> Self {
-        Self { seed, public_key }
+        #[allow(clippy::expect_used)] // INVARIANT: Ed25519 pubkey is always 32 bytes
+        let dpk = DevicePublicKey::try_new(CurveType::Ed25519, &public_key)
+            .expect("Ed25519 public key is always 32 bytes");
+        Self {
+            seed,
+            public_key: dpk,
+            curve: CurveType::Ed25519,
+        }
     }
 
-    /// Create a `SignerKey` by deriving the public key from the seed.
+    /// Create a curve-tagged `SignerKey` from a seed + typed public key.
+    pub fn new_typed(seed: SecureSeed, public_key: DevicePublicKey) -> Self {
+        let curve = public_key.curve();
+        Self {
+            seed,
+            public_key,
+            curve,
+        }
+    }
+
+    /// Create a `SignerKey` by deriving the public key from an Ed25519 seed.
+    /// Preserved for back-compat; use [`SeedSignerKey::from_typed_seed`] for
+    /// curve-aware construction.
     pub fn from_seed(seed: SecureSeed) -> Result<Self, AgentError> {
         let public_key =
             provider_bridge::ed25519_public_key_from_seed_sync(&seed).map_err(|e| {
                 AgentError::CryptoError(format!("Failed to derive public key from seed: {}", e))
             })?;
-        Ok(Self { seed, public_key })
+        Ok(Self::new(seed, public_key))
+    }
+
+    /// Create a `SignerKey` from a curve-tagged `TypedSeed`.
+    pub fn from_typed_seed(seed: TypedSeed) -> Result<Self, AgentError> {
+        let curve = seed.curve();
+        let pk_bytes = auths_crypto::typed_public_key(&seed)
+            .map_err(|e| AgentError::CryptoError(format!("Failed to derive pk: {e}")))?;
+        let dpk = DevicePublicKey::try_new(curve, &pk_bytes)
+            .map_err(|e| AgentError::CryptoError(format!("Invalid derived pk: {e}")))?;
+        Ok(Self {
+            seed: seed.to_secure_seed(),
+            public_key: dpk,
+            curve,
+        })
+    }
+
+    /// Returns the curve of the underlying signing key.
+    pub fn curve(&self) -> CurveType {
+        self.curve
+    }
+
+    /// Returns a typed view of the public key.
+    pub fn typed_public_key(&self) -> &DevicePublicKey {
+        &self.public_key
     }
 }
 
 impl SignerKey for SeedSignerKey {
     fn public_key_bytes(&self) -> Vec<u8> {
-        self.public_key.to_vec()
+        self.public_key.as_bytes().to_vec()
     }
 
     fn kind(&self) -> SshAlgorithm {
-        SshAlgorithm::Ed25519
+        match self.curve {
+            CurveType::Ed25519 => SshAlgorithm::Ed25519,
+            CurveType::P256 => SshAlgorithm::Ecdsa {
+                curve: EcdsaCurve::NistP256,
+            },
+        }
     }
 
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, AgentError> {
-        provider_bridge::sign_ed25519_sync(&self.seed, message)
-            .map_err(|e| AgentError::CryptoError(format!("Ed25519 signing failed: {}", e)))
+        let typed = match self.curve {
+            CurveType::Ed25519 => TypedSeed::Ed25519(*self.seed.as_bytes()),
+            CurveType::P256 => TypedSeed::P256(*self.seed.as_bytes()),
+        };
+        auths_crypto::typed_sign(&typed, message)
+            .map_err(|e| AgentError::CryptoError(format!("{} signing failed: {e}", self.curve)))
     }
 }
 
