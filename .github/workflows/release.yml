@@ -68,18 +68,7 @@ jobs:
           key: ${{ matrix.target }}
           cache-on-failure: true
 
-      - name: Install cross (Linux ARM64)
-        if: matrix.cross
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cross
-
-      - name: Build release binaries (cross)
-        if: matrix.cross
-        run: cross build --release --package auths-cli --target ${{ matrix.target }}
-
       - name: Build release binaries
-        if: "!matrix.cross"
         run: cargo build --release --package auths-cli --target ${{ matrix.target }}
 
       - name: Package (Unix)
