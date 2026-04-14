@@ -27,7 +27,11 @@ fn approval_gate_expr(cap_name: &str, approver: &str) -> Expr {
     }
 }
 
-fn make_approval(approver: &str, request_hash: [u8; 32], expires_in: i64) -> ApprovalAttestation {
+fn make_approval(
+    approver: &str,
+    request_hash: auths_verifier::Hash256,
+    expires_in: i64,
+) -> ApprovalAttestation {
     ApprovalAttestation {
         jti: "test-jti-001".into(),
         approver_did: did(approver),
@@ -92,7 +96,7 @@ fn approval_gate_request_hash_mismatch() {
     let approver = "did:keri:human";
     let policy = compile(&approval_gate_expr("deploy:prod", approver)).unwrap();
     let ctx = base_ctx().capability(cap("deploy:prod"));
-    let wrong_hash = [0xFFu8; 32];
+    let wrong_hash = auths_verifier::Hash256::new([0xFFu8; 32]);
     let approval = make_approval(approver, wrong_hash, 300);
     let ctx = ctx.approval(approval);
 

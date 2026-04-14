@@ -66,7 +66,7 @@ pub fn build_approval_attestation(
         return Err(ApprovalError::RequestExpired { expires_at });
     }
 
-    let request_hash = hex_to_hash(request_hash_hex)?;
+    let request_hash = auths_verifier::Hash256::new(hex_to_hash(request_hash_hex)?);
     let jti = uuid_v4(now);
 
     // Cap the attestation expiry to 5 minutes from now

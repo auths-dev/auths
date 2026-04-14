@@ -1,18 +1,23 @@
-use crate::crypto::provider_bridge;
 use crate::error::AgentError;
-use auths_crypto::SecureSeed;
+use auths_crypto::{CurveType, SecureSeed, TypedSeed};
 use log::error;
 use std::collections::HashMap;
 use std::fmt;
 use zeroize::Zeroizing;
 
+/// An agent-stored key: seed bytes tagged with the curve they belong to.
+pub struct StoredKey {
+    pub seed: SecureSeed,
+    pub curve: CurveType,
+}
+
 /// An in-memory registry of SSH keys used by the local agent.
-/// Stores seeds securely using SecureSeed (zeroize-on-drop).
+/// Stores seeds securely using SecureSeed (zeroize-on-drop) with curve tags.
 /// Note: Clone is intentionally NOT derived to prevent accidental copying of key material.
 #[derive(Default)]
 pub struct AgentCore {
-    /// Maps public key bytes (`Vec<u8>`) to the corresponding SecureSeed.
-    pub keys: HashMap<Vec<u8>, SecureSeed>,
+    /// Maps public key bytes (`Vec<u8>`) to the corresponding curve-tagged seed.
+    pub keys: HashMap<Vec<u8>, StoredKey>,
 }
 
 impl fmt::Debug for AgentCore {
@@ -35,8 +40,8 @@ impl AgentCore {
     /// Args:
     /// * `pkcs8_bytes` - The raw, decrypted PKCS#8 bytes for the Ed25519 key, wrapped in `Zeroizing`.
     pub fn register_key(&mut self, pkcs8_bytes: Zeroizing<Vec<u8>>) -> Result<(), AgentError> {
-        let (seed, pubkey, _curve) = crate::crypto::signer::load_seed_and_pubkey(&pkcs8_bytes)?;
-        self.keys.insert(pubkey.to_vec(), seed);
+        let (seed, pubkey, curve) = crate::crypto::signer::load_seed_and_pubkey(&pkcs8_bytes)?;
+        self.keys.insert(pubkey.to_vec(), StoredKey { seed, curve });
         Ok(())
     }
 
@@ -49,16 +54,20 @@ impl AgentCore {
     }
 
     /// Signs a message using the key associated with the given public key bytes.
-    /// Routes through CryptoProvider via the sync bridge.
+    /// Dispatches to the curve stored alongside the seed at registration time.
     pub fn sign(&self, pubkey_to_find: &[u8], data: &[u8]) -> Result<Vec<u8>, AgentError> {
-        let seed = self
+        let stored = self
             .keys
             .get(pubkey_to_find)
             .ok_or(AgentError::KeyNotFound)?;
 
-        provider_bridge::sign_ed25519_sync(seed, data).map_err(|e| {
+        let typed = match stored.curve {
+            CurveType::Ed25519 => TypedSeed::Ed25519(*stored.seed.as_bytes()),
+            CurveType::P256 => TypedSeed::P256(*stored.seed.as_bytes()),
+        };
+        auths_crypto::typed_sign(&typed, data).map_err(|e| {
             error!("CryptoProvider signing failed: {}", e);
-            AgentError::CryptoError(format!("Ed25519 signing failed: {}", e))
+            AgentError::CryptoError(format!("{} signing failed: {}", stored.curve, e))
         })
     }
 

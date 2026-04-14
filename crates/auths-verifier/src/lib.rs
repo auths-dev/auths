@@ -131,6 +131,7 @@ pub use ssh_sig::{SshKeyType, SshSigEnvelope};
 
 // Re-export crypto provider trait for downstream consumers
 pub use auths_crypto::CryptoProvider;
+pub use auths_crypto::Hash256;
 
 // Re-export clock types for downstream consumers (auths-core re-exports from here)
 pub use clock::{ClockProvider, SystemClock};

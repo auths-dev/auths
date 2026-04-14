@@ -147,11 +147,11 @@ pub fn sign_action(
     })
 }
 
-/// Verify an action envelope's Ed25519 signature.
+/// Verify an action envelope's signature.
 ///
 /// Args:
 /// * `envelope_json`: The complete action envelope as a JSON string.
-/// * `public_key_hex`: The signer's Ed25519 public key in hex format (64 chars).
+/// * `public_key_hex`: The signer's public key in hex format (64 chars).
 ///
 /// Usage:
 /// ```ignore

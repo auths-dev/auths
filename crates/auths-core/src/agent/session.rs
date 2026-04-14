@@ -164,9 +164,45 @@ impl Session for AgentSession {
     async fn add_identity(&mut self, identity: AddIdentity) -> Result<(), SSHAgentError> {
         debug!("Handling add_identity request");
 
-        let (seed, pubkey) = match &identity.credential {
+        let pkcs8_bytes: Vec<u8> = match &identity.credential {
             Credential::Key { privkey, .. } => match privkey {
-                KeypairData::Ed25519(kp) => (kp.private.to_bytes(), kp.public.0),
+                KeypairData::Ed25519(kp) => {
+                    let seed = kp.private.to_bytes();
+                    let pubkey = kp.public.0;
+                    build_ed25519_pkcs8_v2(&seed, &pubkey)
+                }
+                KeypairData::Ecdsa(ssh_key::private::EcdsaKeypair::NistP256 {
+                    private, ..
+                }) => {
+                    use auths_crypto::{TypedSeed, TypedSignerKey};
+                    let scalar_bytes = private.as_slice();
+                    if scalar_bytes.len() != 32 {
+                        let err_msg = format!(
+                            "Invalid P-256 scalar length: expected 32, got {}",
+                            scalar_bytes.len()
+                        );
+                        error!("{}", err_msg);
+                        return Err(SSHAgentError::other(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            err_msg,
+                        )));
+                    }
+                    #[allow(clippy::expect_used)] // INVARIANT: length checked above
+                    let mut scalar = [0u8; 32];
+                    scalar.copy_from_slice(scalar_bytes);
+                    let signer =
+                        TypedSignerKey::from_seed(TypedSeed::P256(scalar)).map_err(|e| {
+                            let err_msg = format!("P-256 signer construction failed: {}", e);
+                            error!("{}", err_msg);
+                            SSHAgentError::other(io::Error::other(err_msg))
+                        })?;
+                    let pkcs8 = signer.to_pkcs8().map_err(|e| {
+                        let err_msg = format!("P-256 PKCS8 encoding failed: {}", e);
+                        error!("{}", err_msg);
+                        SSHAgentError::other(io::Error::other(err_msg))
+                    })?;
+                    pkcs8.as_ref().to_vec()
+                }
                 other => {
                     let err_msg = format!(
                         "Unsupported key type for add_identity: {:?}",
@@ -188,7 +224,6 @@ impl Session for AgentSession {
             }
         };
 
-        let pkcs8_bytes = build_ed25519_pkcs8_v2(&seed, &pubkey);
         self.handle
             .register_key(Zeroizing::new(pkcs8_bytes))
             .map_err(|e| {
@@ -206,6 +241,7 @@ impl Session for AgentSession {
 
         let pubkey_bytes = match &identity.pubkey {
             KeyData::Ed25519(key) => key.as_ref().to_vec(),
+            KeyData::Ecdsa(key) => key.as_ref().to_vec(),
             other => {
                 let err_msg = format!(
                     "Unsupported key type for remove_identity: {:?}",

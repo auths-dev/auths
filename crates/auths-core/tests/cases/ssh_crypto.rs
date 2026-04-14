@@ -109,3 +109,87 @@ fn test_build_pkcs8_v2_returns_pkcs8der() {
     let pkcs8 = build_ed25519_pkcs8_v2_from_seed(&seed).unwrap();
     assert_eq!(pkcs8.as_ref().len(), 85);
 }
+
+#[test]
+fn test_encode_ssh_pubkey_p256_format() {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    let sk = p256::SecretKey::from_slice(&[0x42u8; 32]).unwrap();
+    let pk = sk.public_key();
+    let uncompressed = pk.to_encoded_point(false);
+    let blob = encode_ssh_pubkey(uncompressed.as_bytes(), auths_crypto::CurveType::P256);
+
+    assert_eq!(&blob[0..4], &19u32.to_be_bytes());
+    assert_eq!(&blob[4..23], b"ecdsa-sha2-nistp256");
+    assert_eq!(&blob[23..27], &8u32.to_be_bytes());
+    assert_eq!(&blob[27..35], b"nistp256");
+}
+
+#[test]
+fn test_encode_ssh_signature_p256_format() {
+    let sig = [0xBBu8; 64];
+    let blob = encode_ssh_signature(&sig, auths_crypto::CurveType::P256);
+
+    assert_eq!(&blob[0..4], &19u32.to_be_bytes());
+    assert_eq!(&blob[4..23], b"ecdsa-sha2-nistp256");
+}
+
+#[test]
+fn test_create_sshsig_p256_returns_pem() {
+    let seed = SecureSeed::new([0x11u8; 32]);
+    let pem = create_sshsig(&seed, b"test data", "git", auths_crypto::CurveType::P256).unwrap();
+    assert!(pem.starts_with("-----BEGIN SSH SIGNATURE-----"));
+    assert!(pem.contains("-----END SSH SIGNATURE-----"));
+}
+
+#[test]
+fn test_construct_sshsig_pem_p256_format() {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    let sk = p256::SecretKey::from_slice(&[0x05u8; 32]).unwrap();
+    let pk = sk.public_key();
+    let uncompressed = pk.to_encoded_point(false);
+    let signature = [0xBBu8; 64];
+    let pem = construct_sshsig_pem(
+        uncompressed.as_bytes(),
+        &signature,
+        "git",
+        auths_crypto::CurveType::P256,
+    )
+    .unwrap();
+
+    assert!(pem.starts_with("-----BEGIN SSH SIGNATURE-----"));
+    assert!(pem.contains("-----END SSH SIGNATURE-----"));
+}
+
+/// End-to-end smoke: create a P-256 SSHSIG, parse it back with `ssh-key`,
+/// and verify it using a P-256 public key derived from the same seed.
+///
+/// This is the closest in-process equivalent to `ssh-keygen -Y verify` —
+/// it proves the wire format is well-formed enough that the canonical
+/// OpenSSH `ssh-key` crate can parse it and verify against the pubkey.
+#[test]
+fn test_p256_sshsig_parseable_and_verifiable() {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    use ssh_key::{HashAlg, PublicKey as SshPublicKey, SshSig, public::KeyData};
+
+    let seed_bytes = [0x17u8; 32];
+    let seed = SecureSeed::new(seed_bytes);
+    let namespace = "file";
+    let data = b"hello p-256 ssh world";
+
+    let pem = create_sshsig(&seed, data, namespace, auths_crypto::CurveType::P256).unwrap();
+
+    let parsed_sig = SshSig::from_pem(pem.as_bytes()).expect("PEM must parse");
+    assert_eq!(parsed_sig.namespace(), namespace);
+    assert_eq!(parsed_sig.hash_alg(), HashAlg::Sha256);
+
+    let sk = p256::SecretKey::from_slice(&seed_bytes).unwrap();
+    let public = sk.public_key();
+    let ecdsa_pk =
+        ssh_key::public::EcdsaPublicKey::from_sec1_bytes(public.to_encoded_point(false).as_bytes())
+            .unwrap();
+    let public_key = SshPublicKey::new(KeyData::Ecdsa(ecdsa_pk), "");
+
+    public_key
+        .verify(namespace, data, &parsed_sig)
+        .expect("P-256 SSHSIG must verify with derived pubkey");
+}

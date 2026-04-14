@@ -58,7 +58,7 @@ use crate::domains::identity::types::IdentityRotationResult;
 /// ```
 pub fn compute_rotation_event(
     state: &KeyState,
-    next_signer: &auths_crypto::RotationSigner,
+    next_signer: &auths_crypto::TypedSignerKey,
     new_next_public_key: &[u8],
     _new_next_curve: auths_crypto::CurveType,
     witness_config: Option<&WitnessConfig>,
@@ -390,7 +390,7 @@ fn generate_rotation_keys(
         .and_then(|m| m.get("witness_config"))
         .and_then(|wc| serde_json::from_value(wc.clone()).ok());
 
-    let next_signer = auths_crypto::RotationSigner::from_pkcs8(current_key_pkcs8)
+    let next_signer = auths_crypto::TypedSignerKey::from_pkcs8(current_key_pkcs8)
         .map_err(|e| RotationError::KeyDecryptionFailed(e.to_string()))?;
 
     let generated = generate_keypair_for_init(next_signer.curve())

@@ -7,7 +7,7 @@ use crate::error::{AttestationError, AuthsErrorInfo};
 use crate::types::VerificationReport;
 use crate::verify;
 use crate::witness::WitnessVerifyConfig;
-use auths_crypto::{CryptoProvider, ED25519_PUBLIC_KEY_LEN, WebCryptoProvider};
+use auths_crypto::{CryptoProvider, CurveType, WebCryptoProvider};
 use auths_keri::witness::SignedReceipt;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -159,10 +159,11 @@ pub async fn wasm_verify_artifact_signature(
         return false;
     };
 
-    if pk_bytes.len() != ED25519_PUBLIC_KEY_LEN {
+    // fn-116.15: curve-aware length check via CurveType::from_public_key_len;
+    // accepts Ed25519 (32) or P-256 (33/65 compressed/uncompressed SEC1).
+    if CurveType::from_public_key_len(pk_bytes.len()).is_none() {
         return false;
     }
-    // Ed25519 signatures are always 64 bytes
     if sig_bytes.len() != 64 {
         return false;
     }

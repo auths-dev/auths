@@ -67,26 +67,26 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(async {
                 let state = {
-                    let (seed, pubkey) =
-                        auths_sdk::crypto::provider_bridge::generate_ed25519_keypair_sync()
-                            .map_err(|e| anyhow::anyhow!("Failed to generate keypair: {}", e))?;
-
-                    let witness_did = if let Some(did) = witness_did {
-                        did
+                    // fn-116.1/B1a: curve-aware keypair generation. Default to P-256
+                    // at the CLI layer (workspace default); plumb --curve through
+                    // the subcommand if explicit selection becomes necessary.
+                    let curve = auths_crypto::CurveType::P256;
+                    let cfg = WitnessServerConfig::with_generated_keypair(db_path, curve)
+                        .map_err(|e| anyhow::anyhow!("Failed to generate witness keypair: {e}"))?;
+                    let cfg = if let Some(did_override) = witness_did {
+                        WitnessServerConfig {
+                            #[allow(clippy::disallowed_methods)]
+                            // INVARIANT: caller-supplied witness DID
+                            witness_did: auths_verifier::types::DeviceDID::new_unchecked(
+                                did_override,
+                            ),
+                            ..cfg
+                        }
                     } else {
-                        format!("did:key:z6Mk{}", hex::encode(&pubkey[..16]))
+                        cfg
                     };
-
-                    WitnessServerState::new(WitnessServerConfig {
-                        #[allow(clippy::disallowed_methods)] // INVARIANT: witness_did derived from keypair
-                        witness_did: auths_verifier::types::DeviceDID::new_unchecked(witness_did),
-                        keypair_seed: seed,
-                        keypair_pubkey: pubkey,
-                        db_path,
-                        tls_cert_path: None,
-                        tls_key_path: None,
-                    })
-                    .map_err(|e| anyhow::anyhow!("Failed to create witness state: {}", e))?
+                    WitnessServerState::new(cfg)
+                        .map_err(|e| anyhow::anyhow!("Failed to create witness state: {}", e))?
                 };
 
                 println!(

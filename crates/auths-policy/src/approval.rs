@@ -15,7 +15,7 @@ pub struct ApprovalAttestation {
     /// DID of the human who approved.
     pub approver_did: CanonicalDid,
     /// Scoped hash of the original request.
-    pub request_hash: [u8; 32],
+    pub request_hash: auths_verifier::Hash256,
     /// Approval expiry.
     pub expires_at: DateTime<Utc>,
     /// Capabilities that were approved.
@@ -32,7 +32,7 @@ pub struct ApprovalAttestation {
 /// ```ignore
 /// let hash = compute_request_hash(&ctx, ApprovalScope::Identity);
 /// ```
-pub fn compute_request_hash(ctx: &EvalContext, scope: ApprovalScope) -> [u8; 32] {
+pub fn compute_request_hash(ctx: &EvalContext, scope: ApprovalScope) -> auths_verifier::Hash256 {
     let hash_input = match scope {
         ApprovalScope::Identity => {
             let mut caps: Vec<&str> = ctx.capabilities.iter().map(|c| c.as_str()).collect();
@@ -93,7 +93,7 @@ pub fn compute_request_hash(ctx: &EvalContext, scope: ApprovalScope) -> [u8; 32]
     // in production, swap to json-canon crate. SHA-256 the canonical bytes.
     let canonical = serde_json::to_string(&hash_input).unwrap_or_default();
     let hash = blake3::hash(canonical.as_bytes());
-    *hash.as_bytes()
+    auths_verifier::Hash256::new(*hash.as_bytes())
 }
 
 #[cfg(test)]

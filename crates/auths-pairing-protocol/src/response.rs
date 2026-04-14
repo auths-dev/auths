@@ -147,30 +147,27 @@ fn sign_ed25519_sync(seed: &SecureSeed, message: &[u8]) -> Result<Vec<u8>, Proto
     Ok(keypair.sign(message).as_ref().to_vec())
 }
 
-/// Generate a fresh Ed25519 keypair using ring directly (sync, no tokio).
+/// Generate a fresh Ed25519 keypair for tests via the curve-aware primitive.
+///
+/// fn-116.6: replaces the prior byte-slicing hack that extracted the seed from
+/// ring's PKCS#8 v2 layout. Uses `auths_crypto::parse_key_material` which is
+/// curve-detecting and doesn't depend on ring's internal DER layout.
 #[cfg(test)]
 fn generate_ed25519_keypair_sync() -> Result<(SecureSeed, [u8; 32]), ProtocolError> {
     use ring::rand::SystemRandom;
-    use ring::signature::KeyPair;
 
     let rng = SystemRandom::new();
+    #[allow(clippy::disallowed_methods)] // test-only keypair generator; one-off helper
     let pkcs8_doc = Ed25519KeyPair::generate_pkcs8(&rng)
         .map_err(|_| ProtocolError::KeyGenFailed("Key generation failed".to_string()))?;
-    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8_doc.as_ref())
+    let parsed = auths_crypto::parse_key_material(pkcs8_doc.as_ref())
         .map_err(|e| ProtocolError::KeyGenFailed(format!("{e}")))?;
-
-    let public_key: [u8; 32] = keypair
-        .public_key()
-        .as_ref()
+    let seed: [u8; 32] = *parsed.seed.as_bytes();
+    let public_key: [u8; 32] = parsed
+        .public_key
+        .as_slice()
         .try_into()
         .map_err(|_| ProtocolError::KeyGenFailed("Public key not 32 bytes".to_string()))?;
-
-    // ring's Ed25519 PKCS#8 v2 places the seed at bytes [16..48]
-    let pkcs8_bytes = pkcs8_doc.as_ref();
-    let seed: [u8; 32] = pkcs8_bytes[16..48]
-        .try_into()
-        .map_err(|_| ProtocolError::KeyGenFailed("Seed extraction failed".to_string()))?;
-
     Ok((SecureSeed::new(seed), public_key))
 }
 

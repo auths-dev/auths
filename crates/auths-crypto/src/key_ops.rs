@@ -180,7 +180,7 @@ pub fn public_key(seed: &TypedSeed) -> Result<Vec<u8>, CryptoError> {
 ///
 /// `TypedSignerKey` replaces every `(SecureSeed, CurveType)` pair, every
 /// `[u8; 32]` seed passed alongside an implicit "assume Ed25519", and every
-/// ad-hoc `RotationSigner` (kept as a type alias during the fn-114 refactor).
+/// replaces the historic `(SecureSeed, CurveType)` pair pattern throughout the workspace.
 ///
 /// Constructed from PKCS8 DER bytes via [`TypedSignerKey::from_pkcs8`], which
 /// delegates to [`parse_key_material`] for curve detection.
@@ -205,10 +205,6 @@ pub struct TypedSignerKey {
     /// [`TypedSignerKey::public_key`].
     public_key: Vec<u8>,
 }
-
-/// Transitional alias. Callers that haven't migrated yet keep working. Remove
-/// in fn-114.40 once every caller has switched to `TypedSignerKey`.
-pub type RotationSigner = TypedSignerKey;
 
 impl TypedSignerKey {
     /// Parse a PKCS8 DER blob into a curve-tagged signer.
@@ -252,10 +248,8 @@ impl TypedSignerKey {
     /// - `D` + base64url(32 bytes) for Ed25519
     /// - `1AAI` + base64url(33 bytes compressed SEC1) for P-256
     ///
-    /// audit corrected a prior `1AAJ` emission (which is the CESR
-    /// spec's P-256 *signature* prefix, not verkey). `KeriPublicKey::parse`
-    /// remains tolerant of legacy `1AAJ` so pre-fn-114.37 identities still
-    /// deserialize.
+    /// `1AAJ` is the CESR spec's P-256 *signature* code and is rejected by
+    /// `KeriPublicKey::parse` as a verkey prefix (fn-116.5 strict).
     pub fn cesr_encoded_pubkey(&self) -> String {
         use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
         match self.seed.curve() {
@@ -542,7 +536,7 @@ mod tests {
             use ring::signature::Ed25519KeyPair;
             let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
             // Via the transitional alias
-            let s: RotationSigner = RotationSigner::from_pkcs8(pkcs8.as_ref()).unwrap();
+            let s = TypedSignerKey::from_pkcs8(pkcs8.as_ref()).unwrap();
             assert_eq!(s.curve(), CurveType::Ed25519);
         }
 

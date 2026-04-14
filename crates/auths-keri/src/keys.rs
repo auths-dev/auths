@@ -2,7 +2,8 @@
 //!
 //! Decodes KERI-encoded public keys from their CESR-qualified string form.
 //! Ed25519: 'D' prefix + base64url(32 bytes) = 44 chars.
-//! P-256:   '1AAJ' prefix + base64url(33 bytes) = 48 chars.
+//! P-256:   '1AAI' prefix + base64url(33 bytes) = 48 chars. (`1AAJ` is the
+//! CESR spec's P-256 *signature* code, NOT a verkey code; parser rejects it.)
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
@@ -41,9 +42,9 @@ impl auths_crypto::AuthsErrorInfo for KeriDecodeError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::UnsupportedKeyType(_) => {
-                Some("Supported key prefixes: 'D' (Ed25519), '1AAJ'/'1AAI' (P-256)")
-            }
+            Self::UnsupportedKeyType(_) => Some(
+                "Supported key prefixes: 'D' (Ed25519), '1AAI' (P-256). '1AAJ' is the P-256 SIGNATURE code per CESR spec; do not use as a verkey prefix.",
+            ),
             Self::EmptyInput => Some("Provide a non-empty KERI-encoded key string"),
             _ => None,
         }
@@ -63,7 +64,7 @@ impl auths_crypto::AuthsErrorInfo for KeriDecodeError {
 /// let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
 /// assert_eq!(key.as_bytes().len(), 32);
 ///
-/// // P-256 would use "1AAJ" prefix (33 bytes compressed SEC1)
+/// // P-256 uses "1AAI" prefix (33 bytes compressed SEC1) per CESR spec
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeriPublicKey {
@@ -77,7 +78,12 @@ impl KeriPublicKey {
     /// Parse a CESR-qualified key string, dispatching on the derivation code prefix.
     ///
     /// - `D` prefix → Ed25519 (32 bytes)
-    /// - `1AAJ` or `1AAI` prefix → P-256 (33 bytes compressed)
+    /// - `1AAI` prefix → P-256 (33 bytes compressed)
+    ///
+    /// fn-116.5: strict per CESR spec. `1AAJ` (which is the spec's P-256 SIGNATURE
+    /// code, not a verkey code) is rejected with `UnsupportedKeyType`. Prior to
+    /// fn-114.37 some repo sites emitted `1AAJ` for verkeys; those are spec-invalid
+    /// and must be regenerated.
     ///
     /// Unknown prefixes return `Err(UnsupportedKeyType)`.
     pub fn parse(encoded: &str) -> Result<Self, KeriDecodeError> {
@@ -85,9 +91,9 @@ impl KeriPublicKey {
             return Err(KeriDecodeError::EmptyInput);
         }
 
-        // Try P-256 4-char prefixes first (longer match wins)
-        if encoded.starts_with("1AAJ") || encoded.starts_with("1AAI") {
-            let payload = &encoded[4..];
+        // P-256 verkey: `1AAI` only per CESR spec. `1AAJ` is the spec's P-256
+        // *signature* code — reject loudly if someone supplies it as a verkey.
+        if let Some(payload) = encoded.strip_prefix("1AAI") {
             let bytes = decode_base64url(payload)?;
             if bytes.len() != 33 {
                 return Err(KeriDecodeError::InvalidLength {
@@ -98,6 +104,11 @@ impl KeriPublicKey {
             let mut arr = [0u8; 33];
             arr.copy_from_slice(&bytes);
             return Ok(KeriPublicKey::P256(arr));
+        }
+        if encoded.starts_with("1AAJ") {
+            return Err(KeriDecodeError::UnsupportedKeyType(
+                "1AAJ is the P-256 signature code; use 1AAI for P-256 verkeys (CESR spec).".into(),
+            ));
         }
 
         // Try Ed25519 1-char prefix
@@ -149,10 +160,8 @@ impl KeriPublicKey {
 
     /// Returns the CESR derivation code prefix for this key type.
     ///
-    /// Per the fn-114.10 CESR audit: `1AAI` is the spec-correct prefix for
-    /// P-256 verkeys. The parser (`KeriPublicKey::parse`) remains tolerant of
-    /// legacy `1AAJ` emissions so pre-fn-114.37 on-disk identities still
-    /// deserialize.
+    /// Per CESR spec: `D` for Ed25519, `1AAI` for P-256 verkeys. The parser is
+    /// strict about this post-fn-116.5 — legacy `1AAJ` emissions are rejected.
     pub fn cesr_prefix(&self) -> &'static str {
         match self {
             KeriPublicKey::Ed25519(_) => "D",
@@ -212,17 +221,25 @@ mod tests {
 
     #[test]
     fn parse_p256_key() {
-        // Construct a legacy-format P-256 CESR string: "1AAJ" + base64url(33 zero bytes).
-        // Tests the tolerant parser; emitters now use "1AAI" (fn-114.37).
+        // fn-116.5: strict — `1AAI` is the spec-correct P-256 verkey prefix.
         let zeros_33 = [0u8; 33];
-        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(zeros_33));
+        let encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(zeros_33));
         let key = KeriPublicKey::parse(&encoded).unwrap();
         assert_eq!(key.as_bytes().len(), 33);
         assert!(matches!(key, KeriPublicKey::P256(_)));
         assert_eq!(key.curve(), auths_crypto::CurveType::P256);
-        // cesr_prefix() returns the canonical (spec-correct) prefix, not the
-        // one the input happened to use.
         assert_eq!(key.cesr_prefix(), "1AAI");
+    }
+
+    #[test]
+    fn rejects_legacy_1aaj_verkey() {
+        // fn-116.5: `1AAJ` is the CESR spec's P-256 *signature* code. Reject loudly
+        // when supplied as a verkey — the parser previously tolerated this for
+        // pre-fn-114.37 on-disk identities. Pre-launch posture removes the grace.
+        let zeros_33 = [0u8; 33];
+        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(zeros_33));
+        let err = KeriPublicKey::parse(&encoded).unwrap_err();
+        assert!(matches!(err, KeriDecodeError::UnsupportedKeyType(_)));
     }
 
     #[test]
@@ -270,7 +287,7 @@ mod tests {
     fn rejects_wrong_length_p256() {
         // 32 bytes instead of 33
         let short = [0u8; 32];
-        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(short));
+        let encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(short));
         let err = KeriPublicKey::parse(&encoded).unwrap_err();
         assert!(matches!(
             err,

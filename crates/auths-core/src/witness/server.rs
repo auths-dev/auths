@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_crypto::SecureSeed;
+use auths_crypto::{CurveType, SecureSeed, TypedSignerKey};
 use auths_keri::{Prefix, Said};
 use auths_verifier::types::DeviceDID;
 use axum::{
@@ -47,10 +47,10 @@ pub struct WitnessServerState {
 struct WitnessServerInner {
     /// Witness identifier (DID)
     witness_did: DeviceDID,
-    /// Ed25519 seed for signing receipts
-    seed: SecureSeed,
-    /// Ed25519 public key (32 bytes)
-    public_key: [u8; 32],
+    /// Curve-tagged signing key (fn-116.1/B1a). Carries curve so sign/DID
+    /// paths dispatch correctly; replaces the historical
+    /// `{seed: SecureSeed, public_key: [u8; 32]}` pair that was Ed25519-locked.
+    signer: TypedSignerKey,
     /// SQLite storage (Mutex for thread safety since Connection is !Sync)
     storage: Mutex<WitnessStorage>,
     /// Clock function for getting current time
@@ -58,14 +58,11 @@ struct WitnessServerInner {
 }
 
 /// Configuration for the witness server.
-#[derive(Clone)]
 pub struct WitnessServerConfig {
     /// Witness identifier (DID)
     pub witness_did: DeviceDID,
-    /// Ed25519 seed for signing
-    pub keypair_seed: SecureSeed,
-    /// Ed25519 public key (32 bytes)
-    pub keypair_pubkey: [u8; 32],
+    /// Curve-tagged signing key (fn-116.1/B1a).
+    pub signer: TypedSignerKey,
     /// Path to SQLite database
     pub db_path: std::path::PathBuf,
     /// Path to TLS certificate (PEM format). Used by `run_server_tls()` when the `tls` feature is enabled.
@@ -75,27 +72,73 @@ pub struct WitnessServerConfig {
 }
 
 impl WitnessServerConfig {
-    /// Create a new config with a generated keypair.
-    pub fn with_generated_keypair(db_path: std::path::PathBuf) -> Result<Self, WitnessError> {
-        use crate::crypto::provider_bridge;
-
-        let (seed, public_key) = provider_bridge::generate_ed25519_keypair_sync()
-            .map_err(|e| WitnessError::Network(format!("failed to generate keypair: {}", e)))?;
-
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: format! with "did:key:z6Mk" prefix guarantees valid did:key URI structure
-        let witness_did =
-            DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
+    /// Create a new config with a generated keypair for the given curve.
+    ///
+    /// fn-116.1/B1a: accepts `curve: CurveType` (default `CurveType::P256` at
+    /// the CLI layer). DID derivation dispatches on curve via `DecodedDidKey`.
+    pub fn with_generated_keypair(
+        db_path: std::path::PathBuf,
+        curve: CurveType,
+    ) -> Result<Self, WitnessError> {
+        let (seed_bytes, pubkey_bytes) = generate_keypair_for_curve(curve)?;
+        let typed_seed = match curve {
+            CurveType::Ed25519 => auths_crypto::TypedSeed::Ed25519(seed_bytes),
+            CurveType::P256 => auths_crypto::TypedSeed::P256(seed_bytes),
+        };
+        let signer = TypedSignerKey::from_parts(typed_seed, pubkey_bytes.clone())
+            .map_err(|e| WitnessError::Network(format!("invalid witness signer: {e}")))?;
+        let witness_did = derive_witness_did(curve, &pubkey_bytes)?;
 
         Ok(Self {
             witness_did,
-            keypair_seed: seed,
-            keypair_pubkey: public_key,
+            signer,
             db_path,
             tls_cert_path: None,
             tls_key_path: None,
         })
     }
+}
+
+/// Generate a keypair for the given curve; returns (seed_bytes, pubkey_bytes).
+///
+/// Ed25519: 32-byte seed + 32-byte pubkey. P-256: 32-byte scalar + 33-byte
+/// compressed SEC1 pubkey.
+fn generate_keypair_for_curve(curve: CurveType) -> Result<([u8; 32], Vec<u8>), WitnessError> {
+    match curve {
+        CurveType::Ed25519 => {
+            use crate::crypto::provider_bridge;
+            let (seed, pubkey) = provider_bridge::generate_ed25519_keypair_sync()
+                .map_err(|e| WitnessError::Network(format!("Ed25519 keygen: {e}")))?;
+            Ok((*seed.as_bytes(), pubkey.to_vec()))
+        }
+        CurveType::P256 => {
+            use p256::ecdsa::{SigningKey, VerifyingKey};
+            use p256::elliptic_curve::rand_core::OsRng;
+            let sk = SigningKey::random(&mut OsRng);
+            let mut scalar = [0u8; 32];
+            scalar.copy_from_slice(&sk.to_bytes());
+            let vk = VerifyingKey::from(&sk);
+            let pubkey = vk.to_encoded_point(true).as_bytes().to_vec();
+            Ok((scalar, pubkey))
+        }
+    }
+}
+
+/// Derive a `did:key:` for the witness from a curve-tagged public key.
+fn derive_witness_did(curve: CurveType, pubkey_bytes: &[u8]) -> Result<DeviceDID, WitnessError> {
+    let did_str = match curve {
+        CurveType::Ed25519 => {
+            let pk: [u8; 32] = pubkey_bytes
+                .try_into()
+                .map_err(|_| WitnessError::Network("Ed25519 pubkey must be 32 bytes".into()))?;
+            auths_crypto::ed25519_pubkey_to_did_key(&pk)
+        }
+        CurveType::P256 => auths_crypto::p256_pubkey_to_did_key(pubkey_bytes),
+    };
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: derived via auths_crypto::{ed25519,p256}_pubkey_to_did_key which
+    // emits well-formed did:key URIs.
+    Ok(DeviceDID::new_unchecked(did_str))
 }
 
 /// Event submission request.
@@ -154,8 +197,7 @@ impl WitnessServerState {
         Ok(Self {
             inner: Arc::new(WitnessServerInner {
                 witness_did: config.witness_did,
-                seed: config.keypair_seed,
-                public_key: config.keypair_pubkey,
+                signer: config.signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
             }),
@@ -164,44 +206,55 @@ impl WitnessServerState {
 
     /// Create a new server state with in-memory storage (for testing).
     #[allow(clippy::disallowed_methods)] // Server constructor is a clock boundary
-    pub fn in_memory(
-        witness_did: DeviceDID,
-        seed: SecureSeed,
-        public_key: [u8; 32],
-    ) -> Result<Self, WitnessError> {
+    pub fn in_memory(witness_did: DeviceDID, signer: TypedSignerKey) -> Result<Self, WitnessError> {
         let storage = WitnessStorage::in_memory()?;
 
         Ok(Self {
             inner: Arc::new(WitnessServerInner {
                 witness_did,
-                seed,
-                public_key,
+                signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
             }),
         })
     }
 
+    /// Legacy helper for tests that have an Ed25519 seed + pubkey.
+    #[allow(clippy::disallowed_methods)]
+    pub fn in_memory_ed25519(
+        witness_did: DeviceDID,
+        seed: SecureSeed,
+        public_key: [u8; 32],
+    ) -> Result<Self, WitnessError> {
+        let typed_seed = auths_crypto::TypedSeed::Ed25519(*seed.as_bytes());
+        let signer = TypedSignerKey::from_parts(typed_seed, public_key.to_vec())
+            .map_err(|e| WitnessError::Network(format!("invalid witness signer: {e}")))?;
+        Self::in_memory(witness_did, signer)
+    }
+
     /// Create a new server state with generated keypair (for testing).
     #[allow(clippy::disallowed_methods)] // Server constructor is a clock boundary
     pub fn in_memory_generated() -> Result<Self, WitnessError> {
-        use crate::crypto::provider_bridge;
+        Self::in_memory_generated_for_curve(CurveType::Ed25519)
+    }
 
-        let (seed, public_key) = provider_bridge::generate_ed25519_keypair_sync()
-            .map_err(|e| WitnessError::Network(format!("failed to generate keypair: {}", e)))?;
-
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: format! with "did:key:z6Mk" prefix guarantees valid did:key URI structure
-        let witness_did =
-            DeviceDID::new_unchecked(format!("did:key:z6Mk{}", hex::encode(&public_key[..16])));
+    /// Create a new server state with a generated keypair of the specified curve.
+    #[allow(clippy::disallowed_methods)]
+    pub fn in_memory_generated_for_curve(curve: CurveType) -> Result<Self, WitnessError> {
+        let (seed_bytes, pubkey_bytes) = generate_keypair_for_curve(curve)?;
+        let typed_seed = match curve {
+            CurveType::Ed25519 => auths_crypto::TypedSeed::Ed25519(seed_bytes),
+            CurveType::P256 => auths_crypto::TypedSeed::P256(seed_bytes),
+        };
+        let signer = TypedSignerKey::from_parts(typed_seed, pubkey_bytes.clone())
+            .map_err(|e| WitnessError::Network(format!("invalid witness signer: {e}")))?;
+        let witness_did = derive_witness_did(curve, &pubkey_bytes)?;
 
         let storage = WitnessStorage::in_memory()?;
-
         Ok(Self {
             inner: Arc::new(WitnessServerInner {
                 witness_did,
-                seed,
-                public_key,
+                signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
             }),
@@ -247,16 +300,25 @@ impl WitnessServerState {
         Ok(SignedReceipt { receipt, signature })
     }
 
-    /// Sign a payload with the witness Ed25519 keypair.
+    /// Sign a payload with the witness keypair (curve-dispatched).
+    ///
+    /// fn-116.1/B1a: routes through `TypedSignerKey::sign` which dispatches
+    /// on the seed's curve. No more hardcoded Ed25519.
     fn sign_payload(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessError> {
-        use crate::crypto::provider_bridge;
-        provider_bridge::sign_ed25519_sync(&self.inner.seed, payload)
+        self.inner
+            .signer
+            .sign(payload)
             .map_err(|e| WitnessError::Serialization(format!("signing failed: {e}")))
     }
 
-    /// Get the witness public key.
+    /// Get the witness public key bytes.
     pub fn public_key(&self) -> Vec<u8> {
-        self.inner.public_key.to_vec()
+        self.inner.signer.public_key().to_vec()
+    }
+
+    /// Returns the curve of the witness signing key.
+    pub fn curve(&self) -> CurveType {
+        self.inner.signer.curve()
     }
 }
 
@@ -396,6 +458,12 @@ fn validate_signature_format(event: &serde_json::Value) -> Result<(), String> {
 }
 
 /// For inception events, verify the self-signature (signature over the event by k[0]).
+///
+/// fn-116.21/B1b: parses `k[0]` via `KeriPublicKey::parse` (CESR-aware — the
+/// workspace emits CESR-tagged pubkeys `D...` / `1AAI...`) and dispatches
+/// signature verification on the parsed curve. Accepts a hex-encoded `k[0]` as
+/// a legacy back-compat branch (prior versions of this validator) but emits a
+/// log-worthy error message telling the caller to migrate.
 fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), String> {
     let event_type = event.get("t").and_then(|v| v.as_str()).unwrap_or("");
     if event_type != "icp" {
@@ -411,17 +479,29 @@ fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), Stri
         return Err("inception event 'k' array is empty".to_string());
     }
 
-    let public_key_hex = k[0].as_str().ok_or("'k[0]' must be a string")?;
+    let k0_str = k[0].as_str().ok_or("'k[0]' must be a string")?;
 
-    let pk_bytes =
-        hex::decode(public_key_hex).map_err(|e| format!("'k[0]' is not valid hex: {}", e))?;
-
-    if pk_bytes.len() != 32 {
-        return Err(format!(
-            "'k[0]' must be 32 bytes (Ed25519 public key), got {} bytes",
-            pk_bytes.len()
-        ));
-    }
+    // Try CESR parse first (canonical wire format).
+    let keri_key = match auths_keri::KeriPublicKey::parse(k0_str) {
+        Ok(pk) => pk,
+        Err(_) => {
+            // Legacy hex fallback: some older emitters produced raw 32-byte hex
+            // instead of a CESR-tagged string. Accept Ed25519 32-byte hex as
+            // transitional; anything else is an error.
+            let pk_bytes =
+                hex::decode(k0_str).map_err(|e| format!("'k[0]' is neither CESR nor hex: {e}"))?;
+            if pk_bytes.len() != 32 {
+                return Err(format!(
+                    "'k[0]' legacy-hex path only accepts 32-byte Ed25519 pubkeys, got {} bytes; \
+                     emit CESR (`D...` or `1AAI...`) instead",
+                    pk_bytes.len()
+                ));
+            }
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&pk_bytes);
+            auths_keri::KeriPublicKey::Ed25519(arr)
+        }
+    };
 
     let sig_hex = event
         .get("x")
@@ -439,8 +519,9 @@ fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), Stri
     let payload = serde_json::to_vec(&payload_event)
         .map_err(|e| format!("failed to serialize signing payload: {}", e))?;
 
-    crate::crypto::provider_bridge::verify_ed25519_sync(&pk_bytes, &payload, &sig_bytes)
-        .map_err(|_| "inception self-signature verification failed".to_string())
+    keri_key
+        .verify_signature(&payload, &sig_bytes)
+        .map_err(|e| format!("inception self-signature verification failed: {e}"))
 }
 
 /// POST /witness/:prefix/event - Submit an event for witnessing.
