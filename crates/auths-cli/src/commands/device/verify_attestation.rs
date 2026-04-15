@@ -166,12 +166,14 @@ fn effective_trust_policy(cmd: &VerifyCommand) -> TrustPolicy {
 }
 
 /// Wrap raw pubkey bytes from a trust store (pin or roots.json) into a curve-tagged
-/// `DevicePublicKey`. Infers the curve from length via `CurveType::from_public_key_len`.
+/// `DevicePublicKey`. Infers curve from length via `CurveType::from_public_key_len_fallback`
+/// — legitimate last-resort fallback: on-disk trust-store entries (pre fn-122) lack an
+/// in-band curve tag. Migrate by adding a `curve` field to the trust-store schema.
 fn bytes_to_device_public_key(
     bytes: &[u8],
     source: &str,
 ) -> Result<auths_verifier::DevicePublicKey> {
-    let curve = auths_crypto::CurveType::from_public_key_len(bytes.len())
+    let curve = auths_crypto::CurveType::from_public_key_len_fallback(bytes.len())
         .ok_or_else(|| anyhow!("Invalid {} public key length: {}", source, bytes.len()))?;
     auths_verifier::DevicePublicKey::try_new(curve, bytes)
         .map_err(|e| anyhow!("Invalid {} public key: {e}", source))
@@ -193,7 +195,7 @@ fn resolve_issuer_key(
     if let Some(ref pk_hex) = cmd.issuer_pk {
         let pk_bytes =
             hex::decode(pk_hex).context("Invalid hex string provided for issuer public key")?;
-        let curve = auths_crypto::CurveType::from_public_key_len(pk_bytes.len())
+        let curve = auths_crypto::CurveType::from_public_key_len_fallback(pk_bytes.len())
             .ok_or_else(|| anyhow!("Invalid issuer public key length: {}", pk_bytes.len()))?;
         return auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
             .map_err(|e| anyhow!("Invalid issuer public key: {e}"));

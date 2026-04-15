@@ -146,7 +146,7 @@ pub struct NamespaceClaimResult {
     /// DID of the new owner.
     pub owner_did: String,
     /// Sequence number assigned by the transparency log.
-    pub log_sequence: u64,
+    pub log_sequence: u128,
 }
 
 /// Namespace information returned by a lookup.
@@ -351,9 +351,10 @@ pub fn parse_claim_response(
     owner_did: &str,
     response: &serde_json::Value,
 ) -> NamespaceClaimResult {
-    let log_sequence = response
+    let log_sequence: u128 = response
         .get("sequence")
         .and_then(|v| v.as_u64())
+        .map(u128::from)
         .unwrap_or(0);
 
     NamespaceClaimResult {

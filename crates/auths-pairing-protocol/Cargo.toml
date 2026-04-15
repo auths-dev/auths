@@ -12,6 +12,7 @@ categories = ["cryptography"]
 
 [dependencies]
 auths-crypto = { workspace = true, features = ["native"] }
+auths-keri.workspace = true
 ring.workspace = true
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand = "0.8"
@@ -31,6 +32,7 @@ default = []
 schema = ["dep:schemars"]
 
 [dev-dependencies]
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 regex-lite = "0.1"
 
 [lints]

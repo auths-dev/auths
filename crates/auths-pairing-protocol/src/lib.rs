@@ -1,6 +1,3 @@
-// fn-114: crate-level allow during curve-agnostic refactor. Removed or narrowed in fn-114.40 after Phase 4 sweeps.
-#![allow(clippy::disallowed_methods)]
-
 //! Transport-agnostic pairing protocol for the auths identity system.
 //!
 //! This crate implements the cryptographic pairing protocol that allows

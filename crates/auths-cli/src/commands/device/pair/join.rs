@@ -97,16 +97,11 @@ pub(crate) async fn handle_join(
     let create_spinner = create_wait_spinner(&format!("{GEAR}Creating pairing response..."));
 
     // Create the response + ECDH
-    let pubkey_32: &[u8; 32] = material
-        .public_key
-        .as_slice()
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("Pairing requires Ed25519 (32-byte) key"))?;
     let (pairing_response, shared_secret) = PairingResponse::create(
         now,
         &token,
         &material.seed,
-        pubkey_32,
+        &material.public_key,
         material.device_did.to_string(),
         Some(hostname()),
     )
@@ -141,6 +136,7 @@ pub(crate) async fn handle_join(
         device_signing_pubkey: Base64UrlEncoded::from_raw(
             pairing_response.device_signing_pubkey.clone(),
         ),
+        curve: pairing_response.curve,
         device_did: pairing_response.device_did.clone(),
         signature: Base64UrlEncoded::from_raw(pairing_response.signature.clone()),
         device_name: pairing_response.device_name.clone(),

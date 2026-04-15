@@ -20,7 +20,6 @@ use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::pairing::PairingRelayClient;
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
-use auths_crypto::SecureSeed;
 use auths_id::attestation::export::AttestationSink;
 use auths_id::storage::identity::IdentityStorage;
 use auths_verifier::types::DeviceDID;
@@ -604,7 +603,7 @@ pub fn load_device_signing_material(
     let device_did = DeviceDID::from_public_key(&parsed.public_key, curve);
 
     Ok(DeviceSigningMaterial {
-        seed: parsed.seed.to_secure_seed(),
+        seed: parsed.seed,
         public_key: parsed.public_key,
         device_did,
         controller_did: managed.controller_did.to_string(),
@@ -638,8 +637,9 @@ pub fn load_controller_did(identity_storage: &dyn IdentityStorage) -> Result<Str
 /// join_pairing_session(code, registry, &relay, now, &material, hostname).await?;
 /// ```
 pub struct DeviceSigningMaterial {
-    /// Seed bytes for signing.
-    pub seed: SecureSeed,
+    /// Typed signing seed — curve travels with the seed so pairing flows
+    /// never need to infer curve from pubkey byte length.
+    pub seed: auths_crypto::TypedSeed,
     /// Public key bytes (32 for Ed25519, 33 for P-256 compressed).
     pub public_key: Vec<u8>,
     /// DID of the local device.
@@ -681,6 +681,11 @@ pub enum PairingStatus {
 /// ```ignore
 /// let result = initiate_online_pairing(params, &relay, &ctx, Utc::now(), Some(&on_status)).await?;
 /// ```
+// INVARIANT: online-pairing is a sequence of relay round-trips that share local
+// state (session keys, status events, context references). Splitting at the
+// round-trip boundary would force threading 6+ values through sub-helpers with
+// no test or correctness benefit. One-line overrun is acceptable.
+#[allow(clippy::too_many_lines)]
 pub async fn initiate_online_pairing<R: PairingRelayClient>(
     params: PairingSessionParams,
     relay: &R,
@@ -758,11 +763,13 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
         .decode()
         .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid signature: {e}")))?;
 
+    let curve: auths_crypto::CurveType = response.curve.into();
     session
         .verify_response(
             &device_signing_bytes,
             &device_x25519_bytes,
             &signature_bytes,
+            curve,
         )
         .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
 
@@ -857,14 +864,11 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         return Err(PairingError::SessionExpired);
     }
 
-    let pubkey_32: &[u8; 32] = material.public_key.as_slice().try_into().map_err(|_| {
-        PairingError::KeyExchangeFailed("pairing requires Ed25519 (32-byte) key".into())
-    })?;
     let (pairing_response, _shared_secret) = PairingResponse::create(
         now,
         &token,
         &material.seed,
-        pubkey_32,
+        &material.public_key,
         material.device_did.to_string(),
         device_name,
     )
@@ -873,6 +877,7 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
     let submit_req = SubmitResponseRequest {
         device_x25519_pubkey: Base64UrlEncoded::from_raw(pairing_response.device_x25519_pubkey),
         device_signing_pubkey: Base64UrlEncoded::from_raw(pairing_response.device_signing_pubkey),
+        curve: pairing_response.curve,
         device_did: pairing_response.device_did.clone(),
         signature: Base64UrlEncoded::from_raw(pairing_response.signature),
         device_name: pairing_response.device_name,

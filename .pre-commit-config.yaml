@@ -7,6 +7,7 @@ repos:
       - id: check-yaml
         args: [--unsafe]
       - id: check-toml
+      - id: check-merge-conflict
 
   # check-yaml above only validates YAML syntax. actionlint validates GitHub
   # Actions semantics: invalid context names (e.g. bare `secrets.X` in `if:`

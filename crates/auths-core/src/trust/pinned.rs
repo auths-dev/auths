@@ -36,7 +36,7 @@ pub struct PinnedIdentity {
 
     /// KEL sequence number at time of pinning.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kel_sequence: Option<u64>,
+    pub kel_sequence: Option<u128>,
 
     /// When this pin was created.
     pub first_seen: DateTime<Utc>,

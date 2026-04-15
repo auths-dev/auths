@@ -82,6 +82,11 @@ pub struct CreateSessionResponse {
 pub struct SubmitResponseRequest {
     pub device_x25519_pubkey: Base64UrlEncoded,
     pub device_signing_pubkey: Base64UrlEncoded,
+    /// Signing curve for `device_signing_pubkey` / `signature`. Carried in-band
+    /// per the workspace wire-format curve-tagging rule — verifiers must never
+    /// infer curve from pubkey byte length. Defaults to P-256 when absent.
+    #[serde(default)]
+    pub curve: crate::response::CurveTag,
     /// Responder's DID string (e.g. `did:key:z6Mk...`).
     pub device_did: String,
     pub signature: Base64UrlEncoded,

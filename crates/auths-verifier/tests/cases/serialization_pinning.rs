@@ -21,7 +21,6 @@ fn make_test_icp() -> IcpEvent {
         b: vec![],
         c: vec![],
         a: vec![],
-        x: "".into(),
     }
 }
 
@@ -45,7 +44,6 @@ fn make_test_rot() -> RotEvent {
         ba: vec![],
         c: vec![],
         a: vec![],
-        x: "".into(),
     }
 }
 
@@ -57,7 +55,6 @@ fn make_test_ixn() -> IxnEvent {
         s: KeriSequence::new(2),
         p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
         a: vec![Seal::digest("ESealDigest234567890123456789012345678901")],
-        x: "".into(),
     }
 }
 
@@ -118,8 +115,7 @@ fn ixn_field_order_is_pinned() {
 
 #[test]
 fn icp_with_x_includes_x_last() {
-    let mut icp = make_test_icp();
-    icp.x = "test_signature".into();
+    let icp = make_test_icp();
     let json = serde_json::to_string(&KeriEvent::Icp(icp)).unwrap();
     assert_key_order(
         &json,

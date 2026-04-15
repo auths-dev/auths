@@ -26,7 +26,7 @@ pub struct KeyState {
     pub next_commitment: Vec<Said>,
 
     /// Current sequence number (0 for inception, increments with each event)
-    pub sequence: u64,
+    pub sequence: u128,
 
     /// SAID of the last processed event
     pub last_event_said: Said,
@@ -110,7 +110,7 @@ impl KeyState {
         new_next: Vec<Said>,
         threshold: Threshold,
         next_threshold: Threshold,
-        sequence: u64,
+        sequence: u128,
         said: Said,
         backers_to_remove: &[Prefix],
         backers_to_add: &[Prefix],
@@ -139,7 +139,7 @@ impl KeyState {
     /// Apply an interaction event (updates sequence and SAID only).
     ///
     /// Interaction events anchor data but don't change keys.
-    pub fn apply_interaction(&mut self, sequence: u64, said: Said) {
+    pub fn apply_interaction(&mut self, sequence: u128, said: Said) {
         self.sequence = sequence;
         self.last_event_said = said;
     }

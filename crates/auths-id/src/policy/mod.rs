@@ -750,7 +750,7 @@ mod tests {
     fn make_test_receipt(
         event_said: &str,
         witness_did: &str,
-        seq: u64,
+        seq: u128,
     ) -> auths_core::witness::Receipt {
         auths_core::witness::Receipt {
             v: auths_keri::VersionString::placeholder(),

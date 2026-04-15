@@ -616,7 +616,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         }
     }
 
@@ -701,7 +700,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         });
 
         let result = kel.append(&rot, chrono::Utc::now());
@@ -808,7 +806,7 @@ mod tests {
 
     // --- Incremental validation tests ---
 
-    fn make_rot_event(prefix: &str, seq: u64, prev_said: &str) -> RotEvent {
+    fn make_rot_event(prefix: &str, seq: u128, prev_said: &str) -> RotEvent {
         RotEvent {
             v: VersionString::placeholder(),
             d: Said::new_unchecked(format!("ERot{}", seq)),
@@ -824,7 +822,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         }
     }
 

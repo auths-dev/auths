@@ -214,11 +214,11 @@ pub struct DeviceLinkVerification {
     pub key_state: Option<auths_keri::KeyState>,
     /// Sequence number of the IXN event anchoring the attestation seal (if found).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub seal_sequence: Option<u64>,
+    pub seal_sequence: Option<u128>,
 }
 
 impl DeviceLinkVerification {
-    fn success(key_state: auths_keri::KeyState, seal_sequence: Option<u64>) -> Self {
+    fn success(key_state: auths_keri::KeyState, seal_sequence: Option<u128>) -> Self {
         Self {
             valid: true,
             error: None,
@@ -1817,7 +1817,7 @@ mod tests {
         witness_kp: &Ed25519KeyPair,
         witness_did: &str,
         event_said: &str,
-        seq: u64,
+        seq: u128,
     ) -> auths_keri::witness::SignedReceipt {
         let receipt = auths_keri::witness::Receipt {
             v: auths_keri::VersionString::placeholder(),

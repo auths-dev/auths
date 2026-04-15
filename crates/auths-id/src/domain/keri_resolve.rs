@@ -63,7 +63,7 @@ pub fn resolve_from_events_at_sequence(
     events: &[Event],
     did: &str,
     prefix: &Prefix,
-    target_sequence: u64,
+    target_sequence: u128,
 ) -> Result<DidKeriResolution, ResolveError> {
     let events_subset: Vec<_> = events
         .iter()
@@ -123,7 +123,7 @@ pub fn resolve_did_keri_via_port(
 pub fn resolve_did_keri_at_sequence_via_port(
     kel: &dyn KelPort,
     did: &str,
-    target_sequence: u64,
+    target_sequence: u128,
 ) -> Result<DidKeriResolution, ResolveError> {
     let prefix = parse_did_keri(did)?;
 
@@ -140,7 +140,6 @@ mod tests {
     use super::*;
     use crate::keri::{
         CesrKey, Event, IcpEvent, KeriSequence, Said, Threshold, VersionString, finalize_icp_event,
-        serialize_for_signing,
     };
     use auths_core::crypto::said::compute_next_commitment;
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -173,14 +172,9 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
-        let mut finalized = finalize_icp_event(icp).unwrap();
-        let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-        let sig = current_kp.sign(&canonical);
-        finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+        let finalized = finalize_icp_event(icp).unwrap();
         let pub_key = current_kp.public_key().as_ref().to_vec();
         (finalized, pub_key)
     }

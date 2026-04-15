@@ -178,13 +178,15 @@ pub(crate) fn handle_pairing_response(
         .decode()
         .context("Invalid signature encoding")?;
 
-    // Verify Ed25519 signature binding
+    // Verify signature binding; curve is carried in-band on the response.
     let verify_spinner = create_wait_spinner(&format!("{GEAR}Verifying signature..."));
+    let curve: auths_crypto::CurveType = response.curve.into();
     session
         .verify_response(
             &device_signing_bytes,
             &device_x25519_bytes,
             &signature_bytes,
+            curve,
         )
         .context("Signature verification failed")?;
     verify_spinner.finish_with_message(format!("{CHECK}Signature verified"));

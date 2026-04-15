@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### KERI spec-compliance follow-ups: attachment persistence + CESR migration + u128 sequences + keripy fixture
+
+Closes the four documented gaps from the prior spec-compliance pass.
+
+- **Attachment persistence (regression fix).** `GitRegistryBackend` now implements `append_signed_event(prefix, event, attachment)` and `get_attachment(prefix, seq)` by refactoring the old `append_event` body into a private `write_event_tree(prefix, event, attachment)` that writes event JSON + tip + state + attachment blob in a single Git commit. `append_event` delegates with an empty attachment for trait back-compat. Every registry-backend signing site in `auths-id` (inception/rotation/initialize) now calls `append_signed_event` with the externalized signature, closing the prior regression where sigs were computed-then-dropped.
+- **CESR text-domain attachment format.** `auths_keri::{serialize_attachment, parse_attachment}` now emit and parse CESR `-A##<siger>…` indexed-signature groups via `cesride::{Indexer, Siger}`. Wire format: `-A` counter + 2-char base64url count + each `IndexedSignature` as an 88-char CESR `Siger` body. On-disk attachment path renamed `event.attachments.json` → `event.attachments.cesr`. Old `auths-infra-git::attachment` JSON scaffold deleted. `cesride` flipped from optional to unconditional dep of `auths-keri`.
+- **u128 sequence widening.** All sequence fields workspace-wide moved u64 → u128: `KeyState.sequence`, `TipInfo.sequence`, every `ValidationError::*.sequence` payload, `DuplicityEvidence.sequence`, `IndexedIdentity.sequence`, `PinnedIdentity.kel_sequence`, `RotationKeyInfo.sequence`, `RotationResult.sequence`, `NamespaceClaimResult.log_sequence`, `DeviceLinkVerification.seal_sequence`, `InsufficientKelSequence.{have, need}`, `RadicleBridgeRequest.min_kel_seq`, `RegistryError::EventExists.seq`, `SequenceGap.{expected, got}`, `InvalidSequence.{expected, actual}`, `BrokenChain.sequence`. `KeriSequence` API collapsed: deleted `new(u64)` + truncating `value() -> u64`; single pair is `new(u128)` + `value() -> u128`. Trait methods widened: `RegistryBackend::{get_event, visit_events, get_attachment}`, `EventLogReader::read_event_at`, `GitRegistryBackend::get_tip`, `DuplicityDetector::{check_event, has_seen, get_said}`, `WitnessStorage::{record_first_seen, get_first_seen, check_duplicity, create_receipt}`. Pre-launch posture — no compat shim; prior-version `state.json`/`tip.json` blobs won't deserialize.
+- **keripy interop fixture seeded.** Generated a real `icp` event via keripy 1.3.4 (Ed25519 single-sig, 299 bytes) and wrote it to `crates/auths-keri/tests/fixtures/keripy/icp.bin`. Un-ignored `fixture_mode_round_trips_icp`. 6/6 `keripy_interop` cases pass — spec-order, hex sequence, no `x` field, version-string byte count, self-addressing AID, and full-byte round-trip.
+
+### KERI spec compliance: externalized signatures + delegated events + u128 hex sequences
+
+- Removed in-body `x` field from all KEL event types (`IcpEvent`, `RotEvent`, `IxnEvent`, `DipEvent`, `DrtEvent`). Signatures externalize via `SignedEvent.signatures: Vec<IndexedSignature>`.
+- `DrtEvent` gained `di: Prefix` (KERI §11 delegator identifier). Serialize impl and spec field order updated.
+- Delegated events now validate: `validate_delegated_rotation` and `validate_delegated_inception` land, backed by a new `DelegatorKelLookup` trait. `validate_kel_with_lookup(events, lookup)` is the full entry; `validate_kel(events)` is the no-delegation convenience wrapper.
+- New error variants: `ValidationError::DelegatorSealNotFound { sequence, delegator_aid }`, `ValidationError::DelegatorLookupMissing { sequence }`.
+- Sequence hex-serialization verified at u128 boundary with a 9-case test sweep (0, 9, 10 → "a", 15 → "f", 16 → "10", 255, 256, u64::MAX, u64::MAX+1, u128::MAX).
+- Removed the legacy `verify_event_signature` function and `Event::signature()` helper — signatures are verified through `validate_signed_event` on the externalized `SignedEvent` wrapper.
+- keripy interop conformance test at `crates/auths-keri/tests/cases/keripy_interop.rs`: spec field order, no `x` in output, hex sequences, version-string byte count matches. Subprocess mode (`KERIPY_INTEROP=1`) invokes `python3 -c "from keri.core.serdering import Serder; …"` when available; fixture mode scaffolded for `tests/fixtures/keripy/icp.bin` once a real keripy output is seeded.
+- `GitRegistryBackend::append_signed_event` override that persists attachment blobs in the same commit as the event body. Trait method landed with a default impl; persistence is stubbed.
+- Attachment payload migration from the JSON sidecar format to real CESR text-domain `-A##` indexed-signature groups via `cesride`.
+- `TipInfo.sequence` / `KeyState.sequence` / `ValidationError.sequence` widening to u128 — would flip the remaining `KeriSequence::new(u64)` / `value() -> u64` call sites to the u128 pathway.
+- Seeding a real keripy fixture to activate `fixture_mode_round_trips_icp`.
+
 ### Curve-agnostic refactor Round 2 (fn-116) + fn-115 follow-up
 
 - **Witness server** (`crates/auths-core/src/witness/server.rs`) — P-256 witnesses now supported end-to-end. `WitnessServerInner.{seed, public_key}` replaced with `signer: TypedSignerKey` (curve-tagged); `WitnessServerConfig::with_generated_keypair(db_path, curve: CurveType)` accepts curve parameter; DID derivation uses `auths_crypto::{ed25519,p256}_pubkey_to_did_key` per curve (no more `z6Mk` hardcode). CLI layer defaults to P-256 witnesses.

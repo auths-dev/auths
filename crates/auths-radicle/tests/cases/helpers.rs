@@ -104,7 +104,7 @@ impl AuthsStorage for MockStorage {
     }
 }
 
-pub fn make_key_state(prefix: &str, seq: u64) -> KeyState {
+pub fn make_key_state(prefix: &str, seq: u128) -> KeyState {
     use auths_keri::{CesrKey, Threshold};
     KeyState {
         prefix: Prefix::new_unchecked(prefix.to_string()),

@@ -591,7 +591,7 @@ pub fn decode_public_key_hex(hex_str: &str) -> Result<DevicePublicKey, PublicKey
 /// let pk = decode_public_key_bytes(&ffi_bytes[..len])?;
 /// ```
 pub fn decode_public_key_bytes(bytes: &[u8]) -> Result<DevicePublicKey, PublicKeyDecodeError> {
-    let curve = auths_crypto::CurveType::from_public_key_len(bytes.len())
+    let curve = auths_crypto::CurveType::from_public_key_len_fallback(bytes.len())
         .ok_or(PublicKeyDecodeError::InvalidLength { len: bytes.len() })?;
     DevicePublicKey::try_new(curve, bytes)
         .map_err(|e| PublicKeyDecodeError::Validation(e.to_string()))

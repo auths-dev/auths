@@ -78,7 +78,7 @@ pub enum IncrementalError {
     ChainContinuity { expected: Said, actual: Said },
 
     #[error("Sequence error: expected {expected}, got {actual}")]
-    SequenceError { expected: u64, actual: u64 },
+    SequenceError { expected: u128, actual: u128 },
 
     #[error("Malformed sequence number: {raw:?}")]
     MalformedSequence { raw: String },

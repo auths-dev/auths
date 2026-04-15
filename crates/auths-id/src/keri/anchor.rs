@@ -3,7 +3,6 @@
 //! Interaction events (IXN) anchor data in the KEL without rotating keys.
 //! This creates a cryptographic trust chain linking attestations to the identity.
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::signature::Ed25519KeyPair;
 
@@ -68,7 +67,7 @@ pub struct AnchorVerification {
     pub anchor_said: Option<Said>,
 
     /// The sequence number of the anchor event (if found)
-    pub anchor_sequence: Option<u64>,
+    pub anchor_sequence: Option<u128>,
 
     /// The signing key at the time of anchoring (if found)
     pub signing_key: Option<String>,
@@ -121,7 +120,6 @@ pub fn anchor_data<T: serde::Serialize>(
         s: KeriSequence::new(new_sequence),
         p: state.last_event_said.clone(),
         a: vec![seal],
-        x: String::new(), // Signature added below
     };
 
     // Compute SAID
@@ -131,8 +129,7 @@ pub fn anchor_data<T: serde::Serialize>(
 
     // Sign the event with the current key
     let canonical = super::serialize_for_signing(&Event::Ixn(ixn.clone()))?;
-    let sig = current_keypair.sign(&canonical);
-    ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let _sig = current_keypair.sign(&canonical);
 
     // Append to KEL
     kel.append(&Event::Ixn(ixn.clone()), now)?;

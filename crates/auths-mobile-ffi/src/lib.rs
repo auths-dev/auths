@@ -129,6 +129,10 @@ pub struct PairingInfo {
 pub struct PairingResponsePayload {
     pub device_x25519_pubkey: String,
     pub device_signing_pubkey: String,
+    /// Signing curve for `device_signing_pubkey` / `signature`. Carried in-band
+    /// so verifiers never infer curve from pubkey byte length. Mobile FFI is
+    /// Ed25519-only today, so this is always `"ed25519"`.
+    pub curve: String,
     pub device_did: String,
     pub signature: String,
     pub device_name: String,
@@ -242,7 +246,6 @@ fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, MobileError> {
 /// Serialize event for signing (canonical JSON with empty signature field).
 fn serialize_for_signing(icp: &IcpEvent) -> Result<Vec<u8>, MobileError> {
     let mut signing_icp = icp.clone();
-    signing_icp.x = String::new();
 
     serde_json::to_vec(&signing_icp).map_err(|e| MobileError::Serialization(e.to_string()))
 }
@@ -306,7 +309,6 @@ pub fn create_identity(device_name: String) -> Result<IdentityResult, MobileErro
         bt: "0".to_string(),
         b: vec![],
         a: vec![],
-        x: String::new(),
     };
 
     // Finalize event (computes and sets SAID)
@@ -316,7 +318,6 @@ pub fn create_identity(device_name: String) -> Result<IdentityResult, MobileErro
     // Sign the event with the current key
     let canonical = serialize_for_signing(&finalized)?;
     let sig = current_keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
     // Serialize the final signed event
     let inception_event_json =
@@ -746,6 +747,7 @@ pub fn create_pairing_response(
     let response_payload = PairingResponsePayload {
         device_x25519_pubkey: device_x25519_pubkey_str,
         device_signing_pubkey,
+        curve: "ed25519".to_string(),
         device_did: device_did.clone(),
         signature,
         device_name: device_name.clone(),

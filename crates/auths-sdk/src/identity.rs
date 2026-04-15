@@ -5,7 +5,9 @@ pub use auths_id::identity::helpers::{
 };
 pub use auths_id::identity::initialize::initialize_registry_identity;
 pub use auths_id::identity::resolve::{DefaultDidResolver, DidResolver, RegistryDidResolver};
-pub use auths_id::identity::rotate::rotate_keri_identity;
+pub use auths_id::identity::rotate::{
+    RotationShape, rotate_keri_identity, rotate_registry_identity_multi,
+};
 
 // Agent identity types
 pub use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode, format_agent_toml};

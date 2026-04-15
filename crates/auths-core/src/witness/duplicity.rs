@@ -58,7 +58,7 @@ use super::receipt::Receipt;
 #[derive(Debug, Clone, Default)]
 pub struct DuplicityDetector {
     /// Map of (prefix, seq) → first-seen SAID
-    first_seen: HashMap<(String, u64), String>,
+    first_seen: HashMap<(String, u128), String>,
 }
 
 impl DuplicityDetector {
@@ -70,7 +70,7 @@ impl DuplicityDetector {
     /// Create a detector with pre-populated state.
     ///
     /// This is useful for restoring state from persistent storage.
-    pub fn with_state(first_seen: HashMap<(String, u64), String>) -> Self {
+    pub fn with_state(first_seen: HashMap<(String, u128), String>) -> Self {
         Self { first_seen }
     }
 
@@ -94,7 +94,7 @@ impl DuplicityDetector {
     pub fn check_event(
         &mut self,
         prefix: &Prefix,
-        seq: u64,
+        seq: u128,
         said: &Said,
     ) -> Option<DuplicityEvidence> {
         let key = (prefix.as_str().to_string(), seq);
@@ -124,13 +124,13 @@ impl DuplicityDetector {
     }
 
     /// Check if a specific (prefix, seq) has been seen.
-    pub fn has_seen(&self, prefix: &Prefix, seq: u64) -> bool {
+    pub fn has_seen(&self, prefix: &Prefix, seq: u128) -> bool {
         self.first_seen
             .contains_key(&(prefix.as_str().to_string(), seq))
     }
 
     /// Get the SAID for a (prefix, seq) if seen.
-    pub fn get_said(&self, prefix: &Prefix, seq: u64) -> Option<Said> {
+    pub fn get_said(&self, prefix: &Prefix, seq: u128) -> Option<Said> {
         self.first_seen
             .get(&(prefix.as_str().to_string(), seq))
             .map(|s| Said::new_unchecked(s.clone()))
@@ -181,7 +181,7 @@ impl DuplicityDetector {
     }
 
     /// Get the current state for persistence.
-    pub fn state(&self) -> &HashMap<(String, u64), String> {
+    pub fn state(&self) -> &HashMap<(String, u128), String> {
         &self.first_seen
     }
 

@@ -306,7 +306,7 @@ fn verify_link_inclusion_proofs(
     chain: &[crate::bundle::DelegationChainLink],
     checkpoint_root: &crate::types::MerkleHash,
 ) -> Option<DelegationStatus> {
-    let mut sequences: Vec<u64> = chain.iter().map(|l| l.entry.sequence).collect();
+    let mut sequences: Vec<u128> = chain.iter().map(|l| l.entry.sequence).collect();
     sequences.sort_unstable();
     sequences.dedup();
     if sequences.len() != chain.len() {

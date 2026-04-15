@@ -159,9 +159,11 @@ pub async fn wasm_verify_artifact_signature(
         return false;
     };
 
-    // fn-116.15: curve-aware length check via CurveType::from_public_key_len;
-    // accepts Ed25519 (32) or P-256 (33/65 compressed/uncompressed SEC1).
-    if CurveType::from_public_key_len(pk_bytes.len()).is_none() {
+    // Last-resort length fallback: WASM callers pass raw hex; no in-band curve
+    // tag is available at this boundary. Accepts Ed25519 (32) or P-256 (33/65
+    // compressed/uncompressed SEC1). Migrate by widening the WASM call surface
+    // with an explicit `curve` parameter.
+    if CurveType::from_public_key_len_fallback(pk_bytes.len()).is_none() {
         return false;
     }
     if sig_bytes.len() != 64 {

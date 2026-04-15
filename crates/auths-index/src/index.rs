@@ -38,7 +38,7 @@ pub struct IndexedAttestation {
 pub struct IndexedIdentity {
     pub prefix: Prefix,
     pub current_keys: Vec<String>,
-    pub sequence: u64,
+    pub sequence: u128,
     pub tip_said: Said,
     pub updated_at: DateTime<Utc>,
 }
@@ -349,7 +349,7 @@ impl AttestationIndex {
             Ok(Some(IndexedIdentity {
                 prefix: Prefix::new_unchecked(prefix),
                 current_keys,
-                sequence: sequence as u64,
+                sequence: sequence as u128,
                 tip_said: Said::new_unchecked(tip_said),
                 updated_at,
             }))

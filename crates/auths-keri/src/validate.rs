@@ -4,11 +4,8 @@
 //! This module provides validation functions for ensuring a Key Event Log
 //! is cryptographically valid and properly chained.
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-
 use crate::crypto::verify_commitment;
-use crate::events::{Event, IcpEvent, IxnEvent, RotEvent, Seal};
-use crate::keys::KeriPublicKey;
+use crate::events::{Event, IcpEvent, IxnEvent, KeriSequence, RotEvent, Seal};
 use crate::said::compute_said;
 use crate::state::KeyState;
 use crate::types::{ConfigTrait, Prefix, Said};
@@ -33,7 +30,7 @@ pub enum ValidationError {
     #[error("Broken chain: event {sequence} references {referenced}, but previous was {actual}")]
     BrokenChain {
         /// Zero-based position of the event in the KEL.
-        sequence: u64,
+        sequence: u128,
         /// The previous SAID referenced by this event.
         referenced: Said,
         /// The actual SAID of the previous event.
@@ -44,23 +41,62 @@ pub enum ValidationError {
     #[error("Invalid sequence: expected {expected}, got {actual}")]
     InvalidSequence {
         /// The sequence number that was expected.
-        expected: u64,
+        expected: u128,
         /// The sequence number that was found.
-        actual: u64,
+        actual: u128,
     },
 
     /// Pre-rotation commitment doesn't match the new current key.
     #[error("Pre-rotation commitment mismatch at sequence {sequence}")]
     CommitmentMismatch {
         /// Zero-based position of the rotation event that failed.
-        sequence: u64,
+        sequence: u128,
     },
 
     /// Cryptographic signature verification failed for an event.
     #[error("Signature verification failed at sequence {sequence}")]
     SignatureFailed {
         /// Zero-based position of the event whose signature failed.
-        sequence: u64,
+        sequence: u128,
+    },
+
+    /// Rotation event's key-list size differs from the prior next-commitment
+    /// list. Properly expressing this case requires CESR indexed-signature
+    /// type codes so verified indices can be mapped distinctly against prior
+    /// and current key lists. Until that lands, such rotations are rejected.
+    #[error(
+        "Asymmetric key rotation at sequence {sequence}: prior next count {prior_next_count} != new key count {new_key_count} (removing devices requires CESR indexed signatures)"
+    )]
+    AsymmetricKeyRotation {
+        /// Zero-based position of the rotation event.
+        sequence: u128,
+        /// Number of entries in the prior event's next-commitment list.
+        prior_next_count: usize,
+        /// Number of entries in this rotation's key list.
+        new_key_count: usize,
+    },
+
+    /// A delegated event (`dip` / `drt`) references a delegator but no
+    /// matching seal could be found in the delegator's KEL.
+    #[error(
+        "Delegator seal not found at sequence {sequence}: delegator {delegator_aid} has no ixn-anchored seal for this event"
+    )]
+    DelegatorSealNotFound {
+        /// Zero-based position of the delegated event.
+        sequence: u128,
+        /// Delegator AID the event referenced (dip.di / drt.di).
+        delegator_aid: String,
+    },
+
+    /// A delegated event was submitted but no `DelegatorKelLookup` was
+    /// provided. Use `validate_kel_with_lookup` when processing KELs that
+    /// contain `dip` or `drt` events.
+    #[error(
+        "Delegator lookup required for delegated event at sequence {sequence}; call validate_kel_with_lookup"
+    )]
+    DelegatorLookupMissing {
+        /// Zero-based position of the delegated event.
+        sequence: u128,
     },
 
     /// The first event in a KEL must be an Inception event.
@@ -94,14 +130,14 @@ pub enum ValidationError {
     #[error("Identity abandoned at sequence {sequence}, no more events allowed")]
     AbandonedIdentity {
         /// The sequence number of the rejected event.
-        sequence: u64,
+        sequence: u128,
     },
 
     /// An interaction event was found in an establishment-only KEL.
     #[error("Interaction event at sequence {sequence} rejected: KEL is establishment-only (EO)")]
     EstablishmentOnly {
         /// The sequence number of the rejected event.
-        sequence: u64,
+        sequence: u128,
     },
 
     /// The identity is non-transferable (inception had empty next commitments).
@@ -194,28 +230,65 @@ pub fn validate_delegation(
 /// ```ignore
 /// let key_state = validate_kel(&events)?;
 /// ```
+/// Pluggable cross-KEL seal lookup for validating delegated events.
+///
+/// A delegated identifier's rotation or inception must be anchored by the
+/// delegator's KEL via an `ixn` event whose `a[]` seal references the
+/// delegated event's SAID. This trait lets the validator ask "does my
+/// delegator have a seal for this event?" without depending on any
+/// particular KEL storage backend.
+pub trait DelegatorKelLookup {
+    /// Return the sequence of the delegator's `ixn` event that anchors the
+    /// given seal SAID, or `None` if the delegator's KEL doesn't contain one.
+    fn find_seal(&self, delegator_aid: &Prefix, seal_said: &Said) -> Option<KeriSequence>;
+}
+
+/// Validate a KEL with no delegator lookup.
+///
+/// Convenience wrapper over [`validate_kel_with_lookup`] for ordinary KELs
+/// that contain only `icp`/`rot`/`ixn` events. Use the lookup variant for KELs
+/// containing delegated events (`dip`/`drt`).
+///
+/// Args:
+/// * `events` - The ordered list of KERI events to replay and validate.
 pub fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
+    validate_kel_with_lookup(events, None::<&dyn DelegatorKelLookup>)
+}
+
+/// Validate a KEL with a delegator-lookup hook for delegated events.
+///
+/// Required when the KEL contains `dip` or `drt` events; ordinary KELs
+/// (only `icp`/`rot`/`ixn`) can pass `None`.
+pub fn validate_kel_with_lookup(
+    events: &[Event],
+    lookup: Option<&dyn DelegatorKelLookup>,
+) -> Result<KeyState, ValidationError> {
     if events.is_empty() {
         return Err(ValidationError::EmptyKel);
     }
 
-    let Event::Icp(icp) = &events[0] else {
-        return Err(ValidationError::NotInception);
+    verify_event_said(&events[0])?;
+    let (mut state, inception_n_is_empty, establishment_only) = match &events[0] {
+        Event::Icp(icp) => (
+            validate_inception(icp)?,
+            icp.n.is_empty(),
+            icp.c.contains(&ConfigTrait::EstablishmentOnly),
+        ),
+        Event::Dip(dip) => (
+            validate_delegated_inception(dip, lookup)?,
+            dip.n.is_empty(),
+            dip.c.contains(&ConfigTrait::EstablishmentOnly),
+        ),
+        _ => return Err(ValidationError::NotInception),
     };
 
-    verify_event_said(&events[0])?;
-    let mut state = validate_inception(icp)?;
-
     // Non-transferable identities (inception n is empty) cannot have subsequent events
-    if icp.n.is_empty() && events.len() > 1 {
+    if inception_n_is_empty && events.len() > 1 {
         return Err(ValidationError::NonTransferable);
     }
 
-    // Check if this is an establishment-only KEL
-    let establishment_only = icp.c.contains(&ConfigTrait::EstablishmentOnly);
-
     for (idx, event) in events.iter().enumerate().skip(1) {
-        let expected_seq = idx as u64;
+        let expected_seq = idx as u128;
 
         // Reject any event after abandonment
         if state.is_abandoned {
@@ -236,14 +309,11 @@ pub fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
         verify_chain_linkage(event, &state)?;
 
         match event {
-            Event::Rot(rot) => validate_rotation(rot, event, expected_seq, &mut state)?,
-            Event::Ixn(ixn) => validate_interaction(ixn, event, expected_seq, &mut state)?,
+            Event::Rot(rot) => validate_rotation(rot, expected_seq, &mut state)?,
+            Event::Ixn(ixn) => validate_interaction(ixn, expected_seq, &mut state)?,
             Event::Icp(_) | Event::Dip(_) => return Err(ValidationError::MultipleInceptions),
-            // Delegated rotation validation requires cross-KEL seal check (fn-107.12)
-            Event::Drt(_) => {
-                return Err(ValidationError::Serialization(
-                    "delegated rotation (drt) validation not yet implemented".to_string(),
-                ));
+            Event::Drt(drt) => {
+                validate_delegated_rotation(drt, expected_seq, &mut state, lookup)?;
             }
         }
     }
@@ -264,14 +334,6 @@ fn validate_backer_uniqueness(backers: &[Prefix]) -> Result<(), ValidationError>
 }
 
 fn validate_inception(icp: &IcpEvent) -> Result<KeyState, ValidationError> {
-    verify_event_signature(
-        &Event::Icp(icp.clone()),
-        icp.k
-            .first()
-            .ok_or(ValidationError::SignatureFailed { sequence: 0 })?
-            .as_str(),
-    )?;
-
     // Validate backer uniqueness
     validate_backer_uniqueness(&icp.b)?;
 
@@ -297,7 +359,7 @@ fn validate_inception(icp: &IcpEvent) -> Result<KeyState, ValidationError> {
     ))
 }
 
-fn verify_sequence(event: &Event, expected: u64) -> Result<(), ValidationError> {
+fn verify_sequence(event: &Event, expected: u128) -> Result<(), ValidationError> {
     let actual = event.sequence().value();
     if actual != expected {
         return Err(ValidationError::InvalidSequence { expected, actual });
@@ -319,14 +381,9 @@ fn verify_chain_linkage(event: &Event, state: &KeyState) -> Result<(), Validatio
 
 fn validate_rotation(
     rot: &RotEvent,
-    event: &Event,
-    sequence: u64,
+    sequence: u128,
     state: &mut KeyState,
 ) -> Result<(), ValidationError> {
-    if !rot.k.is_empty() {
-        verify_event_signature(event, rot.k[0].as_str())?;
-    }
-
     // Verify all pre-rotation commitments (not just first key)
     if !state.next_commitment.is_empty() {
         let required = state.next_threshold.simple_value().unwrap_or(1);
@@ -376,15 +433,127 @@ fn validate_rotation(
 
 fn validate_interaction(
     ixn: &IxnEvent,
-    event: &Event,
-    sequence: u64,
+    sequence: u128,
     state: &mut KeyState,
 ) -> Result<(), ValidationError> {
-    let current_key = state
+    // Presence check: ixn events are only valid against a transferable,
+    // non-abandoned identity with an available current key. The value itself
+    // is not used here — signature verification against it happens at the
+    // KEL-ingest boundary.
+    state
         .current_key()
         .ok_or(ValidationError::SignatureFailed { sequence })?;
-    verify_event_signature(event, current_key.as_str())?;
     state.apply_interaction(sequence, ixn.d.clone());
+    Ok(())
+}
+
+/// Validate a delegated inception event (`dip`) per KERI §11.
+///
+/// Beyond the standard inception checks, the validator requires the
+/// delegator's KEL to contain an `ixn` event whose `a[]` seal references
+/// `dip.d`. Without that seal the delegated identifier is not authorized.
+fn validate_delegated_inception(
+    dip: &crate::events::DipEvent,
+    lookup: Option<&dyn DelegatorKelLookup>,
+) -> Result<KeyState, ValidationError> {
+    let sequence = dip.s.value();
+    let lookup = lookup.ok_or(ValidationError::DelegatorLookupMissing { sequence })?;
+
+    // Delegator seal check.
+    if lookup.find_seal(&dip.di, &dip.d).is_none() {
+        return Err(ValidationError::DelegatorSealNotFound {
+            sequence,
+            delegator_aid: dip.di.as_str().to_string(),
+        });
+    }
+
+    // Structural checks mirrored from `validate_inception` — backers, threshold.
+    validate_backer_uniqueness(&dip.b)?;
+    let bt_val = dip.bt.simple_value().unwrap_or(0);
+    if dip.b.is_empty() && bt_val != 0 {
+        return Err(ValidationError::InvalidBackerThreshold {
+            bt: bt_val,
+            backer_count: 0,
+        });
+    }
+
+    // Build state from the dip event.
+    let is_non_transferable = dip.n.is_empty();
+    Ok(KeyState {
+        prefix: dip.i.clone(),
+        current_keys: dip.k.clone(),
+        next_commitment: dip.n.clone(),
+        sequence: dip.s.value(),
+        last_event_said: dip.d.clone(),
+        is_abandoned: false,
+        threshold: dip.kt.clone(),
+        next_threshold: dip.nt.clone(),
+        backers: dip.b.clone(),
+        backer_threshold: dip.bt.clone(),
+        config_traits: dip.c.clone(),
+        is_non_transferable,
+        delegator: Some(dip.di.clone()),
+    })
+}
+
+/// Validate a delegated rotation event (`drt`) per KERI §11.
+///
+/// Requires the delegator's KEL to contain an `ixn` event anchoring this
+/// rotation via its SAID. Standard rotation rules also apply (chain,
+/// sequence, pre-rotation commitment).
+fn validate_delegated_rotation(
+    drt: &crate::events::DrtEvent,
+    sequence: u128,
+    state: &mut KeyState,
+    lookup: Option<&dyn DelegatorKelLookup>,
+) -> Result<(), ValidationError> {
+    let lookup = lookup.ok_or(ValidationError::DelegatorLookupMissing { sequence })?;
+
+    // Delegator must match the state's recorded delegator AID and anchor
+    // via a seal.
+    if lookup.find_seal(&drt.di, &drt.d).is_none() {
+        return Err(ValidationError::DelegatorSealNotFound {
+            sequence,
+            delegator_aid: drt.di.as_str().to_string(),
+        });
+    }
+
+    // Standard rotation commitment/backer checks applied to drt fields.
+    if !state.next_commitment.is_empty() {
+        let required = state.next_threshold.simple_value().unwrap_or(1);
+        let mut matched_count = 0u64;
+        for commitment in &state.next_commitment {
+            let matched = drt.k.iter().any(|key| {
+                key.parse()
+                    .map(|pk| verify_commitment(pk.as_bytes(), commitment))
+                    .unwrap_or(false)
+            });
+            if matched {
+                matched_count += 1;
+            }
+        }
+        if matched_count < required {
+            return Err(ValidationError::CommitmentMismatch { sequence });
+        }
+    }
+
+    validate_backer_uniqueness(&drt.br)?;
+    validate_backer_uniqueness(&drt.ba)?;
+    for aid in &drt.ba {
+        if drt.br.contains(aid) {
+            return Err(ValidationError::DuplicateBacker {
+                aid: aid.as_str().to_string(),
+            });
+        }
+    }
+
+    // Apply: the rotation advances the KEL state the same way a plain rot would.
+    state.sequence = sequence;
+    state.last_event_said = drt.d.clone();
+    state.current_keys = drt.k.clone();
+    state.next_commitment = drt.n.clone();
+    state.threshold = drt.kt.clone();
+    state.next_threshold = drt.nt.clone();
     Ok(())
 }
 
@@ -409,11 +578,10 @@ pub fn verify_event_crypto(
 ) -> Result<(), ValidationError> {
     match event {
         Event::Icp(icp) => {
-            let key = icp
-                .k
-                .first()
-                .ok_or(ValidationError::SignatureFailed { sequence: 0 })?;
-            verify_event_signature(event, key.as_str())?;
+            // Presence check only: icp must commit at least one key.
+            if icp.k.is_empty() {
+                return Err(ValidationError::SignatureFailed { sequence: 0 });
+            }
 
             // Only enforce i == d for self-addressing AIDs (E-prefixed)
             let is_self_addressing = icp.i.as_str().starts_with('E');
@@ -437,7 +605,6 @@ pub fn verify_event_crypto(
             if rot.k.is_empty() {
                 return Err(ValidationError::SignatureFailed { sequence });
             }
-            verify_event_signature(event, rot.k[0].as_str())?;
 
             // Verify all pre-rotation commitments
             let required = state.next_threshold.simple_value().unwrap_or(1);
@@ -462,20 +629,19 @@ pub fn verify_event_crypto(
             let sequence = event.sequence().value();
             let state = current_state.ok_or(ValidationError::SignatureFailed { sequence })?;
 
-            let current_key = state
+            // Presence check: ixn requires a transferable, non-abandoned state
+            // with an available current key.
+            state
                 .current_key()
                 .ok_or(ValidationError::SignatureFailed { sequence })?;
-            verify_event_signature(event, current_key.as_str())?;
 
             Ok(())
         }
         // Delegated events use same crypto verification as their non-delegated counterparts
         Event::Dip(dip) => {
-            let key = dip
-                .k
-                .first()
-                .ok_or(ValidationError::SignatureFailed { sequence: 0 })?;
-            verify_event_signature(event, key.as_str())?;
+            if dip.k.is_empty() {
+                return Err(ValidationError::SignatureFailed { sequence: 0 });
+            }
             Ok(())
         }
         Event::Drt(drt) => {
@@ -488,7 +654,6 @@ pub fn verify_event_crypto(
             if drt.k.is_empty() {
                 return Err(ValidationError::SignatureFailed { sequence });
             }
-            verify_event_signature(event, drt.k[0].as_str())?;
             Ok(())
         }
     }
@@ -553,78 +718,31 @@ pub fn serialize_for_signing(event: &Event) -> Result<Vec<u8>, ValidationError> 
             let mut e = e.clone();
             e.d = Said::default();
             e.i = Prefix::default();
-            e.x = String::new();
             serde_json::to_vec(&Event::Icp(e))
         }
         Event::Rot(e) => {
             let mut e = e.clone();
             e.d = Said::default();
-            e.x = String::new();
             serde_json::to_vec(&Event::Rot(e))
         }
         Event::Ixn(e) => {
             let mut e = e.clone();
             e.d = Said::default();
-            e.x = String::new();
             serde_json::to_vec(&Event::Ixn(e))
         }
         Event::Dip(e) => {
             let mut e = e.clone();
             e.d = Said::default();
             e.i = Prefix::default();
-            e.x = String::new();
             serde_json::to_vec(&Event::Dip(e))
         }
         Event::Drt(e) => {
             let mut e = e.clone();
             e.d = Said::default();
-            e.x = String::new();
             serde_json::to_vec(&Event::Drt(e))
         }
     }
     .map_err(|e| ValidationError::Serialization(e.to_string()))
-}
-
-/// Verify an event's signature using the specified key and explicit signature bytes.
-///
-/// Args:
-/// * `event` - The event whose canonical form to verify against.
-/// * `signing_key` - CESR-encoded public key string.
-/// * `sig_bytes` - Raw signature bytes (64 bytes for Ed25519).
-fn verify_signature_bytes(
-    event: &Event,
-    signing_key: &str,
-    sig_bytes: &[u8],
-) -> Result<(), ValidationError> {
-    let sequence = event.sequence().value();
-
-    let key = KeriPublicKey::parse(signing_key)
-        .map_err(|_| ValidationError::SignatureFailed { sequence })?;
-
-    let canonical = serialize_for_signing(event)?;
-
-    key.verify_signature(&canonical, sig_bytes)
-        .map_err(|_| ValidationError::SignatureFailed { sequence })?;
-
-    Ok(())
-}
-
-/// Verify an event's signature using the legacy `x` field.
-///
-/// Reads the signature from `event.signature()` (the `x` field).
-/// Prefer `verify_signature_bytes` with explicit sig bytes for new code.
-fn verify_event_signature(event: &Event, signing_key: &str) -> Result<(), ValidationError> {
-    let sequence = event.sequence().value();
-
-    let sig_str = event.signature();
-    if sig_str.is_empty() {
-        return Err(ValidationError::SignatureFailed { sequence });
-    }
-    let sig_bytes = URL_SAFE_NO_PAD
-        .decode(sig_str)
-        .map_err(|_| ValidationError::SignatureFailed { sequence })?;
-
-    verify_signature_bytes(event, signing_key, &sig_bytes)
 }
 
 /// Validate a signed event's crypto (signatures + commitments) against key state.
@@ -689,10 +807,19 @@ pub fn validate_signed_event(
     if matches!(event, Event::Rot(_) | Event::Drt(_))
         && let Some(state) = current_state
     {
-        // The verified indices may map differently in the prior key context.
-        // For now, use "both same" semantics (same indices apply to both lists).
-        // Full "current only" vs "both same" distinction requires CESR indexed
-        // signature type codes, which we'll implement when CESR attachments land.
+        // Reject asymmetric rotations (prior next count != new key count)
+        // until CESR indexed-signature type codes let us map verified indices
+        // distinctly against prior and current lists.
+        if state.next_commitment.len() != keys.len() {
+            return Err(ValidationError::AsymmetricKeyRotation {
+                sequence,
+                prior_next_count: state.next_commitment.len(),
+                new_key_count: keys.len(),
+            });
+        }
+
+        // "Same indices apply to both lists" simplification — valid only when
+        // the two lists have matching shapes (enforced just above).
         if !state
             .next_threshold
             .is_satisfied(&verified_indices, keys.len())
@@ -768,7 +895,7 @@ pub fn finalize_ixn_event(mut ixn: IxnEvent) -> Result<IxnEvent, ValidationError
 /// Args:
 /// * `events` - The event log to search.
 /// * `digest` - The SAID digest to search for.
-pub fn find_seal_in_kel(events: &[Event], digest: &str) -> Option<u64> {
+pub fn find_seal_in_kel(events: &[Event], digest: &str) -> Option<u128> {
     for event in events {
         if let Event::Ixn(ixn) = event {
             for seal in &ixn.a {
@@ -793,7 +920,7 @@ pub fn parse_kel_json(json: &str) -> Result<Vec<Event>, ValidationError> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::events::{KeriSequence, Seal};
+    use crate::events::{IndexedSignature, KeriSequence, Seal, SignedEvent};
     use crate::types::{CesrKey, Threshold, VersionString};
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -810,11 +937,6 @@ mod tests {
         format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()))
     }
 
-    fn sign_event(event: &Event, kp: &Ed25519KeyPair) -> String {
-        let canonical = serialize_for_signing(event).unwrap();
-        URL_SAFE_NO_PAD.encode(kp.sign(&canonical).as_ref())
-    }
-
     fn make_raw_icp(key: &str, next: &str) -> IcpEvent {
         IcpEvent {
             v: VersionString::placeholder(),
@@ -829,7 +951,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         }
     }
 
@@ -852,22 +973,17 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
-        let mut finalized = finalize_icp_event(icp).unwrap();
-        let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+        let finalized = finalize_icp_event(icp).unwrap();
         (finalized, keypair)
     }
 
     fn make_signed_ixn(
         prefix: &Prefix,
         prev_said: &Said,
-        seq: u64,
-        keypair: &Ed25519KeyPair,
+        seq: u128,
+        _keypair: &Ed25519KeyPair,
     ) -> IxnEvent {
         let mut ixn = IxnEvent {
             v: VersionString::placeholder(),
@@ -876,15 +992,10 @@ mod tests {
             s: KeriSequence::new(seq),
             p: prev_said.clone(),
             a: vec![Seal::digest("EAttest")],
-            x: String::new(),
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
         ixn.d = compute_said(&value).unwrap();
-
-        let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
         ixn
     }
@@ -924,7 +1035,6 @@ mod tests {
             s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![],
-            x: String::new(),
         };
         let events = vec![Event::Ixn(ixn)];
         let result = validate_kel(&events);
@@ -933,7 +1043,7 @@ mod tests {
 
     #[test]
     fn rejects_broken_sequence() {
-        let (icp, keypair) = make_signed_icp();
+        let (icp, _keypair) = make_signed_icp();
 
         let mut ixn = IxnEvent {
             v: VersionString::placeholder(),
@@ -942,15 +1052,10 @@ mod tests {
             s: KeriSequence::new(5),
             p: icp.d.clone(),
             a: vec![],
-            x: String::new(),
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
         ixn.d = compute_said(&value).unwrap();
-
-        let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
         let events = vec![Event::Icp(icp), Event::Ixn(ixn)];
         let result = validate_kel(&events);
@@ -965,7 +1070,7 @@ mod tests {
 
     #[test]
     fn rejects_broken_chain() {
-        let (icp, keypair) = make_signed_icp();
+        let (icp, _keypair) = make_signed_icp();
 
         let mut ixn = IxnEvent {
             v: VersionString::placeholder(),
@@ -974,15 +1079,10 @@ mod tests {
             s: KeriSequence::new(1),
             p: Said::new_unchecked("EWrongPrevious".to_string()),
             a: vec![],
-            x: String::new(),
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
         ixn.d = compute_said(&value).unwrap();
-
-        let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
         let events = vec![Event::Icp(icp), Event::Ixn(ixn)];
         let result = validate_kel(&events);
@@ -1022,40 +1122,58 @@ mod tests {
         assert!(!said.is_empty());
     }
 
+    // Sanity control: a correctly-signed SignedEvent must be accepted. Without
+    // this, a regression that makes `validate_signed_event` always return
+    // `SignatureFailed` would silently "pass" the rejection tests below.
+    #[test]
+    fn accepts_correct_signature() {
+        let (icp, keypair) = make_signed_icp();
+        let event = Event::Icp(icp);
+        let canonical = serialize_for_signing(&event).unwrap();
+        let sig = keypair.sign(&canonical).as_ref().to_vec();
+        let signed = SignedEvent::new(event, vec![IndexedSignature { index: 0, sig }]);
+
+        validate_signed_event(&signed, None).expect("correct signature must validate");
+    }
+
+    // Intent: a SignedEvent whose attached signature bytes do not match the
+    // canonical event body must be rejected. Uses the externalized-signature
+    // entry point (`validate_signed_event`); `validate_kel` only checks KEL
+    // structure and does not consume attached signatures, so it cannot be
+    // used to test signature-level rejection.
     #[test]
     fn rejects_forged_signature() {
-        let (mut icp, _keypair) = make_signed_icp();
-        icp.x = URL_SAFE_NO_PAD.encode([0u8; 64]);
+        let (icp, _keypair) = make_signed_icp();
+        let event = Event::Icp(icp);
+        let forged_sig = vec![0u8; 64]; // valid length, invalid content
+        let signed = SignedEvent::new(
+            event,
+            vec![IndexedSignature {
+                index: 0,
+                sig: forged_sig,
+            }],
+        );
 
-        let events = vec![Event::Icp(icp)];
-        let result = validate_kel(&events);
         assert!(matches!(
-            result,
+            validate_signed_event(&signed, None),
             Err(ValidationError::SignatureFailed { sequence: 0 })
         ));
     }
 
-    #[test]
-    fn rejects_missing_signature() {
-        let (mut icp, _keypair) = make_signed_icp();
-        icp.x = String::new();
+    // `rejects_missing_signature` was tied to the legacy in-body `x` field.
+    // Signatures are externalized now; the equivalent check is covered by
+    // `validate_signed_event` tests in `multi_key_threshold.rs`.
 
-        let events = vec![Event::Icp(icp)];
-        let result = validate_kel(&events);
-        assert!(matches!(
-            result,
-            Err(ValidationError::SignatureFailed { sequence: 0 })
-        ));
-    }
-
+    // Intent: a SignedEvent signed by a keypair other than the one committed
+    // in `icp.k` must be rejected. The wrong-key signature is structurally
+    // valid (correct length, correct type) but fails Ed25519 verification
+    // against the committed public key.
     #[test]
     fn rejects_wrong_key_signature() {
-        let rng = SystemRandom::new();
-        let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+        let committed = gen_keypair();
+        let key_encoded = encode_pubkey(&committed);
 
-        let mut icp = IcpEvent {
+        let icp = IcpEvent {
             v: VersionString::placeholder(),
             d: Said::default(),
             i: Prefix::default(),
@@ -1068,21 +1186,23 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
+        let icp = finalize_icp_event(icp).unwrap();
+        let event = Event::Icp(icp);
 
-        icp = finalize_icp_event(icp).unwrap();
+        let wrong = gen_keypair();
+        let canonical = serialize_for_signing(&event).unwrap();
+        let wrong_sig = wrong.sign(&canonical).as_ref().to_vec();
+        let signed = SignedEvent::new(
+            event,
+            vec![IndexedSignature {
+                index: 0,
+                sig: wrong_sig,
+            }],
+        );
 
-        let wrong_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let wrong_keypair = Ed25519KeyPair::from_pkcs8(wrong_pkcs8.as_ref()).unwrap();
-        let canonical = serialize_for_signing(&Event::Icp(icp.clone())).unwrap();
-        let sig = wrong_keypair.sign(&canonical);
-        icp.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
-        let events = vec![Event::Icp(icp)];
-        let result = validate_kel(&events);
         assert!(matches!(
-            result,
+            validate_signed_event(&signed, None),
             Err(ValidationError::SignatureFailed { sequence: 0 })
         ));
     }
@@ -1131,16 +1251,11 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
         customize(&mut icp);
 
-        let mut finalized = finalize_icp_event(icp).unwrap();
-        let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+        let finalized = finalize_icp_event(icp).unwrap();
         (finalized, keypair)
     }
 
@@ -1172,11 +1287,9 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
         let val = serde_json::to_value(Event::Rot(rot.clone())).unwrap();
         rot.d = compute_said(&val).unwrap();
-        rot.x = sign_event(&Event::Rot(rot.clone()), &kp2);
 
         let ixn = make_signed_ixn(&prefix, &rot.d, 2, &kp2);
         let events = vec![Event::Icp(icp), Event::Rot(rot), Event::Ixn(ixn)];
@@ -1242,14 +1355,9 @@ mod tests {
                 b: vec![dup_backer.clone(), dup_backer],
                 c: vec![],
                 a: vec![],
-                x: String::new(),
             };
 
-            let mut finalized = finalize_icp_event(icp).unwrap();
-            let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-            let sig = keypair.sign(&canonical);
-            finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+            let finalized = finalize_icp_event(icp).unwrap();
             let events = vec![Event::Icp(finalized)];
             (keypair, validate_kel(&events))
         };
@@ -1280,14 +1388,9 @@ mod tests {
                 b: vec![],
                 c: vec![],
                 a: vec![],
-                x: String::new(),
             };
 
-            let mut finalized = finalize_icp_event(icp).unwrap();
-            let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-            let sig = keypair.sign(&canonical);
-            finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+            let finalized = finalize_icp_event(icp).unwrap();
             let events = vec![Event::Icp(finalized)];
             (keypair, validate_kel(&events))
         };

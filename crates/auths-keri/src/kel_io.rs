@@ -93,7 +93,7 @@ pub trait EventLogReader: Send + Sync {
     /// let prefix = Prefix::new_unchecked("EAbcdef...".into());
     /// let inception = reader.read_event_at(&prefix, 0)?;
     /// ```
-    fn read_event_at(&self, prefix: &Prefix, seq: u64) -> Result<Vec<u8>, KelStorageError>;
+    fn read_event_at(&self, prefix: &Prefix, seq: u128) -> Result<Vec<u8>, KelStorageError>;
 }
 
 /// Appends serialized key events to a KERI prefix's event log.

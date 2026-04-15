@@ -23,7 +23,7 @@ pub trait SignerKey: Send + Sync + 'static {
 
 /// SignerKey implementation backed by a curve-tagged seed.
 ///
-/// fn-116.14: carries `DevicePublicKey` instead of bare `[u8; 32]` so callers
+/// carries `DevicePublicKey` instead of bare `[u8; 32]` so callers
 /// can't accidentally drop curve information.
 pub struct SeedSignerKey {
     seed: SecureSeed,

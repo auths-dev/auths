@@ -134,7 +134,7 @@ mod tests {
         kp: &Ed25519KeyPair,
         witness_did: &str,
         event_said: &str,
-        seq: u64,
+        seq: u128,
     ) -> SignedReceipt {
         let receipt = Receipt {
             v: VersionString::placeholder(),

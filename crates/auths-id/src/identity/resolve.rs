@@ -152,7 +152,7 @@ impl DidResolver for RegistryDidResolver {
     }
 }
 
-// fn-116.2: `did_key_to_ed25519` and `ed25519_to_did_key` wrappers were deleted.
+// `did_key_to_ed25519` and `ed25519_to_did_key` wrappers were deleted.
 // Callers should use `auths_crypto::did_key_decode` (returns curve-tagged
 // `DecodedDidKey`) and `auths_crypto::{ed25519_pubkey_to_did_key, p256_pubkey_to_did_key}`
 // directly — there is no need for a re-export layer that hardcodes Ed25519.

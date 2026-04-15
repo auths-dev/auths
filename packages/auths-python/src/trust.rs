@@ -46,7 +46,7 @@ pub fn pin_identity(
     repo_path: &str,
     label: Option<String>,
     trust_level: &str,
-) -> PyResult<(String, Option<String>, String, String, Option<u64>, String)> {
+) -> PyResult<(String, Option<String>, String, String, Option<u128>, String)> {
     let tl = parse_trust_level(trust_level)?;
     let did = did.to_string();
     let repo = repo_path.to_string();
@@ -110,7 +110,7 @@ pub fn pin_identity(
         let pin = PinnedIdentity {
             did: did.clone(),
             public_key_hex: public_key_hex.clone(),
-            curve: auths_crypto::CurveType::from_public_key_len(
+            curve: auths_crypto::CurveType::from_public_key_len_fallback(
                 hex::decode(public_key_hex.as_str())
                     .map(|b| b.len())
                     .unwrap_or(0),
@@ -191,7 +191,7 @@ pub fn get_pinned_identity(
     _py: Python<'_>,
     did: &str,
     repo_path: &str,
-) -> PyResult<Option<(String, Option<String>, String, String, Option<u64>, String)>> {
+) -> PyResult<Option<(String, Option<String>, String, String, Option<u128>, String)>> {
     let did = did.to_string();
     let repo = repo_path.to_string();
 

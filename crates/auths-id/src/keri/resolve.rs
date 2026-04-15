@@ -77,7 +77,7 @@ pub struct DidKeriResolution {
     pub public_key: Vec<u8>,
 
     /// The current sequence number
-    pub sequence: u64,
+    pub sequence: u128,
 
     /// Whether the identity can still be rotated
     pub can_rotate: bool,
@@ -138,7 +138,7 @@ pub fn resolve_did_keri(repo: &Repository, did: &str) -> Result<DidKeriResolutio
 pub fn resolve_did_keri_at_sequence(
     repo: &Repository,
     did: &str,
-    target_sequence: u64,
+    target_sequence: u128,
 ) -> Result<DidKeriResolution, ResolveError> {
     let prefix = parse_did_keri(did)?;
 

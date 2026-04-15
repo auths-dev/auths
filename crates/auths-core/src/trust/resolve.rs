@@ -155,8 +155,9 @@ pub fn resolve_trust(
                     &pk_hex[..16.min(pk_hex.len())]
                 );
                 if prompt(&msg) {
-                    let curve = auths_crypto::CurveType::from_public_key_len(presented_pk.len())
-                        .unwrap_or(auths_crypto::CurveType::Ed25519);
+                    let curve =
+                        auths_crypto::CurveType::from_public_key_len_fallback(presented_pk.len())
+                            .unwrap_or(auths_crypto::CurveType::Ed25519);
                     let pin = PinnedIdentity {
                         did,
                         #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode on line 151 guarantees valid hex output
@@ -194,7 +195,7 @@ pub fn resolve_trust(
                 did: old_pin.did,
                 #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid lowercase hex
                 public_key_hex: PublicKeyHex::new_unchecked(hex::encode(&proof.new_public_key)),
-                curve: auths_crypto::CurveType::from_public_key_len(proof.new_public_key.len())
+                curve: auths_crypto::CurveType::from_public_key_len_fallback(proof.new_public_key.len())
                     .unwrap_or(old_pin.curve),
                 kel_tip_said: Some(proof.new_kel_tip),
                 kel_sequence: Some(proof.new_sequence),

@@ -116,7 +116,7 @@ fn verify_bundle_multi_leaf_tree() {
 
     // Build 4 entries for a proper inclusion proof
     let mut entries = Vec::new();
-    for seq in 0..4u64 {
+    for seq in 0..4u128 {
         let content = EntryContent {
             entry_type: EntryType::DeviceBind,
             body: EntryBody::DeviceBind {

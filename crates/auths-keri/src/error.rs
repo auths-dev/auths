@@ -48,7 +48,7 @@ pub enum KeriTranslationError {
     #[error("round-trip validation failed at event sequence {sequence}: {detail}")]
     RoundTripFailed {
         /// The event sequence number where the failure occurred.
-        sequence: u64,
+        sequence: u128,
         /// Details about the round-trip failure.
         detail: String,
     },

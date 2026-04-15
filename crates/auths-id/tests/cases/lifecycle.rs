@@ -145,8 +145,8 @@ fn resolve_identity_public_key(repo_path: &Path, did: &str) -> Vec<u8> {
 /// Resolves the public key at a specific KEL sequence.
 fn resolve_identity_public_key_at_sequence(repo_path: &Path, did: &str, sequence: u64) -> Vec<u8> {
     let repo = Repository::open(repo_path).expect("Failed to open repo");
-    let resolution =
-        resolve_did_keri_at_sequence(&repo, did, sequence).expect("Failed to resolve at sequence");
+    let resolution = resolve_did_keri_at_sequence(&repo, did, sequence as u128)
+        .expect("Failed to resolve at sequence");
     resolution.public_key
 }
 
@@ -536,7 +536,7 @@ fn test_rotation_appends_to_kel() {
     for (i, event) in events.iter().enumerate() {
         assert_eq!(
             event.sequence().value(),
-            i as u64,
+            i as u128,
             "Event {} should have sequence {}",
             i,
             i

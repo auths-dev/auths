@@ -201,7 +201,7 @@ fn test_multiple_rotations_maintain_history() {
         let event: KeyRotationEvent =
             serde_json::from_slice(event_bytes).expect("Failed to parse event");
         assert_eq!(
-            event.sequence, i as u64,
+            event.sequence, i as u128,
             "Event {} should have sequence {}",
             i, i
         );

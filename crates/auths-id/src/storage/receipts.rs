@@ -284,7 +284,7 @@ mod tests {
         (dir, path, repo)
     }
 
-    fn make_test_receipt(event_said: &str, witness_did: &str, seq: u64) -> Receipt {
+    fn make_test_receipt(event_said: &str, witness_did: &str, seq: u128) -> Receipt {
         Receipt {
             v: VersionString::placeholder(),
             t: RECEIPT_TYPE.into(),

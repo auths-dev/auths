@@ -123,7 +123,7 @@ impl EventLogReader for InMemoryStorage {
         }
     }
 
-    fn read_event_at(&self, prefix: &Prefix, seq: u64) -> Result<Vec<u8>, KelStorageError> {
+    fn read_event_at(&self, prefix: &Prefix, seq: u128) -> Result<Vec<u8>, KelStorageError> {
         let store = self.event_logs.lock().unwrap();
         let key = prefix.as_str();
         let events = store.get(key).ok_or_else(|| KelStorageError::NotFound {

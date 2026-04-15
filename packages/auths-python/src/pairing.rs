@@ -327,11 +327,11 @@ pub fn join_pairing_session_ffi(
             capabilities,
         };
 
-        let secure_seed = auths_crypto::SecureSeed::new(*seed.as_bytes());
+        let typed_seed = auths_crypto::TypedSeed::Ed25519(*seed.as_bytes());
         let (pairing_response, _shared_secret) = auths_core::pairing::PairingResponse::create(
             now,
             &pairing_token,
-            &secure_seed,
+            &typed_seed,
             &pubkey_32,
             device_did.to_string(),
             device_name.clone(),
@@ -345,6 +345,7 @@ pub fn join_pairing_session_ffi(
             device_signing_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
                 pairing_response.device_signing_pubkey,
             ),
+            curve: pairing_response.curve,
             device_did: pairing_response.device_did.clone(),
             signature: auths_core::pairing::types::Base64UrlEncoded::from_raw(
                 pairing_response.signature,

@@ -29,7 +29,7 @@ pub enum LogSubcommand {
 #[derive(Args, Debug, Clone)]
 pub struct InspectArgs {
     /// Sequence number of the entry to inspect
-    pub sequence: u64,
+    pub sequence: u128,
 
     /// Registry URL to fetch from
     #[clap(long, default_value = "https://public.auths.dev")]
@@ -98,9 +98,10 @@ async fn handle_inspect(args: &InspectArgs) -> Result<()> {
             .get("timestamp")
             .and_then(|t| t.as_str())
             .unwrap_or("unknown");
-        let sequence = entry
+        let sequence: u128 = entry
             .get("sequence")
             .and_then(|s| s.as_u64())
+            .map(u128::from)
             .unwrap_or(args.sequence);
 
         println!("Log Entry #{sequence}");

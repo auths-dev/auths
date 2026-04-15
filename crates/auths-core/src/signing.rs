@@ -88,7 +88,7 @@ pub enum ResolvedDid {
         /// Raw public key bytes (32 for Ed25519, 33 for P-256 compressed).
         public_key_bytes: Vec<u8>,
         /// Current KEL sequence number.
-        sequence: u64,
+        sequence: u128,
         /// Whether key rotation is available.
         can_rotate: bool,
     },
@@ -303,7 +303,7 @@ impl<S: KeyStorage + Send + Sync + 'static> SecureSigner for StorageSigner<S> {
             }
         };
 
-        // fn-114.23: parse curve-tagged seed and dispatch sign on curve.
+        // parse curve-tagged seed and dispatch sign on curve.
         // Previously hardcoded sign_ed25519_sync which silently produced garbage
         // signatures for P-256 identities.
         let parsed = auths_crypto::parse_key_material(&key_bytes)

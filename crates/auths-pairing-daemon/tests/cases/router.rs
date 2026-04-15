@@ -102,6 +102,7 @@ async fn submit_response_requires_token() {
     let submit = SubmitResponseRequest {
         device_x25519_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
         device_signing_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
+        curve: Default::default(),
         device_did: "did:key:z6Mktest".to_string(),
         signature: Base64UrlEncoded::from_raw("c2ln".to_string()),
         device_name: None,
@@ -125,6 +126,7 @@ async fn submit_response_with_valid_token() {
     let submit = SubmitResponseRequest {
         device_x25519_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
         device_signing_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
+        curve: Default::default(),
         device_did: "did:key:z6Mktest".to_string(),
         signature: Base64UrlEncoded::from_raw("c2ln".to_string()),
         device_name: Some("Test Device".to_string()),
@@ -219,6 +221,7 @@ async fn full_pairing_flow() {
     let submit = SubmitResponseRequest {
         device_x25519_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
         device_signing_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
+        curve: Default::default(),
         device_did: "did:key:z6Mktest".to_string(),
         signature: Base64UrlEncoded::from_raw("c2ln".to_string()),
         device_name: None,

@@ -74,7 +74,7 @@ pub struct WitnessServerConfig {
 impl WitnessServerConfig {
     /// Create a new config with a generated keypair for the given curve.
     ///
-    /// fn-116.1/B1a: accepts `curve: CurveType` (default `CurveType::P256` at
+    /// accepts `curve: CurveType` (default `CurveType::P256` at
     /// the CLI layer). DID derivation dispatches on curve via `DecodedDidKey`.
     pub fn with_generated_keypair(
         db_path: std::path::PathBuf,
@@ -270,7 +270,7 @@ impl WitnessServerState {
     fn create_receipt(
         &self,
         prefix: &Prefix,
-        seq: u64,
+        seq: u128,
         event_said: &Said,
     ) -> Result<Receipt, WitnessError> {
         let receipt = Receipt {
@@ -288,7 +288,7 @@ impl WitnessServerState {
     fn create_signed_receipt(
         &self,
         prefix: &Prefix,
-        seq: u64,
+        seq: u128,
         event_said: &Said,
     ) -> Result<SignedReceipt, WitnessError> {
         let receipt = self.create_receipt(prefix, seq, event_said)?;
@@ -302,7 +302,7 @@ impl WitnessServerState {
 
     /// Sign a payload with the witness keypair (curve-dispatched).
     ///
-    /// fn-116.1/B1a: routes through `TypedSignerKey::sign` which dispatches
+    /// routes through `TypedSignerKey::sign` which dispatches
     /// on the seed's curve. No more hardcoded Ed25519.
     fn sign_payload(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessError> {
         self.inner
@@ -459,7 +459,7 @@ fn validate_signature_format(event: &serde_json::Value) -> Result<(), String> {
 
 /// For inception events, verify the self-signature (signature over the event by k[0]).
 ///
-/// fn-116.21/B1b: parses `k[0]` via `KeriPublicKey::parse` (CESR-aware — the
+/// parses `k[0]` via `KeriPublicKey::parse` (CESR-aware — the
 /// workspace emits CESR-tagged pubkeys `D...` / `1AAI...`) and dispatches
 /// signature verification on the parsed curve. Accepts a hex-encoded `k[0]` as
 /// a legacy back-compat branch (prior versions of this validator) but emits a
@@ -584,7 +584,13 @@ async fn submit_event(
             .unwrap_or_default()
             .to_string(),
     );
-    let event_s = event.get("s").and_then(|v| v.as_u64()).unwrap_or(0);
+    // KERI sequence numbers are hex strings in the wire format; parse as u128
+    // to match `KeyState.sequence` / storage field width.
+    let event_s: u128 = event
+        .get("s")
+        .and_then(|v| v.as_str())
+        .and_then(|s| u128::from_str_radix(s, 16).ok())
+        .unwrap_or(0);
 
     let now = (state.inner.clock)();
     let storage = state.inner.storage.lock().map_err(|_| {
@@ -740,7 +746,7 @@ mod tests {
     }
 
     /// Build a valid KERI inception event with proper SAID and self-signature.
-    fn make_valid_icp_event(prefix: &str, seq: u64) -> serde_json::Value {
+    fn make_valid_icp_event(prefix: &str, seq: u128) -> serde_json::Value {
         let (pkcs8, pk_hex) = test_keypair();
         let kp = Ed25519KeyPair::from_pkcs8(&pkcs8).unwrap();
 

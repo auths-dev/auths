@@ -16,7 +16,7 @@ pub struct RotationProof {
     pub new_kel_tip: String,
 
     /// The new sequence number.
-    pub new_sequence: u64,
+    pub new_sequence: u128,
 }
 
 /// Trait for verifying rotation continuity from a pinned state to a presented key.

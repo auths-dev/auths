@@ -25,7 +25,7 @@ pub struct PyIdentityRotationResult {
     #[pyo3(get)]
     pub previous_key_fingerprint: String,
     #[pyo3(get)]
-    pub sequence: u64,
+    pub sequence: u128,
 }
 
 #[pymethods]

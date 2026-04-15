@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use zeroize::Zeroizing;
 
-use auths_crypto::SecureSeed;
+use auths_crypto::TypedSeed;
 
 use crate::error::ProtocolError;
 use crate::response::PairingResponse;
@@ -162,8 +162,8 @@ impl PairingProtocol {
 /// Args:
 /// * `now` - Current time for expiry checking
 /// * `token_bytes` - Serialized `PairingToken` from the initiator
-/// * `device_seed` - The responding device's Ed25519 seed
-/// * `device_pubkey` - The responding device's Ed25519 public key
+/// * `device_seed` - Typed signing seed; curve flows through in-band
+/// * `device_pubkey` - The responding device's public key (length matches curve)
 /// * `device_did` - The responding device's DID string
 /// * `device_name` - Optional friendly device name
 ///
@@ -176,8 +176,8 @@ impl PairingProtocol {
 pub fn respond_to_pairing(
     now: DateTime<Utc>,
     token_bytes: &[u8],
-    device_seed: &SecureSeed,
-    device_pubkey: &[u8; 32],
+    device_seed: &TypedSeed,
+    device_pubkey: &[u8],
     device_did: String,
     device_name: Option<String>,
 ) -> Result<ResponderResult, ProtocolError> {
@@ -220,16 +220,16 @@ pub fn respond_to_pairing(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use ring::rand::SystemRandom;
-    use ring::signature::{Ed25519KeyPair, KeyPair};
 
-    fn generate_test_keypair() -> (SecureSeed, [u8; 32]) {
-        let rng = SystemRandom::new();
-        let pkcs8_doc = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let keypair = Ed25519KeyPair::from_pkcs8(pkcs8_doc.as_ref()).unwrap();
-        let public_key: [u8; 32] = keypair.public_key().as_ref().try_into().unwrap();
-        let seed: [u8; 32] = pkcs8_doc.as_ref()[16..48].try_into().unwrap();
-        (SecureSeed::new(seed), public_key)
+    fn generate_test_keypair() -> (TypedSeed, Vec<u8>) {
+        use p256::ecdsa::SigningKey;
+        use p256::elliptic_curve::rand_core::OsRng as P256Rng;
+        use p256::pkcs8::EncodePrivateKey;
+
+        let sk = SigningKey::random(&mut P256Rng);
+        let pkcs8 = sk.to_pkcs8_der().unwrap();
+        let parsed = auths_crypto::parse_key_material(pkcs8.as_bytes()).unwrap();
+        (parsed.seed, parsed.public_key)
     }
 
     #[test]
@@ -250,7 +250,7 @@ mod tests {
             &token_bytes,
             &seed,
             &pubkey,
-            "did:key:z6MkTest".to_string(),
+            "did:key:zDnaTest".to_string(),
             None,
         )
         .unwrap();
@@ -259,7 +259,7 @@ mod tests {
         let completed = protocol.complete(now, &response_bytes).unwrap();
 
         assert_eq!(*completed.shared_secret, *responder_result.shared_secret);
-        assert_eq!(completed.peer_did, "did:key:z6MkTest");
+        assert_eq!(completed.peer_did, "did:key:zDnaTest");
         // Both sides derive the same SAS
         assert_eq!(completed.sas, responder_result.sas);
     }
@@ -288,7 +288,7 @@ mod tests {
             &token,
             &seed,
             &pubkey,
-            "did:key:z6MkTest".to_string(),
+            "did:key:zDnaTest".to_string(),
             None,
         )
         .unwrap();

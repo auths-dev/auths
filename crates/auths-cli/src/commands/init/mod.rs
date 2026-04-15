@@ -131,6 +131,82 @@ pub struct InitCommand {
     /// Scaffold a GitHub Actions workflow using the auths attest-action
     #[clap(long)]
     pub github_action: bool,
+
+    /// Number of device slots for a multi-key KEL (default 1).
+    ///
+    /// Values > 1 require `--signing-threshold` and `--rotation-threshold`.
+    /// Multi-device init today runs a single-device inception and points the
+    /// operator at `auths id expand` for the device-expansion rotation; the
+    /// full atomic multi-device inception path is wired through later.
+    #[clap(long, default_value_t = 1)]
+    pub device_count: u8,
+
+    /// Signing threshold: scalar integer (e.g. `"2"`) or fraction list
+    /// (e.g. `"1/2,1/2,1/2"`). Required when `--device-count > 1`.
+    #[clap(long)]
+    pub signing_threshold: Option<String>,
+
+    /// Rotation (next) threshold, same format as `--signing-threshold`.
+    #[clap(long)]
+    pub rotation_threshold: Option<String>,
+}
+
+/// Parse a threshold argument from the CLI.
+///
+/// Accepts either a plain integer (`"2"`, `"a"` hex) for `Threshold::Simple`
+/// or a comma-separated fraction list (`"1/2,1/2,1/2"`) for
+/// `Threshold::Weighted`. Rejects mixed shapes (`"2,3"` with no `/`) with
+/// a clear error.
+pub fn parse_threshold_cli(
+    s: &str,
+    key_count: usize,
+) -> Result<auths_keri::Threshold, anyhow::Error> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("threshold value is empty"));
+    }
+
+    if trimmed.contains(',') || trimmed.contains('/') {
+        // Fraction list path.
+        let fractions: Result<Vec<auths_keri::Fraction>, _> = trimmed
+            .split(',')
+            .map(|part| part.trim().parse::<auths_keri::Fraction>())
+            .collect();
+        let fractions = fractions.map_err(|e| {
+            anyhow!(
+                "invalid fraction in threshold {:?}: {e}. Provide either an integer count (e.g. \"2\") or a comma-separated fraction list (e.g. \"1/2,1/2,1/2\").",
+                trimmed
+            )
+        })?;
+        if fractions.len() != key_count {
+            return Err(anyhow!(
+                "threshold fraction list has {} entries for device_count {}",
+                fractions.len(),
+                key_count
+            ));
+        }
+        Ok(auths_keri::Threshold::Weighted(vec![fractions]))
+    } else {
+        let n = u64::from_str_radix(trimmed, 16).map_err(|_| {
+            anyhow!(
+                "invalid scalar threshold {:?}: expected hex integer (e.g. \"2\") or fraction list (e.g. \"1/2,1/2,1/2\")",
+                trimmed
+            )
+        })?;
+        if (n as usize) > key_count {
+            return Err(anyhow!(
+                "threshold {} exceeds device count {}",
+                n,
+                key_count
+            ));
+        }
+        if n == 0 && key_count > 0 {
+            return Err(anyhow!(
+                "threshold 0 is unsatisfiable for non-empty device set"
+            ));
+        }
+        Ok(auths_keri::Threshold::Simple(n))
+    }
 }
 
 fn resolve_interactive(cmd: &InitCommand) -> Result<bool> {
@@ -167,6 +243,34 @@ pub fn handle_init(
 
     if cmd.github_action {
         return helpers::scaffold_github_action(&out);
+    }
+
+    // Validate multi-device flag combinations at CLI parse time.
+    let device_count = cmd.device_count.max(1) as usize;
+    if device_count > 1 {
+        let kt_str = cmd
+            .signing_threshold
+            .as_deref()
+            .ok_or_else(|| anyhow!("--signing-threshold is required when --device-count > 1"))?;
+        let nt_str = cmd
+            .rotation_threshold
+            .as_deref()
+            .ok_or_else(|| anyhow!("--rotation-threshold is required when --device-count > 1"))?;
+        let _kt = parse_threshold_cli(kt_str, device_count)?;
+        let _nt = parse_threshold_cli(nt_str, device_count)?;
+        return Err(anyhow!(
+            "multi-device init (--device-count > 1) is not yet wired through the developer setup flow. \
+             Run `auths init` for a single-device identity, then `auths id expand --add-device <CURVE>` \
+             (repeatable) with the desired thresholds to convert into a multi-device KEL."
+        ));
+    }
+    if cmd.signing_threshold.is_some() && device_count == 1 {
+        let kt = parse_threshold_cli(cmd.signing_threshold.as_deref().unwrap_or("1"), 1)?;
+        if !matches!(kt, auths_keri::Threshold::Simple(1)) {
+            return Err(anyhow!(
+                "single-device init requires --signing-threshold to be 1 or omitted"
+            ));
+        }
     }
 
     let interactive = resolve_interactive(&cmd)?;
@@ -415,6 +519,9 @@ mod tests {
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
             github_action: false,
+            device_count: 1,
+            signing_threshold: None,
+            rotation_threshold: None,
         };
         assert!(!cmd.interactive);
         assert!(!cmd.non_interactive);
@@ -439,6 +546,9 @@ mod tests {
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
             github_action: false,
+            device_count: 1,
+            signing_threshold: None,
+            rotation_threshold: None,
         };
         assert!(cmd.non_interactive);
         assert!(matches!(cmd.profile, Some(InitProfile::Ci)));
@@ -471,6 +581,9 @@ mod tests {
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
             github_action: false,
+            device_count: 1,
+            signing_threshold: None,
+            rotation_threshold: None,
         };
         assert!(!resolve_interactive(&cmd).unwrap());
     }
@@ -487,6 +600,9 @@ mod tests {
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
             github_action: false,
+            device_count: 1,
+            signing_threshold: None,
+            rotation_threshold: None,
         };
         // Auto-detect returns is_terminal() — result depends on environment
         let result = resolve_interactive(&cmd).unwrap();

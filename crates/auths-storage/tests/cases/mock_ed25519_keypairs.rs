@@ -4,8 +4,8 @@
 
 use auths_core::crypto::said::compute_next_commitment;
 use auths_id::keri::event::{Event, IcpEvent, KeriSequence};
+use auths_id::keri::finalize_icp_event;
 use auths_id::keri::types::{Prefix, Said};
-use auths_id::keri::{finalize_icp_event, serialize_for_signing};
 use auths_keri::{CesrKey, Threshold, VersionString};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -250,14 +250,9 @@ pub fn mock_inception_event(index: usize) -> Event {
         b: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
-    let mut finalized = finalize_icp_event(icp).expect("fixture event must finalize");
-    let canonical =
-        serialize_for_signing(&Event::Icp(finalized.clone())).expect("must serialize for signing");
-    let sig = keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+    let finalized = finalize_icp_event(icp).expect("fixture event must finalize");
+    let _ = keypair; // signature attached at KEL-append boundary, not here.
     Event::Icp(finalized)
 }

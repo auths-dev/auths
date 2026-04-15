@@ -82,7 +82,7 @@ pub struct RadicleIdentity {
     /// Current signing keys (as DIDs)
     pub keys: Vec<Did>,
     /// Current sequence number (0 for did:key, KERI sequence for did:keri)
-    pub sequence: u64,
+    pub sequence: u128,
     /// Whether the KERI identity has been abandoned (no next-key commitment)
     pub is_abandoned: bool,
     /// Attested device DIDs linked to this identity

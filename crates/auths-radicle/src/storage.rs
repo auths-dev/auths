@@ -384,7 +384,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         }
     }
 

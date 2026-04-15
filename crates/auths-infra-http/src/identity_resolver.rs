@@ -12,7 +12,7 @@ struct ResolvedIdentityResponse {
     public_key: Vec<u8>,
     method: String,
     #[serde(default)]
-    sequence: u64,
+    sequence: u128,
     #[serde(default)]
     can_rotate: bool,
 }

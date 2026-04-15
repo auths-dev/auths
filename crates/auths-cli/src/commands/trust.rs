@@ -106,7 +106,7 @@ struct PinSummary {
     trust_level: String,
     first_seen: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    kel_sequence: Option<u64>,
+    kel_sequence: Option<u128>,
 }
 
 /// JSON output for show command.
@@ -120,7 +120,7 @@ struct PinDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     kel_tip_said: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    kel_sequence: Option<u64>,
+    kel_sequence: Option<u128>,
 }
 
 /// Handle trust subcommands.
@@ -196,7 +196,7 @@ fn handle_pin(cmd: TrustPinCommand, now: DateTime<Utc>) -> Result<()> {
     let pin = PinnedIdentity {
         did: cmd.did.clone(),
         public_key_hex: public_key_hex.clone(),
-        curve: auths_crypto::CurveType::from_public_key_len(
+        curve: auths_crypto::CurveType::from_public_key_len_fallback(
             hex::decode(public_key_hex.as_str())
                 .map(|b| b.len())
                 .unwrap_or(0),

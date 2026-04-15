@@ -151,7 +151,7 @@ impl ReceiptBuilder {
     }
 
     /// Set the event sequence number.
-    pub fn sequence(mut self, seq: u64) -> Self {
+    pub fn sequence(mut self, seq: u128) -> Self {
         self.s = Some(KeriSequence::new(seq));
         self
     }

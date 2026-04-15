@@ -44,22 +44,12 @@ impl schemars::JsonSchema for KeriSequence {
 
 impl KeriSequence {
     /// Create a new sequence number.
-    pub fn new(value: u64) -> Self {
-        Self(value as u128)
-    }
-
-    /// Create a new sequence number from a u128 value.
-    pub fn new_u128(value: u128) -> Self {
+    pub fn new(value: u128) -> Self {
         Self(value)
     }
 
-    /// Return the inner value as u64 (truncates if > u64::MAX, which is unrealistic).
-    pub fn value(self) -> u64 {
-        self.0 as u64
-    }
-
     /// Return the full u128 value.
-    pub fn value_u128(self) -> u128 {
+    pub fn value(self) -> u128 {
         self.0
     }
 }
@@ -366,16 +356,12 @@ pub struct IcpEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
-    /// Legacy signature field — DEPRECATED. Use `SignedEvent` with externalized signatures.
-    /// Retained for backwards compatibility with stored events.
-    #[serde(default)]
-    pub x: String,
 }
 
 /// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a (+ x if non-empty, legacy)
 impl Serialize for IcpEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 13 + (!self.x.is_empty() as usize);
+        let field_count = 13;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "icp")?;
@@ -390,9 +376,6 @@ impl Serialize for IcpEvent {
         map.serialize_entry("b", &self.b)?;
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
-        if !self.x.is_empty() {
-            map.serialize_entry("x", &self.x)?;
-        }
         map.end()
     }
 }
@@ -436,15 +419,12 @@ pub struct RotEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
-    /// Event signature — DEPRECATED: will be externalized
-    #[serde(default)]
-    pub x: String,
 }
 
 /// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a (+ x if non-empty, legacy)
 impl Serialize for RotEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 15 + (!self.x.is_empty() as usize);
+        let field_count = 15;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "rot")?;
@@ -461,9 +441,6 @@ impl Serialize for RotEvent {
         map.serialize_entry("ba", &self.ba)?;
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
-        if !self.x.is_empty() {
-            map.serialize_entry("x", &self.x)?;
-        }
         map.end()
     }
 }
@@ -487,15 +464,12 @@ pub struct IxnEvent {
     pub p: Said,
     /// Anchored seals (the main purpose of IXN events)
     pub a: Vec<Seal>,
-    /// Event signature — DEPRECATED: will be externalized
-    #[serde(default)]
-    pub x: String,
 }
 
 /// Spec field order: v, t, d, i, s, p, a (+ x if non-empty, legacy)
 impl Serialize for IxnEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 7 + (!self.x.is_empty() as usize);
+        let field_count = 7;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "ixn")?;
@@ -504,9 +478,6 @@ impl Serialize for IxnEvent {
         map.serialize_entry("s", &self.s)?;
         map.serialize_entry("p", &self.p)?;
         map.serialize_entry("a", &self.a)?;
-        if !self.x.is_empty() {
-            map.serialize_entry("x", &self.x)?;
-        }
         map.end()
     }
 }
@@ -561,15 +532,12 @@ pub struct DipEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix
     pub di: Prefix,
-    /// Event signature — DEPRECATED: will be externalized
-    #[serde(default)]
-    pub x: String,
 }
 
 /// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, di (+ x if non-empty)
 impl Serialize for DipEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 14 + (!self.x.is_empty() as usize);
+        let field_count = 14;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "dip")?;
@@ -585,9 +553,6 @@ impl Serialize for DipEvent {
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.serialize_entry("di", &self.di)?;
-        if !self.x.is_empty() {
-            map.serialize_entry("x", &self.x)?;
-        }
         map.end()
     }
 }
@@ -633,15 +598,14 @@ pub struct DrtEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
-    /// Event signature — DEPRECATED: will be externalized
-    #[serde(default)]
-    pub x: String,
+    /// Delegator identifier prefix (KERI §11).
+    pub di: Prefix,
 }
 
-/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a (+ x if non-empty)
+/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, di
 impl Serialize for DrtEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 15 + (!self.x.is_empty() as usize);
+        let field_count = 16;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "drt")?;
@@ -658,9 +622,7 @@ impl Serialize for DrtEvent {
         map.serialize_entry("ba", &self.ba)?;
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
-        if !self.x.is_empty() {
-            map.serialize_entry("x", &self.x)?;
-        }
+        map.serialize_entry("di", &self.di)?;
         map.end()
     }
 }
@@ -708,17 +670,6 @@ impl Event {
             Event::Ixn(e) => &e.d,
             Event::Dip(e) => &e.d,
             Event::Drt(e) => &e.d,
-        }
-    }
-
-    /// Get the signature of this event (legacy `x` field).
-    pub fn signature(&self) -> &str {
-        match self {
-            Event::Icp(e) => &e.x,
-            Event::Rot(e) => &e.x,
-            Event::Ixn(e) => &e.x,
-            Event::Dip(e) => &e.x,
-            Event::Drt(e) => &e.x,
         }
     }
 
@@ -852,7 +803,7 @@ pub struct IndexedSignature {
 /// // After creating and finalizing an event:
 /// let signed = SignedEvent::new(event, vec![IndexedSignature { index: 0, sig: sig_bytes }]);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignedEvent {
     /// The event body (no signature data).
     pub event: Event,
@@ -882,10 +833,188 @@ impl SignedEvent {
     }
 }
 
+/// Serialize a list of externalized signatures to CESR text-domain
+/// `-A##<siger1><siger2>…` indexed-signature group bytes.
+///
+/// Wire format: `-A` prefix + 2-char base64url count + each signature as
+/// a CESR `Siger` (qb64). Reads back via `parse_attachment`.
+pub fn serialize_attachment(signatures: &[IndexedSignature]) -> Result<Vec<u8>, AttachmentError> {
+    use cesride::{Indexer, Siger, indexer};
+
+    let mut out = String::new();
+    out.push_str("-A");
+    out.push_str(&encode_count_b64(signatures.len())?);
+
+    for sig in signatures {
+        // Ed25519 indexed signature — single-curve for now. P-256 indexed
+        // signatures would use `indexer::Codex::ECDSA_256r1`; auths' current
+        // flows produce Ed25519 in this sign path.
+        let siger = Siger::new(
+            None,
+            Some(sig.index),
+            None,
+            Some(indexer::Codex::Ed25519),
+            Some(&sig.sig),
+            None,
+            None,
+            None,
+        )
+        .map_err(|e| AttachmentError::Encode(e.to_string()))?;
+        let qb64 = siger
+            .qb64()
+            .map_err(|e| AttachmentError::Encode(e.to_string()))?;
+        out.push_str(&qb64);
+    }
+
+    Ok(out.into_bytes())
+}
+
+/// Parse a CESR `-A##` indexed-signature group into the constituent
+/// `IndexedSignature`s.
+pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, AttachmentError> {
+    use cesride::{Indexer, Siger};
+
+    let s = std::str::from_utf8(bytes)
+        .map_err(|e| AttachmentError::Decode(format!("non-utf8 attachment: {e}")))?;
+
+    if s.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let rest = s.strip_prefix("-A").ok_or_else(|| {
+        AttachmentError::Decode("attachment must start with -A counter code".into())
+    })?;
+    if rest.len() < 2 {
+        return Err(AttachmentError::Decode("truncated counter header".into()));
+    }
+    let (count_b64, body) = rest.split_at(2);
+    let count = decode_count_b64(count_b64)?;
+
+    let mut out = Vec::with_capacity(count);
+    let mut cursor = body;
+    for _ in 0..count {
+        // Ed25519 indexed sigs are 88 chars in CESR (2-char code + 86 body).
+        // P-256 ECDSA indexed sigs also 88 chars (code ECDSA_256r1 + body).
+        // Both match; parse fixed-width.
+        if cursor.len() < 88 {
+            return Err(AttachmentError::Decode(format!(
+                "insufficient bytes for siger: need 88, have {}",
+                cursor.len()
+            )));
+        }
+        let (siger_qb64, remainder) = cursor.split_at(88);
+        cursor = remainder;
+
+        let siger = Siger::new(None, None, None, None, None, None, Some(siger_qb64), None)
+            .map_err(|e| AttachmentError::Decode(format!("Siger: {e}")))?;
+        let index = siger.index();
+        let sig_bytes = siger.raw();
+
+        out.push(IndexedSignature {
+            index,
+            sig: sig_bytes,
+        });
+    }
+
+    Ok(out)
+}
+
+/// Error shape for attachment encode/decode.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum AttachmentError {
+    /// Encoding an indexed signature into CESR failed.
+    #[error("attachment encode: {0}")]
+    Encode(String),
+    /// Decoding a CESR attachment stream failed (bad counter, malformed Siger, etc.).
+    #[error("attachment decode: {0}")]
+    Decode(String),
+}
+
+/// CESR base64url alphabet, ordered so `B64_ALPHA[n]` is the char for n.
+const B64_ALPHA: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+fn encode_count_b64(count: usize) -> Result<String, AttachmentError> {
+    if count >= 64 * 64 {
+        return Err(AttachmentError::Encode(format!(
+            "count {count} exceeds 2-char base64url max (4095)"
+        )));
+    }
+    let hi = B64_ALPHA[(count >> 6) & 0x3f] as char;
+    let lo = B64_ALPHA[count & 0x3f] as char;
+    Ok(format!("{hi}{lo}"))
+}
+
+fn decode_count_b64(s: &str) -> Result<usize, AttachmentError> {
+    let mut it = s.chars();
+    let hi = it
+        .next()
+        .and_then(b64_index)
+        .ok_or_else(|| AttachmentError::Decode(format!("invalid count hi char: {s:?}")))?;
+    let lo = it
+        .next()
+        .and_then(b64_index)
+        .ok_or_else(|| AttachmentError::Decode(format!("invalid count lo char: {s:?}")))?;
+    Ok((hi << 6) | lo)
+}
+
+fn b64_index(c: char) -> Option<usize> {
+    B64_ALPHA.iter().position(|&b| b as char == c)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attachment_roundtrip_single_sig() {
+        let sigs = vec![IndexedSignature {
+            index: 0,
+            sig: vec![0x42u8; 64],
+        }];
+        let bytes = serialize_attachment(&sigs).unwrap();
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert!(s.starts_with("-AAB"), "expected -AAB prefix, got {s:?}");
+        let back = parse_attachment(&bytes).unwrap();
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].index, 0);
+        assert_eq!(back[0].sig, vec![0x42u8; 64]);
+    }
+
+    #[test]
+    fn attachment_roundtrip_three_sigs() {
+        let sigs = vec![
+            IndexedSignature {
+                index: 0,
+                sig: vec![0x01u8; 64],
+            },
+            IndexedSignature {
+                index: 1,
+                sig: vec![0x02u8; 64],
+            },
+            IndexedSignature {
+                index: 2,
+                sig: vec![0x03u8; 64],
+            },
+        ];
+        let bytes = serialize_attachment(&sigs).unwrap();
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert!(s.starts_with("-AAD"), "expected -AAD prefix, got {s:?}");
+        let back = parse_attachment(&bytes).unwrap();
+        assert_eq!(back.len(), 3);
+        for (i, sig) in back.iter().enumerate() {
+            assert_eq!(sig.index, i as u32);
+        }
+    }
+
+    #[test]
+    fn attachment_empty() {
+        let bytes = serialize_attachment(&[]).unwrap();
+        assert_eq!(bytes, b"-AAA");
+        let back = parse_attachment(&bytes).unwrap();
+        assert!(back.is_empty());
+    }
 
     #[test]
     fn keri_sequence_serializes_as_hex() {
@@ -934,7 +1063,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
         let json = serde_json::to_string(&icp).unwrap();
         // d, a, c are always serialized (spec requires all fields)
@@ -1003,7 +1131,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
         let signed = SignedEvent::new(
             Event::Icp(icp),

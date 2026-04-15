@@ -6,7 +6,7 @@ use auths_id::keri::KeriSequence;
 use auths_id::keri::event::{Event, IcpEvent, IxnEvent};
 use auths_id::keri::seal::Seal;
 use auths_id::keri::types::{Prefix, Said};
-use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
+use auths_id::keri::validate::finalize_icp_event;
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_keri::{CesrKey, Threshold, VersionString};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
@@ -39,19 +39,14 @@ fn make_signed_icp() -> (Event, Prefix, Ed25519KeyPair) {
         b: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
-    let mut finalized = finalize_icp_event(icp).unwrap();
-    let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-    let sig = keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+    let finalized = finalize_icp_event(icp).unwrap();
     let prefix = finalized.i.clone();
     (Event::Icp(finalized), prefix, keypair)
 }
 
-fn make_signed_ixn(prefix: &Prefix, seq: u64, prev_said: &str, keypair: &Ed25519KeyPair) -> Event {
+fn make_signed_ixn(prefix: &Prefix, seq: u128, prev_said: &str, keypair: &Ed25519KeyPair) -> Event {
     let mut ixn = IxnEvent {
         v: VersionString::placeholder(),
         d: Said::default(),
@@ -59,16 +54,12 @@ fn make_signed_ixn(prefix: &Prefix, seq: u64, prev_said: &str, keypair: &Ed25519
         s: KeriSequence::new(seq),
         p: Said::new_unchecked(prev_said.to_string()),
         a: vec![Seal::digest("EConcurrent")],
-        x: String::new(),
     };
 
     let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
     ixn.d = compute_said(&value).unwrap();
 
-    let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
-    let sig = keypair.sign(&canonical);
-    ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+    let _ = keypair; // signature attached at KEL-append boundary, not here.
     Event::Ixn(ixn)
 }
 

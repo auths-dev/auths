@@ -112,15 +112,26 @@ pub fn pin_identity(
         });
     }
 
+    let pk_len = hex::decode(public_key_hex.as_str())
+        .map(|b| b.len())
+        .map_err(|e| {
+            format_error(
+                "AUTHS_INVALID_INPUT",
+                format!("Invalid public key hex for {did}: {e}"),
+            )
+        })?;
+    let curve = auths_crypto::CurveType::from_public_key_len_fallback(pk_len).ok_or_else(|| {
+        format_error(
+            "AUTHS_INVALID_INPUT",
+            format!(
+                "Unsupported public key length {pk_len} for {did}: must be 32 (Ed25519) or 33/65 (P-256)"
+            ),
+        )
+    })?;
     let pin = PinnedIdentity {
         did: did.clone(),
         public_key_hex: public_key_hex.clone(),
-        curve: auths_crypto::CurveType::from_public_key_len(
-            hex::decode(public_key_hex.as_str())
-                .map(|b| b.len())
-                .unwrap_or(0),
-        )
-        .unwrap_or(auths_crypto::CurveType::Ed25519),
+        curve,
         kel_tip_said: None,
         kel_sequence: None,
         first_seen: now,

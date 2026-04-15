@@ -151,7 +151,10 @@ pub fn create_org(
     };
 
     let signer = StorageSigner::new(keychain);
-    // TODO: ResolvedDid should carry CurveType to eliminate this length dispatch
+    // Last-resort length fallback: `ResolvedDid` doesn't yet carry a `CurveType`
+    // so the curve is inferred from pubkey length at this internal boundary.
+    // Migration: widen `ResolvedDid` to include `curve: CurveType`, then construct
+    // the `DeviceDID` directly from (curve, bytes) without the length match.
     let org_did_device = if org_pk_bytes.len() == 32 {
         #[allow(clippy::unwrap_used)] // INVARIANT: length checked
         let pk: [u8; 32] = org_pk_bytes.as_slice().try_into().unwrap();

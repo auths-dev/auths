@@ -1,10 +1,12 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use rand::rngs::OsRng;
-use ring::signature::{ED25519, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use x25519_dalek::{EphemeralSecret, PublicKey};
 use zeroize::Zeroizing;
+
+use auths_crypto::CurveType;
+use auths_keri::KeriPublicKey;
 
 use crate::error::ProtocolError;
 
@@ -191,12 +193,17 @@ impl PairingSession {
         self.token.ephemeral_pubkey_bytes()
     }
 
-    /// Verify a pairing response's Ed25519 signature using `ring` directly.
+    /// Verify a pairing response's signature.
+    ///
+    /// The `curve` argument carries the signing curve in-band — callers must
+    /// read it from the wire (e.g. `PairingResponse.curve`) or from a sibling
+    /// typed source, never infer from pubkey byte length.
     pub fn verify_response(
         &self,
-        device_ed25519_pubkey: &[u8],
+        device_signing_pubkey: &[u8],
         device_x25519_pubkey: &[u8; 32],
         signature: &[u8],
+        curve: CurveType,
     ) -> Result<(), ProtocolError> {
         let initiator_pubkey = self.token.ephemeral_pubkey_bytes()?;
 
@@ -205,25 +212,29 @@ impl PairingSession {
         message.extend_from_slice(&initiator_pubkey);
         message.extend_from_slice(device_x25519_pubkey);
 
-        // curve dispatch via byte length (pairing-boundary ingestion).
-        match device_ed25519_pubkey.len() {
-            32 => {
-                let peer = UnparsedPublicKey::new(&ED25519, device_ed25519_pubkey);
-                peer.verify(&message, signature)
-                    .map_err(|_| ProtocolError::InvalidSignature)?;
+        let key = match curve {
+            CurveType::Ed25519 => {
+                let arr: [u8; 32] = device_signing_pubkey.try_into().map_err(|_| {
+                    ProtocolError::KeyExchangeFailed(format!(
+                        "Ed25519 pubkey must be 32 bytes, got {}",
+                        device_signing_pubkey.len()
+                    ))
+                })?;
+                KeriPublicKey::Ed25519(arr)
             }
-            33 | 65 => {
-                auths_crypto::RingCryptoProvider::p256_verify(
-                    device_ed25519_pubkey,
-                    &message,
-                    signature,
-                )
-                .map_err(|_| ProtocolError::InvalidSignature)?;
+            CurveType::P256 => {
+                let arr: [u8; 33] = device_signing_pubkey.try_into().map_err(|_| {
+                    ProtocolError::KeyExchangeFailed(format!(
+                        "P-256 compressed pubkey must be 33 bytes, got {}",
+                        device_signing_pubkey.len()
+                    ))
+                })?;
+                KeriPublicKey::P256(arr)
             }
-            _ => return Err(ProtocolError::InvalidSignature),
-        }
+        };
 
-        Ok(())
+        key.verify_signature(&message, signature)
+            .map_err(|_| ProtocolError::InvalidSignature)
     }
 }
 

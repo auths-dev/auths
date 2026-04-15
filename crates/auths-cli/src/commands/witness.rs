@@ -67,7 +67,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(async {
                 let state = {
-                    // fn-116.1/B1a: curve-aware keypair generation. Default to P-256
+                    // curve-aware keypair generation. Default to P-256
                     // at the CLI layer (workspace default); plumb --curve through
                     // the subcommand if explicit selection becomes necessary.
                     let curve = auths_crypto::CurveType::P256;
