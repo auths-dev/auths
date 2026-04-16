@@ -741,7 +741,7 @@ pub fn handle_id(
             // Load the public key from keychain (handles SE and software keys)
             let keychain = get_platform_keychain()?;
             let alias_typed = KeyAlias::new_unchecked(&alias);
-            let (public_key_bytes, _curve) = auths_sdk::keychain::extract_public_key_bytes(
+            let (public_key_bytes, curve) = auths_sdk::keychain::extract_public_key_bytes(
                 keychain.as_ref(),
                 &alias_typed,
                 passphrase_provider.as_ref(),
@@ -752,11 +752,13 @@ pub fn handle_id(
             let public_key_hex =
                 auths_verifier::PublicKeyHex::new_unchecked(hex::encode(&public_key_bytes));
 
-            // Create the bundle
+            // Create the bundle. Curve flows in-band from the typed keychain
+            // extraction so verifiers never re-derive it from byte length.
             let bundle = IdentityBundle {
                 #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
                 identity_did: IdentityDID::new_unchecked(identity.controller_did.to_string()),
                 public_key_hex,
+                curve,
                 attestation_chain: attestations,
                 bundle_timestamp: now,
                 max_valid_for_secs: max_age_secs,

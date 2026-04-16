@@ -126,19 +126,7 @@ fn generate_keypair_for_curve(curve: CurveType) -> Result<([u8; 32], Vec<u8>), W
 
 /// Derive a `did:key:` for the witness from a curve-tagged public key.
 fn derive_witness_did(curve: CurveType, pubkey_bytes: &[u8]) -> Result<DeviceDID, WitnessError> {
-    let did_str = match curve {
-        CurveType::Ed25519 => {
-            let pk: [u8; 32] = pubkey_bytes
-                .try_into()
-                .map_err(|_| WitnessError::Network("Ed25519 pubkey must be 32 bytes".into()))?;
-            auths_crypto::ed25519_pubkey_to_did_key(&pk)
-        }
-        CurveType::P256 => auths_crypto::p256_pubkey_to_did_key(pubkey_bytes),
-    };
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: derived via auths_crypto::{ed25519,p256}_pubkey_to_did_key which
-    // emits well-formed did:key URIs.
-    Ok(DeviceDID::new_unchecked(did_str))
+    Ok(DeviceDID::from_public_key(pubkey_bytes, curve))
 }
 
 /// Event submission request.

@@ -45,15 +45,15 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E1102\n\n**Crate:** `auths-crypto`  \n**Type:** `DidKeyError::Base58DecodeFailed`\n\n## Message\n\nBase58 decoding failed: {0}\n",
         ),
         "AUTHS-E1103" => Some(
-            "# AUTHS-E1103\n\n**Crate:** `auths-crypto`  \n**Type:** `DidKeyError::UnsupportedMulticodec`\n\n## Message\n\nUnsupported or malformed multicodec: expected Ed25519 [0xED, 0x01]\n\n## Suggestion\n\nOnly Ed25519 keys are supported\n",
+            "# AUTHS-E1103\n\n**Crate:** `auths-crypto`  \n**Type:** `DidKeyError::UnsupportedMulticodec`\n\n## Message\n\nUnsupported or malformed multicodec: expected Ed25519 [0xED, 0x01] or P-256 [0x80, 0x24]\n\n## Suggestion\n\nUse a `did:key:` with a supported multicodec prefix (Ed25519: `z6Mk…`, P-256: `zDna…`)\n",
         ),
         "AUTHS-E1104" => Some(
-            "# AUTHS-E1104\n\n**Crate:** `auths-crypto`  \n**Type:** `DidKeyError::InvalidKeyLength`\n\n## Message\n\nInvalid Ed25519 key length: expected 32 bytes, got {0}\n",
+            "# AUTHS-E1104\n\n**Crate:** `auths-crypto`  \n**Type:** `DidKeyError::InvalidKeyLength`\n\n## Message\n\nInvalid public key length: expected 32 bytes (Ed25519) or 33 bytes (P-256 compressed SEC1), got {0}\n",
         ),
 
         // --- auths-crypto (KeriDecodeError) ---
         "AUTHS-E1201" => Some(
-            "# AUTHS-E1201\n\n**Crate:** `auths-crypto`  \n**Type:** `KeriDecodeError::InvalidPrefix`\n\n## Message\n\nInvalid KERI prefix: expected 'D' for Ed25519, got '{0}'\n\n## Suggestion\n\nKERI Ed25519 keys must start with 'D' prefix\n",
+            "# AUTHS-E1201\n\n**Crate:** `auths-crypto`  \n**Type:** `KeriDecodeError::InvalidPrefix`\n\n## Message\n\nUnsupported KERI key prefix: got '{0}', expected 'D' (Ed25519) or '1AAI' (P-256)\n\n## Suggestion\n\nKERI verkeys use CESR derivation codes: `D` for Ed25519 (32 bytes) or `1AAI` for P-256 compressed SEC1 (33 bytes). `1AAJ` is the spec's P-256 *signature* code; do not use as a verkey.\n",
         ),
         "AUTHS-E1202" => Some(
             "# AUTHS-E1202\n\n**Crate:** `auths-crypto`  \n**Type:** `KeriDecodeError::EmptyInput`\n\n## Message\n\nMissing KERI prefix: empty string\n\n## Suggestion\n\nProvide a non-empty KERI-encoded key string\n",
@@ -62,7 +62,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E1203\n\n**Crate:** `auths-crypto`  \n**Type:** `KeriDecodeError::DecodeError`\n\n## Message\n\nBase64url decode failed: {0}\n",
         ),
         "AUTHS-E1204" => Some(
-            "# AUTHS-E1204\n\n**Crate:** `auths-crypto`  \n**Type:** `KeriDecodeError::InvalidLength`\n\n## Message\n\nInvalid Ed25519 key length: expected 32 bytes, got {0}\n",
+            "# AUTHS-E1204\n\n**Crate:** `auths-crypto`  \n**Type:** `KeriDecodeError::InvalidLength`\n\n## Message\n\nInvalid KERI verkey length: expected 32 bytes (Ed25519, `D` prefix) or 33 bytes (P-256 compressed SEC1, `1AAI` prefix), got {0}\n",
         ),
 
         // --- auths-crypto (SshKeyError) ---
@@ -140,7 +140,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E2103\n\n**Crate:** `auths-verifier`  \n**Type:** `CommitVerificationError::SshSigParseFailed`\n\n## Message\n\nSSHSIG parse failed: {0}\n",
         ),
         "AUTHS-E2104" => Some(
-            "# AUTHS-E2104\n\n**Crate:** `auths-verifier`  \n**Type:** `CommitVerificationError::UnsupportedKeyType`\n\n## Message\n\nunsupported SSH key type: {found}\n\n## Suggestion\n\nUse an Ed25519 SSH key for signing\n",
+            "# AUTHS-E2104\n\n**Crate:** `auths-verifier`  \n**Type:** `CommitVerificationError::UnsupportedKeyType`\n\n## Message\n\nunsupported SSH key type: {found}\n\n## Suggestion\n\nUse `ssh-ed25519` (Ed25519) or `ecdsa-sha2-nistp256` (P-256, RFC 5656) for signing\n",
         ),
         "AUTHS-E2105" => Some(
             "# AUTHS-E2105\n\n**Crate:** `auths-verifier`  \n**Type:** `CommitVerificationError::NamespaceMismatch`\n\n## Message\n\nnamespace mismatch: expected \\\"{expected}\\\", found \\\"{found}\\\"\n",
@@ -292,7 +292,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E3304\n\n**Crate:** `auths-core`  \n**Type:** `CryptoError::InvalidSeedLength`\n\n## Message\n\ninvalid seed length: expected 32, got {0}\n\n## Suggestion\n\nEnsure the seed is exactly 32 bytes\n",
         ),
         "AUTHS-E3305" => Some(
-            "# AUTHS-E3305\n\n**Crate:** `auths-core`  \n**Type:** `CryptoError::InvalidKeyFormat`\n\n## Message\n\ninvalid key format: {0}\n\n## Suggestion\n\nCheck that the key file is a valid Ed25519 key\n",
+            "# AUTHS-E3305\n\n**Crate:** `auths-core`  \n**Type:** `CryptoError::InvalidKeyFormat`\n\n## Message\n\ninvalid key format: {0}\n\n## Suggestion\n\nCheck that the key file is a valid PKCS#8 v1/v2 key (Ed25519 or P-256) or a raw 32-byte seed\n",
         ),
 
         // --- auths-core (WitnessError) ---
@@ -534,7 +534,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E4404\n\n**Crate:** `auths-id`  \n**Type:** `IdentityError::EmptyPassphrase`\n\n## Message\n\nPassphrase required\n\n## Suggestion\n\nProvide a non-empty passphrase\n",
         ),
         "AUTHS-E4405" => Some(
-            "# AUTHS-E4405\n\n**Crate:** `auths-id`  \n**Type:** `IdentityError::InvalidKeyLength`\n\n## Message\n\nInvalid key length: expected 32, got {0}\n\n## Suggestion\n\nExpected a 32-byte Ed25519 key\n",
+            "# AUTHS-E4405\n\n**Crate:** `auths-id`  \n**Type:** `IdentityError::InvalidKeyLength`\n\n## Message\n\nInvalid key length: expected 32 bytes (Ed25519) or 33 bytes (P-256 compressed SEC1), got {0}\n\n## Suggestion\n\nKey length must match the declared curve. See `docs/architecture/cryptography.md`.\n",
         ),
         "AUTHS-E4406" => Some(
             "# AUTHS-E4406\n\n**Crate:** `auths-id`  \n**Type:** `IdentityError::KeyStorage`\n\n## Message\n\nKey storage error: {0}\n\n## Suggestion\n\nCheck keychain permissions\n",
@@ -635,7 +635,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E4707\n\n**Crate:** `auths-id`  \n**Type:** `RotationError::Serialization`\n\n## Message\n\nSerialization error: {0}\n",
         ),
         "AUTHS-E4708" => Some(
-            "# AUTHS-E4708\n\n**Crate:** `auths-id`  \n**Type:** `RotationError::InvalidKey`\n\n## Message\n\nInvalid key: {0}\n\n## Suggestion\n\nProvide a valid Ed25519 key in PKCS#8 format\n",
+            "# AUTHS-E4708\n\n**Crate:** `auths-id`  \n**Type:** `RotationError::InvalidKey`\n\n## Message\n\nInvalid key: {0}\n\n## Suggestion\n\nProvide a valid Ed25519 or P-256 key in PKCS#8 v1/v2 format\n",
         ),
 
         // --- auths-id (ResolveError) ---
@@ -658,7 +658,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E4806\n\n**Crate:** `auths-id`  \n**Type:** `ResolveError::NoCurrentKey`\n\n## Message\n\nNo current key in identity\n\n## Suggestion\n\nThe identity has no active key; it may be abandoned\n",
         ),
         "AUTHS-E4807" => Some(
-            "# AUTHS-E4807\n\n**Crate:** `auths-id`  \n**Type:** `ResolveError::UnknownKeyType`\n\n## Message\n\nUnknown key type: {0}\n\n## Suggestion\n\nOnly Ed25519 keys (D prefix) are currently supported\n",
+            "# AUTHS-E4807\n\n**Crate:** `auths-id`  \n**Type:** `ResolveError::UnknownKeyType`\n\n## Message\n\nUnknown key type: {0}\n\n## Suggestion\n\nKERI supports Ed25519 (`D` prefix) and P-256 (`1AAI` prefix). Other curves are not yet supported.\n",
         ),
 
         // --- auths-id (TenantIdError) ---
@@ -939,7 +939,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E5605\n\n**Crate:** `auths-sdk`  \n**Type:** `OrgError::InvalidDid`\n\n## Message\n\ninvalid organization DID: {0}\n\n## Suggestion\n\nOrganization DIDs must be valid did:keri identifiers\n",
         ),
         "AUTHS-E5606" => Some(
-            "# AUTHS-E5606\n\n**Crate:** `auths-sdk`  \n**Type:** `OrgError::InvalidPublicKey`\n\n## Message\n\ninvalid public key: {0}\n\n## Suggestion\n\nPublic keys must be hex-encoded Ed25519 keys\n",
+            "# AUTHS-E5606\n\n**Crate:** `auths-sdk`  \n**Type:** `OrgError::InvalidPublicKey`\n\n## Message\n\ninvalid public key: {0}\n\n## Suggestion\n\nPublic keys must be hex-encoded: 64 chars Ed25519 or 66 chars P-256 compressed SEC1\n",
         ),
         "AUTHS-E5607" => Some(
             "# AUTHS-E5607\n\n**Crate:** `auths-sdk`  \n**Type:** `OrgError::Signing`\n\n## Message\n\nsigning error: {0}\n",

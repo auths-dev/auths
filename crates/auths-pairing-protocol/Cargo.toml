@@ -14,7 +14,7 @@ categories = ["cryptography"]
 auths-crypto = { workspace = true, features = ["native"] }
 auths-keri.workspace = true
 ring.workspace = true
-x25519-dalek = { version = "2", features = ["static_secrets"] }
+p256 = { version = "0.13", features = ["ecdh", "ecdsa", "pkcs8"] }
 rand = "0.8"
 base64.workspace = true
 serde = { version = "1.0", features = ["derive"] }

@@ -356,6 +356,7 @@ pub fn add_organization_member(
         &admin_issuer_did,
         &member_did,
         cmd.member_public_key.as_bytes(),
+        auths_crypto::CurveType::Ed25519,
         Some(serde_json::json!({
             "org_role": cmd.role.to_string(),
             "org_did": format!("did:keri:{}", cmd.org_prefix),
@@ -432,6 +433,7 @@ pub fn revoke_organization_member(
         &admin_issuer_did,
         &member_did,
         cmd.member_public_key.as_bytes(),
+        auths_crypto::CurveType::Ed25519,
         cmd.note,
         None,
         now,

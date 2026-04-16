@@ -451,7 +451,8 @@ pub async fn verify_chain_with_witnesses(
     }
 }
 
-/// Verify an action envelope's Ed25519 signature with a raw public key.
+/// Verify an action envelope's signature with a raw public key.
+/// Curve dispatched via the `curve` argument; supports Ed25519 and P-256.
 ///
 /// Args:
 /// * `envelope_json`: The complete action envelope as a JSON string.

@@ -1,8 +1,8 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
-use rand::rngs::OsRng;
+use p256::elliptic_curve::rand_core::OsRng;
+use p256::elliptic_curve::sec1::ToEncodedPoint;
 use serde::{Deserialize, Serialize};
-use x25519_dalek::{EphemeralSecret, PublicKey};
 use zeroize::Zeroizing;
 
 use auths_crypto::{CurveType, TypedSeed};
@@ -20,7 +20,7 @@ use crate::token::PairingToken;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairingResponse {
     pub short_code: String,
-    pub device_x25519_pubkey: String,
+    pub device_ephemeral_pubkey: String,
     pub device_signing_pubkey: String,
     /// Curve tag for `device_signing_pubkey` / `signature`. Absent → defaults to `P256`
     /// per the approved Wire-format Curve Tagging rule.
@@ -99,29 +99,44 @@ impl PairingResponse {
             )));
         }
 
-        let device_x25519_secret = EphemeralSecret::random_from_rng(OsRng);
-        let device_x25519_public = PublicKey::from(&device_x25519_secret);
+        let device_ecdh_secret = p256::ecdh::EphemeralSecret::random(&mut OsRng);
+        let device_ecdh_public = device_ecdh_secret.public_key();
 
-        let initiator_x25519_bytes = token.ephemeral_pubkey_bytes()?;
-        let initiator_x25519 = PublicKey::from(initiator_x25519_bytes);
+        let initiator_ecdh_bytes = token.ephemeral_pubkey_bytes()?;
+        let initiator_pk =
+            p256::PublicKey::from_sec1_bytes(&initiator_ecdh_bytes).map_err(|_| {
+                ProtocolError::KeyExchangeFailed(
+                    "Invalid initiator P-256 ephemeral pubkey (SEC1 decode failed)".to_string(),
+                )
+            })?;
 
-        let shared = device_x25519_secret.diffie_hellman(&initiator_x25519);
-        let shared_secret = Zeroizing::new(*shared.as_bytes());
+        let shared = device_ecdh_secret.diffie_hellman(&initiator_pk);
+        let shared_bytes: [u8; 32] =
+            shared
+                .raw_secret_bytes()
+                .as_slice()
+                .try_into()
+                .map_err(|_| {
+                    ProtocolError::KeyExchangeFailed("Shared secret not 32 bytes".to_string())
+                })?;
+        let shared_secret = Zeroizing::new(shared_bytes);
 
         let device_signing_pubkey = URL_SAFE_NO_PAD.encode(device_pubkey);
-        let device_x25519_pubkey_str = URL_SAFE_NO_PAD.encode(device_x25519_public.as_bytes());
+        let device_ecdh_pubkey_bytes = device_ecdh_public.to_encoded_point(true);
+        let device_ephemeral_pubkey_str =
+            URL_SAFE_NO_PAD.encode(device_ecdh_pubkey_bytes.as_bytes());
 
         let mut message = Vec::new();
         message.extend_from_slice(token.short_code.as_bytes());
-        message.extend_from_slice(&initiator_x25519_bytes);
-        message.extend_from_slice(device_x25519_public.as_bytes());
+        message.extend_from_slice(&initiator_ecdh_bytes);
+        message.extend_from_slice(device_ecdh_pubkey_bytes.as_bytes());
 
         let sig_bytes = typed_sign_sync(device_seed, &message)?;
         let signature = URL_SAFE_NO_PAD.encode(&sig_bytes);
 
         let response = PairingResponse {
             short_code: token.short_code.clone(),
-            device_x25519_pubkey: device_x25519_pubkey_str,
+            device_ephemeral_pubkey: device_ephemeral_pubkey_str,
             device_signing_pubkey,
             curve: device_seed.curve().into(),
             device_did,
@@ -142,8 +157,8 @@ impl PairingResponse {
             return Err(ProtocolError::Expired);
         }
 
-        let initiator_x25519_bytes = token.ephemeral_pubkey_bytes()?;
-        let device_x25519_bytes = self.device_x25519_pubkey_bytes()?;
+        let initiator_ecdh_bytes = token.ephemeral_pubkey_bytes()?;
+        let device_ecdh_bytes = self.device_ephemeral_pubkey_bytes()?;
         let device_signing_bytes = self.device_signing_pubkey_bytes()?;
         let signature_bytes = URL_SAFE_NO_PAD
             .decode(&self.signature)
@@ -151,21 +166,19 @@ impl PairingResponse {
 
         let mut message = Vec::new();
         message.extend_from_slice(token.short_code.as_bytes());
-        message.extend_from_slice(&initiator_x25519_bytes);
-        message.extend_from_slice(&device_x25519_bytes);
+        message.extend_from_slice(&initiator_ecdh_bytes);
+        message.extend_from_slice(&device_ecdh_bytes);
 
         let key = build_keri_public_key(self.curve.into(), &device_signing_bytes)?;
         key.verify_signature(&message, &signature_bytes)
             .map_err(|_| ProtocolError::InvalidSignature)
     }
 
-    pub fn device_x25519_pubkey_bytes(&self) -> Result<[u8; 32], ProtocolError> {
-        let bytes = URL_SAFE_NO_PAD
-            .decode(&self.device_x25519_pubkey)
-            .map_err(|_| ProtocolError::InvalidSignature)?;
-        bytes.try_into().map_err(|_| {
-            ProtocolError::KeyExchangeFailed("Invalid X25519 pubkey length".to_string())
-        })
+    /// Decode the device's ephemeral P-256 ECDH public key from base64url.
+    pub fn device_ephemeral_pubkey_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        URL_SAFE_NO_PAD
+            .decode(&self.device_ephemeral_pubkey)
+            .map_err(|_| ProtocolError::InvalidSignature)
     }
 
     pub fn device_signing_pubkey_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
@@ -377,8 +390,8 @@ mod tests {
         )
         .unwrap();
 
-        let device_x25519_bytes = response.device_x25519_pubkey_bytes().unwrap();
-        let initiator_secret = session.complete_exchange(&device_x25519_bytes).unwrap();
+        let device_ecdh_bytes = response.device_ephemeral_pubkey_bytes().unwrap();
+        let initiator_secret = session.complete_exchange(&device_ecdh_bytes).unwrap();
 
         assert_eq!(*initiator_secret, *responder_secret);
     }
@@ -399,11 +412,11 @@ mod tests {
         )
         .unwrap();
 
-        let device_x25519_bytes = response.device_x25519_pubkey_bytes().unwrap();
+        let device_ecdh_bytes = response.device_ephemeral_pubkey_bytes().unwrap();
 
-        assert!(session.complete_exchange(&device_x25519_bytes).is_ok());
+        assert!(session.complete_exchange(&device_ecdh_bytes).is_ok());
 
-        let result = session.complete_exchange(&device_x25519_bytes);
+        let result = session.complete_exchange(&device_ecdh_bytes);
         assert!(matches!(result, Err(ProtocolError::SessionConsumed)));
     }
 }

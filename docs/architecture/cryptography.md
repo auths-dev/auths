@@ -276,6 +276,16 @@ When any of these land:
 3. Extend `KeriPublicKey::parse`, `DecodedDidKey::decode`, and the FFI `curve` enum.
 4. **Do not** add a new arm to `CurveType::from_public_key_len_fallback` unless the new curve's byte width is genuinely unique; prefer leaving length dispatch behind forever.
 
+## Pairing protocol ECDH
+
+The pairing protocol uses **P-256 ECDH unconditionally** for ephemeral key agreement, regardless of the device's signing curve. The signing curve (Ed25519 or P-256, carried via the `curve` wire field) is independent of the ECDH curve — ephemeral keys are fresh per session and never derived from the long-term signing seed.
+
+See `crates/auths-pairing-protocol/src/lib.rs` for the full rationale. Key points:
+- P-256 ECDH via `p256::ecdh::EphemeralSecret::random(&mut OsRng)` → `secret.public_key()` → `secret.diffie_hellman(&peer)` → `shared.raw_secret_bytes()`.
+- Ephemeral public keys are 33-byte SEC1 compressed (not 32-byte X25519).
+- `PublicKey::from_sec1_bytes` validates the peer's point on decode (invalid-curve protection).
+- X25519 is no longer used anywhere in the workspace.
+
 ## Curve Tagging Inventory
 
 This table is the source of truth for which wire boundaries carry a curve tag and how. If you add a new wire format, add a row.
@@ -286,7 +296,8 @@ This table is the source of truth for which wire boundaries carry a curve tag an
 | KERI event signature attachment | CESR indexed-siger group | `-A##` counter + per-siger CESR prefix |
 | Device DID (`did:key:z…`) | Multicodec varint | Inside base58-decoded bytes |
 | Identity DID (`did:keri:…`) | Indirect (via KEL inception event) | Inception event `k[0]` |
-| Pairing protocol `device_signing_pubkey` | CESR prefix | Whole field value |
+| Pairing protocol `device_signing_pubkey` | Explicit `curve` field | `curve` field on `PairingResponse` / `SubmitResponseRequest` |
+| Pairing protocol `device_ephemeral_pubkey` | Implicit (P-256 only) | No ambiguity — X25519 retired; ECDH is always P-256 |
 | Node FFI `sign_bytes_raw(private_key_hex, msg, curve)` | Explicit `curve` field | Sibling param |
 | Node FFI action-envelope verify | Explicit `curve` field | Sibling param |
 | On-disk `known_identities.json` pinned entries | Curve field on the JSON record | `curve` key |

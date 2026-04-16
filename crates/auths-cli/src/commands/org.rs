@@ -369,6 +369,10 @@ pub fn handle_org(
                 )
             })?;
             let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
+            // Sanctioned fallback: ResolvedDid doesn't carry CurveType yet.
+            let org_curve =
+                auths_crypto::CurveType::from_public_key_len_fallback(org_pk_bytes.len())
+                    .unwrap_or_default();
 
             let admin_capabilities = vec![
                 Capability::sign_commit(),
@@ -393,6 +397,7 @@ pub fn handle_org(
                 &controller_did,
                 &org_did,
                 &org_pk_bytes,
+                org_curve,
                 Some(serde_json::json!({
                     "org_role": "admin",
                     "org_name": name
@@ -490,6 +495,10 @@ pub fn handle_org(
                 format!("Failed to resolve public key for subject: {}", subject_did)
             })?;
             let device_pk_bytes = device_resolved.public_key_bytes().to_vec();
+            // Sanctioned fallback: ResolvedDid doesn't carry CurveType yet.
+            let device_curve =
+                auths_crypto::CurveType::from_public_key_len_fallback(device_pk_bytes.len())
+                    .unwrap_or_default();
 
             let meta = AttestationMetadata {
                 note,
@@ -509,6 +518,7 @@ pub fn handle_org(
                 &controller_did,
                 &subject_device_did,
                 &device_pk_bytes,
+                device_curve,
                 Some(payload),
                 &meta,
                 &signer,
@@ -581,6 +591,7 @@ pub fn handle_org(
                 &controller_did,
                 &subject_device_did,
                 device_public_key.as_bytes(),
+                device_public_key.curve(),
                 note,
                 None,
                 now,

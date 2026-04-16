@@ -108,30 +108,30 @@ pub(crate) async fn handle_join(
     .map_err(|e| anyhow::anyhow!("Failed to create pairing response: {}", e))?;
 
     // Derive SAS from shared secret with transcript binding
-    let initiator_x25519_pub = token
+    let initiator_ecdh_pub = token
         .ephemeral_pubkey_bytes()
         .map_err(|e| anyhow::anyhow!("Invalid initiator pubkey: {}", e))?;
-    let responder_x25519_pub = pairing_response
-        .device_x25519_pubkey_bytes()
+    let responder_ecdh_pub = pairing_response
+        .device_ephemeral_pubkey_bytes()
         .map_err(|e| anyhow::anyhow!("Invalid responder pubkey: {}", e))?;
 
     let sas_bytes = sas::derive_sas(
         &shared_secret,
-        &initiator_x25519_pub,
-        &responder_x25519_pub,
+        &initiator_ecdh_pub,
+        &responder_ecdh_pub,
         &normalized,
     );
     let transport_key = sas::derive_transport_key(
         &shared_secret,
-        &initiator_x25519_pub,
-        &responder_x25519_pub,
+        &initiator_ecdh_pub,
+        &responder_ecdh_pub,
         &normalized,
     );
 
     // Submit the response to the relay
     let submit_req = auths_sdk::pairing::SubmitResponseRequest {
-        device_x25519_pubkey: Base64UrlEncoded::from_raw(
-            pairing_response.device_x25519_pubkey.clone(),
+        device_ephemeral_pubkey: Base64UrlEncoded::from_raw(
+            pairing_response.device_ephemeral_pubkey.clone(),
         ),
         device_signing_pubkey: Base64UrlEncoded::from_raw(
             pairing_response.device_signing_pubkey.clone(),

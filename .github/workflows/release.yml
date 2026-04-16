@@ -124,6 +124,15 @@ jobs:
             --log sigstore-rekor `
             --note "Release ${{ github.ref_name }}"
 
+      - name: Verify own attestation (Unix)
+        if: matrix.ext == '.tar.gz'
+        run: ./staging/auths artifact verify "${{ matrix.asset_name }}${{ matrix.ext }}"
+
+      - name: Verify own attestation (Windows)
+        if: matrix.ext == '.zip'
+        shell: pwsh
+        run: .\staging\auths.exe artifact verify "${{ matrix.asset_name }}${{ matrix.ext }}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

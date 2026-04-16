@@ -22,7 +22,10 @@ use crate::types::{VerificationReport, VerificationResult};
 ///
 /// Args:
 /// * `attestation_json`: The attestation as a JSON string.
-/// * `issuer_pk_hex`: The issuer's Ed25519 public key in hex format (64 chars).
+/// * `issuer_pk_hex`: The issuer's signing public key in hex format
+///   (64 chars Ed25519, 66 chars P-256 compressed SEC1, 130 chars P-256 uncompressed).
+///   Curve is inferred from byte length at this FFI boundary; see
+///   `device_public_key_from_hex`.
 ///
 /// Usage:
 /// ```ignore
@@ -73,7 +76,7 @@ pub fn verify_attestation(
 ///
 /// Args:
 /// * `attestations_json`: List of attestation JSON strings.
-/// * `root_pk_hex`: The root identity's Ed25519 public key in hex format.
+/// * `root_pk_hex`: The root identity's signing public key in hex format.
 ///
 /// Usage:
 /// ```ignore
@@ -120,7 +123,7 @@ pub fn verify_chain(
 /// * `identity_did`: The identity DID string.
 /// * `device_did`: The device DID string.
 /// * `attestations_json`: List of attestation JSON strings.
-/// * `identity_pk_hex`: The identity's Ed25519 public key in hex format (64 chars).
+/// * `identity_pk_hex`: The identity's signing public key in hex format.
 ///
 /// Usage:
 /// ```ignore
@@ -174,7 +177,7 @@ pub fn verify_device_authorization(
 ///
 /// Args:
 /// * `attestation_json`: The attestation as a JSON string.
-/// * `issuer_pk_hex`: The issuer's Ed25519 public key in hex format (64 chars).
+/// * `issuer_pk_hex`: The issuer's signing public key in hex format.
 /// * `required_capability`: The capability string that must be present.
 ///
 /// Usage:
@@ -233,7 +236,7 @@ pub fn verify_attestation_with_capability(
 ///
 /// Args:
 /// * `attestations_json`: List of attestation JSON strings.
-/// * `root_pk_hex`: The root identity's Ed25519 public key in hex format.
+/// * `root_pk_hex`: The root identity's signing public key in hex format.
 /// * `required_capability`: The capability string that must be present in every link.
 ///
 /// Usage:
@@ -332,7 +335,7 @@ fn validate_attestation_key(
 ///
 /// Args:
 /// * `attestation_json`: The attestation as a JSON string.
-/// * `issuer_pk_hex`: The issuer's Ed25519 public key in hex format (64 chars).
+/// * `issuer_pk_hex`: The issuer's signing public key in hex format.
 /// * `at_rfc3339`: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
 ///
 /// Usage:
@@ -378,7 +381,7 @@ pub fn verify_at_time(
 ///
 /// Args:
 /// * `attestation_json`: The attestation as a JSON string.
-/// * `issuer_pk_hex`: The issuer's Ed25519 public key in hex format (64 chars).
+/// * `issuer_pk_hex`: The issuer's signing public key in hex format.
 /// * `at_rfc3339`: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
 /// * `required_capability`: The capability string that must be present.
 ///
@@ -442,7 +445,7 @@ pub fn verify_at_time_with_capability(
 ///
 /// Args:
 /// * `attestations_json`: List of attestation JSON strings.
-/// * `root_pk_hex`: The root identity's Ed25519 public key in hex format.
+/// * `root_pk_hex`: The root identity's signing public key in hex format.
 /// * `receipts_json`: List of JSON-serialized witness receipt objects.
 /// * `witness_keys_json`: List of JSON objects with `{"did": "...", "public_key_hex": "..."}`.
 /// * `threshold`: Minimum number of valid receipts required.

@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::sync::Arc;
 
 use auths_core::ports::clock::ClockProvider;
@@ -24,7 +23,7 @@ use crate::domains::device::types::{
 struct AttestationParams {
     identity_did: IdentityDID,
     device_did: DeviceDID,
-    device_public_key: Vec<u8>,
+    device_public_key: auths_verifier::DevicePublicKey,
     payload: Option<serde_json::Value>,
     meta: AttestationMetadata,
     capabilities: Vec<Capability>,
@@ -36,7 +35,7 @@ fn build_attestation_params(
     config: &DeviceLinkConfig,
     identity_did: IdentityDID,
     device_did: DeviceDID,
-    device_public_key: Vec<u8>,
+    device_public_key: auths_verifier::DevicePublicKey,
     now: DateTime<Utc>,
 ) -> AttestationParams {
     AttestationParams {
@@ -76,7 +75,7 @@ pub fn link_device(
     let now = clock.now();
     let identity = load_identity(ctx.identity_storage.as_ref())?;
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
-    let (device_did, pk_bytes) = extract_device_key(
+    let (device_did, device_pk) = extract_device_key(
         &config,
         ctx.key_storage.as_ref(),
         ctx.passphrase_provider.as_ref(),
@@ -85,7 +84,7 @@ pub fn link_device(
         &config,
         identity.controller_did,
         device_did.clone(),
-        pk_bytes,
+        device_pk,
         now,
     );
     let attestation_rid = sign_and_persist_attestation(
@@ -128,24 +127,14 @@ pub fn revoke_device(
     let device_pk = find_device_public_key(ctx.attestation_source.as_ref(), device_did)?;
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
 
-    let target_did = match device_pk.curve() {
-        auths_crypto::CurveType::Ed25519 => {
-            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
-            let pk: [u8; 32] = device_pk.as_bytes().try_into().unwrap();
-            DeviceDID::from_ed25519(&pk)
-        }
-        auths_crypto::CurveType::P256 => {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(device_pk.as_bytes()))
-        }
-    };
+    let target_did = DeviceDID::from_public_key(device_pk.as_bytes(), device_pk.curve());
 
     let revocation = create_signed_revocation(
         &identity.storage_id,
         &identity.controller_did,
         &target_did,
         device_pk.as_bytes(),
+        device_pk.curve(),
         note,
         None,
         now,
@@ -226,6 +215,7 @@ pub fn extend_device(
         &identity.controller_did,
         &device_did_obj,
         latest.device_public_key.as_bytes(),
+        latest.device_public_key.curve(),
         latest.payload.clone(),
         &meta,
         &signer,
@@ -275,7 +265,7 @@ fn extract_device_key(
     config: &DeviceLinkConfig,
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
-) -> Result<(DeviceDID, Vec<u8>), DeviceError> {
+) -> Result<(DeviceDID, auths_verifier::DevicePublicKey), DeviceError> {
     let alias = config
         .device_key_alias
         .as_ref()
@@ -288,18 +278,10 @@ fn extract_device_key(
     )
     .map_err(DeviceError::CryptoError)?;
 
-    let device_did = match curve {
-        auths_crypto::CurveType::Ed25519 => {
-            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
-            let pk: [u8; 32] = pk_bytes.as_slice().try_into().unwrap();
-            DeviceDID::from_ed25519(&pk)
-        }
-        auths_crypto::CurveType::P256 => {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
-        }
-    };
+    let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes).map_err(|e| {
+        DeviceError::CryptoError(auths_core::AgentError::InvalidInput(e.to_string()))
+    })?;
+    let device_did = DeviceDID::from_public_key(&pk_bytes, curve);
 
     if let Some(ref expected) = config.device_did
         && expected != &device_did.to_string()
@@ -310,7 +292,7 @@ fn extract_device_key(
         });
     }
 
-    Ok((device_did, pk_bytes))
+    Ok((device_did, device_pk))
 }
 
 fn sign_and_persist_attestation(
@@ -326,7 +308,8 @@ fn sign_and_persist_attestation(
         rid,
         &params.identity_did,
         &params.device_did,
-        &params.device_public_key,
+        params.device_public_key.as_bytes(),
+        params.device_public_key.curve(),
         params.payload.clone(),
         &params.meta,
         signer,

@@ -7,7 +7,6 @@ use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{
     IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
 };
-use auths_crypto::ed25519_pubkey_to_did_key;
 use auths_id::identity::helpers::encode_seed_as_pkcs8;
 use auths_id::identity::helpers::extract_seed_bytes;
 use auths_id::identity::initialize::initialize_registry_identity;
@@ -24,8 +23,6 @@ use auths_verifier::core::Capability;
 use auths_verifier::types::DeviceDID;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use ring::rand::SystemRandom;
-use ring::signature::{Ed25519KeyPair, KeyPair};
 
 #[allow(clippy::disallowed_methods)] // Presentation boundary: env var read is intentional
 pub(crate) fn resolve_passphrase(passphrase: Option<String>) -> String {
@@ -367,18 +364,16 @@ pub fn delegate_agent(
             })?
     };
 
-    // Generate a new Ed25519 keypair for the agent
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: agent_name is user-provided, format produces valid alias
     let agent_alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
-    let rng = SystemRandom::new();
-    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}"))
-    })?;
-    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key parsing failed: {e}"))
-    })?;
-    let agent_pubkey = keypair.public_key().as_ref().to_vec();
+    let generated =
+        auths_id::keri::inception::generate_keypair_for_init(auths_crypto::CurveType::default())
+            .map_err(|e| {
+                PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}"))
+            })?;
+    let agent_pubkey = generated.public_key.clone();
+    let pkcs8 = generated.pkcs8;
 
     // Get parent identity DID for key storage association
     let (parent_did, _, _) = keychain.load_key(&parent_alias).map_err(|e| {
@@ -651,24 +646,23 @@ pub fn revoke_device_from_identity(
 /// private_key, public_key, did = generate_inmemory_keypair()
 /// ```
 #[pyfunction]
-pub fn generate_inmemory_keypair() -> PyResult<(String, String, String)> {
-    let rng = SystemRandom::new();
-    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}"))
-    })?;
-    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key parsing failed: {e}"))
-    })?;
-
-    let seed = extract_seed_bytes(pkcs8.as_ref()).map_err(|e| {
+#[pyo3(signature = (curve=None))]
+pub fn generate_inmemory_keypair(curve: Option<String>) -> PyResult<(String, String, String)> {
+    let curve_type = match curve.as_deref() {
+        Some("ed25519") | Some("Ed25519") => auths_crypto::CurveType::Ed25519,
+        _ => auths_crypto::CurveType::default(),
+    };
+    let generated =
+        auths_id::keri::inception::generate_keypair_for_init(curve_type).map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}"))
+        })?;
+    let did = auths_verifier::types::DeviceDID::from_public_key(&generated.public_key, curve_type);
+    let seed = extract_seed_bytes(generated.pkcs8.as_ref()).map_err(|e| {
         PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
     })?;
-
-    let pub_bytes = keypair.public_key().as_ref();
-    let pub_array: &[u8; 32] = pub_bytes
-        .try_into()
-        .map_err(|_| PyRuntimeError::new_err("[AUTHS_CRYPTO_ERROR] Invalid public key length"))?;
-    let did = ed25519_pubkey_to_did_key(pub_array);
-
-    Ok((hex::encode(seed), hex::encode(pub_bytes), did))
+    Ok((
+        hex::encode(seed),
+        hex::encode(&generated.public_key),
+        did.to_string(),
+    ))
 }

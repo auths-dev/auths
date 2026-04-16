@@ -4,7 +4,6 @@ use std::sync::Arc;
 use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, KeyRole, get_platform_keychain_with_config};
-use auths_crypto::ed25519_pubkey_to_did_key;
 use auths_id::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::storage::attestation::AttestationSource;
@@ -505,19 +504,9 @@ pub fn generate_inmemory_keypair(curve: Option<String>) -> napi::Result<NapiInMe
     let seed = extract_seed_bytes(generated.pkcs8.as_ref())
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Seed extraction failed: {e}")))?;
 
-    let did = match curve_choice {
-        auths_crypto::CurveType::Ed25519 => {
-            let pub_array: &[u8; 32] =
-                generated.public_key.as_slice().try_into().map_err(|_| {
-                    format_error("AUTHS_CRYPTO_ERROR", "Invalid Ed25519 pubkey length")
-                })?;
-            ed25519_pubkey_to_did_key(pub_array)
-        }
-        auths_crypto::CurveType::P256 => {
-            // P-256 compressed SEC1 verkey → did:key via the curve-aware helper.
-            auths_crypto::did_key::p256_pubkey_to_did_key(&generated.public_key)
-        }
-    };
+    let did =
+        auths_verifier::types::DeviceDID::from_public_key(&generated.public_key, curve_choice)
+            .to_string();
 
     Ok(NapiInMemoryKeypair {
         private_key_hex: hex::encode(seed),

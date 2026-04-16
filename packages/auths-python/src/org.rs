@@ -135,16 +135,9 @@ pub fn create_org(
         };
 
         let signer = StorageSigner::new(keychain);
-        // TODO: ResolvedDid should carry CurveType to eliminate this length dispatch
-        let org_did_device = if org_pk_bytes.len() == 32 {
-            #[allow(clippy::unwrap_used)] // INVARIANT: length checked
-            let pk: [u8; 32] = org_pk_bytes.as_slice().try_into().unwrap();
-            DeviceDID::from_ed25519(&pk)
-        } else {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&org_pk_bytes))
-        };
+        let org_curve = auths_crypto::CurveType::from_public_key_len_fallback(org_pk_bytes.len())
+            .unwrap_or_default();
+        let org_did_device = DeviceDID::from_public_key(&org_pk_bytes, org_curve);
 
         let attestation = create_signed_attestation(
             now,
@@ -152,6 +145,7 @@ pub fn create_org(
             &controller_did,
             &org_did_device,
             &org_pk_bytes,
+            org_curve,
             Some(serde_json::json!({
                 "org_role": "admin",
                 "org_name": label

@@ -80,7 +80,7 @@ pub struct CreateSessionResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SubmitResponseRequest {
-    pub device_x25519_pubkey: Base64UrlEncoded,
+    pub device_ephemeral_pubkey: Base64UrlEncoded,
     pub device_signing_pubkey: Base64UrlEncoded,
     /// Signing curve for `device_signing_pubkey` / `signature`. Carried in-band
     /// per the workspace wire-format curve-tagging rule — verifiers must never

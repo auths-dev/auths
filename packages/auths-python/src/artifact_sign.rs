@@ -289,7 +289,7 @@ pub fn sign_artifact_bytes(
 ///
 /// Args:
 /// * `data`: The raw bytes to sign.
-/// * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+/// * `private_key_hex`: 32-byte signing seed as hex string (64 chars).
 /// * `identity_did`: Identity DID string (must be `did:keri:` format).
 /// * `expires_in`: Optional duration in seconds until expiration.
 /// * `note`: Optional human-readable note.

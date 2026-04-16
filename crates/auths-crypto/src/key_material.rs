@@ -1,8 +1,10 @@
-//! Ed25519 key material parsing from various serialization formats.
+//! Curve-agnostic key material parsing from various serialization formats.
 //!
-//! Extracts [`SecureSeed`] (and optionally the public key) from PKCS#8 v1, v2,
+//! Extracts [`SecureSeed`] (and optionally the public key) from PKCS#8 v1/v2,
 //! raw 32-byte seeds, and OCTET-STRING-wrapped seeds — pure byte parsing with
-//! no backend dependency.
+//! no backend dependency. PKCS#8 OID disambiguates Ed25519 vs P-256; raw 32-byte
+//! input is treated as an Ed25519 seed (legacy default — callers that know the
+//! curve should use `parse_key_material` which returns a `TypedSeed`).
 // allow during curve-agnostic refactor
 #![allow(clippy::disallowed_methods)]
 

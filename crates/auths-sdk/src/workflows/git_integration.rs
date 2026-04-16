@@ -29,9 +29,9 @@ pub fn public_key_to_ssh(
 ) -> Result<String, GitIntegrationError> {
     match key.curve() {
         auths_crypto::CurveType::Ed25519 => {
-            let ed25519_pk = Ed25519PublicKey::try_from(key.as_bytes())
+            let signing_pk = Ed25519PublicKey::try_from(key.as_bytes())
                 .map_err(|e| GitIntegrationError::SshKeyEncoding(e.to_string()))?;
-            let ssh_pk = SshPublicKey::from(ed25519_pk);
+            let ssh_pk = SshPublicKey::from(signing_pk);
             ssh_pk
                 .to_openssh()
                 .map_err(|e| GitIntegrationError::SshKeyEncoding(e.to_string()))

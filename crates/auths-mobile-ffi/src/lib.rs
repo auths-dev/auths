@@ -127,7 +127,7 @@ pub struct PairingInfo {
 /// `GET /v1/pairing/sessions/by-code/{short_code}` before POSTing.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct PairingResponsePayload {
-    pub device_x25519_pubkey: String,
+    pub device_ephemeral_pubkey: String,
     pub device_signing_pubkey: String,
     /// Signing curve for `device_signing_pubkey` / `signature`. Carried in-band
     /// so verifiers never infer curve from pubkey byte length. Mobile FFI is
@@ -728,7 +728,7 @@ pub fn create_pairing_response(
     let device_signing_pubkey = URL_SAFE_NO_PAD.encode(ed25519_keypair.public_key().as_ref());
 
     // Encode device X25519 public key (base64url encoded)
-    let device_x25519_pubkey_str = URL_SAFE_NO_PAD.encode(device_x25519_public.as_bytes());
+    let device_ephemeral_pubkey_str = URL_SAFE_NO_PAD.encode(device_x25519_public.as_bytes());
 
     // Build binding message: short_code || initiator_x25519 || device_x25519
     let mut message = Vec::new();
@@ -745,7 +745,7 @@ pub fn create_pairing_response(
     let device_did = generate_device_did(device_public_key_hex)?;
 
     let response_payload = PairingResponsePayload {
-        device_x25519_pubkey: device_x25519_pubkey_str,
+        device_ephemeral_pubkey: device_ephemeral_pubkey_str,
         device_signing_pubkey,
         curve: "ed25519".to_string(),
         device_did: device_did.clone(),
@@ -1008,7 +1008,7 @@ mod tests {
 
         // Verify payload fields are populated
         let payload = &result.response_payload;
-        assert!(!payload.device_x25519_pubkey.is_empty());
+        assert!(!payload.device_ephemeral_pubkey.is_empty());
         assert!(!payload.device_signing_pubkey.is_empty());
         assert!(!payload.signature.is_empty());
         assert_eq!(payload.device_name, "Test iPhone");
@@ -1056,7 +1056,7 @@ mod tests {
         let fields = parse_token_fields(&uri).unwrap();
         let initiator_x25519_bytes = URL_SAFE_NO_PAD.decode(&fields.ephemeral_pubkey).unwrap();
         let device_x25519_bytes = URL_SAFE_NO_PAD
-            .decode(&result.response_payload.device_x25519_pubkey)
+            .decode(&result.response_payload.device_ephemeral_pubkey)
             .unwrap();
         let signing_pubkey_bytes = URL_SAFE_NO_PAD
             .decode(&result.response_payload.device_signing_pubkey)

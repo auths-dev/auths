@@ -171,12 +171,16 @@ fn resolve_signers_source(cmd: &VerifyCommitCommand) -> Result<SignersSource> {
         let public_key_bytes = hex::decode(bundle.public_key_hex.as_str())
             .context("Invalid public key hex in bundle")?;
 
-        // TODO: IdentityBundle should carry CurveType explicitly
-        let curve = match public_key_bytes.len() {
-            32 => auths_crypto::CurveType::Ed25519,
-            33 | 65 => auths_crypto::CurveType::P256,
-            n => anyhow::bail!("Invalid public key length in bundle: {n}"),
-        };
+        // Curve carried in-band on the bundle JSON; never inferred from length.
+        let curve = bundle.curve;
+        if public_key_bytes.len() != curve.public_key_len() {
+            anyhow::bail!(
+                "Bundle public key length {} does not match declared curve {} (expected {} bytes)",
+                public_key_bytes.len(),
+                curve,
+                curve.public_key_len(),
+            );
+        }
         let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &public_key_bytes)
             .context("Invalid public key in bundle")?;
         let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(&device_pk)
@@ -1039,6 +1043,7 @@ mod tests {
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
             public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("aa".repeat(32)),
+            curve: Default::default(),
             attestation_chain: vec![],
             bundle_timestamp: Utc::now(),
             max_valid_for_secs: 86400,
@@ -1060,6 +1065,7 @@ mod tests {
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
             public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("not_hex"),
+            curve: Default::default(),
             attestation_chain: vec![
                 AttestationBuilder::default()
                     .rid("test")

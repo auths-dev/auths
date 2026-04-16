@@ -257,23 +257,15 @@ pub fn join_pairing_session_ffi(
             auths_core::crypto::signer::decrypt_keypair(&encrypted_key, &passphrase_str)
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
 
-        let (seed, pubkey_32) = auths_crypto::parse_ed25519_key_material(&pkcs8_bytes)
-            .ok()
-            .and_then(|(seed, maybe_pk)| maybe_pk.map(|pk| (seed, pk)))
-            .or_else(|| {
-                let seed = auths_crypto::parse_ed25519_seed(&pkcs8_bytes).ok()?;
-                let pk =
-                    auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync(&seed)
-                        .ok()?;
-                Some((seed, pk))
-            })
-            .ok_or_else(|| {
-                PyRuntimeError::new_err(
-                    "[AUTHS_PAIRING_ERROR] Failed to parse Ed25519 key material",
-                )
-            })?;
-
-        let device_did = auths_verifier::types::DeviceDID::from_ed25519(&pubkey_32);
+        let parsed = auths_crypto::parse_key_material(&pkcs8_bytes).map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_PAIRING_ERROR] Failed to parse key material: {e}"
+            ))
+        })?;
+        let device_did = auths_verifier::types::DeviceDID::from_public_key(
+            &parsed.public_key,
+            parsed.seed.curve(),
+        );
 
         let rt = runtime();
         let lookup_url = format!("{}/v1/pairing/sessions/by-code/{}", endpoint, short_code);
@@ -327,20 +319,19 @@ pub fn join_pairing_session_ffi(
             capabilities,
         };
 
-        let typed_seed = auths_crypto::TypedSeed::Ed25519(*seed.as_bytes());
         let (pairing_response, _shared_secret) = auths_core::pairing::PairingResponse::create(
             now,
             &pairing_token,
-            &typed_seed,
-            &pubkey_32,
+            &parsed.seed,
+            &parsed.public_key,
             device_did.to_string(),
             device_name.clone(),
         )
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
 
         let submit_req = auths_core::pairing::types::SubmitResponseRequest {
-            device_x25519_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
-                pairing_response.device_x25519_pubkey,
+            device_ephemeral_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
+                pairing_response.device_ephemeral_pubkey,
             ),
             device_signing_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
                 pairing_response.device_signing_pubkey,
@@ -433,10 +424,23 @@ pub fn complete_pairing_ffi(
 
         #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
+        // Sanctioned FFI fallback: hex-encoded pubkey lacks an in-band curve
+        // tag at this Python ingestion boundary. Length dispatch via
+        // `from_public_key_len_fallback` is **unsafe in principle** (32 bytes
+        // is also valid X25519, 33 bytes is also valid secp256k1) and must
+        // not be extended to a third curve via length alone.
+        let curve = auths_crypto::CurveType::from_public_key_len_fallback(device_pubkey.len())
+            .ok_or_else(|| {
+                PyRuntimeError::new_err(format!(
+                    "[AUTHS_PAIRING_ERROR] Invalid public key length: {} bytes",
+                    device_pubkey.len()
+                ))
+            })?;
         let params = PairingAttestationParams {
             identity_storage: identity_storage.clone(),
             key_storage: key_storage.clone(),
             device_pubkey: &device_pubkey,
+            curve,
             device_did_str: &device_did,
             capabilities: &capabilities,
             identity_key_alias: &identity_key_alias,

@@ -66,7 +66,12 @@ fn resolve_actor_public_key(bundle: &OfflineBundle) -> Option<[u8; 32]> {
     let actor_did = bundle.entry.content.actor_did.as_str();
 
     if actor_did.starts_with("did:key:z") {
-        return auths_crypto::did_key_to_ed25519(actor_did).ok();
+        return auths_crypto::did_key_decode(actor_did)
+            .ok()
+            .and_then(|decoded| match decoded {
+                auths_crypto::DecodedDidKey::Ed25519(pk) => Some(pk),
+                auths_crypto::DecodedDidKey::P256(_) => None,
+            });
     }
 
     if actor_did.starts_with("did:keri:") {
@@ -166,15 +171,12 @@ fn verify_checkpoint(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> Check
             }
         }
         auths_verifier::SignatureAlgorithm::EcdsaP256 => {
-            // For ECDSA P-256, the checkpoint carries the DER signature in
-            // `log_signature` (repurposed as raw bytes) and the trust root
-            // carries the ECDSA public key in a separate field. Since
-            // SignedCheckpoint.log_signature is Ed25519Signature (64 bytes fixed),
-            // ECDSA requires the raw DER bytes stored differently.
-            //
-            // For now, we use the ecdsa_checkpoint_signature and ecdsa_checkpoint_key
-            // optional fields that the Rekor adapter populates.
-            // Fall through to the raw-bytes verification path.
+            // For ECDSA P-256, the C2SP signed-note `log_signature` field is
+            // Ed25519-pinned by spec (64-byte fixed). We carry the ECDSA DER
+            // signature + key in sibling `ecdsa_checkpoint_signature` /
+            // `ecdsa_checkpoint_key` fields that the Rekor adapter populates.
+            // Spec link: https://c2sp.org/signed-note. Curve-fixed by spec; do
+            // not try to widen `log_signature` itself.
             if let (Some(ecdsa_sig), Some(ecdsa_pk)) = (
                 &signed.ecdsa_checkpoint_signature,
                 &signed.ecdsa_checkpoint_key,
@@ -574,7 +576,9 @@ mod tests {
 
         let actor_keypair = Ed25519KeyPair::from_seed_unchecked(&[2u8; 32]).unwrap();
         let actor_public_key: [u8; 32] = actor_keypair.public_key().as_ref().try_into().unwrap();
-        let actor_did = auths_crypto::ed25519_pubkey_to_did_key(&actor_public_key);
+        let actor_did =
+            DeviceDID::from_public_key(&actor_public_key, auths_crypto::CurveType::Ed25519)
+                .to_string();
 
         let trust_root = TrustRoot {
             log_public_key: Ed25519PublicKey::from_bytes(log_public_key),
@@ -755,16 +759,18 @@ mod tests {
             log_origin: LogOrigin::new("test.dev/log").unwrap(),
             witnesses: vec![
                 TrustRootWitness {
-                    witness_did: DeviceDID::new_unchecked(auths_crypto::ed25519_pubkey_to_did_key(
+                    witness_did: DeviceDID::from_public_key(
                         &w1_pk,
-                    )),
+                        auths_crypto::CurveType::Ed25519,
+                    ),
                     name: "w1".into(),
                     public_key: Ed25519PublicKey::from_bytes(w1_pk),
                 },
                 TrustRootWitness {
-                    witness_did: DeviceDID::new_unchecked(auths_crypto::ed25519_pubkey_to_did_key(
+                    witness_did: DeviceDID::from_public_key(
                         &w2_pk,
-                    )),
+                        auths_crypto::CurveType::Ed25519,
+                    ),
                     name: "w2".into(),
                     public_key: Ed25519PublicKey::from_bytes(w2_pk),
                 },

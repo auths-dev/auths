@@ -248,12 +248,12 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
     }
 
     let body = response.text().context("Failed to read response body")?;
-    let ed25519_keys: Vec<&str> = body
+    let signing_keys: Vec<&str> = body
         .lines()
         .filter(|line| line.starts_with("ssh-ed25519 "))
         .collect();
 
-    if ed25519_keys.is_empty() {
+    if signing_keys.is_empty() {
         println!(
             "No ssh-ed25519 keys found for GitHub user '{}'. Only Ed25519 keys are supported.",
             args.username
@@ -269,7 +269,7 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
     let principal = SignerPrincipal::Email(EmailAddress::new(&email).map_err(anyhow::Error::from)?);
 
     let mut added = 0;
-    for key_str in &ed25519_keys {
+    for key_str in &signing_keys {
         let pubkey = match parse_ssh_pubkey(key_str) {
             Ok(k) => k,
             Err(e) => {
@@ -279,7 +279,7 @@ fn handle_add_from_github(args: &SignersAddFromGithubArgs) -> Result<()> {
         };
 
         // For multiple keys, append index to email to avoid duplicates
-        let p = if ed25519_keys.len() > 1 && added > 0 {
+        let p = if signing_keys.len() > 1 && added > 0 {
             let indexed_email = format!("{}+{}@github.com", args.username, added);
             SignerPrincipal::Email(EmailAddress::new(&indexed_email).map_err(anyhow::Error::from)?)
         } else {

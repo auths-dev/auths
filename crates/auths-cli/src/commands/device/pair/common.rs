@@ -161,17 +161,15 @@ pub(crate) fn handle_pairing_response(
     println!();
 
     // Decode response fields
-    let device_x25519_bytes: [u8; 32] = response
-        .device_x25519_pubkey
+    let device_ecdh_bytes = response
+        .device_ephemeral_pubkey
         .decode()
-        .context("Invalid X25519 pubkey encoding")?
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("Invalid X25519 pubkey length"))?;
+        .context("Invalid ephemeral pubkey encoding")?;
 
     let device_signing_bytes = response
         .device_signing_pubkey
         .decode()
-        .context("Invalid Ed25519 pubkey encoding")?;
+        .context("Invalid signing pubkey encoding")?;
 
     let signature_bytes = response
         .signature
@@ -184,7 +182,7 @@ pub(crate) fn handle_pairing_response(
     session
         .verify_response(
             &device_signing_bytes,
-            &device_x25519_bytes,
+            &device_ecdh_bytes,
             &signature_bytes,
             curve,
         )
@@ -193,11 +191,11 @@ pub(crate) fn handle_pairing_response(
 
     // Complete ECDH key exchange
     let exchange_spinner = create_wait_spinner(&format!("{GEAR}Completing key exchange..."));
-    let initiator_x25519_pub = session
+    let initiator_ecdh_pub = session
         .ephemeral_pubkey_bytes()
         .context("Failed to get initiator pubkey")?;
     let shared_secret = session
-        .complete_exchange(&device_x25519_bytes)
+        .complete_exchange(&device_ecdh_bytes)
         .context("ECDH key exchange failed")?;
     exchange_spinner.finish_with_message(format!("{CHECK}Key exchange complete"));
 
@@ -205,14 +203,14 @@ pub(crate) fn handle_pairing_response(
     let short_code = &session.token.short_code;
     let sas_bytes = auths_pairing_protocol::sas::derive_sas(
         &shared_secret,
-        &initiator_x25519_pub,
-        &device_x25519_bytes,
+        &initiator_ecdh_pub,
+        &device_ecdh_bytes,
         short_code,
     );
     let transport_key = auths_pairing_protocol::sas::derive_transport_key(
         &shared_secret,
-        &initiator_x25519_pub,
-        &device_x25519_bytes,
+        &initiator_ecdh_pub,
+        &device_ecdh_bytes,
         short_code,
     );
 
@@ -279,6 +277,7 @@ pub(crate) fn handle_pairing_response(
     let decrypted = DecryptedPairingResponse {
         auths_dir: auths_dir.to_path_buf(),
         device_pubkey: device_signing_bytes,
+        curve,
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from pairing protocol response
         device_did: auths_verifier::types::DeviceDID::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
@@ -350,7 +349,7 @@ pub(crate) fn save_device_info(
     let device_info = serde_json::json!({
         "device_did": response.device_did.as_str(),
         "signing_pubkey": response.device_signing_pubkey.as_str(),
-        "x25519_pubkey": response.device_x25519_pubkey.as_str(),
+        "x25519_pubkey": response.device_ephemeral_pubkey.as_str(),
         "name": response.device_name,
         "paired_at": now.to_rfc3339(),
     });

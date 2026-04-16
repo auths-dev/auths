@@ -48,61 +48,12 @@ impl crate::AuthsErrorInfo for DidKeyError {
     }
 }
 
-/// Decode a `did:key:z...` string into a 32-byte Ed25519 public key.
-///
-/// Args:
-/// * `did`: A DID string in `did:key:z<base58btc>` format.
-///
-/// Usage:
-/// ```ignore
-/// let pk: [u8; 32] = did_key_to_ed25519("did:key:z6Mkf...")?;
-/// ```
-pub fn did_key_to_ed25519(did: &str) -> Result<[u8; 32], DidKeyError> {
-    let encoded = strip_did_key_prefix(did)?;
-    let decoded = decode_base58(encoded)?;
-    validate_multicodec_and_extract(&decoded)
-}
-
-/// Encode a 32-byte Ed25519 public key as a `did:key:z...` string.
-///
-/// Args:
-/// * `public_key`: A 32-byte Ed25519 public key.
-///
-/// Usage:
-/// ```ignore
-/// let did = ed25519_pubkey_to_did_key(&key_bytes);
-/// assert!(did.starts_with("did:key:z"));
-/// ```
-pub fn ed25519_pubkey_to_did_key(public_key: &[u8; 32]) -> String {
-    let mut prefixed = vec![0xED, 0x01];
-    prefixed.extend_from_slice(public_key);
-    let encoded = bs58::encode(prefixed).into_string();
-    format!("did:key:z{encoded}")
-}
-
 /// Encode a raw public key as a `did:keri:` string (base58-encoded).
 ///
 /// Args:
 /// * `pk`: Raw public key bytes.
 pub fn ed25519_pubkey_to_did_keri(pk: &[u8]) -> String {
     format!("did:keri:{}", bs58::encode(pk).into_string())
-}
-
-/// Encode a 33-byte compressed P-256 public key as a `did:key:z...` string.
-///
-/// Args:
-/// * `public_key`: A 33-byte SEC1 compressed P-256 public key.
-///
-/// Usage:
-/// ```ignore
-/// let did = p256_pubkey_to_did_key(&compressed_key);
-/// assert!(did.starts_with("did:key:z"));
-/// ```
-pub fn p256_pubkey_to_did_key(public_key: &[u8]) -> String {
-    let mut prefixed = vec![P256_MULTICODEC[0], P256_MULTICODEC[1]];
-    prefixed.extend_from_slice(public_key);
-    let encoded = bs58::encode(prefixed).into_string();
-    format!("did:key:z{encoded}")
 }
 
 /// Decode a `did:key:z...` string to a 33-byte compressed P-256 public key.
@@ -203,23 +154,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn roundtrip_encode_decode() {
-        let original = [42u8; 32];
-        let did = ed25519_pubkey_to_did_key(&original);
-        assert!(did.starts_with("did:key:z"));
-        let decoded = did_key_to_ed25519(&did).unwrap();
-        assert_eq!(decoded, original);
-    }
-
-    #[test]
     fn rejects_invalid_prefix() {
-        let err = did_key_to_ed25519("did:web:example.com").unwrap_err();
+        let err = did_key_decode("did:web:example.com").unwrap_err();
         assert!(matches!(err, DidKeyError::InvalidPrefix(_)));
     }
 
     #[test]
     fn rejects_invalid_base58() {
-        let err = did_key_to_ed25519("did:key:z0OOO").unwrap_err();
+        let err = did_key_decode("did:key:z0OOO").unwrap_err();
         assert!(matches!(err, DidKeyError::Base58DecodeFailed(_)));
     }
 }

@@ -134,6 +134,8 @@ pub fn create_org(
         .resolve(controller_did.as_str())
         .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
     let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
+    let org_curve = auths_crypto::CurveType::from_public_key_len_fallback(org_pk_bytes.len())
+        .unwrap_or_default();
 
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();
@@ -155,15 +157,7 @@ pub fn create_org(
     // so the curve is inferred from pubkey length at this internal boundary.
     // Migration: widen `ResolvedDid` to include `curve: CurveType`, then construct
     // the `DeviceDID` directly from (curve, bytes) without the length match.
-    let org_did_device = if org_pk_bytes.len() == 32 {
-        #[allow(clippy::unwrap_used)] // INVARIANT: length checked
-        let pk: [u8; 32] = org_pk_bytes.as_slice().try_into().unwrap();
-        DeviceDID::from_ed25519(&pk)
-    } else {
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: p256_pubkey_to_did_key always produces valid did:key
-        DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&org_pk_bytes))
-    };
+    let org_did_device = DeviceDID::from_public_key(&org_pk_bytes, org_curve);
 
     let attestation = create_signed_attestation(
         now,
@@ -171,6 +165,7 @@ pub fn create_org(
         &controller_did,
         &org_did_device,
         &org_pk_bytes,
+        org_curve,
         Some(serde_json::json!({
             "org_role": "admin",
             "org_name": label

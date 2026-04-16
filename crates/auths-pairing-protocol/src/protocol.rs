@@ -10,9 +10,9 @@ use crate::token::{PairingSession, PairingToken};
 
 /// Result of a successfully completed pairing exchange (initiator side).
 pub struct CompletedPairing {
-    /// The 32-byte X25519 shared secret (zeroized on drop).
+    /// The 32-byte P-256 ECDH shared secret (zeroized on drop).
     pub shared_secret: Zeroizing<[u8; 32]>,
-    /// The peer's Ed25519 signing public key.
+    /// The peer's signing public key (curve carried via `response.curve`).
     pub peer_signing_pubkey: Vec<u8>,
     /// The peer's DID string.
     pub peer_did: String,
@@ -22,8 +22,8 @@ pub struct CompletedPairing {
     pub sas: [u8; 8],
     /// Single-use transport encryption key.
     pub transport_key: TransportKey,
-    /// The initiator's X25519 ephemeral public key.
-    pub initiator_x25519_pub: crate::X25519PublicKey,
+    /// The initiator's P-256 ECDH ephemeral public key (SEC1 compressed, 33 bytes).
+    pub initiator_ephemeral_pub: Vec<u8>,
 }
 
 /// Result of a successful pairing response (responder side).
@@ -36,7 +36,7 @@ pub struct ResponderResult {
 
 /// Transport-agnostic pairing protocol state machine.
 ///
-/// `EphemeralSecret` from x25519-dalek is `!Clone + !Serialize`, so this
+/// `EphemeralSecret` from p256::ecdh is `!Clone + !Serialize`, so this
 /// state machine is inherently ephemeral — it lives in memory only and
 /// cannot be persisted across app restarts.
 ///
@@ -120,23 +120,23 @@ impl PairingProtocol {
         _now: DateTime<Utc>,
         response: PairingResponse,
     ) -> Result<CompletedPairing, ProtocolError> {
-        let initiator_x25519_pub = self.session.ephemeral_pubkey_bytes()?;
-        let responder_x25519_pub = response.device_x25519_pubkey_bytes()?;
-        let shared_secret = self.session.complete_exchange(&responder_x25519_pub)?;
+        let initiator_ecdh_pub = self.session.ephemeral_pubkey_bytes()?;
+        let responder_ecdh_pub = response.device_ephemeral_pubkey_bytes()?;
+        let shared_secret = self.session.complete_exchange(&responder_ecdh_pub)?;
         let peer_signing_pubkey = response.device_signing_pubkey_bytes()?;
         let peer_did = response.device_did.clone();
         let short_code = &self.session.token.short_code;
 
         let sas_bytes = sas::derive_sas(
             &shared_secret,
-            &initiator_x25519_pub,
-            &responder_x25519_pub,
+            &initiator_ecdh_pub,
+            &responder_ecdh_pub,
             short_code,
         );
         let transport_key = sas::derive_transport_key(
             &shared_secret,
-            &initiator_x25519_pub,
-            &responder_x25519_pub,
+            &initiator_ecdh_pub,
+            &responder_ecdh_pub,
             short_code,
         );
 
@@ -147,7 +147,7 @@ impl PairingProtocol {
             response,
             sas: sas_bytes,
             transport_key,
-            initiator_x25519_pub: crate::X25519PublicKey::new(initiator_x25519_pub),
+            initiator_ephemeral_pub: initiator_ecdh_pub,
         })
     }
 
@@ -191,20 +191,20 @@ pub fn respond_to_pairing(
         device_name,
     )?;
 
-    let initiator_x25519_pub = token.ephemeral_pubkey_bytes()?;
-    let responder_x25519_pub = response.device_x25519_pubkey_bytes()?;
+    let initiator_ecdh_pub = token.ephemeral_pubkey_bytes()?;
+    let responder_ecdh_pub = response.device_ephemeral_pubkey_bytes()?;
     let short_code = &token.short_code;
 
     let sas_bytes = sas::derive_sas(
         &shared_secret,
-        &initiator_x25519_pub,
-        &responder_x25519_pub,
+        &initiator_ecdh_pub,
+        &responder_ecdh_pub,
         short_code,
     );
     let transport_key = sas::derive_transport_key(
         &shared_secret,
-        &initiator_x25519_pub,
-        &responder_x25519_pub,
+        &initiator_ecdh_pub,
+        &responder_ecdh_pub,
         short_code,
     );
 

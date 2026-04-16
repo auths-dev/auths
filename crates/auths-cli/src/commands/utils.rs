@@ -4,8 +4,9 @@ use ring::signature::KeyPair;
 use std::convert::TryInto;
 use std::path::PathBuf;
 
-use auths_crypto::{ed25519_pubkey_to_did_key, openssh_pub_to_raw, p256_pubkey_to_did_key};
+use auths_crypto::openssh_pub_to_raw;
 use auths_sdk::identity::{encode_seed_as_pkcs8, load_keypair_from_der_or_seed};
+use auths_verifier::types::DeviceDID;
 
 use crate::commands::device::verify_attestation::handle_verify_attestation;
 
@@ -79,7 +80,8 @@ pub fn handle_util(cmd: UtilCommand) -> Result<()> {
                 .try_into()
                 .context("Failed to convert public key to fixed array")?; // Should not fail
 
-            let did = ed25519_pubkey_to_did_key(&pubkey_fixed);
+            let did = DeviceDID::from_public_key(&pubkey_fixed, auths_crypto::CurveType::Ed25519)
+                .to_string();
             if crate::ux::format::is_json_mode() {
                 crate::ux::format::JsonResponse::success(
                     "derive-did",
@@ -96,14 +98,7 @@ pub fn handle_util(cmd: UtilCommand) -> Result<()> {
             let (curve, raw) = openssh_pub_to_raw(&openssh_pub)
                 .map_err(anyhow::Error::from)
                 .context("Failed to parse OpenSSH public key")?;
-            let did = match curve {
-                auths_crypto::CurveType::Ed25519 => {
-                    #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
-                    let pk: [u8; 32] = raw.as_slice().try_into().unwrap();
-                    ed25519_pubkey_to_did_key(&pk)
-                }
-                auths_crypto::CurveType::P256 => p256_pubkey_to_did_key(&raw),
-            };
+            let did = DeviceDID::from_public_key(&raw, curve).to_string();
             if crate::ux::format::is_json_mode() {
                 crate::ux::format::JsonResponse::success(
                     "pubkey-to-did",

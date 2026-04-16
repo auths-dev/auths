@@ -25,6 +25,11 @@ fn fixed_now() -> DateTime<Utc> {
         .with_timezone(&Utc)
 }
 
+/// Build a `did:key:z...` string from a 32-byte Ed25519 public key (test helper).
+fn ed25519_did(pk: &[u8; 32]) -> String {
+    DeviceDID::from_public_key(pk, auths_crypto::CurveType::Ed25519).to_string()
+}
+
 /// End-to-end: generate keys, sign entry, build tree, sign checkpoint, verify bundle.
 #[test]
 fn verify_bundle_end_to_end_single_entry() {
@@ -33,7 +38,7 @@ fn verify_bundle_end_to_end_single_entry() {
 
     let actor_kp = Ed25519KeyPair::from_seed_unchecked(&[2u8; 32]).unwrap();
     let actor_pk: [u8; 32] = actor_kp.public_key().as_ref().try_into().unwrap();
-    let actor_did = auths_crypto::ed25519_pubkey_to_did_key(&actor_pk);
+    let actor_did = ed25519_did(&actor_pk);
 
     // Build entry
     let content = EntryContent {
@@ -112,7 +117,7 @@ fn verify_bundle_multi_leaf_tree() {
 
     let actor_kp = Ed25519KeyPair::from_seed_unchecked(&[2u8; 32]).unwrap();
     let actor_pk: [u8; 32] = actor_kp.public_key().as_ref().try_into().unwrap();
-    let actor_did = auths_crypto::ed25519_pubkey_to_did_key(&actor_pk);
+    let actor_did = ed25519_did(&actor_pk);
 
     // Build 4 entries for a proper inclusion proof
     let mut entries = Vec::new();
@@ -199,7 +204,7 @@ fn verify_bundle_with_witnesses() {
 
     let actor_kp = Ed25519KeyPair::from_seed_unchecked(&[2u8; 32]).unwrap();
     let actor_pk: [u8; 32] = actor_kp.public_key().as_ref().try_into().unwrap();
-    let actor_did = auths_crypto::ed25519_pubkey_to_did_key(&actor_pk);
+    let actor_did = ed25519_did(&actor_pk);
 
     let w1_kp = Ed25519KeyPair::from_seed_unchecked(&[10u8; 32]).unwrap();
     let w1_pk: [u8; 32] = w1_kp.public_key().as_ref().try_into().unwrap();
@@ -266,7 +271,7 @@ fn verify_bundle_with_witnesses() {
         log_public_key: Ed25519PublicKey::from_bytes(log_pk),
         log_origin: LogOrigin::new("test.dev/log").unwrap(),
         witnesses: vec![TrustRootWitness {
-            witness_did: DeviceDID::new_unchecked(auths_crypto::ed25519_pubkey_to_did_key(&w1_pk)),
+            witness_did: DeviceDID::new_unchecked(ed25519_did(&w1_pk)),
             name: "w1".into(),
             public_key: Ed25519PublicKey::from_bytes(w1_pk),
         }],

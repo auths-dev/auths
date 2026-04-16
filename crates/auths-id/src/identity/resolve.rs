@@ -178,9 +178,15 @@ mod tests {
     #[test]
     fn did_key_roundtrip() {
         let key_bytes = [42u8; 32];
-        let did = auths_crypto::ed25519_pubkey_to_did_key(&key_bytes);
-        let decoded = auths_crypto::did_key_to_ed25519(&did).unwrap();
-        assert_eq!(decoded, key_bytes);
+        let did = auths_verifier::types::DeviceDID::from_public_key(
+            &key_bytes,
+            auths_crypto::CurveType::Ed25519,
+        );
+        let decoded = auths_crypto::did_key_decode(did.as_str()).unwrap();
+        match decoded {
+            auths_crypto::DecodedDidKey::Ed25519(pk) => assert_eq!(pk, key_bytes),
+            _ => panic!("expected Ed25519"),
+        }
     }
 
     #[test]
@@ -188,7 +194,9 @@ mod tests {
         let resolver = DefaultDidResolver::new();
 
         let key = [1u8; 32];
-        let did = auths_crypto::ed25519_pubkey_to_did_key(&key);
+        let did =
+            auths_verifier::DeviceDID::from_public_key(&key, auths_crypto::CurveType::Ed25519)
+                .to_string();
 
         let resolved = resolver.resolve(&did).unwrap();
         assert_eq!(resolved.public_key_bytes(), &key);

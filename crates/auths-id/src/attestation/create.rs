@@ -43,7 +43,9 @@ pub struct CanonicalRevocationData<'a> {
 /// * `rid` - Resource identifier for this attestation
 /// * `identity_did` - The identity DID (e.g., "did:keri:...") issuing the attestation
 /// * `device_did` - The device DID being attested
-/// * `device_public_key` - The 32-byte Ed25519 public key of the device
+/// * `device_public_key` - Raw device public key bytes (32 Ed25519, 33 P-256 compressed)
+/// * `device_curve` - The signing curve of `device_public_key`. Carried in-band so the
+///   attestation interior never infers curve from byte length.
 /// * `payload` - Optional JSON payload for the attestation
 /// * `meta` - Attestation metadata (timestamp, expiry, notes)
 /// * `signer` - SecureSigner implementation for signing operations
@@ -60,6 +62,7 @@ pub fn create_signed_attestation(
     identity_did: &IdentityDID,
     device_did: &DeviceDID,
     device_public_key: &[u8],
+    device_curve: auths_crypto::CurveType,
     payload: Option<Value>,
     meta: &AttestationMetadata,
     signer: &dyn SecureSigner,
@@ -72,11 +75,15 @@ pub fn create_signed_attestation(
     commit_sha: Option<String>,
     signer_type: Option<SignerType>,
 ) -> Result<Attestation, AttestationError> {
-    // Accept both Ed25519 (32 bytes) and P-256 compressed (33 bytes) public keys
-    if device_public_key.len() != 32 && device_public_key.len() != 33 {
+    // Length must match the declared curve. No length dispatch — the curve
+    // came in-band from the caller, so this is pure validation.
+    let expected = device_curve.public_key_len();
+    if device_public_key.len() != expected {
         return Err(AttestationError::InvalidInput(format!(
-            "Device public key length must be 32 (Ed25519) or 33 (P-256), got {}",
-            device_public_key.len()
+            "Device public key length {} does not match {} (expected {} bytes)",
+            device_public_key.len(),
+            device_curve,
+            expected
         )));
     }
 
@@ -110,13 +117,8 @@ pub fn create_signed_attestation(
         expires_at: meta.expires_at,
         revoked_at: None,
         note: meta.note.clone(),
-        // TODO: take DevicePublicKey directly instead of inferring curve from length
         device_public_key: auths_verifier::DevicePublicKey::try_new(
-            if device_public_key.len() == 32 {
-                auths_crypto::CurveType::Ed25519
-            } else {
-                auths_crypto::CurveType::P256
-            },
+            device_curve,
             device_public_key,
         )
         .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,

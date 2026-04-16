@@ -124,14 +124,6 @@ fn public_key_hex_valid() {
 }
 
 #[test]
-fn public_key_hex_to_ed25519() {
-    let hex64 = "ab".repeat(32);
-    let pk = PublicKeyHex::parse(&hex64).unwrap();
-    let ed = pk.to_ed25519().unwrap();
-    assert_eq!(ed.as_bytes()[0], 0xab);
-}
-
-#[test]
 fn public_key_hex_rejects_invalid_hex() {
     assert!(matches!(
         PublicKeyHex::parse("zz".repeat(32).as_str()),

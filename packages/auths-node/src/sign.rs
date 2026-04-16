@@ -215,8 +215,11 @@ pub fn sign_action_as_agent(
     })
 }
 
-/// Decode a hex-encoded seed and validate its length.
-/// Seeds are always 32 bytes for both Ed25519 and P-256.
+/// Decode a hex-encoded signing seed and validate its length.
+///
+/// Seeds are always 32 bytes for both Ed25519 (RFC 8032) and P-256
+/// (NIST scalar). The curve is supplied separately via the `curve` FFI param
+/// and bound to the seed via `TypedSeed` at the call site.
 fn decode_seed_hex(private_key_hex: &str) -> napi::Result<[u8; 32]> {
     let seed = hex::decode(private_key_hex).map_err(|e| {
         format_error(
@@ -250,15 +253,19 @@ fn typed_seed_for(curve: auths_crypto::CurveType, seed: [u8; 32]) -> auths_crypt
     }
 }
 
-/// Sign raw bytes with a hex-encoded Ed25519 private key.
+/// Sign raw bytes with a hex-encoded signing seed.
+///
+/// Curve is dispatched via the `curve` argument (defaults to P-256 per the
+/// workspace wire-format curve-tagging rule).
 ///
 /// Args:
-/// * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+/// * `private_key_hex`: 32-byte signing seed as hex string (64 chars).
 /// * `message`: The bytes to sign.
+/// * `curve`: Optional curve hint (`"Ed25519"` / `"P256"`). Absent → P-256.
 ///
 /// Usage:
 /// ```ignore
-/// let sig = sign_bytes_raw("deadbeef...".into(), buffer)?;
+/// let sig = sign_bytes_raw("deadbeef...".into(), buffer, Some("P256".into()))?;
 /// ```
 #[napi]
 pub fn sign_bytes_raw(
@@ -273,17 +280,21 @@ pub fn sign_bytes_raw(
     Ok(hex::encode(sig_bytes))
 }
 
-/// Sign an action envelope with a hex-encoded Ed25519 private key.
+/// Sign an action envelope with a hex-encoded signing seed.
+///
+/// Curve is dispatched via the `curve` argument (defaults to P-256 per the
+/// workspace wire-format curve-tagging rule).
 ///
 /// Args:
-/// * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+/// * `private_key_hex`: 32-byte signing seed as hex string (64 chars).
 /// * `action_type`: Application-defined action type (e.g. "tool_call").
 /// * `payload_json`: JSON string for the payload field.
 /// * `identity_did`: Signer's identity DID (e.g. "did:keri:E...").
+/// * `curve`: Optional curve hint (`"Ed25519"` / `"P256"`). Absent → P-256.
 ///
 /// Usage:
 /// ```ignore
-/// let envelope = sign_action_raw("deadbeef...".into(), "tool_call".into(), "{}".into(), "did:keri:E...".into())?;
+/// let envelope = sign_action_raw("deadbeef...".into(), "tool_call".into(), "{}".into(), "did:keri:E...".into(), Some("P256".into()))?;
 /// ```
 #[napi]
 pub fn sign_action_raw(

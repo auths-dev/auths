@@ -245,10 +245,23 @@ impl NapiPairingHandle {
 
         #[allow(clippy::disallowed_methods)]
         let now = Utc::now();
+        // Sanctioned FFI fallback: hex-encoded pubkey lacks an in-band curve
+        // tag at this Node ingestion boundary. Length dispatch via
+        // `from_public_key_len_fallback` is **unsafe in principle** (32 bytes
+        // is also valid X25519, 33 bytes is also valid secp256k1) and must
+        // not be extended to a third curve via length alone.
+        let curve = auths_crypto::CurveType::from_public_key_len_fallback(device_pubkey.len())
+            .ok_or_else(|| {
+                format_error(
+                    "AUTHS_PAIRING_ERROR",
+                    format!("Invalid public key length: {} bytes", device_pubkey.len()),
+                )
+            })?;
         let params = PairingAttestationParams {
             identity_storage: identity_storage.clone(),
             key_storage: key_storage.clone(),
             device_pubkey: &device_pubkey,
+            curve,
             device_did_str: &device_did,
             capabilities: &capabilities,
             identity_key_alias: &identity_key_alias,
@@ -353,22 +366,8 @@ pub async fn join_pairing_session(
             format!("Failed to parse key material: {e}"),
         )
     })?;
-    let seed = match parsed.seed {
-        auths_crypto::TypedSeed::Ed25519(s) => auths_crypto::SecureSeed::new(s),
-        auths_crypto::TypedSeed::P256(_) => {
-            return Err(format_error(
-                "AUTHS_PAIRING_ERROR",
-                "pairing key must be Ed25519 (P-256 pairing wire format pending)",
-            ));
-        }
-    };
-    let pubkey_32: [u8; 32] = parsed
-        .public_key
-        .as_slice()
-        .try_into()
-        .map_err(|_| format_error("AUTHS_PAIRING_ERROR", "public key must be 32 bytes"))?;
-
-    let device_did = auths_verifier::types::DeviceDID::from_ed25519(&pubkey_32);
+    let device_did =
+        auths_verifier::types::DeviceDID::from_public_key(&parsed.public_key, parsed.seed.curve());
 
     let lookup_url = format!("{}/v1/pairing/sessions/by-code/{}", endpoint, short_code);
 
@@ -419,20 +418,19 @@ pub async fn join_pairing_session(
         capabilities,
     };
 
-    let typed_seed = auths_crypto::TypedSeed::Ed25519(*seed.as_bytes());
     let (pairing_response, _shared_secret) = auths_core::pairing::PairingResponse::create(
         now,
         &pairing_token,
-        &typed_seed,
-        &pubkey_32,
+        &parsed.seed,
+        &parsed.public_key,
         device_did.to_string(),
         device_name.clone(),
     )
     .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
     let submit_req = auths_core::pairing::types::SubmitResponseRequest {
-        device_x25519_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
-            pairing_response.device_x25519_pubkey,
+        device_ephemeral_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
+            pairing_response.device_ephemeral_pubkey,
         ),
         device_signing_pubkey: auths_core::pairing::types::Base64UrlEncoded::from_raw(
             pairing_response.device_signing_pubkey,
@@ -469,6 +467,6 @@ pub async fn join_pairing_session(
     Ok(NapiPairingResponse {
         device_did: device_did.to_string(),
         device_name,
-        device_public_key_hex: hex::encode(pubkey_32),
+        device_public_key_hex: hex::encode(&parsed.public_key),
     })
 }

@@ -13,6 +13,11 @@ fn ed(pk: &[u8; 32]) -> DevicePublicKey {
     DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, pk).unwrap()
 }
 
+/// Build a `did:key:z...` string from a 32-byte Ed25519 public key (test helper).
+fn ed25519_did(pk: &[u8; 32]) -> String {
+    auths_verifier::DeviceDID::from_public_key(pk, auths_crypto::CurveType::Ed25519).to_string()
+}
+
 const FIXED_TS: fn() -> DateTime<Utc> = || DateTime::UNIX_EPOCH + Duration::days(1000);
 
 fn create_signed_attestation(
@@ -48,9 +53,9 @@ fn create_signed_attestation(
 #[tokio::test]
 async fn tamper_revoked_at_to_null_is_rejected() {
     let (issuer_kp, issuer_pk) = create_test_keypair(&[1u8; 32]);
-    let issuer_did = auths_crypto::ed25519_pubkey_to_did_key(&issuer_pk);
+    let issuer_did = ed25519_did(&issuer_pk);
     let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-    let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+    let device_did = ed25519_did(&device_pk);
 
     let fixed_ts = FIXED_TS();
     let far_future = Utc::now() + Duration::days(365);
@@ -81,9 +86,9 @@ async fn tamper_revoked_at_to_null_is_rejected() {
 #[tokio::test]
 async fn tamper_revoked_at_to_different_time_is_rejected() {
     let (issuer_kp, issuer_pk) = create_test_keypair(&[3u8; 32]);
-    let issuer_did = auths_crypto::ed25519_pubkey_to_did_key(&issuer_pk);
+    let issuer_did = ed25519_did(&issuer_pk);
     let (device_kp, device_pk) = create_test_keypair(&[4u8; 32]);
-    let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+    let device_did = ed25519_did(&device_pk);
 
     let fixed_ts = FIXED_TS();
     let original_revoked_at = fixed_ts - Duration::hours(1);
@@ -109,9 +114,9 @@ async fn tamper_revoked_at_to_different_time_is_rejected() {
 #[tokio::test]
 async fn inject_revoked_at_into_unrevoked_is_rejected() {
     let (issuer_kp, issuer_pk) = create_test_keypair(&[5u8; 32]);
-    let issuer_did = auths_crypto::ed25519_pubkey_to_did_key(&issuer_pk);
+    let issuer_did = ed25519_did(&issuer_pk);
     let (device_kp, device_pk) = create_test_keypair(&[6u8; 32]);
-    let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+    let device_did = ed25519_did(&device_pk);
 
     let fixed_ts = FIXED_TS();
     let mut att = create_signed_attestation(

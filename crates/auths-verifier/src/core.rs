@@ -1141,8 +1141,14 @@ impl From<Capability> for String {
 pub struct IdentityBundle {
     /// The DID of the identity (e.g., `"did:keri:..."`)
     pub identity_did: IdentityDID,
-    /// The public key in hex format for signature verification
+    /// The public key in hex format for signature verification.
     pub public_key_hex: PublicKeyHex,
+    /// Curve of `public_key_hex`. Carried in-band so verifiers never infer
+    /// curve from byte length. Defaults to P-256 when absent (older bundles
+    /// shipped before this field existed).
+    #[serde(default)]
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
+    pub curve: auths_crypto::CurveType,
     /// Chain of attestations linking the signing key to the identity
     pub attestation_chain: Vec<Attestation>,
     /// UTC timestamp when this bundle was created
@@ -1723,8 +1729,6 @@ pub enum PublicKeyHexError {
 }
 
 /// A validated hex-encoded public key (64 hex chars for Ed25519, 66 for P-256 compressed).
-///
-/// Use `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
@@ -1765,18 +1769,6 @@ impl PublicKeyHex {
     /// Consumes self and returns the inner `String`.
     pub fn into_inner(self) -> String {
         self.0
-    }
-
-    /// Decodes the hex and returns the byte-array `Ed25519PublicKey`.
-    ///
-    /// Usage:
-    /// ```ignore
-    /// let pk_hex = PublicKeyHex::parse("ab".repeat(32))?;
-    /// let pk = pk_hex.to_ed25519()?;
-    /// ```
-    pub fn to_ed25519(&self) -> Result<Ed25519PublicKey, Ed25519KeyError> {
-        let bytes = hex::decode(&self.0).map_err(|e| Ed25519KeyError::InvalidHex(e.to_string()))?;
-        Ed25519PublicKey::try_from_slice(&bytes)
     }
 }
 
@@ -2352,6 +2344,7 @@ mod tests {
         let bundle = IdentityBundle {
             identity_did: IdentityDID::new_unchecked("did:keri:test123"),
             public_key_hex: PublicKeyHex::new_unchecked("aabbccdd"),
+            curve: Default::default(),
             attestation_chain: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
@@ -2400,6 +2393,7 @@ mod tests {
             public_key_hex: PublicKeyHex::new_unchecked(
                 "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
             ),
+            curve: Default::default(),
             attestation_chain: vec![attestation],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()

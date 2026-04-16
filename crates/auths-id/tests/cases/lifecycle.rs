@@ -73,7 +73,7 @@ fn generate_device_keypair(
         .try_into()
         .expect("Public key should be 32 bytes");
 
-    let device_did = DeviceDID::from_ed25519(&device_pk);
+    let device_did = DeviceDID::from_public_key(&device_pk, auths_crypto::CurveType::Ed25519);
 
     let encrypted = auths_core::crypto::signer::encrypt_keypair(device_pkcs8.as_ref(), passphrase)
         .expect("Failed to encrypt device key");
@@ -120,6 +120,8 @@ fn create_test_attestation(
         &identity_did,
         device_did,
         device_pk,
+        // Test fixture: ring Ed25519KeyPair pubkey (32 bytes by construction).
+        auths_crypto::CurveType::Ed25519,
         None,
         &meta,
         &signer,

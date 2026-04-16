@@ -1,7 +1,9 @@
-//! Pluggable cryptographic abstraction for Ed25519 and ECDSA P-256 operations.
+//! Curve-agnostic cryptographic abstraction supporting Ed25519 and ECDSA P-256.
 //!
 //! Defines the [`CryptoProvider`] trait for signature verification, signing, and
 //! key generation — enabling `ring`/`p256` on native targets and `WebCrypto` on WASM.
+//! P-256 is the workspace default curve; Ed25519 is supported as a peer alternative
+//! (SSH/Radicle/legacy KERI compat). See `docs/architecture/cryptography.md`.
 
 use async_trait::async_trait;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -53,7 +55,9 @@ impl crate::AuthsErrorInfo for CryptoError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::InvalidSignature => Some("The signature does not match the data or public key"),
-            Self::InvalidKeyLength { .. } => Some("Ensure the key is exactly 32 bytes for Ed25519"),
+            Self::InvalidKeyLength { .. } => Some(
+                "Ensure the key length matches the declared curve (32 bytes Ed25519, 33 bytes P-256 compressed SEC1)",
+            ),
             Self::UnsupportedTarget => {
                 Some("This operation is not available on the current platform")
             }
@@ -62,7 +66,12 @@ impl crate::AuthsErrorInfo for CryptoError {
     }
 }
 
-/// Zeroize-on-drop wrapper for a raw 32-byte Ed25519 seed.
+/// Zeroize-on-drop wrapper for a raw 32-byte signing seed.
+///
+/// Curve-untyped — both Ed25519 and P-256 use 32-byte scalars, so the curve
+/// must be carried separately (e.g. via [`crate::TypedSeed`]). For curve-aware
+/// flows prefer `TypedSeed`; `SecureSeed` exists for the curve-agnostic
+/// trait surface on [`CryptoProvider`].
 ///
 /// This is the portable key representation that crosses the [`CryptoProvider`]
 /// boundary. No ring types leak through the trait — only this raw seed.
@@ -93,7 +102,7 @@ impl std::fmt::Debug for SecureSeed {
     }
 }
 
-/// Abstraction for Ed25519 cryptographic operations across target architectures.
+/// Curve-agnostic abstraction for cryptographic operations across target architectures.
 ///
 /// All method signatures use primitive Rust types or [`SecureSeed`] — no
 /// ring-specific types. This ensures domain crates (`auths-core`, `auths-sdk`)
@@ -312,15 +321,5 @@ impl CurveType {
             P256_PUBLIC_KEY_LEN | 65 => Some(Self::P256),
             _ => None,
         }
-    }
-
-    /// Compatibility alias for [`from_public_key_len_fallback`].
-    ///
-    /// Retained so callers that historically used this helper still compile
-    /// while they migrate to the `_fallback`-suffixed name (which clarifies
-    /// the intended last-resort usage).
-    #[doc(hidden)]
-    pub fn from_public_key_len(len: usize) -> Option<Self> {
-        Self::from_public_key_len_fallback(len)
     }
 }

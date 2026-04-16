@@ -5,9 +5,7 @@
 //! — the CLI is a thin wrapper that reads files and calls these.
 
 use auths_core::crypto::signer::encrypt_keypair;
-use auths_core::crypto::ssh::build_ed25519_pkcs8_v2_from_seed;
 use auths_core::storage::keychain::{KeyAlias, KeyRole, KeyStorage};
-use auths_crypto::SecureSeed;
 use auths_verifier::IdentityDID;
 use thiserror::Error;
 use zeroize::Zeroizing;
@@ -40,20 +38,22 @@ pub enum KeyImportError {
 /// Result of a successful key import.
 #[derive(Debug, Clone)]
 pub struct KeyImportResult {
-    /// The 32-byte Ed25519 public key derived from the seed.
-    pub public_key: [u8; 32],
+    /// The public key derived from the seed (32 bytes Ed25519, 33 bytes P-256 compressed).
+    pub public_key: Vec<u8>,
+    /// The curve of the imported key.
+    pub curve: auths_crypto::CurveType,
     /// The alias under which the key was stored.
     pub alias: String,
 }
 
-/// Imports an Ed25519 key from a raw 32-byte seed into the keychain.
+/// Imports a signing key from a raw 32-byte seed into the keychain.
 ///
-/// Generates PKCS#8 v2 DER from the seed, encrypts with the passphrase, and
-/// stores in the provided keychain under the given alias associated with the
-/// controller DID. No file I/O, no terminal interaction.
+/// Both Ed25519 and P-256 use 32-byte scalars; the curve tag determines
+/// which PKCS#8 shape is emitted and which public key is derived.
 ///
 /// Args:
-/// * `seed`: The raw 32-byte Ed25519 seed, wrapped in `Zeroizing`.
+/// * `seed`: The raw 32-byte signing seed, wrapped in `Zeroizing`.
+/// * `curve`: Curve for the imported key (P-256 default per workspace convention).
 /// * `passphrase`: The encryption passphrase, wrapped in `Zeroizing`.
 /// * `alias`: The local keychain alias for this key.
 /// * `controller_did`: The identity DID this key is associated with.
@@ -62,13 +62,14 @@ pub struct KeyImportResult {
 /// Usage:
 /// ```ignore
 /// let result = import_seed(
-///     &seed, &passphrase, "my_key",
+///     &seed, CurveType::P256, &passphrase, "my_key",
 ///     &IdentityDID::new_unchecked("did:keri:EXq5abc"),
 ///     keychain.as_ref(),
 /// )?;
 /// ```
 pub fn import_seed(
     seed: &Zeroizing<[u8; 32]>,
+    curve: auths_crypto::CurveType,
     passphrase: &Zeroizing<String>,
     alias: &str,
     controller_did: &IdentityDID,
@@ -78,9 +79,14 @@ pub fn import_seed(
         return Err(KeyImportError::EmptyAlias);
     }
 
-    let secure_seed = SecureSeed::new(**seed);
-
-    let pkcs8 = build_ed25519_pkcs8_v2_from_seed(&secure_seed)
+    let typed_seed = match curve {
+        auths_crypto::CurveType::Ed25519 => auths_crypto::TypedSeed::Ed25519(**seed),
+        auths_crypto::CurveType::P256 => auths_crypto::TypedSeed::P256(**seed),
+    };
+    let signer = auths_crypto::TypedSignerKey::from_seed(typed_seed)
+        .map_err(|e| KeyImportError::Pkcs8Generation(format!("failed to derive keypair: {e}")))?;
+    let pkcs8 = signer
+        .to_pkcs8()
         .map_err(|e| KeyImportError::Pkcs8Generation(e.to_string()))?;
 
     let encrypted = encrypt_keypair(pkcs8.as_ref(), passphrase)
@@ -95,14 +101,9 @@ pub fn import_seed(
         )
         .map_err(|e| KeyImportError::KeychainStore(e.to_string()))?;
 
-    let public_key =
-        auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync(&secure_seed)
-            .map_err(|e| {
-                KeyImportError::Pkcs8Generation(format!("failed to derive public key: {e}"))
-            })?;
-
     Ok(KeyImportResult {
-        public_key,
+        public_key: signer.public_key().to_vec(),
+        curve,
         alias: alias.to_string(),
     })
 }
