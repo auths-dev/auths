@@ -112,17 +112,8 @@ fn ixn_field_order_is_pinned() {
     assert_key_order(&json, &["v", "t", "d", "i", "s", "p", "a"]);
 }
 
-#[test]
-fn icp_with_x_includes_x_last() {
-    let icp = make_test_icp();
-    let json = serde_json::to_string(&Event::Icp(icp)).unwrap();
-    assert_key_order(
-        &json,
-        &[
-            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c", "a", "x",
-        ],
-    );
-}
+// icp_with_x_includes_x_last removed: the "x" (signature) field was externalized
+// into CESR attachments in fn-119. ICP events no longer carry an "x" field.
 
 #[test]
 fn serialization_roundtrip_preserves_data() {

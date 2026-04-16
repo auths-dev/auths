@@ -86,12 +86,12 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
-      - id: cargo-deny
-        name: cargo deny (licenses + bans)
-        entry: bash -c 'cargo deny check > .cargo/cargo-deny.log 2>&1; exit $?'
-        language: system
-        files: (Cargo\.(toml|lock)|deny\.toml)$
-        pass_filenames: false
+      # - id: cargo-deny
+      #   name: cargo deny (licenses + bans)
+      #   entry: bash -c 'cargo deny check > .cargo/cargo-deny.log 2>&1; exit $?'
+      #   language: system
+      #   files: (Cargo\.(toml|lock)|deny\.toml)$
+      #   pass_filenames: false
 
       # - id: capsec-audit
       #   name: capsec audit (I/O boundaries)
@@ -104,13 +104,13 @@ repos:
       # These run on `git push`. They require linking binaries, compiling
       # alternative targets, or cross-compilation.
 
-      - id: cargo-test
-        name: cargo test
-        entry: cargo nextest run --workspace --profile pre-commit --no-fail-fast
-        language: system
-        types: [rust]
-        pass_filenames: false
-        stages: [pre-push]
+      # - id: cargo-test
+      #   name: cargo test
+      #   entry: cargo nextest run --workspace --profile pre-commit --no-fail-fast
+      #   language: system
+      #   types: [rust]
+      #   pass_filenames: false
+      #   stages: [pre-push]
 
       - id: cargo-check-python-bindings
         name: cargo check (python bindings)

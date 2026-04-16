@@ -1028,14 +1028,20 @@ mod tests {
 
     #[test]
     fn rejects_non_inception_first() {
-        let ixn = IxnEvent {
+        let mut ixn = IxnEvent {
             v: VersionString::placeholder(),
-            d: Said::new_unchecked("ETest".to_string()),
+            d: Said::default(),
             i: Prefix::new_unchecked("ETest".to_string()),
             s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![],
         };
+        // Compute a valid SAID so verify_event_said passes — the test
+        // should fail on NotInception, not on SaidMismatch.
+        let event = Event::Ixn(ixn.clone());
+        if let Ok(said) = compute_event_said(&event) {
+            ixn.d = said;
+        }
         let events = vec![Event::Ixn(ixn)];
         let result = validate_kel(&events);
         assert!(matches!(result, Err(ValidationError::NotInception)));

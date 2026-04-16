@@ -357,13 +357,19 @@ mod tests {
 
     #[test]
     fn test_session_consumed_prevents_reuse() {
-        let mut session = make_session();
-        let fake_responder_pubkey = [42u8; 32];
+        use p256::elliptic_curve::rand_core::OsRng as P256Rng;
+        use p256::elliptic_curve::sec1::ToEncodedPoint as _;
 
-        let result = session.complete_exchange(&fake_responder_pubkey);
+        let mut session = make_session();
+        // Generate a valid P-256 ephemeral pubkey (SEC1 compressed, 33 bytes)
+        let fake_secret = p256::ecdh::EphemeralSecret::random(&mut P256Rng);
+        let fake_pubkey = fake_secret.public_key().to_encoded_point(true);
+        let fake_pubkey_bytes = fake_pubkey.as_bytes();
+
+        let result = session.complete_exchange(fake_pubkey_bytes);
         assert!(result.is_ok());
 
-        let result = session.complete_exchange(&fake_responder_pubkey);
+        let result = session.complete_exchange(fake_pubkey_bytes);
         assert!(matches!(result, Err(ProtocolError::SessionConsumed)));
     }
 }
