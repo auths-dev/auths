@@ -29,15 +29,17 @@ pub fn resolve_from_events(
     let state = validate_kel(events)?;
 
     let key_encoded = state.current_key().ok_or(ResolveError::NoCurrentKey)?;
-    let public_key = KeriPublicKey::parse(key_encoded.as_str())
-        .map(|k| k.as_bytes().to_vec())
+    let keri_key = KeriPublicKey::parse(key_encoded.as_str())
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
+    let curve = keri_key.curve();
+    let public_key = keri_key.as_bytes().to_vec();
 
     Ok(DidKeriResolution {
         #[allow(clippy::disallowed_methods)] // INVARIANT: callers pass a did:keri string already validated by parse_did_keri()
         did: IdentityDID::new_unchecked(did),
         prefix: prefix.clone(),
         public_key,
+        curve,
         sequence: state.sequence,
         can_rotate: state.can_rotate(),
         is_abandoned: state.is_abandoned,

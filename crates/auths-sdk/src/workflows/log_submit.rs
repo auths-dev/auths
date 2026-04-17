@@ -61,8 +61,9 @@ pub enum LogSubmitError {
 ///
 /// Args:
 /// * `attestation_json` — Serialized attestation JSON bytes.
-/// * `public_key` — Signer's Ed25519 public key (raw 32 bytes or PKIX DER).
-/// * `signature` — Ed25519 signature over the attestation.
+/// * `public_key` — Signer's public key (raw 32 bytes or PKIX DER).
+/// * `curve` — The curve of the public key.
+/// * `signature` — Signature over the attestation.
 /// * `log` — The transparency log backend to submit to.
 ///
 /// Usage:
@@ -70,6 +71,7 @@ pub enum LogSubmitError {
 /// let bundle = submit_attestation_to_log(
 ///     attestation_json.as_bytes(),
 ///     &public_key_bytes,
+///     CurveType::P256,
 ///     &signature_bytes,
 ///     &log,
 /// ).await?;
@@ -77,11 +79,14 @@ pub enum LogSubmitError {
 pub async fn submit_attestation_to_log(
     attestation_json: &[u8],
     public_key: &[u8],
+    curve: auths_crypto::CurveType,
     signature: &[u8],
     log: &dyn TransparencyLog,
 ) -> Result<LogSubmissionBundle, LogSubmitError> {
     // 1. Submit to the log
-    let submission = log.submit(attestation_json, public_key, signature).await?;
+    let submission = log
+        .submit(attestation_json, public_key, curve, signature)
+        .await?;
 
     // 2. Validate the inclusion proof structure.
     //
@@ -119,8 +124,14 @@ mod tests {
     #[tokio::test]
     async fn submit_succeeds_with_fake() {
         let log = FakeTransparencyLog::succeeding();
-        let result =
-            submit_attestation_to_log(b"test attestation", b"public_key", b"signature", &log).await;
+        let result = submit_attestation_to_log(
+            b"test attestation",
+            b"public_key",
+            auths_crypto::CurveType::default(),
+            b"signature",
+            &log,
+        )
+        .await;
 
         assert!(result.is_ok());
         let bundle = result.unwrap();
@@ -131,7 +142,14 @@ mod tests {
     #[tokio::test]
     async fn submit_propagates_rate_limit() {
         let log = FakeTransparencyLog::rate_limited(30);
-        let result = submit_attestation_to_log(b"test", b"pk", b"sig", &log).await;
+        let result = submit_attestation_to_log(
+            b"test",
+            b"pk",
+            auths_crypto::CurveType::default(),
+            b"sig",
+            &log,
+        )
+        .await;
 
         match result {
             Err(LogSubmitError::LogError(LogError::RateLimited { retry_after_secs })) => {
@@ -144,7 +162,14 @@ mod tests {
     #[tokio::test]
     async fn submit_propagates_network_error() {
         let log = FakeTransparencyLog::failing(LogError::NetworkError("connection refused".into()));
-        let result = submit_attestation_to_log(b"test", b"pk", b"sig", &log).await;
+        let result = submit_attestation_to_log(
+            b"test",
+            b"pk",
+            auths_crypto::CurveType::default(),
+            b"sig",
+            &log,
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(

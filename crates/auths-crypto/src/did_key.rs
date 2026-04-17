@@ -91,6 +91,24 @@ pub enum DecodedDidKey {
     P256(Vec<u8>),
 }
 
+impl DecodedDidKey {
+    /// Returns the curve of the decoded key.
+    pub fn curve(&self) -> crate::CurveType {
+        match self {
+            Self::Ed25519(_) => crate::CurveType::Ed25519,
+            Self::P256(_) => crate::CurveType::P256,
+        }
+    }
+
+    /// Returns the raw public key bytes.
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            Self::Ed25519(b) => b,
+            Self::P256(b) => b,
+        }
+    }
+}
+
 /// Decode a `did:key:z...` string, auto-detecting the curve from the multicodec.
 ///
 /// Usage:

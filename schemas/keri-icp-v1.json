@@ -108,16 +108,11 @@
           "$ref": "#/definitions/VersionString"
         }
       ]
-    },
-    "x": {
-      "description": "Legacy signature field — DEPRECATED. Use `SignedEvent` with externalized signatures. Retained for backwards compatibility with stored events.",
-      "default": "",
-      "type": "string"
     }
   },
   "definitions": {
     "CesrKey": {
-      "description": "A CESR-encoded public key (e.g., `D` + base64url Ed25519).\n\nWraps the qualified string form. Use `parse_ed25519()` to extract the raw 32-byte key for cryptographic operations.\n\nUsage: ``` use auths_keri::CesrKey; let key = CesrKey::new_unchecked(\"DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\".into()); assert!(key.parse_ed25519().is_ok()); ```",
+      "description": "A CESR-encoded public key (e.g., `D` + base64url Ed25519, `1AAI` + base64url P-256).\n\nWraps the qualified string form. Use `parse()` to extract the curve-tagged `KeriPublicKey` for cryptographic operations.\n\nUsage: ``` use auths_keri::CesrKey; let key = CesrKey::new_unchecked(\"DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\".into()); assert!(key.parse().is_ok()); ```",
       "type": "string"
     },
     "ConfigTrait": {

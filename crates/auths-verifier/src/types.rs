@@ -473,9 +473,21 @@ impl Deref for DeviceDID {
 /// // (example key is wrong length — a real 32-byte hex key would succeed)
 /// ```
 pub fn signer_hex_to_did(hex_key: &str) -> Result<DeviceDID, DidConversionError> {
+    signer_hex_to_did_with_curve(hex_key, auths_crypto::CurveType::P256)
+}
+
+/// Convert a hex-encoded public key to a `did:key:` device DID with explicit curve.
+///
+/// ```rust
+/// # use auths_verifier::types::signer_hex_to_did_with_curve;
+/// # use auths_crypto::CurveType;
+/// let did = signer_hex_to_did_with_curve("d75a980182b10ab7d54bfed3c964073a0ee172f3daa3f4a18446b7ddc8", CurveType::P256).unwrap_err();
+/// ```
+pub fn signer_hex_to_did_with_curve(
+    hex_key: &str,
+    curve: auths_crypto::CurveType,
+) -> Result<DeviceDID, DidConversionError> {
     let bytes = hex::decode(hex_key).map_err(|e| DidConversionError::InvalidHex(e.to_string()))?;
-    let curve = auths_crypto::CurveType::from_public_key_len_fallback(bytes.len())
-        .ok_or(DidConversionError::WrongKeyLength(bytes.len()))?;
     Ok(DeviceDID::from_public_key(&bytes, curve))
 }
 

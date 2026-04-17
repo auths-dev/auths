@@ -183,6 +183,7 @@ fn parse_capabilities(raw: &[String]) -> Result<Vec<Capability>, OrgError> {
 ///     org_prefix: "EOrg1234567890".into(),
 ///     member_did: "did:key:z6Mk...".into(),
 ///     member_public_key: Ed25519PublicKey::from_bytes(pk_bytes),
+///     member_curve: auths_crypto::CurveType::Ed25519,
 ///     role: Role::Member,
 ///     capabilities: vec!["sign_commit".into()],
 ///     admin_public_key_hex: hex::encode(&admin_pk),
@@ -197,6 +198,8 @@ pub struct AddMemberCommand {
     pub member_did: String,
     /// Public key bytes of the member (32 bytes Ed25519 or 33 bytes P-256).
     pub member_public_key: Vec<u8>,
+    /// Curve of `member_public_key`.
+    pub member_curve: auths_crypto::CurveType,
     /// Role to assign.
     pub role: Role,
     /// Capability strings to grant.
@@ -225,6 +228,7 @@ pub struct AddMemberCommand {
 ///     org_prefix: "EOrg1234567890".into(),
 ///     member_did: "did:key:z6Mk...".into(),
 ///     member_public_key: Ed25519PublicKey::from_bytes(pk_bytes),
+///     member_curve: auths_crypto::CurveType::Ed25519,
 ///     admin_public_key_hex: hex::encode(&admin_pk),
 ///     signer_alias: KeyAlias::new_unchecked("org-myorg"),
 ///     note: Some("Policy violation".into()),
@@ -237,6 +241,8 @@ pub struct RevokeMemberCommand {
     pub member_did: String,
     /// Public key bytes of the member (from existing attestation).
     pub member_public_key: Vec<u8>,
+    /// Curve of `member_public_key`.
+    pub member_curve: auths_crypto::CurveType,
     /// Hex-encoded public key of the signing admin.
     pub admin_public_key_hex: PublicKeyHex,
     /// Keychain alias of the admin's signing key.
@@ -356,7 +362,7 @@ pub fn add_organization_member(
         &admin_issuer_did,
         &member_did,
         &cmd.member_public_key,
-        auths_crypto::CurveType::Ed25519,
+        cmd.member_curve,
         Some(serde_json::json!({
             "org_role": cmd.role.to_string(),
             "org_did": format!("did:keri:{}", cmd.org_prefix),
@@ -433,7 +439,7 @@ pub fn revoke_organization_member(
         &admin_issuer_did,
         &member_did,
         &cmd.member_public_key,
-        auths_crypto::CurveType::Ed25519,
+        cmd.member_curve,
         cmd.note,
         None,
         now,

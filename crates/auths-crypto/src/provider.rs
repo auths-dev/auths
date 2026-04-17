@@ -294,32 +294,4 @@ impl CurveType {
             Self::P256 => P256_SIGNATURE_LEN,
         }
     }
-
-    /// Last-resort fallback: infer the curve from a raw pubkey's byte length.
-    ///
-    /// **Prefer an in-band curve tag** (CESR prefix, multicodec varint, or an
-    /// explicit `curve` field — see `docs/architecture/cryptography.md` →
-    /// Wire-format Curve Tagging). Length is ambiguous as curves grow: 32
-    /// bytes collides between Ed25519 and X25519, 33 bytes collides between
-    /// P-256 and secp256k1. Silent misrouting surfaces as `InvalidSignature`
-    /// instead of a routing error, masking the real bug.
-    ///
-    /// Legitimate use: only at external-ingestion boundaries (FFI / WASM /
-    /// CLI flags) where the caller supplies raw bytes and no typed curve
-    /// signal is available. Every call site must:
-    /// - Comment on why no in-band tag is available at this point.
-    /// - Prefer failing (return `None`) over guessing.
-    /// - Be tracked for migration to a tagged path.
-    ///
-    /// Accepts:
-    /// - 32 bytes → Ed25519
-    /// - 33 bytes → P-256 (compressed SEC1)
-    /// - 65 bytes → P-256 (uncompressed SEC1)
-    pub fn from_public_key_len_fallback(len: usize) -> Option<Self> {
-        match len {
-            ED25519_PUBLIC_KEY_LEN => Some(Self::Ed25519),
-            P256_PUBLIC_KEY_LEN | 65 => Some(Self::P256),
-            _ => None,
-        }
-    }
 }

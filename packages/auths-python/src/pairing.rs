@@ -424,18 +424,9 @@ pub fn complete_pairing_ffi(
 
         #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
-        // Sanctioned FFI fallback: hex-encoded pubkey lacks an in-band curve
-        // tag at this Python ingestion boundary. Length dispatch via
-        // `from_public_key_len_fallback` is **unsafe in principle** (32 bytes
-        // is also valid X25519, 33 bytes is also valid secp256k1) and must
-        // not be extended to a third curve via length alone.
-        let curve = auths_crypto::CurveType::from_public_key_len_fallback(device_pubkey.len())
-            .ok_or_else(|| {
-                PyRuntimeError::new_err(format!(
-                    "[AUTHS_PAIRING_ERROR] Invalid public key length: {} bytes",
-                    device_pubkey.len()
-                ))
-            })?;
+        let curve = auths_crypto::did_key_decode(&device_did)
+            .map(|d| d.curve())
+            .unwrap_or_default();
         let params = PairingAttestationParams {
             identity_storage: identity_storage.clone(),
             key_storage: key_storage.clone(),

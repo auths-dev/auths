@@ -567,32 +567,37 @@ pub enum PublicKeyDecodeError {
 ///
 /// Args:
 /// * `hex_str`: Hex-encoded public key (32, 33, or 65 bytes after decode).
+/// * `curve`: The curve type for the key.
 ///
 /// Usage:
 /// ```ignore
-/// let pk = decode_public_key_hex(user_supplied_hex)?;
+/// let pk = decode_public_key_hex(user_supplied_hex, CurveType::P256)?;
 /// issuer_pk.verify(msg, sig, provider).await?;
 /// ```
-pub fn decode_public_key_hex(hex_str: &str) -> Result<DevicePublicKey, PublicKeyDecodeError> {
+pub fn decode_public_key_hex(
+    hex_str: &str,
+    curve: auths_crypto::CurveType,
+) -> Result<DevicePublicKey, PublicKeyDecodeError> {
     let bytes =
         hex::decode(hex_str.trim()).map_err(|e| PublicKeyDecodeError::InvalidHex(e.to_string()))?;
-    decode_public_key_bytes(&bytes)
+    decode_public_key_bytes(&bytes, curve)
 }
 
 /// Decode raw public key bytes into a typed, curve-tagged `DevicePublicKey`
-/// by length inference. Same boundary-only caveat as
-/// [`decode_public_key_hex`].
+/// using an explicit curve tag.
 ///
 /// Args:
 /// * `bytes`: Raw public key bytes.
+/// * `curve`: The curve type for the key.
 ///
 /// Usage:
 /// ```ignore
-/// let pk = decode_public_key_bytes(&ffi_bytes[..len])?;
+/// let pk = decode_public_key_bytes(&ffi_bytes[..len], CurveType::P256)?;
 /// ```
-pub fn decode_public_key_bytes(bytes: &[u8]) -> Result<DevicePublicKey, PublicKeyDecodeError> {
-    let curve = auths_crypto::CurveType::from_public_key_len_fallback(bytes.len())
-        .ok_or(PublicKeyDecodeError::InvalidLength { len: bytes.len() })?;
+pub fn decode_public_key_bytes(
+    bytes: &[u8],
+    curve: auths_crypto::CurveType,
+) -> Result<DevicePublicKey, PublicKeyDecodeError> {
     DevicePublicKey::try_new(curve, bytes)
         .map_err(|e| PublicKeyDecodeError::Validation(e.to_string()))
 }
@@ -2420,7 +2425,7 @@ mod decode_public_key_tests {
     #[test]
     fn hex_ed25519_32_bytes() {
         let hex = "00".repeat(32);
-        let pk = decode_public_key_hex(&hex).unwrap();
+        let pk = decode_public_key_hex(&hex, auths_crypto::CurveType::Ed25519).unwrap();
         assert_eq!(pk.curve(), auths_crypto::CurveType::Ed25519);
         assert_eq!(pk.len(), 32);
     }
@@ -2431,7 +2436,7 @@ mod decode_public_key_tests {
         let mut bytes = [0u8; 33];
         bytes[0] = 0x02;
         let hex = hex::encode(bytes);
-        let pk = decode_public_key_hex(&hex).unwrap();
+        let pk = decode_public_key_hex(&hex, auths_crypto::CurveType::P256).unwrap();
         assert_eq!(pk.curve(), auths_crypto::CurveType::P256);
         assert_eq!(pk.len(), 33);
     }
@@ -2440,23 +2445,20 @@ mod decode_public_key_tests {
     fn bytes_p256_65_uncompressed() {
         let mut bytes = [0u8; 65];
         bytes[0] = 0x04;
-        let pk = decode_public_key_bytes(&bytes).unwrap();
+        let pk = decode_public_key_bytes(&bytes, auths_crypto::CurveType::P256).unwrap();
         assert_eq!(pk.curve(), auths_crypto::CurveType::P256);
         assert_eq!(pk.len(), 65);
     }
 
     #[test]
-    fn rejects_invalid_length() {
-        let err = decode_public_key_bytes(&[0u8; 50]).unwrap_err();
-        assert!(matches!(
-            err,
-            PublicKeyDecodeError::InvalidLength { len: 50 }
-        ));
+    fn rejects_validation_error() {
+        let err = decode_public_key_bytes(&[0u8; 50], auths_crypto::CurveType::P256).unwrap_err();
+        assert!(matches!(err, PublicKeyDecodeError::Validation(_)));
     }
 
     #[test]
     fn rejects_malformed_hex() {
-        let err = decode_public_key_hex("zz").unwrap_err();
+        let err = decode_public_key_hex("zz", auths_crypto::CurveType::P256).unwrap_err();
         assert!(matches!(err, PublicKeyDecodeError::InvalidHex(_)));
     }
 }

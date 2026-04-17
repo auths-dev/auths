@@ -10,6 +10,11 @@ use walkdir::WalkDir;
 
 const CURVE_PATTERN: &str = r"(?i)(ed25519|p256|secp256k1|ed448)";
 
+/// Identifiers that are ALWAYS violations regardless of parent context.
+/// These bypass the ALLOWED_PARENTS enum-variant check because they're
+/// behavioral anti-patterns, not curve names in enum variants.
+const ALWAYS_BANNED: &[&str] = &["from_public_key_len_fallback", "from_public_key_len"];
+
 const ALLOWED_PARENTS: &[&str] = &[
     "CurveType",
     "TypedSeed",
@@ -197,12 +202,19 @@ fn check_node(
     // Check identifiers for curve-specific names
     if kind == "identifier" || kind == "field_identifier" || kind == "type_identifier" {
         let text = &source[node.byte_range()];
-        if re.is_match(text)
+
+        // ALWAYS_BANNED identifiers are violations regardless of parent context.
+        // They bypass the enum-variant allowlist because they're behavioral
+        // anti-patterns (length-based curve dispatch), not curve names.
+        let always_banned = ALWAYS_BANNED.iter().any(|b| text.contains(b));
+
+        let curve_name_violation = re.is_match(text)
             && !is_allowed_enum_variant(&node, source)
             && !ALLOWED_TYPE_NAMES.contains(&text)
             && !ALLOWED_METHOD_NAMES.contains(&text)
-            && !ALLOWED_IDENT_PREFIXES.iter().any(|p| text.starts_with(p))
-        {
+            && !ALLOWED_IDENT_PREFIXES.iter().any(|p| text.starts_with(p));
+
+        if always_banned || curve_name_violation {
             let start = node.start_position();
             violations.push(Violation {
                 file: file.to_path_buf(),

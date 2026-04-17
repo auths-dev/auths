@@ -737,10 +737,12 @@ impl DidResolver for RadicleIdentityResolver {
 
                 let keri_pk = auths_keri::KeriPublicKey::parse(cesr_key.as_str())
                     .map_err(|e| DidResolverError::Resolution(format!("invalid CESR key: {e}")))?;
+                let curve = keri_pk.curve();
 
                 Ok(ResolvedDid::Keri {
                     did: did.to_string(),
                     public_key_bytes: keri_pk.into_bytes(),
+                    curve,
                     sequence: key_state.sequence,
                     can_rotate: key_state.can_rotate(),
                 })

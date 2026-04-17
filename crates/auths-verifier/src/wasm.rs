@@ -135,12 +135,19 @@ async fn verify_attestation_internal(
     verify::verify_with_keys_at(&att, &issuer_pk, SystemClock.now(), true, provider).await
 }
 
-/// Verifies a detached Ed25519 signature over a file hash (all inputs hex-encoded).
+/// Verifies a detached signature over a file hash (all inputs hex-encoded).
+///
+/// Args:
+/// * `file_hash_hex`: Hex-encoded file hash.
+/// * `signature_hex`: Hex-encoded signature.
+/// * `public_key_hex`: Hex-encoded public key.
+/// * `curve`: Curve name ("ed25519" or "p256"). Defaults to P-256.
 #[wasm_bindgen(js_name = verifyArtifactSignature)]
 pub async fn wasm_verify_artifact_signature(
     file_hash_hex: &str,
     signature_hex: &str,
     public_key_hex: &str,
+    curve: Option<String>,
 ) -> bool {
     if file_hash_hex.len() > MAX_FILE_HASH_HEX_LEN
         || signature_hex.len() > MAX_SIGNATURE_HEX_LEN
@@ -159,19 +166,21 @@ pub async fn wasm_verify_artifact_signature(
         return false;
     };
 
-    // Last-resort length fallback: WASM callers pass raw hex; no in-band curve
-    // tag is available at this boundary. Accepts Ed25519 (32) or P-256 (33/65
-    // compressed/uncompressed SEC1). Migrate by widening the WASM call surface
-    // with an explicit `curve` parameter.
-    if CurveType::from_public_key_len_fallback(pk_bytes.len()).is_none() {
-        return false;
-    }
+    let curve_type = match curve.as_deref() {
+        Some("ed25519") | Some("Ed25519") => CurveType::Ed25519,
+        _ => CurveType::P256,
+    };
+
     if sig_bytes.len() != 64 {
         return false;
     }
 
-    provider()
-        .verify_ed25519(&pk_bytes, &hash_bytes, &sig_bytes)
+    let Ok(typed_pk) = DevicePublicKey::try_new(curve_type, &pk_bytes) else {
+        return false;
+    };
+
+    typed_pk
+        .verify(&hash_bytes, &sig_bytes, &provider())
         .await
         .is_ok()
 }

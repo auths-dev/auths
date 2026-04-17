@@ -87,6 +87,8 @@ pub enum ResolvedDid {
         did: String,
         /// Raw public key bytes (32 for Ed25519, 33 for P-256 compressed).
         public_key_bytes: Vec<u8>,
+        /// Curve of the current key, derived from the CESR prefix at resolution time.
+        curve: auths_crypto::CurveType,
         /// Current KEL sequence number.
         sequence: u128,
         /// Whether key rotation is available.
@@ -111,6 +113,20 @@ impl ResolvedDid {
             | ResolvedDid::Keri {
                 public_key_bytes, ..
             } => public_key_bytes,
+        }
+    }
+
+    /// Returns the curve of the resolved key.
+    ///
+    /// For `did:key:` → decoded from the multicodec varint prefix.
+    /// For `did:keri:` → derived from the CESR prefix of the current key at
+    /// resolution time and stored in-band on this variant.
+    pub fn curve(&self) -> auths_crypto::CurveType {
+        match self {
+            ResolvedDid::Key { did, .. } => auths_crypto::did_key_decode(did)
+                .map(|d| d.curve())
+                .unwrap_or_default(),
+            ResolvedDid::Keri { curve, .. } => *curve,
         }
     }
 

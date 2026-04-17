@@ -134,8 +134,7 @@ pub fn create_org(
         .resolve(controller_did.as_str())
         .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
     let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
-    let org_curve = auths_crypto::CurveType::from_public_key_len_fallback(org_pk_bytes.len())
-        .unwrap_or_default();
+    let org_curve = org_resolved.curve();
 
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();
@@ -153,10 +152,6 @@ pub fn create_org(
     };
 
     let signer = StorageSigner::new(keychain);
-    // Last-resort length fallback: `ResolvedDid` doesn't yet carry a `CurveType`
-    // so the curve is inferred from pubkey length at this internal boundary.
-    // Migration: widen `ResolvedDid` to include `curve: CurveType`, then construct
-    // the `DeviceDID` directly from (curve, bytes) without the length match.
     let org_did_device = DeviceDID::from_public_key(&org_pk_bytes, org_curve);
 
     let attestation = create_signed_attestation(
@@ -244,18 +239,23 @@ pub fn add_org_member(
             .public_key_bytes(),
     ));
 
-    let member_pk = if let Some(pk_hex) = member_public_key_hex {
-        hex::decode(&pk_hex).map_err(|e| {
+    let (member_pk, member_curve) = if let Some(pk_hex) = member_public_key_hex {
+        let pk = hex::decode(&pk_hex).map_err(|e| {
             format_error(
                 "AUTHS_ORG_ERROR",
                 format!("Invalid member public key hex: {e}"),
             )
-        })?
+        })?;
+        let curve = auths_crypto::did_key_decode(&member_did)
+            .map(|d| d.curve())
+            .unwrap_or_default();
+        (pk, curve)
     } else {
         let member_resolved = resolver
             .resolve(&member_did)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
-        member_resolved.public_key_bytes().to_vec()
+        let curve = member_resolved.curve();
+        (member_resolved.public_key_bytes().to_vec(), curve)
     };
 
     let org_prefix = extract_org_prefix(&org_did);
@@ -278,6 +278,7 @@ pub fn add_org_member(
             org_prefix,
             member_did: member_did.clone(),
             member_public_key: member_pk,
+            member_curve,
             role: role_parsed,
             capabilities: capabilities.clone(),
             admin_public_key_hex: admin_pk_hex,
@@ -328,18 +329,23 @@ pub fn revoke_org_member(
             .public_key_bytes(),
     ));
 
-    let member_pk = if let Some(pk_hex) = member_public_key_hex {
-        hex::decode(&pk_hex).map_err(|e| {
+    let (member_pk, member_curve) = if let Some(pk_hex) = member_public_key_hex {
+        let pk = hex::decode(&pk_hex).map_err(|e| {
             format_error(
                 "AUTHS_ORG_ERROR",
                 format!("Invalid member public key hex: {e}"),
             )
-        })?
+        })?;
+        let curve = auths_crypto::did_key_decode(&member_did)
+            .map(|d| d.curve())
+            .unwrap_or_default();
+        (pk, curve)
     } else {
         let member_resolved = resolver
             .resolve(&member_did)
             .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
-        member_resolved.public_key_bytes().to_vec()
+        let curve = member_resolved.curve();
+        (member_resolved.public_key_bytes().to_vec(), curve)
     };
 
     let org_prefix = extract_org_prefix(&org_did);
@@ -362,6 +368,7 @@ pub fn revoke_org_member(
             org_prefix,
             member_did: member_did.clone(),
             member_public_key: member_pk,
+            member_curve,
             admin_public_key_hex: admin_pk_hex,
             signer_alias,
             note,

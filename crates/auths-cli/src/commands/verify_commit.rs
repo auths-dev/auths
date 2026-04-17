@@ -469,12 +469,9 @@ async fn verify_bundle_chain(
             );
         }
     };
-    let root_pk = match auths_crypto::CurveType::from_public_key_len_fallback(root_pk_bytes.len())
-        .ok_or_else(|| format!("Invalid bundle public key length: {}", root_pk_bytes.len()))
-        .and_then(|curve| {
-            auths_verifier::DevicePublicKey::try_new(curve, &root_pk_bytes)
-                .map_err(|e| format!("Invalid bundle public key: {e}"))
-        }) {
+    let root_pk = match auths_verifier::DevicePublicKey::try_new(bundle.curve, &root_pk_bytes)
+        .map_err(|e| format!("Invalid bundle public key: {e}"))
+    {
         Ok(pk) => pk,
         Err(msg) => return (Some(false), None, vec![msg]),
     };
@@ -540,9 +537,7 @@ async fn verify_witnesses(
     {
         let root_pk_bytes = hex::decode(bundle.public_key_hex.as_str())
             .context("Invalid public key hex in bundle")?;
-        let curve = auths_crypto::CurveType::from_public_key_len_fallback(root_pk_bytes.len())
-            .ok_or_else(|| anyhow!("Invalid bundle public key length: {}", root_pk_bytes.len()))?;
-        let root_pk = auths_verifier::DevicePublicKey::try_new(curve, &root_pk_bytes)
+        let root_pk = auths_verifier::DevicePublicKey::try_new(bundle.curve, &root_pk_bytes)
             .map_err(|e| anyhow!("Invalid bundle public key: {e}"))?;
 
         let report = verify_chain_with_witnesses(&bundle.attestation_chain, &root_pk, &config)

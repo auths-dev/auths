@@ -151,11 +151,13 @@ pub trait TransparencyLog: Send + Sync {
     /// Args:
     /// * `leaf_data` — Raw bytes to log (typically serialized attestation JSON).
     /// * `public_key` — Signer's public key (Ed25519 DER or P-256 SEC1).
+    /// * `curve` — The curve of the public key.
     /// * `signature` — Signature over `leaf_data`.
     async fn submit(
         &self,
         leaf_data: &[u8],
         public_key: &[u8],
+        curve: auths_crypto::CurveType,
         signature: &[u8],
     ) -> Result<LogSubmission, LogError>;
 

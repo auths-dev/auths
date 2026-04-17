@@ -207,7 +207,8 @@ fn verify_attestation_via_resolver(
         Err(_) => return "❌ invalid",
     };
     let pk_bytes: Vec<u8> = resolved.public_key_bytes().to_vec();
-    let issuer_pk = match auths_verifier::decode_public_key_bytes(&pk_bytes) {
+    let resolved_curve = resolved.curve();
+    let issuer_pk = match auths_verifier::decode_public_key_bytes(&pk_bytes, resolved_curve) {
         Ok(pk) => pk,
         Err(_) => return "❌ invalid",
     };
@@ -369,10 +370,7 @@ pub fn handle_org(
                 )
             })?;
             let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
-            // Sanctioned fallback: ResolvedDid doesn't carry CurveType yet.
-            let org_curve =
-                auths_crypto::CurveType::from_public_key_len_fallback(org_pk_bytes.len())
-                    .unwrap_or_default();
+            let org_curve = org_resolved.curve();
 
             let admin_capabilities = vec![
                 Capability::sign_commit(),
@@ -495,10 +493,7 @@ pub fn handle_org(
                 format!("Failed to resolve public key for subject: {}", subject_did)
             })?;
             let device_pk_bytes = device_resolved.public_key_bytes().to_vec();
-            // Sanctioned fallback: ResolvedDid doesn't carry CurveType yet.
-            let device_curve =
-                auths_crypto::CurveType::from_public_key_len_fallback(device_pk_bytes.len())
-                    .unwrap_or_default();
+            let device_curve = device_resolved.curve();
 
             let meta = AttestationMetadata {
                 note,
@@ -739,12 +734,15 @@ pub fn handle_org(
                 passphrase_provider: passphrase_provider.as_ref(),
             };
 
+            let member_curve = member_resolved.curve();
+
             let attestation = add_organization_member(
                 &org_ctx,
                 AddMemberCommand {
                     org_prefix: org_prefix.clone(),
                     member_did: member.clone(),
                     member_public_key: member_pk.clone(),
+                    member_curve,
                     role,
                     capabilities: capability_strings.clone(),
                     admin_public_key_hex: admin_pk_hex,
@@ -846,12 +844,15 @@ pub fn handle_org(
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry
             let member_did = DeviceDID::new_unchecked(member.clone());
+            let member_curve = member_resolved.curve();
+
             let revocation = revoke_organization_member(
                 &org_ctx,
                 RevokeMemberCommand {
                     org_prefix: org_prefix.clone(),
                     member_did: member.clone(),
                     member_public_key: member_pk.clone(),
+                    member_curve,
                     admin_public_key_hex: admin_pk_hex,
                     signer_alias,
                     note: note.clone(),

@@ -30,7 +30,7 @@ const MAX_PAYLOAD_SIZE: usize = 100 * 1024;
 /// Usage:
 /// ```ignore
 /// let client = RekorClient::public();
-/// let submission = client.submit(&data, &pk, &sig).await?;
+/// let submission = client.submit(&data, &pk, CurveType::P256, &sig).await?;
 /// ```
 pub struct RekorClient {
     http: Client,
@@ -82,6 +82,7 @@ impl RekorClient {
         &self,
         leaf_data: &[u8],
         public_key: &[u8],
+        curve: auths_crypto::CurveType,
         signature: &[u8],
     ) -> Result<DsseRequest, LogError> {
         let envelope = DsseEnvelope {
@@ -96,7 +97,7 @@ impl RekorClient {
         #[allow(clippy::unwrap_used)] // INVARIANT: DsseEnvelope is always serializable
         let envelope_json = serde_json::to_string(&envelope).unwrap();
 
-        let typed_pk = auths_verifier::decode_public_key_bytes(public_key)
+        let typed_pk = auths_verifier::decode_public_key_bytes(public_key, curve)
             .map_err(|e| LogError::InvalidResponse(format!("invalid public key: {e}")))?;
         let pem_key = pubkey_to_pem(&typed_pk)?;
 
@@ -267,6 +268,7 @@ impl TransparencyLog for RekorClient {
         &self,
         leaf_data: &[u8],
         public_key: &[u8],
+        curve: auths_crypto::CurveType,
         signature: &[u8],
     ) -> Result<LogSubmission, LogError> {
         // Pre-send payload size check: reject locally before HTTP
@@ -280,7 +282,7 @@ impl TransparencyLog for RekorClient {
             });
         }
 
-        let entry = self.build_dsse(leaf_data, public_key, signature)?;
+        let entry = self.build_dsse(leaf_data, public_key, curve, signature)?;
         let url = format!("{}/api/v1/log/entries", self.api_url);
 
         debug!(url = %url, payload_size = leaf_data.len(), "Submitting to Rekor");
@@ -527,7 +529,7 @@ mod tests {
         let big = vec![0u8; MAX_PAYLOAD_SIZE + 1];
         let client = &*TEST_CLIENT;
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(client.submit(&big, b"pk", b"sig"));
+        let result = rt.block_on(client.submit(&big, b"pk", auths_crypto::CurveType::P256, b"sig"));
         match result {
             Err(LogError::SubmissionRejected { reason }) => {
                 assert!(reason.contains("exceeds max size"));
@@ -540,7 +542,14 @@ mod tests {
     fn dsse_format() {
         let client = &*TEST_CLIENT;
         let pk = [0u8; 32]; // Ed25519-length placeholder so decode succeeds
-        let entry = client.build_dsse(b"test data", &pk, b"signature").unwrap();
+        let entry = client
+            .build_dsse(
+                b"test data",
+                &pk,
+                auths_crypto::CurveType::Ed25519,
+                b"signature",
+            )
+            .unwrap();
 
         assert_eq!(entry.kind, "dsse");
         assert_eq!(entry.api_version, "0.0.1");

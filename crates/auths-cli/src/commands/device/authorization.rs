@@ -499,7 +499,8 @@ fn list_devices(
             match resolver.resolve(latest.issuer.as_str()) {
                 Ok(resolved) => {
                     let pk_bytes: Vec<u8> = resolved.public_key_bytes().to_vec();
-                    match auths_verifier::decode_public_key_bytes(&pk_bytes) {
+                    let resolved_curve = resolved.curve();
+                    match auths_verifier::decode_public_key_bytes(&pk_bytes, resolved_curve) {
                         Ok(issuer_pk) => {
                             #[allow(clippy::expect_used)]
                             let rt = tokio::runtime::Builder::new_current_thread()
