@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct KeyRotationEvent {
     /// Sequence number in the KEL (incrementing from 0)
-    pub sequence: u64,
+    pub sequence: u128,
 
     /// Hash of the previous event for backward chain verification.
     /// Empty string for inception events (sequence 0).
@@ -40,7 +40,7 @@ pub struct KeyRotationEvent {
 impl KeyRotationEvent {
     /// Creates a new KeyRotationEvent.
     pub fn new(
-        sequence: u64,
+        sequence: u128,
         previous_hash: String,
         old_public_key: Vec<u8>,
         new_public_key: Vec<u8>,

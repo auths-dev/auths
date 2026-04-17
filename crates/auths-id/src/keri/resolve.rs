@@ -76,8 +76,11 @@ pub struct DidKeriResolution {
     /// The current public key (raw bytes, 32 bytes for Ed25519)
     pub public_key: Vec<u8>,
 
+    /// The curve of the current public key, derived from the CESR prefix.
+    pub curve: auths_crypto::CurveType,
+
     /// The current sequence number
-    pub sequence: u64,
+    pub sequence: u128,
 
     /// Whether the identity can still be rotated
     pub can_rotate: bool,
@@ -112,15 +115,17 @@ pub fn resolve_did_keri(repo: &Repository, did: &str) -> Result<DidKeriResolutio
     // Decode current public key
     let key_encoded = state.current_key().ok_or(ResolveError::NoCurrentKey)?;
 
-    let public_key = KeriPublicKey::parse(key_encoded.as_str())
-        .map(|k| k.as_bytes().to_vec())
+    let keri_key = KeriPublicKey::parse(key_encoded.as_str())
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
+    let curve = keri_key.curve();
+    let public_key = keri_key.as_bytes().to_vec();
 
     Ok(DidKeriResolution {
         #[allow(clippy::disallowed_methods)] // INVARIANT: parse_did_keri() above validated the did:keri format
         did: IdentityDID::new_unchecked(did),
         prefix,
         public_key,
+        curve,
         sequence: state.sequence,
         can_rotate: state.can_rotate(),
         is_abandoned: state.is_abandoned,
@@ -138,7 +143,7 @@ pub fn resolve_did_keri(repo: &Repository, did: &str) -> Result<DidKeriResolutio
 pub fn resolve_did_keri_at_sequence(
     repo: &Repository,
     did: &str,
-    target_sequence: u64,
+    target_sequence: u128,
 ) -> Result<DidKeriResolution, ResolveError> {
     let prefix = parse_did_keri(did)?;
 
@@ -165,15 +170,17 @@ pub fn resolve_did_keri_at_sequence(
     let state = validate_kel(&events_subset)?;
 
     let key_encoded = state.current_key().ok_or(ResolveError::NoCurrentKey)?;
-    let public_key = KeriPublicKey::parse(key_encoded.as_str())
-        .map(|k| k.as_bytes().to_vec())
+    let keri_key = KeriPublicKey::parse(key_encoded.as_str())
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
+    let curve = keri_key.curve();
+    let public_key = keri_key.as_bytes().to_vec();
 
     Ok(DidKeriResolution {
         #[allow(clippy::disallowed_methods)] // INVARIANT: parse_did_keri() above validated the did:keri format
         did: IdentityDID::new_unchecked(did),
         prefix,
         public_key,
+        curve,
         sequence: state.sequence,
         can_rotate: state.can_rotate(),
         is_abandoned: state.is_abandoned,

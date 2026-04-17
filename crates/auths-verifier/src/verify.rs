@@ -139,29 +139,6 @@ pub async fn verify_device_authorization(
         .await
 }
 
-/// Resolve a `did:key:` DID to raw Ed25519 public key bytes.
-///
-/// Args:
-/// * `did`: A DID string in `did:key:z...` format. KERI DIDs (`did:keri:`) contain
-///   opaque SAIDs (not encoded keys) and require external key state resolution.
-///
-/// Usage:
-/// ```ignore
-/// let pk_bytes = did_to_ed25519("did:key:z6Mkf...")?;
-/// ```
-pub fn did_to_ed25519(did: &str) -> Result<Vec<u8>, AttestationError> {
-    if did.starts_with("did:key:") {
-        auths_crypto::did_key_to_ed25519(did)
-            .map(|k| k.to_vec())
-            .map_err(|e| AttestationError::DidResolutionError(e.to_string()))
-    } else {
-        Err(AttestationError::DidResolutionError(format!(
-            "Cannot extract key from DID method (requires external resolution): {}",
-            did
-        )))
-    }
-}
-
 use crate::types::DeviceDID;
 
 /// Checks if a device appears in a list of **already-verified** attestations.
@@ -214,11 +191,11 @@ pub struct DeviceLinkVerification {
     pub key_state: Option<auths_keri::KeyState>,
     /// Sequence number of the IXN event anchoring the attestation seal (if found).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub seal_sequence: Option<u64>,
+    pub seal_sequence: Option<u128>,
 }
 
 impl DeviceLinkVerification {
-    fn success(key_state: auths_keri::KeyState, seal_sequence: Option<u64>) -> Self {
+    fn success(key_state: auths_keri::KeyState, seal_sequence: Option<u128>) -> Self {
         Self {
             valid: true,
             error: None,
@@ -583,6 +560,11 @@ mod tests {
         DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, pk).unwrap()
     }
 
+    /// Build a `did:key:z...` string from a 32-byte Ed25519 public key (test helper).
+    fn ed25519_did(pk: &[u8; 32]) -> String {
+        DeviceDID::from_public_key(pk, auths_crypto::CurveType::Ed25519).to_string()
+    }
+
     struct TestClock(DateTime<Utc>);
     impl ClockProvider for TestClock {
         fn now(&self) -> DateTime<Utc> {
@@ -665,9 +647,9 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_single_valid_attestation() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -690,9 +672,9 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_revoked_attestation_returns_revoked() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -717,9 +699,9 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_expired_attestation_returns_expired() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -744,9 +726,9 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_invalid_signature_returns_invalid_signature() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let mut att = create_signed_attestation(
             &root_kp,
@@ -776,11 +758,11 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_broken_link_returns_broken_chain() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device1_kp, device1_pk) = create_test_keypair(&[2u8; 32]);
-        let device1_did = auths_crypto::ed25519_pubkey_to_did_key(&device1_pk);
+        let device1_did = ed25519_did(&device1_pk);
         let (device2_kp, device2_pk) = create_test_keypair(&[3u8; 32]);
-        let device2_did = auths_crypto::ed25519_pubkey_to_did_key(&device2_pk);
+        let device2_did = ed25519_did(&device2_pk);
 
         let att1 = create_signed_attestation(
             &root_kp,
@@ -815,11 +797,11 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_valid_three_level_chain() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (identity_kp, identity_pk) = create_test_keypair(&[2u8; 32]);
-        let identity_did = auths_crypto::ed25519_pubkey_to_did_key(&identity_pk);
+        let identity_did = ed25519_did(&identity_pk);
         let (device_kp, device_pk) = create_test_keypair(&[3u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att1 = create_signed_attestation(
             &root_kp,
@@ -851,11 +833,11 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_revoked_intermediate_returns_revoked() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (identity_kp, identity_pk) = create_test_keypair(&[2u8; 32]);
-        let identity_did = auths_crypto::ed25519_pubkey_to_did_key(&identity_pk);
+        let identity_did = ed25519_did(&identity_pk);
         let (device_kp, device_pk) = create_test_keypair(&[3u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att1 = create_signed_attestation(
             &root_kp,
@@ -891,9 +873,9 @@ mod tests {
     #[tokio::test]
     async fn verify_at_time_valid_before_expiration() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, _) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let device_did = ed25519_did(&root_pk);
 
         let expires = fixed_now() + Duration::days(30);
         let att = create_signed_attestation(
@@ -915,9 +897,9 @@ mod tests {
     #[tokio::test]
     async fn verify_at_time_expired_after_expiration() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, _) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let device_did = ed25519_did(&root_pk);
 
         let expires = fixed_now() + Duration::days(30);
         let att = create_signed_attestation(
@@ -940,9 +922,9 @@ mod tests {
     #[tokio::test]
     async fn verify_at_time_signature_always_checked() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, _) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let device_did = ed25519_did(&root_pk);
 
         let mut att = create_signed_attestation(
             &root_kp,
@@ -972,9 +954,9 @@ mod tests {
     #[tokio::test]
     async fn verify_at_time_with_past_time_skips_skew_check() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, _) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let device_did = ed25519_did(&root_pk);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -995,9 +977,9 @@ mod tests {
     #[tokio::test]
     async fn verify_with_keys_still_works() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, _) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let device_did = ed25519_did(&root_pk);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1020,9 +1002,9 @@ mod tests {
     #[test]
     fn is_device_listed_returns_true_for_valid_attestation() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
@@ -1045,9 +1027,9 @@ mod tests {
     #[test]
     fn is_device_listed_returns_false_for_no_attestations() {
         let (_, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (_, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         assert!(!is_device_listed(&root_did, &device_did, &[], fixed_now()));
@@ -1056,9 +1038,9 @@ mod tests {
     #[test]
     fn is_device_listed_returns_false_for_expired_attestation() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
@@ -1081,9 +1063,9 @@ mod tests {
     #[test]
     fn is_device_listed_returns_false_for_revoked_attestation() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
@@ -1106,9 +1088,9 @@ mod tests {
     #[test]
     fn is_device_listed_returns_true_if_one_valid_among_many() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att_expired = verified(create_signed_attestation(
@@ -1147,11 +1129,11 @@ mod tests {
     #[test]
     fn is_device_listed_returns_false_for_wrong_identity() {
         let (_, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (other_kp, other_pk) = create_test_keypair(&[3u8; 32]);
-        let other_did = auths_crypto::ed25519_pubkey_to_did_key(&other_pk);
+        let other_did = ed25519_did(&other_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
@@ -1173,11 +1155,11 @@ mod tests {
     #[test]
     fn is_device_listed_returns_false_for_wrong_device() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let (_, other_device_pk) = create_test_keypair(&[4u8; 32]);
-        let other_device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&other_device_pk);
+        let other_device_did_str = ed25519_did(&other_device_pk);
         let other_device_did = DeviceDID::new_unchecked(&other_device_did_str);
 
         let att = create_signed_attestation(
@@ -1261,9 +1243,9 @@ mod tests {
     #[tokio::test]
     async fn verify_with_capability_succeeds_when_capability_present() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation_with_caps(
             &root_kp,
@@ -1282,9 +1264,9 @@ mod tests {
     #[tokio::test]
     async fn verify_with_capability_fails_when_capability_missing() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation_with_caps(
             &root_kp,
@@ -1313,9 +1295,9 @@ mod tests {
     #[tokio::test]
     async fn verify_with_capability_fails_for_invalid_signature() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let mut att = create_signed_attestation_with_caps(
             &root_kp,
@@ -1341,9 +1323,9 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_with_capability_succeeds_for_single_link() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation_with_caps(
             &root_kp,
@@ -1363,11 +1345,11 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_with_capability_uses_intersection() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (identity_kp, identity_pk) = create_test_keypair(&[2u8; 32]);
-        let identity_did = auths_crypto::ed25519_pubkey_to_did_key(&identity_pk);
+        let identity_did = ed25519_did(&identity_pk);
         let (device_kp, device_pk) = create_test_keypair(&[3u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att1 = create_signed_attestation_with_org_fields(
             &root_kp,
@@ -1424,9 +1406,9 @@ mod tests {
     #[tokio::test]
     async fn verify_attestation_rejects_tampered_role() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let mut att = create_signed_attestation_with_org_fields(
             &root_kp,
@@ -1454,9 +1436,9 @@ mod tests {
     #[tokio::test]
     async fn verify_attestation_rejects_tampered_capabilities() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let mut att = create_signed_attestation_with_org_fields(
             &root_kp,
@@ -1484,9 +1466,9 @@ mod tests {
     #[tokio::test]
     async fn verify_attestation_rejects_tampered_delegated_by() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let mut att = create_signed_attestation_with_org_fields(
             &root_kp,
@@ -1514,9 +1496,9 @@ mod tests {
     #[tokio::test]
     async fn verify_attestation_valid_with_org_fields() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation_with_org_fields(
             &root_kp,
@@ -1581,9 +1563,9 @@ mod tests {
     #[tokio::test]
     async fn verify_attestation_created_1_hour_ago_succeeds() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let one_hour_ago = fixed_now() - Duration::hours(1);
         let att = create_signed_attestation_with_timestamp(
@@ -1605,9 +1587,9 @@ mod tests {
     #[tokio::test]
     async fn verify_attestation_created_30_days_ago_succeeds() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let thirty_days_ago = fixed_now() - Duration::days(30);
         let att = create_signed_attestation_with_timestamp(
@@ -1629,9 +1611,9 @@ mod tests {
     #[tokio::test]
     async fn verify_attestation_with_future_timestamp_fails() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let ten_minutes_future = fixed_now() + Duration::minutes(10);
         let att = create_signed_attestation_with_timestamp(
@@ -1658,9 +1640,9 @@ mod tests {
     #[tokio::test]
     async fn verify_device_authorization_returns_valid_for_signed_attestation() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
@@ -1685,9 +1667,9 @@ mod tests {
     #[tokio::test]
     async fn verify_device_authorization_returns_broken_chain_for_no_attestations() {
         let (_, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (_, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let result = test_verifier()
@@ -1707,9 +1689,9 @@ mod tests {
     #[tokio::test]
     async fn verify_device_authorization_fails_for_forged_signature() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let mut att = create_signed_attestation(
@@ -1739,9 +1721,9 @@ mod tests {
     #[tokio::test]
     async fn verify_device_authorization_fails_for_wrong_issuer_key() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
         let (_, wrong_pk) = create_test_keypair(&[99u8; 32]);
 
@@ -1769,9 +1751,9 @@ mod tests {
     #[tokio::test]
     async fn verify_device_authorization_checks_expiry_and_revocation() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did_str = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did_str = ed25519_did(&device_pk);
         let device_did = DeviceDID::new_unchecked(&device_did_str);
 
         let att_expired = create_signed_attestation(
@@ -1817,7 +1799,7 @@ mod tests {
         witness_kp: &Ed25519KeyPair,
         witness_did: &str,
         event_said: &str,
-        seq: u64,
+        seq: u128,
     ) -> auths_keri::witness::SignedReceipt {
         let receipt = auths_keri::witness::Receipt {
             v: auths_keri::VersionString::placeholder(),
@@ -1837,9 +1819,9 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_with_witnesses_valid() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1904,9 +1886,9 @@ mod tests {
     #[tokio::test]
     async fn verify_chain_with_witnesses_quorum_fails() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = auths_crypto::ed25519_pubkey_to_did_key(&root_pk);
+        let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1966,7 +1948,7 @@ mod tests {
 
         // Device remains Ed25519 for this test — matches real-world usage.
         let (device_kp, device_pk) = create_test_keypair(&[42u8; 32]);
-        let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+        let device_did = ed25519_did(&device_pk);
 
         let mut att = Attestation {
             version: 1,

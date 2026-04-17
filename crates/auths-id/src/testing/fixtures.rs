@@ -7,8 +7,8 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
 use crate::keri::event::{CesrKey, Event, IcpEvent, KeriSequence, Threshold, VersionString};
+use crate::keri::finalize_icp_event;
 use crate::keri::types::{Prefix, Said};
-use crate::keri::{finalize_icp_event, serialize_for_signing};
 
 /// Minimal signed inception event for registry contract tests.
 ///
@@ -52,15 +52,10 @@ pub fn test_inception_event(key_seed: &str) -> Event {
         b: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
-    let mut finalized = finalize_icp_event(icp).expect("fixture event must finalize");
-    let canonical =
-        serialize_for_signing(&Event::Icp(finalized.clone())).expect("must serialize for signing");
-    let sig = keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+    let finalized = finalize_icp_event(icp).expect("fixture event must finalize");
+    let _ = keypair; // signatures attach as CESR attachments, not embedded in the event body.
     Event::Icp(finalized)
 }
 

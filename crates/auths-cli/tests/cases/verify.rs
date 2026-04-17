@@ -17,8 +17,8 @@ fn create_signed_attestation(
     let device_pk: [u8; 32] = device_kp.public_key().as_ref().try_into().unwrap();
     let issuer_pk: [u8; 32] = issuer_kp.public_key().as_ref().try_into().unwrap();
 
-    let device_did = DeviceDID::from_ed25519(&device_pk);
-    let issuer_did = DeviceDID::from_ed25519(&issuer_pk);
+    let device_did = DeviceDID::from_public_key(&device_pk, auths_crypto::CurveType::Ed25519);
+    let issuer_did = DeviceDID::from_public_key(&issuer_pk, auths_crypto::CurveType::Ed25519);
 
     let mut att = AttestationBuilder::default()
         .rid("test-rid")

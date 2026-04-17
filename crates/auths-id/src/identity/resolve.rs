@@ -55,9 +55,11 @@ impl DefaultDidResolver {
         let resolution: DidKeriResolution = resolve_did_keri(&repo, did)
             .map_err(|e| DidResolverError::Resolution(e.to_string()))?;
 
+        let curve = resolution.curve;
         Ok(ResolvedDid::Keri {
             did: did.to_string(),
             public_key_bytes: resolution.public_key,
+            curve,
             sequence: resolution.sequence,
             can_rotate: resolution.can_rotate,
         })
@@ -128,9 +130,11 @@ impl DidResolver for RegistryDidResolver {
             })?;
             let parsed = KeriPublicKey::parse(key_encoded.as_str())
                 .map_err(|e| DidResolverError::DidKeyDecodingFailed(e.to_string()))?;
+            let curve = parsed.curve();
             Ok(ResolvedDid::Keri {
                 did: did.to_string(),
                 public_key_bytes: parsed.into_bytes(),
+                curve,
                 sequence: key_state.sequence,
                 can_rotate: key_state.can_rotate(),
             })
@@ -152,7 +156,7 @@ impl DidResolver for RegistryDidResolver {
     }
 }
 
-// fn-116.2: `did_key_to_ed25519` and `ed25519_to_did_key` wrappers were deleted.
+// `did_key_to_ed25519` and `ed25519_to_did_key` wrappers were deleted.
 // Callers should use `auths_crypto::did_key_decode` (returns curve-tagged
 // `DecodedDidKey`) and `auths_crypto::{ed25519_pubkey_to_did_key, p256_pubkey_to_did_key}`
 // directly — there is no need for a re-export layer that hardcodes Ed25519.
@@ -178,9 +182,15 @@ mod tests {
     #[test]
     fn did_key_roundtrip() {
         let key_bytes = [42u8; 32];
-        let did = auths_crypto::ed25519_pubkey_to_did_key(&key_bytes);
-        let decoded = auths_crypto::did_key_to_ed25519(&did).unwrap();
-        assert_eq!(decoded, key_bytes);
+        let did = auths_verifier::types::DeviceDID::from_public_key(
+            &key_bytes,
+            auths_crypto::CurveType::Ed25519,
+        );
+        let decoded = auths_crypto::did_key_decode(did.as_str()).unwrap();
+        match decoded {
+            auths_crypto::DecodedDidKey::Ed25519(pk) => assert_eq!(pk, key_bytes),
+            _ => panic!("expected Ed25519"),
+        }
     }
 
     #[test]
@@ -188,7 +198,9 @@ mod tests {
         let resolver = DefaultDidResolver::new();
 
         let key = [1u8; 32];
-        let did = auths_crypto::ed25519_pubkey_to_did_key(&key);
+        let did =
+            auths_verifier::DeviceDID::from_public_key(&key, auths_crypto::CurveType::Ed25519)
+                .to_string();
 
         let resolved = resolver.resolve(&did).unwrap();
         assert_eq!(resolved.public_key_bytes(), &key);

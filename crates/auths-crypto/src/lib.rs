@@ -20,8 +20,7 @@ pub mod ssh;
 pub mod webcrypto_provider;
 
 pub use did_key::{
-    DecodedDidKey, DidKeyError, did_key_decode, did_key_to_ed25519, did_key_to_p256,
-    ed25519_pubkey_to_did_keri, ed25519_pubkey_to_did_key, p256_pubkey_to_did_key,
+    DecodedDidKey, DidKeyError, did_key_decode, did_key_to_p256, ed25519_pubkey_to_did_keri,
 };
 pub use error::AuthsErrorInfo;
 pub use hash256::Hash256;

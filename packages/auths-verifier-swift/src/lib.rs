@@ -150,7 +150,7 @@ impl From<RustVerificationReport> for VerificationReport {
 ///
 /// # Arguments
 /// * `attestation_json` - The attestation as a JSON string
-/// * `issuer_pk_hex` - The issuer's Ed25519 public key in hex format (64 chars)
+/// * `issuer_pk_hex` - The issuer's signing public key in hex format.
 ///
 /// # Returns
 /// VerificationResult with valid flag and optional error message
@@ -215,7 +215,7 @@ pub fn verify_attestation(attestation_json: String, issuer_pk_hex: String) -> Ve
 ///
 /// # Arguments
 /// * `attestations_json` - List of attestation JSON strings
-/// * `root_pk_hex` - The root identity's Ed25519 public key in hex format
+/// * `root_pk_hex` - The root identity's signing public key in hex format.
 ///
 /// # Returns
 /// VerificationReport with status, chain details, and warnings
@@ -266,7 +266,7 @@ pub fn verify_chain(
 /// * `identity_did` - The identity DID string
 /// * `device_did` - The device DID string
 /// * `attestations_json` - List of attestation JSON strings
-/// * `identity_pk_hex` - The identity's Ed25519 public key in hex format (64 chars)
+/// * `identity_pk_hex` - The identity's signing public key in hex format.
 ///
 /// # Returns
 /// VerificationReport with verification details

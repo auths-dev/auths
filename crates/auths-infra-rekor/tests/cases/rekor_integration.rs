@@ -41,7 +41,14 @@ async fn rekor_happy_path_submit_and_verify() {
     let sig = keypair.sign(attestation);
 
     // Submit to Rekor
-    let submission = client.submit(attestation, public_key, sig.as_ref()).await;
+    let submission = client
+        .submit(
+            attestation,
+            public_key,
+            auths_crypto::CurveType::Ed25519,
+            sig.as_ref(),
+        )
+        .await;
 
     match submission {
         Ok(sub) => {
@@ -91,7 +98,9 @@ async fn unreachable_endpoint_returns_network_error() {
     // supply a 32-byte Ed25519-shaped placeholder so the check passes and the
     // test actually exercises the network path.
     let pk = [0u8; 32];
-    let result = client.submit(b"test", &pk, b"sig").await;
+    let result = client
+        .submit(b"test", &pk, auths_crypto::CurveType::Ed25519, b"sig")
+        .await;
     assert!(matches!(result, Err(LogError::NetworkError(_))));
 }
 
@@ -100,7 +109,9 @@ async fn payload_size_rejection_is_local() {
     let client = &*TEST_REKOR;
     let big = vec![0u8; 101 * 1024]; // > 100KB
     let pk = [0u8; 32];
-    let result = client.submit(&big, &pk, b"sig").await;
+    let result = client
+        .submit(&big, &pk, auths_crypto::CurveType::Ed25519, b"sig")
+        .await;
     match result {
         Err(LogError::SubmissionRejected { reason }) => {
             assert!(reason.contains("exceeds max size"));
@@ -137,7 +148,14 @@ async fn ghsa_content_mismatch_detected() {
     use auths_sdk::workflows::log_submit::submit_attestation_to_log;
 
     let log = FakeTransparencyLog::succeeding();
-    let result = submit_attestation_to_log(b"original attestation", b"pk", b"sig", &log).await;
+    let result = submit_attestation_to_log(
+        b"original attestation",
+        b"pk",
+        auths_crypto::CurveType::default(),
+        b"sig",
+        &log,
+    )
+    .await;
     assert!(result.is_ok());
 
     // Now verify that a DIFFERENT attestation's hash does NOT match
@@ -160,7 +178,14 @@ async fn checkpoint_proof_root_mismatch_detected() {
     use auths_sdk::workflows::log_submit::submit_attestation_to_log;
 
     let log = FakeTransparencyLog::succeeding();
-    let result = submit_attestation_to_log(b"test", b"pk", b"sig", &log).await;
+    let result = submit_attestation_to_log(
+        b"test",
+        b"pk",
+        auths_crypto::CurveType::default(),
+        b"sig",
+        &log,
+    )
+    .await;
     assert!(result.is_ok());
 
     let bundle = result.unwrap();
@@ -183,9 +208,15 @@ async fn offline_verification_no_network() {
 
     // Step 1: produce a bundle using the fake
     let log = FakeTransparencyLog::succeeding();
-    let bundle = submit_attestation_to_log(b"offline test data", b"pk", b"sig", &log)
-        .await
-        .unwrap();
+    let bundle = submit_attestation_to_log(
+        b"offline test data",
+        b"pk",
+        auths_crypto::CurveType::default(),
+        b"sig",
+        &log,
+    )
+    .await
+    .unwrap();
 
     // Step 2: verify the inclusion proof offline (no network calls)
     let leaf_hash = hash_leaf(b"offline test data");
@@ -227,7 +258,14 @@ async fn pluggability_same_flow_different_backends() {
 
     // Run with FakeTransparencyLog
     let fake = FakeTransparencyLog::succeeding();
-    let fake_result = submit_attestation_to_log(attestation, pk, sig, &fake).await;
+    let fake_result = submit_attestation_to_log(
+        attestation,
+        pk,
+        auths_crypto::CurveType::default(),
+        sig,
+        &fake,
+    )
+    .await;
     assert!(fake_result.is_ok(), "fake backend should succeed");
 
     // Run with RekorClient (only if AUTHS_TEST_REKOR is set)
@@ -237,8 +275,14 @@ async fn pluggability_same_flow_different_backends() {
         let real_sig = keypair.sign(attestation);
 
         let rekor = &*TEST_REKOR;
-        let rekor_result =
-            submit_attestation_to_log(attestation, real_pk, real_sig.as_ref(), rekor).await;
+        let rekor_result = submit_attestation_to_log(
+            attestation,
+            real_pk,
+            auths_crypto::CurveType::Ed25519,
+            real_sig.as_ref(),
+            rekor,
+        )
+        .await;
 
         match rekor_result {
             Ok(bundle) => {

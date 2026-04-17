@@ -79,7 +79,7 @@ fn test_verify_device_did_matches() {
     use auths_verifier::types::DeviceDID;
 
     let pubkey = [0x42u8; 32];
-    let expected_did = DeviceDID::from_ed25519(&pubkey);
+    let expected_did = DeviceDID::from_public_key(&pubkey, auths_crypto::CurveType::Ed25519);
     let result = pairing::verify_device_did(
         &pubkey,
         auths_crypto::CurveType::Ed25519,

@@ -451,20 +451,25 @@ pub async fn verify_chain_with_witnesses(
     }
 }
 
-/// Verify an action envelope's Ed25519 signature with a raw public key.
+/// Verify an action envelope's signature with a raw public key.
+/// Curve dispatched via the `curve` argument; supports Ed25519 and P-256.
 ///
 /// Args:
 /// * `envelope_json`: The complete action envelope as a JSON string.
-/// * `public_key_hex`: The signer's Ed25519 public key in hex format (64 chars).
+/// * `public_key_hex`: The signer's public key in hex format
+///   (64 chars for Ed25519, 66 or 130 chars for P-256).
+/// * `curve`: Optional curve hint (`"Ed25519"` / `"P256"`). Absent → P-256
+///   default per the workspace wire-format curve-tagging rule.
 ///
 /// Usage:
 /// ```ignore
-/// let result = verify_action_envelope("{...}".into(), "abcd1234...".into())?;
+/// let result = verify_action_envelope("{...}".into(), "abcd1234...".into(), Some("P256".into()))?;
 /// ```
 #[napi]
 pub fn verify_action_envelope(
     envelope_json: String,
     public_key_hex: String,
+    curve: Option<String>,
 ) -> napi::Result<NapiVerificationResult> {
     if envelope_json.len() > MAX_ATTESTATION_JSON_SIZE {
         return Err(format_error(
@@ -476,7 +481,14 @@ pub fn verify_action_envelope(
         ));
     }
 
-    let pk_bytes = decode_pk_hex(&public_key_hex, "public key")?;
+    let pk_bytes = hex::decode(&public_key_hex).map_err(|e| {
+        format_error(
+            "AUTHS_INVALID_INPUT",
+            format!("Invalid public key hex: {e}"),
+        )
+    })?;
+    let curve_type = parse_curve_hint(curve);
+    validate_pk_len_for_curve(&pk_bytes, curve_type)?;
 
     let envelope: ActionEnvelope = serde_json::from_str(&envelope_json)
         .map_err(|e| format_error("AUTHS_INVALID_INPUT", format!("Invalid envelope JSON: {e}")))?;
@@ -496,8 +508,16 @@ pub fn verify_action_envelope(
         .canonical_bytes()
         .map_err(|e| format_error("AUTHS_SERIALIZATION_ERROR", e))?;
 
-    let key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &pk_bytes);
-    match key.verify(&canonical, &sig_bytes) {
+    let verify_result = match curve_type {
+        CurveType::Ed25519 => {
+            auths_crypto::RingCryptoProvider::ed25519_verify(&pk_bytes, &canonical, &sig_bytes)
+        }
+        CurveType::P256 => {
+            auths_crypto::RingCryptoProvider::p256_verify(&pk_bytes, &canonical, &sig_bytes)
+        }
+    };
+
+    match verify_result {
         Ok(()) => Ok(NapiVerificationResult {
             valid: true,
             error: None,
@@ -505,8 +525,38 @@ pub fn verify_action_envelope(
         }),
         Err(_) => Ok(NapiVerificationResult {
             valid: false,
-            error: Some("Ed25519 signature verification failed".to_string()),
+            error: Some(format!("{curve_type} signature verification failed")),
             error_code: Some("AUTHS_ISSUER_SIG_FAILED".to_string()),
         }),
+    }
+}
+
+/// Parse the FFI `curve` hint. `None` or unrecognized → P-256 default.
+fn parse_curve_hint(curve: Option<String>) -> CurveType {
+    match curve.as_deref() {
+        Some("Ed25519") | Some("ed25519") => CurveType::Ed25519,
+        _ => CurveType::P256,
+    }
+}
+
+/// Validate that a raw pubkey's byte length matches the declared curve.
+/// Curve comes from an explicit in-band tag; length dispatch never runs.
+fn validate_pk_len_for_curve(bytes: &[u8], curve: CurveType) -> napi::Result<()> {
+    let ok = match curve {
+        CurveType::Ed25519 => bytes.len() == 32,
+        CurveType::P256 => matches!(bytes.len(), 33 | 65),
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(format_error(
+            "AUTHS_INVALID_INPUT",
+            format!(
+                "Public key length {} does not match {} (expected {} bytes)",
+                bytes.len(),
+                curve,
+                curve.public_key_len(),
+            ),
+        ))
     }
 }

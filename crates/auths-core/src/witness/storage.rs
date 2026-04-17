@@ -93,7 +93,7 @@ impl WitnessStorage {
         &self,
         now: DateTime<Utc>,
         prefix: &Prefix,
-        seq: u64,
+        seq: u128,
         said: &Said,
     ) -> Result<(), WitnessError> {
         let now = now.to_rfc3339();
@@ -119,7 +119,7 @@ impl WitnessStorage {
     }
 
     /// Get the first-seen SAID for a (prefix, seq).
-    pub fn get_first_seen(&self, prefix: &Prefix, seq: u64) -> Result<Option<Said>, WitnessError> {
+    pub fn get_first_seen(&self, prefix: &Prefix, seq: u128) -> Result<Option<Said>, WitnessError> {
         let mut stmt = self
             .conn
             .prepare("SELECT said FROM first_seen WHERE prefix = ? AND seq = ?")
@@ -151,7 +151,7 @@ impl WitnessStorage {
         &self,
         now: DateTime<Utc>,
         prefix: &Prefix,
-        seq: u64,
+        seq: u128,
         said: &Said,
     ) -> Result<Option<Said>, WitnessError> {
         match self.get_first_seen(prefix, seq)? {

@@ -64,7 +64,7 @@ impl EventLogReader for GitEventLog<'_> {
             .map_err(to_kel)
     }
 
-    fn read_event_at(&self, prefix: &Prefix, seq: u64) -> Result<Vec<u8>, KelStorageError> {
+    fn read_event_at(&self, prefix: &Prefix, seq: u128) -> Result<Vec<u8>, KelStorageError> {
         let refname = Self::kel_ref(prefix.as_str());
         self.repo
             .with_repo(|repo| {

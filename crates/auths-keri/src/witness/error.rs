@@ -24,7 +24,7 @@ pub struct DuplicityEvidence {
     /// The KERI prefix of the identity
     pub prefix: Prefix,
     /// The sequence number where duplicity was detected
-    pub sequence: u64,
+    pub sequence: u128,
     /// SAID of the first event seen (the "canonical" one)
     pub event_a_said: Said,
     /// SAID of the conflicting event

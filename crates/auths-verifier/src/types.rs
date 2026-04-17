@@ -351,18 +351,28 @@ impl DeviceDID {
                 Self(format!("did:key:z{}", encoded))
             }
             auths_crypto::CurveType::P256 => {
-                #[allow(clippy::disallowed_methods)]
-                // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-                Self::new_unchecked(auths_crypto::p256_pubkey_to_did_key(pubkey))
+                let mut prefixed = vec![0x80, 0x24];
+                prefixed.extend_from_slice(pubkey);
+                let encoded = bs58::encode(prefixed).into_string();
+                Self(format!("did:key:z{}", encoded))
             }
         }
     }
 
-    /// Constructs a `did:key:z...` identifier from a 32-byte Ed25519 public key.
+    /// Constructs a `did:key:z...` identifier from a [`auths_crypto::TypedSignerKey`].
     ///
-    /// This uses the multicodec prefix for Ed25519 (0xED 0x01) and encodes it with base58btc.
-    pub fn from_ed25519(pubkey: &[u8; 32]) -> Self {
-        Self::from_public_key(pubkey, auths_crypto::CurveType::Ed25519)
+    /// Single curve-dispatching constructor that replaces the manual
+    /// `match curve { Ed25519 => from_ed25519, P256 => p256_pubkey_to_did_key }`
+    /// pattern at SDK / FFI call sites. Picks the right multicodec varint per
+    /// the signer's typed curve, so callers never re-derive curve from byte
+    /// length.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let did = DeviceDID::from_typed_pubkey(&typed_signer);
+    /// ```
+    pub fn from_typed_pubkey(signer: &auths_crypto::TypedSignerKey) -> Self {
+        Self::from_public_key(signer.public_key(), signer.curve())
     }
 
     /// Returns a sanitized version of the DID for use in Git refs,
@@ -463,11 +473,26 @@ impl Deref for DeviceDID {
 /// // (example key is wrong length — a real 32-byte hex key would succeed)
 /// ```
 pub fn signer_hex_to_did(hex_key: &str) -> Result<DeviceDID, DidConversionError> {
+    signer_hex_to_did_with_curve(hex_key, auths_crypto::CurveType::P256)
+}
+
+/// Convert a hex-encoded public key to a `did:key:` device DID with explicit curve.
+///
+/// ```rust
+/// # use auths_verifier::types::signer_hex_to_did_with_curve;
+/// # use auths_crypto::CurveType;
+/// let did = signer_hex_to_did_with_curve("d75a980182b10ab7d54bfed3c964073a0ee172f3daa3f4a18446b7ddc8", CurveType::P256).unwrap_err();
+/// ```
+pub fn signer_hex_to_did_with_curve(
+    hex_key: &str,
+    curve: auths_crypto::CurveType,
+) -> Result<DeviceDID, DidConversionError> {
     let bytes = hex::decode(hex_key).map_err(|e| DidConversionError::InvalidHex(e.to_string()))?;
-    let arr: [u8; 32] = bytes
-        .try_into()
-        .map_err(|v: Vec<u8>| DidConversionError::WrongKeyLength(v.len()))?;
-    Ok(DeviceDID::from_ed25519(&arr))
+    let expected = curve.public_key_len();
+    if bytes.len() != expected {
+        return Err(DidConversionError::WrongKeyLength(bytes.len()));
+    }
+    Ok(DeviceDID::from_public_key(&bytes, curve))
 }
 
 /// Validate a DID string (accepts both `did:keri:` and `did:key:` formats).

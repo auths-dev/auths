@@ -318,9 +318,7 @@ fn resolve_identity_key(
             .with_context(|| format!("Failed to parse identity bundle: {:?}", bundle_path))?;
         let pk_bytes = hex::decode(bundle.public_key_hex.as_str())
             .context("Invalid public key hex in bundle")?;
-        let curve = auths_crypto::CurveType::from_public_key_len(pk_bytes.len())
-            .ok_or_else(|| anyhow!("Invalid bundle public key length: {}", pk_bytes.len()))?;
-        let pk = auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
+        let pk = auths_verifier::DevicePublicKey::try_new(bundle.curve, &pk_bytes)
             .map_err(|e| anyhow!("Invalid bundle public key: {e}"))?;
         Ok((pk, bundle.identity_did.into()))
     } else {

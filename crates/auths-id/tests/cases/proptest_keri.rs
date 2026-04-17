@@ -1,7 +1,7 @@
 use auths_core::crypto::said::{compute_next_commitment, compute_said};
 use auths_id::keri::{
     Event, IcpEvent, IxnEvent, KeriSequence, Prefix, RotEvent, Said, Seal, ValidationError,
-    finalize_icp_event, serialize_for_signing, validate_kel, verify_event_said,
+    finalize_icp_event, validate_kel, verify_event_said,
 };
 use auths_keri::{CesrKey, Threshold, VersionString};
 use base64::Engine;
@@ -20,11 +20,6 @@ fn encode_pubkey(kp: &Ed25519KeyPair) -> String {
     format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()))
 }
 
-fn sign_event(event: &Event, kp: &Ed25519KeyPair) -> String {
-    let canonical = serialize_for_signing(event).unwrap();
-    URL_SAFE_NO_PAD.encode(kp.sign(&canonical).as_ref())
-}
-
 fn make_signed_icp(kp: &Ed25519KeyPair, next_commitment: &Said) -> IcpEvent {
     let icp = IcpEvent {
         v: VersionString::placeholder(),
@@ -39,19 +34,16 @@ fn make_signed_icp(kp: &Ed25519KeyPair, next_commitment: &Said) -> IcpEvent {
         b: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
-    let mut finalized = finalize_icp_event(icp).unwrap();
-    finalized.x = sign_event(&Event::Icp(finalized.clone()), kp);
-    finalized
+    finalize_icp_event(icp).unwrap()
 }
 
 fn make_signed_ixn(
     prefix: &Prefix,
     prev_said: &Said,
-    seq: u64,
-    kp: &Ed25519KeyPair,
+    seq: u128,
+    _kp: &Ed25519KeyPair,
     seals: Vec<Seal>,
 ) -> IxnEvent {
     let mut ixn = IxnEvent {
@@ -61,19 +53,17 @@ fn make_signed_ixn(
         s: KeriSequence::new(seq),
         p: prev_said.clone(),
         a: seals,
-        x: String::new(),
     };
 
     let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
     ixn.d = compute_said(&value).unwrap();
-    ixn.x = sign_event(&Event::Ixn(ixn.clone()), kp);
     ixn
 }
 
 fn make_signed_rot(
     prefix: &Prefix,
     prev_said: &Said,
-    seq: u64,
+    seq: u128,
     new_kp: &Ed25519KeyPair,
     next_commitment: &Said,
 ) -> RotEvent {
@@ -92,12 +82,10 @@ fn make_signed_rot(
         ba: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
     let value = serde_json::to_value(Event::Rot(rot.clone())).unwrap();
     rot.d = compute_said(&value).unwrap();
-    rot.x = sign_event(&Event::Rot(rot.clone()), new_kp);
     rot
 }
 
@@ -115,7 +103,7 @@ fn build_valid_kel(ixn_count: usize) -> Vec<Event> {
         let ixn = make_signed_ixn(
             &prefix,
             &prev_said,
-            (i + 1) as u64,
+            (i + 1) as u128,
             &kp,
             vec![Seal::digest(format!("EAttest{i}"))],
         );

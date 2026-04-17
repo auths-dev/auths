@@ -180,6 +180,47 @@ impl PartialEq<String> for KeyAlias {
     }
 }
 
+/// Migrate a legacy single-key alias `{alias}` to the multi-key form
+/// `{alias}--0`.
+///
+/// Idempotent: safe to call whether or not the migration has already
+/// happened. Reads the legacy slot, writes to the new slot, deletes the
+/// legacy slot. Returns the new alias form.
+///
+/// Behavior matrix:
+/// - Both legacy and `--0` present: no-op, returns `{alias}--0` (assumes
+///   `--0` is authoritative since it's the new convention).
+/// - Only legacy present: copies to `--0`, deletes legacy, returns `--0`.
+/// - Only `--0` present: no-op, returns `--0`.
+/// - Neither present: returns `--0` anyway; the caller's next `load_key`
+///   will surface the absence.
+pub fn migrate_legacy_alias(
+    keychain: &(dyn KeyStorage + Send + Sync),
+    old_alias: &KeyAlias,
+) -> Result<KeyAlias, AgentError> {
+    let new_alias = KeyAlias::new_unchecked(format!("{}--0", old_alias));
+
+    if keychain.load_key(&new_alias).is_ok() {
+        // Already migrated (or a fresh multi-key identity was created without
+        // ever touching the legacy alias). In either case, new form wins.
+        return Ok(new_alias);
+    }
+
+    let (did, role, data) = match keychain.load_key(old_alias) {
+        Ok(v) => v,
+        Err(_) => {
+            // Legacy absent too; nothing to migrate. Caller hits absence on
+            // their next load_key call.
+            return Ok(new_alias);
+        }
+    };
+
+    keychain.store_key(&new_alias, &did, role, &data)?;
+    // Best-effort legacy cleanup; failure here isn't fatal.
+    let _ = keychain.delete_key(old_alias);
+    Ok(new_alias)
+}
+
 /// Platform-agnostic interface for storing and loading private keys securely.
 ///
 /// All implementors must be Send + Sync for thread-safe access.

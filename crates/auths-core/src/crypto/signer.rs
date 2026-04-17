@@ -2,7 +2,6 @@
 
 use crate::config::current_algorithm;
 use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes};
-use crate::crypto::provider_bridge;
 use crate::error::AgentError;
 use auths_crypto::{CurveType, SecureSeed, TypedSeed};
 use auths_verifier::DevicePublicKey;
@@ -23,7 +22,7 @@ pub trait SignerKey: Send + Sync + 'static {
 
 /// SignerKey implementation backed by a curve-tagged seed.
 ///
-/// fn-116.14: carries `DevicePublicKey` instead of bare `[u8; 32]` so callers
+/// carries `DevicePublicKey` instead of bare `[u8; 32]` so callers
 /// can't accidentally drop curve information.
 pub struct SeedSignerKey {
     seed: SecureSeed,
@@ -60,10 +59,12 @@ impl SeedSignerKey {
     /// Preserved for back-compat; use [`SeedSignerKey::from_typed_seed`] for
     /// curve-aware construction.
     pub fn from_seed(seed: SecureSeed) -> Result<Self, AgentError> {
-        let public_key =
-            provider_bridge::ed25519_public_key_from_seed_sync(&seed).map_err(|e| {
+        let pk_vec = auths_crypto::typed_public_key(&TypedSeed::Ed25519(*seed.as_bytes()))
+            .map_err(|e| {
                 AgentError::CryptoError(format!("Failed to derive public key from seed: {}", e))
             })?;
+        #[allow(clippy::expect_used)] // INVARIANT: Ed25519 public key is always 32 bytes
+        let public_key: [u8; 32] = pk_vec.try_into().expect("Ed25519 public key is 32 bytes");
         Ok(Self::new(seed, public_key))
     }
 

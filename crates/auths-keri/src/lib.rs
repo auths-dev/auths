@@ -1,4 +1,4 @@
-// fn-114: crate-level allow during curve-agnostic refactor. Removed or narrowed in fn-114.40 after Phase 4 sweeps.
+// crate-level allow during curve-agnostic refactor. Removed or narrowed in fn-114.40 after Phase 4 sweeps.
 #![allow(clippy::disallowed_methods)]
 #![deny(
     clippy::print_stdout,
@@ -63,7 +63,7 @@ pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::KeriTranslationError;
 pub use events::{
     DipEvent, DrtEvent, Event, IcpEvent, IndexedSignature, IxnEvent, KERI_VERSION_PREFIX,
-    KeriSequence, RotEvent, Seal, SealType, SignedEvent,
+    KeriSequence, RotEvent, Seal, SealType, SignedEvent, parse_attachment, serialize_attachment,
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};

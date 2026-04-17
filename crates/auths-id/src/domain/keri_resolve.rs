@@ -29,15 +29,17 @@ pub fn resolve_from_events(
     let state = validate_kel(events)?;
 
     let key_encoded = state.current_key().ok_or(ResolveError::NoCurrentKey)?;
-    let public_key = KeriPublicKey::parse(key_encoded.as_str())
-        .map(|k| k.as_bytes().to_vec())
+    let keri_key = KeriPublicKey::parse(key_encoded.as_str())
         .map_err(|e| ResolveError::InvalidKeyEncoding(e.to_string()))?;
+    let curve = keri_key.curve();
+    let public_key = keri_key.as_bytes().to_vec();
 
     Ok(DidKeriResolution {
         #[allow(clippy::disallowed_methods)] // INVARIANT: callers pass a did:keri string already validated by parse_did_keri()
         did: IdentityDID::new_unchecked(did),
         prefix: prefix.clone(),
         public_key,
+        curve,
         sequence: state.sequence,
         can_rotate: state.can_rotate(),
         is_abandoned: state.is_abandoned,
@@ -63,7 +65,7 @@ pub fn resolve_from_events_at_sequence(
     events: &[Event],
     did: &str,
     prefix: &Prefix,
-    target_sequence: u64,
+    target_sequence: u128,
 ) -> Result<DidKeriResolution, ResolveError> {
     let events_subset: Vec<_> = events
         .iter()
@@ -123,7 +125,7 @@ pub fn resolve_did_keri_via_port(
 pub fn resolve_did_keri_at_sequence_via_port(
     kel: &dyn KelPort,
     did: &str,
-    target_sequence: u64,
+    target_sequence: u128,
 ) -> Result<DidKeriResolution, ResolveError> {
     let prefix = parse_did_keri(did)?;
 
@@ -140,7 +142,6 @@ mod tests {
     use super::*;
     use crate::keri::{
         CesrKey, Event, IcpEvent, KeriSequence, Said, Threshold, VersionString, finalize_icp_event,
-        serialize_for_signing,
     };
     use auths_core::crypto::said::compute_next_commitment;
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -173,14 +174,9 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
-        let mut finalized = finalize_icp_event(icp).unwrap();
-        let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-        let sig = current_kp.sign(&canonical);
-        finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+        let finalized = finalize_icp_event(icp).unwrap();
         let pub_key = current_kp.public_key().as_ref().to_vec();
         (finalized, pub_key)
     }

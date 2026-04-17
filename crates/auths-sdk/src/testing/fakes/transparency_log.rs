@@ -217,6 +217,7 @@ impl TransparencyLog for FakeTransparencyLog {
         &self,
         leaf_data: &[u8],
         _public_key: &[u8],
+        _curve: auths_crypto::CurveType,
         _signature: &[u8],
     ) -> Result<LogSubmission, LogError> {
         self.check_forced_error()?;
@@ -309,7 +310,9 @@ mod tests {
     #[tokio::test]
     async fn succeeding_submit_returns_valid_proof() {
         let log = FakeTransparencyLog::succeeding();
-        let result = log.submit(b"hello", b"pk", b"sig").await;
+        let result = log
+            .submit(b"hello", b"pk", auths_crypto::CurveType::default(), b"sig")
+            .await;
         assert!(result.is_ok());
         let submission = result.unwrap();
         assert_eq!(submission.leaf_index, 0);
@@ -323,9 +326,18 @@ mod tests {
     async fn succeeding_multiple_submits() {
         let log = FakeTransparencyLog::succeeding();
 
-        let s1 = log.submit(b"a", b"pk", b"sig").await.unwrap();
-        let s2 = log.submit(b"b", b"pk", b"sig").await.unwrap();
-        let s3 = log.submit(b"c", b"pk", b"sig").await.unwrap();
+        let s1 = log
+            .submit(b"a", b"pk", auths_crypto::CurveType::default(), b"sig")
+            .await
+            .unwrap();
+        let s2 = log
+            .submit(b"b", b"pk", auths_crypto::CurveType::default(), b"sig")
+            .await
+            .unwrap();
+        let s3 = log
+            .submit(b"c", b"pk", auths_crypto::CurveType::default(), b"sig")
+            .await
+            .unwrap();
 
         assert_eq!(s1.leaf_index, 0);
         assert_eq!(s2.leaf_index, 1);
@@ -340,7 +352,9 @@ mod tests {
     #[tokio::test]
     async fn failing_returns_configured_error() {
         let log = FakeTransparencyLog::failing(LogError::NetworkError("test error".into()));
-        let result = log.submit(b"hello", b"pk", b"sig").await;
+        let result = log
+            .submit(b"hello", b"pk", auths_crypto::CurveType::default(), b"sig")
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("test error"));
     }
@@ -348,7 +362,9 @@ mod tests {
     #[tokio::test]
     async fn rate_limited_returns_retry_after() {
         let log = FakeTransparencyLog::rate_limited(30);
-        let result = log.submit(b"hello", b"pk", b"sig").await;
+        let result = log
+            .submit(b"hello", b"pk", auths_crypto::CurveType::default(), b"sig")
+            .await;
         match result {
             Err(LogError::RateLimited { retry_after_secs }) => {
                 assert_eq!(retry_after_secs, 30);
@@ -360,7 +376,9 @@ mod tests {
     #[tokio::test]
     async fn calls_are_recorded() {
         let log = FakeTransparencyLog::succeeding();
-        log.submit(b"a", b"pk", b"sig").await.unwrap();
+        log.submit(b"a", b"pk", auths_crypto::CurveType::default(), b"sig")
+            .await
+            .unwrap();
         log.get_checkpoint().await.unwrap();
 
         let calls = log.calls();
@@ -372,7 +390,10 @@ mod tests {
     #[tokio::test]
     async fn trust_root_matches_checkpoint_signature() {
         let log = FakeTransparencyLog::succeeding();
-        let submission = log.submit(b"test", b"pk", b"sig").await.unwrap();
+        let submission = log
+            .submit(b"test", b"pk", auths_crypto::CurveType::default(), b"sig")
+            .await
+            .unwrap();
         let trust_root = log.trust_root();
 
         // The checkpoint should verify against the trust root

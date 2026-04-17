@@ -240,6 +240,11 @@ fn submit_to_log(
     let pk_bytes =
         hex::decode(&pk_hex).map_err(|e| anyhow::anyhow!("invalid public key hex: {e}"))?;
 
+    let pk_curve = match attestation_value["device_public_key"]["curve"].as_str() {
+        Some("ed25519") | Some("Ed25519") => auths_crypto::CurveType::Ed25519,
+        _ => auths_crypto::CurveType::P256,
+    };
+
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| anyhow::anyhow!("Failed to create async runtime: {e}"))?;
 
@@ -256,6 +261,7 @@ fn submit_to_log(
         rt.block_on(auths_sdk::workflows::log_submit::submit_attestation_to_log(
             attestation_json.as_bytes(),
             &pk_bytes,
+            pk_curve,
             sig_bytes,
             log_client.as_ref(),
         ))

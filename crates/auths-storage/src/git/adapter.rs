@@ -826,167 +826,31 @@ impl GitRegistryBackend {
 
 impl RegistryBackend for GitRegistryBackend {
     fn append_event(&self, prefix: &Prefix, event: &Event) -> Result<(), RegistryError> {
-        let repo = self.open_repo()?;
-        let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
-        let navigator = TreeNavigator::new(&repo, base_tree.clone());
-
-        let base_path = identity_path(prefix)?;
-        let seq = event.sequence().value();
-        let event_path = paths::event_file(&base_path, seq);
-        let tip_path = paths::tip_file(&base_path);
-        let state_path = paths::state_file(&base_path);
-
-        // CONSTRAINT 1: Refuse if event file already exists
-        if navigator.exists_path(&event_path) {
-            return Err(RegistryError::EventExists {
-                prefix: prefix.to_string(),
-                seq,
-            });
-        }
-
-        // CONSTRAINT 2: Event prefix must match argument
-        if event.prefix() != prefix {
-            return Err(RegistryError::InvalidPrefix {
-                prefix: prefix.to_string(),
-                reason: format!(
-                    "event prefix '{}' does not match expected '{}'",
-                    event.prefix(),
-                    prefix
-                ),
-            });
-        }
-
-        // CONSTRAINT 3: Sequence must be monotonic
-        let current_tip = navigator
-            .read_blob_path(&tip_path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<TipInfo>(&bytes).ok());
-
-        let expected_seq = current_tip.as_ref().map(|t| t.sequence + 1).unwrap_or(0);
-        if seq != expected_seq {
-            return Err(RegistryError::SequenceGap {
-                prefix: prefix.to_string(),
-                expected: expected_seq,
-                got: seq,
-            });
-        }
-
-        // CONSTRAINT 4: First event must be inception
-        if seq == 0 && !event.is_inception() {
-            return Err(RegistryError::Internal(
-                "First event (seq 0) must be inception".into(),
-            ));
-        }
-
-        // CONSTRAINT 5: Non-inception events must chain to previous SAID
-        if seq > 0 {
-            let prev_said = event.previous().ok_or_else(|| {
-                RegistryError::Internal(format!(
-                    "Event at seq {} must have previous SAID (p field)",
-                    seq
-                ))
-            })?;
-
-            let expected_prev = current_tip
-                .as_ref()
-                .map(|t| t.said.as_str())
-                .ok_or_else(|| {
-                    RegistryError::Internal("No tip found for non-zero sequence".into())
-                })?;
-
-            if prev_said != expected_prev {
-                return Err(RegistryError::SaidMismatch {
-                    expected: expected_prev.to_string(),
-                    actual: prev_said.to_string(),
-                });
-            }
-        }
-
-        // CONSTRAINT 6: Verify SAID matches computed hash
-        verify_event_said(event).map_err(|e| match e {
-            ValidationError::InvalidSaid { expected, actual } => RegistryError::SaidMismatch {
-                expected: expected.to_string(),
-                actual: actual.to_string(),
-            },
-            _ => RegistryError::InvalidEvent {
-                reason: e.to_string(),
-            },
-        })?;
-
-        // Get current state for computing new state and crypto verification
-        let current_state = navigator
-            .read_blob_path(&state_path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<CachedStateJson>(&bytes).ok())
-            .map(|c| c.state);
-
-        // CONSTRAINT 7: Verify cryptographic integrity (signature + pre-rotation commitment)
-        verify_event_crypto(event, current_state.as_ref()).map_err(|e| match e {
-            ValidationError::SignatureFailed { sequence } => RegistryError::InvalidEvent {
-                reason: format!("Signature verification failed at sequence {}", sequence),
-            },
-            ValidationError::CommitmentMismatch { sequence } => RegistryError::InvalidEvent {
-                reason: format!("Pre-rotation commitment mismatch at sequence {}", sequence),
-            },
-            _ => RegistryError::InvalidEvent {
-                reason: e.to_string(),
-            },
-        })?;
-
-        // Build mutations
-        let mut mutator = TreeMutator::new();
-
-        // Write event
-        let event_json = serde_json::to_vec_pretty(event)?;
-        mutator.write_blob(&event_path, event_json);
-
-        // Update tip.json
-        let tip = TipInfo::new(seq, event.said().clone());
-        mutator.write_blob(&tip_path, serde_json::to_vec_pretty(&tip)?);
-
-        // Update state.json
-        let new_state = self.compute_state_after_event(current_state.as_ref(), event)?;
-        let cached_state = CachedStateJson::new(new_state.clone(), event.said().clone());
-        mutator.write_blob(&state_path, serde_json::to_vec_pretty(&cached_state)?);
-
-        // Update metadata if this is a new identity
-        let identity_delta = if seq == 0 { 1 } else { 0 };
-        self.update_metadata(&mut mutator, &navigator, identity_delta, 0, 0)?;
-
-        // Build and commit
-        let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
-        self.create_commit(
-            &repo,
-            new_tree_oid,
-            Some(&parent),
-            &format!("Append event {} seq {}", prefix, seq),
-        )?;
-
-        // Index update: best-effort, Git is source of truth
-        #[cfg(feature = "indexed-storage")]
-        if let Some(index) = &self.index {
-            let indexed = auths_index::IndexedIdentity {
-                prefix: prefix.clone(),
-                current_keys: new_state
-                    .current_keys
-                    .iter()
-                    .map(|k| k.as_str().to_string())
-                    .collect(),
-                sequence: new_state.sequence,
-                tip_said: event.said().clone(),
-                updated_at: self.clock.now(),
-            };
-            // INVARIANT: Mutex poisoning is fatal by design
-            #[allow(clippy::unwrap_used)]
-            if let Err(e) = index.lock().unwrap().upsert_identity(&indexed) {
-                log::warn!("Index update failed for identity {}: {}", prefix, e);
-            }
-        }
-
-        Ok(())
+        self.write_event_tree(prefix, event, &[])
     }
 
-    fn get_event(&self, prefix: &Prefix, seq: u64) -> Result<Event, RegistryError> {
+    fn append_signed_event(
+        &self,
+        prefix: &Prefix,
+        event: &Event,
+        attachment: &[u8],
+    ) -> Result<(), RegistryError> {
+        self.write_event_tree(prefix, event, attachment)
+    }
+
+    fn get_attachment(&self, prefix: &Prefix, seq: u128) -> Result<Option<Vec<u8>>, RegistryError> {
+        let repo = self.open_repo()?;
+        let tree = self.current_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, tree);
+        let base_path = identity_path(prefix)?;
+        let path = paths::event_attachment_file(&base_path, seq);
+        match navigator.read_blob_path(&path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(_) => Ok(None),
+        }
+    }
+
+    fn get_event(&self, prefix: &Prefix, seq: u128) -> Result<Event, RegistryError> {
         let repo = self.open_repo()?;
         let tree = self.current_tree(&repo)?;
         let navigator = TreeNavigator::new(&repo, tree);
@@ -1004,7 +868,7 @@ impl RegistryBackend for GitRegistryBackend {
     fn visit_events(
         &self,
         prefix: &Prefix,
-        from_seq: u64,
+        from_seq: u128,
         visitor: &mut dyn FnMut(&Event) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         let repo = self.open_repo()?;
@@ -1908,6 +1772,184 @@ use async_trait::async_trait;
 use auths_id::storage::driver::{StorageDriver, StorageError as DriverStorageError};
 
 impl GitRegistryBackend {
+    /// Write event + tip + state + (optional) attachment in a single Git commit.
+    ///
+    /// When `attachment` is non-empty, a parallel `events/<seq>.attachments.cesr`
+    /// blob is written alongside the event body. The attachment is the CESR
+    /// text-domain indexed-signature group produced by
+    /// `auths_keri::serialize_attachment`.
+    fn write_event_tree(
+        &self,
+        prefix: &Prefix,
+        event: &Event,
+        attachment: &[u8],
+    ) -> Result<(), RegistryError> {
+        let repo = self.open_repo()?;
+        let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, base_tree.clone());
+
+        let base_path = identity_path(prefix)?;
+        let seq = event.sequence().value();
+        let event_path = paths::event_file(&base_path, seq);
+        let tip_path = paths::tip_file(&base_path);
+        let state_path = paths::state_file(&base_path);
+
+        // CONSTRAINT 1: Refuse if event file already exists
+        if navigator.exists_path(&event_path) {
+            return Err(RegistryError::EventExists {
+                prefix: prefix.to_string(),
+                seq,
+            });
+        }
+
+        // CONSTRAINT 2: Event prefix must match argument
+        if event.prefix() != prefix {
+            return Err(RegistryError::InvalidPrefix {
+                prefix: prefix.to_string(),
+                reason: format!(
+                    "event prefix '{}' does not match expected '{}'",
+                    event.prefix(),
+                    prefix
+                ),
+            });
+        }
+
+        // CONSTRAINT 3: Sequence must be monotonic
+        let current_tip = navigator
+            .read_blob_path(&tip_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<TipInfo>(&bytes).ok());
+
+        let expected_seq = current_tip.as_ref().map(|t| t.sequence + 1).unwrap_or(0);
+        if seq != expected_seq {
+            return Err(RegistryError::SequenceGap {
+                prefix: prefix.to_string(),
+                expected: expected_seq,
+                got: seq,
+            });
+        }
+
+        // CONSTRAINT 4: First event must be inception
+        if seq == 0 && !event.is_inception() {
+            return Err(RegistryError::Internal(
+                "First event (seq 0) must be inception".into(),
+            ));
+        }
+
+        // CONSTRAINT 5: Non-inception events must chain to previous SAID
+        if seq > 0 {
+            let prev_said = event.previous().ok_or_else(|| {
+                RegistryError::Internal(format!(
+                    "Event at seq {} must have previous SAID (p field)",
+                    seq
+                ))
+            })?;
+
+            let expected_prev = current_tip
+                .as_ref()
+                .map(|t| t.said.as_str())
+                .ok_or_else(|| {
+                    RegistryError::Internal("No tip found for non-zero sequence".into())
+                })?;
+
+            if prev_said != expected_prev {
+                return Err(RegistryError::SaidMismatch {
+                    expected: expected_prev.to_string(),
+                    actual: prev_said.to_string(),
+                });
+            }
+        }
+
+        // CONSTRAINT 6: Verify SAID matches computed hash
+        verify_event_said(event).map_err(|e| match e {
+            ValidationError::InvalidSaid { expected, actual } => RegistryError::SaidMismatch {
+                expected: expected.to_string(),
+                actual: actual.to_string(),
+            },
+            _ => RegistryError::InvalidEvent {
+                reason: e.to_string(),
+            },
+        })?;
+
+        // Get current state for computing new state and crypto verification
+        let current_state = navigator
+            .read_blob_path(&state_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<CachedStateJson>(&bytes).ok())
+            .map(|c| c.state);
+
+        // CONSTRAINT 7: Verify cryptographic integrity (signature + pre-rotation commitment)
+        verify_event_crypto(event, current_state.as_ref()).map_err(|e| match e {
+            ValidationError::SignatureFailed { sequence } => RegistryError::InvalidEvent {
+                reason: format!("Signature verification failed at sequence {}", sequence),
+            },
+            ValidationError::CommitmentMismatch { sequence } => RegistryError::InvalidEvent {
+                reason: format!("Pre-rotation commitment mismatch at sequence {}", sequence),
+            },
+            _ => RegistryError::InvalidEvent {
+                reason: e.to_string(),
+            },
+        })?;
+
+        // Build mutations
+        let mut mutator = TreeMutator::new();
+
+        // Write event
+        let event_json = serde_json::to_vec_pretty(event)?;
+        mutator.write_blob(&event_path, event_json);
+
+        // Update tip.json
+        let tip = TipInfo::new(seq, event.said().clone());
+        mutator.write_blob(&tip_path, serde_json::to_vec_pretty(&tip)?);
+
+        // Update state.json
+        let new_state = self.compute_state_after_event(current_state.as_ref(), event)?;
+        let cached_state = CachedStateJson::new(new_state.clone(), event.said().clone());
+        mutator.write_blob(&state_path, serde_json::to_vec_pretty(&cached_state)?);
+
+        // Attachment (externalized signatures) — only written when non-empty.
+        if !attachment.is_empty() {
+            let attachment_path = paths::event_attachment_file(&base_path, seq);
+            mutator.write_blob(&attachment_path, attachment.to_vec());
+        }
+
+        // Update metadata if this is a new identity
+        let identity_delta = if seq == 0 { 1 } else { 0 };
+        self.update_metadata(&mut mutator, &navigator, identity_delta, 0, 0)?;
+
+        // Build and commit
+        let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
+        self.create_commit(
+            &repo,
+            new_tree_oid,
+            Some(&parent),
+            &format!("Append event {} seq {}", prefix, seq),
+        )?;
+
+        // Index update: best-effort, Git is source of truth
+        #[cfg(feature = "indexed-storage")]
+        if let Some(index) = &self.index {
+            let indexed = auths_index::IndexedIdentity {
+                prefix: prefix.clone(),
+                current_keys: new_state
+                    .current_keys
+                    .iter()
+                    .map(|k| k.as_str().to_string())
+                    .collect(),
+                sequence: new_state.sequence,
+                tip_said: event.said().clone(),
+                updated_at: self.clock.now(),
+            };
+            // INVARIANT: Mutex poisoning is fatal by design
+            #[allow(clippy::unwrap_used)]
+            if let Err(e) = index.lock().unwrap().upsert_identity(&indexed) {
+                log::warn!("Index update failed for identity {}: {}", prefix, e);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Synchronous get_blob implementation.
     fn get_blob_sync(&self, path: &str) -> Result<Vec<u8>, DriverStorageError> {
         let repo = self.open_repo().map_err(DriverStorageError::io)?;
@@ -2125,7 +2167,7 @@ mod tests {
     use auths_id::keri::event::{IcpEvent, IxnEvent, KeriSequence, RotEvent};
     use auths_id::keri::seal::Seal;
     use auths_id::keri::types::{Prefix, Said};
-    use auths_id::keri::validate::{compute_event_said, finalize_icp_event, serialize_for_signing};
+    use auths_id::keri::validate::{compute_event_said, finalize_icp_event};
     use auths_keri::compute_next_commitment;
     use auths_keri::{CesrKey, Threshold, VersionString};
     use auths_verifier::AttestationBuilder;
@@ -2170,13 +2212,9 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
-        let mut finalized = finalize_icp_event(icp).unwrap();
-        let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+        let finalized = finalize_icp_event(icp).unwrap();
 
         let prefix = finalized.i.clone();
         (Event::Icp(finalized), prefix, keypair, next_keypair)
@@ -2185,7 +2223,7 @@ mod tests {
     /// Create a signed ROT event with proper SAID and Ed25519 signature.
     fn create_signed_rot(
         prefix: &Prefix,
-        seq: u64,
+        seq: u128,
         prev_said: &str,
         new_keypair: &Ed25519KeyPair,
     ) -> (Event, Ed25519KeyPair) {
@@ -2215,14 +2253,11 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
         let event = Event::Rot(rot.clone());
         rot.d = compute_event_said(&event).unwrap();
-        let canonical = serialize_for_signing(&Event::Rot(rot.clone())).unwrap();
-        let sig = new_keypair.sign(&canonical);
-        rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+        let _ = &new_keypair; // signature attached at KEL-append boundary, not here.
 
         (Event::Rot(rot), nn_keypair)
     }
@@ -2230,7 +2265,7 @@ mod tests {
     /// Create a signed IXN event with proper SAID and Ed25519 signature.
     fn create_signed_ixn(
         prefix: &Prefix,
-        seq: u64,
+        seq: u128,
         prev_said: &str,
         keypair: &Ed25519KeyPair,
     ) -> Event {
@@ -2241,14 +2276,11 @@ mod tests {
             s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
             a: vec![Seal::digest("ETest")],
-            x: String::new(),
         };
 
         let event = Event::Ixn(ixn.clone());
         ixn.d = compute_event_said(&event).unwrap();
-        let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+        let _ = &keypair; // signature attached at KEL-append boundary, not here.
 
         Event::Ixn(ixn)
     }
@@ -2268,7 +2300,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
         let finalized = finalize_icp_event(icp).unwrap();
         let prefix = finalized.i.clone();
@@ -2352,7 +2383,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
         let event = Event::Rot(rot.clone());
         rot.d = compute_event_said(&event).unwrap();
@@ -2393,7 +2423,6 @@ mod tests {
             s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![Seal::digest("ETest")],
-            x: String::new(),
         };
         let event = Event::Ixn(ixn.clone());
         ixn.d = compute_event_said(&event).unwrap();
@@ -2437,7 +2466,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
         let event = Event::Icp(icp);
@@ -3710,7 +3738,7 @@ mod index_consistency_tests {
     use super::*;
     use auths_id::keri::event::{IcpEvent, KeriSequence};
     use auths_id::keri::types::{Prefix, Said};
-    use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
+    use auths_id::keri::validate::finalize_icp_event;
     use auths_id::storage::registry::org_member::MemberFilter;
     use auths_keri::compute_next_commitment;
     use auths_keri::{CesrKey, Threshold, VersionString};
@@ -3754,13 +3782,9 @@ mod index_consistency_tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
-        let mut finalized = finalize_icp_event(icp).unwrap();
-        let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+        let finalized = finalize_icp_event(icp).unwrap();
         let prefix = finalized.i.clone();
         (Event::Icp(finalized), prefix)
     }
@@ -3966,7 +3990,7 @@ mod tenant_isolation_tests {
 
     use auths_id::keri::event::{IcpEvent, KeriSequence};
     use auths_id::keri::types::{Prefix, Said};
-    use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
+    use auths_id::keri::validate::finalize_icp_event;
     use auths_keri::compute_next_commitment;
     use auths_keri::{CesrKey, Threshold, VersionString};
 
@@ -4012,13 +4036,9 @@ mod tenant_isolation_tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
-        let mut finalized = finalize_icp_event(icp).unwrap();
-        let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-        let sig = keypair.sign(&canonical);
-        finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+        let finalized = finalize_icp_event(icp).unwrap();
         let prefix = finalized.i.clone();
         (Event::Icp(finalized), prefix)
     }

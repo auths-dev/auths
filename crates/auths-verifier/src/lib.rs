@@ -111,8 +111,7 @@ pub use verify::{
 
 // Re-export sync utility functions (always available)
 pub use verify::{
-    DeviceLinkVerification, compute_attestation_seal_digest, did_to_ed25519, is_device_listed,
-    verify_device_link,
+    DeviceLinkVerification, compute_attestation_seal_digest, is_device_listed, verify_device_link,
 };
 
 // Re-export witness types

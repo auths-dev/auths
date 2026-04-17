@@ -58,7 +58,7 @@ impl fmt::Display for VerifyReason {
 pub enum RejectReason {
     NoAttestation { detail: String },
     KelCorrupt { detail: String },
-    InsufficientKelSequence { have: u64, need: u64 },
+    InsufficientKelSequence { have: u128, need: u128 },
     MissingCapability { capability: String },
     PolicyDenied { message: String },
     BridgeError { detail: String },
@@ -226,7 +226,7 @@ pub struct VerifyRequest<'a> {
     pub known_remote_tip: Option<[u8; 20]>,
     /// Minimum KEL sequence from the project binding.
     /// A binding integrity check — NOT a freshness heuristic.
-    pub min_kel_seq: Option<u64>,
+    pub min_kel_seq: Option<u128>,
     /// Required capability (e.g. "sign_commit", "sign_release").
     pub required_capability: Option<&'a str>,
 }

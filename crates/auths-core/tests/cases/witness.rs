@@ -29,7 +29,7 @@ async fn start_test_server() -> (SocketAddr, WitnessServerState) {
 
 /// Build a valid KERI inception event with proper SAID and self-signature.
 /// Returns (event_json_bytes, computed_said).
-fn make_test_event(prefix: &str, seq: u64) -> (Vec<u8>, auths_keri::Said) {
+fn make_test_event(prefix: &str, seq: u128) -> (Vec<u8>, auths_keri::Said) {
     let rng = ring::rand::SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let kp = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();

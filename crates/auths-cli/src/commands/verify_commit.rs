@@ -171,12 +171,16 @@ fn resolve_signers_source(cmd: &VerifyCommitCommand) -> Result<SignersSource> {
         let public_key_bytes = hex::decode(bundle.public_key_hex.as_str())
             .context("Invalid public key hex in bundle")?;
 
-        // TODO: IdentityBundle should carry CurveType explicitly
-        let curve = match public_key_bytes.len() {
-            32 => auths_crypto::CurveType::Ed25519,
-            33 | 65 => auths_crypto::CurveType::P256,
-            n => anyhow::bail!("Invalid public key length in bundle: {n}"),
-        };
+        // Curve carried in-band on the bundle JSON; never inferred from length.
+        let curve = bundle.curve;
+        if public_key_bytes.len() != curve.public_key_len() {
+            anyhow::bail!(
+                "Bundle public key length {} does not match declared curve {} (expected {} bytes)",
+                public_key_bytes.len(),
+                curve,
+                curve.public_key_len(),
+            );
+        }
         let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &public_key_bytes)
             .context("Invalid public key in bundle")?;
         let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(&device_pk)
@@ -465,12 +469,9 @@ async fn verify_bundle_chain(
             );
         }
     };
-    let root_pk = match auths_crypto::CurveType::from_public_key_len(root_pk_bytes.len())
-        .ok_or_else(|| format!("Invalid bundle public key length: {}", root_pk_bytes.len()))
-        .and_then(|curve| {
-            auths_verifier::DevicePublicKey::try_new(curve, &root_pk_bytes)
-                .map_err(|e| format!("Invalid bundle public key: {e}"))
-        }) {
+    let root_pk = match auths_verifier::DevicePublicKey::try_new(bundle.curve, &root_pk_bytes)
+        .map_err(|e| format!("Invalid bundle public key: {e}"))
+    {
         Ok(pk) => pk,
         Err(msg) => return (Some(false), None, vec![msg]),
     };
@@ -536,9 +537,7 @@ async fn verify_witnesses(
     {
         let root_pk_bytes = hex::decode(bundle.public_key_hex.as_str())
             .context("Invalid public key hex in bundle")?;
-        let curve = auths_crypto::CurveType::from_public_key_len(root_pk_bytes.len())
-            .ok_or_else(|| anyhow!("Invalid bundle public key length: {}", root_pk_bytes.len()))?;
-        let root_pk = auths_verifier::DevicePublicKey::try_new(curve, &root_pk_bytes)
+        let root_pk = auths_verifier::DevicePublicKey::try_new(bundle.curve, &root_pk_bytes)
             .map_err(|e| anyhow!("Invalid bundle public key: {e}"))?;
 
         let report = verify_chain_with_witnesses(&bundle.attestation_chain, &root_pk, &config)
@@ -1039,6 +1038,7 @@ mod tests {
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
             public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("aa".repeat(32)),
+            curve: Default::default(),
             attestation_chain: vec![],
             bundle_timestamp: Utc::now(),
             max_valid_for_secs: 86400,
@@ -1060,6 +1060,7 @@ mod tests {
         let bundle = IdentityBundle {
             identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
             public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("not_hex"),
+            curve: Default::default(),
             attestation_chain: vec![
                 AttestationBuilder::default()
                     .rid("test")

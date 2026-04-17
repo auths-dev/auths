@@ -5,7 +5,6 @@
 //! 2. `apply_rotation` — side-effecting KEL append + keychain write.
 //! 3. `rotate_identity` — high-level orchestrator (calls both phases in order).
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use zeroize::Zeroizing;
 
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair, load_seed_and_pubkey};
@@ -31,10 +30,12 @@ use crate::types::IdentityRotationConfig;
 
 /// Computes a KERI rotation event and its canonical serialization.
 ///
-/// Pure function — deterministic given fixed inputs. Signs the event bytes with
-/// `next_signer` (the pre-committed future key becoming the new current key).
-/// `new_next_public_key` is the raw public key bytes of the freshly generated
-/// key committed for the next rotation.
+/// Pure function — deterministic given fixed inputs. Embeds the CESR-encoded
+/// public key of `next_signer` (the pre-committed future key becoming the new
+/// current key) into the rot event; signature attachment happens at the KEL
+/// append boundary in `apply_rotation`. `new_next_public_key` is the raw
+/// public key bytes of the freshly generated key committed for the next
+/// rotation.
 ///
 /// Args:
 /// * `state`: Current key state from the registry.
@@ -96,20 +97,12 @@ pub fn compute_rotation_event(
         ba,
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
         .map_err(|e| RotationError::RotationFailed(format!("serialization failed: {e}")))?;
     rot.d = compute_said(&rot_value)
         .map_err(|e| RotationError::RotationFailed(format!("SAID computation failed: {e}")))?;
-
-    let canonical = serialize_for_signing(&Event::Rot(rot.clone()))
-        .map_err(|e| RotationError::RotationFailed(format!("serialize for signing failed: {e}")))?;
-    let sig = next_signer
-        .sign(&canonical)
-        .map_err(|e| RotationError::RotationFailed(format!("sign: {e}")))?;
-    rot.x = URL_SAFE_NO_PAD.encode(&sig);
 
     let event_bytes = serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| RotationError::RotationFailed(format!("final serialization failed: {e}")))?;
@@ -697,7 +690,6 @@ mod tests {
         assert_eq!(rot.s, KeriSequence::new(state.sequence + 1));
         assert_eq!(rot.i, prefix);
         assert!(!rot.d.is_empty());
-        assert!(!rot.x.is_empty());
         assert!(!new_next_pkcs8.as_ref().is_empty());
     }
 
@@ -819,7 +811,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
         let ctx =
@@ -914,7 +905,6 @@ mod tests {
             "expected 1AAJ prefix, got: {}",
             rot.k[0].as_str()
         );
-        assert!(!rot.x.is_empty());
     }
 
     // -- rotate_identity preserves curve for the pre-committed next key --

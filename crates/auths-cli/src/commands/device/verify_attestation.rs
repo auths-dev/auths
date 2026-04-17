@@ -165,14 +165,12 @@ fn effective_trust_policy(cmd: &VerifyCommand) -> TrustPolicy {
     }
 }
 
-/// Wrap raw pubkey bytes from a trust store (pin or roots.json) into a curve-tagged
-/// `DevicePublicKey`. Infers the curve from length via `CurveType::from_public_key_len`.
+/// Wrap raw pubkey bytes into a curve-tagged `DevicePublicKey`.
 fn bytes_to_device_public_key(
     bytes: &[u8],
+    curve: auths_crypto::CurveType,
     source: &str,
 ) -> Result<auths_verifier::DevicePublicKey> {
-    let curve = auths_crypto::CurveType::from_public_key_len(bytes.len())
-        .ok_or_else(|| anyhow!("Invalid {} public key length: {}", source, bytes.len()))?;
     auths_verifier::DevicePublicKey::try_new(curve, bytes)
         .map_err(|e| anyhow!("Invalid {} public key: {e}", source))
 }
@@ -193,8 +191,10 @@ fn resolve_issuer_key(
     if let Some(ref pk_hex) = cmd.issuer_pk {
         let pk_bytes =
             hex::decode(pk_hex).context("Invalid hex string provided for issuer public key")?;
-        let curve = auths_crypto::CurveType::from_public_key_len(pk_bytes.len())
-            .ok_or_else(|| anyhow!("Invalid issuer public key length: {}", pk_bytes.len()))?;
+        let issuer_did = cmd.issuer_did.as_deref().unwrap_or(att.issuer.as_str());
+        let curve = auths_crypto::did_key_decode(issuer_did)
+            .map(|d| d.curve())
+            .unwrap_or_default();
         return auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
             .map_err(|e| anyhow!("Invalid issuer public key: {e}"));
     }
@@ -211,7 +211,7 @@ fn resolve_issuer_key(
         if !is_json_mode() {
             println!("Using pinned identity: {}", did);
         }
-        return bytes_to_device_public_key(&pin.public_key_bytes()?, "pinned identity");
+        return bytes_to_device_public_key(&pin.public_key_bytes()?, pin.curve, "pinned identity");
     }
 
     // 3. Check roots.json file
@@ -243,7 +243,7 @@ fn resolve_issuer_key(
                 trust_level: TrustLevel::OrgPolicy,
             };
             store.pin(pin)?;
-            return bytes_to_device_public_key(&root.public_key_bytes()?, "roots.json");
+            return bytes_to_device_public_key(&root.public_key_bytes()?, root.curve, "roots.json");
         }
     }
 
@@ -447,7 +447,10 @@ pub async fn handle_verify_attestation(
 
     let issuer_pk_bytes = hex::decode(issuer_pubkey_hex)
         .context("Invalid hex string provided for issuer public key")?;
-    let issuer_pk = bytes_to_device_public_key(&issuer_pk_bytes, "issuer")?;
+    let issuer_curve = auths_crypto::did_key_decode(att.issuer.as_str())
+        .map(|d| d.curve())
+        .unwrap_or_default();
+    let issuer_pk = bytes_to_device_public_key(&issuer_pk_bytes, issuer_curve, "issuer")?;
 
     match verify_with_keys(&att, &issuer_pk).await {
         Ok(_) => {

@@ -504,16 +504,16 @@ impl Default for Threshold {
 
 // ── CesrKey ─────────────────────────────────────────────────────────────────
 
-/// A CESR-encoded public key (e.g., `D` + base64url Ed25519).
+/// A CESR-encoded public key (e.g., `D` + base64url Ed25519, `1AAI` + base64url P-256).
 ///
-/// Wraps the qualified string form. Use `parse_ed25519()` to extract
-/// the raw 32-byte key for cryptographic operations.
+/// Wraps the qualified string form. Use `parse()` to extract
+/// the curve-tagged `KeriPublicKey` for cryptographic operations.
 ///
 /// Usage:
 /// ```
 /// use auths_keri::CesrKey;
 /// let key = CesrKey::new_unchecked("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into());
-/// assert!(key.parse_ed25519().is_ok());
+/// assert!(key.parse().is_ok());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -524,12 +524,6 @@ impl CesrKey {
     /// Wrap a qualified key string without validation.
     pub fn new_unchecked(s: String) -> Self {
         Self(s)
-    }
-
-    /// Parse the inner CESR string as an Ed25519 public key.
-    #[deprecated(note = "use parse() which dispatches on derivation code prefix")]
-    pub fn parse_ed25519(&self) -> Result<KeriPublicKey, KeriDecodeError> {
-        KeriPublicKey::parse(&self.0)
     }
 
     /// Parse the inner CESR string, dispatching on the derivation code prefix.

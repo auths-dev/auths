@@ -62,8 +62,13 @@ pub fn events_dir(identity_base: &str) -> String {
 /// ```ignore
 /// let path = event_file(&base, 3); // "v1/identities/.../events/00000003.json"
 /// ```
-pub fn event_file(identity_base: &str, seq: u64) -> String {
+pub fn event_file(identity_base: &str, seq: u128) -> String {
     format!("{}/events/{:08}.json", identity_base, seq)
+}
+
+/// Path to the externalized CESR signature attachment for an event at `seq`.
+pub fn event_attachment_file(identity_base: &str, seq: u128) -> String {
+    format!("{}/events/{:08}.attachments.cesr", identity_base, seq)
 }
 
 /// Path to the tip metadata file.

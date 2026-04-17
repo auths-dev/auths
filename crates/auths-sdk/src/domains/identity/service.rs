@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -267,18 +266,7 @@ fn derive_device_did(
         passphrase_provider,
     )?;
 
-    let device_did = match curve {
-        auths_crypto::CurveType::Ed25519 => {
-            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
-            let pk: [u8; 32] = pk_bytes.as_slice().try_into().unwrap();
-            DeviceDID::from_ed25519(&pk)
-        }
-        auths_crypto::CurveType::P256 => {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
-        }
-    };
+    let device_did = DeviceDID::from_public_key(&pk_bytes, curve);
 
     Ok(device_did)
 }
@@ -302,18 +290,7 @@ fn bind_device(
         passphrase_provider,
     )?;
 
-    let device_did = match curve {
-        auths_crypto::CurveType::Ed25519 => {
-            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
-            let pk: [u8; 32] = pk_bytes.as_slice().try_into().unwrap();
-            DeviceDID::from_ed25519(&pk)
-        }
-        auths_crypto::CurveType::P256 => {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: p256_pubkey_to_did_key produces valid did:key
-            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&pk_bytes))
-        }
-    };
+    let device_did = DeviceDID::from_public_key(&pk_bytes, curve);
 
     let meta = AttestationMetadata {
         timestamp: Some(now),
@@ -327,6 +304,7 @@ fn bind_device(
         &managed.controller_did,
         &device_did,
         &pk_bytes,
+        curve,
         None,
         &meta,
         signer,

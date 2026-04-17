@@ -159,6 +159,49 @@ pub enum IdSubcommand {
         /// Preview actions without making changes.
         #[arg(long)]
         dry_run: bool,
+
+        /// Add a device slot on this rotation (repeatable). Value is the
+        /// curve for the new slot (`P256` or `Ed25519`).
+        #[arg(long, action = ArgAction::Append, value_name = "CURVE")]
+        add_device: Vec<String>,
+
+        /// Remove a device slot by index on this rotation (repeatable).
+        /// Currently rejected — requires CESR indexed-signature support.
+        #[arg(long, action = ArgAction::Append, value_name = "INDEX")]
+        remove_device: Vec<u32>,
+
+        /// New signing threshold (scalar like `"2"` or fractions like
+        /// `"1/2,1/2,1/2"`). Omit to keep the prior `kt`.
+        #[arg(long)]
+        signing_threshold: Option<String>,
+
+        /// New rotation (next) threshold, same format as
+        /// `--signing-threshold`. Omit to keep the prior `nt`.
+        #[arg(long)]
+        rotation_threshold: Option<String>,
+    },
+
+    /// Expand a single-device identity into multi-device via one rotation.
+    Expand {
+        /// Add a device slot (repeatable). Curve name: `P256` or `Ed25519`.
+        #[arg(long, action = ArgAction::Append, value_name = "CURVE")]
+        add_device: Vec<String>,
+
+        /// Signing threshold after expansion. Required.
+        #[arg(long)]
+        signing_threshold: String,
+
+        /// Rotation threshold after expansion. Required.
+        #[arg(long)]
+        rotation_threshold: String,
+
+        /// Base alias for the existing single-key identity.
+        #[arg(long, default_value = "main")]
+        alias: String,
+
+        /// Alias for the new multi-key identity set.
+        #[arg(long, default_value = "main")]
+        next_alias: String,
     },
 
     /// Export an identity bundle for stateless CI/CD verification.
@@ -473,7 +516,22 @@ pub fn handle_id(
             remove_witness,
             witness_threshold,
             dry_run,
+            add_device,
+            remove_device,
+            signing_threshold,
+            rotation_threshold,
         } => {
+            if !add_device.is_empty()
+                || !remove_device.is_empty()
+                || signing_threshold.is_some()
+                || rotation_threshold.is_some()
+            {
+                return Err(anyhow!(
+                    "multi-device rotation (--add-device / --remove-device / --signing-threshold / \
+                     --rotation-threshold) is not yet wired through `auths id rotate`. Use \
+                     `auths id expand` to add devices, or omit these flags for a standard rotation."
+                ));
+            }
             let identity_key_alias = alias.or(current_key_alias);
 
             if dry_run {
@@ -568,6 +626,94 @@ pub fn handle_id(
             Ok(())
         }
 
+        IdSubcommand::Expand {
+            add_device,
+            signing_threshold,
+            rotation_threshold,
+            alias,
+            next_alias,
+        } => {
+            if add_device.is_empty() {
+                return Err(anyhow!(
+                    "`auths id expand` requires at least one --add-device; use `auths id rotate` for key-set-preserving rotations"
+                ));
+            }
+
+            // Parse curves from --add-device string values.
+            let curves: Result<Vec<auths_crypto::CurveType>, _> = add_device
+                .iter()
+                .map(|s| match s.to_ascii_lowercase().as_str() {
+                    "p256" | "p-256" => Ok(auths_crypto::CurveType::P256),
+                    "ed25519" => Ok(auths_crypto::CurveType::Ed25519),
+                    other => Err(anyhow!(
+                        "unknown curve {:?}: expected P256 or Ed25519",
+                        other
+                    )),
+                })
+                .collect();
+            let curves = curves?;
+
+            // Current + added count determines post-expansion device count.
+            // Without state read here, assume current is single-key (the
+            // common `expand` case). If state is already multi-key, the
+            // threshold validator in the SDK rejects mismatches.
+            let estimated_count = 1 + curves.len();
+            let new_kt =
+                crate::commands::init::parse_threshold_cli(&signing_threshold, estimated_count)?;
+            let new_nt =
+                crate::commands::init::parse_threshold_cli(&rotation_threshold, estimated_count)?;
+
+            let base_alias = KeyAlias::new_unchecked(alias.clone());
+
+            // Atomically migrate the legacy {alias} slot to {alias}--0 before
+            // the rotation starts. Idempotent: safe if already migrated.
+            let key_storage: Arc<dyn auths_sdk::keychain::KeyStorage + Send + Sync> = Arc::from(
+                auths_sdk::keychain::get_platform_keychain_with_config(env_config)
+                    .context("Failed to access keychain")?,
+            );
+            let _migrated =
+                auths_sdk::keychain::migrate_legacy_alias(key_storage.as_ref(), &base_alias)
+                    .context("Failed to migrate legacy key alias before expansion")?;
+
+            // Build the registry backend and run the multi-device rotation.
+            let backend: Arc<dyn auths_sdk::ports::RegistryBackend + Send + Sync> = Arc::new(
+                auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+                    auths_sdk::storage::RegistryConfig::single_tenant(&repo_path),
+                ),
+            );
+
+            let shape = auths_sdk::identity::RotationShape {
+                add_devices: curves,
+                remove_indices: vec![],
+                new_kt: Some(new_kt),
+                new_nt: Some(new_nt),
+            };
+            let layout = auths_sdk::storage_layout::StorageLayoutConfig::default();
+            let next_alias_obj = KeyAlias::new_unchecked(next_alias.clone());
+            let result = auths_sdk::identity::rotate_registry_identity_multi(
+                backend,
+                &base_alias,
+                &next_alias_obj,
+                passphrase_provider.as_ref(),
+                &layout,
+                key_storage.as_ref(),
+                None,
+                shape,
+            )
+            .context("Failed to expand identity")?;
+
+            println!(
+                "[OK] Identity expanded — rotation at sequence {} with {} new device(s)",
+                result.sequence,
+                add_device.len()
+            );
+            println!(
+                "     Base alias: {} → slots {}..{}",
+                alias, 0, estimated_count
+            );
+            Ok(())
+        }
+
         IdSubcommand::ExportBundle {
             alias,
             output_file,
@@ -595,7 +741,7 @@ pub fn handle_id(
             // Load the public key from keychain (handles SE and software keys)
             let keychain = get_platform_keychain()?;
             let alias_typed = KeyAlias::new_unchecked(&alias);
-            let (public_key_bytes, _curve) = auths_sdk::keychain::extract_public_key_bytes(
+            let (public_key_bytes, curve) = auths_sdk::keychain::extract_public_key_bytes(
                 keychain.as_ref(),
                 &alias_typed,
                 passphrase_provider.as_ref(),
@@ -606,11 +752,13 @@ pub fn handle_id(
             let public_key_hex =
                 auths_verifier::PublicKeyHex::new_unchecked(hex::encode(&public_key_bytes));
 
-            // Create the bundle
+            // Create the bundle. Curve flows in-band from the typed keychain
+            // extraction so verifiers never re-derive it from byte length.
             let bundle = IdentityBundle {
                 #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
                 identity_did: IdentityDID::new_unchecked(identity.controller_did.to_string()),
                 public_key_hex,
+                curve,
                 attestation_chain: attestations,
                 bundle_timestamp: now,
                 max_valid_for_secs: max_age_secs,

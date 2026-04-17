@@ -39,17 +39,7 @@ pub fn verify_ed25519_sync(
     run_sync(provider().verify_ed25519(pubkey, message, signature))
 }
 
-/// Sign a message with an Ed25519 seed synchronously.
-pub fn sign_ed25519_sync(seed: &SecureSeed, message: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    run_sync(provider().sign_ed25519(seed, message))
-}
-
 /// Generate a fresh Ed25519 keypair synchronously.
 pub fn generate_ed25519_keypair_sync() -> Result<(SecureSeed, [u8; 32]), CryptoError> {
     run_sync(provider().generate_ed25519_keypair())
-}
-
-/// Derive the Ed25519 public key from a seed synchronously.
-pub fn ed25519_public_key_from_seed_sync(seed: &SecureSeed) -> Result<[u8; 32], CryptoError> {
-    run_sync(provider().ed25519_public_key_from_seed(seed))
 }

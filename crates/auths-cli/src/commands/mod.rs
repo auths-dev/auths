@@ -27,6 +27,7 @@ pub mod key;
 pub mod key_detect;
 pub mod learn;
 pub mod log;
+pub mod multi_sig;
 pub mod namespace;
 pub mod org;
 pub mod policy;

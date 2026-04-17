@@ -1,5 +1,6 @@
 mod capability_fromstr;
 mod commit_verify;
+mod device_did_typed;
 mod did_parsing;
 mod expiration_skew;
 #[cfg(feature = "ffi")]

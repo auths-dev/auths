@@ -11,6 +11,7 @@ pub mod git_integration;
 pub mod log_submit;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub mod multi_sig;
 pub mod namespace;
 pub mod org;
 pub mod platform;

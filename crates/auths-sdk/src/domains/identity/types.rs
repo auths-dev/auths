@@ -614,7 +614,7 @@ pub struct IdentityRotationResult {
     /// Hex-encoded fingerprint of the previous signing key.
     pub previous_key_fingerprint: String,
     /// KERI sequence number after this rotation event.
-    pub sequence: u64,
+    pub sequence: u128,
 }
 
 /// Outcome of a successful registry registration.

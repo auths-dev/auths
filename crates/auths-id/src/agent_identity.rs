@@ -302,6 +302,7 @@ fn sign_agent_attestation(
         controller_did,
         &device_did,
         &device_pk,
+        curve,
         None,
         &meta,
         &signer,

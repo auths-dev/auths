@@ -348,14 +348,21 @@ fn key_import(alias: &str, seed_file_path: &PathBuf, controller_did: &IdentityDI
     }
 
     let keychain = get_platform_keychain()?;
-    let result =
-        auths_sdk::keys::import_seed(&seed, &passphrase, alias, controller_did, keychain.as_ref())
-            .with_context(|| format!("Failed to import key '{alias}'"))?;
+    let result = auths_sdk::keys::import_seed(
+        &seed,
+        auths_crypto::CurveType::default(),
+        &passphrase,
+        alias,
+        controller_did,
+        keychain.as_ref(),
+    )
+    .with_context(|| format!("Failed to import key '{alias}'"))?;
 
     println!(
-        "Imported key '{}' (public key: {})",
+        "Imported key '{}' ({} public key: {})",
         result.alias,
-        hex::encode(result.public_key)
+        result.curve,
+        hex::encode(&result.public_key)
     );
     Ok(())
 }

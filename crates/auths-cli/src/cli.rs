@@ -26,6 +26,7 @@ use crate::commands::init::InitCommand;
 use crate::commands::key::KeyCommand;
 use crate::commands::learn::LearnCommand;
 use crate::commands::log::LogCommand;
+use crate::commands::multi_sig::MultiSigCommand;
 use crate::commands::namespace::NamespaceCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
@@ -154,4 +155,6 @@ pub enum RootCommand {
     Log(LogCommand),
     #[command(hide = true)]
     Account(AccountCommand),
+    #[command(hide = true, name = "multi-sig")]
+    MultiSig(MultiSigCommand),
 }

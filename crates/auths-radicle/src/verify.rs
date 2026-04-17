@@ -569,7 +569,7 @@ mod tests {
         }
     }
 
-    fn make_key_state(prefix: &str, sequence: u64) -> KeyState {
+    fn make_key_state(prefix: &str, sequence: u128) -> KeyState {
         use auths_keri::{CesrKey, Threshold};
         KeyState {
             prefix: Prefix::new_unchecked(prefix.to_string()),

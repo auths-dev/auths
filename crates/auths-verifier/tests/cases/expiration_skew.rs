@@ -13,6 +13,11 @@ fn ed(pk: &[u8; 32]) -> DevicePublicKey {
     DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, pk).unwrap()
 }
 
+/// Build a `did:key:z...` string from a 32-byte Ed25519 public key (test helper).
+fn ed25519_did(pk: &[u8; 32]) -> String {
+    auths_verifier::DeviceDID::from_public_key(pk, auths_crypto::CurveType::Ed25519).to_string()
+}
+
 fn create_signed_attestation(
     issuer_kp: &Ed25519KeyPair,
     device_kp: &Ed25519KeyPair,
@@ -43,9 +48,9 @@ fn create_signed_attestation(
 
 fn test_keypairs() -> (Ed25519KeyPair, [u8; 32], Ed25519KeyPair, String, String) {
     let (issuer_kp, issuer_pk) = create_test_keypair(&[10u8; 32]);
-    let issuer_did = auths_crypto::ed25519_pubkey_to_did_key(&issuer_pk);
+    let issuer_did = ed25519_did(&issuer_pk);
     let (device_kp, device_pk) = create_test_keypair(&[11u8; 32]);
-    let device_did = auths_crypto::ed25519_pubkey_to_did_key(&device_pk);
+    let device_did = ed25519_did(&device_pk);
     (issuer_kp, issuer_pk, device_kp, issuer_did, device_did)
 }
 

@@ -37,14 +37,14 @@ pub struct TipInfo {
     /// Schema version (always 1 for now)
     pub version: u32,
     /// Sequence number of the latest event
-    pub sequence: u64,
+    pub sequence: u128,
     /// SAID (Self-Addressing Identifier) of the latest event
     pub said: Said,
 }
 
 impl TipInfo {
     /// Create a new TipInfo for the given sequence and SAID.
-    pub fn new(sequence: u64, said: Said) -> Self {
+    pub fn new(sequence: u128, said: Said) -> Self {
         Self {
             version: SCHEMA_VERSION,
             sequence,

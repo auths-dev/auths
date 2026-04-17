@@ -20,7 +20,6 @@ use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::pairing::PairingRelayClient;
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
-use auths_crypto::SecureSeed;
 use auths_id::attestation::export::AttestationSink;
 use auths_id::storage::identity::IdentityStorage;
 use auths_verifier::types::DeviceDID;
@@ -151,8 +150,11 @@ pub struct PairingSessionRequest {
 pub struct DecryptedPairingResponse {
     /// Path to the `~/.auths` identity repository.
     pub auths_dir: PathBuf,
-    /// Ed25519 signing public key bytes (32 bytes).
+    /// Signing public key bytes (32 bytes Ed25519, 33 bytes P-256 compressed).
     pub device_pubkey: Vec<u8>,
+    /// Curve of `device_pubkey`. Carried in-band so downstream code never
+    /// re-derives curve from byte length.
+    pub curve: auths_crypto::CurveType,
     /// DID of the responding device.
     pub device_did: DeviceDID,
     /// Optional human-readable device name.
@@ -214,8 +216,11 @@ pub struct PairingAttestationParams<'a> {
     pub identity_storage: Arc<dyn IdentityStorage + Send + Sync>,
     /// Pre-initialized key storage for signing key access.
     pub key_storage: Arc<dyn KeyStorage + Send + Sync>,
-    /// The device's Ed25519 public key (32 bytes).
+    /// The device's signing public key (32 bytes Ed25519, 33 bytes P-256 compressed).
     pub device_pubkey: &'a [u8],
+    /// The signing curve of `device_pubkey`. Carried in-band so the attestation
+    /// boundary never infers curve from byte length.
+    pub curve: auths_crypto::CurveType,
     /// The device's DID string.
     pub device_did_str: &'a str,
     /// List of capability strings to grant.
@@ -345,16 +350,15 @@ pub fn create_pairing_attestation(
     let controller_did = managed_identity.controller_did;
     let rid = managed_identity.storage_id;
 
-    // Infer curve from key length at pairing boundary
-    let curve = match params.device_pubkey.len() {
-        32 => auths_crypto::CurveType::Ed25519,
-        33 | 65 => auths_crypto::CurveType::P256,
-        n => {
-            return Err(PairingError::AttestationFailed(format!(
-                "invalid device public key length: {n}"
-            )));
-        }
-    };
+    let curve = params.curve;
+    if params.device_pubkey.len() != curve.public_key_len() {
+        return Err(PairingError::AttestationFailed(format!(
+            "device pubkey length {} does not match declared curve {} (expected {} bytes)",
+            params.device_pubkey.len(),
+            curve,
+            curve.public_key_len(),
+        )));
+    }
 
     verify_device_did(params.device_pubkey, curve, params.device_did_str)?;
 
@@ -383,6 +387,7 @@ pub fn create_pairing_attestation(
         &controller_did,
         &target_did,
         params.device_pubkey,
+        curve,
         None,
         &meta,
         &secure_signer,
@@ -489,6 +494,7 @@ pub fn complete_pairing_from_response(
 
     let DecryptedPairingResponse {
         device_pubkey,
+        curve,
         device_did,
         device_name,
         capabilities,
@@ -501,6 +507,7 @@ pub fn complete_pairing_from_response(
             identity_storage,
             key_storage,
             device_pubkey: &device_pubkey,
+            curve,
             device_did_str: device_did.as_str(),
             capabilities: &capabilities,
             identity_key_alias: &identity_key_alias,
@@ -604,7 +611,7 @@ pub fn load_device_signing_material(
     let device_did = DeviceDID::from_public_key(&parsed.public_key, curve);
 
     Ok(DeviceSigningMaterial {
-        seed: parsed.seed.to_secure_seed(),
+        seed: parsed.seed,
         public_key: parsed.public_key,
         device_did,
         controller_did: managed.controller_did.to_string(),
@@ -638,8 +645,9 @@ pub fn load_controller_did(identity_storage: &dyn IdentityStorage) -> Result<Str
 /// join_pairing_session(code, registry, &relay, now, &material, hostname).await?;
 /// ```
 pub struct DeviceSigningMaterial {
-    /// Seed bytes for signing.
-    pub seed: SecureSeed,
+    /// Typed signing seed — curve travels with the seed so pairing flows
+    /// never need to infer curve from pubkey byte length.
+    pub seed: auths_crypto::TypedSeed,
     /// Public key bytes (32 for Ed25519, 33 for P-256 compressed).
     pub public_key: Vec<u8>,
     /// DID of the local device.
@@ -681,6 +689,11 @@ pub enum PairingStatus {
 /// ```ignore
 /// let result = initiate_online_pairing(params, &relay, &ctx, Utc::now(), Some(&on_status)).await?;
 /// ```
+// INVARIANT: online-pairing is a sequence of relay round-trips that share local
+// state (session keys, status events, context references). Splitting at the
+// round-trip boundary would force threading 6+ values through sub-helpers with
+// no test or correctness benefit. One-line overrun is acceptable.
+#[allow(clippy::too_many_lines)]
 pub async fn initiate_online_pairing<R: PairingRelayClient>(
     params: PairingSessionParams,
     relay: &R,
@@ -741,33 +754,33 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
         cb(PairingStatus::Approved);
     }
 
-    let device_x25519_bytes: [u8; 32] = response
-        .device_x25519_pubkey
+    let device_ecdh_bytes: Vec<u8> = response
+        .device_ephemeral_pubkey
         .decode()
-        .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid X25519 pubkey: {e}")))?
-        .try_into()
-        .map_err(|_| PairingError::KeyExchangeFailed("X25519 pubkey must be 32 bytes".into()))?;
+        .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid ephemeral pubkey: {e}")))?;
 
     let device_signing_bytes = response
         .device_signing_pubkey
         .decode()
-        .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid Ed25519 pubkey: {e}")))?;
+        .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid signing pubkey: {e}")))?;
 
     let signature_bytes = response
         .signature
         .decode()
         .map_err(|e| PairingError::KeyExchangeFailed(format!("invalid signature: {e}")))?;
 
+    let curve: auths_crypto::CurveType = response.curve.into();
     session
         .verify_response(
             &device_signing_bytes,
-            &device_x25519_bytes,
+            &device_ecdh_bytes,
             &signature_bytes,
+            curve,
         )
         .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
 
     let _shared_secret = session
-        .complete_exchange(&device_x25519_bytes)
+        .complete_exchange(&device_ecdh_bytes)
         .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
 
     let controller_did = load_controller_did(ctx.identity_storage.as_ref())?;
@@ -788,7 +801,8 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
     let decrypted = DecryptedPairingResponse {
         auths_dir: PathBuf::new(),
         device_pubkey: device_signing_bytes,
-        #[allow(clippy::disallowed_methods)] // INVARIANT: response.device_did was verified by session.verify_response() which validated the Ed25519 signature against the device's signing key
+        curve,
+        #[allow(clippy::disallowed_methods)] // INVARIANT: response.device_did was verified by session.verify_response() which validated the signature against the device's signing key
         device_did: DeviceDID::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
         capabilities: session.token.capabilities.clone(),
@@ -857,22 +871,22 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         return Err(PairingError::SessionExpired);
     }
 
-    let pubkey_32: &[u8; 32] = material.public_key.as_slice().try_into().map_err(|_| {
-        PairingError::KeyExchangeFailed("pairing requires Ed25519 (32-byte) key".into())
-    })?;
     let (pairing_response, _shared_secret) = PairingResponse::create(
         now,
         &token,
         &material.seed,
-        pubkey_32,
+        &material.public_key,
         material.device_did.to_string(),
         device_name,
     )
     .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
 
     let submit_req = SubmitResponseRequest {
-        device_x25519_pubkey: Base64UrlEncoded::from_raw(pairing_response.device_x25519_pubkey),
+        device_ephemeral_pubkey: Base64UrlEncoded::from_raw(
+            pairing_response.device_ephemeral_pubkey,
+        ),
         device_signing_pubkey: Base64UrlEncoded::from_raw(pairing_response.device_signing_pubkey),
+        curve: pairing_response.curve,
         device_did: pairing_response.device_did.clone(),
         signature: Base64UrlEncoded::from_raw(pairing_response.signature),
         device_name: pairing_response.device_name,

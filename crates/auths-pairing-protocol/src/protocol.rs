@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use zeroize::Zeroizing;
 
-use auths_crypto::SecureSeed;
+use auths_crypto::TypedSeed;
 
 use crate::error::ProtocolError;
 use crate::response::PairingResponse;
@@ -10,9 +10,9 @@ use crate::token::{PairingSession, PairingToken};
 
 /// Result of a successfully completed pairing exchange (initiator side).
 pub struct CompletedPairing {
-    /// The 32-byte X25519 shared secret (zeroized on drop).
+    /// The 32-byte P-256 ECDH shared secret (zeroized on drop).
     pub shared_secret: Zeroizing<[u8; 32]>,
-    /// The peer's Ed25519 signing public key.
+    /// The peer's signing public key (curve carried via `response.curve`).
     pub peer_signing_pubkey: Vec<u8>,
     /// The peer's DID string.
     pub peer_did: String,
@@ -22,8 +22,8 @@ pub struct CompletedPairing {
     pub sas: [u8; 8],
     /// Single-use transport encryption key.
     pub transport_key: TransportKey,
-    /// The initiator's X25519 ephemeral public key.
-    pub initiator_x25519_pub: crate::X25519PublicKey,
+    /// The initiator's P-256 ECDH ephemeral public key (SEC1 compressed, 33 bytes).
+    pub initiator_ephemeral_pub: Vec<u8>,
 }
 
 /// Result of a successful pairing response (responder side).
@@ -36,7 +36,7 @@ pub struct ResponderResult {
 
 /// Transport-agnostic pairing protocol state machine.
 ///
-/// `EphemeralSecret` from x25519-dalek is `!Clone + !Serialize`, so this
+/// `EphemeralSecret` from p256::ecdh is `!Clone + !Serialize`, so this
 /// state machine is inherently ephemeral — it lives in memory only and
 /// cannot be persisted across app restarts.
 ///
@@ -120,23 +120,23 @@ impl PairingProtocol {
         _now: DateTime<Utc>,
         response: PairingResponse,
     ) -> Result<CompletedPairing, ProtocolError> {
-        let initiator_x25519_pub = self.session.ephemeral_pubkey_bytes()?;
-        let responder_x25519_pub = response.device_x25519_pubkey_bytes()?;
-        let shared_secret = self.session.complete_exchange(&responder_x25519_pub)?;
+        let initiator_ecdh_pub = self.session.ephemeral_pubkey_bytes()?;
+        let responder_ecdh_pub = response.device_ephemeral_pubkey_bytes()?;
+        let shared_secret = self.session.complete_exchange(&responder_ecdh_pub)?;
         let peer_signing_pubkey = response.device_signing_pubkey_bytes()?;
         let peer_did = response.device_did.clone();
         let short_code = &self.session.token.short_code;
 
         let sas_bytes = sas::derive_sas(
             &shared_secret,
-            &initiator_x25519_pub,
-            &responder_x25519_pub,
+            &initiator_ecdh_pub,
+            &responder_ecdh_pub,
             short_code,
         );
         let transport_key = sas::derive_transport_key(
             &shared_secret,
-            &initiator_x25519_pub,
-            &responder_x25519_pub,
+            &initiator_ecdh_pub,
+            &responder_ecdh_pub,
             short_code,
         );
 
@@ -147,7 +147,7 @@ impl PairingProtocol {
             response,
             sas: sas_bytes,
             transport_key,
-            initiator_x25519_pub: crate::X25519PublicKey::new(initiator_x25519_pub),
+            initiator_ephemeral_pub: initiator_ecdh_pub,
         })
     }
 
@@ -162,8 +162,8 @@ impl PairingProtocol {
 /// Args:
 /// * `now` - Current time for expiry checking
 /// * `token_bytes` - Serialized `PairingToken` from the initiator
-/// * `device_seed` - The responding device's Ed25519 seed
-/// * `device_pubkey` - The responding device's Ed25519 public key
+/// * `device_seed` - Typed signing seed; curve flows through in-band
+/// * `device_pubkey` - The responding device's public key (length matches curve)
 /// * `device_did` - The responding device's DID string
 /// * `device_name` - Optional friendly device name
 ///
@@ -176,8 +176,8 @@ impl PairingProtocol {
 pub fn respond_to_pairing(
     now: DateTime<Utc>,
     token_bytes: &[u8],
-    device_seed: &SecureSeed,
-    device_pubkey: &[u8; 32],
+    device_seed: &TypedSeed,
+    device_pubkey: &[u8],
     device_did: String,
     device_name: Option<String>,
 ) -> Result<ResponderResult, ProtocolError> {
@@ -191,20 +191,20 @@ pub fn respond_to_pairing(
         device_name,
     )?;
 
-    let initiator_x25519_pub = token.ephemeral_pubkey_bytes()?;
-    let responder_x25519_pub = response.device_x25519_pubkey_bytes()?;
+    let initiator_ecdh_pub = token.ephemeral_pubkey_bytes()?;
+    let responder_ecdh_pub = response.device_ephemeral_pubkey_bytes()?;
     let short_code = &token.short_code;
 
     let sas_bytes = sas::derive_sas(
         &shared_secret,
-        &initiator_x25519_pub,
-        &responder_x25519_pub,
+        &initiator_ecdh_pub,
+        &responder_ecdh_pub,
         short_code,
     );
     let transport_key = sas::derive_transport_key(
         &shared_secret,
-        &initiator_x25519_pub,
-        &responder_x25519_pub,
+        &initiator_ecdh_pub,
+        &responder_ecdh_pub,
         short_code,
     );
 
@@ -220,16 +220,16 @@ pub fn respond_to_pairing(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use ring::rand::SystemRandom;
-    use ring::signature::{Ed25519KeyPair, KeyPair};
 
-    fn generate_test_keypair() -> (SecureSeed, [u8; 32]) {
-        let rng = SystemRandom::new();
-        let pkcs8_doc = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let keypair = Ed25519KeyPair::from_pkcs8(pkcs8_doc.as_ref()).unwrap();
-        let public_key: [u8; 32] = keypair.public_key().as_ref().try_into().unwrap();
-        let seed: [u8; 32] = pkcs8_doc.as_ref()[16..48].try_into().unwrap();
-        (SecureSeed::new(seed), public_key)
+    fn generate_test_keypair() -> (TypedSeed, Vec<u8>) {
+        use p256::ecdsa::SigningKey;
+        use p256::elliptic_curve::rand_core::OsRng as P256Rng;
+        use p256::pkcs8::EncodePrivateKey;
+
+        let sk = SigningKey::random(&mut P256Rng);
+        let pkcs8 = sk.to_pkcs8_der().unwrap();
+        let parsed = auths_crypto::parse_key_material(pkcs8.as_bytes()).unwrap();
+        (parsed.seed, parsed.public_key)
     }
 
     #[test]
@@ -250,7 +250,7 @@ mod tests {
             &token_bytes,
             &seed,
             &pubkey,
-            "did:key:z6MkTest".to_string(),
+            "did:key:zDnaTest".to_string(),
             None,
         )
         .unwrap();
@@ -259,7 +259,7 @@ mod tests {
         let completed = protocol.complete(now, &response_bytes).unwrap();
 
         assert_eq!(*completed.shared_secret, *responder_result.shared_secret);
-        assert_eq!(completed.peer_did, "did:key:z6MkTest");
+        assert_eq!(completed.peer_did, "did:key:zDnaTest");
         // Both sides derive the same SAS
         assert_eq!(completed.sas, responder_result.sas);
     }
@@ -288,7 +288,7 @@ mod tests {
             &token,
             &seed,
             &pubkey,
-            "did:key:z6MkTest".to_string(),
+            "did:key:zDnaTest".to_string(),
             None,
         )
         .unwrap();

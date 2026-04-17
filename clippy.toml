@@ -19,9 +19,6 @@ disallowed-methods = [
   { path = "ring::signature::UnparsedPublicKey::new", reason = "use DevicePublicKey::verify — dispatches on curve.", allow-invalid = true },
   { path = "auths_crypto::parse_ed25519_seed", reason = "use parse_key_material — returns TypedSeed.", allow-invalid = true },
   { path = "auths_crypto::parse_ed25519_key_material", reason = "use parse_key_material — returns TypedSeed.", allow-invalid = true },
-  { path = "auths_core::crypto::provider_bridge::sign_ed25519_sync", reason = "use auths_crypto::sign(&TypedSeed, msg).", allow-invalid = true },
-  { path = "auths_core::crypto::provider_bridge::ed25519_public_key_from_seed_sync", reason = "use auths_crypto::public_key(&TypedSeed) or TypedSignerKey::public_key().", allow-invalid = true },
-  { path = "auths_crypto::did_key_to_ed25519", reason = "use did_key_decode — returns DecodedDidKey.", allow-invalid = true },
 ]
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true

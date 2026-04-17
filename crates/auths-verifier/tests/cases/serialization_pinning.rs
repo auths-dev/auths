@@ -21,7 +21,6 @@ fn make_test_icp() -> IcpEvent {
         b: vec![],
         c: vec![],
         a: vec![],
-        x: "".into(),
     }
 }
 
@@ -45,7 +44,6 @@ fn make_test_rot() -> RotEvent {
         ba: vec![],
         c: vec![],
         a: vec![],
-        x: "".into(),
     }
 }
 
@@ -57,7 +55,6 @@ fn make_test_ixn() -> IxnEvent {
         s: KeriSequence::new(2),
         p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
         a: vec![Seal::digest("ESealDigest234567890123456789012345678901")],
-        x: "".into(),
     }
 }
 
@@ -116,18 +113,8 @@ fn ixn_field_order_is_pinned() {
     assert_key_order(&json, &["v", "t", "d", "i", "s", "p", "a"]);
 }
 
-#[test]
-fn icp_with_x_includes_x_last() {
-    let mut icp = make_test_icp();
-    icp.x = "test_signature".into();
-    let json = serde_json::to_string(&KeriEvent::Icp(icp)).unwrap();
-    assert_key_order(
-        &json,
-        &[
-            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c", "x",
-        ],
-    );
-}
+// icp_with_x_includes_x_last removed: the "x" (signature) field was externalized
+// into CESR attachments in fn-119. ICP events no longer carry an "x" field.
 
 #[test]
 fn icp_with_empty_d_still_includes_d() {

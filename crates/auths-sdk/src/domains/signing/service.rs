@@ -8,8 +8,8 @@
 
 use crate::context::AuthsContext;
 use crate::ports::artifact::{ArtifactDigest, ArtifactMetadata, ArtifactSource};
+use auths_core::crypto::signer as core_signer;
 use auths_core::crypto::ssh::{self, SecureSeed};
-use auths_core::crypto::{provider_bridge, signer as core_signer};
 use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::core::resign_attestation;
@@ -415,12 +415,13 @@ fn resolve_optional_key(
             }))
         }
         Some(SigningKeyMaterial::Direct(seed)) => {
-            let pubkey = provider_bridge::ed25519_public_key_from_seed_sync(seed)
+            let typed = auths_crypto::TypedSeed::Ed25519(*seed.as_bytes());
+            let pubkey = auths_crypto::typed_public_key(&typed)
                 .map_err(|e| ArtifactSigningError::KeyDecryptionFailed(e.to_string()))?;
             Ok(Some(ResolvedKey {
                 alias: KeyAlias::new_unchecked(synthetic_alias),
                 seed: Some(SecureSeed::new(*seed.as_bytes())),
-                public_key_bytes: pubkey.to_vec(),
+                public_key_bytes: pubkey,
                 curve: auths_crypto::CurveType::Ed25519,
                 is_hardware: false,
             }))
@@ -534,18 +535,7 @@ pub fn sign_artifact(
     }
     let device_pk_bytes = device_resolved.public_key_bytes;
 
-    let device_did = match device_resolved.curve {
-        auths_crypto::CurveType::Ed25519 => {
-            #[allow(clippy::unwrap_used)] // INVARIANT: Ed25519 key is always 32 bytes
-            let pk: [u8; 32] = device_pk_bytes.as_slice().try_into().unwrap();
-            DeviceDID::from_ed25519(&pk)
-        }
-        auths_crypto::CurveType::P256 =>
-        {
-            #[allow(clippy::disallowed_methods)]
-            DeviceDID::new_unchecked(auths_crypto::p256_pubkey_to_did_key(&device_pk_bytes))
-        }
-    };
+    let device_did = DeviceDID::from_public_key(&device_pk_bytes, device_resolved.curve);
 
     let artifact_meta = params
         .artifact
@@ -579,6 +569,7 @@ pub fn sign_artifact(
         &managed.controller_did,
         &device_did,
         &device_pk_bytes,
+        device_curve,
         payload,
         &meta,
         identity_alias.as_ref(),
@@ -605,6 +596,7 @@ fn create_and_sign_attestation(
     controller_did: &IdentityDID,
     device_did: &DeviceDID,
     device_pk_bytes: &[u8],
+    device_curve: auths_crypto::CurveType,
     payload: serde_json::Value,
     meta: &AttestationMetadata,
     identity_alias: Option<&KeyAlias>,
@@ -626,6 +618,7 @@ fn create_and_sign_attestation(
         controller_did,
         device_did,
         device_pk_bytes,
+        device_curve,
         Some(payload),
         meta,
         signer,
@@ -755,6 +748,7 @@ pub fn sign_artifact_ephemeral(
         &identity_did,
         &device_did,
         &pubkey_vec,
+        auths_crypto::CurveType::P256,
         Some(payload_value),
         &meta,
         &signer,
@@ -814,15 +808,14 @@ pub fn sign_artifact_raw(
     note: Option<String>,
     commit_sha: Option<String>,
 ) -> Result<ArtifactSigningResult, ArtifactSigningError> {
-    // Detect curve by trying to derive public key — Ed25519 first, then P-256
-    let (pubkey, curve) = if let Ok(pk) = provider_bridge::ed25519_public_key_from_seed_sync(seed) {
-        (pk.to_vec(), auths_crypto::CurveType::Ed25519)
-    } else {
-        let typed = auths_crypto::TypedSeed::P256(*seed.as_bytes());
-        let pk = auths_crypto::typed_public_key(&typed)
-            .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
-        (pk, auths_crypto::CurveType::P256)
+    // Default to P-256 per workspace convention. The raw seed is 32 bytes for both curves.
+    let curve = auths_crypto::CurveType::default();
+    let typed = match curve {
+        auths_crypto::CurveType::Ed25519 => auths_crypto::TypedSeed::Ed25519(*seed.as_bytes()),
+        auths_crypto::CurveType::P256 => auths_crypto::TypedSeed::P256(*seed.as_bytes()),
     };
+    let pubkey = auths_crypto::typed_public_key(&typed)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
     let device_did = DeviceDID::from_public_key(&pubkey, curve);
 
@@ -873,6 +866,7 @@ pub fn sign_artifact_raw(
         identity_did,
         &device_did,
         &pubkey,
+        curve,
         Some(payload),
         &meta,
         &signer,

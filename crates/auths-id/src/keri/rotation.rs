@@ -89,7 +89,7 @@ pub struct RotationResult {
     pub prefix: Prefix,
 
     /// The new sequence number
-    pub sequence: u64,
+    pub sequence: u128,
 
     /// The new current keypair (was the "next" key, PKCS8 DER encoded, zeroed on drop)
     pub new_current_keypair_pkcs8: Pkcs8Der,
@@ -201,7 +201,6 @@ pub fn rotate_keys(
         ba: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
     // Compute SAID
@@ -211,8 +210,7 @@ pub fn rotate_keys(
 
     // Sign with the new current key (next_keypair is now the active key)
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))?;
-    let sig = next_keypair.sign(&canonical);
-    rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let _sig = next_keypair.sign(&canonical);
 
     // Append to KEL
     kel.append(&Event::Rot(rot.clone()), now)?;
@@ -260,7 +258,7 @@ pub fn abandon_identity(
     next_keypair_pkcs8: &Pkcs8Der,
     witness_config: Option<&WitnessConfig>,
     now: chrono::DateTime<chrono::Utc>,
-) -> Result<u64, RotationError> {
+) -> Result<u128, RotationError> {
     // Load current state from KEL
     let kel = GitKel::new(repo, prefix.as_str());
     let events = kel.get_events()?;
@@ -312,7 +310,6 @@ pub fn abandon_identity(
         ba: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
     // Compute SAID
@@ -322,8 +319,7 @@ pub fn abandon_identity(
 
     // Sign with the new current key (next_keypair is now the active key)
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))?;
-    let sig = next_keypair.sign(&canonical);
-    rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let _sig = next_keypair.sign(&canonical);
 
     // Append to KEL
     kel.append(&Event::Rot(rot), now)?;
@@ -404,7 +400,6 @@ pub fn rotate_keys_with_backend(
         ba: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -414,10 +409,14 @@ pub fn rotate_keys_with_backend(
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
     let sig = next_keypair.sign(&canonical);
-    rot.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+        index: 0,
+        sig: sig.as_ref().to_vec(),
+    }])
+    .map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     backend
-        .append_event(prefix, &Event::Rot(rot))
+        .append_signed_event(prefix, &Event::Rot(rot), &attachment)
         .map_err(RotationError::Storage)?;
 
     Ok(RotationResult {

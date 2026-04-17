@@ -7,6 +7,7 @@
     clippy::expect_used
 )]
 mod check_clippy_sync;
+mod check_curve_agnostic;
 mod gen_docs;
 mod gen_error_docs;
 mod gen_schema;
@@ -52,6 +53,9 @@ enum Command {
     },
     /// Check that crate-level clippy.toml files contain all workspace-root rules.
     CheckClippySync,
+    /// AST-level curve-agnostic enforcement via tree-sitter.
+    /// Scans production code for curve-specific names outside auths-crypto.
+    CheckCurveAgnostic,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -70,5 +74,6 @@ fn main() -> anyhow::Result<()> {
         Command::GenErrorDocs { check } => gen_error_docs::run(workspace_root(), check),
         Command::TestIntegration { filter } => test_integration::run(filter.as_deref()),
         Command::CheckClippySync => check_clippy_sync::run(workspace_root()),
+        Command::CheckCurveAgnostic => check_curve_agnostic::run(workspace_root()),
     }
 }

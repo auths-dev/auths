@@ -193,7 +193,7 @@ pub enum ResolvedIdentity {
         /// The public key.
         public_key: Ed25519PublicKey,
         /// Current KEL sequence number.
-        sequence: u64,
+        sequence: u128,
         /// Whether key rotation is available.
         can_rotate: bool,
     },

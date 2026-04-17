@@ -23,6 +23,11 @@
       "type": "string",
       "format": "date-time"
     },
+    "curve": {
+      "description": "Curve of `public_key_hex`. Carried in-band so verifiers never infer curve from byte length. Defaults to P-256 when absent (older bundles shipped before this field existed).",
+      "default": "p256",
+      "type": "string"
+    },
     "identity_did": {
       "description": "The DID of the identity (e.g., `\"did:keri:...\"`)",
       "allOf": [
@@ -38,7 +43,7 @@
       "minimum": 0.0
     },
     "public_key_hex": {
-      "description": "The public key in hex format for signature verification",
+      "description": "The public key in hex format for signature verification.",
       "allOf": [
         {
           "$ref": "#/definitions/PublicKeyHex"
@@ -280,7 +285,7 @@
       }
     },
     "PublicKeyHex": {
-      "description": "A validated hex-encoded public key (64 hex chars for Ed25519, 66 for P-256 compressed).\n\nUse `to_ed25519()` to convert to the byte-array `Ed25519PublicKey` type.",
+      "description": "A validated hex-encoded public key (64 hex chars for Ed25519, 66 for P-256 compressed).",
       "type": "string"
     },
     "Role": {

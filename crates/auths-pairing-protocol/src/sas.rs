@@ -47,8 +47,8 @@ const TAG_LEN: usize = 16;
 /// ```
 pub fn derive_sas(
     shared_secret: &[u8; 32],
-    initiator_pub: &[u8; 32],
-    responder_pub: &[u8; 32],
+    initiator_pub: &[u8],
+    responder_pub: &[u8],
     short_code: &str,
 ) -> [u8; 8] {
     let salt = build_salt(initiator_pub, responder_pub);
@@ -149,8 +149,8 @@ pub fn decrypt_from_transport(
 /// * `short_code`: The session's short code.
 pub fn derive_transport_key(
     shared_secret: &[u8; 32],
-    initiator_pub: &[u8; 32],
-    responder_pub: &[u8; 32],
+    initiator_pub: &[u8],
+    responder_pub: &[u8],
     short_code: &str,
 ) -> TransportKey {
     let salt = build_salt(initiator_pub, responder_pub);
@@ -163,10 +163,10 @@ pub fn derive_transport_key(
     TransportKey::new(key)
 }
 
-fn build_salt(initiator_pub: &[u8; 32], responder_pub: &[u8; 32]) -> [u8; 64] {
-    let mut salt = [0u8; 64];
-    salt[..32].copy_from_slice(initiator_pub);
-    salt[32..].copy_from_slice(responder_pub);
+fn build_salt(initiator_pub: &[u8], responder_pub: &[u8]) -> Vec<u8> {
+    let mut salt = Vec::with_capacity(initiator_pub.len() + responder_pub.len());
+    salt.extend_from_slice(initiator_pub);
+    salt.extend_from_slice(responder_pub);
     salt
 }
 

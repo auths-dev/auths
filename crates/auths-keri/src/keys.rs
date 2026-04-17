@@ -80,9 +80,9 @@ impl KeriPublicKey {
     /// - `D` prefix → Ed25519 (32 bytes)
     /// - `1AAI` prefix → P-256 (33 bytes compressed)
     ///
-    /// fn-116.5: strict per CESR spec. `1AAJ` (which is the spec's P-256 SIGNATURE
+    /// strict per CESR spec. `1AAJ` (which is the spec's P-256 SIGNATURE
     /// code, not a verkey code) is rejected with `UnsupportedKeyType`. Prior to
-    /// fn-114.37 some repo sites emitted `1AAJ` for verkeys; those are spec-invalid
+    /// some repo sites emitted `1AAJ` for verkeys; those are spec-invalid
     /// and must be regenerated.
     ///
     /// Unknown prefixes return `Err(UnsupportedKeyType)`.
@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn parse_p256_key() {
-        // fn-116.5: strict — `1AAI` is the spec-correct P-256 verkey prefix.
+        // strict — `1AAI` is the spec-correct P-256 verkey prefix.
         let zeros_33 = [0u8; 33];
         let encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(zeros_33));
         let key = KeriPublicKey::parse(&encoded).unwrap();
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn rejects_legacy_1aaj_verkey() {
-        // fn-116.5: `1AAJ` is the CESR spec's P-256 *signature* code. Reject loudly
+        // `1AAJ` is the CESR spec's P-256 *signature* code. Reject loudly
         // when supplied as a verkey — the parser previously tolerated this for
         // pre-fn-114.37 on-disk identities. Pre-launch posture removes the grace.
         let zeros_33 = [0u8; 33];

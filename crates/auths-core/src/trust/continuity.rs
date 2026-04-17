@@ -12,11 +12,14 @@ pub struct RotationProof {
     /// The new public key bytes (raw Ed25519, 32 bytes).
     pub new_public_key: Vec<u8>,
 
+    /// The curve of the new public key, derived from the CESR prefix.
+    pub new_curve: auths_crypto::CurveType,
+
     /// The new KEL tip SAID after the rotation chain.
     pub new_kel_tip: String,
 
     /// The new sequence number.
-    pub new_sequence: u64,
+    pub new_sequence: u128,
 }
 
 /// Trait for verifying rotation continuity from a pinned state to a presented key.
@@ -92,6 +95,7 @@ mod tests {
     fn test_rotation_proof_fields() {
         let proof = RotationProof {
             new_public_key: vec![1, 2, 3, 4],
+            new_curve: auths_crypto::CurveType::P256,
             new_kel_tip: "ENewTipSaid".to_string(),
             new_sequence: 5,
         };
@@ -105,6 +109,7 @@ mod tests {
     fn test_mock_checker_verifies() {
         let proof = RotationProof {
             new_public_key: vec![5, 6, 7, 8],
+            new_curve: auths_crypto::CurveType::P256,
             new_kel_tip: "ENewTip".to_string(),
             new_sequence: 2,
         };

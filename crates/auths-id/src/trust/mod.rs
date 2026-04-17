@@ -90,6 +90,7 @@ impl KelContinuityChecker for GitKelContinuityChecker<'_> {
 
         Ok(Some(RotationProof {
             new_public_key: current_key_bytes.as_bytes().to_vec(),
+            new_curve: current_key_bytes.curve(),
             new_kel_tip: full_state.last_event_said.to_string(),
             new_sequence: full_state.sequence,
         }))

@@ -37,7 +37,7 @@ pub struct CachedKelState {
     /// The DID this cache entry is for (authoritative, verified on load)
     pub did: IdentityDID,
     /// Sequence number of the last event
-    pub sequence: u64,
+    pub sequence: u128,
     /// SAID of the tip event when this cache was validated
     pub validated_against_tip_said: Said,
     /// Git commit OID of the tip event (hex-encoded) - enables incremental validation
@@ -264,7 +264,7 @@ pub struct CacheEntry {
     /// The DID this cache is for
     pub did: IdentityDID,
     /// Sequence number
-    pub sequence: u64,
+    pub sequence: u128,
     /// SAID the cache was validated against
     pub validated_against_tip_said: Said,
     /// Git commit OID of the cached position

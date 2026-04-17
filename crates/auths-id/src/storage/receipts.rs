@@ -284,7 +284,7 @@ mod tests {
         (dir, path, repo)
     }
 
-    fn make_test_receipt(event_said: &str, witness_did: &str, seq: u64) -> Receipt {
+    fn make_test_receipt(event_said: &str, witness_did: &str, seq: u128) -> Receipt {
         Receipt {
             v: VersionString::placeholder(),
             t: RECEIPT_TYPE.into(),
@@ -447,7 +447,9 @@ mod tests {
             signature: sig.as_ref().to_vec(),
         };
 
-        let typed_pk = auths_verifier::decode_public_key_bytes(&public_key).unwrap();
+        let typed_pk =
+            auths_verifier::decode_public_key_bytes(&public_key, auths_crypto::CurveType::Ed25519)
+                .unwrap();
         let provider = auths_crypto::RingCryptoProvider;
         let result = tokio::runtime::Runtime::new()
             .unwrap()
@@ -475,7 +477,9 @@ mod tests {
             signature: vec![0u8; 64],
         };
 
-        let typed_pk = auths_verifier::decode_public_key_bytes(&public_key).unwrap();
+        let typed_pk =
+            auths_verifier::decode_public_key_bytes(&public_key, auths_crypto::CurveType::Ed25519)
+                .unwrap();
         let provider = auths_crypto::RingCryptoProvider;
         let result = tokio::runtime::Runtime::new()
             .unwrap()
@@ -490,7 +494,9 @@ mod tests {
     fn test_legacy_verify_receipt_signature_still_works() {
         // The deprecated body-only function returns Ok(true) for any valid DevicePublicKey.
         let receipt = make_test_receipt("ESAID", "did:key:test", 0);
-        let pk = auths_verifier::decode_public_key_bytes(&[0u8; 32]).unwrap();
+        let pk =
+            auths_verifier::decode_public_key_bytes(&[0u8; 32], auths_crypto::CurveType::Ed25519)
+                .unwrap();
         let result = verify_receipt_signature(&receipt, &pk).unwrap();
         assert!(result);
     }

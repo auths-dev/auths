@@ -21,7 +21,9 @@ pub const REVOCATION_VERSION: u32 = 1;
 /// * `rid` - Resource identifier for the attestation being revoked
 /// * `identity_did` - The identity DID (e.g., "did:keri:...") issuing the revocation
 /// * `device_did` - The device DID being revoked
-/// * `device_public_key` - The device's Ed25519 public key bytes (from existing attestation)
+/// * `device_public_key` - Raw device public key bytes (32 Ed25519, 33 P-256 compressed)
+/// * `device_curve` - Signing curve of `device_public_key`. Carried in-band so the
+///   revocation interior never infers curve from byte length.
 /// * `note` - Optional note explaining the revocation reason
 /// * `payload_arg` - Optional JSON payload (usually None for revocations)
 /// * `timestamp_arg` - Timestamp of the revocation
@@ -34,6 +36,7 @@ pub fn create_signed_revocation(
     identity_did: &IdentityDID,
     device_did: &DeviceDID,
     device_public_key: &[u8],
+    device_curve: auths_crypto::CurveType,
     note: Option<String>,
     payload_arg: Option<Value>,
     timestamp_arg: DateTime<Utc>,
@@ -98,16 +101,8 @@ pub fn create_signed_revocation(
         expires_at: None,
         revoked_at: Some(timestamp_arg),
         note: note.clone(),
-        // TODO: take DevicePublicKey directly instead of inferring curve from length
-        device_public_key: auths_verifier::DevicePublicKey::try_new(
-            if device_public_key.len() == 32 {
-                auths_crypto::CurveType::Ed25519
-            } else {
-                auths_crypto::CurveType::P256
-            },
-            device_public_key,
-        )
-        .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
+        device_public_key: auths_verifier::DevicePublicKey::try_new(device_curve, device_public_key)
+            .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
         identity_signature,
         device_signature: Ed25519Signature::empty(),
         role: None,

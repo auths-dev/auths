@@ -122,7 +122,7 @@ impl RegistryBackend for FakeRegistryBackend {
             return Err(RegistryError::EventExists { prefix: key, seq });
         }
 
-        let expected = events.len() as u64;
+        let expected = events.len() as u128;
         if seq != expected {
             return Err(RegistryError::SequenceGap {
                 prefix: key,
@@ -140,7 +140,7 @@ impl RegistryBackend for FakeRegistryBackend {
         Ok(())
     }
 
-    fn get_event(&self, prefix: &Prefix, seq: u64) -> Result<Event, RegistryError> {
+    fn get_event(&self, prefix: &Prefix, seq: u128) -> Result<Event, RegistryError> {
         let state = self.state.lock().unwrap();
         let key = prefix.as_str();
         let events = state
@@ -157,7 +157,7 @@ impl RegistryBackend for FakeRegistryBackend {
     fn visit_events(
         &self,
         prefix: &Prefix,
-        from_seq: u64,
+        from_seq: u128,
         visitor: &mut dyn FnMut(&Event) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         let state = self.state.lock().unwrap();

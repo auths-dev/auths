@@ -162,7 +162,7 @@ pub fn verify_action_envelope(
     envelope_json: &str,
     public_key_hex: &str,
 ) -> PyResult<VerificationResult> {
-    let (pk_bytes, _curve) = validate_pk_hex(public_key_hex)?;
+    let (pk_bytes, curve) = validate_pk_hex(public_key_hex)?;
 
     if envelope_json.len() > MAX_ATTESTATION_JSON_SIZE {
         return Err(PyValueError::new_err(format!(
@@ -189,8 +189,15 @@ pub fn verify_action_envelope(
         .canonical_bytes()
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] {e}")))?;
 
-    let key = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &pk_bytes);
-    match key.verify(&canonical, &sig_bytes) {
+    let verify_result = match curve {
+        auths_crypto::CurveType::Ed25519 => {
+            auths_crypto::RingCryptoProvider::ed25519_verify(&pk_bytes, &canonical, &sig_bytes)
+        }
+        auths_crypto::CurveType::P256 => {
+            auths_crypto::RingCryptoProvider::p256_verify(&pk_bytes, &canonical, &sig_bytes)
+        }
+    };
+    match verify_result {
         Ok(()) => Ok(VerificationResult {
             valid: true,
             error: None,
@@ -198,7 +205,7 @@ pub fn verify_action_envelope(
         }),
         Err(_) => Ok(VerificationResult {
             valid: false,
-            error: Some("Ed25519 signature verification failed".to_string()),
+            error: Some(format!("{curve} signature verification failed")),
             error_code: Some("AUTHS_ISSUER_SIG_FAILED".to_string()),
         }),
     }

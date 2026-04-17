@@ -192,14 +192,14 @@ pub enum RegistryError {
 
     /// Event already exists at this sequence number
     #[error("Event already exists: {prefix} seq {seq}")]
-    EventExists { prefix: String, seq: u64 },
+    EventExists { prefix: String, seq: u128 },
 
     /// Sequence number gap detected
     #[error("Sequence gap for {prefix}: expected {expected}, got {got}")]
     SequenceGap {
         prefix: String,
-        expected: u64,
-        got: u64,
+        expected: u128,
+        got: u128,
     },
 
     /// Entity not found
@@ -332,7 +332,7 @@ impl RegistryError {
     }
 
     /// Create a not-found error for an event.
-    pub fn event_not_found(prefix: &Prefix, seq: u64) -> Self {
+    pub fn event_not_found(prefix: &Prefix, seq: u128) -> Self {
         Self::NotFound {
             entity_type: "event".into(),
             id: format!("{} seq {}", prefix.as_str(), seq),
@@ -399,13 +399,36 @@ pub trait RegistryBackend: Send + Sync {
     /// * `event` - The event to append
     fn append_event(&self, prefix: &Prefix, event: &Event) -> Result<(), RegistryError>;
 
+    /// Append an event together with its CESR-attachment bytes (externalized
+    /// signatures and other CESR groups). Default impl delegates to
+    /// `append_event`, dropping the attachment for backends that don't yet
+    /// persist it. Backends supporting attachments override this.
+    fn append_signed_event(
+        &self,
+        prefix: &Prefix,
+        event: &Event,
+        _attachment: &[u8],
+    ) -> Result<(), RegistryError> {
+        self.append_event(prefix, event)
+    }
+
+    /// Read the CESR-attachment bytes for an event at the given sequence,
+    /// or `None` if no attachment was written. Default impl returns `None`.
+    fn get_attachment(
+        &self,
+        _prefix: &Prefix,
+        _seq: u128,
+    ) -> Result<Option<Vec<u8>>, RegistryError> {
+        Ok(None)
+    }
+
     /// Get a single event by sequence number (random access).
     ///
     /// # Arguments
     ///
     /// * `prefix` - The KERI identifier prefix
     /// * `seq` - The sequence number of the event
-    fn get_event(&self, prefix: &Prefix, seq: u64) -> Result<Event, RegistryError>;
+    fn get_event(&self, prefix: &Prefix, seq: u128) -> Result<Event, RegistryError>;
 
     /// Visit events starting from a sequence (streaming via visitor pattern).
     ///
@@ -419,7 +442,7 @@ pub trait RegistryBackend: Send + Sync {
     fn visit_events(
         &self,
         prefix: &Prefix,
-        from_seq: u64,
+        from_seq: u128,
         visitor: &mut dyn FnMut(&Event) -> ControlFlow<()>,
     ) -> Result<(), RegistryError>;
 
@@ -717,14 +740,14 @@ impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
         (**self).append_event(prefix, event)
     }
 
-    fn get_event(&self, prefix: &Prefix, seq: u64) -> Result<Event, RegistryError> {
+    fn get_event(&self, prefix: &Prefix, seq: u128) -> Result<Event, RegistryError> {
         (**self).get_event(prefix, seq)
     }
 
     fn visit_events(
         &self,
         prefix: &Prefix,
-        from_seq: u64,
+        from_seq: u128,
         visitor: &mut dyn FnMut(&Event) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         (**self).visit_events(prefix, from_seq, visitor)

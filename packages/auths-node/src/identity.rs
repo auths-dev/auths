@@ -4,8 +4,6 @@ use std::sync::Arc;
 use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, KeyRole, get_platform_keychain_with_config};
-use auths_crypto::ed25519_pubkey_to_did_key;
-use auths_id::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::storage::attestation::AttestationSource;
 use auths_sdk::context::AuthsContext;
@@ -19,8 +17,6 @@ use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
 use auths_verifier::types::DeviceDID;
 use napi_derive::napi;
-use ring::rand::SystemRandom;
-use ring::signature::{Ed25519KeyPair, KeyPair};
 
 use crate::error::format_error;
 use crate::helpers::{make_env_config, resolve_key_alias, resolve_passphrase};
@@ -241,6 +237,7 @@ pub fn delegate_agent(
     passphrase: Option<String>,
     expires_in: Option<i64>,
     identity_did: Option<String>,
+    curve: Option<String>,
 ) -> napi::Result<NapiDelegatedAgentBundle> {
     let passphrase_str = resolve_passphrase(passphrase);
     let env_config = make_env_config(&passphrase_str, &parent_repo_path);
@@ -270,22 +267,23 @@ pub fn delegate_agent(
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: agent_name is user-provided, format produces valid alias
     let agent_alias = KeyAlias::new_unchecked(format!("{}-agent", agent_name));
-    let rng = SystemRandom::new();
-    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
+    // Curve defaults to P-256 per workspace convention (fn-115/116). Callers
+    // may pass `curve: "Ed25519"` for Radicle-compat agents.
+    let curve_choice = match curve.as_deref() {
+        Some("Ed25519") | Some("ed25519") => auths_crypto::CurveType::Ed25519,
+        _ => auths_crypto::CurveType::P256,
+    };
+    let generated = auths_id::keri::inception::generate_keypair_for_init(curve_choice)
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key generation failed: {e}")))?;
-    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key parsing failed: {e}")))?;
-    let agent_pubkey = keypair.public_key().as_ref().to_vec();
+    let agent_pubkey = generated.public_key.clone();
 
     let (parent_did, _, _) = keychain
         .load_key(&parent_alias)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key load failed: {e}")))?;
 
-    let seed = extract_seed_bytes(pkcs8.as_ref())
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Seed extraction failed: {e}")))?;
-    let seed_pkcs8 = encode_seed_as_pkcs8(seed)
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("PKCS8 encoding failed: {e}")))?;
-    let encrypted = encrypt_keypair(&seed_pkcs8, &passphrase_str)
+    // Store the PKCS8 blob directly — it's already curve-aware from generate_keypair_for_init.
+    // No need to extract-then-re-encode the seed (which was Ed25519-only).
+    let encrypted = encrypt_keypair(generated.pkcs8.as_ref(), &passphrase_str)
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key encryption failed: {e}")))?;
     keychain
         .store_key(
@@ -490,25 +488,26 @@ pub fn get_identity_public_key(
 /// // kp.private_key_hex, kp.public_key_hex, kp.did
 /// ```
 #[napi]
-pub fn generate_inmemory_keypair() -> napi::Result<NapiInMemoryKeypair> {
-    let rng = SystemRandom::new();
-    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
+pub fn generate_inmemory_keypair(curve: Option<String>) -> napi::Result<NapiInMemoryKeypair> {
+    // Default P-256 per workspace convention; callers that need Ed25519
+    // (e.g. Radicle compat) pass `curve: "Ed25519"`.
+    let curve_choice = match curve.as_deref() {
+        Some("Ed25519") | Some("ed25519") => auths_crypto::CurveType::Ed25519,
+        _ => auths_crypto::CurveType::P256,
+    };
+    let generated = auths_id::keri::inception::generate_keypair_for_init(curve_choice)
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key generation failed: {e}")))?;
-    let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key parsing failed: {e}")))?;
 
-    let seed = extract_seed_bytes(pkcs8.as_ref())
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Seed extraction failed: {e}")))?;
+    let parsed = auths_crypto::parse_key_material(generated.pkcs8.as_ref())
+        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key parse failed: {e}")))?;
 
-    let pub_bytes = keypair.public_key().as_ref();
-    let pub_array: &[u8; 32] = pub_bytes
-        .try_into()
-        .map_err(|_| format_error("AUTHS_CRYPTO_ERROR", "Invalid public key length"))?;
-    let did = ed25519_pubkey_to_did_key(pub_array);
+    let did =
+        auths_verifier::types::DeviceDID::from_public_key(&generated.public_key, curve_choice)
+            .to_string();
 
     Ok(NapiInMemoryKeypair {
-        private_key_hex: hex::encode(seed),
-        public_key_hex: hex::encode(pub_bytes),
+        private_key_hex: hex::encode(parsed.seed.as_bytes()),
+        public_key_hex: hex::encode(&generated.public_key),
         did,
     })
 }

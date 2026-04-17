@@ -170,7 +170,7 @@ impl EntryContent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[allow(missing_docs)]
 pub struct Entry {
-    pub sequence: u64,
+    pub sequence: u128,
     pub timestamp: DateTime<Utc>,
     pub content: EntryContent,
     pub actor_sig: Ed25519Signature,

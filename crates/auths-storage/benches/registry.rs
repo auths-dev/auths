@@ -10,7 +10,7 @@ use auths_core::crypto::said::{compute_next_commitment, compute_said};
 use auths_id::keri::event::{Event, IcpEvent, IxnEvent, KeriSequence};
 use auths_id::keri::seal::Seal;
 use auths_id::keri::types::{Prefix, Said};
-use auths_id::keri::validate::{finalize_icp_event, serialize_for_signing};
+use auths_id::keri::validate::finalize_icp_event;
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_keri::{CesrKey, Threshold, VersionString};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
@@ -46,20 +46,15 @@ fn make_signed_icp() -> (Event, Prefix, Ed25519KeyPair) {
         b: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
-    let mut finalized = finalize_icp_event(icp).unwrap();
-    let canonical = serialize_for_signing(&Event::Icp(finalized.clone())).unwrap();
-    let sig = keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+    let finalized = finalize_icp_event(icp).unwrap();
     let prefix = finalized.i.clone();
     (Event::Icp(finalized), prefix, keypair)
 }
 
 /// Create a signed IXN event.
-fn make_signed_ixn(prefix: &Prefix, seq: u64, prev_said: &str, keypair: &Ed25519KeyPair) -> Event {
+fn make_signed_ixn(prefix: &Prefix, seq: u128, prev_said: &str, keypair: &Ed25519KeyPair) -> Event {
     let mut ixn = IxnEvent {
         v: VersionString::placeholder(),
         d: Said::default(),
@@ -67,16 +62,12 @@ fn make_signed_ixn(prefix: &Prefix, seq: u64, prev_said: &str, keypair: &Ed25519
         s: KeriSequence::new(seq),
         p: Said::new_unchecked(prev_said.to_string()),
         a: vec![Seal::digest("EBench")],
-        x: String::new(),
     };
 
     let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
     ixn.d = compute_said(&value).unwrap();
 
-    let canonical = serialize_for_signing(&Event::Ixn(ixn.clone())).unwrap();
-    let sig = keypair.sign(&canonical);
-    ixn.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
+    let _ = keypair; // signatures are attached as CESR attachments at append time.
     Event::Ixn(ixn)
 }
 
@@ -179,7 +170,7 @@ fn bench_event_append(c: &mut Criterion) {
                 (dir, backend, prefix, said, keypair, 1u64)
             },
             |(dir, backend, prefix, prev_said, keypair, seq)| {
-                let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                let ixn = make_signed_ixn(&prefix, u128::from(seq), &prev_said, &keypair);
                 let _ = black_box(backend.append_event(&prefix, &ixn));
                 // Keep dir alive
                 let _ = &dir;
@@ -211,13 +202,13 @@ fn bench_event_append_scaling(c: &mut Criterion) {
 
                         let mut prev_said = icp.said().to_string();
                         for seq in 1..=n {
-                            let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                            let ixn = make_signed_ixn(&prefix, seq as u128, &prev_said, &keypair);
                             prev_said = ixn.said().to_string();
                             backend.append_event(&prefix, &ixn).unwrap();
                         }
 
                         let next_seq = n + 1;
-                        let ixn = make_signed_ixn(&prefix, next_seq, &prev_said, &keypair);
+                        let ixn = make_signed_ixn(&prefix, next_seq as u128, &prev_said, &keypair);
                         (dir, backend, prefix, ixn)
                     },
                     |(_dir, backend, prefix, ixn)| {
@@ -247,7 +238,7 @@ fn bench_batch_vs_sequential(c: &mut Criterion) {
                     let mut events = vec![(prefix.clone(), icp.clone())];
                     let mut prev_said = icp.said().to_string();
                     for seq in 1..n {
-                        let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                        let ixn = make_signed_ixn(&prefix, seq as u128, &prev_said, &keypair);
                         prev_said = ixn.said().to_string();
                         events.push((prefix.clone(), ixn));
                     }
@@ -271,7 +262,7 @@ fn bench_batch_vs_sequential(c: &mut Criterion) {
                     let mut events = vec![(prefix.clone(), icp.clone())];
                     let mut prev_said = icp.said().to_string();
                     for seq in 1..n {
-                        let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                        let ixn = make_signed_ixn(&prefix, seq as u128, &prev_said, &keypair);
                         prev_said = ixn.said().to_string();
                         events.push((prefix.clone(), ixn));
                     }
@@ -309,7 +300,8 @@ fn bench_batch_mixed_prefix(c: &mut Criterion) {
 
                             let mut prev_said = icp.said().to_string();
                             for seq in 1..ev_count {
-                                let ixn = make_signed_ixn(&prefix, seq, &prev_said, &keypair);
+                                let ixn =
+                                    make_signed_ixn(&prefix, seq as u128, &prev_said, &keypair);
                                 prev_said = ixn.said().to_string();
                                 all_events.push((prefix.clone(), ixn));
                             }

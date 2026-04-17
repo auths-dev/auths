@@ -1,10 +1,12 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
-use rand::rngs::OsRng;
-use ring::signature::{ED25519, UnparsedPublicKey};
+use p256::elliptic_curve::rand_core::OsRng;
+use p256::elliptic_curve::sec1::ToEncodedPoint;
 use serde::{Deserialize, Serialize};
-use x25519_dalek::{EphemeralSecret, PublicKey};
 use zeroize::Zeroizing;
+
+use auths_crypto::CurveType;
+use auths_keri::KeriPublicKey;
 
 use crate::error::ProtocolError;
 
@@ -24,11 +26,12 @@ pub struct PairingToken {
 
 /// Ephemeral keypair for a pairing session.
 ///
-/// The X25519 secret is consumed once during ECDH key exchange.
+/// The P-256 ephemeral secret is consumed once during ECDH key exchange.
 /// `EphemeralSecret` is `!Clone + !Serialize` — sessions cannot be persisted.
+/// The ECDH curve (P-256) is independent of the device's signing curve.
 pub struct PairingSession {
     pub token: PairingToken,
-    ephemeral_secret: Option<EphemeralSecret>,
+    ephemeral_secret: Option<p256::ecdh::EphemeralSecret>,
 }
 
 impl PairingToken {
@@ -56,9 +59,10 @@ impl PairingToken {
         capabilities: Vec<String>,
         expiry: Duration,
     ) -> Result<PairingSession, ProtocolError> {
-        let ephemeral_secret = EphemeralSecret::random_from_rng(OsRng);
-        let ephemeral_public = PublicKey::from(&ephemeral_secret);
-        let ephemeral_pubkey = URL_SAFE_NO_PAD.encode(ephemeral_public.as_bytes());
+        let ephemeral_secret = p256::ecdh::EphemeralSecret::random(&mut OsRng);
+        let ephemeral_public = ephemeral_secret.public_key();
+        let ephemeral_pubkey =
+            URL_SAFE_NO_PAD.encode(ephemeral_public.to_encoded_point(true).as_bytes());
         let short_code = generate_short_code()?;
 
         let token = PairingToken {
@@ -158,72 +162,95 @@ impl PairingToken {
         })
     }
 
-    pub fn ephemeral_pubkey_bytes(&self) -> Result<[u8; 32], ProtocolError> {
-        let bytes = URL_SAFE_NO_PAD
+    /// Decode the ephemeral P-256 ECDH public key from the token's base64url field.
+    pub fn ephemeral_pubkey_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        URL_SAFE_NO_PAD
             .decode(&self.ephemeral_pubkey)
-            .map_err(|e| ProtocolError::InvalidUri(format!("Invalid pubkey encoding: {}", e)))?;
-        bytes.try_into().map_err(|_| {
-            ProtocolError::KeyExchangeFailed("Invalid X25519 pubkey length".to_string())
-        })
+            .map_err(|e| ProtocolError::InvalidUri(format!("Invalid pubkey encoding: {}", e)))
     }
 }
 
 impl PairingSession {
-    /// Complete the ECDH exchange with the responder's X25519 public key.
+    /// Complete the P-256 ECDH exchange with the responder's ephemeral public key.
     ///
     /// Consumes the ephemeral secret (one-time use). Returns the 32-byte shared secret.
+    /// The ECDH curve (P-256) is independent of the device's signing curve — ephemeral
+    /// keys are fresh per session and never reused.
     pub fn complete_exchange(
         &mut self,
-        responder_x25519_pubkey: &[u8; 32],
+        responder_ephemeral_pubkey: &[u8],
     ) -> Result<Zeroizing<[u8; 32]>, ProtocolError> {
         let secret = self
             .ephemeral_secret
             .take()
             .ok_or(ProtocolError::SessionConsumed)?;
 
-        let responder_pubkey = PublicKey::from(*responder_x25519_pubkey);
-        let shared = secret.diffie_hellman(&responder_pubkey);
+        let responder_pk =
+            p256::PublicKey::from_sec1_bytes(responder_ephemeral_pubkey).map_err(|_| {
+                ProtocolError::KeyExchangeFailed(
+                    "Invalid P-256 ephemeral pubkey (SEC1 decode failed)".to_string(),
+                )
+            })?;
+        let shared = secret.diffie_hellman(&responder_pk);
+        let shared_bytes: [u8; 32] =
+            shared
+                .raw_secret_bytes()
+                .as_slice()
+                .try_into()
+                .map_err(|_| {
+                    ProtocolError::KeyExchangeFailed("Shared secret not 32 bytes".to_string())
+                })?;
 
-        Ok(Zeroizing::new(*shared.as_bytes()))
+        Ok(Zeroizing::new(shared_bytes))
     }
 
-    pub fn ephemeral_pubkey_bytes(&self) -> Result<[u8; 32], ProtocolError> {
+    /// Decode the ephemeral P-256 ECDH public key from the token's base64url field.
+    pub fn ephemeral_pubkey_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
         self.token.ephemeral_pubkey_bytes()
     }
 
-    /// Verify a pairing response's Ed25519 signature using `ring` directly.
+    /// Verify a pairing response's signature.
+    ///
+    /// The `curve` argument carries the signing curve in-band — callers must
+    /// read it from the wire (e.g. `PairingResponse.curve`) or from a sibling
+    /// typed source, never infer from pubkey byte length.
     pub fn verify_response(
         &self,
-        device_ed25519_pubkey: &[u8],
-        device_x25519_pubkey: &[u8; 32],
+        device_signing_pubkey: &[u8],
+        device_ephemeral_pubkey: &[u8],
         signature: &[u8],
+        curve: CurveType,
     ) -> Result<(), ProtocolError> {
         let initiator_pubkey = self.token.ephemeral_pubkey_bytes()?;
 
         let mut message = Vec::new();
         message.extend_from_slice(self.token.short_code.as_bytes());
         message.extend_from_slice(&initiator_pubkey);
-        message.extend_from_slice(device_x25519_pubkey);
+        message.extend_from_slice(device_ephemeral_pubkey);
 
-        // curve dispatch via byte length (pairing-boundary ingestion).
-        match device_ed25519_pubkey.len() {
-            32 => {
-                let peer = UnparsedPublicKey::new(&ED25519, device_ed25519_pubkey);
-                peer.verify(&message, signature)
-                    .map_err(|_| ProtocolError::InvalidSignature)?;
+        let key = match curve {
+            CurveType::Ed25519 => {
+                let arr: [u8; 32] = device_signing_pubkey.try_into().map_err(|_| {
+                    ProtocolError::KeyExchangeFailed(format!(
+                        "Ed25519 pubkey must be 32 bytes, got {}",
+                        device_signing_pubkey.len()
+                    ))
+                })?;
+                KeriPublicKey::Ed25519(arr)
             }
-            33 | 65 => {
-                auths_crypto::RingCryptoProvider::p256_verify(
-                    device_ed25519_pubkey,
-                    &message,
-                    signature,
-                )
-                .map_err(|_| ProtocolError::InvalidSignature)?;
+            CurveType::P256 => {
+                let arr: [u8; 33] = device_signing_pubkey.try_into().map_err(|_| {
+                    ProtocolError::KeyExchangeFailed(format!(
+                        "P-256 compressed pubkey must be 33 bytes, got {}",
+                        device_signing_pubkey.len()
+                    ))
+                })?;
+                KeriPublicKey::P256(arr)
             }
-            _ => return Err(ProtocolError::InvalidSignature),
-        }
+        };
 
-        Ok(())
+        key.verify_signature(&message, signature)
+            .map_err(|_| ProtocolError::InvalidSignature)
     }
 }
 
@@ -330,13 +357,19 @@ mod tests {
 
     #[test]
     fn test_session_consumed_prevents_reuse() {
-        let mut session = make_session();
-        let fake_responder_pubkey = [42u8; 32];
+        use p256::elliptic_curve::rand_core::OsRng as P256Rng;
+        use p256::elliptic_curve::sec1::ToEncodedPoint as _;
 
-        let result = session.complete_exchange(&fake_responder_pubkey);
+        let mut session = make_session();
+        // Generate a valid P-256 ephemeral pubkey (SEC1 compressed, 33 bytes)
+        let fake_secret = p256::ecdh::EphemeralSecret::random(&mut P256Rng);
+        let fake_pubkey = fake_secret.public_key().to_encoded_point(true);
+        let fake_pubkey_bytes = fake_pubkey.as_bytes();
+
+        let result = session.complete_exchange(fake_pubkey_bytes);
         assert!(result.is_ok());
 
-        let result = session.complete_exchange(&fake_responder_pubkey);
+        let result = session.complete_exchange(fake_pubkey_bytes);
         assert!(matches!(result, Err(ProtocolError::SessionConsumed)));
     }
 }

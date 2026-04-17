@@ -110,7 +110,6 @@ impl RegistryIdentityStorage {
     ) -> Result<(String, auths_id::keri::inception::InceptionResult), InitError> {
         use auths_id::keri::{
             Event, IcpEvent, InceptionResult, KeriSequence, Prefix, Said, finalize_icp_event,
-            serialize_for_signing,
         };
         use auths_keri::compute_next_commitment;
         use auths_keri::{CesrKey, Threshold, VersionString};
@@ -170,19 +169,14 @@ impl RegistryIdentityStorage {
             b,
             c: vec![],
             a: vec![],
-            x: String::new(),
         };
 
-        // Finalize event (computes SAID)
-        let mut finalized = finalize_icp_event(icp)
+        // Finalize event (computes SAID). Signatures for ICP events are
+        // written as CESR attachments at a later stage — this adapter only
+        // stores the unsigned event into the packed registry.
+        let finalized = finalize_icp_event(icp)
             .map_err(|e| InitError::Keri(format!("Failed to finalize ICP: {e}")))?;
         let prefix = finalized.i.clone();
-
-        // Sign the event
-        let canonical = serialize_for_signing(&Event::Icp(finalized.clone()))
-            .map_err(|e| InitError::Keri(format!("Failed to serialize for signing: {e}")))?;
-        let sig = current_keypair.sign(&canonical);
-        finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
         // Store event in packed registry
         self.backend

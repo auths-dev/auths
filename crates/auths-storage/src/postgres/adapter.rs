@@ -48,7 +48,7 @@ impl RegistryBackend for PostgresAdapter {
         })
     }
 
-    fn get_event(&self, _prefix: &Prefix, _seq: u64) -> Result<Event, RegistryError> {
+    fn get_event(&self, _prefix: &Prefix, _seq: u128) -> Result<Event, RegistryError> {
         Err(RegistryError::NotImplemented {
             method: "get_event",
         })
@@ -57,7 +57,7 @@ impl RegistryBackend for PostgresAdapter {
     fn visit_events(
         &self,
         _prefix: &Prefix,
-        _from_seq: u64,
+        _from_seq: u128,
         _visitor: &mut dyn FnMut(&Event) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         Err(RegistryError::NotImplemented {

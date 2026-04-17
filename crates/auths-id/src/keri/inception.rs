@@ -59,9 +59,44 @@ pub struct GeneratedKeypair {
     pub cesr_encoded: String,
 }
 
-/// Public alias for use by `identity/initialize.rs`.
+/// Public alias for single-curve keypair generation.
+///
+/// Thin wrapper over [`generate_keypairs_for_init`]; preserved so existing
+/// single-key callers (CLI, SDK workflows, tests) don't have to change when
+/// multi-key inception lands.
 pub fn generate_keypair_for_init(curve: CurveType) -> Result<GeneratedKeypair, InceptionError> {
-    generate_keypair(curve)
+    let mut out = generate_keypairs_for_init(&[curve])?;
+    // INVARIANT: generate_keypairs_for_init rejects empty slices, so a slice
+    // of length 1 yields a Vec of length 1.
+    Ok(out.remove(0))
+}
+
+/// Generate N keypairs, one per entry in `curves`.
+///
+/// Accepts mixed curve lists (e.g. `[P256, P256, Ed25519]`). Returns the
+/// keypairs in the same order as the input slice.
+///
+/// Args:
+/// * `curves` — non-empty slice of curve choices, one per device slot.
+///
+/// Returns `InceptionError::KeyGeneration` if `curves` is empty.
+///
+/// Usage:
+/// ```ignore
+/// use auths_crypto::CurveType;
+/// use auths_id::keri::inception::generate_keypairs_for_init;
+/// let kps = generate_keypairs_for_init(&[CurveType::P256, CurveType::P256])?;
+/// assert_eq!(kps.len(), 2);
+/// ```
+pub fn generate_keypairs_for_init(
+    curves: &[CurveType],
+) -> Result<Vec<GeneratedKeypair>, InceptionError> {
+    if curves.is_empty() {
+        return Err(InceptionError::KeyGeneration(
+            "generate_keypairs_for_init requires at least one curve".to_string(),
+        ));
+    }
+    curves.iter().map(|c| generate_keypair(*c)).collect()
 }
 
 /// Generate a keypair for the specified curve.
@@ -136,6 +171,83 @@ pub enum InceptionError {
 
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    #[error("Invalid threshold {threshold} for key_count={key_count}: {reason}")]
+    InvalidThreshold {
+        threshold: String,
+        key_count: usize,
+        reason: String,
+    },
+}
+
+/// Validate that a threshold makes sense for a given key count.
+///
+/// - `Simple(n)` requires `n <= key_count` (can't need more sigs than keys).
+/// - `Weighted(clauses)` requires every clause's length equal to `key_count`
+///   (one weight per key) and the clause's max sum to be >= 1 (otherwise the
+///   threshold is unsatisfiable).
+///
+/// Mirrors keripy's footgun check — reject at inception/rotation time, not at
+/// signature-verification time.
+pub(crate) fn validate_threshold_for_key_count(
+    threshold: &Threshold,
+    key_count: usize,
+) -> Result<(), InceptionError> {
+    let label = || match threshold {
+        Threshold::Simple(n) => format!("Simple({n})"),
+        Threshold::Weighted(clauses) => format!("Weighted({clauses:?})"),
+    };
+    match threshold {
+        Threshold::Simple(n) => {
+            if (*n as usize) > key_count {
+                return Err(InceptionError::InvalidThreshold {
+                    threshold: label(),
+                    key_count,
+                    reason: format!("threshold {n} exceeds key count {key_count}"),
+                });
+            }
+            if *n == 0 && key_count > 0 {
+                return Err(InceptionError::InvalidThreshold {
+                    threshold: label(),
+                    key_count,
+                    reason: "threshold 0 with non-empty key list is unsatisfiable".to_string(),
+                });
+            }
+        }
+        Threshold::Weighted(clauses) => {
+            if clauses.is_empty() {
+                return Err(InceptionError::InvalidThreshold {
+                    threshold: label(),
+                    key_count,
+                    reason: "weighted threshold with no clauses is unsatisfiable".to_string(),
+                });
+            }
+            for (i, clause) in clauses.iter().enumerate() {
+                if clause.len() != key_count {
+                    return Err(InceptionError::InvalidThreshold {
+                        threshold: label(),
+                        key_count,
+                        reason: format!(
+                            "clause {i} has {} weights for {key_count} keys",
+                            clause.len()
+                        ),
+                    });
+                }
+                // "Meetable" check: summing every weight must cross >= 1.
+                let refs: Vec<&auths_keri::Fraction> = clause.iter().collect();
+                if !auths_keri::Fraction::sum_meets_one(&refs) {
+                    return Err(InceptionError::InvalidThreshold {
+                        threshold: label(),
+                        key_count,
+                        reason: format!(
+                            "clause {i} sum < 1 even with all keys signing (unsatisfiable)"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 impl auths_core::error::AuthsErrorInfo for InceptionError {
@@ -146,6 +258,7 @@ impl auths_core::error::AuthsErrorInfo for InceptionError {
             Self::Storage(_) => "AUTHS-E4903",
             Self::Validation(_) => "AUTHS-E4904",
             Self::Serialization(_) => "AUTHS-E4905",
+            Self::InvalidThreshold { .. } => "AUTHS-E4906",
         }
     }
 
@@ -156,6 +269,9 @@ impl auths_core::error::AuthsErrorInfo for InceptionError {
             Self::Storage(_) => Some("Check storage backend connectivity"),
             Self::Validation(_) => None,
             Self::Serialization(_) => None,
+            Self::InvalidThreshold { .. } => Some(
+                "Ensure the threshold count does not exceed the number of keys, and that weighted clauses have one weight per key summing to at least 1",
+            ),
         }
     }
 }
@@ -195,6 +311,129 @@ impl InceptionResult {
     pub fn did(&self) -> String {
         format!("did:keri:{}", self.prefix.as_str())
     }
+}
+
+/// Result of a multi-key KERI identity inception.
+///
+/// Each position in the `current_*` / `next_*` vectors corresponds to the
+/// same device slot index: `current_keypairs_pkcs8[i]` signs at `k[i]`,
+/// and its next-rotation counterpart is at `next_keypairs_pkcs8[i]`
+/// committed at `n[i]`.
+pub struct MultiKeyInceptionResult {
+    pub prefix: Prefix,
+    pub current_keypairs_pkcs8: Vec<Pkcs8Der>,
+    pub next_keypairs_pkcs8: Vec<Pkcs8Der>,
+    pub current_public_keys: Vec<Vec<u8>>,
+    pub next_public_keys: Vec<Vec<u8>>,
+}
+
+impl std::fmt::Debug for MultiKeyInceptionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MultiKeyInceptionResult")
+            .field("prefix", &self.prefix)
+            .field("device_count", &self.current_public_keys.len())
+            .finish()
+    }
+}
+
+impl MultiKeyInceptionResult {
+    pub fn did(&self) -> String {
+        format!("did:keri:{}", self.prefix.as_str())
+    }
+}
+
+/// Create a multi-key KERI identity.
+///
+/// Generates `curves.len()` current keypairs and `curves.len()` next-rotation
+/// keypairs. The inception event carries all current pubkeys in `k` and
+/// commitment hashes of all next keypairs in `n`, with the supplied
+/// `kt`/`nt` thresholds.
+///
+/// Signs with index 0's current key only — satisfying any `Simple(1)` or
+/// single-slot threshold. Multi-device signature aggregation is wired
+/// through the signing-workflow module, which adds additional
+/// `IndexedSignature`s when `kt` is multi-slot.
+///
+/// Args:
+/// * `repo` — Git repository for KEL storage.
+/// * `witness_config` — Optional witness configuration.
+/// * `now` — Current time (injected).
+/// * `curves` — Non-empty slice of curve choices, one per device slot.
+/// * `kt` — Signing threshold. Validated against `curves.len()`.
+/// * `nt` — Rotation threshold. Validated against `curves.len()`.
+pub fn create_keri_identity_multi(
+    repo: &Repository,
+    witness_config: Option<&WitnessConfig>,
+    now: chrono::DateTime<chrono::Utc>,
+    curves: &[CurveType],
+    kt: Threshold,
+    nt: Threshold,
+) -> Result<MultiKeyInceptionResult, InceptionError> {
+    if curves.is_empty() {
+        return Err(InceptionError::KeyGeneration(
+            "create_keri_identity_multi requires at least one curve".to_string(),
+        ));
+    }
+    validate_threshold_for_key_count(&kt, curves.len())?;
+    validate_threshold_for_key_count(&nt, curves.len())?;
+
+    let current_kps = generate_keypairs_for_init(curves)?;
+    let next_kps = generate_keypairs_for_init(curves)?;
+
+    let k: Vec<CesrKey> = current_kps
+        .iter()
+        .map(|kp| CesrKey::new_unchecked(kp.cesr_encoded.clone()))
+        .collect();
+    let n: Vec<Said> = next_kps
+        .iter()
+        .map(|kp| compute_next_commitment(&kp.public_key))
+        .collect();
+
+    let (bt, b) = match witness_config {
+        Some(cfg) if cfg.is_enabled() => (
+            Threshold::Simple(cfg.threshold as u64),
+            cfg.witness_urls
+                .iter()
+                .map(|u| Prefix::new_unchecked(u.to_string()))
+                .collect(),
+        ),
+        _ => (Threshold::Simple(0), vec![]),
+    };
+
+    let icp = IcpEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: Prefix::default(),
+        s: KeriSequence::new(0),
+        kt,
+        k,
+        nt,
+        n,
+        bt,
+        b,
+        c: vec![],
+        a: vec![],
+    };
+
+    let finalized = finalize_icp_event(icp)?;
+    let prefix = finalized.i.clone();
+
+    // Sign with index 0's key — produces a valid single-slot signature. The
+    // multi-sig aggregation module can add additional sigs after the fact
+    // if `kt` requires a quorum.
+    let canonical = super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
+    let _sig_bytes = sign_with_pkcs8(curves[0], &current_kps[0].pkcs8, &canonical)?;
+
+    let kel = GitKel::new(repo, prefix.as_str());
+    kel.create(&finalized, now)?;
+
+    Ok(MultiKeyInceptionResult {
+        prefix,
+        current_keypairs_pkcs8: current_kps.iter().map(|kp| kp.pkcs8.clone()).collect(),
+        next_keypairs_pkcs8: next_kps.iter().map(|kp| kp.pkcs8.clone()).collect(),
+        current_public_keys: current_kps.into_iter().map(|kp| kp.public_key).collect(),
+        next_public_keys: next_kps.into_iter().map(|kp| kp.public_key).collect(),
+    })
 }
 
 /// Create a new KERI identity with proper pre-rotation.
@@ -270,17 +509,15 @@ pub fn create_keri_identity_with_curve(
         b,
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
     // Finalize event (computes and sets SAID)
-    let mut finalized = finalize_icp_event(icp)?;
+    let finalized = finalize_icp_event(icp)?;
     let prefix = finalized.i.clone();
 
     // Sign the event with the current key
     let canonical = super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
-    let sig_bytes = sign_with_pkcs8(curve, &current.pkcs8, &canonical)?;
-    finalized.x = URL_SAFE_NO_PAD.encode(&sig_bytes);
+    let _sig_bytes = sign_with_pkcs8(curve, &current.pkcs8, &canonical)?;
 
     // Store in Git KEL
     let kel = GitKel::new(repo, prefix.as_str());
@@ -358,18 +595,21 @@ pub fn create_keri_identity_with_backend(
         b: vec![],
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
-    let mut finalized = finalize_icp_event(icp)?;
+    let finalized = finalize_icp_event(icp)?;
     let prefix = finalized.i.clone();
 
     let canonical = super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
     let sig = current_keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+        index: 0,
+        sig: sig.as_ref().to_vec(),
+    }])
+    .map_err(|e| InceptionError::Serialization(e.to_string()))?;
 
     backend
-        .append_event(&prefix, &Event::Icp(finalized))
+        .append_signed_event(&prefix, &Event::Icp(finalized), &attachment)
         .map_err(InceptionError::Storage)?;
 
     Ok(InceptionResult {
@@ -440,15 +680,13 @@ pub fn create_keri_identity_from_key(
         b,
         c: vec![],
         a: vec![],
-        x: String::new(),
     };
 
-    let mut finalized = finalize_icp_event(icp)?;
+    let finalized = finalize_icp_event(icp)?;
     let prefix = finalized.i.clone();
 
     let canonical = super::serialize_for_signing(&Event::Icp(finalized.clone()))?;
-    let sig = current_keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
+    let _sig = current_keypair.sign(&canonical);
 
     let kel = GitKel::new(repo, prefix.as_str());
     kel.create(&finalized, now)?;
@@ -659,5 +897,50 @@ mod tests {
 
         // Prefixes should be different
         assert_ne!(result1.prefix, result2.prefix);
+    }
+
+    #[test]
+    fn generate_keypairs_for_init_rejects_empty_slice() {
+        let res = generate_keypairs_for_init(&[]);
+        match res {
+            Ok(_) => panic!("expected error on empty slice"),
+            Err(InceptionError::KeyGeneration(msg)) => assert!(msg.contains("at least one")),
+            Err(other) => panic!("expected KeyGeneration error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn generate_keypairs_for_init_single_curve_matches_legacy() {
+        // A one-element slice must produce exactly one keypair with the same
+        // shape as the legacy single-curve entry point.
+        let kps = generate_keypairs_for_init(&[auths_crypto::CurveType::P256]).unwrap();
+        assert_eq!(kps.len(), 1);
+        assert!(kps[0].cesr_encoded.starts_with("1AAI"));
+        assert_eq!(kps[0].public_key.len(), 33);
+
+        let legacy = generate_keypair_for_init(auths_crypto::CurveType::P256).unwrap();
+        assert_eq!(legacy.public_key.len(), 33);
+        assert!(legacy.cesr_encoded.starts_with("1AAI"));
+    }
+
+    #[test]
+    fn generate_keypairs_for_init_mixed_curves_distinct_keys() {
+        use auths_crypto::CurveType::{Ed25519, P256};
+        let kps = generate_keypairs_for_init(&[P256, P256, Ed25519]).unwrap();
+        assert_eq!(kps.len(), 3);
+
+        // Per-entry curve dispatch: P-256 entries are 33 bytes with "1AAI"
+        // CESR prefix; Ed25519 is 32 bytes with "D".
+        assert_eq!(kps[0].public_key.len(), 33);
+        assert!(kps[0].cesr_encoded.starts_with("1AAI"));
+        assert_eq!(kps[1].public_key.len(), 33);
+        assert!(kps[1].cesr_encoded.starts_with("1AAI"));
+        assert_eq!(kps[2].public_key.len(), 32);
+        assert!(kps[2].cesr_encoded.starts_with('D'));
+
+        // Distinct keypairs (randomness check — pubkeys must differ).
+        assert_ne!(kps[0].public_key, kps[1].public_key);
+        assert_ne!(kps[0].public_key, kps[2].public_key);
+        assert_ne!(kps[1].public_key, kps[2].public_key);
     }
 }

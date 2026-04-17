@@ -103,7 +103,10 @@ pub async fn fetch_trust_root(
         .filter_map(|w| {
             let pk_bytes: [u8; 32] = hex::decode(&w.public_key).ok()?.try_into().ok()?;
             let public_key = Ed25519PublicKey::from_bytes(pk_bytes);
-            let witness_did = auths_verifier::DeviceDID::from_ed25519(public_key.as_bytes());
+            let witness_did = auths_verifier::DeviceDID::from_public_key(
+                public_key.as_bytes(),
+                auths_crypto::CurveType::Ed25519,
+            );
             Some(TrustRootWitness {
                 witness_did,
                 name: w.name,

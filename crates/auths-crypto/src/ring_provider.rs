@@ -55,6 +55,19 @@ impl RingCryptoProvider {
         Ok(signature.to_bytes().to_vec())
     }
 
+    /// Verify an Ed25519 signature synchronously. Pubkey must be 32 raw bytes.
+    pub fn ed25519_verify(
+        pubkey: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> Result<(), CryptoError> {
+        // INVARIANT: sanctioned ring usage inside auths-crypto per the crate's
+        // permanent `#![allow(clippy::disallowed_methods)]` carve-out.
+        let pk = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, pubkey);
+        pk.verify(message, signature)
+            .map_err(|_| CryptoError::InvalidSignature)
+    }
+
     /// Verify a P-256 signature. Accepts 33-byte compressed or 65-byte uncompressed pubkey.
     pub fn p256_verify(pubkey: &[u8], message: &[u8], signature: &[u8]) -> Result<(), CryptoError> {
         use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
