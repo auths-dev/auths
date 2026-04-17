@@ -16,8 +16,9 @@ use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_verifier::Capability;
 use auths_verifier::PublicKeyHex;
+use auths_verifier::core::Attestation;
 pub use auths_verifier::core::Role;
-use auths_verifier::core::{Attestation, Ed25519PublicKey};
+
 use auths_verifier::types::{DeviceDID, IdentityDID};
 
 use crate::domains::org::error::OrgError;
@@ -195,8 +196,8 @@ pub struct AddMemberCommand {
     pub org_prefix: String,
     /// Full DID of the member being added.
     pub member_did: String,
-    /// Ed25519 public key of the member.
-    pub member_public_key: Ed25519PublicKey,
+    /// Public key of the member (32 bytes Ed25519 or 33 bytes P-256 compressed).
+    pub member_public_key: Vec<u8>,
     /// Role to assign.
     pub role: Role,
     /// Capability strings to grant.
@@ -235,8 +236,8 @@ pub struct RevokeMemberCommand {
     pub org_prefix: String,
     /// Full DID of the member to revoke.
     pub member_did: String,
-    /// Ed25519 public key of the member (from existing attestation).
-    pub member_public_key: Ed25519PublicKey,
+    /// Public key of the member (from existing attestation).
+    pub member_public_key: Vec<u8>,
     /// Hex-encoded public key of the signing admin.
     pub admin_public_key_hex: PublicKeyHex,
     /// Keychain alias of the admin's signing key.
@@ -350,13 +351,16 @@ pub fn add_organization_member(
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: admin_att.issuer is a CanonicalDid from a verified attestation loaded by find_admin()
     let admin_issuer_did = IdentityDID::new_unchecked(admin_att.issuer.as_str());
+    let member_curve =
+        auths_crypto::CurveType::from_public_key_len_fallback(cmd.member_public_key.len())
+            .unwrap_or_default();
     let attestation = create_signed_attestation(
         now,
         &rid,
         &admin_issuer_did,
         &member_did,
-        cmd.member_public_key.as_bytes(),
-        auths_crypto::CurveType::Ed25519,
+        &cmd.member_public_key,
+        member_curve,
         Some(serde_json::json!({
             "org_role": cmd.role.to_string(),
             "org_did": format!("did:keri:{}", cmd.org_prefix),
@@ -428,12 +432,15 @@ pub fn revoke_organization_member(
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: admin_att.issuer is a CanonicalDid from a verified attestation loaded by find_admin()
     let admin_issuer_did = IdentityDID::new_unchecked(admin_att.issuer.as_str());
+    let member_curve =
+        auths_crypto::CurveType::from_public_key_len_fallback(cmd.member_public_key.len())
+            .unwrap_or_default();
     let revocation = create_signed_revocation(
         admin_att.rid.as_str(),
         &admin_issuer_did,
         &member_did,
-        cmd.member_public_key.as_bytes(),
-        auths_crypto::CurveType::Ed25519,
+        &cmd.member_public_key,
+        member_curve,
         cmd.note,
         None,
         now,

@@ -4,7 +4,6 @@ use std::sync::Arc;
 use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{KeyAlias, KeyRole, get_platform_keychain_with_config};
-use auths_id::identity::helpers::{encode_seed_as_pkcs8, extract_seed_bytes};
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::storage::attestation::AttestationSource;
 use auths_sdk::context::AuthsContext;
@@ -282,11 +281,9 @@ pub fn delegate_agent(
         .load_key(&parent_alias)
         .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key load failed: {e}")))?;
 
-    let seed = extract_seed_bytes(generated.pkcs8.as_ref())
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Seed extraction failed: {e}")))?;
-    let seed_pkcs8 = encode_seed_as_pkcs8(seed)
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("PKCS8 encoding failed: {e}")))?;
-    let encrypted = encrypt_keypair(&seed_pkcs8, &passphrase_str)
+    // Store the PKCS8 blob directly — it's already curve-aware from generate_keypair_for_init.
+    // No need to extract-then-re-encode the seed (which was Ed25519-only).
+    let encrypted = encrypt_keypair(generated.pkcs8.as_ref(), &passphrase_str)
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key encryption failed: {e}")))?;
     keychain
         .store_key(
@@ -501,15 +498,15 @@ pub fn generate_inmemory_keypair(curve: Option<String>) -> napi::Result<NapiInMe
     let generated = auths_id::keri::inception::generate_keypair_for_init(curve_choice)
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key generation failed: {e}")))?;
 
-    let seed = extract_seed_bytes(generated.pkcs8.as_ref())
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Seed extraction failed: {e}")))?;
+    let parsed = auths_crypto::parse_key_material(generated.pkcs8.as_ref())
+        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key parse failed: {e}")))?;
 
     let did =
         auths_verifier::types::DeviceDID::from_public_key(&generated.public_key, curve_choice)
             .to_string();
 
     Ok(NapiInMemoryKeypair {
-        private_key_hex: hex::encode(seed),
+        private_key_hex: hex::encode(parsed.seed.as_bytes()),
         public_key_hex: hex::encode(&generated.public_key),
         did,
     })
