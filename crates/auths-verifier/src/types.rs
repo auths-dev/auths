@@ -488,6 +488,10 @@ pub fn signer_hex_to_did_with_curve(
     curve: auths_crypto::CurveType,
 ) -> Result<DeviceDID, DidConversionError> {
     let bytes = hex::decode(hex_key).map_err(|e| DidConversionError::InvalidHex(e.to_string()))?;
+    let expected = curve.public_key_len();
+    if bytes.len() != expected {
+        return Err(DidConversionError::WrongKeyLength(bytes.len()));
+    }
     Ok(DeviceDID::from_public_key(&bytes, curve))
 }
 
