@@ -69,6 +69,13 @@ ignore = [
   # rsa Marvin Attack (RUSTSEC-2023-0071) — transitive via ssh-key v0.6;
   # no fix available until ssh-key upgrades to rsa v0.10+
   "RUSTSEC-2023-0071",
+
+  # rustls-webpki URI name constraint issues (RUSTSEC-2026-0098, RUSTSEC-2026-0099)
+  # Transitive via aws-smithy-http-client → hyper-rustls 0.24 → rustls 0.21 → rustls-webpki 0.101.7
+  # Not exploitable: auths doesn't validate X.509 certificates; identity is KERI/DID-based.
+  # Waiting for AWS SDK to release with rustls 0.23+ (tracks hyper-rustls 0.27+).
+  "RUSTSEC-2026-0098",
+  "RUSTSEC-2026-0099",
 ]
 
 [sources]

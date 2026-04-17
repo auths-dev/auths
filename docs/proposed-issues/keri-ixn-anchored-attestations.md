@@ -100,6 +100,62 @@ This is the `ixn`-anchoring conversation raised by `@rank5.syzygy` in our KERI-t
 2. **Same KEL for identity + device events, or separate KELs?** auths today has one KEL per controller. ACDC / TEL designs use a separate Transaction Event Log per registry. For device events, one KEL is fine because every device-event is controller-issued. If we ever support delegated device authorization (a paired admin device authorizes a third device), revisit — that's when a TEL becomes useful.
 3. **Pre-Phase-1 spec-compliance work (sister issue) vs this issue: which lands first?** Recommend sister issue lands first (`x` externalization, `drt`, `u128`). This issue depends on signed-event-attachment shape being stable. If we land this issue first, every emitted `ixn` will have an in-body `x` and need migrating later.
 
+## Same-shape gaps across the codebase
+
+The device-link gap is one instance of a general pattern: **a trust-affecting decision recorded as a Git-ref attestation but not sealed in the controller's KEL**. The same architectural fix (`ixn` + seal) applies to every operation below. Phases 1-5 above cover device link/unlink; these are the follow-on surfaces that need the same treatment.
+
+### Org membership (high priority)
+
+`add_organization_member` and `revoke_organization_member` produce attestations stored at `refs/auths/registry` under `org/<prefix>/members/`. The org's controller KEL has zero record that member X was added at time T. An attacker who compromises the Git registry can forge or backdate org memberships with no KEL evidence to contradict them.
+
+Fix: `ixn` with a digest seal of the membership attestation SAID, emitted by the org controller's KEL. Same pattern as device-link Phases 1-2.
+
+Files: `crates/auths-sdk/src/domains/org/service.rs`, `crates/auths-sdk/src/workflows/org.rs`.
+
+### Agent delegation (medium priority — architectural choice)
+
+`provision_agent_identity` creates a standalone `icp` for the agent, then links it to the parent via an attestation. The **parent's** KEL doesn't record "I delegated agent X."
+
+KERI has a purpose-built mechanism: `dip` (delegated inception). If agents were provisioned via `dip` instead of standalone `icp` + side-channel attestation, the parent's KEL would natively contain the delegation event. This is architecturally cleaner than `ixn` sealing — the delegation relationship lives in the event type itself, not in a seal's payload.
+
+Decision: use `dip`/`drt` for agent provisioning (KERI-native), or `ixn` + seal (consistent with device-link pattern). Recommend `dip`/`drt` for agents since the delegation is a first-class KERI concept.
+
+Files: `crates/auths-id/src/agent_identity.rs`.
+
+### Artifact/release signing (medium priority)
+
+`sign_artifact_bytes_raw` and `sign_action_raw` produce signed attestations stored in Git (and optionally submitted to the transparency log via Rekor). The signer's KEL has no record of "I signed artifact X at time T."
+
+For supply-chain security, an `ixn` anchoring each signing event would let anyone replay the signer's KEL and see every artifact they ever attested to — a tamper-evident signing log baked into the identity itself. This is particularly valuable for CI identities where the signing history IS the audit trail.
+
+Files: `crates/auths-sdk/src/domains/signing/service.rs`.
+
+### Capability lifecycle (low priority)
+
+When a device's capabilities are narrowed (removing `sign:release`) or extended (adding `manage:members`), a new attestation replaces the old one. There's no KEL record of the capability change. An attacker could forge an attestation granting capabilities the controller never intended.
+
+This is lower priority because capability changes are a subset of device re-attestation — if device-link `ixn` seals land (Phases 1-2), capability changes are implicitly covered since they produce new attestations that would also be sealed.
+
+### Emergency freeze (speculative)
+
+There's no `ixn` event type for "I'm temporarily suspending all operations on this identity." KERI doesn't define one natively, but an `ixn` with a well-known seal type (e.g., `{"t": "freeze"}`) would let a controller broadcast "stop trusting my signatures until further notice" in a way witnesses can receipt and verifiers can detect.
+
+Currently the only way to "freeze" is to rotate to a null next-key commitment (abandon), which is permanent. A reversible freeze via `ixn` would be useful for incident response — "my laptop was stolen, freeze everything, I'll rotate keys from my phone once I verify."
+
+### Cross-identity attestation chains (low priority, high value)
+
+When identity A attests to identity B's device (e.g., an org admin authorizing a member's device), that attestation is in A's registry but not anchored in A's KEL. If A is compromised and the attacker forges attestations for B's devices, A's KEL is silent — the forgeries look identical to legitimate attestations.
+
+Anchoring cross-identity attestations in the *issuer's* KEL would let B verify "did A's KEL actually record this authorization at the claimed sequence?"
+
+### Transparency log submission as a KEL-visible fact (speculative)
+
+When an attestation is submitted to Rekor, the inclusion proof comes back but isn't recorded in the signer's KEL. An `ixn` sealing "I submitted attestation X to log Y, got inclusion proof Z" would make the transparency-log submission itself part of the tamper-evident record. This closes the gap between "I signed something" and "I provably published that I signed it."
+
+### The general principle
+
+If a controller makes a decision that affects trust — authorize, revoke, delegate, sign, freeze — and that decision isn't an `ixn` seal (or `dip`/`drt` for delegation) in the KEL, then the KEL is an incomplete history of the controller's actions. The phases above fix the most critical instance (device link/unlink). The gaps listed here are the same pattern applied to every trust-affecting operation auths supports, ordered by priority.
+
 ## Out of scope
 
 - **TEL (Transaction Event Log) registries.** A more general mechanism than `ixn` seals; the right answer if we ever ship credential issuance (ACDC). Not needed for device-link anchoring.
