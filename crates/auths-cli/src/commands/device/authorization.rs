@@ -7,7 +7,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auths_sdk::attestation::AttestationGroup;
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::identity::ManagedIdentity;
 use auths_sdk::keychain::KeyAlias;
@@ -27,6 +26,7 @@ use crate::ux::format::{JsonResponse, is_json_mode};
 struct DeviceEntry {
     id: String,
     status: String,
+    anchored: bool,
     public_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     created_at: Option<String>,
@@ -478,18 +478,19 @@ fn list_devices(
         .load_identity()
         .with_context(|| format!("Failed to load identity from {:?}", repo_path))?;
 
-    let attestations = attestation_storage
-        .load_all_attestations()
+    let enriched = attestation_storage
+        .load_all_enriched()
         .context("Could not load device attestations")?;
 
-    let grouped = AttestationGroup::from_list(attestations);
+    let grouped = auths_sdk::attestation::EnrichedAttestationGroup::from_enriched(enriched);
 
     let mut entries: Vec<DeviceEntry> = Vec::new();
     for (device_did_str, att_entries) in grouped.by_device.iter() {
         #[allow(clippy::expect_used)] // INVARIANT: BTreeMap groups are never empty by construction
-        let latest = att_entries
+        let enriched_latest = att_entries
             .last()
             .expect("Grouped attestations should not be empty");
+        let latest = &enriched_latest.attestation;
 
         // single verifier path via auths_verifier::verify_with_keys.
         // Callers resolve the DID and pass the typed key directly.
@@ -568,6 +569,7 @@ fn list_devices(
         entries.push(DeviceEntry {
             id: device_did_str.clone(),
             status: status_string,
+            anchored: enriched_latest.anchor == auths_keri::AnchorStatus::Anchored,
             public_key: hex::encode(latest.device_public_key.as_bytes()),
             created_at: latest.timestamp.map(|ts| ts.to_rfc3339()),
             expires_at: latest.expires_at.map(|ts| ts.to_rfc3339()),
@@ -597,7 +599,14 @@ fn list_devices(
         return Ok(());
     }
     for (i, entry) in entries.iter().enumerate() {
-        println!("{:>2}. {}   {}", i + 1, entry.id, entry.status);
+        let anchor_indicator = if entry.anchored { "" } else { " (unanchored)" };
+        println!(
+            "{:>2}. {}   {}{}",
+            i + 1,
+            entry.id,
+            entry.status,
+            anchor_indicator
+        );
         if let Some(note) = &entry.note {
             println!("    Note: {}", note);
         }

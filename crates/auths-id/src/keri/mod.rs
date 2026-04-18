@@ -121,8 +121,9 @@ pub mod witness_integration;
 
 #[cfg(feature = "git-storage")]
 pub use anchor::{
-    AnchorError, AnchorVerification, anchor_attestation, anchor_data, anchor_idp_binding,
-    find_anchor_event, verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
+    AnchorError, AnchorStatus, AnchorVerification, anchor_and_persist,
+    anchor_and_persist_via_backend, find_anchor_event, resolve_anchored_saids_via_backend,
+    try_stage_anchor, verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
 };
 pub use auths_keri::KERI_VERSION_PREFIX;
 pub use event::{

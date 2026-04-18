@@ -155,7 +155,26 @@ pub async fn handle_verify(
         verify_chain_with_capability(&chain, &Capability::sign_release(), &root_pk).await;
 
     let (chain_valid, chain_report, capability_valid) = match chain_result {
-        Ok(report) => {
+        Ok(mut report) => {
+            if let Ok(home) = auths_sdk::paths::auths_home() {
+                let storage = auths_sdk::storage::RegistryAttestationStorage::new(&home);
+                if let Ok(enriched) = storage.load_all_enriched() {
+                    let anchor_set: std::collections::HashSet<auths_keri::Said> = enriched
+                        .iter()
+                        .filter(|e| e.anchor == auths_keri::AnchorStatus::Anchored)
+                        .map(|e| e.said.clone())
+                        .collect();
+                    let all_anchored = chain.iter().all(|att| {
+                        auths_sdk::attestation::canonical_said(att)
+                            .is_some_and(|s| anchor_set.contains(&s))
+                    });
+                    report.anchored = Some(if all_anchored {
+                        auths_keri::AnchorStatus::Anchored
+                    } else {
+                        auths_keri::AnchorStatus::NotAnchored
+                    });
+                }
+            }
             let is_valid = report.is_valid();
             (Some(is_valid), Some(report), Some(true))
         }

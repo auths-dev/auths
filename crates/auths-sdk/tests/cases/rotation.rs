@@ -6,7 +6,7 @@ use auths_core::ports::clock::SystemClock;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::KeyStorage;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole};
-use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
+use auths_core::testing::IsolatedKeychainHandle;
 use auths_id::keri::{CesrKey, KeyState, Prefix, Said, Threshold, VersionString};
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
@@ -25,19 +25,19 @@ use ring::signature::Ed25519KeyPair;
 
 use crate::cases::helpers::{build_test_context, build_test_context_with_provider};
 
-fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
-    MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
-    let signer = StorageSigner::new(MemoryKeychainHandle);
+fn setup_test_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKeychainHandle) {
+    let keychain = IsolatedKeychainHandle::new();
+    let signer = StorageSigner::new(keychain.clone());
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .with_curve(auths_crypto::CurveType::Ed25519)
         .build();
-    let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
+    let ctx = build_test_context(registry_path, Arc::new(keychain.clone()));
     let result = match initialize(
         IdentityConfig::Developer(config),
         &ctx,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(keychain.clone()),
         &signer,
         &provider,
         None,
@@ -47,7 +47,7 @@ fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
         InitializeResult::Developer(r) => r,
         _ => unreachable!(),
     };
-    result.key_alias
+    (result.key_alias, keychain)
 }
 
 /// Test-local: failure-mode `KeyStorage` for testing error paths.
@@ -100,7 +100,7 @@ fn rotate_identity_updates_fingerprints() {
     let tmp = tempfile::tempdir().unwrap();
     let registry_path = tmp.path().join(".auths");
 
-    let key_alias = setup_test_identity(&registry_path);
+    let (key_alias, keychain) = setup_test_identity(&registry_path);
 
     let config = IdentityRotationConfig {
         repo_path: registry_path.clone(),
@@ -110,7 +110,7 @@ fn rotate_identity_updates_fingerprints() {
 
     let ctx = build_test_context_with_provider(
         &registry_path,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(keychain.clone()),
         Some(
             Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"))
                 as Arc<dyn PassphraseProvider + Send + Sync>,
@@ -141,7 +141,7 @@ fn rotate_identity_nonexistent_registry_returns_error() {
 
     let ctx = build_test_context_with_provider(
         &missing_path,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(IsolatedKeychainHandle::new()),
         Some(
             Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"))
                 as Arc<dyn PassphraseProvider + Send + Sync>,
@@ -160,9 +160,8 @@ fn rotate_identity_nonexistent_registry_returns_error() {
 fn rotate_identity_registry_cleared_returns_error() {
     let tmp = tempfile::tempdir().unwrap();
     let registry_path = tmp.path().join(".auths");
-    let key_alias = setup_test_identity(&registry_path);
+    let (key_alias, keychain) = setup_test_identity(&registry_path);
 
-    // Delete the packed registry ref to simulate registry corruption
     let repo = git2::Repository::open(&registry_path).unwrap();
     if let Ok(mut reference) = repo.find_reference("refs/auths/registry") {
         reference.delete().unwrap();
@@ -176,7 +175,7 @@ fn rotate_identity_registry_cleared_returns_error() {
 
     let ctx = build_test_context_with_provider(
         &registry_path,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(keychain.clone()),
         Some(
             Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"))
                 as Arc<dyn PassphraseProvider + Send + Sync>,
@@ -214,6 +213,7 @@ fn compute_rotation_event_is_deterministic() {
         config_traits: vec![],
         is_non_transferable: false,
         delegator: None,
+        last_establishment_sequence: 0,
     };
 
     let signer1 = auths_crypto::TypedSignerKey::from_pkcs8(pkcs8.as_ref()).unwrap();
@@ -280,6 +280,7 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
         config_traits: vec![],
         is_non_transferable: false,
         delegator: None,
+        last_establishment_sequence: 0,
     };
 
     let (rot, _bytes) = compute_rotation_event(

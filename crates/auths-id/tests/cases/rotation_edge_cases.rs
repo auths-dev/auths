@@ -1,14 +1,19 @@
 use std::ops::ControlFlow;
 
+use auths_core::crypto::signer::encrypt_keypair;
+use auths_core::signing::StorageSigner;
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
+use auths_core::testing::{IsolatedKeychainHandle, TestPassphraseProvider};
 use auths_id::keri::{
-    Event, GitKel, RotationError, anchor_attestation, create_keri_identity_with_backend,
+    Event, GitKel, RotationError, anchor_and_persist, create_keri_identity_with_backend,
     create_keri_identity_with_curve, get_key_state, rotate_keys, rotate_keys_with_backend,
     validate_kel,
 };
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
-use ring::signature::Ed25519KeyPair;
 use serde::{Deserialize, Serialize};
+
+const TEST_PASSPHRASE: &str = "Test-passphrase1!";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TestAttestation {
@@ -25,6 +30,42 @@ fn make_test_attestation(issuer: &str, subject: &str) -> TestAttestation {
     }
 }
 
+fn store_keypair_in_keychain(
+    keychain: &IsolatedKeychainHandle,
+    pkcs8: &[u8],
+    alias_name: &str,
+    identity_did: &str,
+) -> KeyAlias {
+    let alias = KeyAlias::new_unchecked(alias_name);
+    let identity_did_typed = IdentityDID::new_unchecked(identity_did);
+    let encrypted = encrypt_keypair(pkcs8, TEST_PASSPHRASE).expect("encrypt keypair");
+    keychain
+        .store_key(&alias, &identity_did_typed, KeyRole::Primary, &encrypted)
+        .expect("store key");
+    alias
+}
+
+fn anchor_via_kel(
+    repo: &git2::Repository,
+    prefix: &auths_id::keri::Prefix,
+    att: &TestAttestation,
+    signer: &dyn auths_core::signing::SecureSigner,
+    alias: &KeyAlias,
+    provider: &TestPassphraseProvider,
+) {
+    let kel = GitKel::new(repo, prefix.as_str());
+    anchor_and_persist(
+        &kel,
+        signer,
+        alias,
+        provider,
+        prefix,
+        att,
+        chrono::Utc::now(),
+    )
+    .unwrap();
+}
+
 // =========================================================================
 // Double rotation: replaying a consumed next-key must fail
 // =========================================================================
@@ -35,7 +76,6 @@ fn double_rotation_with_consumed_next_key_fails() {
 
     let init = create_keri_identity_with_backend(&backend, None).unwrap();
 
-    // First rotation succeeds using the pre-committed next key
     let rot1 = rotate_keys_with_backend(
         &backend,
         &init.prefix,
@@ -46,7 +86,6 @@ fn double_rotation_with_consumed_next_key_fails() {
     .unwrap();
     assert_eq!(rot1.sequence, 1);
 
-    // Second rotation with the SAME consumed key must fail
     let result = rotate_keys_with_backend(
         &backend,
         &init.prefix,
@@ -60,7 +99,6 @@ fn double_rotation_with_consumed_next_key_fails() {
         result
     );
 
-    // But rotating with the NEW next key from rot1 succeeds
     let rot2 = rotate_keys_with_backend(
         &backend,
         &init.prefix,
@@ -87,7 +125,6 @@ fn double_rotation_does_not_corrupt_kel() {
     )
     .unwrap();
 
-    // Failed double-rotation attempt
     let _ = rotate_keys_with_backend(
         &backend,
         &init.prefix,
@@ -96,7 +133,6 @@ fn double_rotation_does_not_corrupt_kel() {
         None,
     );
 
-    // KEL should still be valid with exactly 2 events (ICP + ROT)
     let mut events = Vec::new();
     backend
         .visit_events(&init.prefix, 0, &mut |e| {
@@ -110,7 +146,6 @@ fn double_rotation_does_not_corrupt_kel() {
     assert_eq!(state.sequence, 1);
     assert!(!state.is_abandoned);
 
-    // Legitimate next rotation still works
     let rot2 = rotate_keys_with_backend(
         &backend,
         &init.prefix,
@@ -129,6 +164,8 @@ fn double_rotation_does_not_corrupt_kel() {
 #[test]
 fn rotation_after_interaction_events_preserves_kel_integrity() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let keychain = IsolatedKeychainHandle::new();
+    let provider = TestPassphraseProvider::new(TEST_PASSPHRASE);
 
     let init = create_keri_identity_with_curve(
         &repo,
@@ -138,17 +175,21 @@ fn rotation_after_interaction_events_preserves_kel_integrity() {
     )
     .unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_kp = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
-    // IXN at seq 1
+    let alias = store_keypair_in_keychain(
+        &keychain,
+        init.current_keypair_pkcs8.as_ref(),
+        "current-key",
+        &identity_did,
+    );
+    let signer = StorageSigner::new(keychain);
+
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
-    anchor_attestation(&repo, &init.prefix, &att1, &current_kp, chrono::Utc::now()).unwrap();
+    anchor_via_kel(&repo, &init.prefix, &att1, &signer, &alias, &provider);
 
-    // IXN at seq 2
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
-    anchor_attestation(&repo, &init.prefix, &att2, &current_kp, chrono::Utc::now()).unwrap();
+    anchor_via_kel(&repo, &init.prefix, &att2, &signer, &alias, &provider);
 
-    // ROT at seq 3 (using pre-committed next key)
     let rot1 = rotate_keys(
         &repo,
         &init.prefix,
@@ -159,7 +200,6 @@ fn rotation_after_interaction_events_preserves_kel_integrity() {
     .unwrap();
     assert_eq!(rot1.sequence, 3);
 
-    // Verify KEL: ICP(0) + IXN(1) + IXN(2) + ROT(3)
     let kel = GitKel::new(&repo, init.prefix.as_str());
     let events = kel.get_events().unwrap();
     assert_eq!(events.len(), 4);
@@ -177,6 +217,8 @@ fn rotation_after_interaction_events_preserves_kel_integrity() {
 #[test]
 fn anchoring_works_with_rotated_key_after_ixn() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let keychain = IsolatedKeychainHandle::new();
+    let provider = TestPassphraseProvider::new(TEST_PASSPHRASE);
 
     let init = create_keri_identity_with_curve(
         &repo,
@@ -186,13 +228,18 @@ fn anchoring_works_with_rotated_key_after_ixn() {
     )
     .unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let current_kp = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
-    // IXN with inception key
+    let alias0 = store_keypair_in_keychain(
+        &keychain,
+        init.current_keypair_pkcs8.as_ref(),
+        "key-0",
+        &identity_did,
+    );
+    let signer = StorageSigner::new(keychain.clone());
+
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
-    anchor_attestation(&repo, &init.prefix, &att1, &current_kp, chrono::Utc::now()).unwrap();
+    anchor_via_kel(&repo, &init.prefix, &att1, &signer, &alias0, &provider);
 
-    // Rotate key
     let rot1 = rotate_keys(
         &repo,
         &init.prefix,
@@ -201,13 +248,18 @@ fn anchoring_works_with_rotated_key_after_ixn() {
         chrono::Utc::now(),
     )
     .unwrap();
-    let rotated_kp = Ed25519KeyPair::from_pkcs8(rot1.new_current_keypair_pkcs8.as_ref()).unwrap();
 
-    // IXN with rotated key
+    let alias1 = store_keypair_in_keychain(
+        &keychain,
+        rot1.new_current_keypair_pkcs8.as_ref(),
+        "key-1",
+        &identity_did,
+    );
+    let signer = StorageSigner::new(keychain);
+
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
-    anchor_attestation(&repo, &init.prefix, &att2, &rotated_kp, chrono::Utc::now()).unwrap();
+    anchor_via_kel(&repo, &init.prefix, &att2, &signer, &alias1, &provider);
 
-    // KEL: ICP(0) + IXN(1) + ROT(2) + IXN(3)
     let kel = GitKel::new(&repo, init.prefix.as_str());
     let events = kel.get_events().unwrap();
     assert_eq!(events.len(), 4);
@@ -223,6 +275,8 @@ fn anchoring_works_with_rotated_key_after_ixn() {
 #[test]
 fn multiple_rotations_interleaved_with_ixn() {
     let (_dir, repo) = auths_test_utils::git::init_test_repo();
+    let keychain = IsolatedKeychainHandle::new();
+    let provider = TestPassphraseProvider::new(TEST_PASSPHRASE);
 
     let init = create_keri_identity_with_curve(
         &repo,
@@ -232,13 +286,18 @@ fn multiple_rotations_interleaved_with_ixn() {
     )
     .unwrap();
     let identity_did = format!("did:keri:{}", init.prefix);
-    let kp0 = Ed25519KeyPair::from_pkcs8(init.current_keypair_pkcs8.as_ref()).unwrap();
 
-    // IXN(1) with inception key
+    let alias0 = store_keypair_in_keychain(
+        &keychain,
+        init.current_keypair_pkcs8.as_ref(),
+        "key-0",
+        &identity_did,
+    );
+
     let att1 = make_test_attestation(&identity_did, "did:key:device1");
-    anchor_attestation(&repo, &init.prefix, &att1, &kp0, chrono::Utc::now()).unwrap();
+    let signer = StorageSigner::new(keychain.clone());
+    anchor_via_kel(&repo, &init.prefix, &att1, &signer, &alias0, &provider);
 
-    // ROT(2)
     let rot1 = rotate_keys(
         &repo,
         &init.prefix,
@@ -248,13 +307,18 @@ fn multiple_rotations_interleaved_with_ixn() {
     )
     .unwrap();
     assert_eq!(rot1.sequence, 2);
-    let kp1 = Ed25519KeyPair::from_pkcs8(rot1.new_current_keypair_pkcs8.as_ref()).unwrap();
 
-    // IXN(3) with rotated key
+    let alias1 = store_keypair_in_keychain(
+        &keychain,
+        rot1.new_current_keypair_pkcs8.as_ref(),
+        "key-1",
+        &identity_did,
+    );
+
     let att2 = make_test_attestation(&identity_did, "did:key:device2");
-    anchor_attestation(&repo, &init.prefix, &att2, &kp1, chrono::Utc::now()).unwrap();
+    let signer = StorageSigner::new(keychain.clone());
+    anchor_via_kel(&repo, &init.prefix, &att2, &signer, &alias1, &provider);
 
-    // ROT(4)
     let rot2 = rotate_keys(
         &repo,
         &init.prefix,
@@ -264,13 +328,18 @@ fn multiple_rotations_interleaved_with_ixn() {
     )
     .unwrap();
     assert_eq!(rot2.sequence, 4);
-    let kp2 = Ed25519KeyPair::from_pkcs8(rot2.new_current_keypair_pkcs8.as_ref()).unwrap();
 
-    // IXN(5) with second-rotated key
+    let alias2 = store_keypair_in_keychain(
+        &keychain,
+        rot2.new_current_keypair_pkcs8.as_ref(),
+        "key-2",
+        &identity_did,
+    );
+
     let att3 = make_test_attestation(&identity_did, "did:key:device3");
-    anchor_attestation(&repo, &init.prefix, &att3, &kp2, chrono::Utc::now()).unwrap();
+    let signer = StorageSigner::new(keychain);
+    anchor_via_kel(&repo, &init.prefix, &att3, &signer, &alias2, &provider);
 
-    // KEL: ICP(0) IXN(1) ROT(2) IXN(3) ROT(4) IXN(5)
     let kel = GitKel::new(&repo, init.prefix.as_str());
     let events = kel.get_events().unwrap();
     assert_eq!(events.len(), 6);
@@ -280,7 +349,6 @@ fn multiple_rotations_interleaved_with_ixn() {
     assert!(!state.is_abandoned);
     assert!(state.can_rotate());
 
-    // Key state should reflect the latest rotation
     let key_state = get_key_state(&repo, &init.prefix).unwrap();
     assert_eq!(key_state.sequence, 5);
 }

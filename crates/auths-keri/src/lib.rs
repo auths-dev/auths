@@ -67,7 +67,7 @@ pub use events::{
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};
-pub use state::KeyState;
+pub use state::{AnchorStatus, KeyState};
 pub use types::{
     CesrKey, ConfigTrait, Fraction, FractionError, KeriTypeError, Prefix, Said, Threshold,
     VersionString,

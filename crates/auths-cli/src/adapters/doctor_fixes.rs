@@ -46,7 +46,7 @@ impl DiagnosticFix for AllowedSignersFix {
         let mut signers = AllowedSigners::load(&signers_path, &store)
             .unwrap_or_else(|_| AllowedSigners::new(&signers_path));
         let report = signers
-            .sync(&storage)
+            .sync(&storage, None)
             .map_err(|e| DiagnosticError::ExecutionFailed(format!("sync signers: {e}")))?;
         signers
             .save(&store)
