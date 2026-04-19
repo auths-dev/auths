@@ -150,12 +150,13 @@ pub fn provision_agent_identity(
     backend: Arc<dyn RegistryBackend + Send + Sync>,
     config: AgentProvisioningConfig,
     passphrase_provider: &dyn PassphraseProvider,
-    keychain: Box<dyn KeyStorage + Send + Sync>,
+    keychain: Arc<dyn KeyStorage + Send + Sync>,
 ) -> Result<AgentIdentityBundle, AgentProvisioningError> {
     let (repo_path, ephemeral) = resolve_repo_path(&config.storage_mode)?;
     ensure_git_repo(&repo_path)?;
 
     let key_alias = key_alias_for(&config.storage_mode);
+    let backend_for_anchor = Arc::clone(&backend);
     let agent_did = get_or_create_identity(
         backend,
         &key_alias,
@@ -170,11 +171,26 @@ pub fn provision_agent_identity(
         &key_alias,
         &config,
         passphrase_provider,
-        keychain,
+        Arc::clone(&keychain),
     )?;
 
     if !ephemeral {
         write_agent_toml(&repo_path, agent_did.as_str(), key_alias.as_str(), &config)?;
+    }
+
+    if let Ok(prefix) = crate::keri::parse_did_keri(agent_did.as_str()) {
+        let signer = StorageSigner::new(keychain);
+        let mut batch = crate::storage::registry::backend::AtomicWriteBatch::new();
+        batch.stage_attestation(attestation.clone());
+        let _ = crate::keri::anchor_and_persist_via_backend(
+            backend_for_anchor.as_ref(),
+            &signer,
+            &key_alias,
+            passphrase_provider,
+            &prefix,
+            &attestation,
+            &mut batch,
+        );
     }
 
     Ok(AgentIdentityBundle {
@@ -287,7 +303,7 @@ fn sign_agent_attestation(
     key_alias: &KeyAlias,
     config: &AgentProvisioningConfig,
     passphrase_provider: &dyn PassphraseProvider,
-    keychain: Box<dyn KeyStorage + Send + Sync>,
+    keychain: Arc<dyn KeyStorage + Send + Sync>,
 ) -> Result<Attestation, AgentProvisioningError> {
     let (device_pk, curve) = extract_public_key_bytes(&*keychain, key_alias, passphrase_provider)
         .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;

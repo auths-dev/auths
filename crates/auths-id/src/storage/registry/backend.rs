@@ -50,6 +50,62 @@ use crate::keri::state::KeyState;
 use super::org_member::{MemberFilter, MemberStatus, MemberView, OrgMemberEntry};
 use super::schemas::{RegistryMetadata, TipInfo};
 
+/// An operation to be committed atomically.
+///
+/// Collected into an [`AtomicWriteBatch`] and committed via
+/// [`RegistryBackend::commit_batch`]. Git backends write all operations
+/// in a single commit; non-Git backends fall back to sequential writes.
+#[derive(Debug, Clone)]
+pub enum AtomicWriteOp {
+    /// Store a device attestation (latest-view overwrite).
+    StoreAttestation(Attestation),
+    /// Store an org member attestation (latest-view overwrite).
+    StoreOrgMember { org: String, member: Attestation },
+    /// Append a KEL event.
+    AppendEvent { prefix: Prefix, event: Event },
+}
+
+/// Batch of write operations to be committed atomically.
+///
+/// Build one via [`AtomicWriteBatch::new`], stage operations, then pass
+/// to [`RegistryBackend::commit_batch`].
+#[derive(Debug, Clone, Default)]
+pub struct AtomicWriteBatch {
+    ops: Vec<AtomicWriteOp>,
+}
+
+impl AtomicWriteBatch {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn stage_attestation(&mut self, att: Attestation) -> &mut Self {
+        self.ops.push(AtomicWriteOp::StoreAttestation(att));
+        self
+    }
+
+    pub fn stage_org_member(&mut self, org: impl Into<String>, member: Attestation) -> &mut Self {
+        self.ops.push(AtomicWriteOp::StoreOrgMember {
+            org: org.into(),
+            member,
+        });
+        self
+    }
+
+    pub fn stage_event(&mut self, prefix: Prefix, event: Event) -> &mut Self {
+        self.ops.push(AtomicWriteOp::AppendEvent { prefix, event });
+        self
+    }
+
+    pub fn ops(&self) -> &[AtomicWriteOp] {
+        &self.ops
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
+}
+
 /// Specific reasons a tenant ID is rejected.
 ///
 /// `PathTraversal` is intentionally absent: the strict allowlist
@@ -731,6 +787,34 @@ pub trait RegistryBackend: Send + Sync {
     ) -> Result<Vec<MemberView>, RegistryError> {
         self.list_org_members(org, filter)
     }
+
+    // =========================================================================
+    // Atomic Batch Writes (FROZEN-TRAIT EXCEPTION)
+    //
+    // Justification: Attestation blob + KEL ixn event must land in a single
+    // Git commit. Without this, a crash between two writes leaves orphaned
+    // blobs or dangling seals — a security gap where forged attestations
+    // could exist without KEL evidence. See verification_bindings.md Gap 1.
+    // =========================================================================
+
+    /// Commit a batch of write operations atomically.
+    ///
+    /// Git backends override this to stage all operations in a single
+    /// `TreeMutator` and produce one commit. The default implementation
+    /// falls back to sequential individual writes (non-atomic, acceptable
+    /// for in-memory test backends).
+    fn commit_batch(&self, batch: &AtomicWriteBatch) -> Result<(), RegistryError> {
+        for op in batch.ops() {
+            match op {
+                AtomicWriteOp::StoreAttestation(att) => self.store_attestation(att)?,
+                AtomicWriteOp::StoreOrgMember { org, member } => {
+                    self.store_org_member(org, member)?
+                }
+                AtomicWriteOp::AppendEvent { prefix, event } => self.append_event(prefix, event)?,
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Blanket impl so `Arc<dyn RegistryBackend + Send + Sync>` can be used directly
@@ -813,6 +897,10 @@ impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
 
     fn metadata(&self) -> Result<RegistryMetadata, RegistryError> {
         (**self).metadata()
+    }
+
+    fn commit_batch(&self, batch: &AtomicWriteBatch) -> Result<(), RegistryError> {
+        (**self).commit_batch(batch)
     }
 }
 

@@ -585,6 +585,7 @@ mod tests {
             config_traits: vec![],
             is_non_transferable: false,
             delegator: None,
+            last_establishment_sequence: 0,
         }
     }
 

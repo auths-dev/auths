@@ -211,6 +211,7 @@ mod tests {
             chain,
             warnings: vec!["Key expires soon".to_string()],
             witness_quorum: None,
+            anchored: None,
         };
 
         let json = serde_json::to_string(&report).expect("serialization failed");

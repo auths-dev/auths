@@ -9,10 +9,10 @@ use serde_json;
 use std::fs;
 use std::path::PathBuf;
 
-use auths_sdk::attestation::{AttestationGroup, AttestationSink};
+use auths_sdk::attestation::AttestationGroup;
 use auths_sdk::identity::DefaultDidResolver;
 use auths_sdk::keychain::{KeyAlias, get_platform_keychain};
-use auths_sdk::ports::{AttestationMetadata, AttestationSource, IdentityStorage};
+use auths_sdk::ports::{AttestationMetadata, AttestationSource, IdentityStorage, RegistryBackend};
 use auths_sdk::signing::StorageSigner;
 use auths_sdk::storage_layout::{StorageLayoutConfig, layout};
 
@@ -200,29 +200,39 @@ pub enum OrgSubcommand {
 fn verify_attestation_via_resolver(
     att: &auths_verifier::Attestation,
     resolver: &auths_sdk::identity::DefaultDidResolver,
-) -> &'static str {
+    anchor_set: Option<&std::collections::HashSet<auths_keri::Said>>,
+) -> String {
     use auths_sdk::identity::DidResolver;
     let resolved = match resolver.resolve(att.issuer.as_str()) {
         Ok(r) => r,
-        Err(_) => return "❌ invalid",
+        Err(_) => return "❌ invalid".to_string(),
     };
     let pk_bytes: Vec<u8> = resolved.public_key_bytes().to_vec();
     let resolved_curve = resolved.curve();
     let issuer_pk = match auths_verifier::decode_public_key_bytes(&pk_bytes, resolved_curve) {
         Ok(pk) => pk,
-        Err(_) => return "❌ invalid",
+        Err(_) => return "❌ invalid".to_string(),
     };
     #[allow(clippy::expect_used)]
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");
-    match rt.block_on(auths_verifier::verify_with_keys(att, &issuer_pk)) {
+    let base = match rt.block_on(auths_verifier::verify_with_keys(att, &issuer_pk)) {
         Ok(_) => "✅ valid",
         Err(e) if e.to_string().contains("revoked") => "🛑 revoked",
         Err(e) if e.to_string().contains("expired") => "⌛ expired",
         Err(_) => "❌ invalid",
-    }
+    };
+    let anchor_suffix = match anchor_set {
+        Some(set) => {
+            let anchored =
+                auths_sdk::attestation::canonical_said(att).is_some_and(|said| set.contains(&said));
+            if anchored { "" } else { " (unanchored)" }
+        }
+        None => "",
+    };
+    format!("{base}{anchor_suffix}")
 }
 
 /// Handles `org` commands for issuing or revoking member authorizations.
@@ -413,11 +423,27 @@ pub fn handle_org(
             )
             .context("Failed to create admin attestation")?;
 
-            // Export to Git at the org member ref path
-            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            attestation_storage
-                .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
-                .context("Failed to export admin attestation to Git")?;
+            {
+                let backend = GitRegistryBackend::from_config_unchecked(
+                    RegistryConfig::single_tenant(&repo_path),
+                );
+                let mut batch = auths_sdk::keri::AtomicWriteBatch::new();
+                batch.stage_attestation(attestation);
+                if let Ok(prefix) = auths_sdk::keri::parse_did_keri(controller_did.as_str()) {
+                    let _ = auths_sdk::keri::try_stage_anchor(
+                        &backend,
+                        &signer,
+                        &alias,
+                        passphrase_provider.as_ref(),
+                        &prefix,
+                        &serde_json::json!({}),
+                        &mut batch,
+                    );
+                }
+                backend
+                    .commit_batch(&batch)
+                    .context("Failed to write admin attestation")?;
+            }
 
             println!("\n✅ Organization identity initialized successfully!");
             println!("   Org Identity ID:    {}", controller_did);
@@ -528,10 +554,27 @@ pub fn handle_org(
             )
             .context("Failed to create signed attestation object")?;
 
-            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            attestation_storage
-                .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
-                .context("Failed to export attestation to Git")?;
+            {
+                let backend = GitRegistryBackend::from_config_unchecked(
+                    RegistryConfig::single_tenant(&repo_path),
+                );
+                let mut batch = auths_sdk::keri::AtomicWriteBatch::new();
+                batch.stage_attestation(attestation);
+                if let Ok(prefix) = auths_sdk::keri::parse_did_keri(controller_did.as_str()) {
+                    let _ = auths_sdk::keri::try_stage_anchor(
+                        &backend,
+                        &signer,
+                        &signer_alias,
+                        passphrase_provider.as_ref(),
+                        &prefix,
+                        &serde_json::json!({}),
+                        &mut batch,
+                    );
+                }
+                backend
+                    .commit_batch(&batch)
+                    .context("Failed to write attestation")?;
+            }
 
             println!(
                 "\n✅ Org attestation created successfully from '{}' → '{}'",
@@ -597,9 +640,27 @@ pub fn handle_org(
             .context("Failed to create revocation")?;
 
             println!("💾 Writing revocation to Git...");
-            attestation_storage
-                .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
-                .context("Failed to write revocation")?;
+            {
+                let backend = GitRegistryBackend::from_config_unchecked(
+                    RegistryConfig::single_tenant(&repo_path),
+                );
+                let mut batch = auths_sdk::keri::AtomicWriteBatch::new();
+                batch.stage_attestation(attestation);
+                if let Ok(prefix) = auths_sdk::keri::parse_did_keri(controller_did.as_str()) {
+                    let _ = auths_sdk::keri::try_stage_anchor(
+                        &backend,
+                        &signer,
+                        &signer_alias,
+                        passphrase_provider.as_ref(),
+                        &prefix,
+                        &serde_json::json!({}),
+                        &mut batch,
+                    );
+                }
+                backend
+                    .commit_batch(&batch)
+                    .context("Failed to write revocation")?;
+            }
 
             println!("\n✅ Revoked authorization for subject {subject_did}");
 
@@ -612,7 +673,11 @@ pub fn handle_org(
         } => {
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
             let resolver = DefaultDidResolver::with_repo(&repo_path);
-            let group = AttestationGroup::from_list(attestation_storage.load_all_attestations()?);
+            let group = AttestationGroup::from_list(
+                attestation_storage
+                    .load_all_enriched()
+                    .map(|v| v.into_iter().map(|e| e.attestation).collect::<Vec<_>>())?,
+            );
 
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: subject_did from CLI arg, used for lookup only
@@ -625,7 +690,7 @@ pub fn handle_org(
                         continue;
                     }
 
-                    let status = verify_attestation_via_resolver(att, &resolver);
+                    let status = verify_attestation_via_resolver(att, &resolver, None);
 
                     println!("{i}. [{}] @ {}", status, att.timestamp.unwrap_or(now));
                     if let Some(note) = &att.note {
@@ -645,7 +710,11 @@ pub fn handle_org(
         OrgSubcommand::List { include_revoked } => {
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
             let resolver = DefaultDidResolver::with_repo(&repo_path);
-            let group = AttestationGroup::from_list(attestation_storage.load_all_attestations()?);
+            let group = AttestationGroup::from_list(
+                attestation_storage
+                    .load_all_enriched()
+                    .map(|v| v.into_iter().map(|e| e.attestation).collect::<Vec<_>>())?,
+            );
 
             for (subject, list) in group.by_device.iter() {
                 let Some(latest) = list.last() else {
@@ -657,7 +726,7 @@ pub fn handle_org(
                     continue;
                 }
 
-                let status = verify_attestation_via_resolver(latest, &resolver);
+                let status = verify_attestation_via_resolver(latest, &resolver, None);
 
                 println!("- {} [{}]", subject, status);
             }
@@ -736,7 +805,7 @@ pub fn handle_org(
 
             let member_curve = member_resolved.curve();
 
-            let attestation = add_organization_member(
+            let _attestation = add_organization_member(
                 &org_ctx,
                 AddMemberCommand {
                     org_prefix: org_prefix.clone(),
@@ -754,14 +823,6 @@ pub fn handle_org(
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry
             let member_did = DeviceDID::new_unchecked(member.clone());
-            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            attestation_storage
-                .export(
-                    &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(
-                        attestation.clone(),
-                    ),
-                )
-                .context("Failed to export member attestation to Git")?;
 
             println!("\n✅ Member added successfully!");
             println!("   Member ID:    {}", member);
@@ -846,7 +907,7 @@ pub fn handle_org(
             let member_did = DeviceDID::new_unchecked(member.clone());
             let member_curve = member_resolved.curve();
 
-            let revocation = revoke_organization_member(
+            let _revocation = revoke_organization_member(
                 &org_ctx,
                 RevokeMemberCommand {
                     org_prefix: org_prefix.clone(),
@@ -859,11 +920,6 @@ pub fn handle_org(
                 },
             )
             .context("Failed to revoke member")?;
-
-            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            attestation_storage
-                .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(revocation))
-                .context("Failed to export revocation to Git")?;
 
             println!("\n✅ Member revoked successfully!");
             println!("   Member ID:  {}", member);
@@ -887,7 +943,9 @@ pub fn handle_org(
 
             // Load all attestations
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            let all_attestations = attestation_storage.load_all_attestations()?;
+            let all_attestations = attestation_storage
+                .load_all_enriched()
+                .map(|v| v.into_iter().map(|e| e.attestation).collect::<Vec<_>>())?;
 
             // Build member list with delegation info
             #[allow(clippy::type_complexity)]

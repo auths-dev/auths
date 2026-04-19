@@ -577,6 +577,27 @@ pub fn sign_artifact(
         validated_commit_sha,
     )?;
 
+    if let Some(ref alias) = identity_alias {
+        let prefix = auths_id::keri::parse_did_keri(managed.controller_did.as_str()).ok();
+        if let Some(prefix) = prefix {
+            let att: auths_verifier::core::Attestation = serde_json::from_str(&attestation_json)
+                .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+            let storage_signer =
+                auths_core::signing::StorageSigner::new(Arc::clone(&ctx.key_storage));
+            let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+            batch.stage_attestation(att.clone());
+            let _ = auths_id::keri::anchor_and_persist_via_backend(
+                ctx.registry.as_ref(),
+                &storage_signer,
+                alias,
+                ctx.passphrase_provider.as_ref(),
+                &prefix,
+                &att,
+                &mut batch,
+            );
+        }
+    }
+
     Ok(ArtifactSigningResult {
         attestation_json,
         rid,

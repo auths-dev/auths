@@ -12,6 +12,7 @@ use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::KeyAlias;
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::attestation::revoke::create_signed_revocation;
+use auths_id::keri::anchor_and_persist_via_backend;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_verifier::Capability;
@@ -263,6 +264,8 @@ pub struct UpdateCapabilitiesCommand {
     pub capabilities: Vec<String>,
     /// Hex-encoded public key of the admin performing the update.
     pub public_key_hex: PublicKeyHex,
+    /// Keychain alias of the admin's signing key (for KEL anchoring).
+    pub signer_alias: KeyAlias,
 }
 
 /// Command to atomically update a member's role and capabilities.
@@ -280,6 +283,8 @@ pub struct UpdateMemberCommand {
     pub capabilities: Option<Vec<String>>,
     /// Hex-encoded public key of the admin performing the update.
     pub admin_public_key_hex: PublicKeyHex,
+    /// Keychain alias of the admin's signing key (for KEL anchoring).
+    pub signer_alias: KeyAlias,
 }
 
 /// Accepts either a KERI prefix or a full DID.
@@ -386,9 +391,24 @@ pub fn add_organization_member(
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 
-    ctx.registry
-        .store_org_member(&cmd.org_prefix, &attestation)
-        .map_err(OrgError::Storage)?;
+    let org_keri_prefix = auths_id::keri::Prefix::new_unchecked(cmd.org_prefix);
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_org_member(org_keri_prefix.as_str(), attestation.clone());
+    if anchor_and_persist_via_backend(
+        ctx.registry,
+        ctx.signer,
+        &cmd.signer_alias,
+        ctx.passphrase_provider,
+        &org_keri_prefix,
+        &attestation,
+        &mut batch,
+    )
+    .is_err()
+    {
+        let mut fallback = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+        fallback.stage_org_member(org_keri_prefix.as_str(), attestation.clone());
+        let _ = ctx.registry.commit_batch(&fallback);
+    }
 
     Ok(attestation)
 }
@@ -451,9 +471,18 @@ pub fn revoke_organization_member(
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 
-    ctx.registry
-        .store_org_member(&cmd.org_prefix, &revocation)
-        .map_err(OrgError::Storage)?;
+    let org_keri_prefix = auths_id::keri::Prefix::new_unchecked(cmd.org_prefix);
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_org_member(org_keri_prefix.as_str(), revocation.clone());
+    let _ = anchor_and_persist_via_backend(
+        ctx.registry,
+        ctx.signer,
+        &cmd.signer_alias,
+        ctx.passphrase_provider,
+        &org_keri_prefix,
+        &revocation,
+        &mut batch,
+    );
 
     Ok(revocation)
 }
@@ -473,18 +502,18 @@ pub fn revoke_organization_member(
 /// let updated = update_member_capabilities(backend, clock, cmd)?;
 /// ```
 pub fn update_member_capabilities(
-    backend: &dyn RegistryBackend,
-    clock: &dyn ClockProvider,
+    ctx: &OrgContext,
     cmd: UpdateCapabilitiesCommand,
 ) -> Result<Attestation, OrgError> {
-    find_admin(backend, &cmd.org_prefix, &cmd.public_key_hex)?;
+    find_admin(ctx.registry, &cmd.org_prefix, &cmd.public_key_hex)?;
 
-    let existing = find_member(backend, &cmd.org_prefix, &cmd.member_did)?.ok_or_else(|| {
-        OrgError::MemberNotFound {
-            org: cmd.org_prefix.clone(),
-            did: cmd.member_did.clone(),
-        }
-    })?;
+    let existing =
+        find_member(ctx.registry, &cmd.org_prefix, &cmd.member_did)?.ok_or_else(|| {
+            OrgError::MemberNotFound {
+                org: cmd.org_prefix.clone(),
+                did: cmd.member_did.clone(),
+            }
+        })?;
 
     if existing.is_revoked() {
         return Err(OrgError::AlreadyRevoked {
@@ -495,11 +524,21 @@ pub fn update_member_capabilities(
     let parsed_caps = parse_capabilities(&cmd.capabilities)?;
     let mut updated = existing;
     updated.capabilities = parsed_caps;
-    updated.timestamp = Some(clock.now());
+    let now = ctx.clock.now();
+    updated.timestamp = Some(now);
 
-    backend
-        .store_org_member(&cmd.org_prefix, &updated)
-        .map_err(OrgError::Storage)?;
+    let org_keri_prefix = auths_id::keri::Prefix::new_unchecked(cmd.org_prefix);
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_org_member(org_keri_prefix.as_str(), updated.clone());
+    let _ = anchor_and_persist_via_backend(
+        ctx.registry,
+        ctx.signer,
+        &cmd.signer_alias,
+        ctx.passphrase_provider,
+        &org_keri_prefix,
+        &updated,
+        &mut batch,
+    );
 
     Ok(updated)
 }
@@ -509,18 +548,18 @@ pub fn update_member_capabilities(
 /// Unlike the current pattern of revoke+re-add, this performs an in-place update
 /// to prevent partial state on failure.
 pub fn update_organization_member(
-    backend: &dyn RegistryBackend,
-    clock: &dyn ClockProvider,
+    ctx: &OrgContext,
     cmd: UpdateMemberCommand,
 ) -> Result<Attestation, OrgError> {
-    find_admin(backend, &cmd.org_prefix, &cmd.admin_public_key_hex)?;
+    find_admin(ctx.registry, &cmd.org_prefix, &cmd.admin_public_key_hex)?;
 
-    let existing = find_member(backend, &cmd.org_prefix, &cmd.member_did)?.ok_or_else(|| {
-        OrgError::MemberNotFound {
-            org: cmd.org_prefix.clone(),
-            did: cmd.member_did.clone(),
-        }
-    })?;
+    let existing =
+        find_member(ctx.registry, &cmd.org_prefix, &cmd.member_did)?.ok_or_else(|| {
+            OrgError::MemberNotFound {
+                org: cmd.org_prefix.clone(),
+                did: cmd.member_did.clone(),
+            }
+        })?;
 
     if existing.is_revoked() {
         return Err(OrgError::AlreadyRevoked {
@@ -536,11 +575,21 @@ pub fn update_organization_member(
     if let Some(role) = cmd.role {
         updated.role = Some(role);
     }
-    updated.timestamp = Some(clock.now());
+    let now = ctx.clock.now();
+    updated.timestamp = Some(now);
 
-    backend
-        .store_org_member(&cmd.org_prefix, &updated)
-        .map_err(OrgError::Storage)?;
+    let org_keri_prefix = auths_id::keri::Prefix::new_unchecked(cmd.org_prefix);
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_org_member(org_keri_prefix.as_str(), updated.clone());
+    let _ = anchor_and_persist_via_backend(
+        ctx.registry,
+        ctx.signer,
+        &cmd.signer_alias,
+        ctx.passphrase_provider,
+        &org_keri_prefix,
+        &updated,
+        &mut batch,
+    );
 
     Ok(updated)
 }

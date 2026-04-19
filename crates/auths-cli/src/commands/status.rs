@@ -4,7 +4,6 @@ use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::{Result, anyhow};
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::keychain::KeyStorage;
-use auths_sdk::ports::AttestationSource;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
 use auths_sdk::storage_layout::layout;
@@ -81,6 +80,7 @@ pub struct AgentStatusInfo {
 pub struct DevicesSummary {
     pub linked: usize,
     pub revoked: usize,
+    pub unanchored: usize,
     pub expiring_soon: Vec<ExpiringDevice>,
     pub devices_detail: Vec<DeviceStatus>,
 }
@@ -90,6 +90,7 @@ pub struct DevicesSummary {
 pub struct DeviceStatus {
     pub device_did: String,
     pub status: String,
+    pub anchored: bool,
     pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
     /// Duration in seconds until expiration (per RFC 6749).
@@ -353,6 +354,7 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
     let empty = DevicesSummary {
         linked: 0,
         revoked: 0,
+        unanchored: 0,
         expiring_soon: Vec::new(),
         devices_detail: Vec::new(),
     };
@@ -362,22 +364,22 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
     }
 
     let storage = RegistryAttestationStorage::new(repo_path);
-    let attestations = match storage.load_all_attestations() {
+    let enriched = match storage.load_all_enriched() {
         Ok(a) => a,
         Err(_) => return empty,
     };
 
     let mut latest_by_device: std::collections::HashMap<
         String,
-        &auths_verifier::core::Attestation,
+        &auths_sdk::attestation::EnrichedAttestation,
     > = std::collections::HashMap::new();
 
-    for att in &attestations {
-        let key = att.subject.as_str().to_string();
+    for att in &enriched {
+        let key = att.attestation.subject.as_str().to_string();
         latest_by_device
             .entry(key)
             .and_modify(|existing| {
-                if att.timestamp > existing.timestamp {
+                if att.attestation.timestamp > existing.attestation.timestamp {
                     *existing = att;
                 }
             })
@@ -387,15 +389,19 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
     let threshold = now + Duration::days(7);
     let mut linked = 0;
     let mut revoked = 0;
+    let mut unanchored = 0;
     let mut expiring_soon = Vec::new();
     let mut devices_detail = Vec::new();
 
-    for (device_did, att) in &latest_by_device {
+    for (device_did, enriched_att) in &latest_by_device {
+        let att = &enriched_att.attestation;
+        let is_anchored = enriched_att.anchor == auths_keri::AnchorStatus::Anchored;
         let (status, expires_in) = compute_device_status(att, now);
 
         devices_detail.push(DeviceStatus {
             device_did: device_did.clone(),
             status,
+            anchored: is_anchored,
             revoked_at: att.revoked_at,
             expires_at: att.expires_at,
             expires_in,
@@ -405,6 +411,9 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
             revoked += 1;
         } else {
             linked += 1;
+            if !is_anchored {
+                unanchored += 1;
+            }
             if let Some(expires_at) = att.expires_at
                 && expires_at <= threshold
                 && expires_at > now
@@ -423,6 +432,7 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
     DevicesSummary {
         linked,
         revoked,
+        unanchored,
         expiring_soon,
         devices_detail,
     }
@@ -551,6 +561,7 @@ mod tests {
             devices: DevicesSummary {
                 linked: 2,
                 revoked: 1,
+                unanchored: 0,
                 expiring_soon: vec![ExpiringDevice {
                     device_did: "did:key:zExpiringSoon".to_string(),
                     expires_in: 259_200,
@@ -559,6 +570,7 @@ mod tests {
                     DeviceStatus {
                         device_did: "did:key:zActiveDevice".to_string(),
                         status: "active".to_string(),
+                        anchored: true,
                         revoked_at: None,
                         expires_at: Some(now + Duration::days(90)),
                         expires_in: Some(7_776_000),
@@ -566,6 +578,7 @@ mod tests {
                     DeviceStatus {
                         device_did: "did:key:zExpiringSoon".to_string(),
                         status: "expiring_soon".to_string(),
+                        anchored: true,
                         revoked_at: None,
                         expires_at: Some(now + Duration::days(3)),
                         expires_in: Some(259_200),
@@ -573,6 +586,7 @@ mod tests {
                     DeviceStatus {
                         device_did: "did:key:zRevokedDevice".to_string(),
                         status: "revoked".to_string(),
+                        anchored: true,
                         revoked_at: Some(now - Duration::days(10)),
                         expires_at: Some(now + Duration::days(50)),
                         expires_in: None,

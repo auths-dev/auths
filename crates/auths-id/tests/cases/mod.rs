@@ -1,3 +1,4 @@
+mod anchor_lifecycle;
 mod keri;
 mod lifecycle;
 mod proptest_keri;

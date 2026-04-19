@@ -49,6 +49,10 @@ pub enum DeviceError {
     /// A storage operation failed.
     #[error("storage error: {0}")]
     StorageError(#[source] crate::error::SdkStorageError),
+
+    /// Anchoring the attestation in the KEL failed.
+    #[error("anchor error: {0}")]
+    AnchorError(#[from] auths_id::keri::AnchorError),
 }
 
 /// Errors from device authorization extension operations.
@@ -89,6 +93,10 @@ pub enum DeviceExtensionError {
     /// A storage operation failed.
     #[error("storage error: {0}")]
     StorageError(#[source] crate::error::SdkStorageError),
+
+    /// Anchoring the attestation in the KEL failed.
+    #[error("anchor error: {0}")]
+    AnchorError(#[from] auths_id::keri::AnchorError),
 }
 
 impl From<auths_core::AgentError> for DeviceError {
@@ -106,6 +114,7 @@ impl AuthsErrorInfo for DeviceError {
             Self::DeviceDidMismatch { .. } => "AUTHS-E5105",
             Self::CryptoError(e) => e.error_code(),
             Self::StorageError(e) => e.error_code(),
+            Self::AnchorError(e) => e.error_code(),
         }
     }
 
@@ -119,6 +128,7 @@ impl AuthsErrorInfo for DeviceError {
             Self::DeviceDidMismatch { .. } => Some("Check that --device matches the key name"),
             Self::CryptoError(e) => e.suggestion(),
             Self::StorageError(e) => e.suggestion(),
+            Self::AnchorError(e) => e.suggestion(),
         }
     }
 }
@@ -131,6 +141,7 @@ impl AuthsErrorInfo for DeviceExtensionError {
             Self::AlreadyRevoked { .. } => "AUTHS-E5203",
             Self::AttestationFailed(_) => "AUTHS-E5204",
             Self::StorageError(e) => e.error_code(),
+            Self::AnchorError(e) => e.error_code(),
         }
     }
 
@@ -147,6 +158,7 @@ impl AuthsErrorInfo for DeviceExtensionError {
                 Some("Failed to create the extension attestation; check key access and try again")
             }
             Self::StorageError(e) => e.suggestion(),
+            Self::AnchorError(e) => e.suggestion(),
         }
     }
 }

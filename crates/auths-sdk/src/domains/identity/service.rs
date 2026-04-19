@@ -72,7 +72,7 @@ pub fn initialize(
         )
         .map(InitializeResult::Ci),
         IdentityConfig::Agent(agent_config) => {
-            initialize_agent(agent_config, ctx, Box::new(keychain), passphrase_provider)
+            initialize_agent(agent_config, ctx, keychain, passphrase_provider)
                 .map(InitializeResult::Agent)
         }
     }
@@ -138,7 +138,7 @@ fn initialize_ci(
 fn initialize_agent(
     config: CreateAgentIdentityConfig,
     ctx: &AuthsContext,
-    keychain: Box<dyn KeyStorage + Send + Sync>,
+    keychain: Arc<dyn KeyStorage + Send + Sync>,
     passphrase_provider: &dyn PassphraseProvider,
 ) -> Result<AgentIdentityResult, SetupError> {
     use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode};
@@ -319,9 +319,24 @@ fn bind_device(
     )
     .map_err(|e| SetupError::StorageError(e.into()))?;
 
-    ctx.attestation_sink
-        .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
-        .map_err(|e| SetupError::StorageError(e.into()))?;
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_attestation(attestation.clone());
+
+    if let Ok(prefix) = auths_id::keri::parse_did_keri(managed.controller_did.as_str()) {
+        let _ = auths_id::keri::try_stage_anchor(
+            ctx.registry.as_ref(),
+            signer,
+            key_alias,
+            passphrase_provider,
+            &prefix,
+            &attestation,
+            &mut batch,
+        );
+    }
+
+    ctx.registry.commit_batch(&batch).map_err(|e| {
+        SetupError::StorageError(auths_id::error::StorageError::InvalidData(e.to_string()).into())
+    })?;
 
     Ok(device_did)
 }

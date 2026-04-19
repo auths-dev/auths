@@ -111,8 +111,10 @@ pub fn rotate_keri_identity(
         .map_err(|e| InitError::Keri(e.to_string()))?;
     let state = validate_kel(&events).map_err(|e| InitError::Keri(e.to_string()))?;
 
-    let derived_next_alias =
-        KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
+    let derived_next_alias = KeyAlias::new_unchecked(format!(
+        "{}--next-{}",
+        current_alias, state.last_establishment_sequence
+    ));
 
     let (did_check, _role, encrypted_next) = keychain.load_key(&derived_next_alias)?;
 
@@ -227,8 +229,10 @@ pub fn rotate_registry_identity(
         .get_key_state(&prefix)
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    let derived_next_alias =
-        KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
+    let derived_next_alias = KeyAlias::new_unchecked(format!(
+        "{}--next-{}",
+        current_alias, state.last_establishment_sequence
+    ));
 
     let (did_check, _role, encrypted_next) = keychain.load_key(&derived_next_alias)?;
 

@@ -324,8 +324,10 @@ fn retrieve_precommitted_key(
     state: &KeyState,
     ctx: &AuthsContext,
 ) -> Result<(Zeroizing<Vec<u8>>, KeyAlias), RotationError> {
-    let target_alias =
-        KeyAlias::new_unchecked(format!("{}--next-{}", current_alias, state.sequence));
+    let target_alias = KeyAlias::new_unchecked(format!(
+        "{}--next-{}",
+        current_alias, state.last_establishment_sequence
+    ));
 
     let (did_check, _role, encrypted_next) =
         ctx.key_storage.load_key(&target_alias).map_err(|e| {
@@ -657,6 +659,7 @@ mod tests {
             config_traits: vec![],
             is_non_transferable: false,
             delegator: None,
+            last_establishment_sequence: 0,
         };
 
         let result = retrieve_precommitted_key(
@@ -792,6 +795,7 @@ mod tests {
             config_traits: vec![],
             is_non_transferable: false,
             delegator: None,
+            last_establishment_sequence: 0,
         };
 
         let rng = SystemRandom::new();
@@ -892,7 +896,23 @@ mod tests {
 
         rotate_identity(rotation_config, &ctx, &SystemClock).unwrap();
 
-        let new_next_alias = KeyAlias::new_unchecked("rotated-key--next-1");
+        let rot_state = ctx
+            .registry
+            .get_key_state(
+                &auths_id::keri::parse_did_keri(
+                    ctx.identity_storage
+                        .load_identity()
+                        .unwrap()
+                        .controller_did
+                        .as_str(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let new_next_alias = KeyAlias::new_unchecked(format!(
+            "rotated-key--next-{}",
+            rot_state.last_establishment_sequence
+        ));
         let (_, _, encrypted_blob) = ctx.key_storage.load_key(&new_next_alias).unwrap();
         let decrypted_pkcs8 = decrypt_keypair(&encrypted_blob, "Test-passphrase1!").unwrap();
 

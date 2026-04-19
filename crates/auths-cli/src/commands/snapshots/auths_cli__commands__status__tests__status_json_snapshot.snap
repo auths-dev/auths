@@ -18,6 +18,7 @@ expression: report
   "devices": {
     "linked": 2,
     "revoked": 1,
+    "unanchored": 0,
     "expiring_soon": [
       {
         "device_did": "did:key:zExpiringSoon",
@@ -28,6 +29,7 @@ expression: report
       {
         "device_did": "did:key:zActiveDevice",
         "status": "active",
+        "anchored": true,
         "revoked_at": null,
         "expires_at": "2025-09-13T12:00:00Z",
         "expires_in": 7776000
@@ -35,6 +37,7 @@ expression: report
       {
         "device_did": "did:key:zExpiringSoon",
         "status": "expiring_soon",
+        "anchored": true,
         "revoked_at": null,
         "expires_at": "2025-06-18T12:00:00Z",
         "expires_in": 259200
@@ -42,6 +45,7 @@ expression: report
       {
         "device_did": "did:key:zRevokedDevice",
         "status": "revoked",
+        "anchored": true,
         "revoked_at": "2025-06-05T12:00:00Z",
         "expires_at": "2025-08-04T12:00:00Z",
         "expires_in": null

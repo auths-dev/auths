@@ -163,6 +163,7 @@ pub struct DeviceInfo {
     pub did: String,
     pub name: Option<String>,
     pub status: String,
+    pub anchored: bool,
     pub last_active: Option<String>,
 }
 
@@ -623,7 +624,6 @@ fn handle_unfreeze(cmd: UnfreezeCommand, now: chrono::DateTime<chrono::Utc>) -> 
 /// Handle incident report generation.
 fn handle_report(cmd: ReportCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_sdk::identity::ManagedIdentity;
-    use auths_sdk::ports::AttestationSource;
     use auths_sdk::ports::IdentityStorage;
     use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
     use auths_sdk::storage_layout::layout;
@@ -639,16 +639,16 @@ fn handle_report(cmd: ReportCommand, now: chrono::DateTime<chrono::Utc>) -> Resu
         Err(_) => None,
     };
 
-    // Load real device attestations
-    let attestation_storage = RegistryAttestationStorage::new(repo_path);
-    let all_attestations = attestation_storage
-        .load_all_attestations()
-        .unwrap_or_default();
+    // Load real device attestations + anchor status
+    let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
+    let enriched = attestation_storage.load_all_enriched().unwrap_or_default();
+    let all_attestations: Vec<_> = enriched.iter().map(|e| e.attestation.clone()).collect();
 
     // Build device list from attestations (deduplicate by subject DID)
     let mut seen_devices = std::collections::HashSet::new();
     let mut devices = Vec::new();
-    for att in &all_attestations {
+    for e_att in &enriched {
+        let att = &e_att.attestation;
         let did_str = att.subject.to_string();
         if seen_devices.insert(did_str.clone()) {
             let status = if att.is_revoked() {
@@ -662,6 +662,7 @@ fn handle_report(cmd: ReportCommand, now: chrono::DateTime<chrono::Utc>) -> Resu
                 did: did_str,
                 name: att.note.clone(),
                 status: status.to_string(),
+                anchored: e_att.anchor == auths_keri::AnchorStatus::Anchored,
                 last_active: att.timestamp.map(|t| t.to_rfc3339()),
             });
         }
@@ -823,6 +824,7 @@ mod tests {
             did: "did:key:z6MkTest".to_string(),
             name: Some("Test Device".to_string()),
             status: "active".to_string(),
+            anchored: true,
             last_active: None,
         };
 
