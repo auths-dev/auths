@@ -109,6 +109,8 @@ pub fn link_device(
         &prefix,
         &attestation,
         &mut batch,
+        &ctx.witness_params(),
+        now,
     )?;
 
     Ok(DeviceLinkResult {
@@ -172,6 +174,8 @@ pub fn revoke_device(
         &prefix,
         &revocation,
         &mut batch,
+        &ctx.witness_params(),
+        now,
     )?;
 
     Ok(())
@@ -268,6 +272,8 @@ pub fn extend_device(
             &prefix,
             &extended,
             &mut batch,
+            &ctx.witness_params(),
+            now,
         )?;
     }
 

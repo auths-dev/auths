@@ -70,6 +70,10 @@ pub enum OrgError {
     /// A storage operation failed.
     #[error("storage error: {0}")]
     Storage(#[source] auths_id::storage::registry::backend::RegistryError),
+
+    /// KEL anchoring failed.
+    #[error("anchor error: {0}")]
+    Anchor(#[from] auths_id::keri::AnchorError),
 }
 
 impl AuthsErrorInfo for OrgError {
@@ -85,6 +89,7 @@ impl AuthsErrorInfo for OrgError {
             Self::Identity(_) => "AUTHS-E5608",
             Self::KeyStorage(_) => "AUTHS-E5609",
             Self::Storage(_) => "AUTHS-E5610",
+            Self::Anchor(_) => "AUTHS-E5611",
         }
     }
 
@@ -116,6 +121,7 @@ impl AuthsErrorInfo for OrgError {
             Self::Storage(_) => {
                 Some("Failed to access organization storage; check repository permissions")
             }
+            Self::Anchor(_) => Some("KEL anchoring failed; check identity and registry state"),
         }
     }
 }

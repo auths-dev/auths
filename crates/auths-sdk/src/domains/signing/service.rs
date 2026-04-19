@@ -578,24 +578,7 @@ pub fn sign_artifact(
     )?;
 
     if let Some(ref alias) = identity_alias {
-        let prefix = auths_id::keri::parse_did_keri(managed.controller_did.as_str()).ok();
-        if let Some(prefix) = prefix {
-            let att: auths_verifier::core::Attestation = serde_json::from_str(&attestation_json)
-                .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
-            let storage_signer =
-                auths_core::signing::StorageSigner::new(Arc::clone(&ctx.key_storage));
-            let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
-            batch.stage_attestation(att.clone());
-            let _ = auths_id::keri::anchor_and_persist_via_backend(
-                ctx.registry.as_ref(),
-                &storage_signer,
-                alias,
-                ctx.passphrase_provider.as_ref(),
-                &prefix,
-                &att,
-                &mut batch,
-            );
-        }
+        anchor_artifact_attestation(ctx, &managed.controller_did, alias, &attestation_json, now)?;
     }
 
     Ok(ArtifactSigningResult {
@@ -604,6 +587,35 @@ pub fn sign_artifact(
         digest: artifact_meta.digest.hex,
         dsse_signature: None,
     })
+}
+
+fn anchor_artifact_attestation(
+    ctx: &AuthsContext,
+    controller_did: &auths_core::storage::keychain::IdentityDID,
+    alias: &KeyAlias,
+    attestation_json: &str,
+    now: DateTime<Utc>,
+) -> Result<(), ArtifactSigningError> {
+    let prefix = auths_id::keri::parse_did_keri(controller_did.as_str())
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+    let att: auths_verifier::core::Attestation = serde_json::from_str(attestation_json)
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+    let storage_signer = auths_core::signing::StorageSigner::new(Arc::clone(&ctx.key_storage));
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_attestation(att.clone());
+    auths_id::keri::anchor_and_persist_via_backend(
+        ctx.registry.as_ref(),
+        &storage_signer,
+        alias,
+        ctx.passphrase_provider.as_ref(),
+        &prefix,
+        &att,
+        &mut batch,
+        &ctx.witness_params(),
+        now,
+    )
+    .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+    Ok(())
 }
 
 /// Create, sign, and serialize an attestation. Handles both hardware and software signers.

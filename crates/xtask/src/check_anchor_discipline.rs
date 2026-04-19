@@ -18,6 +18,13 @@ const BANNED_READ_METHODS: &[&str] = &["load_all_attestations"];
 
 const BANNED_READ_PATHS: &[&str] = &["crates/auths-cli/src/commands/"];
 
+/// Methods whose Result must never be silently discarded with `let _ =`.
+/// Anchor operations must succeed or propagate errors — no silent fallbacks.
+const BANNED_SWALLOW_METHODS: &[&str] = &[
+    "collect_and_store_receipts",
+    "anchor_and_persist_via_backend",
+];
+
 const EXEMPT_PATHS: &[&str] = &[
     "crates/auths-storage/src/",
     "crates/auths-id/src/storage/",
@@ -104,6 +111,11 @@ pub fn run(workspace_root: &Path) -> anyhow::Result<()> {
                 false,
             );
         }
+
+        // Check for `let _ = collect_and_store_receipts(...)` anywhere in production code
+        if !EXEMPT_PATHS.iter().any(|e| rel_str.contains(e)) {
+            check_swallowed_results(tree.root_node(), &source, path, &mut violations, false);
+        }
     }
 
     if violations.is_empty() {
@@ -174,6 +186,73 @@ fn check_for_banned(
     for child in node.children(&mut cursor) {
         check_for_banned(child, source, file, banned, violations, in_test);
     }
+}
+
+fn check_swallowed_results(
+    node: tree_sitter::Node,
+    source: &str,
+    file: &Path,
+    violations: &mut Vec<Violation>,
+    in_test: bool,
+) {
+    let kind = node.kind();
+    let is_test_context = in_test || is_test_attributed(&node, source);
+    if is_test_context {
+        return;
+    }
+
+    // Look for: let _ = <expr containing banned method call>
+    if kind == "let_declaration" {
+        let has_wildcard = node
+            .child_by_field_name("pattern")
+            .is_some_and(|p| &source[p.byte_range()] == "_");
+
+        if has_wildcard {
+            if let Some(value) = node.child_by_field_name("value") {
+                if let Some(method_name) =
+                    subtree_contains_banned_call(value, source, BANNED_SWALLOW_METHODS)
+                {
+                    let start = node.start_position();
+                    violations.push(Violation {
+                        file: file.to_path_buf(),
+                        line: start.row + 1,
+                        col: start.column + 1,
+                        name: format!(
+                            "let _ = {method_name}(...) — must handle Result, not discard"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        check_swallowed_results(child, source, file, violations, is_test_context);
+    }
+}
+
+fn subtree_contains_banned_call<'a>(
+    node: tree_sitter::Node,
+    source: &str,
+    banned: &[&'a str],
+) -> Option<&'a str> {
+    let kind = node.kind();
+    if kind == "identifier" || kind == "field_identifier" {
+        let text = &source[node.byte_range()];
+        for method in banned {
+            if text == *method {
+                return Some(method);
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Some(found) = subtree_contains_banned_call(child, source, banned) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 fn is_test_attributed(node: &tree_sitter::Node, source: &str) -> bool {

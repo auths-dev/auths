@@ -3,8 +3,27 @@
 //! Declares which witnesses an identity uses, the quorum threshold,
 //! and the degradation policy when witnesses are unreachable.
 
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 use url::Url;
+
+/// Bundled witness configuration for anchor operations.
+///
+/// Replaces the error-prone `(Option<&WitnessConfig>, Option<&Path>)` pair.
+/// With two separate Options, a caller can pass `Some(config)` with `None` for
+/// `repo_path`, silently degrading `Enforce` to a no-op. This enum makes that
+/// invalid state unrepresentable.
+#[derive(Debug, Clone, Copy)]
+pub enum WitnessParams<'a> {
+    /// Witness receipting is active with a validated config and storage path.
+    Enabled {
+        config: &'a WitnessConfig,
+        repo_path: &'a Path,
+    },
+    /// Witness receipting is explicitly disabled for this operation.
+    Disabled,
+}
 
 /// Configuration for witness receipts on an identity.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -151,6 +151,7 @@ pub fn provision_agent_identity(
     config: AgentProvisioningConfig,
     passphrase_provider: &dyn PassphraseProvider,
     keychain: Arc<dyn KeyStorage + Send + Sync>,
+    witness_params: &crate::witness_config::WitnessParams<'_>,
 ) -> Result<AgentIdentityBundle, AgentProvisioningError> {
     let (repo_path, ephemeral) = resolve_repo_path(&config.storage_mode)?;
     ensure_git_repo(&repo_path)?;
@@ -182,7 +183,7 @@ pub fn provision_agent_identity(
         let signer = StorageSigner::new(keychain);
         let mut batch = crate::storage::registry::backend::AtomicWriteBatch::new();
         batch.stage_attestation(attestation.clone());
-        let _ = crate::keri::anchor_and_persist_via_backend(
+        crate::keri::anchor_and_persist_via_backend(
             backend_for_anchor.as_ref(),
             &signer,
             &key_alias,
@@ -190,7 +191,14 @@ pub fn provision_agent_identity(
             &prefix,
             &attestation,
             &mut batch,
-        );
+            witness_params,
+            now,
+        )
+        .map_err(|e| {
+            AgentProvisioningError::IdentityCreation(crate::error::InitError::Registry(
+                e.to_string(),
+            ))
+        })?;
     }
 
     Ok(AgentIdentityBundle {

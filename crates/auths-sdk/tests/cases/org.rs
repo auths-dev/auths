@@ -92,6 +92,7 @@ fn make_ctx<'a>(
         uuid_provider,
         signer,
         passphrase_provider,
+        witness_params: auths_id::witness_config::WitnessParams::Disabled,
     }
 }
 

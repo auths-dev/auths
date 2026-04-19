@@ -41,6 +41,9 @@ pub enum AnchorError {
 
     #[error("Identity cannot emit interaction events: {0}")]
     IxnForbidden(String),
+
+    #[error("Witness quorum not met: {0}")]
+    WitnessQuorumNotMet(String),
 }
 
 impl auths_core::error::AuthsErrorInfo for AnchorError {
@@ -53,6 +56,7 @@ impl auths_core::error::AuthsErrorInfo for AnchorError {
             Self::NotFound(_) => "AUTHS-E4965",
             Self::Signing(_) => "AUTHS-E4966",
             Self::IxnForbidden(_) => "AUTHS-E4967",
+            Self::WitnessQuorumNotMet(_) => "AUTHS-E4968",
         }
     }
 
@@ -67,6 +71,9 @@ impl auths_core::error::AuthsErrorInfo for AnchorError {
                 "Device authorization requires a transferable identity (non-empty n[]) without \
                  establishment-only restriction (no EO in c[]). Create a new identity with auths init.",
             ),
+            Self::WitnessQuorumNotMet(_) => {
+                Some("Check witness server connectivity and threshold configuration")
+            }
             _ => None,
         }
     }
@@ -208,7 +215,11 @@ pub fn try_stage_anchor<T: serde::Serialize>(
     Ok((attestation_said, ixn))
 }
 
-/// Convenience: stage anchor + commit batch atomically.
+/// Stage anchor + collect witness receipts + commit batch.
+///
+/// Witness receipts are collected BEFORE committing to git. Under
+/// `WitnessPolicy::Enforce`, if receipt collection fails the ixn is never
+/// committed — no orphaned unwitnessed events in the KEL.
 #[allow(clippy::too_many_arguments)]
 pub fn anchor_and_persist_via_backend<T: serde::Serialize>(
     backend: &dyn crate::storage::registry::backend::RegistryBackend,
@@ -218,6 +229,8 @@ pub fn anchor_and_persist_via_backend<T: serde::Serialize>(
     controller_prefix: &Prefix,
     attestation: &T,
     batch: &mut crate::storage::registry::backend::AtomicWriteBatch,
+    witness_params: &crate::witness_config::WitnessParams<'_>,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<(Said, IxnEvent), AnchorError> {
     let result = try_stage_anchor(
         backend,
@@ -228,6 +241,27 @@ pub fn anchor_and_persist_via_backend<T: serde::Serialize>(
         attestation,
         batch,
     )?;
+
+    let (_, ref ixn) = result;
+
+    #[cfg(feature = "witness-client")]
+    if let crate::witness_config::WitnessParams::Enabled { config, repo_path } = witness_params {
+        let canonical = serialize_for_signing(&Event::Ixn(ixn.clone()))?;
+        super::witness_integration::collect_and_store_receipts(
+            repo_path,
+            controller_prefix,
+            &ixn.d,
+            &canonical,
+            config,
+            now,
+        )
+        .map_err(|e| AnchorError::WitnessQuorumNotMet(e.to_string()))?;
+    }
+
+    #[cfg(not(feature = "witness-client"))]
+    {
+        let _ = witness_params;
+    }
 
     backend
         .commit_batch(batch)
