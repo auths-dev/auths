@@ -31,22 +31,18 @@ fn sign_with_pkcs8(
     pkcs8: &Pkcs8Der,
     message: &[u8],
 ) -> Result<Vec<u8>, InceptionError> {
-    match curve {
-        CurveType::Ed25519 => {
-            let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())
-                .map_err(|e| InceptionError::KeyGeneration(format!("Ed25519 sign: {e}")))?;
-            Ok(keypair.sign(message).as_ref().to_vec())
-        }
-        CurveType::P256 => {
-            use p256::ecdsa::{SigningKey, signature::Signer};
-            use p256::pkcs8::DecodePrivateKey;
-
-            let signing_key = SigningKey::from_pkcs8_der(pkcs8.as_ref())
-                .map_err(|e| InceptionError::KeyGeneration(format!("P-256 sign: {e}")))?;
-            let sig: p256::ecdsa::Signature = signing_key.sign(message);
-            Ok(sig.to_bytes().to_vec())
-        }
+    // Parse PKCS8 → curve-tagged seed, then dispatch through the curve-agnostic
+    // signer. No `match curve { ... }` at this domain layer — fn-121 ethos.
+    let parsed = auths_crypto::parse_key_material(pkcs8.as_ref())
+        .map_err(|e| InceptionError::KeyGeneration(format!("pkcs8 parse: {e}")))?;
+    if parsed.seed.curve() != curve {
+        return Err(InceptionError::KeyGeneration(format!(
+            "pkcs8 curve mismatch: expected {curve}, got {}",
+            parsed.seed.curve()
+        )));
     }
+    auths_crypto::typed_sign(&parsed.seed, message)
+        .map_err(|e| InceptionError::KeyGeneration(format!("sign: {e}")))
 }
 
 /// Output of curve-agnostic key generation.

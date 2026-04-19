@@ -29,6 +29,8 @@ pub use key_ops::{ParsedKey, TypedSeed, TypedSignerKey, parse_key_material};
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use key_ops::{public_key as typed_public_key, sign as typed_sign};
 pub use pkcs8::Pkcs8Der;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub use provider::default_provider;
 pub use provider::{
     CryptoError, CryptoProvider, CurveType, ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN,
     P256_PUBLIC_KEY_LEN, P256_SIGNATURE_LEN, SecureSeed, SeedDecodeError, decode_seed_hex,

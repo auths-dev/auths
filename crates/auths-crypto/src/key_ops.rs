@@ -127,6 +127,11 @@ pub fn parse_key_material(bytes: &[u8]) -> Result<ParsedKey, CryptoError> {
 
 /// Sign a message using the seed's curve. No curve parameter needed.
 ///
+/// This is the sync curve-agnostic dispatcher. Each arm delegates to a
+/// `RingCryptoProvider` inherent method — the single swap point when FIPS
+/// (fn-128.T3) or CNSA (fn-128.T4) replaces the default provider. Domain code
+/// never matches on curve; this function does it once.
+///
 /// Usage:
 /// ```ignore
 /// let parsed = parse_key_material(&pkcs8)?;
@@ -134,43 +139,24 @@ pub fn parse_key_material(bytes: &[u8]) -> Result<ParsedKey, CryptoError> {
 /// ```
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn sign(seed: &TypedSeed, message: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    use crate::ring_provider::RingCryptoProvider;
     match seed {
-        TypedSeed::Ed25519(s) => {
-            use ring::signature::Ed25519KeyPair;
-            let kp = Ed25519KeyPair::from_seed_unchecked(s)
-                .map_err(|e| CryptoError::InvalidPrivateKey(format!("Ed25519: {e}")))?;
-            Ok(kp.sign(message).as_ref().to_vec())
-        }
-        TypedSeed::P256(s) => {
-            use p256::ecdsa::{SigningKey, signature::Signer};
-            let sk = SigningKey::from_slice(s)
-                .map_err(|e| CryptoError::InvalidPrivateKey(format!("P-256: {e}")))?;
-            let sig: p256::ecdsa::Signature = sk.sign(message);
-            Ok(sig.to_bytes().to_vec())
-        }
+        TypedSeed::Ed25519(s) => RingCryptoProvider::ed25519_sign(s, message),
+        TypedSeed::P256(s) => RingCryptoProvider::p256_sign(s, message),
     }
 }
 
 /// Derive the public key from the seed's curve.
 ///
 /// Returns 32 bytes for Ed25519, 33 bytes compressed SEC1 for P-256.
+/// Same dispatcher shape as [`sign`] — one `match`, each arm a cfg-swappable
+/// provider inherent method.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn public_key(seed: &TypedSeed) -> Result<Vec<u8>, CryptoError> {
+    use crate::ring_provider::RingCryptoProvider;
     match seed {
-        TypedSeed::Ed25519(s) => {
-            use ring::signature::{Ed25519KeyPair, KeyPair};
-            let kp = Ed25519KeyPair::from_seed_unchecked(s)
-                .map_err(|e| CryptoError::OperationFailed(format!("Ed25519 pubkey: {e}")))?;
-            Ok(kp.public_key().as_ref().to_vec())
-        }
-        TypedSeed::P256(s) => {
-            use p256::ecdsa::SigningKey;
-            let sk = SigningKey::from_slice(s)
-                .map_err(|e| CryptoError::InvalidPrivateKey(format!("P-256: {e}")))?;
-            let vk = p256::ecdsa::VerifyingKey::from(&sk);
-            let compressed = vk.to_encoded_point(true);
-            Ok(compressed.as_bytes().to_vec())
-        }
+        TypedSeed::Ed25519(s) => Ok(RingCryptoProvider::ed25519_public_key(s)?.to_vec()),
+        TypedSeed::P256(s) => RingCryptoProvider::p256_public_key_from_seed(s),
     }
 }
 
@@ -546,6 +532,110 @@ mod tests {
             let wrong_len_pk = vec![0u8; 33]; // 33 bytes, expected 32 for Ed25519
             let err = TypedSignerKey::from_parts(seed, wrong_len_pk).unwrap_err();
             assert!(matches!(err, CryptoError::InvalidPrivateKey(_)));
+        }
+
+        /// Regression — ECDSA-P256 must be deterministic (RFC 6979). If this
+        /// breaks, something has routed signing through a randomized-nonce
+        /// path, which is class-breaking (Sony PS3 failure mode).
+        #[test]
+        fn sign_p256_is_rfc6979_deterministic() {
+            let seed = TypedSeed::P256([7u8; 32]);
+            let msg = b"fn-128.T2 determinism";
+            let a = sign(&seed, msg).unwrap();
+            let b = sign(&seed, msg).unwrap();
+            let c = sign(&seed, msg).unwrap();
+            assert_eq!(a, b);
+            assert_eq!(b, c);
+            assert_eq!(a.len(), 64);
+        }
+
+        /// Regression — Ed25519 is deterministic by construction (RFC 8032).
+        /// Pairs with the P-256 test to assert the whole sign surface is
+        /// deterministic.
+        #[test]
+        fn sign_ed25519_is_deterministic() {
+            let seed = TypedSeed::Ed25519([11u8; 32]);
+            let msg = b"fn-128.T2 determinism";
+            let a = sign(&seed, msg).unwrap();
+            let b = sign(&seed, msg).unwrap();
+            assert_eq!(a, b);
+            assert_eq!(a.len(), 64);
+        }
+
+        /// Regression — the sync `sign` free function and the async trait
+        /// `sign_typed` method must produce byte-identical output. Proves the
+        /// T2 refactor did not fork signing behavior across the two entry
+        /// points; a FIPS/CNSA swap that changes one must change the other
+        /// and this test will catch a drift.
+        #[tokio::test]
+        async fn sync_sign_matches_async_sign_typed_p256() {
+            use crate::provider::CryptoProvider;
+            use crate::ring_provider::RingCryptoProvider;
+
+            let seed = TypedSeed::P256([42u8; 32]);
+            let msg = b"parity check";
+
+            let sync_sig = sign(&seed, msg).unwrap();
+            let async_sig = RingCryptoProvider.sign_typed(&seed, msg).await.unwrap();
+
+            assert_eq!(sync_sig, async_sig);
+        }
+
+        #[tokio::test]
+        async fn sync_sign_matches_async_sign_typed_ed25519() {
+            use crate::provider::CryptoProvider;
+            use crate::ring_provider::RingCryptoProvider;
+
+            let seed = TypedSeed::Ed25519([19u8; 32]);
+            let msg = b"parity check";
+
+            let sync_sig = sign(&seed, msg).unwrap();
+            let async_sig = RingCryptoProvider.sign_typed(&seed, msg).await.unwrap();
+
+            assert_eq!(sync_sig, async_sig);
+        }
+
+        /// Regression — the sync `public_key` free function and the async
+        /// trait `typed_public_key_from_seed` method must produce byte-identical
+        /// output across curves.
+        #[tokio::test]
+        async fn sync_public_key_matches_async_typed_public_key() {
+            use crate::provider::CryptoProvider;
+            use crate::ring_provider::RingCryptoProvider;
+
+            for (name, seed) in [
+                ("ed25519", TypedSeed::Ed25519([23u8; 32])),
+                ("p256", TypedSeed::P256([29u8; 32])),
+            ] {
+                let sync_pk = public_key(&seed).unwrap();
+                let async_pk = RingCryptoProvider
+                    .typed_public_key_from_seed(&seed)
+                    .await
+                    .unwrap();
+                assert_eq!(sync_pk, async_pk, "pub key drift on {name}");
+            }
+        }
+
+        /// Regression — the async trait `sign_typed` round-trips through
+        /// `verify_typed` with the public key derived from the same seed.
+        /// Covers the curve-agnostic path end-to-end.
+        #[tokio::test]
+        async fn sign_typed_and_verify_typed_round_trip() {
+            use crate::provider::CryptoProvider;
+            use crate::ring_provider::RingCryptoProvider;
+
+            for seed in [TypedSeed::Ed25519([31u8; 32]), TypedSeed::P256([37u8; 32])] {
+                let msg = b"curve-agnostic round trip";
+                let pk = RingCryptoProvider
+                    .typed_public_key_from_seed(&seed)
+                    .await
+                    .unwrap();
+                let sig = RingCryptoProvider.sign_typed(&seed, msg).await.unwrap();
+                RingCryptoProvider
+                    .verify_typed(seed.curve(), &pk, msg, &sig)
+                    .await
+                    .expect("verify_typed should accept matching signature");
+            }
         }
     }
 }

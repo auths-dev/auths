@@ -12,7 +12,16 @@ homepage.workspace = true
 
 [features]
 default = ["native"]
-native = ["dep:ring", "dep:tokio", "dep:p256"]
+native = [
+    "dep:ring",
+    "dep:tokio",
+    "dep:p256",
+    "dep:chacha20poly1305",
+    "dep:hkdf",
+    "dep:hmac",
+    "dep:sha2",
+    "dep:subtle",
+]
 wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
 test-utils = ["dep:ring"]
 
@@ -32,6 +41,13 @@ zeroize = { version = "1.8", features = ["derive"] }
 # Pinned to 0.13: RustCrypto ecosystem, pure Rust (WASM-safe), matches cesride reference.
 # ring cannot export SEC1 compressed public keys (33 bytes) which CESR requires.
 p256 = { version = "0.13", features = ["ecdsa"], optional = true }
+# Symmetric primitives for provider-dispatched AEAD / KDF / MAC. Gated on
+# `native` alongside ring/p256; WASM providers stub these to `UnsupportedTarget`.
+chacha20poly1305 = { version = "0.10", features = ["std"], optional = true }
+hkdf = { version = "0.12", optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
+subtle = { version = "2.6", optional = true }
 
 [dependencies.web-sys]
 version = "0.3"
