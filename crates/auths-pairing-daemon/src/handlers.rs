@@ -4,15 +4,15 @@
 //! methods on [`DaemonState`]. Handlers only map between HTTP and domain
 //! types — every error path returns a typed [`DaemonError`] and the
 //! status-code mapping lives in a single `IntoResponse` impl (see
-//! `src/error.rs`). Pre-fn-130.T1 the codes were hand-mapped inline at
-//! every handler; keeping them centralized is what unblocks the 421 /
-//! 413 / 429 / 503 middleware that fn-130 tasks T3-T9 install.
+//! `src/error.rs`). Centralizing that mapping is what lets the
+//! middleware stack (421 / 413 / 429 / 503) share one error path.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{ConnectInfo, Path, State},
     http::HeaderMap,
 };
 
@@ -23,6 +23,8 @@ use auths_core::pairing::types::{
 
 use crate::DaemonState;
 use crate::error::DaemonError;
+use crate::rate_limiter::{TieredRateLimiter, uniform_time_floor};
+use crate::request_limits::LimitedJson;
 use crate::token::validate_pairing_token;
 
 /// Health check endpoint.
@@ -47,12 +49,21 @@ pub async fn handle_health() -> &'static str {
 pub async fn handle_lookup_by_code(
     Path(code): Path<String>,
     State(state): State<Arc<DaemonState>>,
+    axum::extract::Extension(limiter): axum::extract::Extension<Arc<TieredRateLimiter>>,
+    ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
 ) -> Result<Json<GetSessionResponse>, DaemonError> {
-    state
-        .lookup_by_code(&code)
-        .await
-        .map(Json)
-        .ok_or(DaemonError::NotFound)
+    // Equal-time: compute the floor deadline at the top of the
+    // handler and sleep until it on both the hit and the miss paths.
+    // Otherwise an attacker can enumerate short codes by measuring
+    // response time.
+    let start = Instant::now();
+    let floor = limiter.config().uniform_miss_floor;
+
+    let result = state.lookup_by_code(&code).await;
+    limiter.record_lookup_outcome(addr.ip(), result.is_some());
+    uniform_time_floor(start, floor).await;
+
+    result.map(Json).ok_or(DaemonError::NotFound)
 }
 
 /// Get session details by ID.
@@ -90,7 +101,7 @@ pub async fn handle_submit_response(
     Path(id): Path<String>,
     State(state): State<Arc<DaemonState>>,
     headers: HeaderMap,
-    Json(request): Json<SubmitResponseRequest>,
+    LimitedJson(request): LimitedJson<SubmitResponseRequest>,
 ) -> Result<Json<SuccessResponse>, DaemonError> {
     if !validate_pairing_token(&headers, state.pairing_token()) {
         return Err(DaemonError::Unauthorized);
@@ -118,7 +129,7 @@ pub async fn handle_submit_confirmation(
     Path(id): Path<String>,
     State(state): State<Arc<DaemonState>>,
     headers: HeaderMap,
-    Json(request): Json<SubmitConfirmationRequest>,
+    LimitedJson(request): LimitedJson<SubmitConfirmationRequest>,
 ) -> Result<Json<SuccessResponse>, DaemonError> {
     if !validate_pairing_token(&headers, state.pairing_token()) {
         return Err(DaemonError::Unauthorized);

@@ -16,8 +16,12 @@ pub mod entropy_probe;
 mod error;
 #[cfg(feature = "server")]
 mod handlers;
+#[cfg(feature = "server")]
+mod host_allowlist;
 mod network;
 mod rate_limiter;
+#[cfg(feature = "server")]
+mod request_limits;
 #[cfg(feature = "server")]
 mod router;
 #[cfg(feature = "server")]
@@ -28,12 +32,20 @@ mod token;
 pub use discovery::{AdvertiseHandle, MockNetworkDiscovery, NetworkDiscovery, SERVICE_TYPE};
 pub use error::DaemonError;
 pub use network::{MockNetworkInterfaces, NetworkInterfaces};
-pub use rate_limiter::RateLimiter;
+pub use rate_limiter::{
+    CheckOutcome, RateLimiter, Tier, TieredRateConfig, TieredRateLimiter,
+};
 pub use state::{DaemonState, SessionError};
 
 #[cfg(feature = "mdns")]
 pub use discovery::MdnsDiscovery;
 
+#[cfg(feature = "server")]
+pub use host_allowlist::HostAllowlist;
+#[cfg(feature = "server")]
+pub use request_limits::{
+    LimitedJson, MAX_BODY_BYTES, MAX_JSON_DEPTH, MAX_JSON_STRING_BYTES,
+};
 #[cfg(feature = "server")]
 pub use network::IfAddrsNetworkInterfaces;
 #[cfg(feature = "server")]

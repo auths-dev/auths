@@ -199,13 +199,12 @@ impl RadAttestation {
             .canonicalize()
             .map_err(|_| RadAttestationError::DeviceSignatureFailed)?;
 
-        let device_vk = UnparsedPublicKey::new(&ring::signature::ED25519, device_pubkey.as_ref());
+        let device_vk = UnparsedPublicKey::new(&ring::signature::ED25519, &device_pubkey.0[..]);
         device_vk
             .verify(&canonical, &self.device_signature)
             .map_err(|_| RadAttestationError::DeviceSignatureFailed)?;
 
-        let identity_vk =
-            UnparsedPublicKey::new(&ring::signature::ED25519, identity_pubkey.as_ref());
+        let identity_vk = UnparsedPublicKey::new(&ring::signature::ED25519, &identity_pubkey.0[..]);
         identity_vk
             .verify(&canonical, &self.identity_signature)
             .map_err(|_| RadAttestationError::IdentitySignatureFailed)?;
@@ -235,12 +234,10 @@ impl TryFrom<RadAttestation> for Attestation {
             subject,
             device_public_key: auths_verifier::DevicePublicKey::try_new(
                 auths_crypto::CurveType::Ed25519,
-                rad.device_public_key.as_ref(),
+                &rad.device_public_key.0[..],
             )
             .map_err(|_| {
-                AttestationConversionError::InvalidPublicKeyLength(
-                    rad.device_public_key.as_ref().len(),
-                )
+                AttestationConversionError::InvalidPublicKeyLength(rad.device_public_key.0.len())
             })?,
             identity_signature: Ed25519Signature::try_from_slice(&rad.identity_signature).map_err(
                 |_| {
@@ -483,7 +480,7 @@ mod tests {
         assert_eq!(core.rid.as_str(), rid.to_string());
         assert_eq!(core.issuer.as_str(), identity_did.to_string());
         assert_eq!(core.subject.as_str(), device_did.to_string());
-        assert_eq!(core.device_public_key.as_bytes(), device_pk.as_ref());
+        assert_eq!(core.device_public_key.as_bytes(), &device_pk.0[..]);
         assert_eq!(
             core.device_signature.as_bytes().as_slice(),
             device_sig.as_slice()

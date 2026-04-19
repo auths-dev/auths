@@ -15,15 +15,20 @@ auths-core = { workspace = true }
 thiserror.workspace = true
 serde = { version = "1", features = ["derive"] }
 tokio = { workspace = true, features = ["sync"] }
-# fn-128.T7 startup entropy / CRNG-init probe.
+# Startup entropy / CRNG-init probe.
 rand.workspace = true
-# fn-130.T1: structured server-side error logging from DaemonError::into_response.
+# Structured server-side error logging from DaemonError::into_response.
 tracing = "0.1"
 
 # Server feature deps
 axum = { version = "0.8", optional = true }
 tower = { version = "0.5", features = ["util"], optional = true }
-tower-http = { version = "0.6", features = ["trace", "cors"], optional = true }
+# `cors` feature intentionally NOT enabled — this daemon is strictly
+# app-to-daemon on the LAN; a browser hitting it is DNS rebinding or
+# a bug. See router.rs for the full rationale.
+# `limit` feature enables `RequestBodyLimitLayer`.
+tower-http = { version = "0.6", features = ["trace", "limit"], optional = true }
+serde_json = { version = "1", optional = true }
 ring = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }
@@ -34,7 +39,7 @@ mdns-sd = { version = "0.18.0", optional = true }
 
 [features]
 default = ["server", "mdns"]
-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:ring", "dep:base64", "dep:subtle", "dep:if-addrs"]
+server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:ring", "dep:base64", "dep:subtle", "dep:if-addrs", "dep:serde_json"]
 mdns = ["dep:mdns-sd"]
 # Pass-through to auths-crypto's FIPS / CNSA builds via auths-core (direct dep).
 fips = ["auths-core/fips"]

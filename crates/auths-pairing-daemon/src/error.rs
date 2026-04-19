@@ -1,12 +1,11 @@
 //! Typed errors for the pairing daemon + the HTTP status-code mapping.
 //!
-//! fn-130.T1 centralized the error → HTTP boundary here: every handler
-//! returns `Result<Json<T>, DaemonError>` and every status code in the
-//! daemon is emitted from a single `IntoResponse` impl. Prior to T1, eight
-//! handlers in `handlers.rs` hand-mapped codes inline; any future
-//! middleware (421 from Host-allowlist, 413 from body-limit, 503 from
-//! CPU-budget, etc.) had to either invent its own mapping or wait for
-//! this consolidation.
+//! Every handler returns `Result<Json<T>, DaemonError>` and every
+//! status code in the daemon is emitted from a single `IntoResponse`
+//! impl. Centralizing this mapping is what lets new middleware (421
+//! from the Host allowlist, 413 from the body-limit, 503 from the
+//! CPU-budget semaphore, etc.) share one error path instead of
+//! hand-rolling its own status-code translation.
 //!
 //! # Error body shape
 //!
@@ -57,14 +56,14 @@ pub enum DaemonError {
     #[error(transparent)]
     Pairing(#[from] auths_core::pairing::PairingError),
 
-    /// RNG health check at startup failed (fn-128.T7). The daemon refuses
-    /// to bind a listener if the OS CSPRNG appears unhealthy — this catches
-    /// the early-boot entropy-starvation window that has produced real-world
-    /// key-collision incidents.
+    /// RNG health check at startup failed. The daemon refuses to
+    /// bind a listener if the OS CSPRNG appears unhealthy — this
+    /// catches the early-boot entropy-starvation window that has
+    /// produced real-world key-collision incidents.
     #[error("RNG health check failed: {0}")]
     EntropyCheckFailed(String),
 
-    // --- fn-130.T1: HTTP-boundary variants -----------------------------------
+    // --- HTTP-boundary variants ----------------------------------------------
     /// Resource not found (404). Emitted for unknown session_id /
     /// short_code lookups. Carries no detail to avoid enumeration.
     #[error("not found")]
@@ -77,9 +76,9 @@ pub enum DaemonError {
     #[error("conflict")]
     Conflict,
 
-    /// Missing / invalid `X-Pairing-Token` (401). Legacy bootstrap path
-    /// — will be replaced by `UnauthorizedHmac` / `UnauthorizedSig` as
-    /// later fn-130 tasks land.
+    /// Missing / invalid `X-Pairing-Token` (401). Legacy bootstrap
+    /// path — will be replaced by `UnauthorizedHmac` /
+    /// `UnauthorizedSig` once the hybrid-auth middleware lands.
     #[error("unauthorized")]
     Unauthorized,
 

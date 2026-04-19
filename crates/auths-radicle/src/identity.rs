@@ -723,7 +723,7 @@ impl DidResolver for RadicleIdentityResolver {
         match did_val {
             Did::Key(pk) => Ok(ResolvedDid::Key {
                 did: did.to_string(),
-                public_key_bytes: pk.as_ref().to_vec(),
+                public_key_bytes: pk.0[..].to_vec(),
             }),
             Did::Keri(_) => {
                 let key_state = self.resolve_keri_state(&did_val).map_err(|e| {

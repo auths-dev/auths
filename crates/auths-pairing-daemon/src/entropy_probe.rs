@@ -1,4 +1,4 @@
-//! Startup RNG health probe (fn-128.T7).
+//! Startup RNG health probe.
 //!
 //! Refuses to run if the kernel CRNG is not initialised or if `OsRng`'s
 //! output fails a lightweight NIST SP 800-90B-style health check. Catches

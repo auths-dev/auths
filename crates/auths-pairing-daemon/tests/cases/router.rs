@@ -9,7 +9,9 @@ use tower::ServiceExt;
 use auths_core::pairing::types::{
     Base64UrlEncoded, SubmitConfirmationRequest, SubmitResponseRequest,
 };
-use auths_pairing_daemon::{DaemonState, RateLimiter, build_pairing_router};
+use auths_pairing_daemon::{
+    DaemonState, HostAllowlist, TieredRateConfig, TieredRateLimiter, build_pairing_router,
+};
 
 use super::{build_test_daemon, test_session};
 
@@ -20,7 +22,16 @@ async fn response_body(resp: axum::http::Response<Body>) -> String {
 }
 
 fn router_for(state: &Arc<DaemonState>) -> axum::Router {
-    build_pairing_router(state.clone(), Arc::new(RateLimiter::new(100)))
+    let allowlist = Arc::new(HostAllowlist::allow_any_for_tests());
+    let tiers = TieredRateConfig {
+        session_create_per_min: 100,
+        session_lookup_per_min: 100,
+        sas_submissions_per_session: 100,
+        other_per_min: 1000,
+        ..TieredRateConfig::default()
+    };
+    let limiter = Arc::new(TieredRateLimiter::new(tiers));
+    build_pairing_router(state.clone(), limiter, allowlist)
         .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))))
 }
 

@@ -10,8 +10,9 @@ use auths_core::pairing::types::{CreateSessionRequest, SubmitResponseRequest};
 
 use crate::discovery::{AdvertiseHandle, NetworkDiscovery};
 use crate::error::DaemonError;
+use crate::host_allowlist::HostAllowlist;
 use crate::network::NetworkInterfaces;
-use crate::rate_limiter::RateLimiter;
+use crate::rate_limiter::{RateLimiter, TieredRateConfig, TieredRateLimiter};
 use crate::router::build_pairing_router;
 use crate::state::DaemonState;
 use crate::token::generate_transport_token;
@@ -35,6 +36,7 @@ use crate::token::generate_transport_token;
 /// ```
 pub struct PairingDaemonBuilder {
     rate_limiter: Option<RateLimiter>,
+    rate_tiers: Option<TieredRateConfig>,
     network: Option<Box<dyn NetworkInterfaces>>,
     discovery: Option<Box<dyn NetworkDiscovery>>,
 }
@@ -49,9 +51,20 @@ impl PairingDaemonBuilder {
     pub fn new() -> Self {
         Self {
             rate_limiter: None,
+            rate_tiers: None,
             network: None,
             discovery: None,
         }
+    }
+
+    /// Override the tiered rate-limit configuration. When set, this
+    /// takes precedence over the legacy `with_rate_limiter` path.
+    ///
+    /// Args:
+    /// * `tiers`: A [`TieredRateConfig`] instance.
+    pub fn with_rate_tiers(mut self, tiers: TieredRateConfig) -> Self {
+        self.rate_tiers = Some(tiers);
+        self
     }
 
     /// Override the rate limiter.
@@ -112,19 +125,28 @@ impl PairingDaemonBuilder {
     /// let daemon = PairingDaemonBuilder::new().build(session)?;
     /// ```
     pub fn build(self, session: CreateSessionRequest) -> Result<PairingDaemon, DaemonError> {
-        // fn-128.T7: health-check the OS CSPRNG before we spend any of its
-        // output. On Linux, `OsRng` reads `getrandom(2)` which blocks until
-        // the kernel pool is seeded; we additionally run NIST SP 800-90B
-        // RCT + APT over a 4 KiB sample to catch a wedged or insufficiently-
-        // seeded RNG. Refusal to start is the only safe posture — silent
-        // low-entropy keys are a documented class-breaking failure mode.
+        // Health-check the OS CSPRNG before we spend any of its
+        // output. On Linux, `OsRng` reads `getrandom(2)` which blocks
+        // until the kernel pool is seeded; we additionally run NIST
+        // SP 800-90B RCT + APT over a 4 KiB sample to catch a wedged
+        // or insufficiently-seeded RNG. Refusal to start is the only
+        // safe posture — silent low-entropy keys are a documented
+        // class-breaking failure mode.
         {
             use crate::entropy_probe::{HealthRng, run_health_check};
             let mut rng = HealthRng::os_rng();
             run_health_check(&mut rng)?;
         }
 
-        let rate_limiter = self.rate_limiter.unwrap_or_else(|| RateLimiter::new(5));
+        // Tier config takes precedence over legacy; if neither is set,
+        // use TieredRateConfig::default() which matches plan tier
+        // quotas (5/20/3/60 per minute).
+        let tier_config = self.rate_tiers.unwrap_or_default();
+        let tiered = Arc::new(TieredRateLimiter::new(tier_config));
+        // `self.rate_limiter` is kept in the builder for
+        // backward-compat but is no longer threaded through — the
+        // tiered limiter is the single source of truth.
+        let _legacy = self.rate_limiter;
         let network: Box<dyn NetworkInterfaces> = self.network.unwrap_or_else(default_network);
         let discovery: Option<Box<dyn NetworkDiscovery>> =
             self.discovery.or_else(default_discovery);
@@ -134,13 +156,14 @@ impl PairingDaemonBuilder {
 
         let (tx, rx) = oneshot::channel();
         let state = Arc::new(DaemonState::new(session, token_bytes, tx));
-        let rate_limiter = Arc::new(rate_limiter);
 
-        let router = build_pairing_router(state.clone(), rate_limiter);
-
+        // Router is built lazily in `into_parts`, once the caller
+        // knows the bound port. We need the port to scope the Host
+        // allowlist, so router construction has to wait until after
+        // `TcpListener::bind`.
         Ok(PairingDaemon {
-            router,
             state,
+            tiered_limiter: tiered,
             response_rx: rx,
             token: token_b64,
             bind_ip,
@@ -179,11 +202,15 @@ fn default_discovery() -> Option<Box<dyn NetworkDiscovery>> {
 
 /// A fully configured pairing daemon ready to serve.
 ///
-/// Call [`into_parts()`](PairingDaemon::into_parts) to split into the Axum
-/// router (for serving) and a [`PairingDaemonHandle`] (for awaiting responses).
+/// Call [`into_parts()`](PairingDaemon::into_parts) to split into the
+/// Axum router (for serving) and a [`PairingDaemonHandle`] (for awaiting
+/// responses). Router construction happens here so the caller can
+/// first bind a `TcpListener`, read the chosen port, and pass a
+/// [`HostAllowlist`] that scopes the Host/Origin/Referer middleware
+/// to `<host>:<port>` matches.
 pub struct PairingDaemon {
-    router: axum::Router,
     state: Arc<DaemonState>,
+    tiered_limiter: Arc<TieredRateLimiter>,
     response_rx: oneshot::Receiver<SubmitResponseRequest>,
     token: String,
     bind_ip: IpAddr,
@@ -206,11 +233,21 @@ impl PairingDaemon {
     /// The router should be passed to `axum::serve`. The handle provides
     /// `wait_for_response` and `advertise` methods.
     ///
+    /// Args:
+    /// * `allowlist`: The production [`HostAllowlist`] — typically built
+    ///   via [`HostAllowlist::for_bound_addr`] once the bound `SocketAddr`
+    ///   is known.
+    ///
     /// Usage:
     /// ```ignore
-    /// let (router, handle) = daemon.into_parts();
+    /// let listener = TcpListener::bind((daemon.bind_ip(), 0)).await?;
+    /// let addr = listener.local_addr()?;
+    /// let allowlist = HostAllowlist::for_bound_addr(addr, None);
+    /// let (router, handle) = daemon.into_parts(allowlist);
     /// ```
-    pub fn into_parts(self) -> (axum::Router, PairingDaemonHandle) {
+    pub fn into_parts(self, allowlist: HostAllowlist) -> (axum::Router, PairingDaemonHandle) {
+        let router =
+            build_pairing_router(self.state.clone(), self.tiered_limiter, Arc::new(allowlist));
         let handle = PairingDaemonHandle {
             state: self.state,
             response_rx: self.response_rx,
@@ -218,7 +255,7 @@ impl PairingDaemon {
             bind_ip: self.bind_ip,
             token: self.token,
         };
-        (self.router, handle)
+        (router, handle)
     }
 }
 

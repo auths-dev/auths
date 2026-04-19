@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use auths_pairing_daemon::{
-    MockNetworkDiscovery, MockNetworkInterfaces, PairingDaemonBuilder, RateLimiter,
+    HostAllowlist, MockNetworkDiscovery, MockNetworkInterfaces, PairingDaemonBuilder, RateLimiter,
 };
 
 use super::test_session;
@@ -34,7 +34,7 @@ fn into_parts_splits_router_and_handle() {
         .unwrap();
 
     let token = daemon.token().to_string();
-    let (_router, handle) = daemon.into_parts();
+    let (_router, handle) = daemon.into_parts(HostAllowlist::allow_any_for_tests());
 
     assert_eq!(handle.bind_ip(), mock_ip);
     assert_eq!(handle.token(), token);
