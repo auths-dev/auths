@@ -61,8 +61,12 @@ pub enum AtomicWriteOp {
     StoreAttestation(Attestation),
     /// Store an org member attestation (latest-view overwrite).
     StoreOrgMember { org: String, member: Attestation },
-    /// Append a KEL event.
-    AppendEvent { prefix: Prefix, event: Event },
+    /// Append a KEL event with optional CESR signature attachment.
+    AppendEvent {
+        prefix: Prefix,
+        event: Event,
+        attachment: Vec<u8>,
+    },
 }
 
 /// Batch of write operations to be committed atomically.
@@ -92,8 +96,12 @@ impl AtomicWriteBatch {
         self
     }
 
-    pub fn stage_event(&mut self, prefix: Prefix, event: Event) -> &mut Self {
-        self.ops.push(AtomicWriteOp::AppendEvent { prefix, event });
+    pub fn stage_event(&mut self, prefix: Prefix, event: Event, attachment: Vec<u8>) -> &mut Self {
+        self.ops.push(AtomicWriteOp::AppendEvent {
+            prefix,
+            event,
+            attachment,
+        });
         self
     }
 
@@ -810,7 +818,17 @@ pub trait RegistryBackend: Send + Sync {
                 AtomicWriteOp::StoreOrgMember { org, member } => {
                     self.store_org_member(org, member)?
                 }
-                AtomicWriteOp::AppendEvent { prefix, event } => self.append_event(prefix, event)?,
+                AtomicWriteOp::AppendEvent {
+                    prefix,
+                    event,
+                    attachment,
+                } => {
+                    if attachment.is_empty() {
+                        self.append_event(prefix, event)?;
+                    } else {
+                        self.append_signed_event(prefix, event, attachment)?;
+                    }
+                }
             }
         }
         Ok(())
