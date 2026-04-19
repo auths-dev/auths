@@ -63,7 +63,8 @@ impl PinnedIdentity {
     /// Comparison is always on decoded bytes, never on string representation.
     /// This handles case differences and other encoding variations.
     pub fn key_matches(&self, presented_pk: &[u8]) -> Result<bool, TrustError> {
-        Ok(self.public_key_bytes()? == presented_pk)
+        use subtle::ConstantTimeEq;
+        Ok(self.public_key_bytes()?.ct_eq(presented_pk).into())
     }
 }
 

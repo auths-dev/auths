@@ -8,6 +8,7 @@
 )]
 mod check_anchor_discipline;
 mod check_clippy_sync;
+mod check_constant_time;
 mod check_curve_agnostic;
 mod gen_docs;
 mod gen_error_docs;
@@ -61,6 +62,9 @@ enum Command {
     /// Bans direct store_attestation/store_org_member/load_all_attestations in
     /// SDK domains and CLI commands.
     CheckAnchorDiscipline,
+    /// Constant-time comparison enforcement via tree-sitter.
+    /// Bans == on .as_bytes() in production code (use subtle::ct_eq instead).
+    CheckConstantTime,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -81,5 +85,6 @@ fn main() -> anyhow::Result<()> {
         Command::CheckClippySync => check_clippy_sync::run(workspace_root()),
         Command::CheckCurveAgnostic => check_curve_agnostic::run(workspace_root()),
         Command::CheckAnchorDiscipline => check_anchor_discipline::run(workspace_root()),
+        Command::CheckConstantTime => check_constant_time::run(workspace_root()),
     }
 }
