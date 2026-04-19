@@ -82,7 +82,21 @@ pub fn format_sas_numeric(sas_bytes: &[u8; 8]) -> String {
 ///
 /// Wraps a 32-byte key in `Zeroizing` and enforces single use via move semantics.
 /// `encrypt()` takes `self` by value — a second call is a compile error.
+///
+/// Invariants (enforced by fn-128.T5's `Secret` marker machinery — see
+/// `auths-crypto::secret`):
+/// - Zeroized on drop (via the inner `Zeroizing<[u8; 32]>` Drop + the
+///   outer `ZeroizeOnDrop` marker impl below).
+/// - No `Clone`, `Copy`, `Debug`, `Display`, `Serialize`, `Deserialize` —
+///   a leaked `Debug` impl would defeat the entire zeroize ceremony.
+/// - No derived `PartialEq` / `Eq`; constant-time comparison only.
 pub struct TransportKey(Zeroizing<[u8; 32]>);
+
+// Marker impl — the inner `Zeroizing<[u8; 32]>` Drop impl zeroes the bytes.
+// This outer marker declares the `ZeroizeOnDrop` invariant at the type
+// level so the `Secret` trait (auths-crypto) can be implemented against it
+// in a downstream crate without a derive macro. Keep in sync with fn-129.T4.
+impl zeroize::ZeroizeOnDrop for TransportKey {}
 
 impl TransportKey {
     pub fn new(key: [u8; 32]) -> Self {
@@ -95,7 +109,14 @@ impl TransportKey {
     pub fn encrypt(mut self, plaintext: &[u8]) -> Result<Vec<u8>, ProtocolError> {
         let cipher = ChaCha20Poly1305::new_from_slice(&*self.0)
             .map_err(|_| ProtocolError::EncryptionFailed("invalid key".into()))?;
-        let nonce_bytes: [u8; NONCE_LEN] = rand::random();
+        // fn-128.T6: use `OsRng` explicitly. `rand::random()` can delegate
+        // to `thread_rng` depending on feature flags; `OsRng` is the single
+        // sanctioned security-sensitive source in this workspace.
+        let mut nonce_bytes = [0u8; NONCE_LEN];
+        {
+            use p256::elliptic_curve::rand_core::{OsRng, RngCore};
+            OsRng.fill_bytes(&mut nonce_bytes);
+        }
         let nonce = Nonce::from(nonce_bytes);
         let ciphertext = cipher
             .encrypt(&nonce, plaintext)

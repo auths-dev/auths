@@ -112,6 +112,18 @@ impl PairingDaemonBuilder {
     /// let daemon = PairingDaemonBuilder::new().build(session)?;
     /// ```
     pub fn build(self, session: CreateSessionRequest) -> Result<PairingDaemon, DaemonError> {
+        // fn-128.T7: health-check the OS CSPRNG before we spend any of its
+        // output. On Linux, `OsRng` reads `getrandom(2)` which blocks until
+        // the kernel pool is seeded; we additionally run NIST SP 800-90B
+        // RCT + APT over a 4 KiB sample to catch a wedged or insufficiently-
+        // seeded RNG. Refusal to start is the only safe posture — silent
+        // low-entropy keys are a documented class-breaking failure mode.
+        {
+            use crate::entropy_probe::{HealthRng, run_health_check};
+            let mut rng = HealthRng::os_rng();
+            run_health_check(&mut rng)?;
+        }
+
         let rate_limiter = self.rate_limiter.unwrap_or_else(|| RateLimiter::new(5));
         let network: Box<dyn NetworkInterfaces> = self.network.unwrap_or_else(default_network);
         let discovery: Option<Box<dyn NetworkDiscovery>> =

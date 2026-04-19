@@ -79,5 +79,20 @@ ignore = [
 ]
 
 [sources]
-unknown-registry = "warn"
-unknown-git = "warn"
+# fn-128.T9: tighten from warn → deny. Only pull from the official
+# crates.io registry; deny ad-hoc git deps and private registries unless
+# explicitly allowlisted with a documented rationale.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[graph]
+# Check every target we build for. Prevents a config that is green on
+# x86_64 but pulls a GPL transitive on aarch64.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "wasm32-unknown-unknown" },
+]

@@ -485,15 +485,37 @@ pub trait CryptoProvider: Send + Sync {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Feature-combination guards (compile-time enforcement of provider invariants)
+// ---------------------------------------------------------------------------
+
+/// `fips` and `cnsa` are mutually exclusive — both replace the default provider
+/// with incompatible primitive sets (FIPS uses aws-lc-rs's ChaCha20-Poly1305;
+/// CNSA forbids ChaCha and mandates AES-256-GCM + SHA-384 + P-384).
+#[cfg(all(feature = "fips", feature = "cnsa"))]
+compile_error!(
+    "auths-crypto features `fips` and `cnsa` are mutually exclusive. \
+     Pick exactly one: `fips` (AWS-LC-FIPS 140-3) or `cnsa` (NSA CNSA 2.0)."
+);
+
+/// `fips` requires CMake + Go + C toolchain and targets native platforms only.
+/// aws-lc-rs has no supported WASM target.
+#[cfg(all(feature = "fips", target_arch = "wasm32"))]
+compile_error!(
+    "auths-crypto feature `fips` is incompatible with `target_arch = wasm32`. \
+     Build the verifier with default features (RustCrypto + ring)."
+);
+
 /// Returns the workspace-configured default crypto provider.
 ///
-/// Selection is compile-time. Today every native build resolves to
-/// [`crate::ring_provider::RingCryptoProvider`]. Future FIPS (fn-128.T3) and
-/// CNSA (fn-128.T4) features will `cfg`-gate alternate impls here.
+/// Selection is compile-time:
+/// - default build → [`crate::ring_provider::RingCryptoProvider`]
+/// - `--features fips` → [`crate::aws_lc_provider::AwsLcProvider`] (AWS-LC-FIPS)
+/// - `--features cnsa` → (fn-128.T4; TODO: returns Ring until CnsaProvider lands)
 ///
 /// Domain code SHOULD route cryptographic operations through this function
 /// rather than constructing `p256::ecdsa::SigningKey` (or equivalent) directly —
-/// that way the provider swap is mechanical when FIPS/CNSA land.
+/// that way the provider swap is mechanical.
 ///
 /// Usage:
 /// ```ignore
@@ -502,7 +524,22 @@ pub trait CryptoProvider: Send + Sync {
 /// let provider = default_provider();
 /// let sig = provider.sign_p256(&seed, msg).await?;
 /// ```
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "fips", not(target_arch = "wasm32")))]
+pub fn default_provider() -> &'static dyn CryptoProvider {
+    &crate::aws_lc_provider::AwsLcProvider
+}
+
+#[cfg(all(feature = "cnsa", not(feature = "fips"), not(target_arch = "wasm32")))]
+pub fn default_provider() -> &'static dyn CryptoProvider {
+    &crate::cnsa_provider::CnsaProvider
+}
+
+#[cfg(all(
+    feature = "native",
+    not(feature = "fips"),
+    not(feature = "cnsa"),
+    not(target_arch = "wasm32")
+))]
 pub fn default_provider() -> &'static dyn CryptoProvider {
     &crate::ring_provider::RingCryptoProvider
 }

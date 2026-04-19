@@ -1,4 +1,6 @@
 #[cfg(feature = "native")]
+mod kat;
+#[cfg(feature = "native")]
 mod pkcs8_roundtrip;
 #[cfg(feature = "native")]
 mod provider;

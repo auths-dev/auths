@@ -6,6 +6,10 @@
 //! - [`provider`] — Pluggable [`CryptoProvider`] trait for Ed25519 verification
 //! - [`did_key`] — DID:key ↔ Ed25519 encoding (`DidKeyError`, `did_key_to_ed25519`, etc.)
 
+#[cfg(all(feature = "fips", not(target_arch = "wasm32")))]
+pub mod aws_lc_provider;
+#[cfg(all(feature = "cnsa", not(target_arch = "wasm32")))]
+pub mod cnsa_provider;
 pub mod did_key;
 pub mod error;
 pub mod hash256;
@@ -15,10 +19,15 @@ pub mod pkcs8;
 pub mod provider;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod ring_provider;
+pub mod secret;
 pub mod ssh;
 #[cfg(feature = "wasm")]
 pub mod webcrypto_provider;
 
+#[cfg(all(feature = "fips", not(target_arch = "wasm32")))]
+pub use aws_lc_provider::AwsLcProvider;
+#[cfg(all(feature = "cnsa", not(target_arch = "wasm32")))]
+pub use cnsa_provider::CnsaProvider;
 pub use did_key::{
     DecodedDidKey, DidKeyError, did_key_decode, did_key_to_p256, ed25519_pubkey_to_did_keri,
 };
@@ -37,6 +46,7 @@ pub use provider::{
 };
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use ring_provider::RingCryptoProvider;
+pub use secret::Secret;
 #[allow(deprecated)]
 pub use ssh::openssh_pub_to_raw_ed25519;
 pub use ssh::{SshKeyError, openssh_pub_to_raw};

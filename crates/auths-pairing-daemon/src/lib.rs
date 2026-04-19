@@ -12,6 +12,7 @@
 //! Without features, only the core types (`DaemonError`, `DaemonState`) are available.
 
 mod discovery;
+pub mod entropy_probe;
 mod error;
 #[cfg(feature = "server")]
 mod handlers;

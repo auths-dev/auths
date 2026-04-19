@@ -25,6 +25,17 @@ native = [
 wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
 test-utils = ["dep:ring"]
 
+# FIPS 140-3 build: swaps every crypto primitive to aws-lc-rs (AWS-LC-FIPS).
+# Mutually exclusive with `cnsa` and `wasm` (compile_error! guards in
+# `provider.rs`). Requires CMake + Go + C toolchain on the build host; see
+# `docs/security/fips-build.md`.
+fips = ["native", "dep:aws-lc-rs"]
+# CNSA 2.0 build: swaps the default provider for one that uses P-384 ECDSA/ECDH,
+# SHA-384, HMAC-SHA-384, HKDF-SHA-384, and AES-256-GCM. Rejects P-256,
+# ChaCha20-Poly1305, and SHA-256 at the provider boundary with typed errors.
+# Mutually exclusive with `fips` (compile_error! guard in provider.rs).
+cnsa = ["native", "dep:p384", "dep:aes-gcm"]
+
 [dependencies]
 async-trait = "0.1"
 base64.workspace = true
@@ -36,19 +47,23 @@ ssh-key = { version = "0.6", features = ["ed25519"] }
 thiserror.workspace = true
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
-zeroize = { version = "1.8", features = ["derive"] }
+zeroize.workspace = true
 # P-256 (secp256r1) for ECDSA key generation and signing.
 # Pinned to 0.13: RustCrypto ecosystem, pure Rust (WASM-safe), matches cesride reference.
 # ring cannot export SEC1 compressed public keys (33 bytes) which CESR requires.
 p256 = { version = "0.13", features = ["ecdsa"], optional = true }
+# P-384 (secp384r1) for CNSA-mode ECDSA keygen and signing. Same shape as
+# p256. Pulled only with `--features cnsa`.
+p384 = { version = "0.13", features = ["ecdsa", "pkcs8"], optional = true }
+# AES-256-GCM for CNSA-mode AEAD (ChaCha20-Poly1305 is rejected under CNSA 2.0).
+aes-gcm = { workspace = true, optional = true }
 # Symmetric primitives for provider-dispatched AEAD / KDF / MAC. Gated on
 # `native` alongside ring/p256; WASM providers stub these to `UnsupportedTarget`.
-chacha20poly1305 = { version = "0.10", features = ["std"], optional = true }
-hkdf = { version = "0.12", optional = true }
-hmac = { version = "0.12", optional = true }
-sha2 = { version = "0.10", optional = true }
-subtle = { version = "2.6", optional = true }
-
+chacha20poly1305 = { workspace = true, optional = true }
+hkdf = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+subtle = { workspace = true, optional = true }
 [dependencies.web-sys]
 version = "0.3"
 optional = true
@@ -57,6 +72,11 @@ features = ["Crypto", "CryptoKey", "SubtleCrypto"]
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 ring = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
+# FIPS 140-3 validated provider. Pulled only when `fips` feature is on;
+# under that feature the `fips` flag on aws-lc-rs activates aws-lc-fips-sys
+# (validated module). Pinned to a version whose MSRV (1.71) is ≤ workspace
+# toolchain (1.93).
+aws-lc-rs = { version = "1.16", default-features = false, features = ["fips"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 ring.workspace = true

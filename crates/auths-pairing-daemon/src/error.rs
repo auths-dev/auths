@@ -23,4 +23,11 @@ pub enum DaemonError {
     /// A pairing protocol error.
     #[error(transparent)]
     Pairing(#[from] auths_core::pairing::PairingError),
+
+    /// RNG health check at startup failed (fn-128.T7). The daemon refuses
+    /// to bind a listener if the OS CSPRNG appears unhealthy — this catches
+    /// the early-boot entropy-starvation window that has produced real-world
+    /// key-collision incidents.
+    #[error("RNG health check failed: {0}")]
+    EntropyCheckFailed(String),
 }

@@ -125,10 +125,27 @@ pub fn parse_key_material(bytes: &[u8]) -> Result<ParsedKey, CryptoError> {
     )))
 }
 
+// Compile-time provider selection for the sync dispatchers below:
+// - `--features fips` → `AwsLcProvider` (AWS-LC-FIPS 140-3)
+// - `--features cnsa` → `CnsaProvider` (rejects P-256; forwards Ed25519/P-384)
+// - default → `RingCryptoProvider`
+// One cfg block, one import, everything downstream is provider-agnostic.
+#[cfg(all(feature = "fips", not(target_arch = "wasm32")))]
+use crate::aws_lc_provider::AwsLcProvider as SyncProvider;
+#[cfg(all(feature = "cnsa", not(feature = "fips"), not(target_arch = "wasm32")))]
+use crate::cnsa_provider::CnsaProvider as SyncProvider;
+#[cfg(all(
+    feature = "native",
+    not(feature = "fips"),
+    not(feature = "cnsa"),
+    not(target_arch = "wasm32")
+))]
+use crate::ring_provider::RingCryptoProvider as SyncProvider;
+
 /// Sign a message using the seed's curve. No curve parameter needed.
 ///
 /// This is the sync curve-agnostic dispatcher. Each arm delegates to a
-/// `RingCryptoProvider` inherent method — the single swap point when FIPS
+/// `SyncProvider` inherent method — the single swap point when FIPS
 /// (fn-128.T3) or CNSA (fn-128.T4) replaces the default provider. Domain code
 /// never matches on curve; this function does it once.
 ///
@@ -139,10 +156,9 @@ pub fn parse_key_material(bytes: &[u8]) -> Result<ParsedKey, CryptoError> {
 /// ```
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn sign(seed: &TypedSeed, message: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    use crate::ring_provider::RingCryptoProvider;
     match seed {
-        TypedSeed::Ed25519(s) => RingCryptoProvider::ed25519_sign(s, message),
-        TypedSeed::P256(s) => RingCryptoProvider::p256_sign(s, message),
+        TypedSeed::Ed25519(s) => SyncProvider::ed25519_sign(s, message),
+        TypedSeed::P256(s) => SyncProvider::p256_sign(s, message),
     }
 }
 
@@ -153,10 +169,9 @@ pub fn sign(seed: &TypedSeed, message: &[u8]) -> Result<Vec<u8>, CryptoError> {
 /// provider inherent method.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn public_key(seed: &TypedSeed) -> Result<Vec<u8>, CryptoError> {
-    use crate::ring_provider::RingCryptoProvider;
     match seed {
-        TypedSeed::Ed25519(s) => Ok(RingCryptoProvider::ed25519_public_key(s)?.to_vec()),
-        TypedSeed::P256(s) => RingCryptoProvider::p256_public_key_from_seed(s),
+        TypedSeed::Ed25519(s) => Ok(SyncProvider::ed25519_public_key(s)?.to_vec()),
+        TypedSeed::P256(s) => SyncProvider::p256_public_key_from_seed(s),
     }
 }
 
@@ -191,6 +206,12 @@ pub struct TypedSignerKey {
     /// [`TypedSignerKey::public_key`].
     public_key: Vec<u8>,
 }
+
+// Marker impl — the inner `TypedSeed` is itself `ZeroizeOnDrop`, so dropping
+// a `TypedSignerKey` transitively zeroes the private key. The public key
+// field intentionally does not need to be scrubbed. This empty impl formally
+// declares the invariant so fn-128.T5's `Secret` trait bound is satisfiable.
+impl zeroize::ZeroizeOnDrop for TypedSignerKey {}
 
 impl TypedSignerKey {
     /// Parse a PKCS8 DER blob into a curve-tagged signer.

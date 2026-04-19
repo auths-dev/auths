@@ -29,7 +29,7 @@ ring.workspace = true
 thiserror.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
+sha2.workspace = true
 json-canon.workspace = true
 base64 = "0.22"
 chrono = "0.4"
@@ -43,7 +43,7 @@ flate2 = "1"
 rand = "0.9"
 tar = "0.4"
 walkdir = "2"
-zeroize = "1.8"
+zeroize.workspace = true
 uuid = { workspace = true, features = ["serde", "v4"] }
 dashmap = "6"
 reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "json"], optional = true }

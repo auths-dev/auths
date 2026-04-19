@@ -17,7 +17,7 @@ categories = ["cryptography", "authentication"]
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-chacha20poly1305 = { version = "0.10", features = ["std"] }
+chacha20poly1305.workspace = true
 log = "0.4"
 once_cell = "1.19"
 serde = { version = "1.0", features = ["derive"] }
@@ -29,11 +29,11 @@ thiserror.workspace = true
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 zeroize.workspace = true
-aes-gcm = "0.10.3"
-sha2 = "0.10.8"
+aes-gcm.workspace = true
+sha2.workspace = true
 argon2 = "0.5"
 libc = "0.2.171"
-rand = "0.8"
+rand.workspace = true
 base64.workspace = true
 byteorder = "1.5.0"
 dirs = "6.0.0"
@@ -91,7 +91,7 @@ assert_matches = "1.5.0"
 auths-verifier = { workspace = true, features = ["test-utils"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 mockall = "0.13.1"
-rand = "0.8"
+rand.workspace = true
 tokio = { version = "1", features = ["full"] }
 [[bench]]
 name = "crypto"
@@ -108,6 +108,9 @@ keychain-pkcs11 = ["dep:cryptoki"]
 keychain-secure-enclave = []
 witness-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:sqlite"]
 tls = ["dep:axum-server", "witness-server"]
+# Pass-through to auths-crypto's FIPS / CNSA builds.
+fips = ["auths-crypto/fips", "auths-keri/fips", "auths-pairing-protocol/fips"]
+cnsa = ["auths-crypto/cnsa", "auths-keri/cnsa", "auths-pairing-protocol/cnsa"]
 
 [lints]
 workspace = true

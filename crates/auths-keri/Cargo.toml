@@ -28,6 +28,11 @@ thiserror.workspace = true
 
 [features]
 default = []
+# Pass-through to auths-crypto's FIPS 140-3 build (AWS-LC-FIPS). No local
+# re-implementation — every ed25519/p256/aead/kdf call goes through the
+# provider trait, so flipping this feature cascades automatically.
+fips = ["auths-crypto/fips"]
+cnsa = ["auths-crypto/cnsa"]
 cesr = []
 schema = ["dep:schemars"]
 

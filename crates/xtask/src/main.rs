@@ -10,6 +10,7 @@ mod check_anchor_discipline;
 mod check_clippy_sync;
 mod check_constant_time;
 mod check_curve_agnostic;
+mod check_rfc6979;
 mod gen_docs;
 mod gen_error_docs;
 mod gen_schema;
@@ -65,6 +66,9 @@ enum Command {
     /// Constant-time comparison enforcement via tree-sitter.
     /// Bans == on .as_bytes() in production code (use subtle::ct_eq instead).
     CheckConstantTime,
+    /// RFC 6979 deterministic-ECDSA enforcement via tree-sitter.
+    /// Bans `sign_with_rng`, `sign_digest_with_rng`, etc. in production.
+    CheckRfc6979,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -86,5 +90,6 @@ fn main() -> anyhow::Result<()> {
         Command::CheckCurveAgnostic => check_curve_agnostic::run(workspace_root()),
         Command::CheckAnchorDiscipline => check_anchor_discipline::run(workspace_root()),
         Command::CheckConstantTime => check_constant_time::run(workspace_root()),
+        Command::CheckRfc6979 => check_rfc6979::run(workspace_root()),
     }
 }
