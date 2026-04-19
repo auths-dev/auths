@@ -12,6 +12,7 @@ categories = ["cryptography", "data-structures"]
 
 [dependencies]
 auths-crypto = { workspace = true, default-features = false }
+subtle.workspace = true
 auths-verifier = { workspace = true, default-features = false }
 base64.workspace = true
 chrono = { version = "0.4", features = ["serde"] }

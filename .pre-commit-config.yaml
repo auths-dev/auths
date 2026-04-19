@@ -86,6 +86,22 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: check-anchor-discipline
+        name: "Anchor discipline enforcement (tree-sitter AST check)"
+        entry: cargo run --package xtask -- check-anchor-discipline
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: check-constant-time
+        name: "Constant-time comparison enforcement (tree-sitter AST check)"
+        entry: cargo run --package xtask -- check-constant-time
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
       # - id: cargo-deny
       #   name: cargo deny (licenses + bans)
       #   entry: bash -c 'cargo deny check > .cargo/cargo-deny.log 2>&1; exit $?'

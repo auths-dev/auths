@@ -203,10 +203,13 @@ fn verify_witnesses(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> Witnes
     let mut verified = 0usize;
 
     for cosig in &signed.witnesses {
-        let trusted = trust_root
-            .witnesses
-            .iter()
-            .find(|w| w.public_key.as_bytes() == cosig.witness_public_key.as_bytes());
+        let trusted = trust_root.witnesses.iter().find(|w| {
+            use subtle::ConstantTimeEq;
+            w.public_key
+                .as_bytes()
+                .ct_eq(cosig.witness_public_key.as_bytes())
+                .into()
+        });
 
         if let Some(_witness) = trusted {
             let peer_key = UnparsedPublicKey::new(&ED25519, cosig.witness_public_key.as_bytes());

@@ -12,6 +12,7 @@ categories = ["cryptography", "authentication"]
 
 [dependencies]
 auths-keri.workspace = true
+subtle.workspace = true
 async-trait = "0.1"
 auths-core = { workspace = true, public = true }
 auths-id = { workspace = true, public = true }

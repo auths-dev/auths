@@ -103,7 +103,14 @@ pub(crate) fn find_admin(
     backend
         .visit_org_member_attestations(org_prefix, &mut |entry| {
             if let Ok(att) = &entry.attestation
-                && att.device_public_key.as_bytes() == signer_bytes.as_slice()
+                && {
+                    use subtle::ConstantTimeEq;
+                    bool::from(
+                        att.device_public_key
+                            .as_bytes()
+                            .ct_eq(signer_bytes.as_slice()),
+                    )
+                }
                 && !att.is_revoked()
                 && att.capabilities.contains(&Capability::manage_members())
             {
