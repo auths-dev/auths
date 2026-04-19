@@ -2,6 +2,10 @@
 
 This document captures mandatory engineering rules for this codebase. These rules apply at every code review and are checked by CI. When in doubt, err on the side of stricter memory hygiene.
 
+## Related documents
+
+- [`docs/security/primitive-inventory.md`](docs/security/primitive-inventory.md) — authoritative table of every cryptographic primitive in use, its backing library, resolved version, and source file. Read before any change to sign/verify/KDF/AEAD surface.
+
 ## Memory Hygiene
 
 ### Rule 1: No raw byte arrays for private key material at module boundaries
