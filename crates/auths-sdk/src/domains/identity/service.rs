@@ -167,6 +167,7 @@ fn initialize_agent(
             provisioning_config,
             passphrase_provider,
             keychain,
+            &ctx.witness_params(),
         )
         .map_err(|e| SetupError::StorageError(e.into()))?;
 

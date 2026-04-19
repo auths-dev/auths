@@ -15,6 +15,7 @@ use auths_id::attestation::revoke::create_signed_revocation;
 use auths_id::keri::anchor_and_persist_via_backend;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::git_refs::AttestationMetadata;
+use auths_id::witness_config::WitnessParams;
 use auths_verifier::Capability;
 use auths_verifier::PublicKeyHex;
 use auths_verifier::core::Attestation;
@@ -58,6 +59,8 @@ pub struct OrgContext<'a> {
     pub signer: &'a dyn SecureSigner,
     /// Provider for obtaining key decryption passphrases.
     pub passphrase_provider: &'a dyn PassphraseProvider,
+    /// Witness receipting configuration for KEL event anchoring.
+    pub witness_params: WitnessParams<'a>,
 }
 
 /// Ordering key for org member display: admin < member < readonly < unknown.
@@ -401,7 +404,7 @@ pub fn add_organization_member(
     let org_keri_prefix = auths_id::keri::Prefix::new_unchecked(cmd.org_prefix);
     let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
     batch.stage_org_member(org_keri_prefix.as_str(), attestation.clone());
-    if anchor_and_persist_via_backend(
+    anchor_and_persist_via_backend(
         ctx.registry,
         ctx.signer,
         &cmd.signer_alias,
@@ -409,13 +412,9 @@ pub fn add_organization_member(
         &org_keri_prefix,
         &attestation,
         &mut batch,
-    )
-    .is_err()
-    {
-        let mut fallback = auths_id::storage::registry::backend::AtomicWriteBatch::new();
-        fallback.stage_org_member(org_keri_prefix.as_str(), attestation.clone());
-        let _ = ctx.registry.commit_batch(&fallback);
-    }
+        &ctx.witness_params,
+        now,
+    )?;
 
     Ok(attestation)
 }
@@ -481,7 +480,7 @@ pub fn revoke_organization_member(
     let org_keri_prefix = auths_id::keri::Prefix::new_unchecked(cmd.org_prefix);
     let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
     batch.stage_org_member(org_keri_prefix.as_str(), revocation.clone());
-    let _ = anchor_and_persist_via_backend(
+    anchor_and_persist_via_backend(
         ctx.registry,
         ctx.signer,
         &cmd.signer_alias,
@@ -489,7 +488,9 @@ pub fn revoke_organization_member(
         &org_keri_prefix,
         &revocation,
         &mut batch,
-    );
+        &ctx.witness_params,
+        now,
+    )?;
 
     Ok(revocation)
 }
@@ -537,7 +538,7 @@ pub fn update_member_capabilities(
     let org_keri_prefix = auths_id::keri::Prefix::new_unchecked(cmd.org_prefix);
     let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
     batch.stage_org_member(org_keri_prefix.as_str(), updated.clone());
-    let _ = anchor_and_persist_via_backend(
+    anchor_and_persist_via_backend(
         ctx.registry,
         ctx.signer,
         &cmd.signer_alias,
@@ -545,7 +546,9 @@ pub fn update_member_capabilities(
         &org_keri_prefix,
         &updated,
         &mut batch,
-    );
+        &ctx.witness_params,
+        now,
+    )?;
 
     Ok(updated)
 }
@@ -588,7 +591,7 @@ pub fn update_organization_member(
     let org_keri_prefix = auths_id::keri::Prefix::new_unchecked(cmd.org_prefix);
     let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
     batch.stage_org_member(org_keri_prefix.as_str(), updated.clone());
-    let _ = anchor_and_persist_via_backend(
+    anchor_and_persist_via_backend(
         ctx.registry,
         ctx.signer,
         &cmd.signer_alias,
@@ -596,7 +599,9 @@ pub fn update_organization_member(
         &org_keri_prefix,
         &updated,
         &mut batch,
-    );
+        &ctx.witness_params,
+        now,
+    )?;
 
     Ok(updated)
 }

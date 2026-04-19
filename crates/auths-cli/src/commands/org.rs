@@ -801,6 +801,7 @@ pub fn handle_org(
                 uuid_provider: &uuid_provider,
                 signer: &signer,
                 passphrase_provider: passphrase_provider.as_ref(),
+                witness_params: auths_sdk::witness::WitnessParams::Disabled,
             };
 
             let member_curve = member_resolved.curve();
@@ -901,6 +902,7 @@ pub fn handle_org(
                 uuid_provider: &uuid_provider,
                 signer: &signer,
                 passphrase_provider: passphrase_provider.as_ref(),
+                witness_params: auths_sdk::witness::WitnessParams::Disabled,
             };
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry

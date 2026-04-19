@@ -18,6 +18,19 @@ use crate::keri::event::EventReceipts;
 use crate::storage::receipts::{GitReceiptStorage, ReceiptStorage};
 use crate::witness_config::{WitnessConfig, WitnessPolicy};
 
+#[allow(clippy::expect_used)]
+// INVARIANT: tokio runtime builder with standard settings cannot fail
+fn shared_runtime() -> &'static tokio::runtime::Runtime {
+    static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("INVARIANT: tokio runtime builder with standard settings cannot fail")
+    })
+}
+
 /// Errors from witness integration.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -88,11 +101,12 @@ pub fn collect_and_store_receipts(
     // Build collector
     let collector = ReceiptCollector::new(witnesses, config.threshold, config.timeout_ms);
 
-    // Run async collection on a blocking tokio runtime
+    // SECURITY: witness API returns unsigned Receipt — signatures not verified
+    // at collection time. Tracked for protocol-level fix.
     let result = {
         let prefix_newtype = Prefix::new_unchecked(prefix.as_str().to_string());
         let event_json = event_json.to_vec();
-        let rt = tokio::runtime::Runtime::new()?;
+        let rt = shared_runtime();
         rt.block_on(async { collector.collect(&prefix_newtype, &event_json).await })
     };
 

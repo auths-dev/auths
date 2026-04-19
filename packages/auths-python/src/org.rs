@@ -255,6 +255,7 @@ pub fn add_org_member(
             uuid_provider: &uuid_provider,
             signer: &signer,
             passphrase_provider: &provider,
+            witness_params: auths_id::witness_config::WitnessParams::Disabled,
         };
 
         let attestation = add_organization_member(
@@ -353,6 +354,7 @@ pub fn revoke_org_member(
             uuid_provider: &uuid_provider,
             signer: &signer,
             passphrase_provider: &provider,
+            witness_params: auths_id::witness_config::WitnessParams::Disabled,
         };
 
         let revocation = revoke_organization_member(

@@ -90,6 +90,27 @@ pub struct AuthsContext {
     /// when not called. Set this on Unix platforms where the auths-agent daemon
     /// is available.
     pub agent_signing: Arc<dyn AgentSigningPort + Send + Sync>,
+    /// Witness configuration for KEL event receipting.
+    /// When set and enabled, ixn events are submitted to witnesses after commit.
+    pub witness_config: Option<auths_id::witness_config::WitnessConfig>,
+    /// Path to the registry repository (needed for witness receipt storage).
+    pub repo_path: Option<std::path::PathBuf>,
+}
+
+impl AuthsContext {
+    /// Build witness params from the context's configuration.
+    ///
+    /// Returns `WitnessParams::Enabled` when both `witness_config` and `repo_path`
+    /// are set, `WitnessParams::Disabled` otherwise.
+    pub fn witness_params(&self) -> auths_id::witness_config::WitnessParams<'_> {
+        match (&self.witness_config, &self.repo_path) {
+            (Some(config), Some(path)) => auths_id::witness_config::WitnessParams::Enabled {
+                config,
+                repo_path: path,
+            },
+            _ => auths_id::witness_config::WitnessParams::Disabled,
+        }
+    }
 }
 
 impl AuthsContext {
@@ -122,6 +143,8 @@ impl AuthsContext {
             passphrase_provider: None,
             uuid_provider: None,
             agent_signing: None,
+            witness_config: None,
+            repo_path: None,
         }
     }
 }
@@ -148,6 +171,8 @@ pub struct AuthsContextBuilder<R, K, C, IS, AS, ASrc> {
     passphrase_provider: Option<Arc<dyn PassphraseProvider + Send + Sync>>,
     uuid_provider: Option<Arc<dyn UuidProvider + Send + Sync>>,
     agent_signing: Option<Arc<dyn AgentSigningPort + Send + Sync>>,
+    witness_config: Option<auths_id::witness_config::WitnessConfig>,
+    repo_path: Option<std::path::PathBuf>,
 }
 
 // ── Required field setters (each transitions one typestate slot) ──────────────
@@ -177,6 +202,8 @@ impl<K, C, IS, AS, ASrc> AuthsContextBuilder<Missing, K, C, IS, AS, ASrc> {
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
+            witness_config: self.witness_config,
+            repo_path: self.repo_path,
         }
     }
 }
@@ -206,6 +233,8 @@ impl<R, C, IS, AS, ASrc> AuthsContextBuilder<R, Missing, C, IS, AS, ASrc> {
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
+            witness_config: self.witness_config,
+            repo_path: self.repo_path,
         }
     }
 }
@@ -236,6 +265,8 @@ impl<R, K, IS, AS, ASrc> AuthsContextBuilder<R, K, Missing, IS, AS, ASrc> {
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
+            witness_config: self.witness_config,
+            repo_path: self.repo_path,
         }
     }
 }
@@ -265,6 +296,8 @@ impl<R, K, C, AS, ASrc> AuthsContextBuilder<R, K, C, Missing, AS, ASrc> {
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
+            witness_config: self.witness_config,
+            repo_path: self.repo_path,
         }
     }
 }
@@ -294,6 +327,8 @@ impl<R, K, C, IS, ASrc> AuthsContextBuilder<R, K, C, IS, Missing, ASrc> {
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
+            witness_config: self.witness_config,
+            repo_path: self.repo_path,
         }
     }
 }
@@ -323,6 +358,8 @@ impl<R, K, C, IS, AS> AuthsContextBuilder<R, K, C, IS, AS, Missing> {
             passphrase_provider: self.passphrase_provider,
             uuid_provider: self.uuid_provider,
             agent_signing: self.agent_signing,
+            witness_config: self.witness_config,
+            repo_path: self.repo_path,
         }
     }
 }
@@ -400,6 +437,18 @@ impl<R, K, C, IS, AS, ASrc> AuthsContextBuilder<R, K, C, IS, AS, ASrc> {
         self.agent_signing = Some(provider);
         self
     }
+
+    /// Set witness configuration for KEL event receipting.
+    pub fn witness_config(mut self, config: auths_id::witness_config::WitnessConfig) -> Self {
+        self.witness_config = Some(config);
+        self
+    }
+
+    /// Set the repository path (needed for witness receipt storage).
+    pub fn repo_path(mut self, path: std::path::PathBuf) -> Self {
+        self.repo_path = Some(path);
+        self
+    }
 }
 
 // ── Infallible build — only available when all six required fields are set ────
@@ -448,6 +497,8 @@ impl
             agent_signing: self
                 .agent_signing
                 .unwrap_or_else(|| Arc::new(NoopAgentProvider)),
+            witness_config: self.witness_config,
+            repo_path: self.repo_path,
         }
     }
 }
