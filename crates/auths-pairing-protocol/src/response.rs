@@ -127,6 +127,7 @@ impl PairingResponse {
             URL_SAFE_NO_PAD.encode(device_ecdh_pubkey_bytes.as_bytes());
 
         let mut message = Vec::new();
+        message.extend_from_slice(token.session_id.as_bytes());
         message.extend_from_slice(token.short_code.as_bytes());
         message.extend_from_slice(&initiator_ecdh_bytes);
         message.extend_from_slice(device_ecdh_pubkey_bytes.as_bytes());
@@ -165,6 +166,7 @@ impl PairingResponse {
             .map_err(|_| ProtocolError::InvalidSignature)?;
 
         let mut message = Vec::new();
+        message.extend_from_slice(token.session_id.as_bytes());
         message.extend_from_slice(token.short_code.as_bytes());
         message.extend_from_slice(&initiator_ecdh_bytes);
         message.extend_from_slice(&device_ecdh_bytes);

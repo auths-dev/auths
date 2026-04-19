@@ -19,6 +19,7 @@ pub struct PairingToken {
     pub controller_did: String,
     pub endpoint: String,
     pub short_code: String,
+    pub session_id: String,
     pub ephemeral_pubkey: String,
     pub expires_at: DateTime<Utc>,
     pub capabilities: Vec<String>,
@@ -65,10 +66,18 @@ impl PairingToken {
             URL_SAFE_NO_PAD.encode(ephemeral_public.to_encoded_point(true).as_bytes());
         let short_code = generate_short_code()?;
 
+        let session_id = {
+            let mut bytes = [0u8; 16];
+            use rand::RngCore;
+            OsRng.fill_bytes(&mut bytes);
+            hex::encode(bytes)
+        };
+
         let token = PairingToken {
             controller_did,
             endpoint,
             short_code,
+            session_id,
             ephemeral_pubkey,
             expires_at: now + expiry,
             capabilities,
@@ -90,11 +99,12 @@ impl PairingToken {
         let endpoint_b64 = URL_SAFE_NO_PAD.encode(self.endpoint.as_bytes());
         let caps = self.capabilities.join(",");
         format!(
-            "auths://pair?d={}&e={}&k={}&sc={}&x={}&c={}",
+            "auths://pair?d={}&e={}&k={}&sc={}&sid={}&x={}&c={}",
             self.controller_did,
             endpoint_b64,
             self.ephemeral_pubkey,
             self.short_code,
+            self.session_id,
             expires_unix,
             caps
         )
@@ -110,6 +120,7 @@ impl PairingToken {
         let mut endpoint_b64 = None;
         let mut ephemeral_pubkey = None;
         let mut short_code = None;
+        let mut session_id = None;
         let mut expires_unix = None;
         let mut caps_str = None;
 
@@ -120,6 +131,7 @@ impl PairingToken {
                     "e" => endpoint_b64 = Some(value.to_string()),
                     "k" => ephemeral_pubkey = Some(value.to_string()),
                     "sc" => short_code = Some(value.to_string()),
+                    "sid" => session_id = Some(value.to_string()),
                     "x" => expires_unix = value.parse::<i64>().ok(),
                     "c" => caps_str = Some(value.to_string()),
                     _ => {}
@@ -140,6 +152,8 @@ impl PairingToken {
             .ok_or_else(|| ProtocolError::InvalidUri("Missing ephemeral_pubkey".to_string()))?;
         let short_code = short_code
             .ok_or_else(|| ProtocolError::InvalidUri("Missing short_code".to_string()))?;
+        let session_id = session_id
+            .ok_or_else(|| ProtocolError::InvalidUri("Missing session_id".to_string()))?;
         let expires_unix = expires_unix.ok_or_else(|| {
             ProtocolError::InvalidUri("Missing or invalid expires_at".to_string())
         })?;
@@ -156,6 +170,7 @@ impl PairingToken {
             controller_did,
             endpoint,
             short_code,
+            session_id,
             ephemeral_pubkey,
             expires_at,
             capabilities,
@@ -224,6 +239,7 @@ impl PairingSession {
         let initiator_pubkey = self.token.ephemeral_pubkey_bytes()?;
 
         let mut message = Vec::new();
+        message.extend_from_slice(self.token.session_id.as_bytes());
         message.extend_from_slice(self.token.short_code.as_bytes());
         message.extend_from_slice(&initiator_pubkey);
         message.extend_from_slice(device_ephemeral_pubkey);

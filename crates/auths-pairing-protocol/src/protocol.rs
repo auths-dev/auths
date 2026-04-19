@@ -125,18 +125,21 @@ impl PairingProtocol {
         let shared_secret = self.session.complete_exchange(&responder_ecdh_pub)?;
         let peer_signing_pubkey = response.device_signing_pubkey_bytes()?;
         let peer_did = response.device_did.clone();
+        let session_id = &self.session.token.session_id;
         let short_code = &self.session.token.short_code;
 
         let sas_bytes = sas::derive_sas(
             &shared_secret,
             &initiator_ecdh_pub,
             &responder_ecdh_pub,
+            session_id,
             short_code,
         );
         let transport_key = sas::derive_transport_key(
             &shared_secret,
             &initiator_ecdh_pub,
             &responder_ecdh_pub,
+            session_id,
             short_code,
         );
 
@@ -193,18 +196,21 @@ pub fn respond_to_pairing(
 
     let initiator_ecdh_pub = token.ephemeral_pubkey_bytes()?;
     let responder_ecdh_pub = response.device_ephemeral_pubkey_bytes()?;
+    let session_id = &token.session_id;
     let short_code = &token.short_code;
 
     let sas_bytes = sas::derive_sas(
         &shared_secret,
         &initiator_ecdh_pub,
         &responder_ecdh_pub,
+        session_id,
         short_code,
     );
     let transport_key = sas::derive_transport_key(
         &shared_secret,
         &initiator_ecdh_pub,
         &responder_ecdh_pub,
+        session_id,
         short_code,
     );
 

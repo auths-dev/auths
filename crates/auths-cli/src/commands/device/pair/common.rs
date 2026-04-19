@@ -200,17 +200,20 @@ pub(crate) fn handle_pairing_response(
     exchange_spinner.finish_with_message(format!("{CHECK}Key exchange complete"));
 
     // Derive SAS with transcript binding
+    let session_id = &session.token.session_id;
     let short_code = &session.token.short_code;
     let sas_bytes = auths_pairing_protocol::sas::derive_sas(
         &shared_secret,
         &initiator_ecdh_pub,
         &device_ecdh_bytes,
+        session_id,
         short_code,
     );
     let transport_key = auths_pairing_protocol::sas::derive_transport_key(
         &shared_secret,
         &initiator_ecdh_pub,
         &device_ecdh_bytes,
+        session_id,
         short_code,
     );
 

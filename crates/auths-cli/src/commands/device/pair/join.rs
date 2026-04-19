@@ -83,6 +83,7 @@ pub(crate) async fn handle_join(
         controller_did: token_data.controller_did.clone(),
         endpoint: registry.to_string(),
         short_code: normalized.clone(),
+        session_id: session_data.session_id.clone(),
         ephemeral_pubkey: token_data.ephemeral_pubkey.to_string(),
         expires_at: chrono::DateTime::from_timestamp(token_data.expires_at, 0).unwrap_or(now),
         capabilities: token_data.capabilities.clone(),
@@ -119,12 +120,14 @@ pub(crate) async fn handle_join(
         &shared_secret,
         &initiator_ecdh_pub,
         &responder_ecdh_pub,
+        &token.session_id,
         &normalized,
     );
     let transport_key = sas::derive_transport_key(
         &shared_secret,
         &initiator_ecdh_pub,
         &responder_ecdh_pub,
+        &token.session_id,
         &normalized,
     );
 
