@@ -17,6 +17,17 @@ pub const SAID_PLACEHOLDER: &str = "############################################
 /// 5. Blake3-256 hash the bytes.
 /// 6. CESR-encode the digest: `E` derivation code + base64url-no-pad.
 ///
+/// **Why insertion-order, not canonical JSON?** KERI specifies that SAIDs
+/// are computed over the insertion-order serialization of the event object.
+/// Using `json_canon` (RFC 8785 sorted keys) would produce different SAIDs
+/// and break interoperability with other KERI implementations. This depends
+/// on `serde_json`'s `preserve_order` feature being enabled in Cargo.toml
+/// (which activates `IndexMap` instead of `BTreeMap` for `serde_json::Map`).
+///
+/// Note: Attestation SAIDs (in `auths-id/src/keri/anchor.rs`) use `json_canon`
+/// — that is correct because attestations are an auths-specific format not
+/// constrained by the KERI spec.
+///
 /// Args:
 /// * `event`: The event as a JSON object.
 pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationError> {
@@ -260,5 +271,28 @@ mod tests {
             "a": []
         });
         assert!(verify_said(&event).is_err());
+    }
+
+    /// Guard: `serde_json::Map` must use `IndexMap` (preserve insertion order).
+    ///
+    /// If the `preserve_order` feature is accidentally removed from
+    /// `auths-keri/Cargo.toml`, `serde_json::Map` falls back to `BTreeMap`
+    /// (sorted keys), silently breaking all existing SAIDs. This test catches
+    /// that by verifying key order survives a round-trip.
+    #[test]
+    fn serde_json_map_preserves_insertion_order() {
+        let json = r#"{"z":"last","a":"first","m":"middle"}"#;
+        let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
+        let keys: Vec<&str> = parsed
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.as_str())
+            .collect();
+        assert_eq!(
+            keys,
+            vec!["z", "a", "m"],
+            "serde_json::Map must preserve insertion order (preserve_order feature required)"
+        );
     }
 }

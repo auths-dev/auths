@@ -78,10 +78,16 @@ fn kel_ref(prefix: &Prefix) -> String {
     format!("refs/did/keri/{}/kel", prefix.as_str())
 }
 
-/// Git-backed Key Event Log.
+/// Git-backed Key Event Log (legacy path).
 ///
 /// Provides operations for creating, appending to, and reading KERI event logs
-/// stored in a Git repository.
+/// stored in a Git repository. Used primarily in tests and direct-Git scenarios.
+///
+/// **Production code should use `RegistryBackend`** which provides advisory
+/// locking (`AdvisoryLock`) and CAS (compare-and-swap) commit protection.
+/// `GitKel` relies on git2's internal ref-level locking, which protects against
+/// concurrent writes to the same ref but does not hold a lock across the
+/// validate-then-commit window.
 pub struct GitKel<'a> {
     repo: &'a Repository,
     prefix: Prefix,
@@ -141,19 +147,10 @@ impl<'a> GitKel<'a> {
         self.repo.find_reference(&self.ref_path).is_ok()
     }
 
-    /// Create a new KEL with an inception event.
+    /// Create a new KEL with an inception event (legacy path).
     ///
-    /// This creates the initial commit with no parent.
-    ///
-    /// # Args
-    ///
-    /// * `event` - The inception event to store as the first commit
-    ///
-    /// # Usage
-    ///
-    /// ```rust,ignore
-    /// let hash = kel.create(&icp_event)?;
-    /// ```
+    /// This creates the initial commit with no parent. Production code should
+    /// use `RegistryBackend::append_signed_event` which provides advisory locking.
     pub fn create(
         &self,
         event: &IcpEvent,
@@ -189,19 +186,11 @@ impl<'a> GitKel<'a> {
         Ok(oid_to_event_hash(commit_oid))
     }
 
-    /// Append a rotation or interaction event to the KEL.
+    /// Append a rotation or interaction event to the KEL (legacy path).
     ///
     /// The event must have a valid previous SAID that matches the current tip.
-    ///
-    /// # Args
-    ///
-    /// * `event` - The rotation or interaction event to append
-    ///
-    /// # Usage
-    ///
-    /// ```rust,ignore
-    /// let hash = kel.append(&rot_event)?;
-    /// ```
+    /// Production code should use `RegistryBackend::append_signed_event` which
+    /// provides advisory locking and CESR signature attachment storage.
     pub fn append(
         &self,
         event: &Event,

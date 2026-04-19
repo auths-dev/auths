@@ -52,7 +52,9 @@ use git2::{Oid, Repository, Signature, Tree};
 
 use auths_id::keri::event::Event;
 use auths_id::keri::state::KeyState;
-use auths_id::keri::validate::{ValidationError, verify_event_crypto, verify_event_said};
+use auths_id::keri::validate::{
+    ValidationError, validate_for_append, verify_event_crypto, verify_event_said,
+};
 use auths_keri::Prefix;
 
 use super::paths;
@@ -632,6 +634,7 @@ impl GitRegistryBackend {
             let result = self.validate_and_stage_event(
                 prefix,
                 event,
+                &[], // batch_append_events doesn't carry attachments
                 &navigator,
                 &mut mutator,
                 &mut state_overlay,
@@ -687,6 +690,7 @@ impl GitRegistryBackend {
         &self,
         prefix: &Prefix,
         event: &Event,
+        attachment: &[u8],
         navigator: &TreeNavigator,
         mutator: &mut TreeMutator,
         state_overlay: &mut std::collections::HashMap<String, KeyState>,
@@ -804,6 +808,11 @@ impl GitRegistryBackend {
         // Stage mutations
         let event_json = serde_json::to_vec_pretty(event)?;
         mutator.write_blob(&event_path, event_json);
+
+        if !attachment.is_empty() {
+            let attachment_path = paths::event_attachment_file(&base_path, seq);
+            mutator.write_blob(&attachment_path, attachment.to_vec());
+        }
 
         let tip = TipInfo::new(seq, event.said().clone());
         mutator.write_blob(&tip_path, serde_json::to_vec_pretty(&tip)?);
@@ -929,33 +938,10 @@ impl RegistryBackend for GitRegistryBackend {
             return Ok(cached.state);
         }
 
-        // Fall back to full replay - errors here are fatal, not swallowed
-        let mut state: Option<KeyState> = None;
-        let mut replay_error: Option<RegistryError> = None;
-
-        self.visit_events(prefix, 0, &mut |event| match self
-            .compute_state_after_event(state.as_ref(), event)
-        {
-            Ok(new_state) => {
-                state = Some(new_state);
-                ControlFlow::Continue(())
-            }
-            Err(e) => {
-                replay_error = Some(RegistryError::Internal(format!(
-                    "KEL replay failed at seq {}: {}",
-                    event.sequence().value(),
-                    e
-                )));
-                ControlFlow::Break(())
-            }
-        })?;
-
-        // Propagate any replay error - corrupted KEL must not verify
-        if let Some(err) = replay_error {
-            return Err(err);
-        }
-
-        state.ok_or_else(|| RegistryError::identity_not_found(prefix))
+        // Cache miss: replay with full validation (SAID, chain linkage,
+        // sequence continuity, crypto commitments). This catches tampered
+        // events that bypass write-time validation (e.g., direct git push).
+        self.replay_and_validate_kel(prefix)
     }
 
     fn visit_identities(
@@ -1564,10 +1550,15 @@ impl RegistryBackend for GitRegistryBackend {
                         member_delta += 1;
                     }
                 }
-                AtomicWriteOp::AppendEvent { prefix, event } => {
+                AtomicWriteOp::AppendEvent {
+                    prefix,
+                    event,
+                    attachment,
+                } => {
                     self.validate_and_stage_event(
                         prefix,
                         event,
+                        attachment,
                         &navigator,
                         &mut mutator,
                         &mut state_overlay,
@@ -1852,6 +1843,67 @@ use async_trait::async_trait;
 use auths_id::storage::driver::{StorageDriver, StorageError as DriverStorageError};
 
 impl GitRegistryBackend {
+    /// Replay the KEL with incremental validation, returning the final `KeyState`.
+    ///
+    /// For inception (seq 0): verifies SAID and crypto structure.
+    /// For subsequent events: calls `validate_for_append` which checks SAID,
+    /// sequence continuity, chain linkage (`p` field), and crypto commitments.
+    ///
+    /// This is the single entry point for validated replay. Any code that needs
+    /// a trusted `KeyState` from raw events should call this, not the raw
+    /// `visit_events` + `compute_state_after_event` loop.
+    fn replay_and_validate_kel(&self, prefix: &Prefix) -> Result<KeyState, RegistryError> {
+        let mut state: Option<KeyState> = None;
+        let mut replay_error: Option<RegistryError> = None;
+
+        self.visit_events(prefix, 0, &mut |event| {
+            let seq = event.sequence().value();
+
+            let validation_result = if seq == 0 {
+                verify_event_said(event).and_then(|()| verify_event_crypto(event, None))
+            } else {
+                match &state {
+                    Some(s) => validate_for_append(event, s),
+                    None => {
+                        replay_error = Some(RegistryError::Internal(format!(
+                            "KEL replay: event at seq {} but no prior state (missing inception)",
+                            seq
+                        )));
+                        return ControlFlow::Break(());
+                    }
+                }
+            };
+
+            if let Err(e) = validation_result {
+                replay_error = Some(RegistryError::Internal(format!(
+                    "KEL validation failed at seq {}: {}",
+                    seq, e
+                )));
+                return ControlFlow::Break(());
+            }
+
+            match self.compute_state_after_event(state.as_ref(), event) {
+                Ok(new_state) => {
+                    state = Some(new_state);
+                    ControlFlow::Continue(())
+                }
+                Err(e) => {
+                    replay_error = Some(RegistryError::Internal(format!(
+                        "KEL replay failed at seq {}: {}",
+                        seq, e
+                    )));
+                    ControlFlow::Break(())
+                }
+            }
+        })?;
+
+        if let Some(err) = replay_error {
+            return Err(err);
+        }
+
+        state.ok_or_else(|| RegistryError::identity_not_found(prefix))
+    }
+
     /// Write event + tip + state + (optional) attachment in a single Git commit.
     ///
     /// When `attachment` is non-empty, a parallel `events/<seq>.attachments.cesr`

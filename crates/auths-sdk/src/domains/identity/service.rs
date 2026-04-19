@@ -324,7 +324,7 @@ fn bind_device(
     batch.stage_attestation(attestation.clone());
 
     if let Ok(prefix) = auths_id::keri::parse_did_keri(managed.controller_did.as_str()) {
-        let _ = auths_id::keri::try_stage_anchor(
+        match auths_id::keri::try_stage_anchor(
             ctx.registry.as_ref(),
             signer,
             key_alias,
@@ -332,7 +332,17 @@ fn bind_device(
             &prefix,
             &attestation,
             &mut batch,
-        );
+        ) {
+            Ok(_) => {}
+            Err(auths_id::keri::AnchorError::IxnForbidden(_)) => {
+                // Non-transferable identity — anchoring not possible, continue without
+            }
+            Err(e) => {
+                return Err(SetupError::StorageError(
+                    auths_id::error::StorageError::InvalidData(e.to_string()).into(),
+                ));
+            }
+        }
     }
 
     ctx.registry.commit_batch(&batch).map_err(|e| {

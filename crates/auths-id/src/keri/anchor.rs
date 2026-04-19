@@ -173,6 +173,10 @@ pub fn anchor_and_persist<T: serde::Serialize>(
 
     let attestation_said = canonicalize_and_said(attestation)?;
     let ixn = build_anchor_ixn(&attestation_said, controller_prefix, &state)?;
+    // Sign and verify (fail-fast). GitKel doesn't support CESR attachments,
+    // so the signature is verified but not stored. Production code should
+    // use try_stage_anchor + anchor_and_persist_via_backend which stores
+    // the signature as a CESR attachment.
     let _sig = sign_ixn(&ixn, signer, signer_alias, passphrase_provider)?;
 
     kel.append(&Event::Ixn(ixn.clone()), now)?;
@@ -208,9 +212,17 @@ pub fn try_stage_anchor<T: serde::Serialize>(
 
     let attestation_said = canonicalize_and_said(attestation)?;
     let ixn = build_anchor_ixn(&attestation_said, controller_prefix, &state)?;
-    let _sig = sign_ixn(&ixn, signer, signer_alias, passphrase_provider)?;
+    let sig = sign_ixn(&ixn, signer, signer_alias, passphrase_provider)?;
 
-    batch.stage_event(controller_prefix.clone(), Event::Ixn(ixn.clone()));
+    let attachment =
+        auths_keri::serialize_attachment(&[auths_keri::IndexedSignature { index: 0, sig }])
+            .map_err(|e| AnchorError::Serialization(e.to_string()))?;
+
+    batch.stage_event(
+        controller_prefix.clone(),
+        Event::Ixn(ixn.clone()),
+        attachment,
+    );
 
     Ok((attestation_said, ixn))
 }
@@ -260,7 +272,7 @@ pub fn anchor_and_persist_via_backend<T: serde::Serialize>(
 
     #[cfg(not(feature = "witness-client"))]
     {
-        let _ = witness_params;
+        let _ = (witness_params, &ixn, now);
     }
 
     backend
