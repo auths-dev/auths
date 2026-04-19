@@ -4,9 +4,9 @@ use auths_core::ports::clock::ClockProvider;
 use auths_core::signing::{PassphraseProvider, SecureSigner, StorageSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::create::create_signed_attestation;
-use auths_id::attestation::export::AttestationSink;
 use auths_id::attestation::group::AttestationGroup;
 use auths_id::attestation::revoke::create_signed_revocation;
+use auths_id::keri::{anchor_and_persist_via_backend, parse_did_keri};
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::identity::IdentityStorage;
@@ -74,6 +74,9 @@ pub fn link_device(
 ) -> Result<DeviceLinkResult, DeviceError> {
     let now = clock.now();
     let identity = load_identity(ctx.identity_storage.as_ref())?;
+    let prefix = parse_did_keri(identity.controller_did.as_str()).map_err(|e| {
+        DeviceError::AnchorError(auths_id::keri::AnchorError::InvalidDid(e.to_string()))
+    })?;
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
     let (device_did, device_pk) = extract_device_key(
         &config,
@@ -87,13 +90,25 @@ pub fn link_device(
         device_pk,
         now,
     );
-    let attestation_rid = sign_and_persist_attestation(
+    let attestation = sign_attestation(
         now,
         &params,
         &identity.storage_id,
         &signer,
         ctx.passphrase_provider.as_ref(),
-        ctx.attestation_sink.as_ref(),
+    )?;
+    let attestation_rid = attestation.rid.to_string();
+
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_attestation(attestation.clone());
+    anchor_and_persist_via_backend(
+        ctx.registry.as_ref(),
+        &signer,
+        &config.identity_key_alias,
+        ctx.passphrase_provider.as_ref(),
+        &prefix,
+        &attestation,
+        &mut batch,
     )?;
 
     Ok(DeviceLinkResult {
@@ -124,6 +139,9 @@ pub fn revoke_device(
 ) -> Result<(), DeviceError> {
     let now = clock.now();
     let identity = load_identity(ctx.identity_storage.as_ref())?;
+    let prefix = parse_did_keri(identity.controller_did.as_str()).map_err(|e| {
+        DeviceError::AnchorError(auths_id::keri::AnchorError::InvalidDid(e.to_string()))
+    })?;
     let device_pk = find_device_public_key(ctx.attestation_source.as_ref(), device_did)?;
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
 
@@ -144,9 +162,17 @@ pub fn revoke_device(
     )
     .map_err(DeviceError::AttestationError)?;
 
-    ctx.attestation_sink
-        .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(revocation))
-        .map_err(|e| DeviceError::StorageError(e.into()))?;
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_attestation(revocation.clone());
+    anchor_and_persist_via_backend(
+        ctx.registry.as_ref(),
+        &signer,
+        identity_key_alias,
+        ctx.passphrase_provider.as_ref(),
+        &prefix,
+        &revocation,
+        &mut batch,
+    )?;
 
     Ok(())
 }
@@ -230,11 +256,20 @@ pub fn extend_device(
     )
     .map_err(DeviceExtensionError::AttestationFailed)?;
 
-    ctx.attestation_sink
-        .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(extended.clone()))
-        .map_err(|e| DeviceExtensionError::StorageError(e.into()))?;
-
-    ctx.attestation_sink.sync_index(&extended);
+    if let Ok(prefix) = parse_did_keri(identity.controller_did.as_str()) {
+        let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
+        let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+        batch.stage_attestation(extended.clone());
+        anchor_and_persist_via_backend(
+            ctx.registry.as_ref(),
+            &signer,
+            &config.identity_key_alias,
+            ctx.passphrase_provider.as_ref(),
+            &prefix,
+            &extended,
+            &mut batch,
+        )?;
+    }
 
     Ok(DeviceExtensionResult {
         #[allow(clippy::disallowed_methods)] // INVARIANT: config.device_did was already validated above when constructing device_did_obj
@@ -295,15 +330,14 @@ fn extract_device_key(
     Ok((device_did, device_pk))
 }
 
-fn sign_and_persist_attestation(
+fn sign_attestation(
     now: DateTime<Utc>,
     params: &AttestationParams,
     rid: &str,
     signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
-    attestation_sink: &dyn AttestationSink,
-) -> Result<String, DeviceError> {
-    let attestation = create_signed_attestation(
+) -> Result<auths_verifier::core::Attestation, DeviceError> {
+    create_signed_attestation(
         now,
         rid,
         &params.identity_did,
@@ -322,15 +356,7 @@ fn sign_and_persist_attestation(
         None, // commit_sha
         None,
     )
-    .map_err(DeviceError::AttestationError)?;
-
-    let attestation_rid = attestation.rid.to_string();
-
-    attestation_sink
-        .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation))
-        .map_err(|e| DeviceError::StorageError(e.into()))?;
-
-    Ok(attestation_rid)
+    .map_err(DeviceError::AttestationError)
 }
 
 fn find_device_public_key(

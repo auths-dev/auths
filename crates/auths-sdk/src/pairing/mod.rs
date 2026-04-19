@@ -440,7 +440,7 @@ pub fn build_pairing_session_request(
     )
     .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
 
-    let session_id = session.token.short_code.clone();
+    let session_id = session.token.session_id.clone();
     let create_request = CreateSessionRequest {
         session_id: session_id.clone(),
         controller_did: session.token.controller_did.clone(),
@@ -862,6 +862,7 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         controller_did: token_data.controller_did.clone(),
         endpoint: registry_url.to_string(),
         short_code: normalized.clone(),
+        session_id: session_data.session_id.clone(),
         ephemeral_pubkey: token_data.ephemeral_pubkey.to_string(),
         expires_at: chrono::DateTime::from_timestamp(token_data.expires_at, 0).unwrap_or(now),
         capabilities: token_data.capabilities.clone(),

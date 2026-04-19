@@ -52,6 +52,22 @@ pub struct KeyState {
     /// Delegator AID (if this is a delegated identity)
     #[serde(default)]
     pub delegator: Option<Prefix>,
+    /// Sequence number of the last establishment event (ICP or ROT).
+    /// Used to locate the pre-committed next key in the keychain.
+    /// IXN events do not change this value.
+    #[serde(default)]
+    pub last_establishment_sequence: u128,
+}
+
+/// Three-state anchor verification result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnchorStatus {
+    /// Seal found in KEL and resolves to a matching attestation blob.
+    Anchored,
+    /// Seal found in KEL but the referenced blob is missing or cannot be resolved.
+    Unverified,
+    /// No matching seal exists in the KEL.
+    NotAnchored,
 }
 
 impl KeyState {
@@ -94,6 +110,7 @@ impl KeyState {
             config_traits,
             is_non_transferable,
             delegator: None,
+            last_establishment_sequence: 0,
         }
     }
 
@@ -134,6 +151,8 @@ impl KeyState {
         if !config_traits.is_empty() {
             self.config_traits = config_traits;
         }
+
+        self.last_establishment_sequence = sequence;
     }
 
     /// Apply an interaction event (updates sequence and SAID only).
@@ -154,6 +173,18 @@ impl KeyState {
     /// Returns `false` if the identity has been abandoned (empty next commitment).
     pub fn can_rotate(&self) -> bool {
         !self.is_abandoned && !self.next_commitment.is_empty()
+    }
+
+    /// Check if this identity can emit interaction (ixn) events.
+    ///
+    /// Returns `false` if the identity is non-transferable (empty `n[]` at inception)
+    /// or establishment-only (`"EO"` in `c[]`). Both conditions prohibit ixn events
+    /// per KERI spec.
+    pub fn can_emit_ixn(&self) -> bool {
+        !self.is_non_transferable
+            && !self
+                .config_traits
+                .contains(&crate::types::ConfigTrait::EstablishmentOnly)
     }
 
     /// Get the DID for this identity.
@@ -287,5 +318,44 @@ mod tests {
         assert_eq!(state.backers.len(), 2);
         assert_eq!(state.backers[0].as_str(), "DWit2");
         assert_eq!(state.backers[1].as_str(), "DWit3");
+    }
+
+    #[test]
+    fn transferable_identity_can_emit_ixn() {
+        let state = make_state();
+        assert!(state.can_emit_ixn());
+    }
+
+    #[test]
+    fn non_transferable_identity_cannot_emit_ixn() {
+        let state = KeyState::from_inception(
+            Prefix::new_unchecked("EPrefix".to_string()),
+            vec![make_key("DKey1")],
+            vec![],
+            Threshold::Simple(1),
+            Threshold::Simple(0),
+            Said::new_unchecked("ESAID".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![],
+        );
+        assert!(state.is_non_transferable);
+        assert!(!state.can_emit_ixn());
+    }
+
+    #[test]
+    fn establishment_only_identity_cannot_emit_ixn() {
+        let state = KeyState::from_inception(
+            Prefix::new_unchecked("EPrefix".to_string()),
+            vec![make_key("DKey1")],
+            vec![Said::new_unchecked("ENext1".to_string())],
+            Threshold::Simple(1),
+            Threshold::Simple(1),
+            Said::new_unchecked("ESAID".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![ConfigTrait::EstablishmentOnly],
+        );
+        assert!(!state.can_emit_ixn());
     }
 }

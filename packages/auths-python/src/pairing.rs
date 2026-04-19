@@ -282,7 +282,7 @@ pub fn join_pairing_session_ffi(
                 .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))
         })?;
 
-        let session_id = session_data["session_id"]
+        let _session_id = session_data["session_id"]
             .as_str()
             .ok_or_else(|| {
                 PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No session_id in response")
@@ -310,10 +310,15 @@ pub fn join_pairing_session_ffi(
 
         #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
+        let session_id = token_data["session_id"]
+            .as_str()
+            .unwrap_or(&short_code)
+            .to_string();
         let pairing_token = auths_core::pairing::PairingToken {
             controller_did: controller_did_str,
             endpoint: endpoint.clone(),
             short_code: short_code.clone(),
+            session_id: session_id.clone(),
             ephemeral_pubkey: ephemeral_pubkey_str,
             expires_at: chrono::DateTime::from_timestamp(expires_at, 0).unwrap_or(now),
             capabilities,

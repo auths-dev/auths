@@ -20,6 +20,9 @@ pub struct VerificationReport {
     /// Optional witness quorum result (present when witness verification was performed)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub witness_quorum: Option<WitnessQuorum>,
+    /// Whether the attestation is anchored in the issuer's KEL via an ixn seal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchored: Option<auths_keri::AnchorStatus>,
 }
 
 impl VerificationReport {
@@ -35,6 +38,7 @@ impl VerificationReport {
             chain,
             warnings: Vec::new(),
             witness_quorum: None,
+            anchored: None,
         }
     }
 
@@ -45,6 +49,7 @@ impl VerificationReport {
             chain,
             warnings: Vec::new(),
             witness_quorum: None,
+            anchored: None,
         }
     }
 }
@@ -841,6 +846,7 @@ mod tests {
                     },
                 ],
             }),
+            anchored: None,
         };
 
         let json = serde_json::to_string(&report).unwrap();

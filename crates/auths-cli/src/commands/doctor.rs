@@ -447,7 +447,6 @@ enum ExpiryStatus {
 }
 
 fn check_attestation_expiry(now: DateTime<Utc>) -> ExpiryStatus {
-    use auths_sdk::ports::AttestationSource;
     use auths_sdk::storage::RegistryAttestationStorage;
 
     let repo_path = match auths_sdk::paths::auths_home() {
@@ -456,7 +455,10 @@ fn check_attestation_expiry(now: DateTime<Utc>) -> ExpiryStatus {
     };
 
     let storage = RegistryAttestationStorage::new(&repo_path);
-    let attestations = match storage.load_all_attestations() {
+    let attestations = match storage
+        .load_all_enriched()
+        .map(|v| v.into_iter().map(|e| e.attestation).collect::<Vec<_>>())
+    {
         Ok(a) => a,
         Err(_) => return ExpiryStatus::NoAttestations,
     };

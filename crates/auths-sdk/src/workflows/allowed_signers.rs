@@ -151,6 +151,9 @@ pub struct SyncReport {
     pub added: usize,
     /// Number of stale attestation entries removed.
     pub removed: usize,
+    /// Number of added entries that are not anchored in the KEL.
+    #[serde(default)]
+    pub unanchored: usize,
     /// Number of manual entries preserved untouched.
     pub preserved: usize,
 }
@@ -352,9 +355,15 @@ impl AllowedSigners {
     }
 
     /// Regenerates attestation entries from storage, preserving manual entries.
+    ///
+    /// When `anchor_set` is provided, the report includes the count of
+    /// unanchored entries. All non-revoked attestations are included
+    /// regardless of anchor status (the initial `bind_device` attestation
+    /// is deliberately unanchored).
     pub fn sync(
         &mut self,
         storage: &dyn AttestationSource,
+        anchor_set: Option<&std::collections::HashSet<auths_keri::Said>>,
     ) -> Result<SyncReport, AllowedSignersError> {
         let manual_count = self
             .entries
@@ -392,9 +401,22 @@ impl AllowedSigners {
             self.entries.insert(i, entry);
         }
 
+        let unanchored = match anchor_set {
+            Some(set) => attestations
+                .iter()
+                .filter(|att| !att.is_revoked())
+                .filter(|att| {
+                    auths_id::attestation::enriched::canonical_said(att)
+                        .is_none_or(|said| !set.contains(&said))
+                })
+                .count(),
+            None => 0,
+        };
+
         Ok(SyncReport {
             added,
             removed: old_attestation_count,
+            unanchored,
             preserved: manual_count,
         })
     }

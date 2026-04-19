@@ -6,7 +6,8 @@
 //! paths under `storage::registry::*`.
 
 pub use crate::storage::registry::backend::{
-    RegistryBackend, RegistryError, TenantIdError, ValidatedTenantId,
+    AtomicWriteBatch, AtomicWriteOp, RegistryBackend, RegistryError, TenantIdError,
+    ValidatedTenantId,
 };
 pub use crate::storage::registry::org_member::{
     MemberFilter, MemberInvalidReason, MemberStatus, MemberStatusKind, MemberView, OrgMemberEntry,

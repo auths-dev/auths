@@ -493,6 +493,7 @@ fn validate_delegated_inception(
         config_traits: dip.c.clone(),
         is_non_transferable,
         delegator: Some(dip.di.clone()),
+        last_establishment_sequence: dip.s.value(),
     })
 }
 

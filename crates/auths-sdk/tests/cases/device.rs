@@ -4,7 +4,7 @@ use auths_core::PrefilledPassphraseProvider;
 use auths_core::ports::clock::SystemClock;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::KeyAlias;
-use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
+use auths_core::testing::IsolatedKeychainHandle;
 use auths_sdk::domains::device::error::DeviceExtensionError;
 use auths_sdk::domains::device::service::{extend_device, link_device};
 use auths_sdk::domains::device::types::{DeviceExtensionConfig, DeviceLinkConfig};
@@ -15,18 +15,18 @@ use auths_sdk::domains::signing::types::GitSigningScope;
 
 use crate::cases::helpers::{build_test_context, build_test_context_with_provider};
 
-fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
-    MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
-    let signer = StorageSigner::new(MemoryKeychainHandle);
+fn setup_test_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKeychainHandle) {
+    let keychain = IsolatedKeychainHandle::new();
+    let signer = StorageSigner::new(keychain.clone());
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
-    let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
+    let ctx = build_test_context(registry_path, Arc::new(keychain.clone()));
     let result = match initialize(
         IdentityConfig::Developer(config),
         &ctx,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(keychain.clone()),
         &signer,
         &provider,
         None,
@@ -36,21 +36,25 @@ fn setup_test_identity(registry_path: &std::path::Path) -> KeyAlias {
         InitializeResult::Developer(r) => r,
         _ => unreachable!(),
     };
-    result.key_alias
+    (result.key_alias, keychain)
 }
 
-fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> String {
-    let signer = StorageSigner::new(MemoryKeychainHandle);
+fn link_test_device(
+    registry_path: &std::path::Path,
+    key_alias: &KeyAlias,
+    keychain: &IsolatedKeychainHandle,
+) -> String {
+    let signer = StorageSigner::new(keychain.clone());
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("device-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .with_conflict_policy(auths_sdk::domains::identity::types::IdentityConflictPolicy::ForceNew)
         .build();
-    let ctx = build_test_context(registry_path, Arc::new(MemoryKeychainHandle));
+    let ctx = build_test_context(registry_path, Arc::new(keychain.clone()));
     initialize(
         IdentityConfig::Developer(config),
         &ctx,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(keychain.clone()),
         &signer,
         &provider,
         None,
@@ -69,7 +73,7 @@ fn link_test_device(registry_path: &std::path::Path, key_alias: &KeyAlias) -> St
 
     let link_ctx = build_test_context_with_provider(
         registry_path,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(keychain.clone()),
         Some(
             Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"))
                 as Arc<dyn PassphraseProvider + Send + Sync>,
@@ -84,12 +88,12 @@ fn extend_device_updates_expiry() {
     let tmp = tempfile::tempdir().unwrap();
     let registry_path = tmp.path().join(".auths");
 
-    let key_alias = setup_test_identity(&registry_path);
-    let device_did = link_test_device(&registry_path, &key_alias);
+    let (key_alias, keychain) = setup_test_identity(&registry_path);
+    let device_did = link_test_device(&registry_path, &key_alias, &keychain);
 
     let ctx = build_test_context_with_provider(
         &registry_path,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(keychain.clone()),
         Some(
             Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"))
                 as Arc<dyn PassphraseProvider + Send + Sync>,
@@ -120,11 +124,11 @@ fn extend_device_nonexistent_device_returns_error() {
     let tmp = tempfile::tempdir().unwrap();
     let registry_path = tmp.path().join(".auths");
 
-    let key_alias = setup_test_identity(&registry_path);
+    let (key_alias, keychain) = setup_test_identity(&registry_path);
 
     let ctx = build_test_context_with_provider(
         &registry_path,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(keychain.clone()),
         Some(
             Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"))
                 as Arc<dyn PassphraseProvider + Send + Sync>,

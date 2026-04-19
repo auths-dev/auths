@@ -91,7 +91,7 @@ pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()>
     let mut signers = AllowedSigners::load(&signers_path, &store)
         .unwrap_or_else(|_| AllowedSigners::new(&signers_path));
     let report = signers
-        .sync(&storage)
+        .sync(&storage, None)
         .map_err(|e| anyhow!("Failed to sync allowed signers: {}", e))?;
     signers
         .save(&store)

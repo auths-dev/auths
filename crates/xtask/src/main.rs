@@ -6,6 +6,7 @@
     clippy::unwrap_used,
     clippy::expect_used
 )]
+mod check_anchor_discipline;
 mod check_clippy_sync;
 mod check_curve_agnostic;
 mod gen_docs;
@@ -56,6 +57,10 @@ enum Command {
     /// AST-level curve-agnostic enforcement via tree-sitter.
     /// Scans production code for curve-specific names outside auths-crypto.
     CheckCurveAgnostic,
+    /// Anchor discipline enforcement via tree-sitter.
+    /// Bans direct store_attestation/store_org_member/load_all_attestations in
+    /// SDK domains and CLI commands.
+    CheckAnchorDiscipline,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -75,5 +80,6 @@ fn main() -> anyhow::Result<()> {
         Command::TestIntegration { filter } => test_integration::run(filter.as_deref()),
         Command::CheckClippySync => check_clippy_sync::run(workspace_root()),
         Command::CheckCurveAgnostic => check_curve_agnostic::run(workspace_root()),
+        Command::CheckAnchorDiscipline => check_anchor_discipline::run(workspace_root()),
     }
 }

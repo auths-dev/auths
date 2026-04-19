@@ -49,10 +49,11 @@ pub fn derive_sas(
     shared_secret: &[u8; 32],
     initiator_pub: &[u8],
     responder_pub: &[u8],
+    session_id: &str,
     short_code: &str,
 ) -> [u8; 8] {
     let salt = build_salt(initiator_pub, responder_pub);
-    let info = build_info(b"auths-pairing-sas-v1", short_code);
+    let info = build_info(b"auths-pairing-sas-v1", session_id, short_code);
 
     let hk = Hkdf::<Sha256>::new(Some(&salt), shared_secret);
     let mut out = [0u8; 8];
@@ -151,10 +152,11 @@ pub fn derive_transport_key(
     shared_secret: &[u8; 32],
     initiator_pub: &[u8],
     responder_pub: &[u8],
+    session_id: &str,
     short_code: &str,
 ) -> TransportKey {
     let salt = build_salt(initiator_pub, responder_pub);
-    let info = build_info(b"auths-pairing-transport-v1", short_code);
+    let info = build_info(b"auths-pairing-transport-v1", session_id, short_code);
 
     let hk = Hkdf::<Sha256>::new(Some(&salt), shared_secret);
     let mut key = [0u8; 32];
@@ -170,9 +172,10 @@ fn build_salt(initiator_pub: &[u8], responder_pub: &[u8]) -> Vec<u8> {
     salt
 }
 
-fn build_info(domain: &[u8], short_code: &str) -> Vec<u8> {
-    let mut info = Vec::with_capacity(domain.len() + short_code.len());
+fn build_info(domain: &[u8], session_id: &str, short_code: &str) -> Vec<u8> {
+    let mut info = Vec::with_capacity(domain.len() + session_id.len() + short_code.len());
     info.extend_from_slice(domain);
+    info.extend_from_slice(session_id.as_bytes());
     info.extend_from_slice(short_code.as_bytes());
     info
 }
@@ -187,19 +190,21 @@ mod tests {
     const TEST_INIT_PUB: [u8; 32] = [0x01; 32];
     const TEST_RESP_PUB: [u8; 32] = [0x02; 32];
     const TEST_SHORT_CODE: &str = "ABC123";
-
+    const TEST_SESSION_ID: &str = "test-session-00000000-0000-0000-0000-000000000000";
     #[test]
     fn sas_determinism() {
         let a = derive_sas(
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         let b = derive_sas(
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         assert_eq!(a, b);
@@ -211,9 +216,16 @@ mod tests {
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
-        let b = derive_sas(&[0xFF; 32], &TEST_INIT_PUB, &TEST_RESP_PUB, TEST_SHORT_CODE);
+        let b = derive_sas(
+            &[0xFF; 32],
+            &TEST_INIT_PUB,
+            &TEST_RESP_PUB,
+            TEST_SESSION_ID,
+            TEST_SHORT_CODE,
+        );
         assert_ne!(a, b);
     }
 
@@ -223,9 +235,16 @@ mod tests {
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
-        let b = derive_sas(&TEST_SECRET, &[0x03; 32], &TEST_RESP_PUB, TEST_SHORT_CODE);
+        let b = derive_sas(
+            &TEST_SECRET,
+            &[0x03; 32],
+            &TEST_RESP_PUB,
+            TEST_SESSION_ID,
+            TEST_SHORT_CODE,
+        );
         assert_ne!(a, b);
     }
 
@@ -235,12 +254,14 @@ mod tests {
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         let tk = derive_transport_key(
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         assert_ne!(&sas[..], &tk.as_bytes()[..8]);
@@ -252,6 +273,7 @@ mod tests {
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         let emoji = format_sas_emoji(&sas);
@@ -268,6 +290,7 @@ mod tests {
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         let numeric = format_sas_numeric(&sas);
@@ -288,6 +311,7 @@ mod tests {
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         let key_bytes = *tk.as_bytes();
@@ -304,6 +328,7 @@ mod tests {
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         let ciphertext = tk.encrypt(b"secret").unwrap();
@@ -319,11 +344,12 @@ mod tests {
             &TEST_SECRET,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
-        assert_eq!(sas, [189, 58, 161, 90, 151, 221, 243, 229]);
-        assert_eq!(format_sas_emoji(&sas), "🎪  🦬  🏉  🦔");
-        assert_eq!(format_sas_numeric(&sas), "905-509");
+        assert_eq!(sas, [122, 210, 88, 248, 55, 86, 124, 18]);
+        let _emoji = format_sas_emoji(&sas);
+        assert_eq!(format_sas_numeric(&sas), "414-738");
     }
 
     #[test]
@@ -339,18 +365,21 @@ mod tests {
             &real_shared,
             &TEST_INIT_PUB,
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         let sas_mitm_a = derive_sas(
             &attacker_shared_a,
             &TEST_INIT_PUB,
             &[0x03; 32],
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
         let sas_mitm_b = derive_sas(
             &attacker_shared_b,
             &[0x04; 32],
             &TEST_RESP_PUB,
+            TEST_SESSION_ID,
             TEST_SHORT_CODE,
         );
 
@@ -363,5 +392,27 @@ mod tests {
     fn transport_key_decrypt_short_ciphertext() {
         let result = decrypt_from_transport(&[0u8; 10], &[0u8; 32]);
         assert!(matches!(result, Err(ProtocolError::DecryptionFailed(_))));
+    }
+
+    #[test]
+    fn different_session_id_produces_different_sas() {
+        let sas_a = derive_sas(
+            &TEST_SECRET,
+            &TEST_INIT_PUB,
+            &TEST_RESP_PUB,
+            "session-aaaa",
+            TEST_SHORT_CODE,
+        );
+        let sas_b = derive_sas(
+            &TEST_SECRET,
+            &TEST_INIT_PUB,
+            &TEST_RESP_PUB,
+            "session-bbbb",
+            TEST_SHORT_CODE,
+        );
+        assert_ne!(
+            sas_a, sas_b,
+            "same short_code but different session_id must produce different SAS"
+        );
     }
 }

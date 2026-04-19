@@ -146,7 +146,7 @@ fn handle_install_hooks(
     let storage = RegistryAttestationStorage::new(&auths_repo);
 
     let mut signers = AllowedSigners::new(&cmd.allowed_signers_path);
-    match signers.sync(&storage) {
+    match signers.sync(&storage, None) {
         Ok(report) => {
             if let Err(e) =
                 signers.save(&crate::adapters::allowed_signers_store::FileAllowedSignersStore)

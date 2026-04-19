@@ -56,7 +56,7 @@ pub async fn handle_initiate_lan(
     )
     .context("Failed to generate pairing token")?;
 
-    let session_id = session.token.short_code.clone();
+    let session_id = session.token.session_id.clone();
 
     // Build the CreateSessionRequest for the LAN server
     let request = CreateSessionRequest {

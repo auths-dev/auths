@@ -5,7 +5,7 @@ use auths_core::PrefilledPassphraseProvider;
 use auths_core::ports::clock::SystemClock;
 use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::{KeyAlias, KeyStorage};
-use auths_core::storage::memory::{MEMORY_KEYCHAIN, MemoryKeychainHandle};
+use auths_core::testing::IsolatedKeychainHandle;
 use auths_id::attestation::export::AttestationSink;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::storage::attestation::AttestationSource;
@@ -77,8 +77,11 @@ pub fn build_test_context_with_provider(
 pub fn build_empty_test_context() -> (tempfile::TempDir, AuthsContext) {
     let tmp = tempfile::TempDir::new().expect("create temp dir");
     let registry_path = tmp.path().join(".auths-empty");
-    let ctx =
-        build_test_context_with_provider(&registry_path, Arc::new(MemoryKeychainHandle), None);
+    let ctx = build_test_context_with_provider(
+        &registry_path,
+        Arc::new(IsolatedKeychainHandle::new()),
+        None,
+    );
     (tmp, ctx)
 }
 
@@ -88,20 +91,20 @@ pub fn build_empty_test_context() -> (tempfile::TempDir, AuthsContext) {
 /// pre-configured with a `PrefilledPassphraseProvider` so signing operations work
 /// without prompting.
 pub fn setup_signed_artifact_context() -> (tempfile::TempDir, KeyAlias, AuthsContext) {
-    MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
     let tmp = tempfile::TempDir::new().expect("create temp dir");
     let registry_path = tmp.path().join(".auths");
 
-    let signer = StorageSigner::new(MemoryKeychainHandle);
+    let kc = IsolatedKeychainHandle::new();
+    let signer = StorageSigner::new(kc.clone());
     let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
     let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
         .with_git_signing_scope(GitSigningScope::Skip)
         .build();
-    let setup_ctx = build_test_context(&registry_path, Arc::new(MemoryKeychainHandle));
+    let setup_ctx = build_test_context(&registry_path, Arc::new(kc.clone()));
     let result = match initialize(
         IdentityConfig::Developer(config),
         &setup_ctx,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(kc.clone()),
         &signer,
         &provider,
         None,
@@ -114,7 +117,7 @@ pub fn setup_signed_artifact_context() -> (tempfile::TempDir, KeyAlias, AuthsCon
 
     let ctx = build_test_context_with_provider(
         &registry_path,
-        Arc::new(MemoryKeychainHandle),
+        Arc::new(kc),
         Some(
             Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"))
                 as Arc<dyn PassphraseProvider + Send + Sync>,

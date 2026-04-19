@@ -204,10 +204,24 @@ pub(crate) fn sync_signers(
     output_file: &std::path::Path,
 ) -> Result<(PathBuf, SyncReport)> {
     let storage = RegistryAttestationStorage::new(repo);
+
+    let anchor_set = {
+        let id_storage = auths_sdk::storage::RegistryIdentityStorage::new(repo);
+        auths_sdk::ports::IdentityStorage::load_identity(&id_storage)
+            .ok()
+            .and_then(|id| auths_sdk::keri::parse_did_keri(id.controller_did.as_str()).ok())
+            .map(|prefix| {
+                let backend = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+                    auths_sdk::storage::RegistryConfig::single_tenant(repo),
+                );
+                auths_sdk::attestation::build_anchor_set(&backend, &prefix)
+            })
+    };
+
     let mut signers = AllowedSigners::load(output_file, &FileAllowedSignersStore)
         .with_context(|| format!("Failed to load {}", output_file.display()))?;
     let report = signers
-        .sync(&storage)
+        .sync(&storage, anchor_set.as_ref())
         .context("Failed to sync attestations")?;
     signers
         .save(&FileAllowedSignersStore)

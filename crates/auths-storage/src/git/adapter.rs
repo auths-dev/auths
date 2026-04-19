@@ -57,7 +57,7 @@ use auths_keri::Prefix;
 
 use super::paths;
 use super::vfs::{OsVfs, Vfs};
-use auths_id::ports::registry::{RegistryBackend, RegistryError};
+use auths_id::ports::registry::{AtomicWriteBatch, AtomicWriteOp, RegistryBackend, RegistryError};
 use auths_verifier::clock::{ClockProvider, SystemClock};
 
 fn from_git2(e: git2::Error) -> RegistryError {
@@ -1510,6 +1510,85 @@ impl RegistryBackend for GitRegistryBackend {
             .collect();
 
         Ok(members)
+    }
+
+    fn commit_batch(&self, batch: &AtomicWriteBatch) -> Result<(), RegistryError> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+
+        let repo = self.open_repo()?;
+        let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, base_tree.clone());
+        let mut mutator = TreeMutator::new();
+
+        let mut identity_delta: i64 = 0;
+        let mut device_delta: i64 = 0;
+        let mut member_delta: i64 = 0;
+        let mut state_overlay: std::collections::HashMap<String, KeyState> =
+            std::collections::HashMap::new();
+        let mut tip_overlay: std::collections::HashMap<String, TipInfo> =
+            std::collections::HashMap::new();
+
+        for op in batch.ops() {
+            match op {
+                AtomicWriteOp::StoreAttestation(attestation) => {
+                    let sanitized_did = sanitize_did(attestation.subject.as_ref());
+                    let device_base = device_path(&sanitized_did)?;
+                    let att_path = paths::attestation_file(&device_base);
+
+                    let is_new = !navigator.exists_path(&att_path);
+                    let now = self.clock.now();
+                    let history_id =
+                        format!("{}_{:.8}", now.format("%Y%m%dT%H%M%S%.3f"), attestation.rid);
+                    let history_path = paths::history_entry_file(&device_base, &history_id);
+
+                    let att_json = serde_json::to_vec_pretty(attestation)?;
+                    mutator.write_blob(&att_path, att_json.clone());
+                    mutator.write_blob(&history_path, att_json);
+
+                    if is_new {
+                        device_delta += 1;
+                    }
+                }
+                AtomicWriteOp::StoreOrgMember { org, member } => {
+                    let org_base = org_path(&Prefix::new_unchecked(org.to_string()))?;
+                    let sanitized_member_did = sanitize_did(member.subject.as_ref());
+                    let member_path = paths::member_file(&org_base, &sanitized_member_did);
+
+                    let is_new = !navigator.exists_path(&member_path);
+                    mutator.write_blob(&member_path, serde_json::to_vec_pretty(member)?);
+
+                    if is_new {
+                        member_delta += 1;
+                    }
+                }
+                AtomicWriteOp::AppendEvent { prefix, event } => {
+                    self.validate_and_stage_event(
+                        prefix,
+                        event,
+                        &navigator,
+                        &mut mutator,
+                        &mut state_overlay,
+                        &mut tip_overlay,
+                        &mut identity_delta,
+                    )?;
+                }
+            }
+        }
+
+        self.update_metadata(
+            &mut mutator,
+            &navigator,
+            identity_delta,
+            device_delta,
+            member_delta,
+        )?;
+
+        let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
+        self.create_commit(&repo, new_tree_oid, Some(&parent), "atomic batch write")?;
+
+        Ok(())
     }
 }
 
@@ -3692,6 +3771,7 @@ mod tests {
             config_traits: vec![],
             is_non_transferable: false,
             delegator: None,
+            last_establishment_sequence: 0,
         };
 
         backend.write_key_state(&prefix, &modified_state).unwrap();

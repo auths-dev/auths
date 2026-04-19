@@ -89,6 +89,35 @@ impl RegistryAttestationStorage {
     pub fn backend(&self) -> &GitRegistryBackend {
         &self.backend
     }
+
+    /// Load all attestations enriched with KEL anchor status.
+    ///
+    /// Internally builds the anchor set from the first identity's KEL and
+    /// enriches each attestation with `AnchorStatus`. Callers get enriched
+    /// data without any boilerplate.
+    pub fn load_all_enriched(
+        &self,
+    ) -> Result<Vec<auths_id::attestation::enriched::EnrichedAttestation>, StorageError> {
+        use auths_id::attestation::enriched::{build_anchor_set, enrich_all};
+        use auths_id::ports::registry::RegistryBackend;
+
+        let attestations = self.load_all_attestations()?;
+
+        let mut first_prefix = None;
+        let _ = self.backend.visit_identities(&mut |prefix| {
+            first_prefix = Some(prefix.to_string());
+            std::ops::ControlFlow::Break(())
+        });
+
+        let anchor_set = first_prefix
+            .map(|p| {
+                let prefix = auths_id::keri::Prefix::new_unchecked(p);
+                build_anchor_set(&self.backend, &prefix)
+            })
+            .unwrap_or_default();
+
+        Ok(enrich_all(attestations, &anchor_set))
+    }
 }
 
 impl AttestationSource for RegistryAttestationStorage {

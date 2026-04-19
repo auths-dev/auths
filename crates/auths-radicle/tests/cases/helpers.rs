@@ -120,6 +120,7 @@ pub fn make_key_state(prefix: &str, seq: u128) -> KeyState {
         config_traits: vec![],
         is_non_transferable: false,
         delegator: None,
+        last_establishment_sequence: 0,
     }
 }
 

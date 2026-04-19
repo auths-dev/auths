@@ -569,7 +569,7 @@ pub fn handle_id(
                 use auths_sdk::attestation::AttestationSink;
                 use auths_sdk::context::AuthsContext;
                 use auths_sdk::keychain::get_platform_keychain_with_config;
-                use auths_sdk::ports::{AttestationSource, IdentityStorage};
+                use auths_sdk::ports::IdentityStorage;
                 use auths_sdk::storage::{
                     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig,
                     RegistryIdentityStorage,
@@ -735,7 +735,8 @@ pub fn handle_id(
             // Load attestations
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
             let attestations = attestation_storage
-                .load_all_attestations()
+                .load_all_enriched()
+                .map(|v| v.into_iter().map(|e| e.attestation).collect::<Vec<_>>())
                 .unwrap_or_default();
 
             // Load the public key from keychain (handles SE and software keys)
