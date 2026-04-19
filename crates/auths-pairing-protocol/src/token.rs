@@ -13,6 +13,30 @@ use crate::error::ProtocolError;
 const SHORT_CODE_ALPHABET: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const SHORT_CODE_LEN: usize = 6;
 
+/// fn-129.T10: post-quantum KEM slot advertised by the initiator.
+///
+/// Serde-tagged on `algo` so the tag IS the version — adding a new
+/// parameter set is a new variant, not a schema break. Parsers on
+/// builds without `pq-hybrid` still see the field (it's a plain
+/// `Option<KemSlot>` on `PairingToken` regardless of feature); they
+/// deserialize `None` when absent and preserve unknown algos as-is.
+///
+/// # Prelaunch
+///
+/// No version discriminant field; the serde tag is the version. If this
+/// changes after launch, the add-a-variant plan stays additive.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "algo", rename_all = "snake_case")]
+pub enum KemSlot {
+    /// ML-KEM-768 (FIPS 203 Category 3). `public_key` is the 1184-byte
+    /// encapsulation key, base64url-encoded without padding.
+    MlKem768 {
+        /// Base64url-no-pad encoded ML-KEM-768 encapsulation key
+        /// (1184 raw bytes → 1580 encoded chars).
+        public_key: String,
+    },
+}
+
 /// A pairing token for initiating cross-device identity linking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairingToken {
@@ -23,6 +47,14 @@ pub struct PairingToken {
     pub ephemeral_pubkey: String,
     pub expires_at: DateTime<Utc>,
     pub capabilities: Vec<String>,
+    /// fn-129.T10: optional hybrid-KEM slot. `None` on classical builds
+    /// and classical sessions; `Some(KemSlot::MlKem768 { .. })` when the
+    /// initiator is running a `pq-hybrid`-enabled build. Parsers on
+    /// default builds accept but do not act on a populated slot (they
+    /// cannot — they have no ML-KEM code). An active `pq-hybrid` peer
+    /// MUST NOT silently downgrade when this field is `Some`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kem_slot: Option<KemSlot>,
 }
 
 /// Ephemeral keypair for a pairing session.
@@ -81,6 +113,7 @@ impl PairingToken {
             ephemeral_pubkey,
             expires_at: now + expiry,
             capabilities,
+            kem_slot: None,
         };
 
         Ok(PairingSession {
@@ -174,6 +207,7 @@ impl PairingToken {
             ephemeral_pubkey,
             expires_at,
             capabilities,
+            kem_slot: None,
         })
     }
 

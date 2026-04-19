@@ -16,7 +16,7 @@
 //! # Outputs must match byte-for-byte for deterministic KATs.
 //! ```
 
-use auths_crypto::{CryptoProvider, CurveType, SecureSeed, TypedSeed, default_provider};
+use auths_crypto::{CurveType, SecureSeed, TypedSeed, default_provider};
 
 /// Pinned seed for every deterministic KAT — 32 bytes of `0x0B`.
 const KAT_SEED: [u8; 32] = [0x0B; 32];

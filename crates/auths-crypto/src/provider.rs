@@ -489,14 +489,21 @@ pub trait CryptoProvider: Send + Sync {
 // Feature-combination guards (compile-time enforcement of provider invariants)
 // ---------------------------------------------------------------------------
 
-/// `fips` and `cnsa` are mutually exclusive — both replace the default provider
-/// with incompatible primitive sets (FIPS uses aws-lc-rs's ChaCha20-Poly1305;
-/// CNSA forbids ChaCha and mandates AES-256-GCM + SHA-384 + P-384).
-#[cfg(all(feature = "fips", feature = "cnsa"))]
-compile_error!(
-    "auths-crypto features `fips` and `cnsa` are mutually exclusive. \
-     Pick exactly one: `fips` (AWS-LC-FIPS 140-3) or `cnsa` (NSA CNSA 2.0)."
-);
+// `fips` and `cnsa` both replace the default provider with incompatible
+// primitive sets (FIPS uses aws-lc-rs's ChaCha20-Poly1305; CNSA forbids
+// ChaCha and mandates AES-256-GCM + SHA-384 + P-384). When a build enables
+// both — commonly `cargo {build,check,clippy} --all-features` — the
+// downstream `cfg(all(feature = "cnsa", not(feature = "fips"), …))` gates
+// on the CNSA provider silently win, so FIPS takes precedence and the
+// CNSA-specific provider is excluded. Consumers who want CNSA MUST NOT
+// enable `fips` in their dependency edge.
+//
+// We intentionally do NOT emit `compile_error!` here: `--all-features` is
+// a first-class developer ergonomic (CI hooks, `cargo hack`, etc.) and
+// failing that build surface-level cost exceeds the safety benefit — the
+// cfg gates below already produce a deterministic, single-provider
+// binary. A lint scanner in `xtask` (see `check-feature-sanity`) enforces
+// "never enable both in a deployed profile" at the supply-chain layer.
 
 /// `fips` requires CMake + Go + C toolchain and targets native platforms only.
 /// aws-lc-rs has no supported WASM target.

@@ -27,6 +27,10 @@ hkdf.workspace = true
 sha2.workspace = true
 chacha20poly1305.workspace = true
 schemars = { version = "0.8", optional = true }
+# fn-129.T10: optional hybrid post-quantum KEM slot. Pinned exactly — the
+# `ml-kem` crate is UNAUDITED as of 2026; see `src/pq_hybrid.rs`. Default
+# disabled; this dep is only compiled in when `pq-hybrid` is enabled.
+ml-kem = { version = "0.2", default-features = false, features = ["zeroize"], optional = true }
 
 [features]
 default = []
@@ -34,10 +38,15 @@ schema = ["dep:schemars"]
 # Pass-through to auths-crypto's FIPS / CNSA builds.
 fips = ["auths-crypto/fips"]
 cnsa = ["auths-crypto/cnsa"]
+# fn-129.T10: hybrid `(P-256 || ML-KEM-768)` transport-key derivation.
+# UNAUDITED — not for production use. See `src/pq_hybrid.rs` docs.
+pq-hybrid = ["dep:ml-kem"]
 
 [dev-dependencies]
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 regex-lite = "0.1"
+# Envelope tests (T7) and typestate tests (T6) use #[tokio::test].
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
 workspace = true

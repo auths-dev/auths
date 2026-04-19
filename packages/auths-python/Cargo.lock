@@ -319,6 +319,7 @@ dependencies = [
  "base64",
  "if-addrs 0.13.4",
  "mdns-sd",
+ "rand 0.8.5",
  "ring",
  "serde",
  "subtle",
@@ -326,6 +327,7 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
+ "tracing",
 ]
 
 [[package]]

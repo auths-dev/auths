@@ -1,14 +1,19 @@
 //! Axum route handlers for the pairing daemon.
 //!
 //! Each handler extracts HTTP parameters and delegates to business logic
-//! methods on [`DaemonState`]. Handlers only map between HTTP and domain types.
+//! methods on [`DaemonState`]. Handlers only map between HTTP and domain
+//! types — every error path returns a typed [`DaemonError`] and the
+//! status-code mapping lives in a single `IntoResponse` impl (see
+//! `src/error.rs`). Pre-fn-130.T1 the codes were hand-mapped inline at
+//! every handler; keeping them centralized is what unblocks the 421 /
+//! 413 / 429 / 503 middleware that fn-130 tasks T3-T9 install.
 
 use std::sync::Arc;
 
 use axum::{
     Json,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
 };
 
 use auths_core::pairing::types::{
@@ -17,6 +22,7 @@ use auths_core::pairing::types::{
 };
 
 use crate::DaemonState;
+use crate::error::DaemonError;
 use crate::token::validate_pairing_token;
 
 /// Health check endpoint.
@@ -41,12 +47,12 @@ pub async fn handle_health() -> &'static str {
 pub async fn handle_lookup_by_code(
     Path(code): Path<String>,
     State(state): State<Arc<DaemonState>>,
-) -> Result<Json<GetSessionResponse>, StatusCode> {
+) -> Result<Json<GetSessionResponse>, DaemonError> {
     state
         .lookup_by_code(&code)
         .await
         .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or(DaemonError::NotFound)
 }
 
 /// Get session details by ID.
@@ -61,12 +67,12 @@ pub async fn handle_lookup_by_code(
 pub async fn handle_get_session(
     Path(id): Path<String>,
     State(state): State<Arc<DaemonState>>,
-) -> Result<Json<GetSessionResponse>, StatusCode> {
+) -> Result<Json<GetSessionResponse>, DaemonError> {
     state
         .get_session(&id)
         .await
         .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or(DaemonError::NotFound)
 }
 
 /// Submit a pairing response (requires `X-Pairing-Token`).
@@ -85,16 +91,16 @@ pub async fn handle_submit_response(
     State(state): State<Arc<DaemonState>>,
     headers: HeaderMap,
     Json(request): Json<SubmitResponseRequest>,
-) -> Result<Json<SuccessResponse>, StatusCode> {
+) -> Result<Json<SuccessResponse>, DaemonError> {
     if !validate_pairing_token(&headers, state.pairing_token()) {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(DaemonError::Unauthorized);
     }
 
     state
         .submit_response(&id, request)
         .await
         .map(Json)
-        .map_err(|_| StatusCode::CONFLICT)
+        .map_err(|_| DaemonError::Conflict)
 }
 
 /// Submit a SAS confirmation or abort (requires `X-Pairing-Token`).
@@ -113,16 +119,16 @@ pub async fn handle_submit_confirmation(
     State(state): State<Arc<DaemonState>>,
     headers: HeaderMap,
     Json(request): Json<SubmitConfirmationRequest>,
-) -> Result<Json<SuccessResponse>, StatusCode> {
+) -> Result<Json<SuccessResponse>, DaemonError> {
     if !validate_pairing_token(&headers, state.pairing_token()) {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(DaemonError::Unauthorized);
     }
 
     state
         .submit_confirmation(&id, request)
         .await
         .map(Json)
-        .map_err(|_| StatusCode::CONFLICT)
+        .map_err(|_| DaemonError::Conflict)
 }
 
 /// Get current confirmation state (requires `X-Pairing-Token`).
@@ -139,14 +145,14 @@ pub async fn handle_get_confirmation(
     Path(id): Path<String>,
     State(state): State<Arc<DaemonState>>,
     headers: HeaderMap,
-) -> Result<Json<GetConfirmationResponse>, StatusCode> {
+) -> Result<Json<GetConfirmationResponse>, DaemonError> {
     if !validate_pairing_token(&headers, state.pairing_token()) {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(DaemonError::Unauthorized);
     }
 
     state
         .get_confirmation(&id)
         .await
         .map(Json)
-        .ok_or(StatusCode::NOT_FOUND)
+        .ok_or(DaemonError::NotFound)
 }

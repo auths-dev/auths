@@ -412,6 +412,7 @@ pub async fn join_pairing_session(
         ephemeral_pubkey: ephemeral_pubkey_str,
         expires_at: chrono::DateTime::from_timestamp(expires_at, 0).unwrap_or(now),
         capabilities,
+        kem_slot: None,
     };
 
     let (pairing_response, _shared_secret) = auths_core::pairing::PairingResponse::create(

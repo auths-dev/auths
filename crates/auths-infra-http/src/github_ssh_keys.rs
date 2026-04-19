@@ -157,7 +157,12 @@ async fn post_ssh_key_with_retry(
         };
 
         if attempt > 1 {
-            let jitter_ms = (rand::random::<u64>() % (backoff_secs * 1000 / 2)) as u64;
+            // Non-security jitter — but the workspace-wide lint (fn-128.T6)
+            // bans `rand::random()` because it can delegate to `thread_rng`.
+            // Use `OsRng` explicitly for consistency.
+            use rand::RngCore;
+            use rand::rngs::OsRng;
+            let jitter_ms = OsRng.next_u64() % (backoff_secs * 1000 / 2);
             let delay = Duration::from_secs(backoff_secs) + Duration::from_millis(jitter_ms);
             sleep(delay).await;
         }

@@ -295,8 +295,9 @@ impl CryptoProvider for AwsLcProvider {
                 self.0
             }
         }
+        let info_slices = [info];
         let okm = prk
-            .expand(&[info], Len(out_len))
+            .expand(&info_slices, Len(out_len))
             .map_err(|e| CryptoError::OperationFailed(format!("aws-lc-rs HKDF256: {e}")))?;
         let mut out = vec![0u8; out_len];
         okm.fill(&mut out)
@@ -326,8 +327,9 @@ impl CryptoProvider for AwsLcProvider {
                 self.0
             }
         }
+        let info_slices = [info];
         let okm = prk
-            .expand(&[info], Len(out_len))
+            .expand(&info_slices, Len(out_len))
             .map_err(|e| CryptoError::OperationFailed(format!("aws-lc-rs HKDF384: {e}")))?;
         let mut out = vec![0u8; out_len];
         okm.fill(&mut out)

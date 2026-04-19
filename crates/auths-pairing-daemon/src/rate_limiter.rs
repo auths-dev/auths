@@ -85,18 +85,24 @@ fn is_within_limit(count: u32, max: u32) -> bool {
 pub(crate) mod middleware {
     use std::sync::Arc;
 
-    use axum::{Extension, extract::ConnectInfo, http::StatusCode, middleware::Next};
+    use axum::{Extension, extract::ConnectInfo, middleware::Next};
 
     use super::RateLimiter;
+    use crate::error::DaemonError;
 
     pub async fn rate_limit_middleware(
         Extension(limiter): Extension<Arc<RateLimiter>>,
         ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
         request: axum::extract::Request,
         next: Next,
-    ) -> Result<axum::response::Response, StatusCode> {
+    ) -> Result<axum::response::Response, DaemonError> {
         if !limiter.check(addr.ip()) {
-            return Err(StatusCode::TOO_MANY_REQUESTS);
+            // fn-130.T1: flow through DaemonError so the central
+            // IntoResponse impl emits the JSON body + (later) the
+            // Retry-After header. T5 plugs the tiered limiter and
+            // populates `retry_after`; until then the plain None
+            // response matches the prior 429-no-header behavior.
+            return Err(DaemonError::RateLimited { retry_after: None });
         }
         Ok(next.run(request).await)
     }

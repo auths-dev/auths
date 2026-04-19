@@ -76,7 +76,7 @@ pub(crate) fn print_completion(device_name: Option<&str>, device_did: &str) {
 /// Display SAS and prompt for explicit Y/N confirmation (no default).
 ///
 /// Returns `true` if the user confirms the SAS matches, `false` on rejection.
-pub(crate) fn prompt_sas_confirmation(sas_bytes: &[u8; 8]) -> Result<bool> {
+pub(crate) fn prompt_sas_confirmation(sas_bytes: &[u8; 10]) -> Result<bool> {
     use auths_pairing_protocol::sas;
 
     println!();

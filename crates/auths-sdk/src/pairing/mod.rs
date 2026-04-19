@@ -866,6 +866,7 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         ephemeral_pubkey: token_data.ephemeral_pubkey.to_string(),
         expires_at: chrono::DateTime::from_timestamp(token_data.expires_at, 0).unwrap_or(now),
         capabilities: token_data.capabilities.clone(),
+        kem_slot: None,
     };
 
     if token.is_expired(now) {

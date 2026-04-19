@@ -17,6 +17,8 @@ serde = { version = "1", features = ["derive"] }
 tokio = { workspace = true, features = ["sync"] }
 # fn-128.T7 startup entropy / CRNG-init probe.
 rand.workspace = true
+# fn-130.T1: structured server-side error logging from DaemonError::into_response.
+tracing = "0.1"
 
 # Server feature deps
 axum = { version = "0.8", optional = true }
