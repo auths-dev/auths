@@ -1517,6 +1517,7 @@ impl RegistryBackend for GitRegistryBackend {
             return Ok(());
         }
 
+        let _lock = AdvisoryLock::acquire(&self.repo_path)?;
         let repo = self.open_repo()?;
         let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
         let navigator = TreeNavigator::new(&repo, base_tree.clone());
@@ -1586,7 +1587,7 @@ impl RegistryBackend for GitRegistryBackend {
         )?;
 
         let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
-        self.create_commit(&repo, new_tree_oid, Some(&parent), "atomic batch write")?;
+        self.create_commit_unlocked(&repo, new_tree_oid, Some(&parent), "atomic batch write")?;
 
         Ok(())
     }
@@ -1863,6 +1864,7 @@ impl GitRegistryBackend {
         event: &Event,
         attachment: &[u8],
     ) -> Result<(), RegistryError> {
+        let _lock = AdvisoryLock::acquire(&self.repo_path)?;
         let repo = self.open_repo()?;
         let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
         let navigator = TreeNavigator::new(&repo, base_tree.clone());
@@ -1998,7 +2000,7 @@ impl GitRegistryBackend {
 
         // Build and commit
         let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
-        self.create_commit(
+        self.create_commit_unlocked(
             &repo,
             new_tree_oid,
             Some(&parent),
