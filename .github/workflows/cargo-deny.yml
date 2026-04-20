@@ -24,11 +24,13 @@ jobs:
           - bans licenses sources
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: dtolnay/rust-toolchain@master
         with:
-          command: check ${{ matrix.checks }}
-          manifest-path: ./Cargo.toml
-          cargo-deny-version: "0.19.0"
+          toolchain: "1.93"
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --version "=0.19.0" --locked
+      - name: cargo deny check ${{ matrix.checks }}
+        run: cargo deny --manifest-path ./Cargo.toml check ${{ matrix.checks }}
 
   cargo-tree-duplicates:
     runs-on: ubuntu-latest
