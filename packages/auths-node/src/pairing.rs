@@ -165,7 +165,7 @@ impl NapiPairingHandle {
     ) -> napi::Result<NapiPairingResponse> {
         let timeout = Duration::from_secs(timeout_secs.unwrap_or(300) as u64);
 
-        let handle = {
+        let mut handle = {
             let mut guard = self.handle.lock().await;
             guard.take().ok_or_else(|| {
                 format_error(

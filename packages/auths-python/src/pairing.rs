@@ -49,7 +49,7 @@ impl PyPairingHandle {
         _py: Python<'_>,
         timeout_secs: u64,
     ) -> PyResult<(String, Option<String>, String, String)> {
-        let handle = self.handle.take().ok_or_else(|| {
+        let mut handle = self.handle.take().ok_or_else(|| {
             PyRuntimeError::new_err(
                 "[AUTHS_PAIRING_ERROR] Handle already consumed (wait_for_response called twice)",
             )

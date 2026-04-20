@@ -28,6 +28,7 @@ pub async fn handle_initiate_lan(
     now: chrono::DateTime<chrono::Utc>,
     no_qr: bool,
     no_mdns: bool,
+    verify: bool,
     expiry_secs: u64,
     capabilities: &[String],
     env_config: &EnvironmentConfig,
@@ -71,7 +72,7 @@ pub async fn handle_initiate_lan(
     };
 
     // Start the LAN server bound to the detected LAN IP
-    let server = LanPairingServer::start(request, lan_ip).await?;
+    let mut server = LanPairingServer::start(request, lan_ip).await?;
     let port = server.addr().port();
     let endpoint = format!("http://{}:{}", lan_ip, port);
 
@@ -187,6 +188,14 @@ pub async fn handle_initiate_lan(
                 adv.shutdown();
             }
 
+            // Phone auto-fires /confirm as soon as it processes
+            // /response. Keep the listener up briefly so that confirm
+            // actually lands and the session is recorded as fully
+            // settled. If the phone fails to confirm within the
+            // window, we still proceed — phone-side logic tolerates
+            // a silent daemon.
+            let _confirmation = server.wait_for_confirmation(Duration::from_secs(5)).await;
+
             handle_pairing_response(
                 now,
                 &mut session,
@@ -194,19 +203,24 @@ pub async fn handle_initiate_lan(
                 &auths_dir,
                 capabilities,
                 env_config,
+                verify,
             )?;
+
+            server.shutdown();
         }
         Err(auths_sdk::error::PairingError::LanTimeout) => {
             wait_spinner.finish_with_message(format!("{}", style("Session expired.").yellow()));
             if let Some(adv) = _advertiser {
                 adv.shutdown();
             }
+            server.shutdown();
         }
         Err(e) => {
             wait_spinner.finish_and_clear();
             if let Some(adv) = _advertiser {
                 adv.shutdown();
             }
+            server.shutdown();
             return Err(anyhow::anyhow!("LAN pairing failed: {}", e));
         }
     }

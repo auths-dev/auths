@@ -29,8 +29,10 @@ use std::sync::Arc;
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use p256::ecdsa::signature::Verifier;
-use rand_core::OsRng;
-use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
+use p256::PublicKey;
+use p256::ecdh::EphemeralSecret;
+use p256::elliptic_curve::rand_core::OsRng;
+use p256::elliptic_curve::sec1::ToEncodedPoint;
 use zeroize::Zeroizing;
 
 use crate::{MobileError, PairingResponsePayload};
@@ -79,14 +81,24 @@ pub struct PairingBindingContext {
     /// the Rust side; the caller receives it as a hex string for parity
     /// with the legacy `PairingResult.shared_secret_hex` field.
     shared_secret_hex: String,
+
+    /// Initiator's P-256 ephemeral pubkey, 33-byte compressed SEC1.
+    ///
+    /// Needed by `derive_sas_bytes`: the SAS HKDF salt is
+    /// `initiator_pub || responder_pub`. Stored explicitly because the
+    /// `binding_message` prefix is a variable-length short_code, which
+    /// makes in-place extraction fragile.
+    initiator_ephemeral_bytes: [u8; 33],
 }
 
 #[uniffi::export]
 impl PairingBindingContext {
     /// The exact bytes the Secure Enclave must sign.
     ///
-    /// Construction (kept stable across curves for wire compatibility):
-    /// `binding_message = short_code || initiator_x25519_pubkey || device_x25519_pubkey`
+    /// Construction:
+    /// `binding_message = short_code || initiator_ephemeral_pubkey || device_ephemeral_pubkey`
+    /// where each ephemeral pubkey is the 33-byte compressed SEC1 form
+    /// of a P-256 ECDH public key.
     ///
     /// The SE signs these bytes directly (`SecKeyCreateSignature` with
     /// `.ecdsaSignatureMessageX962SHA256` hashes internally).
@@ -128,6 +140,37 @@ impl PairingBindingContext {
     /// between generation and encoding.
     pub fn shared_secret_hex(&self) -> String {
         self.shared_secret_hex.clone()
+    }
+
+    /// Derive the 10-byte Short Authentication String for this session.
+    ///
+    /// Mirrors `auths_pairing_protocol::sas::derive_sas` exactly; both
+    /// sides produce identical bytes given the same inputs. The caller
+    /// passes the daemon-assigned `session_id` (carried in the pairing
+    /// URI under `sid`); the rest of the HKDF inputs are held inside
+    /// this context.
+    ///
+    /// The returned 10 bytes split into:
+    /// * `[0..6]` — six emoji indices (visualization aid).
+    /// * `[6..10]` — seven-digit numeric code (authoritative channel).
+    pub fn derive_sas_bytes(&self, session_id: String) -> Vec<u8> {
+        let shared_secret_bytes = hex::decode(&self.shared_secret_hex)
+            .expect("shared_secret_hex was produced by hex::encode of 32 bytes");
+        let shared_secret: [u8; 32] = shared_secret_bytes
+            .try_into()
+            .expect("shared_secret_hex decodes to exactly 32 bytes");
+        let responder_pub = URL_SAFE_NO_PAD
+            .decode(&self.device_ephemeral_pubkey_b64)
+            .expect("device_ephemeral_pubkey_b64 was produced by URL_SAFE_NO_PAD.encode");
+
+        auths_pairing_protocol::sas::derive_sas(
+            &shared_secret,
+            &self.initiator_ephemeral_bytes,
+            &responder_pub,
+            &session_id,
+            &self.short_code,
+        )
+        .to_vec()
     }
 }
 
@@ -171,33 +214,50 @@ pub fn build_pairing_binding_message(
     let device_signing_pubkey_compressed =
         normalize_p256_pubkey_to_compressed(&device_signing_pubkey_der)?;
 
-    // X25519 ephemeral for transport ECDH — separate from the P-256
-    // signing key. The phone's P-256 key lives in the SE; the X25519
-    // key is session-ephemeral and fine to hold in Rust.
-    let device_x25519_secret = EphemeralSecret::random_from_rng(OsRng);
-    let device_x25519_public = X25519PublicKey::from(&device_x25519_secret);
+    // P-256 ephemeral for transport ECDH — matches the daemon's
+    // `PairingToken::generate_with_expiry` which also uses
+    // `p256::ecdh::EphemeralSecret`. Both sides agree on curve so the
+    // shared secret is the same 32 bytes on both ends.
+    let device_ephemeral_secret = EphemeralSecret::random(&mut OsRng);
+    let device_ephemeral_public = device_ephemeral_secret.public_key();
+    let device_ephemeral_compressed: [u8; 33] = device_ephemeral_public
+        .to_encoded_point(true)
+        .as_bytes()
+        .try_into()
+        .map_err(|_| MobileError::PairingFailed("device P-256 compression failed".to_string()))?;
 
-    let initiator_x25519_bytes: [u8; 32] = URL_SAFE_NO_PAD
+    let initiator_ephemeral_bytes: [u8; 33] = URL_SAFE_NO_PAD
         .decode(&fields.ephemeral_pubkey)
         .map_err(|e| MobileError::PairingFailed(format!("Invalid pubkey encoding: {e}")))?
         .try_into()
-        .map_err(|_| MobileError::PairingFailed("Invalid X25519 pubkey length".to_string()))?;
-    let initiator_x25519 = X25519PublicKey::from(initiator_x25519_bytes);
+        .map_err(|_| MobileError::PairingFailed(
+            "Invalid ephemeral pubkey length (want 33-byte P-256 SEC1 compressed)".to_string()
+        ))?;
+    let initiator_ephemeral_public = PublicKey::from_sec1_bytes(&initiator_ephemeral_bytes)
+        .map_err(|e| MobileError::PairingFailed(format!("Invalid P-256 ephemeral pubkey: {e}")))?;
 
-    let shared = device_x25519_secret.diffie_hellman(&initiator_x25519);
-    let shared_bytes = Zeroizing::new(*shared.as_bytes());
+    let shared = device_ephemeral_secret.diffie_hellman(&initiator_ephemeral_public);
+    // `SharedSecret::raw_secret_bytes()` yields the 32-byte x-coordinate
+    // of the ECDH result — the same convention the daemon uses.
+    let shared_bytes = {
+        let raw = shared.raw_secret_bytes();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(raw.as_slice());
+        Zeroizing::new(out)
+    };
     let shared_secret_hex = hex::encode(*shared_bytes);
 
-    // Binding message format matches the legacy create_pairing_response:
-    //   short_code || initiator_x25519 || device_x25519
+    // Binding message format matches the daemon's `PairingResponse::verify`:
+    //   session_id || short_code || initiator_ephemeral || device_ephemeral
     let mut binding_message = Vec::with_capacity(
-        fields.short_code.len() + 32 + 32,
+        fields.session_id.len() + fields.short_code.len() + 33 + 33,
     );
+    binding_message.extend_from_slice(fields.session_id.as_bytes());
     binding_message.extend_from_slice(fields.short_code.as_bytes());
-    binding_message.extend_from_slice(&initiator_x25519_bytes);
-    binding_message.extend_from_slice(device_x25519_public.as_bytes());
+    binding_message.extend_from_slice(&initiator_ephemeral_bytes);
+    binding_message.extend_from_slice(&device_ephemeral_compressed);
 
-    let device_ephemeral_pubkey_b64 = URL_SAFE_NO_PAD.encode(device_x25519_public.as_bytes());
+    let device_ephemeral_pubkey_b64 = URL_SAFE_NO_PAD.encode(device_ephemeral_compressed);
 
     Ok(Arc::new(PairingBindingContext {
         binding_message,
@@ -208,6 +268,7 @@ pub fn build_pairing_binding_message(
         short_code: fields.short_code,
         capabilities: fields.capabilities,
         shared_secret_hex,
+        initiator_ephemeral_bytes,
     }))
 }
 
@@ -404,9 +465,13 @@ mod tests {
             .as_secs() as i64;
         let expires = now + expires_in_secs;
         let endpoint_b64 = URL_SAFE_NO_PAD.encode(b"https://auths.test");
-        let ephemeral = URL_SAFE_NO_PAD.encode([0u8; 32]);
+        // Use a real P-256 ephemeral pubkey (33-byte compressed SEC1)
+        // so the builder can parse it as a valid point.
+        let initiator_secret = EphemeralSecret::random(&mut OsRng);
+        let initiator_public = initiator_secret.public_key();
+        let ephemeral = URL_SAFE_NO_PAD.encode(initiator_public.to_encoded_point(true).as_bytes());
         format!(
-            "auths://pair?d=did:keri:EABC&e={endpoint_b64}&k={ephemeral}&sc=AB12CD&x={expires}&c=sign_commit"
+            "auths://pair?d=did:keri:EABC&e={endpoint_b64}&k={ephemeral}&sc=AB12CD&sid=sess-test-1&x={expires}&c=sign_commit"
         )
     }
 
@@ -549,5 +614,45 @@ mod tests {
         assert_eq!(ctx.short_code(), "AB12CD");
         assert_eq!(ctx.capabilities(), vec!["sign_commit".to_string()]);
         assert_eq!(ctx.shared_secret_hex().len(), 64);
+    }
+
+    #[test]
+    fn derive_sas_bytes_matches_protocol_sas() {
+        let signing_key = SigningKey::random(&mut OsRng);
+        let compressed = signing_key.verifying_key().to_encoded_point(true);
+        let ctx = build_pairing_binding_message(make_uri(300), compressed.as_bytes().to_vec())
+            .expect("build_pairing_binding_message must succeed");
+
+        let session_id = "sess-sas-parity";
+        let via_method = ctx.derive_sas_bytes(session_id.to_string());
+
+        // Reconstruct the same inputs and call derive_sas directly.
+        let shared_secret_bytes = hex::decode(&ctx.shared_secret_hex).unwrap();
+        let shared_secret: [u8; 32] = shared_secret_bytes.try_into().unwrap();
+        let responder_pub = URL_SAFE_NO_PAD
+            .decode(&ctx.device_ephemeral_pubkey_b64)
+            .unwrap();
+        let via_protocol = auths_pairing_protocol::sas::derive_sas(
+            &shared_secret,
+            &ctx.initiator_ephemeral_bytes,
+            &responder_pub,
+            session_id,
+            &ctx.short_code,
+        );
+
+        assert_eq!(via_method.len(), 10);
+        assert_eq!(via_method.as_slice(), &via_protocol[..]);
+    }
+
+    #[test]
+    fn derive_sas_bytes_is_session_specific() {
+        let signing_key = SigningKey::random(&mut OsRng);
+        let compressed = signing_key.verifying_key().to_encoded_point(true);
+        let ctx = build_pairing_binding_message(make_uri(300), compressed.as_bytes().to_vec())
+            .unwrap();
+
+        let a = ctx.derive_sas_bytes("session-a".to_string());
+        let b = ctx.derive_sas_bytes("session-b".to_string());
+        assert_ne!(a, b, "different session_id must produce different SAS");
     }
 }

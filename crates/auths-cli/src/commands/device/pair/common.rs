@@ -57,19 +57,18 @@ pub(crate) fn print_pairing_header(mode: &str, registry: &str, controller_did: &
 }
 
 /// Print a styled completion footer with device info.
+///
+/// One-line format matching the Signal/WhatsApp "device linked" UX:
+/// `✅ Paired with <device name> (<DID>)`.
 pub(crate) fn print_completion(device_name: Option<&str>, device_did: &str) {
     println!();
+    let label = device_name.unwrap_or("new device");
     println!(
-        "{}",
-        style(format!("━━━ {CHECK}Pairing Complete ━━━"))
-            .green()
-            .bold()
+        "{}Paired with {} {}",
+        CHECK,
+        style(label).bold(),
+        style(format!("({device_did})")).dim()
     );
-    println!();
-    if let Some(name) = device_name {
-        println!("  {} {}", style("Device:").dim(), style(name).bold());
-    }
-    println!("  {} {}", style("DID:").dim(), style(device_did).dim());
     println!();
 }
 
@@ -126,6 +125,13 @@ pub(crate) fn display_sas_mismatch_warning() {
 }
 
 /// Handle a successful pairing response — verify signature, complete ECDH, create attestation.
+///
+/// When `verify_sas` is false (default for `auths pair`), the SAS is
+/// printed for the user's reference but no Y/N prompt blocks the
+/// flow — this matches the Signal/WhatsApp initial-pair experience
+/// where the QR itself is the out-of-band channel. Pass `verify_sas:
+/// true` to restore the interactive confirmation (via `auths pair
+/// --verify`).
 pub(crate) fn handle_pairing_response(
     now: chrono::DateTime<chrono::Utc>,
     session: &mut PairingSession,
@@ -133,6 +139,7 @@ pub(crate) fn handle_pairing_response(
     auths_dir: &Path,
     capabilities: &[String],
     env_config: &EnvironmentConfig,
+    verify_sas: bool,
 ) -> Result<()> {
     use auths_sdk::keychain::get_platform_keychain_with_config;
     use auths_sdk::pairing::{self, DecryptedPairingResponse, PairingCompletionResult};
@@ -217,12 +224,25 @@ pub(crate) fn handle_pairing_response(
         short_code,
     );
 
-    // SAS verification ceremony
-    let confirmed = prompt_sas_confirmation(&sas_bytes)?;
-    if !confirmed {
-        display_sas_mismatch_warning();
-        drop(transport_key);
-        anyhow::bail!("SAS verification failed — pairing aborted");
+    // SAS display. Default path (matching Signal/WhatsApp initial-pair
+    // UX): print the SAS for the user's reference and continue — the
+    // QR scan is the authenticated out-of-band channel. Users who want
+    // the interactive check opt in via `auths pair --verify`.
+    if verify_sas {
+        let confirmed = prompt_sas_confirmation(&sas_bytes)?;
+        if !confirmed {
+            display_sas_mismatch_warning();
+            drop(transport_key);
+            anyhow::bail!("SAS verification failed — pairing aborted");
+        }
+    } else {
+        use auths_pairing_protocol::sas;
+        println!(
+            "  {} {}  {}",
+            style("SAS:").dim(),
+            sas::format_sas_emoji(&sas_bytes),
+            style(format!("({})", sas::format_sas_numeric(&sas_bytes))).dim()
+        );
     }
 
     if !auths_dir.exists() {

@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use auths_pairing_daemon::{HostAllowlist, PairingDaemonBuilder, PairingDaemonHandle};
-use auths_sdk::pairing::{CreateSessionRequest, SubmitResponseRequest};
+use auths_sdk::pairing::{CreateSessionRequest, SubmitConfirmationRequest, SubmitResponseRequest};
 
 /// Detect the LAN IP address of this machine.
 pub fn detect_lan_ip() -> std::io::Result<IpAddr> {
@@ -99,23 +99,37 @@ impl LanPairingServer {
 
     /// Wait for a pairing response, with a timeout.
     ///
-    /// Consumes `self` — the server shuts down after this returns.
+    /// Does NOT shut the listener down — the caller is expected to
+    /// also `wait_for_confirmation` (or drop the server) afterwards.
     pub async fn wait_for_response(
-        self,
+        &mut self,
         timeout: Duration,
     ) -> Result<SubmitResponseRequest, auths_sdk::error::PairingError> {
-        let result = self
-            .handle
+        self.handle
             .wait_for_response(timeout)
             .await
             .map_err(|e| match e {
                 auths_pairing_daemon::DaemonError::Pairing(pe) => pe,
                 other => auths_sdk::error::PairingError::LocalServerError(other.to_string()),
-            });
+            })
+    }
 
-        // Shut down the server AFTER response received (or timeout).
-        // Previously cancel() fired first, killing the listener immediately.
+    /// Wait for the paired device to POST `/confirm { aborted: ... }`.
+    ///
+    /// Should be called after `wait_for_response` has succeeded. The
+    /// phone auto-fires `/confirm` as soon as it processes `/response`,
+    /// so a short timeout (3-5 s) is appropriate. Returns `None` on
+    /// timeout — the phone side tolerates a silent daemon, so the
+    /// caller can proceed even if the confirmation never arrived.
+    pub async fn wait_for_confirmation(
+        &self,
+        timeout: Duration,
+    ) -> Option<SubmitConfirmationRequest> {
+        self.handle.wait_for_confirmation(timeout).await
+    }
+
+    /// Shut the listener down. Consumes `self`.
+    pub fn shutdown(self) {
         self.cancel.cancel();
-        result
     }
 }

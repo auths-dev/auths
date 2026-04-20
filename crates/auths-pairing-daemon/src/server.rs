@@ -327,7 +327,7 @@ impl PairingDaemon {
             build_pairing_router(self.state.clone(), self.tiered_limiter, Arc::new(allowlist));
         let handle = PairingDaemonHandle {
             state: self.state,
-            response_rx: self.response_rx,
+            response_rx: Some(self.response_rx),
             discovery: self.discovery,
             bind_ip: self.bind_ip,
             token: self.token,
@@ -344,7 +344,7 @@ impl PairingDaemon {
 /// to await pairing responses and advertise via mDNS.
 pub struct PairingDaemonHandle {
     state: Arc<DaemonState>,
-    response_rx: oneshot::Receiver<SubmitResponseRequest>,
+    response_rx: Option<oneshot::Receiver<SubmitResponseRequest>>,
     discovery: Option<Box<dyn NetworkDiscovery>>,
     bind_ip: IpAddr,
     token: String,
@@ -378,10 +378,15 @@ impl PairingDaemonHandle {
     /// let response = handle.wait_for_response(Duration::from_secs(300)).await?;
     /// ```
     pub async fn wait_for_response(
-        self,
+        &mut self,
         timeout: Duration,
     ) -> Result<SubmitResponseRequest, DaemonError> {
-        let result = tokio::time::timeout(timeout, self.response_rx).await;
+        let rx = self.response_rx.take().ok_or_else(|| {
+            DaemonError::Pairing(auths_core::pairing::PairingError::LocalServerError(
+                "Response channel already consumed".to_string(),
+            ))
+        })?;
+        let result = tokio::time::timeout(timeout, rx).await;
         match result {
             Ok(Ok(response)) => Ok(response),
             Ok(Err(_)) => Err(DaemonError::Pairing(
@@ -392,6 +397,41 @@ impl PairingDaemonHandle {
             Err(_) => Err(DaemonError::Pairing(
                 auths_core::pairing::PairingError::LanTimeout,
             )),
+        }
+    }
+
+    /// Wait for the paired device to POST `/confirm`.
+    ///
+    /// Must be called *after* a successful `wait_for_response` — the
+    /// confirmation is only meaningful once the session has been bound
+    /// to a device pubkey.
+    ///
+    /// Returns:
+    /// * `Ok(Some(req))` if the device confirmed (match or abort).
+    /// * `Ok(None)` if the timeout elapsed without a confirmation.
+    ///
+    /// The daemon-side listener stays up while this awaits; callers
+    /// should keep the surrounding HTTP serve task alive. Common
+    /// timeout is 3-5 seconds — the paired device auto-fires /confirm
+    /// as soon as it processes /response.
+    pub async fn wait_for_confirmation(
+        &self,
+        timeout: Duration,
+    ) -> Option<auths_core::pairing::SubmitConfirmationRequest> {
+        // Fast path: confirmation already arrived.
+        {
+            let guard = self.state.confirmation.lock().await;
+            if let Some(c) = guard.as_ref() {
+                return Some(c.clone());
+            }
+        }
+        // Slow path: wait on notify with timeout.
+        let notify = self.state.confirmation_notify.clone();
+        let notified = notify.notified();
+        tokio::pin!(notified);
+        match tokio::time::timeout(timeout, notified).await {
+            Ok(_) => self.state.confirmation.lock().await.clone(),
+            Err(_) => None,
         }
     }
 

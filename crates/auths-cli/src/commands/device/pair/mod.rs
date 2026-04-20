@@ -79,6 +79,16 @@ pub struct PairCommand {
     #[cfg(feature = "lan-pairing")]
     #[clap(long, hide_short_help = true)]
     pub no_mdns: bool,
+
+    /// Prompt to manually verify the short-authentication-string (SAS)
+    /// codes match between devices before completing the pair.
+    ///
+    /// Default is off — the QR scan is treated as the authenticated
+    /// out-of-band channel, matching Signal/WhatsApp UX. Opt in here
+    /// if you're pairing over an untrusted network and want a visual
+    /// SAS compare.
+    #[clap(long)]
+    pub verify: bool,
 }
 
 /// Dispatch table:
@@ -140,6 +150,7 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
                 now,
                 cmd.no_qr,
                 cmd.no_mdns,
+                cmd.verify,
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,

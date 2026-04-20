@@ -9,7 +9,7 @@ pub mod lan;
 
 // Re-exports of pairing types from auths-core for CLI consumption
 pub use auths_core::pairing::types::{
-    Base64UrlEncoded, CreateSessionRequest, SubmitResponseRequest,
+    Base64UrlEncoded, CreateSessionRequest, SubmitConfirmationRequest, SubmitResponseRequest,
 };
 pub use auths_core::pairing::{
     PairingResponse, PairingSession, PairingToken, QrOptions, normalize_short_code, render_qr,

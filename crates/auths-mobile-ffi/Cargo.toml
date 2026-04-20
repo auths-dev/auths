@@ -17,7 +17,7 @@ homepage = "https://github.com/auths-dev/auths"
 
 [lib]
 name = "auths_mobile_ffi"
-crate-type = ["lib", "staticlib"]
+crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
 # UniFFI for Swift/Kotlin bindings (cli feature for bindgen)
@@ -31,7 +31,6 @@ hex = "0.4.3"
 base64 = "0.22.1"
 
 # Cryptography
-ring = "0.17.14"
 blake3 = "1.5"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 # P-256 ECDSA for Secure-Enclave-anchored identity signing. Version
@@ -50,6 +49,11 @@ thiserror = "2.0"
 
 # Base58 encoding for did:key
 bs58 = "0.5.1"
+
+# Protocol crate: reused for SAS derivation (`derive_sas_bytes` on
+# PairingBindingContext). Path dep because this crate sits outside
+# the main workspace.
+auths-pairing-protocol = { path = "../auths-pairing-protocol" }
 
 [[bin]]
 name = "uniffi-bindgen"
