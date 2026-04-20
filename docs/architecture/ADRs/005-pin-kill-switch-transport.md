@@ -1,0 +1,133 @@
+# ADR 005: Pin kill-switch transport
+
+**Status:** Accepted (design only)
+**Date:** 2026-04-20
+**Scope:** Transport and signing-key custody for the mobile TLS pin kill-switch.
+
+## Context
+
+The mobile app's SPKI pin-set fails closed. A compromised, lost, or mis-rotated pinned key bricks every installed client until an App Store update ships — ≈48 h worst case. The [pin kill-switch threat model](../pin-kill-switch-threat-model.md) defines the recovery path; this ADR picks the concrete transport and custody scheme that realize the design.
+
+The question has three sub-parts:
+
+1. **Transport.** How does the document reach the client, and what is the document's own trust chain?
+2. **Signing-key custody.** Where does the signing root live, and what is the multi-party structure around it?
+3. **Rotation cadence.** How often do operational keys change, and under what conditions does the root change?
+
+This ADR only concerns the *design*. Implementation — standing up the CDN, running the Shamir ceremony, building the mobile-side `KillSwitchFetcher` — is deliberately left to a follow-up effort so the design can be reviewed before any operational steps lock it in.
+
+## Decision
+
+**1. Transport: CDN-backed static JSON on `killswitch.auths.dev` with its own CA chain, separate from the daemon's primary TLS hosts.**
+
+**2. Signing root: 2-of-3 Shamir secret-sharing, each share held in a separate HSM under a distinct operator.** The root signs operational sub-keys on a calendar schedule; sub-keys sign day-to-day kill-switch documents.
+
+**3. Rotation cadence: operational sub-keys rotate monthly; the root is never rotated except on confirmed compromise (which is an app-release event, not an operational one).**
+
+## Alternatives considered
+
+### Transport
+
+#### A — CDN static JSON on a separate hostname (accepted)
+
+A small JSON document is served from `killswitch.auths.dev` behind a commercial CDN. The hostname is distinct from the daemon's primary hosts and uses a different CA chain. The document is fetched on app launch and on network-regain events.
+
+**Accepted because:**
+- Separates failure domains: a compromise of the daemon's TLS infra does not give the attacker the ability to suppress or forge the kill-switch.
+- Zero operational burden in steady state — it's a static file.
+- Signature on the document itself (not on the HTTPS connection) means a malicious CDN cannot forge without compromising the root.
+- Client-side recovery after fetch failure is simple (retain the last-applied document within its validity window).
+
+#### B — Daemon endpoint behind a different root-of-trust
+
+The daemon exposes `/v1/kill-switch` on the same fleet, but signed by an independent root.
+
+**Rejected because:**
+- Couples availability of the kill-switch to availability of the daemon fleet. If the daemon is in the failure mode that required the kill-switch in the first place (unreachable TLS), the kill-switch channel is equally unreachable.
+- Offers no meaningful improvement over a CDN — the "different root of trust" is the property we care about; it's cheaper to get that via a second CDN tenancy than by running a second endpoint.
+
+#### C — Third-party signed-note log (e.g., C2SP transparency log)
+
+Publish kill-switch documents to a public transparency log; clients fetch from the log.
+
+**Rejected because:**
+- Adds an external dependency on the log operator.
+- The transparency log's inclusion proofs are a stronger guarantee than we need for this use case — we are not trying to defeat a dishonest signing party; we are trying to recover from a compromised *signing key*. The Shamir scheme already addresses that.
+- Useful future extension: publish kill-switch documents to a log as a *supplemental* audit record, without making log availability a liveness requirement for recovery.
+
+### Signing-key custody
+
+#### A — Single HSM under one operator
+
+Simplest possible scheme. Rejected because of the availability risk ("the one person with the HSM is sick") and the single-point-of-compromise risk (physical access to one HSM ends the scheme).
+
+#### B — 2-of-3 Shamir over HSM-held shares (accepted)
+
+Three operators, one HSM each, each holding one share. Reconstructing the root requires two operators and two HSMs, making both accidental-loss-of-one and single-operator-compromise non-fatal.
+
+**Accepted because:**
+- Matches the recovery philosophy of the rest of the stack: no single party should be able to unilaterally disable pinning, and no single party's unavailability should block a legitimate operation.
+- 2-of-3 is the minimum threshold that gives both properties; 3-of-5 over-engineers for a team this size.
+- Shamir secret-sharing is operationally well-understood.
+
+#### C — 3-of-5 Shamir
+
+Higher redundancy. Rejected as unnecessary complexity at the current team size; adds operators without changing the failure mode.
+
+### Rotation cadence
+
+#### A — Monthly operational sub-keys, never-rotated root (accepted)
+
+Operational sub-keys are regenerated by a 2-of-3 Shamir reconstruction every month. Each sub-key has a short validity window; day-to-day kill-switch documents are signed by the current sub-key.
+
+The root itself is never rotated except on confirmed compromise. Root rotation would require every client to ship an app update with the new root pinned, which is the escalation path the kill-switch exists to avoid.
+
+#### B — Rotate root annually
+
+Rejected because root rotation is the one operation that requires a forced app update. Doing it annually defeats the purpose of the kill-switch.
+
+## Document format
+
+```json
+{
+  "sequence": <monotonic u64>,
+  "valid_not_before": <unix seconds>,
+  "valid_not_after": <unix seconds>,
+  "pin_actions": [
+    { "host": "daemon.example.com", "action": "disable" },
+    ...
+  ],
+  "operational_pubkey": "<base64url ... P-256 SPKI of the sub-key>",
+  "operational_signature": "<base64url raw r||s over sequence || not_before || not_after || pin_actions || operational_pubkey>",
+  "root_signature_of_operational_pubkey": "<base64url raw r||s over operational_pubkey || operational_pubkey_not_after>"
+}
+```
+
+Clients verify both signatures: the root-signature over the operational pubkey (proves the sub-key is authorized), and the operational signature over the document body (proves the document is current and authentic). The two-step chain means a compromised sub-key has a bounded window; the root does not sign day-to-day documents directly.
+
+Validity window: **`valid_not_after − valid_not_before ≤ 24 hours`**. This is an operational invariant enforced by the signing tooling, not a client-side check beyond the bound verification.
+
+## Consequences
+
+- A compromised pinned TLS key can be remotely unpinned within the recovery-latency target (< 1 h from operator action to 99% of active clients).
+- Compromise of any single Shamir share is recoverable by redistributing a new share; the root stays intact.
+- Compromise of two shares is the threshold at which the root is rotated, which requires a forced app update. This is the explicit escalation path.
+- The mobile-side `KillSwitchFetcher` is a follow-up implementation task (out of scope here). It must: fetch on app launch and on network-regain, verify both signatures, apply pin-actions only if the document validates, retain the last-applied document within its validity window for offline resilience, and report the active `(sequence, not_before)` via telemetry when the user has consented to diagnostics.
+- CDN selection, hostname-provisioning, and CA-chain choice for `killswitch.auths.dev` are follow-up operational tasks.
+
+## Out of scope
+
+- Implementing the transport (CDN setup, DNS, CA-chain provisioning).
+- Implementing the mobile-side fetcher.
+- Implementing the signing tooling that enforces the ≤ 24 h validity window.
+- The Shamir ceremony itself (generation, initial distribution, recovery drill).
+
+These are tracked as follow-up operational tasks outside this ADR.
+
+## References
+
+- [pin kill-switch threat model](../pin-kill-switch-threat-model.md).
+- [HPKP deprecation background (Wikipedia)](https://en.wikipedia.org/wiki/HTTP_Public_Key_Pinning) — documents the class of DoS amplification that a naive kill-switch design would re-introduce.
+- [Android Network Security Configuration](https://developer.android.com/privacy-and-security/security-config) — precedent for operator-controlled pinning overrides.
+- [OWASP MASTG](https://mas.owasp.org/MASTG/) — mobile app pinning guidance.
+- `auths-mobile/docs/tls-pinning.md` — the existing residual-risk statement that this design downgrades.

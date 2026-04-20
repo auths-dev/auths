@@ -1,12 +1,16 @@
 [package]
 name = "auths-mobile-ffi"
-version.workspace = true
+# Explicit version: this crate declares its own empty `[workspace]` to stay
+# out of the main workspace (UniFFI / cross-target resolver concerns), so
+# `version.workspace = true` cannot resolve. Keep in sync with the main
+# workspace version at `../../Cargo.toml` on each release cut.
+version = "0.0.1-rc.12"
 edition = "2024"
 description = "UniFFI bindings for Auths mobile identity creation (iOS/Android)"
 publish = true
-license.workspace = true
-repository.workspace = true
-homepage.workspace = true
+license = "Apache-2.0"
+repository = "https://github.com/auths-dev/auths"
+homepage = "https://github.com/auths-dev/auths"
 
 # Exclude from main workspace - built separately with UniFFI
 [workspace]
@@ -30,8 +34,17 @@ base64 = "0.22.1"
 ring = "0.17.14"
 blake3 = "1.5"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
+# P-256 ECDSA for Secure-Enclave-anchored identity signing. Version
+# aligned with the main workspace crates (auths-crypto, auths-keri).
+p256 = { version = "0.13", features = ["ecdsa", "pem", "pkcs8"] }
 rand = "0.10.0"
-zeroize.workspace = true
+# `rand_core` pinned to 0.6 to match x25519-dalek 2.0's trait bounds.
+# `rand` 0.10 moved `OsRng` out of `rand::rngs` and onto `rand_core::OsRng`.
+rand_core = "0.6"
+# zeroize pinned to match the main workspace (see ../../Cargo.toml).
+# Not `workspace = true` because this crate's own `[workspace]` block
+# overrides the outer inheritance.
+zeroize = { version = "=1.8.2", features = ["serde", "derive"] }
 # Error handling
 thiserror = "2.0"
 

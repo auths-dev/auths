@@ -54,24 +54,21 @@ CryptoKit exposes `P256.Signing.ECDSASignature.rawRepresentation` which is exact
 ### Code sites that honor this decision
 
 - `crates/auths-keri/src/keys.rs:180-200` — `verify_signature` stays on `Signature::from_slice`. No change.
-- `crates/auths-mobile-ffi/src/lib.rs` — FFI assemblers (fn-132.4, fn-132.5) accept `signature_der: Vec<u8>`. The parameter name is preserved for mobile-side ergonomics, but the FFI body converts DER → raw via `p256::ecdsa::Signature::from_der(..).to_bytes()` before injecting into the response body, **or** the mobile side supplies raw r‖s directly and the FFI fast-paths the 64-byte case. Both are valid; the FFI should accept either shape to avoid coupling the Swift side to DER-vs-raw sequencing. Document in the FFI doc comment.
+- `crates/auths-mobile-ffi/src/pairing_context.rs` and `auth_challenge_context.rs` — FFI assemblers accept `signature: Vec<u8>`. The FFI body converts DER → raw via `p256::ecdsa::Signature::from_der(..).to_bytes()` before injecting into the response body, **or** the mobile side supplies raw r‖s directly and the FFI fast-paths the 64-byte case. Both are valid; the FFI accepts either shape to avoid coupling the Swift side to DER-vs-raw sequencing.
 - `crates/auths-pairing-daemon/src/auth.rs:239-266` — `verify_sig` unchanged. The daemon sees raw r‖s on the wire as today.
 - `crates/auths-pairing-protocol/src/response.rs` — `PairingResponse.signature` stays as a base64url-no-pad-encoded **64-byte** string for P-256; Ed25519 remains 64-byte raw. No schema change needed.
 
-### Test sites that must exercise this decision
+### Tests that exercise this decision
 
-- fn-132.7 end-to-end test: produce raw r‖s, submit, assert acceptance.
-- fn-132.7 negative test: submit DER directly to the daemon; assert rejection with a parse error (not `InvalidSignature`).
-- fn-132.4/5 FFI unit tests: submit DER-shaped bytes to the assembler; verify the emitted body carries raw r‖s.
+- End-to-end test in `crates/auths-pairing-daemon/tests/cases/p256_end_to_end.rs`: produces raw r‖s, submits, asserts acceptance; also asserts DER submitted directly to the daemon is rejected with a parse error (not `InvalidSignature`).
+- FFI unit tests in `crates/auths-mobile-ffi/src/pairing_context.rs` and `auth_challenge_context.rs`: submit DER-shaped bytes to the assembler; verify the emitted body carries raw r‖s.
 
-### Downstream tasks that reference this ADR
+### Sites that honor this decision
 
-- **fn-132.2** — `decode_device_pubkey` length-dispatch fix: unaffected (scoped to pubkey dispatch, not signature).
-- **fn-132.4** — new pairing FFI: assembler must call `Signature::from_der(...).to_bytes()` if the caller passes DER, else pass raw through.
-- **fn-132.5** — new challenge FFI + PKCS8 removal: same as fn-132.4.
-- **fn-132.7** — end-to-end test: signs with raw r‖s on the wire.
-- **fn-132.11** — `docs/api-spec.yaml`: documents signature as `base64url-no-pad(raw r‖s, 64 bytes)` for P-256.
-- **fn-132.13** — subkey-chain: `subkey_binding_signature` uses the same raw r‖s encoding.
+- `crates/auths-mobile-ffi/src/pairing_context.rs` — pairing-response assembler calls `Signature::from_der(...).to_bytes()` if the caller passes DER, else passes raw through.
+- `crates/auths-mobile-ffi/src/auth_challenge_context.rs` — auth-challenge assembler mirrors the same normalization.
+- `docs/api-spec.yaml` — documents signature as `base64url-no-pad(raw r‖s, 64 bytes)` for P-256.
+- `crates/auths-pairing-protocol/src/subkey_chain.rs` — `subkey_binding_signature` uses the same raw r‖s encoding.
 
 ### Non-consequences
 
@@ -84,5 +81,3 @@ CryptoKit exposes `P256.Signing.ECDSASignature.rawRepresentation` which is exact
 - [Apple `ecdsaSignatureMessageX962SHA256`](https://developer.apple.com/documentation/security/seckeyalgorithm/ecdsasignaturemessagex962sha256) — produces DER X9.62.
 - [p256 crate `Signature`](https://docs.rs/p256/latest/p256/ecdsa/type.Signature.html) — `from_slice` = raw r‖s; `from_der` = DER.
 - `crates/auths-keri/src/keys.rs:180-200` — current `verify_signature`.
-- [CLAUDE.md](../../CLAUDE.md) — wire-format curve tagging rule.
-- Epic `fn-132`, task `fn-132.1`.

@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.auths.dev/secure-envelope-kat-v1.json",
+  "title": "SecureEnvelope KAT",
+  "description": "Known-Answer Test vectors for the auths pairing `SecureEnvelope` AEAD wrapping. The canonical file lives in this repo at `crates/auths-pairing-protocol/tests/vectors/secure_envelope.json`; mobile and other cross-implementation mirrors reference this schema via `$schema` and must validate against it.",
+  "type": "object",
+  "required": ["envelope_info", "aead", "version", "vectors"],
+  "additionalProperties": false,
+  "properties": {
+    "envelope_info": {
+      "description": "HKDF `info` string / domain separator. Must equal `auths-pairing-envelope-v1` for version 1 of the envelope; mirrors MUST reject vectors that declare any other value.",
+      "type": "string",
+      "const": "auths-pairing-envelope-v1"
+    },
+    "aead": {
+      "description": "AEAD primitive. ChaCha20-Poly1305 in the default build; AES-256-GCM under FIPS/CNSA builds (separate KAT file).",
+      "type": "string",
+      "enum": ["chacha20poly1305"]
+    },
+    "version": {
+      "description": "Schema/format version. Bump on any wire-format change.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "vectors": {
+      "description": "Ordered list of KAT vectors. Order is significant: drift in ordering is treated as a file mutation by the generator.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/Vector" }
+    }
+  },
+  "definitions": {
+    "Vector": {
+      "type": "object",
+      "required": [
+        "name",
+        "transport_key_hex",
+        "iv_hex",
+        "session_id",
+        "path",
+        "counter",
+        "nonce_hex",
+        "aad_hex",
+        "ciphertext_hex",
+        "expected_result"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Human-readable identifier for the vector. Stable across regenerations.",
+          "type": "string",
+          "minLength": 1
+        },
+        "transport_key_hex": {
+          "description": "Input: 32-byte transport key, hex-encoded (64 hex chars).",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "iv_hex": {
+          "description": "Input: 12-byte per-session IV, hex-encoded (24 hex chars).",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{24}$"
+        },
+        "session_id": {
+          "description": "Input: pairing session id (part of AAD).",
+          "type": "string"
+        },
+        "path": {
+          "description": "Input: request path (part of AAD).",
+          "type": "string"
+        },
+        "counter": {
+          "description": "Input: monotonic counter for this envelope. Valid range is [1, 1024).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1023
+        },
+        "plaintext_utf8": {
+          "description": "Input: plaintext as UTF-8 string. Mutually exclusive with `plaintext_hex`; exactly one must be present across both fields (modulo the empty-string case where `plaintext_utf8` is an empty string).",
+          "type": "string"
+        },
+        "plaintext_hex": {
+          "description": "Input: plaintext as hex-encoded bytes. Used for binary or oversize vectors where UTF-8 rendering is unhelpful. Mutually exclusive with `plaintext_utf8`.",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]*$"
+        },
+        "nonce_hex": {
+          "description": "Output: expected 12-byte AEAD nonce (`iv XOR counter_be` on the last 4 bytes).",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{24}$"
+        },
+        "aad_hex": {
+          "description": "Output: expected AAD — `u32_be(len(session_id)) || session_id || u32_be(len(path)) || path || u32_be(counter)`.",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]*$"
+        },
+        "ciphertext_hex": {
+          "description": "Output: expected ChaCha20-Poly1305 ciphertext with 16-byte Poly1305 tag appended.",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]*$"
+        },
+        "expected_result": {
+          "description": "For positive vectors: `\"valid\"` — the opener must recover the exact plaintext. For negative vectors: the declared `EnvelopeError` kind (kebab-case).",
+          "type": "string",
+          "enum": [
+            "valid",
+            "tag-mismatch",
+            "aad-mismatch",
+            "counter-not-monotonic"
+          ]
+        },
+        "mutation": {
+          "description": "Negative vectors only: short natural-language description of the mutation applied. Ignored for positive vectors.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

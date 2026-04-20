@@ -9,14 +9,24 @@
 //! POST to the registry server.
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use rand::rngs::OsRng;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
-use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
-use zeroize::Zeroizing;
 
 // Use proc-macro based approach (no UDL)
 uniffi::setup_scaffolding!();
+
+// Signature-injection FFI (P-256, SE-anchored). Private keys never
+// cross this boundary — the caller hands us a pubkey, we hand back a
+// signing payload, the caller signs externally, and we assemble the
+// response body.
+pub mod auth_challenge_context;
+pub mod pairing_context;
+pub use auth_challenge_context::{
+    AuthChallengeContext, assemble_auth_challenge_response, build_auth_challenge_signing_payload,
+};
+pub use pairing_context::{
+    PairingBindingContext, assemble_pairing_response_body, build_pairing_binding_message,
+};
 
 /// KERI protocol version string.
 const KERI_VERSION: &str = "KERI10JSON";
@@ -125,32 +135,18 @@ pub struct PairingInfo {
 /// The session ID is NOT included here — it's a URL path parameter,
 /// not a POST body field. Swift should look up the session ID via
 /// `GET /v1/pairing/sessions/by-code/{short_code}` before POSTing.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct PairingResponsePayload {
     pub device_ephemeral_pubkey: String,
     pub device_signing_pubkey: String,
-    /// Signing curve for `device_signing_pubkey` / `signature`. Carried in-band
-    /// so verifiers never infer curve from pubkey byte length. Mobile FFI is
-    /// Ed25519-only today, so this is always `"ed25519"`.
+    /// Signing curve for `device_signing_pubkey` / `signature`. Carried
+    /// in-band per the wire-format-curve-tagging rule (CLAUDE.md §4) so
+    /// verifiers never infer curve from byte length. The signature-injection
+    /// assembler emits `"p256"`.
     pub curve: String,
     pub device_did: String,
     pub signature: String,
     pub device_name: String,
-}
-
-/// Result of creating a pairing response (crypto side).
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct PairingResult {
-    pub controller_did: String,
-    pub device_did: String,
-    pub shared_secret_hex: String,
-    pub capabilities: Vec<String>,
-    /// The short code from the URI, used to look up the session ID
-    /// via `GET /v1/pairing/sessions/by-code/{short_code}`.
-    pub short_code: String,
-    /// The registry endpoint URL decoded from the URI.
-    pub endpoint: String,
-    pub response_payload: PairingResponsePayload,
 }
 
 // ============================================================================
@@ -245,7 +241,7 @@ fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, MobileError> {
 
 /// Serialize event for signing (canonical JSON with empty signature field).
 fn serialize_for_signing(icp: &IcpEvent) -> Result<Vec<u8>, MobileError> {
-    let mut signing_icp = icp.clone();
+    let signing_icp = icp.clone();
 
     serde_json::to_vec(&signing_icp).map_err(|e| MobileError::Serialization(e.to_string()))
 }
@@ -309,16 +305,19 @@ pub fn create_identity(device_name: String) -> Result<IdentityResult, MobileErro
         bt: "0".to_string(),
         b: vec![],
         a: vec![],
-        dt: None,
+        x: String::new(),
     };
 
     // Finalize event (computes and sets SAID)
     let mut finalized = finalize_icp_event(icp)?;
     let prefix = finalized.i.clone();
 
-    // Sign the event with the current key
+    // Sign the event with the current key. The signature is embedded
+    // into the event's `x` field, which `validate_inception_event`
+    // (and downstream consumers) expect to be present.
     let canonical = serialize_for_signing(&finalized)?;
     let sig = current_keypair.sign(&canonical);
+    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
 
     // Serialize the final signed event
     let inception_event_json =
@@ -334,29 +333,6 @@ pub fn create_identity(device_name: String) -> Result<IdentityResult, MobileErro
         next_public_key_hex: hex::encode(next_keypair.public_key().as_ref()),
         inception_event_json,
     })
-}
-
-/// Sign arbitrary data with the identity's current key.
-///
-/// # Arguments
-/// * `current_key_pkcs8_hex` - The current signing key in PKCS8 DER format (hex encoded)
-/// * `data_to_sign` - The data to sign (as bytes)
-///
-/// # Returns
-/// The Ed25519 signature as hex-encoded bytes
-#[uniffi::export]
-pub fn sign_with_identity(
-    current_key_pkcs8_hex: String,
-    data_to_sign: Vec<u8>,
-) -> Result<String, MobileError> {
-    let pkcs8_bytes = hex::decode(&current_key_pkcs8_hex)
-        .map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-
-    let keypair = Ed25519KeyPair::from_pkcs8(&pkcs8_bytes)
-        .map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-
-    let signature = keypair.sign(&data_to_sign);
-    Ok(hex::encode(signature.as_ref()))
 }
 
 /// Get the public key from a PKCS8-encoded private key.
@@ -443,26 +419,6 @@ pub fn validate_inception_event(inception_event_json: String) -> Result<String, 
 // Auth Challenge Types
 // ============================================================================
 
-/// Input for signing an authentication challenge from a QR code.
-#[derive(Debug, uniffi::Record)]
-pub struct AuthChallengeInput {
-    /// Hex-encoded challenge nonce from the auth server.
-    pub nonce: String,
-    /// Domain from the QR code (anti-phishing binding).
-    pub domain: String,
-}
-
-/// Result of signing an auth challenge.
-#[derive(Debug, uniffi::Record)]
-pub struct SignedAuthChallenge {
-    /// Hex-encoded Ed25519 signature of the canonical challenge payload.
-    pub signature_hex: String,
-    /// Hex-encoded 32-byte Ed25519 public key.
-    pub public_key_hex: String,
-    /// The identity DID (did:keri:...).
-    pub did: String,
-}
-
 /// Parsed auth challenge URI for display before user approves.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct AuthChallengeInfo {
@@ -485,7 +441,9 @@ pub struct AuthChallengeInfo {
 /// The QR code contains: `auths://auth?id={id}&c={challenge}&d={domain}&e={base64(server_url)}`
 ///
 /// Returns the parsed fields so the app can display them and then call
-/// `sign_auth_challenge()` + POST the result.
+/// [`build_auth_challenge_signing_payload`](crate::build_auth_challenge_signing_payload)
+/// + POST the assembled body returned by
+/// [`assemble_auth_challenge_response`](crate::assemble_auth_challenge_response).
 #[uniffi::export]
 pub fn parse_auth_challenge_uri(uri: String) -> Result<AuthChallengeInfo, MobileError> {
     let rest = uri
@@ -534,46 +492,6 @@ pub fn parse_auth_challenge_uri(uri: String) -> Result<AuthChallengeInfo, Mobile
         challenge,
         domain,
         auth_server_url,
-    })
-}
-
-/// Sign an authentication challenge for "Login with Auths".
-///
-/// Constructs a canonical JSON payload from the challenge nonce and domain,
-/// signs it with the identity's current key, and returns the signature +
-/// public key for the mobile app to POST to the auth server.
-///
-/// # Arguments
-/// * `current_key_pkcs8_hex` - The current signing key in PKCS8 DER format (hex encoded)
-/// * `identity_did` - The identity's DID (e.g. "did:keri:EPREFIX")
-/// * `challenge` - The challenge input from the QR code
-#[uniffi::export]
-pub fn sign_auth_challenge(
-    current_key_pkcs8_hex: String,
-    identity_did: String,
-    challenge: AuthChallengeInput,
-) -> Result<SignedAuthChallenge, MobileError> {
-    let pkcs8_bytes = hex::decode(&current_key_pkcs8_hex)
-        .map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-
-    let keypair = Ed25519KeyPair::from_pkcs8(&pkcs8_bytes)
-        .map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-
-    // Build canonical JSON payload: { "domain": ..., "nonce": ... }
-    let payload = serde_json::json!({
-        "domain": challenge.domain,
-        "nonce": challenge.nonce,
-    });
-    let canonical = json_canon::to_string(&payload)
-        .map_err(|e| MobileError::Serialization(e.to_string()))?;
-
-    let signature = keypair.sign(canonical.as_bytes());
-    let public_key = keypair.public_key().as_ref();
-
-    Ok(SignedAuthChallenge {
-        signature_hex: hex::encode(signature.as_ref()),
-        public_key_hex: hex::encode(public_key),
-        did: identity_did,
     })
 }
 
@@ -671,100 +589,6 @@ pub fn parse_pairing_uri(uri: String) -> Result<PairingInfo, MobileError> {
     })
 }
 
-/// Create a pairing response with ECDH key exchange and Ed25519 signature.
-///
-/// This mirrors `PairingResponse::create()` from auths-core. It:
-/// 1. Parses the URI and checks expiry
-/// 2. Generates a device X25519 ephemeral key
-/// 3. Performs ECDH with the initiator's X25519 public key
-/// 4. Signs the binding message (short_code || initiator_x25519 || device_x25519)
-/// 5. Returns the response payload for Swift to POST to the registry
-///
-/// # Arguments
-/// * `uri` - The full `auths://pair?...` URI from the QR code
-/// * `current_key_pkcs8_hex` - The device's Ed25519 signing key (PKCS8 DER, hex encoded)
-/// * `device_name` - Friendly name for this device
-#[uniffi::export]
-pub fn create_pairing_response(
-    uri: String,
-    current_key_pkcs8_hex: String,
-    device_name: String,
-) -> Result<PairingResult, MobileError> {
-    let fields = parse_token_fields(&uri)?;
-
-    // Check expiry using system time (no chrono dependency)
-    let now_unix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| MobileError::PairingFailed(format!("System time error: {}", e)))?
-        .as_secs() as i64;
-
-    if now_unix > fields.expires_at_unix {
-        return Err(MobileError::PairingExpired);
-    }
-
-    // Decode the Ed25519 signing key
-    let pkcs8_bytes = hex::decode(&current_key_pkcs8_hex)
-        .map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-    let ed25519_keypair = Ed25519KeyPair::from_pkcs8(&pkcs8_bytes)
-        .map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-
-    // Generate device X25519 ephemeral key
-    let device_x25519_secret = EphemeralSecret::random_from_rng(OsRng);
-    let device_x25519_public = X25519PublicKey::from(&device_x25519_secret);
-
-    // Decode initiator's X25519 public key from token
-    let initiator_x25519_bytes: [u8; 32] = URL_SAFE_NO_PAD
-        .decode(&fields.ephemeral_pubkey)
-        .map_err(|e| MobileError::PairingFailed(format!("Invalid pubkey encoding: {}", e)))?
-        .try_into()
-        .map_err(|_| MobileError::PairingFailed("Invalid X25519 pubkey length".to_string()))?;
-    let initiator_x25519 = X25519PublicKey::from(initiator_x25519_bytes);
-
-    // Perform ECDH — wrap raw bytes in Zeroizing so they're wiped on drop
-    let shared = device_x25519_secret.diffie_hellman(&initiator_x25519);
-    let shared_bytes = Zeroizing::new(*shared.as_bytes());
-    let shared_secret_hex = hex::encode(*shared_bytes);
-
-    // Get device Ed25519 public key (base64url encoded)
-    let device_signing_pubkey = URL_SAFE_NO_PAD.encode(ed25519_keypair.public_key().as_ref());
-
-    // Encode device X25519 public key (base64url encoded)
-    let device_ephemeral_pubkey_str = URL_SAFE_NO_PAD.encode(device_x25519_public.as_bytes());
-
-    // Build binding message: short_code || initiator_x25519 || device_x25519
-    let mut message = Vec::new();
-    message.extend_from_slice(fields.short_code.as_bytes());
-    message.extend_from_slice(&initiator_x25519_bytes);
-    message.extend_from_slice(device_x25519_public.as_bytes());
-
-    // Sign with Ed25519
-    let sig = ed25519_keypair.sign(&message);
-    let signature = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
-    // Derive device DID (did:key) from public key
-    let device_public_key_hex = hex::encode(ed25519_keypair.public_key().as_ref());
-    let device_did = generate_device_did(device_public_key_hex)?;
-
-    let response_payload = PairingResponsePayload {
-        device_ephemeral_pubkey: device_ephemeral_pubkey_str,
-        device_signing_pubkey,
-        curve: "ed25519".to_string(),
-        device_did: device_did.clone(),
-        signature,
-        device_name: device_name.clone(),
-    };
-
-    Ok(PairingResult {
-        controller_did: fields.controller_did,
-        device_did,
-        shared_secret_hex,
-        capabilities: fields.capabilities,
-        short_code: fields.short_code,
-        endpoint: fields.endpoint,
-        response_payload,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -819,18 +643,6 @@ mod tests {
         // No witnesses
         assert_eq!(event.bt, "0");
         assert!(event.b.is_empty());
-    }
-
-    #[test]
-    fn sign_with_identity_works() {
-        let result = create_identity("Test".to_string()).unwrap();
-        let data = b"test data to sign".to_vec();
-
-        let signature = sign_with_identity(result.current_key_pkcs8_hex, data).unwrap();
-
-        // Signature should be 64 bytes (128 hex chars)
-        assert_eq!(signature.len(), 128);
-        hex::decode(&signature).unwrap();
     }
 
     #[test]
@@ -904,47 +716,13 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_sign_auth_challenge() {
-        use ring::signature::{ED25519, UnparsedPublicKey};
-
-        let identity = create_identity("Test".to_string()).unwrap();
-
-        let challenge = AuthChallengeInput {
-            nonce: "deadbeef".repeat(8), // 64 hex chars = 32 bytes
-            domain: "bank.example.com".to_string(),
-        };
-
-        let result = sign_auth_challenge(
-            identity.current_key_pkcs8_hex.clone(),
-            identity.did.clone(),
-            challenge,
-        )
-        .unwrap();
-
-        assert_eq!(result.did, identity.did);
-        assert_eq!(result.public_key_hex, identity.current_public_key_hex);
-        assert_eq!(result.signature_hex.len(), 128); // 64 bytes = 128 hex chars
-
-        // Verify the signature
-        let canonical = json_canon::to_string(&serde_json::json!({
-            "domain": "bank.example.com",
-            "nonce": "deadbeef".repeat(8),
-        }))
-        .unwrap();
-
-        let pub_bytes = hex::decode(&result.public_key_hex).unwrap();
-        let sig_bytes = hex::decode(&result.signature_hex).unwrap();
-        let public_key = UnparsedPublicKey::new(&ED25519, &pub_bytes);
-        public_key.verify(canonical.as_bytes(), &sig_bytes).unwrap();
-    }
-
     // ========================================================================
     // Pairing tests
     // ========================================================================
 
     /// Build a valid test pairing URI with a future expiry.
     fn make_test_pairing_uri() -> String {
+        use rand_core::OsRng;
         use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
 
         let secret = EphemeralSecret::random_from_rng(OsRng);
@@ -987,93 +765,4 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_create_pairing_response() {
-        let uri = make_test_pairing_uri();
-
-        // Generate a test Ed25519 keypair
-        let identity = create_identity("Test Device".to_string()).unwrap();
-
-        let result = create_pairing_response(
-            uri,
-            identity.current_key_pkcs8_hex,
-            "Test iPhone".to_string(),
-        )
-        .unwrap();
-
-        assert_eq!(result.controller_did, "did:keri:test123");
-        assert!(result.device_did.starts_with("did:key:z"));
-        assert!(!result.shared_secret_hex.is_empty());
-        assert_eq!(result.shared_secret_hex.len(), 64); // 32 bytes = 64 hex chars
-        assert_eq!(result.capabilities, vec!["sign_commit"]);
-
-        // Verify payload fields are populated
-        let payload = &result.response_payload;
-        assert!(!payload.device_ephemeral_pubkey.is_empty());
-        assert!(!payload.device_signing_pubkey.is_empty());
-        assert!(!payload.signature.is_empty());
-        assert_eq!(payload.device_name, "Test iPhone");
-
-        // short_code and endpoint are on the result, not the payload
-        assert_eq!(result.short_code, "AB3DEF");
-        assert_eq!(result.endpoint, "http://localhost:3000");
-    }
-
-    #[test]
-    fn test_create_pairing_response_expired() {
-        let secret = EphemeralSecret::random_from_rng(OsRng);
-        let pubkey = X25519PublicKey::from(&secret);
-        let pubkey_b64 = URL_SAFE_NO_PAD.encode(pubkey.as_bytes());
-        let endpoint_b64 = URL_SAFE_NO_PAD.encode(b"http://localhost:3000");
-
-        // Expired timestamp (in the past)
-        let uri = format!(
-            "auths://pair?d=did:keri:test&e={}&k={}&sc=TSTEXP&x=1000000000&c=",
-            endpoint_b64, pubkey_b64
-        );
-
-        let identity = create_identity("Test".to_string()).unwrap();
-        let result =
-            create_pairing_response(uri, identity.current_key_pkcs8_hex, "Test".to_string());
-
-        assert!(matches!(result, Err(MobileError::PairingExpired)));
-    }
-
-    #[test]
-    fn test_pairing_response_signature_verifiable() {
-        use ring::signature::{ED25519, UnparsedPublicKey};
-
-        let uri = make_test_pairing_uri();
-        let identity = create_identity("Test Device".to_string()).unwrap();
-
-        let result = create_pairing_response(
-            uri.clone(),
-            identity.current_key_pkcs8_hex,
-            "Test iPhone".to_string(),
-        )
-        .unwrap();
-
-        // Reconstruct the binding message and verify the signature
-        let fields = parse_token_fields(&uri).unwrap();
-        let initiator_x25519_bytes = URL_SAFE_NO_PAD.decode(&fields.ephemeral_pubkey).unwrap();
-        let device_x25519_bytes = URL_SAFE_NO_PAD
-            .decode(&result.response_payload.device_ephemeral_pubkey)
-            .unwrap();
-        let signing_pubkey_bytes = URL_SAFE_NO_PAD
-            .decode(&result.response_payload.device_signing_pubkey)
-            .unwrap();
-        let signature_bytes = URL_SAFE_NO_PAD
-            .decode(&result.response_payload.signature)
-            .unwrap();
-
-        // Build the same binding message: short_code || initiator_x25519 || device_x25519
-        let mut message = Vec::new();
-        message.extend_from_slice(fields.short_code.as_bytes());
-        message.extend_from_slice(&initiator_x25519_bytes);
-        message.extend_from_slice(&device_x25519_bytes);
-
-        // Verify signature
-        let public_key = UnparsedPublicKey::new(&ED25519, &signing_pubkey_bytes);
-        public_key.verify(&message, &signature_bytes).unwrap();
-    }
 }

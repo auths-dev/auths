@@ -893,6 +893,7 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         device_did: pairing_response.device_did.clone(),
         signature: Base64UrlEncoded::from_raw(pairing_response.signature),
         device_name: pairing_response.device_name,
+        subkey_chain: None,
     };
 
     relay

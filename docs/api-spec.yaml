@@ -1,0 +1,590 @@
+openapi: 3.1.0
+info:
+  title: auths pairing daemon
+  version: 0.0.1-rc.12
+  summary: LAN pairing + session-scoped message delivery for auths identities.
+  description: |
+    The pairing daemon is an embeddable HTTP server that runs on a
+    trusted device (laptop, server) and coordinates a short-lived
+    pairing handshake with a second device (phone, CLI client, another
+    workstation). It exposes six routes:
+
+    - `GET /health` — liveness probe, unauthenticated.
+    - `GET /v1/pairing/sessions/lookup` — HMAC-authenticated short-code
+      → session-id lookup.
+    - `GET /v1/pairing/sessions/{id}` — public status lookup.
+    - `POST /v1/pairing/sessions/{id}/response` — session-scoped signed
+      submission of the paired device's pubkey + binding signature.
+    - `POST /v1/pairing/sessions/{id}/confirm` — session-scoped signed
+      submission of the SAS confirmation (or abort).
+    - `GET /v1/pairing/sessions/{id}/confirmation` — session-scoped
+      signed poll for the initiator's confirmation state.
+
+    Authentication uses two custom schemes:
+
+    - `Auths-HMAC` on the `lookup` endpoint — the caller knows only the
+      short code at this stage; HMAC-SHA-256 over the canonical input
+      is the strongest authenticator available.
+    - `Auths-Sig` on the session-scoped endpoints — Ed25519 or P-256
+      (per the `curve` field in the bound response body) signature over
+      the canonical input. First successful `Auths-Sig` verify on a
+      session **binds** the verifying key; all subsequent requests must
+      carry a matching signature.
+
+    All secured endpoints enforce a ±30 second `ts` clock skew to bound
+    signed-request replay across daemon reboots. Out-of-skew requests
+    return 400 `clock-skew`.
+
+    The canonical signing input for both schemes is documented in the
+    security schemes below (`x-canonical-signing-input`).
+  contact:
+    name: auths contributors
+    url: https://github.com/auths-dev/auths
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://daemon.local:<port>
+    description: Local-network daemon (LAN host, mDNS-discovered).
+
+tags:
+  - name: health
+  - name: sessions
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [health]
+      summary: Liveness probe.
+      description: Unauthenticated liveness check. Returns `ok`.
+      responses:
+        "200":
+          description: Daemon is alive.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: "ok"
+
+  /v1/pairing/sessions/lookup:
+    get:
+      operationId: lookupSessionByShortCode
+      tags: [sessions]
+      summary: Look up a session id from its short code.
+      description: |
+        The phone has the short code from the QR but does not yet have
+        the session id. It calls this endpoint first to get the id for
+        subsequent session-scoped POSTs. HMAC-authenticated — the short
+        code itself is the only secret the phone holds at this stage.
+
+        Rate-limited per-tier. Unknown short codes return 404; repeated
+        404s consume the lookup-tier token budget.
+      security:
+        - AuthsHMAC: []
+      parameters:
+        - name: short_code
+          in: query
+          required: true
+          description: Short alphanumeric pairing code from the QR.
+          schema:
+            type: string
+            minLength: 6
+            maxLength: 16
+      responses:
+        "200":
+          description: Session found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LookupResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedHmac"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "421":
+          $ref: "#/components/responses/MisdirectedHost"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /v1/pairing/sessions/{id}:
+    get:
+      operationId: getSessionStatus
+      tags: [sessions]
+      summary: Get session status (public).
+      description: |
+        Unauthenticated status enum lookup. Intentionally public — the
+        status enum leaks nothing a network observer can't already
+        infer from pairing timing.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetSessionResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "421":
+          $ref: "#/components/responses/MisdirectedHost"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /v1/pairing/sessions/{id}/response:
+    post:
+      operationId: submitPairingResponse
+      tags: [sessions]
+      summary: Submit the paired device's response.
+      description: |
+        First session-scoped POST. The phone submits its device signing
+        pubkey, an ephemeral X25519 pubkey for ECDH transport-key
+        derivation, a DID derived from the signing pubkey, and a
+        signature over the canonical binding message. The first
+        successful `Auths-Sig` verify binds the signing pubkey; every
+        subsequent call must carry a signature under that same key.
+      security:
+        - AuthsSig: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitResponseRequest"
+      responses:
+        "200":
+          description: Response accepted; session transitions to `responded`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedSig"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/SessionExpired"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "421":
+          $ref: "#/components/responses/MisdirectedHost"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/CapacityExhausted"
+
+  /v1/pairing/sessions/{id}/confirm:
+    post:
+      operationId: submitPairingConfirmation
+      tags: [sessions]
+      summary: Submit SAS confirmation or abort.
+      description: |
+        After the user compares SAS fingerprints on both devices, the
+        phone POSTs either an `encrypted_attestation` payload (confirm)
+        or `{"aborted": true}` (abort). Session-scoped signed.
+      security:
+        - AuthsSig: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitConfirmationRequest"
+      responses:
+        "200":
+          description: Confirmation recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedSig"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/SessionExpired"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "421":
+          $ref: "#/components/responses/MisdirectedHost"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /v1/pairing/sessions/{id}/confirmation:
+    get:
+      operationId: pollPairingConfirmation
+      tags: [sessions]
+      summary: Poll for the initiator's confirmation state.
+      description: |
+        The phone polls this endpoint after submitting the confirm POST.
+        Returns `aborted: true` if the initiator aborted, otherwise
+        (optionally) the encrypted attestation payload once the
+        initiator has authorized delivery. Session-scoped signed.
+      security:
+        - AuthsSig: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Confirmation state (possibly still pending).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetConfirmationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedSig"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "410":
+          $ref: "#/components/responses/SessionExpired"
+        "421":
+          $ref: "#/components/responses/MisdirectedHost"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+components:
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: Pairing session id (UUID-shaped opaque string).
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Malformed request (JSON structure, timestamp skew, or pubkey length/curve mismatch).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          examples:
+            jsonDepth:
+              summary: JSON nested beyond allowed depth.
+              value: { error: "json-depth-exceeded", message: "request malformed" }
+            clockSkew:
+              summary: Authorization timestamp outside ±30 s window.
+              value: { error: "clock-skew", message: "request malformed" }
+            invalidPubkeyLength:
+              summary: Pubkey length does not match declared curve (routing error, not signature error).
+              value: { error: "invalid-pubkey-length", message: "request malformed" }
+
+    UnauthorizedHmac:
+      description: HMAC on the `lookup` endpoint did not verify.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "unauthorized-hmac", message: "unauthorized" }
+
+    UnauthorizedSig:
+      description: Signature on a session-scoped endpoint did not verify or did not match the bound pubkey.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "unauthorized-sig", message: "unauthorized" }
+
+    NotFound:
+      description: Resource (session, short code) not found. Carries no discriminator to avoid enumeration.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "not-found", message: "not found" }
+
+    Conflict:
+      description: |
+        Session state does not accept the requested transition (e.g.,
+        submitting a response to a session that has already received
+        one, or nonce replay).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "conflict", message: "conflict" }
+
+    SessionExpired:
+      description: Session exceeded its monotonic-clock deadline.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "session-expired", message: "session expired" }
+
+    PayloadTooLarge:
+      description: Body exceeded the 64 KiB cap.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "payload-too-large", message: "payload too large" }
+
+    MisdirectedHost:
+      description: Request's `Host` / `Origin` / `Referer` did not match the LAN allowlist bound at daemon startup.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "misdirected-host", message: "misdirected request" }
+
+    RateLimited:
+      description: Per-tier rate limiter rejected the request. Carries a `Retry-After` header.
+      headers:
+        Retry-After:
+          description: Seconds until the caller should retry.
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "rate-limited", message: "too many requests" }
+
+    CapacityExhausted:
+      description: Daemon CPU-budget semaphore declined a NEW session rather than admit it into degraded service.
+      headers:
+        Retry-After:
+          description: Seconds until the caller should retry.
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example: { error: "capacity-exhausted", message: "service at capacity" }
+
+  securitySchemes:
+    AuthsHMAC:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Custom HMAC-SHA-256 scheme. Used only on
+        `GET /v1/pairing/sessions/lookup`.
+
+        Header value format:
+        ```
+        Auths-HMAC ts=<unix-seconds>,nonce=<base64url-u128>,mac=<base64url-hmac>
+        ```
+        where the MAC is HMAC-SHA-256 with key = the raw bytes of the
+        short code, over the canonical input described in
+        `x-canonical-signing-input` below.
+      x-canonical-signing-input: |
+        The canonical byte sequence signed / MACed is:
+        ```
+        "auths-daemon-hmac-v1\n" || METHOD "\n" || PATH_WITH_QUERY "\n" ||
+        hex(SHA-256(body)) "\n" || ts_decimal "\n" || base64url(nonce)
+        ```
+        PATH_WITH_QUERY is the request path including `?short_code=...`
+        exactly as received (no normalization). METHOD is uppercase
+        ASCII.
+
+    AuthsSig:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Custom asymmetric-signature scheme. Used on every session-scoped
+        endpoint (`/v1/pairing/sessions/{id}/response`, `.../confirm`,
+        `.../confirmation`).
+
+        Header value format:
+        ```
+        Auths-Sig kid=<base64url-16>,ts=<unix-seconds>,nonce=<base64url-u128>,sig=<base64url>
+        ```
+        `kid` is the first 16 bytes of SHA-256 over the raw pubkey bytes
+        (32 B for Ed25519, 33 B compressed for P-256). The daemon
+        dispatches on the `curve` field of the bound body (never on
+        pubkey byte length — see ADR 003 and CLAUDE.md §4).
+
+        First successful verify binds the pubkey to the session; every
+        subsequent call must use the same `kid` and a signature that
+        verifies under the bound key. Nonces are tracked per-session to
+        prevent replay.
+      x-canonical-signing-input: |
+        Identical layout to `Auths-HMAC`, but with a different domain
+        separator and asymmetric signing:
+        ```
+        "auths-daemon-sig-v1\n" || METHOD "\n" || PATH "\n" ||
+        hex(SHA-256(body)) "\n" || ts_decimal "\n" || base64url(nonce)
+        ```
+        Signature algorithms:
+        - Ed25519 (pubkey length 32, `curve: "ed25519"`): raw 64-byte
+          Ed25519 signature, base64url-no-pad-encoded.
+        - P-256 (pubkey length 33 compressed, `curve: "p256"`): raw r‖s
+          (64 bytes, per ADR 002), base64url-no-pad-encoded. DER is
+          NOT accepted on the daemon; mobile normalizes DER → raw at
+          the FFI boundary (see `auths-mobile-ffi::pairing_context`).
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [error, message]
+      additionalProperties: false
+      properties:
+        error:
+          description: Stable machine-readable kebab-case discriminant.
+          type: string
+          enum:
+            - token-generation-failed
+            - bind-failed
+            - mdns-error
+            - network-detection-failed
+            - pairing-error
+            - entropy-check-failed
+            - not-found
+            - conflict
+            - unauthorized
+            - misdirected-host
+            - payload-too-large
+            - rate-limited
+            - capacity-exhausted
+            - unauthorized-hmac
+            - unauthorized-sig
+            - nonce-replay
+            - json-depth-exceeded
+            - clock-skew
+            - session-expired
+            - invalid-pubkey-length
+        message:
+          description: Fixed per-variant human-readable string. Branch on `error`, not `message`.
+          type: string
+
+    SuccessResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    LookupResponse:
+      type: object
+      required: [session_id]
+      properties:
+        session_id:
+          type: string
+
+    SessionStatus:
+      type: string
+      enum:
+        - pending
+        - responded
+        - confirmed
+        - aborted
+        - completed
+        - cancelled
+        - expired
+
+    GetSessionResponse:
+      type: object
+      required: [session_id, status, ttl_seconds]
+      properties:
+        session_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        ttl_seconds:
+          type: integer
+          minimum: 0
+        token:
+          description: Echo of the originating `CreateSessionRequest` (rarely returned on public status reads).
+          $ref: "#/components/schemas/CreateSessionRequest"
+        response:
+          description: The response body submitted by the paired device, once present.
+          $ref: "#/components/schemas/SubmitResponseRequest"
+
+    CreateSessionRequest:
+      type: object
+      required: [session_id, controller_did, ephemeral_pubkey, short_code, expires_at]
+      properties:
+        session_id:
+          type: string
+        controller_did:
+          type: string
+        ephemeral_pubkey:
+          type: string
+          description: Base64url-no-pad-encoded X25519 pubkey (32 B).
+        short_code:
+          type: string
+        capabilities:
+          type: array
+          default: []
+          items:
+            type: string
+        expires_at:
+          type: integer
+          description: Unix seconds.
+
+    CurveTag:
+      type: string
+      enum: [ed25519, p256]
+      default: p256
+      description: |
+        In-band curve tag for the submitted `device_signing_pubkey` and
+        `signature`. Defaults to `p256` when absent (the workspace
+        default).
+
+    SubmitResponseRequest:
+      type: object
+      required: [device_ephemeral_pubkey, device_signing_pubkey, device_did, signature]
+      properties:
+        device_ephemeral_pubkey:
+          type: string
+          description: Base64url-no-pad-encoded X25519 pubkey (32 B) used for ECDH transport-key derivation.
+        device_signing_pubkey:
+          type: string
+          description: |
+            Base64url-no-pad-encoded signing pubkey. Encoding depends on `curve`:
+            - `ed25519` → raw 32 B.
+            - `p256` → compressed SEC1 33 B (0x02/0x03 || X). Uncompressed or SPKI forms MUST be rejected with `invalid-pubkey-length` (400).
+        curve:
+          $ref: "#/components/schemas/CurveTag"
+        device_did:
+          type: string
+          description: DID derived from `device_signing_pubkey` (`did:key:z...`).
+        signature:
+          type: string
+          description: |
+            Base64url-no-pad-encoded signature over the canonical binding message:
+            `short_code || initiator_x25519 || device_x25519`.
+            Encoding depends on `curve`:
+            - `ed25519` → raw 64 B.
+            - `p256` → raw r‖s (64 B, per ADR 002). DER is not accepted on the wire.
+        device_name:
+          type: string
+          nullable: true
+
+    SubmitConfirmationRequest:
+      type: object
+      properties:
+        encrypted_attestation:
+          type: string
+          nullable: true
+          description: Envelope-wrapped attestation payload to transmit to the initiator. Absent when aborting.
+        aborted:
+          type: boolean
+          default: false
+
+    GetConfirmationResponse:
+      type: object
+      properties:
+        encrypted_attestation:
+          type: string
+          nullable: true
+        aborted:
+          type: boolean
+          default: false

@@ -12,3 +12,4 @@ mod domain_separation;
 mod pq_hybrid;
 mod pq_slot_wire_compat;
 mod replay_rejected;
+mod secure_envelope_vectors;

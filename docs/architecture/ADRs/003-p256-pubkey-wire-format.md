@@ -54,33 +54,26 @@ The KERI protocol already has a wire form for P-256 verkeys: `1AAI` prefix + bas
 
 ## Consequences
 
-### Code sites that honor this decision
+### Sites that honor this decision
 
-- `crates/auths-pairing-daemon/src/handlers.rs:295-318` — `decode_device_pubkey` must accept only 33-byte payloads when `curve: P256` (after fn-132.2 removes the length-dispatch bug).
-- `crates/auths-keri/src/keys.rs:70-135` — `KeriPublicKey::P256` and `KeriPublicKey::parse` stay as-is.
-- `crates/auths-mobile-ffi/src/lib.rs` — FFI `build_pairing_binding_message` / `build_auth_challenge_signing_payload` accept `device_signing_pubkey_der: Vec<u8>` (the parameter name is kept for mobile-side ergonomics, even though the wire form is compressed SEC1). The FFI body detects the input shape:
-  - 33 bytes → use as-is.
-  - 65 bytes starting with `0x04` → compress to 33 bytes.
-  - SPKI DER → parse, extract point, compress to 33 bytes.
-  - Else → `MobileError::InvalidPubkey`.
+- `crates/auths-pairing-daemon/src/handlers.rs` — `decode_device_pubkey` dispatches on the sibling `curve` field (not byte length) and validates length as a post-routing check. 33-byte compressed P-256 is the only accepted form; 65-byte uncompressed routes to `InvalidPubkeyLength` (400), not `UnauthorizedSig` (401).
+- `crates/auths-keri/src/keys.rs:70-135` — `KeriPublicKey::P256` and `KeriPublicKey::parse` stay as-is (33 B only).
+- `crates/auths-mobile-ffi/src/pairing_context.rs` and `auth_challenge_context.rs` — FFI builders accept `device_signing_pubkey_der: Vec<u8>` and normalize on input:
+  - 33 bytes with leading `0x02`/`0x03` → use as-is.
+  - 65 bytes with leading `0x04` → compress to 33 bytes.
+  - SPKI DER → parse via `VerifyingKey::from_public_key_der`, compress to 33.
+  - Else → `MobileError::InvalidKeyData`.
 
-  Mobile-side best practice is to compress before calling, but the FFI is tolerant.
-- `crates/auths-pairing-protocol/src/response.rs:20-33` — `device_signing_pubkey` encoding in `PairingResponse` is documented as base64url-no-pad(**33-byte compressed SEC1**) for P-256.
+  Mobile-side best practice is to compress before calling; the FFI is tolerant because compressing on the host avoids a round-trip through Swift for the common iOS case.
+- `crates/auths-pairing-protocol/src/response.rs:20-33` — `device_signing_pubkey` encoding in `PairingResponse` is base64url-no-pad(33-byte compressed SEC1) for P-256.
+- `crates/auths-pairing-protocol/src/subkey_chain.rs` — `bootstrap_pubkey` and the implicit subkey pubkey in the binding message both use 33-byte compressed SEC1.
+- `docs/api-spec.yaml` — pubkey documented as `base64url-no-pad(compressed SEC1, 33 bytes)` for P-256.
 
-### Test sites that must exercise this decision
+### Tests that exercise this decision
 
-- fn-132.2 regression tests: 65-byte payload with `curve: P256` must route as P-256 (curve-field dispatch), then fail validation with a distinct length-mismatch error — not `InvalidSignature`.
-- fn-132.4/5 FFI unit tests: submit each of (33-byte compressed, 65-byte uncompressed, SPKI DER) to the FFI builder; verify either success (with compression applied) or explicit `InvalidPubkey` error.
-- fn-132.7 end-to-end: simulate the iOS SE export flow (65-byte → compress → 33-byte) and verify round-trip through the daemon.
-
-### Downstream tasks that reference this ADR
-
-- **fn-132.2** — `decode_device_pubkey` length-dispatch fix: reinforced. After fix, daemon dispatches on `curve`, then validates length (33 for P-256).
-- **fn-132.4** — new pairing FFI: builder tolerates 33/65/SPKI, emits 33 on wire.
-- **fn-132.5** — new challenge FFI: same as fn-132.4.
-- **fn-132.7** — end-to-end test: simulates compression step.
-- **fn-132.11** — `docs/api-spec.yaml`: documents pubkey as `base64url-no-pad(compressed SEC1, 33 bytes)` for P-256.
-- **fn-132.13** — subkey-chain: `bootstrap_pubkey` and the implicit `subkey_pubkey` in the binding message both use 33-byte compressed.
+- `crates/auths-pairing-daemon/src/handlers.rs` unit tests in `decode_device_pubkey_tests`: 65-byte payload with `curve: P256` routes as P-256 (curve-field dispatch), then fails validation with `InvalidPubkeyLength` — not `InvalidSignature`.
+- FFI unit tests in `crates/auths-mobile-ffi/src/pairing_context.rs`: submit each of (33-byte compressed, 65-byte uncompressed, SPKI DER) to the builder; verify either success (with compression applied) or explicit `InvalidKeyData` error.
+- End-to-end test in `crates/auths-pairing-daemon/tests/cases/p256_end_to_end.rs`: simulates the iOS Secure Enclave export flow (65-byte → compress → 33-byte) and verifies round-trip through the daemon.
 
 ### Non-consequences
 
@@ -94,6 +87,4 @@ The KERI protocol already has a wire form for P-256 verkeys: `1AAI` prefix + bas
 - [RFC 5480](https://datatracker.ietf.org/doc/html/rfc5480) — curve OIDs for SPKI.
 - [Apple `SecKeyCopyExternalRepresentation`](https://developer.apple.com/documentation/security/seckeycopyexternalrepresentation(_:_:)).
 - `crates/auths-keri/src/keys.rs:70-135` — current P-256 handling.
-- `crates/auths-pairing-daemon/src/handlers.rs:295-318` — current (buggy) dispatch; fn-132.2 fixes.
-- [CLAUDE.md](../../CLAUDE.md) — wire-format curve tagging rule.
-- Epic `fn-132`, task `fn-132.1`.
+- `crates/auths-pairing-daemon/src/handlers.rs` — `decode_device_pubkey` (dispatches on the sibling `curve` field, validates length post-routing).

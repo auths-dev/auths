@@ -13,6 +13,10 @@ categories = ["network-programming", "authentication"]
 [dependencies]
 auths-core = { workspace = true }
 auths-keri.workspace = true
+# Direct dep on auths-pairing-protocol so the daemon can reach the
+# subkey-chain verifier (`verify_subkey_chain`). Feature pass-through
+# below gates the verifier behind the same flag as the protocol crate.
+auths-pairing-protocol = { workspace = true }
 thiserror.workspace = true
 hkdf.workspace = true
 sha2.workspace = true
@@ -48,13 +52,17 @@ rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem
 zeroize = { workspace = true, optional = true }
 
 [features]
-default = ["server", "mdns"]
+default = ["server", "mdns", "subkey-chain-v1"]
 server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:ring", "dep:base64", "dep:subtle", "dep:if-addrs", "dep:serde_json"]
 mdns = ["dep:mdns-sd"]
 tls = ["dep:rcgen", "dep:zeroize"]
 # Pass-through to auths-crypto's FIPS / CNSA builds via auths-core (direct dep).
 fips = ["auths-core/fips"]
 cnsa = ["auths-core/cnsa"]
+# Enable the subkey-chain verifier path. With this off, the daemon
+# rejects any request carrying `subkey_chain: Some(_)` with
+# `unsupported-subkey-chain` — silent ignore is a security regression.
+subkey-chain-v1 = ["auths-pairing-protocol/subkey-chain-v1"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
@@ -69,6 +77,9 @@ sha2.workspace = true
 hex = "0.4"
 # Ed25519 signing in auth_sig.rs integration tests.
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+# P-256 ECDSA signing in p256_end_to_end.rs integration test. Exercises
+# the iOS-shape signing path end-to-end through verify_sig / decode_device_pubkey.
+p256 = { version = "0.13", features = ["ecdsa"] }
 rand.workspace = true
 
 [lints]

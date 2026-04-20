@@ -740,6 +740,7 @@ version = "0.0.1-rc.12"
 dependencies = [
  "auths-core",
  "auths-keri",
+ "auths-pairing-protocol",
  "axum",
  "base64",
  "ed25519-dalek",
@@ -748,6 +749,7 @@ dependencies = [
  "http-body-util",
  "if-addrs 0.13.4",
  "mdns-sd",
+ "p256 0.13.2",
  "rand 0.8.6",
  "rcgen",
  "ring",

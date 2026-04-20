@@ -53,10 +53,24 @@ pub use protocol::{
     CompletedPairing, Confirmed, Init, Paired, PairingFlow, PairingProtocol, Responded,
     ResponderResult, SasMatch, respond_to_pairing,
 };
-pub use response::PairingResponse;
+pub use response::{CurveTag, PairingResponse};
+// The `SubkeyChain` wire type is always compiled in so every builder
+// that constructs a `SubmitResponseRequest` can spell the field — a
+// feature-gated field would require `#[cfg]` at every call site. The
+// verifier logic (`verify_subkey_chain`, `build_binding_message_v1`,
+// and the domain separator) is gated behind `subkey-chain-v1`. A
+// daemon compiled without the feature that receives a request with
+// `subkey_chain.is_some()` must reject with an explicit unsupported
+// error — silent ignore is a security regression.
+pub mod subkey_chain;
 pub use sas::{
     TransportKey, decrypt_from_transport, derive_sas, derive_transport_key, format_sas_emoji,
     format_sas_numeric,
+};
+pub use subkey_chain::SubkeyChain;
+#[cfg(feature = "subkey-chain-v1")]
+pub use subkey_chain::{
+    SUBKEY_CHAIN_V1_DOMAIN, SubkeyChainError, build_binding_message_v1, verify_subkey_chain,
 };
 pub use token::{KemSlot, PairingSession, PairingToken, normalize_short_code};
 pub use types::*;

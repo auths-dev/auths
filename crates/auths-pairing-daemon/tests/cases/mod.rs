@@ -5,10 +5,13 @@ mod cors_absent;
 mod cpu_budget;
 mod host_allowlist;
 mod monotonic_expiry;
+mod p256_end_to_end;
 mod rate_limiter;
 mod rate_tiers;
 mod request_limits;
 mod router;
+#[cfg(feature = "subkey-chain-v1")]
+mod subkey_chain;
 mod token;
 
 use std::net::SocketAddr;

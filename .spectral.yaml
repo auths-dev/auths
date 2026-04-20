@@ -1,0 +1,41 @@
+# Spectral ruleset for auths OpenAPI specs.
+#
+# Baseline is `spectral:oas` (the official Spectral ruleset for OAS 2/3).
+# Project-specific rules live below; each one is documented with a
+# rationale so the ruleset is self-explanatory.
+extends:
+  - spectral:oas
+
+rules:
+  # Every `/v1/pairing/sessions/*` operation that is not the public
+  # status read MUST declare at least one security scheme. A future
+  # operation that forgets its `security:` entry is almost certainly a
+  # bug — on a LAN-local daemon there is no plausible public endpoint
+  # below `/v1/pairing/sessions/` beyond the status read, which is
+  # documented in its own description.
+  auths-security-required-on-session-paths:
+    description: |
+      Session-scoped endpoints (`/v1/pairing/sessions/{id}/response`,
+      `.../confirm`, `.../confirmation`, `.../lookup`) must carry a
+      non-empty `security` list.
+    severity: error
+    message: "{{path}} must declare `security` (at least one scheme)."
+    given:
+      - "$.paths['/v1/pairing/sessions/lookup'][get]"
+      - "$.paths['/v1/pairing/sessions/{id}/response'][post]"
+      - "$.paths['/v1/pairing/sessions/{id}/confirm'][post]"
+      - "$.paths['/v1/pairing/sessions/{id}/confirmation'][get]"
+    then:
+      field: security
+      function: truthy
+
+  # Top-level `servers` list must exist. Required for codegen tools on
+  # the mobile side that infer the daemon's base URL from the spec.
+  auths-servers-required:
+    description: Top-level `servers` list must be present.
+    severity: error
+    message: "Spec must declare at least one entry in `servers`."
+    given: "$"
+    then:
+      field: servers
+      function: truthy

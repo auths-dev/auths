@@ -1,0 +1,93 @@
+name: API spec
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/api-spec.yaml'
+      - '.spectral.yaml'
+      - 'crates/auths-pairing-daemon/src/handlers.rs'
+      - 'crates/auths-pairing-daemon/src/router.rs'
+      - 'crates/auths-pairing-daemon/src/error.rs'
+      - '.github/workflows/api-spec.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/api-spec.yaml'
+      - '.spectral.yaml'
+      - 'crates/auths-pairing-daemon/src/handlers.rs'
+      - 'crates/auths-pairing-daemon/src/router.rs'
+      - 'crates/auths-pairing-daemon/src/error.rs'
+      - '.github/workflows/api-spec.yml'
+
+permissions:
+  contents: read
+  # `pull-requests: read` needed for the drift-gate label check.
+  pull-requests: read
+
+jobs:
+  # ADR 004: `spectral:oas` baseline + project custom rules in
+  # `.spectral.yaml`. Zero errors; warnings allowed with rationale.
+  lint:
+    name: Spectral lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Spectral
+        run: npm install -g @stoplight/spectral-cli@6
+      - name: Lint docs/api-spec.yaml
+        run: spectral lint docs/api-spec.yaml --fail-severity=error
+
+  # ADR 004: if a PR modifies handler/router/error.rs but does not
+  # touch docs/api-spec.yaml, fail the check. The label
+  # `api-no-spec-change` (applied by a reviewer) overrides for changes
+  # that are provably spec-invariant (e.g., internal refactors that
+  # preserve wire behavior).
+  drift-gate:
+    name: Spec drift gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for spec drift
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$BASE_REF" --depth=1
+
+          changed=$(git diff --name-only "origin/$BASE_REF" HEAD)
+          echo "Changed files in PR:"
+          echo "$changed"
+
+          touched_handler=0
+          touched_spec=0
+          while IFS= read -r f; do
+            case "$f" in
+              crates/auths-pairing-daemon/src/handlers.rs|\
+              crates/auths-pairing-daemon/src/router.rs|\
+              crates/auths-pairing-daemon/src/error.rs)
+                touched_handler=1 ;;
+              docs/api-spec.yaml)
+                touched_spec=1 ;;
+            esac
+          done <<< "$changed"
+
+          if [ "$touched_handler" = "1" ] && [ "$touched_spec" = "0" ]; then
+            echo
+            echo "❌ PR touches daemon handler/router/error.rs but does not update docs/api-spec.yaml."
+            echo "   Per ADR 004, update docs/api-spec.yaml in the same PR, OR have a reviewer add"
+            echo "   the 'api-no-spec-change' label if the change is provably spec-invariant."
+            if echo "$LABELS" | grep -q '"api-no-spec-change"'; then
+              echo "   Detected 'api-no-spec-change' label — drift gate overridden."
+              exit 0
+            fi
+            exit 1
+          fi
+          echo "✅ Spec drift gate: OK"
