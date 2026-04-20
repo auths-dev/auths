@@ -33,14 +33,22 @@ schemars = { version = "0.8", optional = true }
 ml-kem = { version = "0.2", default-features = false, features = ["zeroize"], optional = true }
 
 [features]
-default = []
+default = ["subkey-chain-v1"]
 schema = ["dep:schemars"]
 # Pass-through to auths-crypto's FIPS / CNSA builds.
 fips = ["auths-crypto/fips"]
 cnsa = ["auths-crypto/cnsa"]
-# fn-129.T10: hybrid `(P-256 || ML-KEM-768)` transport-key derivation.
+# Hybrid `(P-256 || ML-KEM-768)` transport-key derivation.
 # UNAUDITED — not for production use. See `src/pq_hybrid.rs` docs.
 pq-hybrid = ["dep:ml-kem"]
+# Per-pairing subkey chains for controller-correlation privacy.
+# The `-v1` suffix tracks the binding-message domain separator
+# `auths-device-subkey-v1` so a future v2 with a different binding
+# format can land as a sibling feature without a breaking flip.
+# Default-on. A daemon compiled without this feature returns
+# `unsupported-subkey-chain` for any request carrying a chain —
+# silent ignore would be a security regression.
+subkey-chain-v1 = []
 
 [dev-dependencies]
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }

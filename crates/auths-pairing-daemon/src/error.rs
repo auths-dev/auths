@@ -141,6 +141,34 @@ pub enum DaemonError {
     /// monotonic enforcement is resilient to clock adjustments.
     #[error("session expired (410)")]
     SessionExpired,
+
+    /// A request's `device_signing_pubkey` bytes did not match the byte
+    /// length expected for the declared `curve` (400). Distinguished from
+    /// [`UnauthorizedSig`] so a curve/length-mismatch surfaces as a routing
+    /// error — not as `InvalidSignature` — per the wire-format-curve-tagging
+    /// rule in CLAUDE.md §4. The variant carries `{curve, expected, actual}`
+    /// for server logs; the wire body does not interpolate these.
+    #[error("pubkey length {actual} does not match curve {curve} (expected {expected})")]
+    InvalidPubkeyLength {
+        curve: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+
+    /// Request carried a `subkey_chain` extension that this daemon build
+    /// cannot verify (400). Emitted when the daemon is compiled without
+    /// the `subkey-chain-v1` feature but receives a chain. Silent ignore
+    /// would be a security regression — the controller would record the
+    /// session-only subkey as the stable phone identifier without the
+    /// chain-of-custody proof the chain was meant to provide.
+    #[error("subkey chain extension not supported by this daemon build")]
+    UnsupportedSubkeyChain,
+
+    /// A supplied `subkey_chain` failed cryptographic verification (400):
+    /// wrong-length pubkey, wrong-length signature, signature does not
+    /// verify, or a self-referential chain (bootstrap == subkey).
+    #[error("subkey chain verification failed: {reason}")]
+    InvalidSubkeyChain { reason: &'static str },
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +222,9 @@ mod http_response {
                 DaemonError::JsonDepthExceeded => "json-depth-exceeded",
                 DaemonError::ClockSkew => "clock-skew",
                 DaemonError::SessionExpired => "session-expired",
+                DaemonError::InvalidPubkeyLength { .. } => "invalid-pubkey-length",
+                DaemonError::UnsupportedSubkeyChain => "unsupported-subkey-chain",
+                DaemonError::InvalidSubkeyChain { .. } => "invalid-subkey-chain",
             }
         }
 
@@ -214,7 +245,11 @@ mod http_response {
                 DaemonError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
                 DaemonError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
                 DaemonError::CapacityExhausted { .. } => StatusCode::SERVICE_UNAVAILABLE,
-                DaemonError::JsonDepthExceeded | DaemonError::ClockSkew => StatusCode::BAD_REQUEST,
+                DaemonError::JsonDepthExceeded
+                | DaemonError::ClockSkew
+                | DaemonError::InvalidPubkeyLength { .. }
+                | DaemonError::UnsupportedSubkeyChain
+                | DaemonError::InvalidSubkeyChain { .. } => StatusCode::BAD_REQUEST,
                 DaemonError::SessionExpired => StatusCode::GONE,
             }
         }
@@ -243,6 +278,9 @@ mod http_response {
                 DaemonError::JsonDepthExceeded => "request malformed",
                 DaemonError::ClockSkew => "request malformed",
                 DaemonError::SessionExpired => "session expired",
+                DaemonError::InvalidPubkeyLength { .. } => "request malformed",
+                DaemonError::UnsupportedSubkeyChain => "unsupported extension",
+                DaemonError::InvalidSubkeyChain { .. } => "request malformed",
             }
         }
 

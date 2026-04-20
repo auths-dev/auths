@@ -83,3 +83,7 @@ All unit tests must pass with network blocked (`cargo test --lib --workspace` be
 - [ ] Public API changes documented with `Args:` and `Usage:` blocks
 - [ ] New port traits have a fake and/or mock in `auths-test-utils`
 - [ ] Breaking changes bumped version per `RELEASES.md`
+- [ ] If you touched `crates/auths-pairing-daemon/src/{handlers,router,error}.rs`,
+      update `docs/api-spec.yaml` in the same PR (per ADR 004). The
+      `api-spec` CI job enforces this; label `api-no-spec-change` can
+      be applied by a reviewer when a change is provably spec-invariant.

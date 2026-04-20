@@ -92,6 +92,16 @@ pub struct SubmitResponseRequest {
     pub signature: Base64UrlEncoded,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_name: Option<String>,
+    /// Optional per-pairing subkey chain for controller-correlation
+    /// privacy. When present, `device_signing_pubkey` is a fresh
+    /// session-only subkey and `subkey_chain.bootstrap_pubkey` holds
+    /// the stable phone-level key that signed the subkey binding.
+    /// A daemon built with the `subkey-chain-v1` feature verifies the
+    /// chain and records `bootstrap_pubkey` as the stable phone
+    /// identifier; a daemon built without the feature rejects any
+    /// `Some(_)` with an explicit unsupported-extension error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subkey_chain: Option<crate::subkey_chain::SubkeyChain>,
 }
 
 /// Response when getting session status.

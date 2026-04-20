@@ -160,11 +160,83 @@ pub async fn handle_submit_response(
         .bind_or_match(&pubkey)
         .map_err(auth_to_daemon_error)?;
 
+    verify_subkey_chain_if_present(&request, &id, &pubkey)?;
+
     state
         .submit_response(&id, request)
         .await
         .map(Json)
         .map_err(|_| DaemonError::Conflict)
+}
+
+/// Verify the optional `subkey_chain` extension carried on a response
+/// submission. If the daemon was compiled without `subkey-chain-v1`
+/// but the request carries a chain, reject with
+/// `UnsupportedSubkeyChain` — silent ignore would let the controller
+/// record the session-only subkey as the stable phone identifier
+/// without the chain-of-custody proof the chain was meant to provide.
+fn verify_subkey_chain_if_present(
+    request: &SubmitResponseRequest,
+    session_id: &str,
+    subkey_pubkey: &auths_keri::KeriPublicKey,
+) -> Result<(), DaemonError> {
+    let Some(ref chain) = request.subkey_chain else {
+        return Ok(());
+    };
+
+    #[cfg(not(feature = "subkey-chain-v1"))]
+    {
+        let _ = (chain, session_id, subkey_pubkey);
+        return Err(DaemonError::UnsupportedSubkeyChain);
+    }
+
+    #[cfg(feature = "subkey-chain-v1")]
+    {
+        use auths_pairing_protocol::subkey_chain::{SubkeyChainError, verify_subkey_chain};
+
+        // Subkey chain is currently defined only for P-256 subkeys (the
+        // iOS Secure Enclave is P-256 exclusively). An Ed25519-bound
+        // session carrying a chain is a client bug; reject it loudly.
+        let subkey_compressed: &[u8] = match subkey_pubkey {
+            auths_keri::KeriPublicKey::P256(bytes) => bytes.as_slice(),
+            auths_keri::KeriPublicKey::Ed25519(_) => {
+                return Err(DaemonError::InvalidSubkeyChain {
+                    reason: "chain only supported for P-256 subkey",
+                });
+            }
+        };
+
+        match verify_subkey_chain(chain, subkey_compressed, session_id) {
+            Ok(_bootstrap) => {
+                // TODO: record `_bootstrap` as the stable phone
+                // identifier on the session for cross-session
+                // revocation. Session state plumbing is outside the
+                // scope of this handler; the verifier returning Ok
+                // is the gate that prevents silent acceptance.
+                Ok(())
+            }
+            Err(SubkeyChainError::SelfReferential) => Err(DaemonError::InvalidSubkeyChain {
+                reason: "self-referential chain (bootstrap == subkey)",
+            }),
+            Err(SubkeyChainError::VerifyFailed) => Err(DaemonError::InvalidSubkeyChain {
+                reason: "binding signature does not verify",
+            }),
+            Err(SubkeyChainError::BootstrapPubkeyLength(_))
+            | Err(SubkeyChainError::SignatureLength(_))
+            | Err(SubkeyChainError::SubkeyPubkeyLength(_)) => {
+                Err(DaemonError::InvalidSubkeyChain {
+                    reason: "chain field has wrong length",
+                })
+            }
+            Err(SubkeyChainError::BootstrapPubkeyDecode(_))
+            | Err(SubkeyChainError::SignatureDecode(_))
+            | Err(SubkeyChainError::BootstrapPubkeyInvalid(_)) => {
+                Err(DaemonError::InvalidSubkeyChain {
+                    reason: "chain field could not be parsed",
+                })
+            }
+        }
+    }
 }
 
 /// Submit SAS confirmation. Requires `Auths-Sig` under the pubkey
@@ -292,28 +364,45 @@ fn parse_json_body<T: serde::de::DeserializeOwned>(body: &Bytes) -> Result<T, Da
     serde_json::from_value(value).map_err(|_| DaemonError::JsonDepthExceeded)
 }
 
-fn decode_device_pubkey(
+pub(crate) fn decode_device_pubkey(
     req: &SubmitResponseRequest,
 ) -> Result<auths_keri::KeriPublicKey, DaemonError> {
-    // `SubmitResponseRequest.device_signing_pubkey` is a base64url-
-    // encoded wire value. The curve is carried via a sibling `curve`
-    // field (CLAUDE.md wire-format rule). For this daemon path we
-    // accept either Ed25519 (32 B) or P-256 compressed (33 B).
+    // Dispatch on the sibling `curve` tag — never on byte length
+    // (CLAUDE.md §4 wire-format-curve-tagging rule). Length is a
+    // validation check *after* routing, so a 32-byte payload with
+    // `curve: P256` surfaces as a distinct `InvalidPubkeyLength`
+    // error rather than being silently reinterpreted as Ed25519.
+    use auths_core::pairing::CurveTag;
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
     let bytes = URL_SAFE_NO_PAD
         .decode(req.device_signing_pubkey.as_str())
         .map_err(|_| DaemonError::UnauthorizedSig)?;
-    match bytes.len() {
-        32 => {
+
+    match req.curve {
+        CurveTag::Ed25519 => {
+            if bytes.len() != 32 {
+                return Err(DaemonError::InvalidPubkeyLength {
+                    curve: "ed25519",
+                    expected: 32,
+                    actual: bytes.len(),
+                });
+            }
             let arr: [u8; 32] = bytes.try_into().map_err(|_| DaemonError::UnauthorizedSig)?;
             Ok(auths_keri::KeriPublicKey::Ed25519(arr))
         }
-        33 => {
+        CurveTag::P256 => {
+            if bytes.len() != 33 {
+                return Err(DaemonError::InvalidPubkeyLength {
+                    curve: "p256",
+                    expected: 33,
+                    actual: bytes.len(),
+                });
+            }
             let arr: [u8; 33] = bytes.try_into().map_err(|_| DaemonError::UnauthorizedSig)?;
             Ok(auths_keri::KeriPublicKey::P256(arr))
         }
-        _ => Err(DaemonError::UnauthorizedSig),
     }
 }
 
@@ -330,4 +419,138 @@ fn current_unix() -> i64 {
 #[allow(dead_code)]
 fn _limited_json_reference<T>() -> Option<LimitedJson<T>> {
     None
+}
+
+#[cfg(test)]
+mod decode_device_pubkey_tests {
+    use super::decode_device_pubkey;
+    use crate::error::DaemonError;
+    use auths_core::pairing::CurveTag;
+    use auths_core::pairing::types::{Base64UrlEncoded, SubmitResponseRequest};
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    fn req(bytes: &[u8], curve: CurveTag) -> SubmitResponseRequest {
+        SubmitResponseRequest {
+            device_ephemeral_pubkey: Base64UrlEncoded::from_raw(URL_SAFE_NO_PAD.encode([0u8; 32])),
+            device_signing_pubkey: Base64UrlEncoded::from_raw(URL_SAFE_NO_PAD.encode(bytes)),
+            curve,
+            device_did: "did:key:zTestTestTest".into(),
+            signature: Base64UrlEncoded::from_raw(URL_SAFE_NO_PAD.encode([0u8; 64])),
+            device_name: None,
+            subkey_chain: None,
+        }
+    }
+
+    #[test]
+    fn routes_ed25519_by_curve_tag() {
+        let r = req(&[0xAB; 32], CurveTag::Ed25519);
+        let key = decode_device_pubkey(&r).expect("32-byte Ed25519 must accept");
+        assert!(matches!(key, auths_keri::KeriPublicKey::Ed25519(_)));
+    }
+
+    #[test]
+    fn routes_p256_by_curve_tag() {
+        // 33-byte compressed SEC1; leading byte must be 0x02/0x03 for a
+        // real point, but decode_device_pubkey does not validate curve
+        // membership — that happens downstream in verify_signature.
+        let mut bytes = [0u8; 33];
+        bytes[0] = 0x02;
+        let r = req(&bytes, CurveTag::P256);
+        let key = decode_device_pubkey(&r).expect("33-byte P-256 must accept");
+        assert!(matches!(key, auths_keri::KeriPublicKey::P256(_)));
+    }
+
+    #[test]
+    fn ed25519_with_33_bytes_errors_on_length_not_signature() {
+        // Historical bug: length dispatch would silently reinterpret
+        // this 33-byte payload as P-256. After the fix it routes as
+        // Ed25519 (per `curve` tag), then fails length validation with
+        // a distinct error code.
+        let r = req(&[0u8; 33], CurveTag::Ed25519);
+        let err = decode_device_pubkey(&r).expect_err("Ed25519 with 33 bytes must error");
+        match err {
+            DaemonError::InvalidPubkeyLength {
+                curve,
+                expected,
+                actual,
+            } => {
+                assert_eq!(curve, "ed25519");
+                assert_eq!(expected, 32);
+                assert_eq!(actual, 33);
+            }
+            other => panic!("expected InvalidPubkeyLength, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn p256_with_32_bytes_errors_on_length_not_signature() {
+        // Symmetric to the above: 32-byte payload with curve: P256
+        // must surface as a routing/length error, not be silently
+        // dispatched as Ed25519.
+        let r = req(&[0u8; 32], CurveTag::P256);
+        let err = decode_device_pubkey(&r).expect_err("P-256 with 32 bytes must error");
+        match err {
+            DaemonError::InvalidPubkeyLength {
+                curve,
+                expected,
+                actual,
+            } => {
+                assert_eq!(curve, "p256");
+                assert_eq!(expected, 33);
+                assert_eq!(actual, 32);
+            }
+            other => panic!("expected InvalidPubkeyLength, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn p256_with_65_bytes_uncompressed_sec1_errors_on_length() {
+        // iOS Secure Enclave exports 65-byte uncompressed SEC1.
+        // ADR 003 specifies the wire form is 33-byte compressed;
+        // submitting 65 bytes is a wire-format error routed as
+        // InvalidPubkeyLength, not InvalidSignature.
+        let r = req(&[0u8; 65], CurveTag::P256);
+        let err = decode_device_pubkey(&r).expect_err("P-256 with 65 bytes must error");
+        match err {
+            DaemonError::InvalidPubkeyLength { actual, .. } => assert_eq!(actual, 65),
+            other => panic!("expected InvalidPubkeyLength, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn absent_curve_field_defaults_to_p256() {
+        // `SubmitResponseRequest.curve` uses `#[serde(default)]` which
+        // resolves to `CurveTag::P256`. A request omitting `curve` must
+        // route as P-256 (the workspace default), so a 32-byte payload
+        // fails length validation rather than being routed as Ed25519.
+        let body = serde_json::json!({
+            "device_ephemeral_pubkey": URL_SAFE_NO_PAD.encode([0u8; 32]),
+            "device_signing_pubkey": URL_SAFE_NO_PAD.encode([0u8; 32]),
+            "device_did": "did:key:zTestTestTest",
+            "signature": URL_SAFE_NO_PAD.encode([0u8; 64])
+        });
+        let r: SubmitResponseRequest =
+            serde_json::from_value(body).expect("default-curve request must deserialize");
+        assert_eq!(r.curve, CurveTag::P256);
+        let err = decode_device_pubkey(&r).expect_err("32B + default curve (P256) must error");
+        assert!(matches!(err, DaemonError::InvalidPubkeyLength { .. }));
+    }
+
+    #[test]
+    fn malformed_base64_still_returns_unauthorized_sig() {
+        // Base64-decode failure is not a routing error — it's a malformed
+        // token, indistinguishable at this layer from a forged one.
+        let r = SubmitResponseRequest {
+            device_ephemeral_pubkey: Base64UrlEncoded::from_raw("ok".into()),
+            device_signing_pubkey: Base64UrlEncoded::from_raw("!!!not-base64!!!".into()),
+            curve: CurveTag::P256,
+            device_did: "did:key:zTestTestTest".into(),
+            signature: Base64UrlEncoded::from_raw(URL_SAFE_NO_PAD.encode([0u8; 64])),
+            device_name: None,
+            subkey_chain: None,
+        };
+        let err = decode_device_pubkey(&r).expect_err("malformed base64 must error");
+        assert!(matches!(err, DaemonError::UnauthorizedSig));
+    }
 }

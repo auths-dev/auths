@@ -317,6 +317,7 @@ version = "0.0.1-rc.12"
 dependencies = [
  "auths-core",
  "auths-keri",
+ "auths-pairing-protocol",
  "axum",
  "base64",
  "hex",
