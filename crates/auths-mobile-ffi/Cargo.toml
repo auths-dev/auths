@@ -17,7 +17,7 @@ homepage = "https://github.com/auths-dev/auths"
 
 [lib]
 name = "auths_mobile_ffi"
-crate-type = ["lib", "staticlib", "cdylib"]
+crate-type = ["lib", "staticlib"]
 
 [dependencies]
 # UniFFI for Swift/Kotlin bindings (cli feature for bindgen)
