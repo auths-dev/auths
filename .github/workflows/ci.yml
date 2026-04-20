@@ -53,6 +53,19 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo run -p xtask -- check-clippy-sync
 
+  xtask-checks:
+    name: Tree-sitter enforcement
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - name: Run tree-sitter enforcement checks
+        run: |
+          cargo run -p xtask -- check-curve-agnostic
+          cargo run -p xtask -- check-anchor-discipline
+          cargo run -p xtask -- check-constant-time
+          cargo run -p xtask -- check-rfc6979
+
   schemas:
     name: Schema validation
     runs-on: ubuntu-latest
