@@ -291,13 +291,8 @@ mod presigned_tests {
         use chrono::TimeZone;
         let nb = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
         let na = Utc.with_ymd_and_hms(2036, 1, 1, 0, 0, 0).unwrap();
-        let bytes = canonicalize_presigned_revocation(
-            "did:keri:ETest",
-            "did:key:z6MkTest",
-            7,
-            nb,
-            na,
-        );
+        let bytes =
+            canonicalize_presigned_revocation("did:keri:ETest", "did:key:z6MkTest", 7, nb, na);
         let s = String::from_utf8_lossy(&bytes);
         assert!(s.contains("2026-01-01T00:00:00+00:00"));
         assert!(s.contains("2036-01-01T00:00:00+00:00"));

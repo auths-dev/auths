@@ -30,6 +30,7 @@ const SHORT_CODE_LEN: usize = 6;
 pub enum KemSlot {
     /// ML-KEM-768 (FIPS 203 Category 3). `public_key` is the 1184-byte
     /// encapsulation key, base64url-encoded without padding.
+    #[serde(rename = "ml_kem_768")]
     MlKem768 {
         /// Base64url-no-pad encoded ML-KEM-768 encapsulation key
         /// (1184 raw bytes → 1580 encoded chars).

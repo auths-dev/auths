@@ -366,7 +366,7 @@ mod tests {
         );
         let emoji = format_sas_emoji(&sas);
         let parts: Vec<&str> = emoji.split("  ").collect();
-        assert_eq!(parts.len(), 4);
+        assert_eq!(parts.len(), 6);
         for part in &parts {
             assert!(SAS_EMOJI.contains(part), "emoji {part} not in wordlist");
         }
@@ -382,7 +382,7 @@ mod tests {
             TEST_SHORT_CODE,
         );
         let numeric = format_sas_numeric(&sas);
-        let re = regex_lite::Regex::new(r"^\d{3}-\d{3}$").unwrap();
+        let re = regex_lite::Regex::new(r"^\d{3}-\d{4}$").unwrap();
         assert!(re.is_match(&numeric), "numeric format wrong: {numeric}");
     }
 
