@@ -220,6 +220,7 @@ pub fn canonicalize_presigned_revocation(
 /// storage.save_presigned_revocation(&device_did, &cert)?;
 /// // On compromise: submit `cert` to the transparency log + propagate.
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub fn create_presigned_revocation(
     identity_did: &IdentityDID,
     device_did: &DeviceDID,
