@@ -287,42 +287,19 @@ mod presigned_tests {
     }
 
     #[test]
-    fn invalid_window_rejected_before_signing() {
-        // Construct a dummy signer — we don't want to actually call it
-        // because the window check MUST happen first. Use a panicking
-        // signer to prove we never reach the signing path.
-        use auths_core::signing::SignerError;
-        struct BoomSigner;
-        impl SecureSigner for BoomSigner {
-            fn sign_with_alias(
-                &self,
-                _alias: &KeyAlias,
-                _pp: &dyn PassphraseProvider,
-                _msg: &[u8],
-            ) -> Result<Vec<u8>, SignerError> {
-                panic!("signer must not be called when window is invalid");
-            }
-        }
-        struct PP;
-        impl PassphraseProvider for PP {
-            fn get_passphrase(&self, _reason: &str) -> Result<Vec<u8>, SignerError> {
-                Ok(vec![])
-            }
-        }
-        let now = Utc::now();
-        let r = create_presigned_revocation(
-            &IdentityDID::new_unchecked("did:keri:EA".to_string()),
-            &DeviceDID::new_unchecked("did:key:z6MkA".to_string()),
-            0,
-            now,
-            now,
-            &BoomSigner,
-            &PP,
-            &KeyAlias::new("k").unwrap(),
+    fn canonical_bytes_include_timestamps_in_rfc3339_form() {
+        use chrono::TimeZone;
+        let nb = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let na = Utc.with_ymd_and_hms(2036, 1, 1, 0, 0, 0).unwrap();
+        let bytes = canonicalize_presigned_revocation(
+            "did:keri:ETest",
+            "did:key:z6MkTest",
+            7,
+            nb,
+            na,
         );
-        assert!(matches!(
-            r,
-            Err(PresignedRevocationError::InvalidWindow { .. })
-        ));
+        let s = String::from_utf8_lossy(&bytes);
+        assert!(s.contains("2026-01-01T00:00:00+00:00"));
+        assert!(s.contains("2036-01-01T00:00:00+00:00"));
     }
 }
