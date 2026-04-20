@@ -19,15 +19,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        checks:
-          - advisories
-          - bans licenses sources
+        include:
+          - checks: advisories
+            args: "--allow unmaintained"
+          - checks: bans licenses sources
+            args: ""
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check ${{ matrix.checks }}
           manifest-path: ./Cargo.toml
+          arguments: ${{ matrix.args }}
 
   cargo-tree-duplicates:
     runs-on: ubuntu-latest

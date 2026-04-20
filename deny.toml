@@ -63,10 +63,6 @@ deny = [
 ]
 
 [advisories]
-# Treat unmaintained crates as warnings, not errors.
-# We track them in ignore[] when no upgrade path exists.
-unmaintained = "warn"
-
 ignore = [
   # rsa Marvin Attack (RUSTSEC-2023-0071) — transitive via ssh-key v0.6;
   # no fix available until ssh-key upgrades to rsa v0.10+
