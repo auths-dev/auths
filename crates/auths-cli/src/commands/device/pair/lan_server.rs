@@ -104,14 +104,18 @@ impl LanPairingServer {
         self,
         timeout: Duration,
     ) -> Result<SubmitResponseRequest, auths_sdk::error::PairingError> {
-        self.cancel.cancel();
-
-        self.handle
+        let result = self
+            .handle
             .wait_for_response(timeout)
             .await
             .map_err(|e| match e {
                 auths_pairing_daemon::DaemonError::Pairing(pe) => pe,
                 other => auths_sdk::error::PairingError::LocalServerError(other.to_string()),
-            })
+            });
+
+        // Shut down the server AFTER response received (or timeout).
+        // Previously cancel() fired first, killing the listener immediately.
+        self.cancel.cancel();
+        result
     }
 }

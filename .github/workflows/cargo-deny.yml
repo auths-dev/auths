@@ -24,11 +24,12 @@ jobs:
           - bans licenses sources
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.93"
+      - uses: ./.github/actions/setup-rust
       - name: Install cargo-deny
-        run: cargo install cargo-deny --version "=0.19.0" --locked
+        run: |
+          if ! cargo deny --version 2>/dev/null | grep -q "0.19"; then
+            cargo install cargo-deny --locked
+          fi
       - name: cargo deny check ${{ matrix.checks }}
         run: cargo deny --manifest-path ./Cargo.toml check ${{ matrix.checks }}
 
