@@ -287,9 +287,11 @@ fn check_skew(ts: i64, now: i64) -> Result<(), AuthError> {
     }
 }
 
+type NonceCacheMap = HashMap<(Vec<u8>, Vec<u8>), Instant>;
+
 /// Bounded nonce replay cache, keyed by `(kid, nonce)`.
 pub struct NonceCache {
-    entries: Mutex<HashMap<(Vec<u8>, Vec<u8>), Instant>>,
+    entries: Mutex<NonceCacheMap>,
     capacity: usize,
     ttl: Duration,
 }

@@ -33,8 +33,6 @@ deny = [
     "auths-cli",
     "auths-mcp-server",
     "auths-telemetry",
-    "auths-id",
-    "xtask",
     "jsonschema",
   ], reason = "HTTP clients must be confined to adapter layer" },
 

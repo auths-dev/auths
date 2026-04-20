@@ -131,7 +131,7 @@ impl HostAllowlist {
             return true;
         }
         let needle = authority.to_ascii_lowercase();
-        self.authorities.iter().any(|a| *a == needle)
+        self.authorities.contains(&needle)
     }
 
     /// Raw authority list (for debugging / test assertions).
@@ -158,7 +158,7 @@ fn authority_of(url_or_authority: &str) -> Option<&str> {
     };
     // Truncate at the first `/`, `?`, or `#`.
     let end = without_scheme
-        .find(|c: char| c == '/' || c == '?' || c == '#')
+        .find(['/', '?', '#'])
         .unwrap_or(without_scheme.len());
     let authority = &without_scheme[..end];
     if authority.is_empty() {

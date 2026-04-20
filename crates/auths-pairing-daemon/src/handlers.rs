@@ -250,7 +250,7 @@ fn extract_auth(
     let header = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| match expected_scheme {
+        .ok_or(match expected_scheme {
             AuthScheme::Hmac => DaemonError::UnauthorizedHmac,
             AuthScheme::Sig => DaemonError::UnauthorizedSig,
         })?;
@@ -317,6 +317,7 @@ fn decode_device_pubkey(
     }
 }
 
+#[allow(clippy::disallowed_methods)] // INVARIANT: daemon is a server process — wall-clock time for auth header validation is appropriate
 fn current_unix() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()

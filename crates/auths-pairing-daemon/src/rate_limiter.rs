@@ -161,12 +161,12 @@ impl TieredRateLimiter {
     /// miss-lockout for `SessionLookup` before incrementing the
     /// counter.
     pub fn check(&self, tier: Tier, ip: IpAddr) -> CheckOutcome {
-        if tier == Tier::SessionLookup {
-            if let Some(retry) = self.check_lookup_lockout(ip) {
-                return CheckOutcome::RateLimited {
-                    retry_after: Some(retry),
-                };
-            }
+        if tier == Tier::SessionLookup
+            && let Some(retry) = self.check_lookup_lockout(ip)
+        {
+            return CheckOutcome::RateLimited {
+                retry_after: Some(retry),
+            };
         }
 
         let (map, max) = match tier {

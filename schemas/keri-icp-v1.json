@@ -55,6 +55,14 @@
         }
       ]
     },
+    "dt": {
+      "description": "Signed-in wall-clock timestamp (ISO 8601, ms precision). When present, it is part of the SAID digest — any tampering breaks the event signature. Time-aware policy checks (rotation cooldown, clock-skew rejection) live in [`crate::validate::validate_kel_with_policy`]; `validate_kel` itself stays pure / clock-free.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
     "i": {
       "description": "Identifier prefix (same as `d` for self-addressing inception)",
       "allOf": [
