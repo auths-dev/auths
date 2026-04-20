@@ -119,3 +119,12 @@ disallowed_methods = "deny"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
+
+[profile.dev]
+# Line-tables-only cuts target/ size by 50-70% and speeds linking.
+# Still get file:line in backtraces; lose variable inspection in lldb.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+# Full debug info OFF for dependencies (we never step into them).
+debug = false

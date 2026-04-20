@@ -125,8 +125,19 @@ jobs:
           git config --global user.name "CI"
           git config --global user.email "ci@auths.dev"
 
-      - name: Run tests
+      - name: Install Go (Ubuntu, needed for aws-lc-fips-sys)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Run tests (Ubuntu — all features incl. FIPS)
+        if: matrix.os == 'ubuntu-latest'
         run: cargo nextest run --workspace --all-features --no-fail-fast
+
+      - name: Run tests (macOS — exclude FIPS, requires Go + Linux)
+        if: matrix.os == 'macos-latest'
+        run: cargo nextest run --workspace --features test-utils,witness-client --no-fail-fast
 
       - name: Run doc tests
         run: cargo test --all --doc

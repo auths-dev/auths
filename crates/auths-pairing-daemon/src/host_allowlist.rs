@@ -169,6 +169,9 @@ fn authority_of(url_or_authority: &str) -> Option<&str> {
 }
 
 fn check_headers(headers: &HeaderMap, allowlist: &HostAllowlist) -> Result<(), DaemonError> {
+    if allowlist.allow_all_for_tests {
+        return Ok(());
+    }
     // Host — required.
     let host = headers
         .get(axum::http::header::HOST)

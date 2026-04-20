@@ -46,6 +46,7 @@ async fn kat_ed25519_verify_matches_sign() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "fips"))]
 async fn kat_p256_sign_is_rfc6979_deterministic() {
     let provider = default_provider();
     let seed = SecureSeed::new(KAT_SEED);

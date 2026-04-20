@@ -205,19 +205,18 @@ fn check_secret_partialeq(
             .map(|n| source[n.byte_range()].to_string());
         if let Some(name) = name {
             if secret_types.contains(&name) {
-                // Walk the attribute_items that precede the type declaration
-                // (tree-sitter-rust places them as children of struct_item/enum_item).
-                let mut cursor = node.walk();
-                for child in node.children(&mut cursor) {
-                    if child.kind() == "attribute_item" {
-                        let text = &source[child.byte_range()];
+                // tree-sitter-rust places attributes as preceding siblings of
+                // struct_item/enum_item, not as children. Walk backwards
+                // through siblings to find derive attributes.
+                let mut prev = node.prev_sibling();
+                while let Some(sib) = prev {
+                    let sk = sib.kind();
+                    if sk == "attribute_item" || sk == "attribute" {
+                        let text = &source[sib.byte_range()];
                         if text.contains("derive")
                             && (text.contains("PartialEq") || text.contains("Eq"))
                         {
-                            let start = child.start_position();
-                            // SAFETY: the trait name is captured by value into the Violation;
-                            // we store a &'static str via intern by leaking a Box — simple
-                            // and fine for the limited set of Secret types in the workspace.
+                            let start = sib.start_position();
                             let ty: &'static str = Box::leak(name.clone().into_boxed_str());
                             violations.push(Violation {
                                 file: file.to_path_buf(),
@@ -226,7 +225,10 @@ fn check_secret_partialeq(
                                 kind: ViolationKind::SecretPartialEq(ty),
                             });
                         }
+                    } else {
+                        break; // stop once we hit a non-attribute sibling
                     }
+                    prev = sib.prev_sibling();
                 }
             }
         }
