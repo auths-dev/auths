@@ -867,6 +867,7 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         expires_at: chrono::DateTime::from_timestamp(token_data.expires_at, 0).unwrap_or(now),
         capabilities: token_data.capabilities.clone(),
         kem_slot: None,
+        daemon_spki_sha256: None,
     };
 
     if token.is_expired(now) {

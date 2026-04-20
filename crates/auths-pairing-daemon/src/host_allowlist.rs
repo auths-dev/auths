@@ -77,10 +77,7 @@ impl HostAllowlist {
     /// `"my-mac.local"`).
     ///
     /// The emitted authorities always include the port.
-    pub fn for_bound_addr(
-        addr: std::net::SocketAddr,
-        mdns_hostname: Option<&str>,
-    ) -> Self {
+    pub fn for_bound_addr(addr: std::net::SocketAddr, mdns_hostname: Option<&str>) -> Self {
         let port = addr.port();
         let mut authorities = Vec::with_capacity(6);
         // Loopback forms
@@ -154,7 +151,9 @@ fn authority_of(url_or_authority: &str) -> Option<&str> {
         None => {
             // Accept a bare authority (Host header itself) — strip
             // leading `//` if any, leave otherwise.
-            url_or_authority.strip_prefix("//").unwrap_or(url_or_authority)
+            url_or_authority
+                .strip_prefix("//")
+                .unwrap_or(url_or_authority)
         }
     };
     // Truncate at the first `/`, `?`, or `#`.
@@ -179,7 +178,10 @@ fn check_headers(headers: &HeaderMap, allowlist: &HostAllowlist) -> Result<(), D
         return Err(DaemonError::MisdirectedHost);
     }
     // Origin — optional, but if present must match.
-    if let Some(origin) = headers.get(axum::http::header::ORIGIN).and_then(|v| v.to_str().ok()) {
+    if let Some(origin) = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+    {
         // "null" is a valid Origin for some contexts but never a LAN-
         // daemon client — reject it.
         if origin.eq_ignore_ascii_case("null") {

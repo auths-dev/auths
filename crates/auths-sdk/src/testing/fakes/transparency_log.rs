@@ -107,6 +107,7 @@ impl FakeTransparencyLog {
             log_origin: LogOrigin::new_unchecked("fake.test/log"),
             witnesses: vec![],
             signature_algorithm: auths_verifier::SignatureAlgorithm::Ed25519,
+            ecdsa_log_public_key_der: None,
         }
     }
 

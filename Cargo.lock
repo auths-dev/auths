@@ -643,6 +643,7 @@ dependencies = [
  "base64",
  "blake3",
  "cesride",
+ "chrono",
  "hex",
  "p256 0.13.2",
  "proptest",
@@ -699,15 +700,21 @@ name = "auths-pairing-daemon"
 version = "0.0.1-rc.12"
 dependencies = [
  "auths-core",
+ "auths-keri",
  "axum",
  "base64",
+ "ed25519-dalek",
+ "hex",
+ "hkdf",
  "http-body-util",
  "if-addrs 0.13.4",
  "mdns-sd",
  "rand 0.8.5",
+ "rcgen",
  "ring",
  "serde",
  "serde_json",
+ "sha2",
  "subtle",
  "thiserror 2.0.18",
  "tokio",
@@ -5270,6 +5277,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rcgen"
+version = "0.14.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10b99e0098aa4082912d4c649628623db6aba77335e4f4569ff5083a6448b32e"
+dependencies = [
+ "pem",
+ "rustls-pki-types",
+ "time",
+ "yasna",
+]
+
+[[package]]
 name = "redis"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6890,6 +6909,7 @@ dependencies = [
  "http-body-util",
  "iri-string",
  "pin-project-lite",
+ "tokio",
  "tower",
  "tower-layer",
  "tower-service",
@@ -8142,6 +8162,15 @@ dependencies = [
  "arraydeque",
  "encoding_rs",
  "hashlink",
+]
+
+[[package]]
+name = "yasna"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
+dependencies = [
+ "time",
 ]
 
 [[package]]

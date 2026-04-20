@@ -167,6 +167,7 @@ pub fn initialize_registry_identity(
         b,
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).map_err(|e| InitError::Keri(e.to_string()))?;
@@ -303,6 +304,7 @@ pub fn initialize_registry_identity_multi(
         b,
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).map_err(|e| InitError::Keri(e.to_string()))?;

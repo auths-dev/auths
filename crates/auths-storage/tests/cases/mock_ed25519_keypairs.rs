@@ -250,6 +250,7 @@ pub fn mock_inception_event(index: usize) -> Event {
         b: vec![],
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).expect("fixture event must finalize");

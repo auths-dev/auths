@@ -171,23 +171,37 @@ fn verify_checkpoint(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> Check
             }
         }
         auths_verifier::SignatureAlgorithm::EcdsaP256 => {
-            // For ECDSA P-256, the C2SP signed-note `log_signature` field is
-            // Ed25519-pinned by spec (64-byte fixed). We carry the ECDSA DER
-            // signature + key in sibling `ecdsa_checkpoint_signature` /
-            // `ecdsa_checkpoint_key` fields that the Rekor adapter populates.
-            // Spec link: https://c2sp.org/signed-note. Curve-fixed by spec; do
-            // not try to widen `log_signature` itself.
-            if let (Some(ecdsa_sig), Some(ecdsa_pk)) = (
-                &signed.ecdsa_checkpoint_signature,
-                &signed.ecdsa_checkpoint_key,
-            ) {
-                let peer_key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, ecdsa_pk.as_der());
-                match peer_key.verify(note_body.as_bytes(), ecdsa_sig.as_der()) {
-                    Ok(()) => CheckpointStatus::Verified,
-                    Err(_) => CheckpointStatus::InvalidSignature,
-                }
-            } else {
-                CheckpointStatus::InvalidSignature
+            // For ECDSA P-256, the C2SP signed-note `log_signature` field
+            // is Ed25519-pinned by spec (64-byte fixed). We carry the
+            // ECDSA DER signature + key in sibling
+            // `ecdsa_checkpoint_signature` / `ecdsa_checkpoint_key`
+            // fields that the Rekor adapter populates. Spec link:
+            // https://c2sp.org/signed-note.
+            //
+            // Missing fields are a STRUCTURAL error — operators
+            // investigating log misbehavior need to tell "the signature
+            // didn't verify" apart from "the signature doesn't exist in
+            // the bundle at all". Falling through to InvalidSignature
+            // conflates these and hides the real cause.
+            let Some(ecdsa_sig) = &signed.ecdsa_checkpoint_signature else {
+                return CheckpointStatus::MissingEcdsaSignature;
+            };
+            let Some(ecdsa_pk) = &signed.ecdsa_checkpoint_key else {
+                return CheckpointStatus::MissingEcdsaKey;
+            };
+            // Bundle-carried key must match the pinned key from the
+            // trust root byte-for-byte — otherwise the verifier is
+            // just checking "did this key sign this message" which
+            // is trivially forgeable.
+            if let Some(pinned) = trust_root.ecdsa_log_public_key_der.as_deref()
+                && pinned != ecdsa_pk.as_der()
+            {
+                return CheckpointStatus::InvalidSignature;
+            }
+            let peer_key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, ecdsa_pk.as_der());
+            match peer_key.verify(note_body.as_bytes(), ecdsa_sig.as_der()) {
+                Ok(()) => CheckpointStatus::Verified,
+                Err(_) => CheckpointStatus::InvalidSignature,
             }
         }
     }
@@ -588,6 +602,7 @@ mod tests {
             log_origin: LogOrigin::new("test.dev/log").unwrap(),
             witnesses: vec![],
             signature_algorithm: Default::default(),
+            ecdsa_log_public_key_der: None,
         };
 
         TestFixture {
@@ -779,6 +794,7 @@ mod tests {
                 },
             ],
             signature_algorithm: Default::default(),
+            ecdsa_log_public_key_der: None,
         };
 
         let report = verify_bundle(&bundle, &trust_root, fixed_now());

@@ -52,6 +52,7 @@ pub fn test_inception_event(key_seed: &str) -> Event {
         b: vec![],
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).expect("fixture event must finalize");

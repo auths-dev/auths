@@ -151,19 +151,17 @@ where
         if !is_json_content_type(&req) {
             return Err(DaemonError::JsonDepthExceeded);
         }
-        let bytes = Bytes::from_request(req, state)
-            .await
-            .map_err(|rej| {
-                // `Bytes::from_request` uses `tower_http::limit::RequestBodyLimitLayer`
-                // upstream to reject oversize bodies with 413 PAYLOAD_TOO_LARGE.
-                // Map that (and only that) to PayloadTooLarge; everything else
-                // becomes a generic 400.
-                if rej.status() == StatusCode::PAYLOAD_TOO_LARGE {
-                    DaemonError::PayloadTooLarge
-                } else {
-                    DaemonError::JsonDepthExceeded
-                }
-            })?;
+        let bytes = Bytes::from_request(req, state).await.map_err(|rej| {
+            // `Bytes::from_request` uses `tower_http::limit::RequestBodyLimitLayer`
+            // upstream to reject oversize bodies with 413 PAYLOAD_TOO_LARGE.
+            // Map that (and only that) to PayloadTooLarge; everything else
+            // becomes a generic 400.
+            if rej.status() == StatusCode::PAYLOAD_TOO_LARGE {
+                DaemonError::PayloadTooLarge
+            } else {
+                DaemonError::JsonDepthExceeded
+            }
+        })?;
 
         if bytes.len() > MAX_BODY_BYTES {
             return Err(DaemonError::PayloadTooLarge);
@@ -172,7 +170,8 @@ where
         let value: serde_json::Value =
             serde_json::from_slice(&bytes).map_err(|_| DaemonError::JsonDepthExceeded)?;
         check_string_lengths(&value)?;
-        let parsed: T = serde_json::from_value(value).map_err(|_| DaemonError::JsonDepthExceeded)?;
+        let parsed: T =
+            serde_json::from_value(value).map_err(|_| DaemonError::JsonDepthExceeded)?;
         Ok(Self(parsed))
     }
 }
@@ -243,8 +242,7 @@ mod tests {
 
     #[test]
     fn string_length_walk_accepts_short_strings() {
-        let v: serde_json::Value =
-            serde_json::json!({"did": "did:keri:xyz", "caps": ["sign"]});
+        let v: serde_json::Value = serde_json::json!({"did": "did:keri:xyz", "caps": ["sign"]});
         assert!(check_string_lengths(&v).is_ok());
     }
 

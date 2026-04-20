@@ -68,9 +68,17 @@ async fn session_lookup_burst_honors_per_tier_quota() {
     let r1 = router.clone().oneshot(get_lookup("DOESNT")).await.unwrap();
     // First two lookups burn the quota; status irrelevant (404) — we
     // care that the rate limiter hasn't fired yet.
-    assert!(r1.status() != 429, "1st should not be 429, got {}", r1.status());
+    assert!(
+        r1.status() != 429,
+        "1st should not be 429, got {}",
+        r1.status()
+    );
     let r2 = router.clone().oneshot(get_lookup("MATTER")).await.unwrap();
-    assert!(r2.status() != 429, "2nd should not be 429, got {}", r2.status());
+    assert!(
+        r2.status() != 429,
+        "2nd should not be 429, got {}",
+        r2.status()
+    );
     let r3 = router.clone().oneshot(get_lookup("NOMORE")).await.unwrap();
     assert_eq!(r3.status(), 429, "3rd lookup should be rate-limited");
 }

@@ -47,14 +47,21 @@ pub struct PairingToken {
     pub ephemeral_pubkey: String,
     pub expires_at: DateTime<Utc>,
     pub capabilities: Vec<String>,
-    /// fn-129.T10: optional hybrid-KEM slot. `None` on classical builds
-    /// and classical sessions; `Some(KemSlot::MlKem768 { .. })` when the
+    /// Optional hybrid-KEM slot. `None` on classical builds and
+    /// classical sessions; `Some(KemSlot::MlKem768 { .. })` when the
     /// initiator is running a `pq-hybrid`-enabled build. Parsers on
-    /// default builds accept but do not act on a populated slot (they
-    /// cannot — they have no ML-KEM code). An active `pq-hybrid` peer
-    /// MUST NOT silently downgrade when this field is `Some`.
+    /// default builds accept but do not act on a populated slot
+    /// (they cannot — they have no ML-KEM code). An active hybrid
+    /// peer MUST NOT silently downgrade when this field is `Some`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kem_slot: Option<KemSlot>,
+    /// Optional SPKI SHA-256 fingerprint (base64url, 32 bytes
+    /// decoded) of the daemon's TLS certificate. Populated when the
+    /// daemon is built with the `tls` feature; the phone pins
+    /// against this value on connect so no CA is required. `None`
+    /// means the daemon is serving plaintext.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daemon_spki_sha256: Option<String>,
 }
 
 /// Ephemeral keypair for a pairing session.
@@ -114,6 +121,7 @@ impl PairingToken {
             expires_at: now + expiry,
             capabilities,
             kem_slot: None,
+            daemon_spki_sha256: None,
         };
 
         Ok(PairingSession {
@@ -208,6 +216,7 @@ impl PairingToken {
             expires_at,
             capabilities,
             kem_slot: None,
+            daemon_spki_sha256: None,
         })
     }
 

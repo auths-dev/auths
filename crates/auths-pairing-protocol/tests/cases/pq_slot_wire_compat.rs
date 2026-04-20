@@ -20,6 +20,7 @@ fn sample_token_no_slot() -> PairingToken {
         expires_at: Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         capabilities: vec!["sign_commit".to_string()],
         kem_slot: None,
+        daemon_spki_sha256: None,
     }
 }
 

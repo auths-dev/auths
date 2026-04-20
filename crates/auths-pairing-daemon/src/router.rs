@@ -28,11 +28,14 @@ use axum::{
     Extension, Router, middleware,
     routing::{get, post},
 };
+use std::time::Duration;
+
+use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::DaemonState;
 use crate::handlers::{
-    handle_get_confirmation, handle_get_session, handle_health, handle_lookup_by_code,
+    handle_get_confirmation, handle_get_session, handle_health, handle_lookup_hmac,
     handle_submit_confirmation, handle_submit_response,
 };
 use crate::host_allowlist::{HostAllowlist, host_allowlist_middleware};
@@ -67,10 +70,7 @@ pub fn build_pairing_router(
 ) -> Router {
     Router::new()
         .route("/health", get(handle_health))
-        .route(
-            "/v1/pairing/sessions/by-code/{code}",
-            get(handle_lookup_by_code),
-        )
+        .route("/v1/pairing/sessions/lookup", get(handle_lookup_hmac))
         .route("/v1/pairing/sessions/{id}", get(handle_get_session))
         .route(
             "/v1/pairing/sessions/{id}/response",
@@ -84,6 +84,14 @@ pub fn build_pairing_router(
             "/v1/pairing/sessions/{id}/confirmation",
             get(handle_get_confirmation),
         )
+        // Per-request deadline — protects against slow-write clients
+        // that hold a connection open indefinitely (a Slowloris
+        // variant that targets the response write side). 30s is
+        // well above any legitimate pairing round-trip.
+        .layer(TimeoutLayer::with_status_code(
+            axum::http::StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(30),
+        ))
         // 64 KiB global body-size cap. Sits innermost so handlers and
         // the `LimitedJson` extractor see a byte-limited body; placing
         // it ABOVE rate-limit would let floods of 70 KiB POSTs burn

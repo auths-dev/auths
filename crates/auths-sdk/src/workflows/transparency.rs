@@ -120,6 +120,7 @@ pub async fn fetch_trust_root(
         log_origin,
         witnesses,
         signature_algorithm: Default::default(),
+        ecdsa_log_public_key_der: None,
     })
 }
 
@@ -379,6 +380,7 @@ mod tests {
             log_origin: LogOrigin::new("test.dev/log").unwrap(),
             witnesses: vec![],
             signature_algorithm: Default::default(),
+            ecdsa_log_public_key_der: None,
         }
     }
 

@@ -169,6 +169,7 @@ impl RegistryIdentityStorage {
             b,
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         // Finalize event (computes SAID). Signatures for ICP events are

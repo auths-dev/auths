@@ -309,6 +309,7 @@ pub fn create_identity(device_name: String) -> Result<IdentityResult, MobileErro
         bt: "0".to_string(),
         b: vec![],
         a: vec![],
+        dt: None,
     };
 
     // Finalize event (computes and sets SAID)

@@ -4,7 +4,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::oneshot;
+use tokio::sync::{Semaphore, oneshot};
 
 use auths_core::pairing::types::{CreateSessionRequest, SubmitResponseRequest};
 
@@ -39,6 +39,11 @@ pub struct PairingDaemonBuilder {
     rate_tiers: Option<TieredRateConfig>,
     network: Option<Box<dyn NetworkInterfaces>>,
     discovery: Option<Box<dyn NetworkDiscovery>>,
+    cpu_budget: Option<Arc<Semaphore>>,
+    cpu_budget_permits: Option<usize>,
+    connection_cap: Option<Arc<Semaphore>>,
+    connection_cap_permits: Option<usize>,
+    session_ttl: Option<Duration>,
 }
 
 impl PairingDaemonBuilder {
@@ -54,7 +59,36 @@ impl PairingDaemonBuilder {
             rate_tiers: None,
             network: None,
             discovery: None,
+            cpu_budget: None,
+            cpu_budget_permits: None,
+            connection_cap: None,
+            connection_cap_permits: None,
+            session_ttl: None,
         }
+    }
+
+    /// Cap the number of concurrent in-flight new-session creations.
+    /// Override for tests; production uses `min(num_cpus, 4)`.
+    pub fn with_cpu_budget(mut self, permits: usize) -> Self {
+        self.cpu_budget_permits = Some(permits.max(1));
+        self
+    }
+
+    /// Cap the number of concurrent TCP connections admitted to the
+    /// daemon. Overflow connections are dropped at `accept()` before
+    /// any bytes are read.
+    pub fn with_connection_cap(mut self, permits: usize) -> Self {
+        self.connection_cap_permits = Some(permits.max(1));
+        self
+    }
+
+    /// Override the default 5-minute session lifetime. The expiry
+    /// clock is monotonic (`tokio::time::Instant`), not wall-clock,
+    /// so NTP adjustments or clock-skew attacks cannot extend a
+    /// session.
+    pub fn with_session_ttl(mut self, ttl: Duration) -> Self {
+        self.session_ttl = Some(ttl);
+        self
     }
 
     /// Override the tiered rate-limit configuration. When set, this
@@ -154,8 +188,42 @@ impl PairingDaemonBuilder {
         let bind_ip = network.detect_lan_ip()?;
         let (token_bytes, token_b64) = generate_transport_token()?;
 
+        // CPU-budget semaphore: bounded concurrency for admitting
+        // new sessions. Rejection is 503 CapacityExhausted with a
+        // Retry-After hint — the caller/handle owns the permit.
+        let cpu_budget = self.cpu_budget.unwrap_or_else(|| {
+            let permits = self.cpu_budget_permits.unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4)
+                    .min(4)
+            });
+            Arc::new(Semaphore::new(permits))
+        });
+        let permit =
+            cpu_budget
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| DaemonError::CapacityExhausted {
+                    retry_after: Duration::from_secs(5),
+                })?;
+
+        // Connection-level cap is created here but acquired in the
+        // accept loop (in the CLI layer). We just own the Arc so it
+        // lives as long as the daemon.
+        let connection_cap = self.connection_cap.unwrap_or_else(|| {
+            let permits = self.connection_cap_permits.unwrap_or(128);
+            Arc::new(Semaphore::new(permits))
+        });
+
+        let session_ttl = self.session_ttl.unwrap_or(Duration::from_secs(300));
         let (tx, rx) = oneshot::channel();
-        let state = Arc::new(DaemonState::new(session, token_bytes, tx));
+        let state = Arc::new(DaemonState::new_with_ttl(
+            session,
+            token_bytes,
+            tx,
+            session_ttl,
+        ));
 
         // Router is built lazily in `into_parts`, once the caller
         // knows the bound port. We need the port to scope the Host
@@ -168,6 +236,8 @@ impl PairingDaemonBuilder {
             token: token_b64,
             bind_ip,
             discovery,
+            _cpu_permit: permit,
+            connection_cap,
         })
     }
 }
@@ -215,6 +285,13 @@ pub struct PairingDaemon {
     token: String,
     bind_ip: IpAddr,
     discovery: Option<Box<dyn NetworkDiscovery>>,
+    /// Holds the CPU-budget permit for the lifetime of the daemon.
+    /// Drop releases it so subsequent session creations can proceed.
+    _cpu_permit: tokio::sync::OwnedSemaphorePermit,
+    /// Shared semaphore for the TCP accept loop. `into_parts`
+    /// surfaces this so the caller can acquire a permit per inbound
+    /// connection.
+    connection_cap: Arc<Semaphore>,
 }
 
 impl PairingDaemon {
@@ -254,6 +331,8 @@ impl PairingDaemon {
             discovery: self.discovery,
             bind_ip: self.bind_ip,
             token: self.token,
+            _cpu_permit: self._cpu_permit,
+            connection_cap: self.connection_cap,
         };
         (router, handle)
     }
@@ -269,6 +348,21 @@ pub struct PairingDaemonHandle {
     discovery: Option<Box<dyn NetworkDiscovery>>,
     bind_ip: IpAddr,
     token: String,
+    _cpu_permit: tokio::sync::OwnedSemaphorePermit,
+    /// Accept-loop connection cap. Caller acquires a permit
+    /// per inbound `TcpStream`; dropping the permit (on connection
+    /// close) lets a new connection through.
+    connection_cap: Arc<Semaphore>,
+}
+
+impl PairingDaemonHandle {
+    /// The accept-loop connection cap. Caller should
+    /// `try_acquire_owned()` on each incoming `TcpStream` and drop
+    /// the permit when the connection closes; if acquisition fails
+    /// the connection should be closed without reading any bytes.
+    pub fn connection_cap(&self) -> &Arc<Semaphore> {
+        &self.connection_cap
+    }
 }
 
 impl PairingDaemonHandle {

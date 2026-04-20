@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::{Mutex, Notify, oneshot};
+use tokio::time::Instant;
 
 use auths_core::pairing::types::{
     CreateSessionRequest, GetConfirmationResponse, GetSessionResponse, SessionStatus,
@@ -38,6 +40,23 @@ pub struct DaemonState {
     pub(crate) confirmation: Mutex<Option<SubmitConfirmationRequest>>,
     pub(crate) confirmation_notify: Arc<Notify>,
     pub(crate) pairing_token: Vec<u8>,
+    /// Replay-protection cache shared across HMAC + Sig auth paths.
+    /// Each `(kid, nonce)` is remembered for the nonce TTL window.
+    #[cfg(feature = "server")]
+    pub(crate) nonce_cache: crate::auth::NonceCache,
+    /// First-use pubkey binding. Populated on the first successful
+    /// `Auths-Sig` verification (typically `POST /response`);
+    /// subsequent requests must be signed by the same key.
+    #[cfg(feature = "server")]
+    pub(crate) pubkey_binding: crate::auth::PubkeyBinding,
+    /// Monotonic start-of-session timestamp. Paired with `ttl` to
+    /// enforce expiry independent of wall-clock drift. `Instant`
+    /// stops during process suspend on some platforms; for our
+    /// 5-minute default TTL that's acceptable — on wake the session
+    /// is simply considered fresh, which is fail-open in the
+    /// direction of availability (the user can still try to pair).
+    pub(crate) created_at: Instant,
+    pub(crate) ttl: Duration,
 }
 
 impl DaemonState {
@@ -58,6 +77,23 @@ impl DaemonState {
         pairing_token: Vec<u8>,
         response_tx: oneshot::Sender<SubmitResponseRequest>,
     ) -> Self {
+        Self::new_with_ttl(
+            session,
+            pairing_token,
+            response_tx,
+            Duration::from_secs(300),
+        )
+    }
+
+    /// Like [`new`][Self::new] but with an explicit TTL. Used by
+    /// tests + callers that want to shorten the default 5-minute
+    /// session lifetime.
+    pub fn new_with_ttl(
+        session: CreateSessionRequest,
+        pairing_token: Vec<u8>,
+        response_tx: oneshot::Sender<SubmitResponseRequest>,
+        ttl: Duration,
+    ) -> Self {
         Self {
             session,
             status: Mutex::new(SessionStatus::Pending),
@@ -65,7 +101,44 @@ impl DaemonState {
             confirmation: Mutex::new(None),
             confirmation_notify: Arc::new(Notify::new()),
             pairing_token,
+            #[cfg(feature = "server")]
+            nonce_cache: crate::auth::NonceCache::new(),
+            #[cfg(feature = "server")]
+            pubkey_binding: crate::auth::PubkeyBinding::new(),
+            created_at: Instant::now(),
+            ttl,
         }
+    }
+
+    /// Monotonic expiry check. Returns `true` when the session has
+    /// outlived its configured TTL; the handler surface maps this to
+    /// `DaemonError::SessionExpired` (410 Gone).
+    pub fn is_expired(&self, now: Instant) -> bool {
+        now.saturating_duration_since(self.created_at) >= self.ttl
+    }
+
+    /// Convenience: read the monotonic creation timestamp. Exposed
+    /// for callers that want to display "session expires in Xs" to
+    /// the user.
+    pub fn created_at(&self) -> Instant {
+        self.created_at
+    }
+
+    /// Configured TTL.
+    pub fn ttl(&self) -> Duration {
+        self.ttl
+    }
+
+    /// Replay-protection cache for Authorization headers.
+    #[cfg(feature = "server")]
+    pub fn nonce_cache(&self) -> &crate::auth::NonceCache {
+        &self.nonce_cache
+    }
+
+    /// First-use pubkey binding for this session.
+    #[cfg(feature = "server")]
+    pub fn pubkey_binding(&self) -> &crate::auth::PubkeyBinding {
+        &self.pubkey_binding
     }
 
     /// The session request that this daemon is serving.
@@ -78,12 +151,12 @@ impl DaemonState {
         &self.session
     }
 
-    /// The raw pairing token bytes used to authenticate mutating requests.
-    ///
-    /// Usage:
-    /// ```ignore
-    /// let is_valid = validate_pairing_token(headers, state.pairing_token());
-    /// ```
+    /// The raw transport token bytes — a unique per-session
+    /// identifier embedded in e.g. the mDNS TXT record. Historically
+    /// doubled as an HTTP bearer token; HTTP auth is now HMAC (for
+    /// `/lookup`) or device signatures (for session-scoped
+    /// endpoints), but consumers that only want a session nonce
+    /// still use this.
     pub fn pairing_token(&self) -> &[u8] {
         &self.pairing_token
     }

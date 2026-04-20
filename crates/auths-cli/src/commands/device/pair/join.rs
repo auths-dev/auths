@@ -88,6 +88,7 @@ pub(crate) async fn handle_join(
         expires_at: chrono::DateTime::from_timestamp(token_data.expires_at, 0).unwrap_or(now),
         capabilities: token_data.capabilities.clone(),
         kem_slot: None,
+        daemon_spki_sha256: None,
     };
 
     if token.is_expired(now) {

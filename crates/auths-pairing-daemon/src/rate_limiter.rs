@@ -194,10 +194,7 @@ impl TieredRateLimiter {
         entry.count += 1;
         if entry.count > max {
             // Retry-After hint = time until the current window expires.
-            let remaining = self
-                .cfg
-                .window
-                .saturating_sub(entry.window_start.elapsed());
+            let remaining = self.cfg.window.saturating_sub(entry.window_start.elapsed());
             CheckOutcome::RateLimited {
                 retry_after: Some(remaining),
             }
@@ -209,7 +206,10 @@ impl TieredRateLimiter {
     /// `SasSubmission` has a per-session lifetime counter rather than
     /// a per-IP rolling window. Called from the confirm handler.
     pub fn check_sas_submission(&self, session_id: &str) -> CheckOutcome {
-        let mut guard = self.sas_submission.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self
+            .sas_submission
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let entry = guard.entry(session_id.to_string()).or_insert(0);
         *entry += 1;
         if *entry > self.cfg.sas_submissions_per_session {
@@ -266,7 +266,10 @@ pub fn classify_path(method: &axum::http::Method, path: &str) -> Tier {
             return Tier::SasSubmission;
         }
     }
-    if method == axum::http::Method::GET && path.starts_with("/v1/pairing/sessions/by-code/") {
+    if method == axum::http::Method::GET
+        && (path == "/v1/pairing/sessions/lookup"
+            || path.starts_with("/v1/pairing/sessions/by-code/"))
+    {
         return Tier::SessionLookup;
     }
     Tier::Other

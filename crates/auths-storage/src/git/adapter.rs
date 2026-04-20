@@ -2345,6 +2345,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();
@@ -2386,6 +2387,7 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         let event = Event::Rot(rot.clone());
@@ -2409,6 +2411,7 @@ mod tests {
             s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
             a: vec![Seal::digest("ETest")],
+            dt: None,
         };
 
         let event = Event::Ixn(ixn.clone());
@@ -2433,6 +2436,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
         let finalized = finalize_icp_event(icp).unwrap();
         let prefix = finalized.i.clone();
@@ -2516,6 +2520,7 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
         let event = Event::Rot(rot.clone());
         rot.d = compute_event_said(&event).unwrap();
@@ -2556,6 +2561,7 @@ mod tests {
             s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![Seal::digest("ETest")],
+            dt: None,
         };
         let event = Event::Ixn(ixn.clone());
         ixn.d = compute_event_said(&event).unwrap();
@@ -2599,6 +2605,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         let event = Event::Icp(icp);
@@ -3916,6 +3923,7 @@ mod index_consistency_tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();
@@ -4170,6 +4178,7 @@ mod tenant_isolation_tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();

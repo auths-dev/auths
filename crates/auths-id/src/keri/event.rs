@@ -150,6 +150,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![Seal::digest("EAttest")],
+            dt: None,
         };
         let json = serde_json::to_string(&icp).unwrap();
         assert!(json.contains("\"s\":\"0\""));

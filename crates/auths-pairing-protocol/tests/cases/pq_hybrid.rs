@@ -119,6 +119,7 @@ fn kem_slot_round_trips_through_json() {
         expires_at: Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         capabilities: vec!["sign_commit".to_string()],
         kem_slot: Some(slot.clone()),
+        daemon_spki_sha256: None,
     };
 
     let json = serde_json::to_string(&token).unwrap();

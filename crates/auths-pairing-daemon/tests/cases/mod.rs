@@ -1,6 +1,10 @@
+mod auth_hmac;
+mod auth_sig;
 mod builder;
 mod cors_absent;
+mod cpu_budget;
 mod host_allowlist;
+mod monotonic_expiry;
 mod rate_limiter;
 mod rate_tiers;
 mod request_limits;
@@ -52,4 +56,3 @@ pub fn build_test_daemon() -> (axum::Router, Arc<DaemonState>, String) {
         .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))));
     (router, state, token_b64)
 }
-

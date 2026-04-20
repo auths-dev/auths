@@ -118,6 +118,7 @@ fn build_anchor_ixn(
         s: KeriSequence::new(state.sequence + 1),
         p: state.last_event_said.clone(),
         a: vec![seal],
+        dt: None,
     };
     auths_keri::finalize_ixn_event(ixn).map_err(AnchorError::from)
 }

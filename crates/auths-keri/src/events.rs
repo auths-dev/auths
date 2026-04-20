@@ -3,6 +3,7 @@
 //! These types are the single authoritative definition of KERI events for the
 //! entire workspace. All other crates import from here.
 
+use chrono::{DateTime, Utc};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
@@ -298,8 +299,6 @@ impl<'de> Deserialize<'de> for Seal {
 pub enum SealType {
     /// Device attestation seal
     DeviceAttestation,
-    /// Revocation seal
-    Revocation,
     /// Capability delegation seal
     Delegation,
     /// Identity provider binding seal
@@ -310,7 +309,6 @@ impl fmt::Display for SealType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SealType::DeviceAttestation => write!(f, "device-attestation"),
-            SealType::Revocation => write!(f, "revocation"),
             SealType::Delegation => write!(f, "delegation"),
             SealType::IdpBinding => write!(f, "idp-binding"),
         }
@@ -356,12 +354,71 @@ pub struct IcpEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
+    /// Signed-in wall-clock timestamp (ISO 8601, ms precision). When
+    /// present, it is part of the SAID digest — any tampering breaks
+    /// the event signature. Time-aware policy checks
+    /// (rotation cooldown, clock-skew rejection) live in
+    /// [`crate::validate::validate_kel_with_policy`]; `validate_kel`
+    /// itself stays pure / clock-free.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dt: Option<DateTime<Utc>>,
 }
 
-/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a (+ x if non-empty, legacy)
+/// Parameter struct for [`IcpEvent::new`]. Mirrors the existing
+/// field set 1-for-1 so call-site migration is a mechanical prefix/
+/// suffix wrap. Future wire-format additions land on `IcpEvent` via
+/// a `with_*` method, not by widening this `Init` struct — that's
+/// what makes the pattern future-proof.
+pub struct IcpEventInit {
+    pub v: VersionString,
+    pub d: Said,
+    pub i: Prefix,
+    pub s: KeriSequence,
+    pub kt: Threshold,
+    pub k: Vec<CesrKey>,
+    pub nt: Threshold,
+    pub n: Vec<Said>,
+    pub bt: Threshold,
+    pub b: Vec<Prefix>,
+    pub c: Vec<ConfigTrait>,
+    pub a: Vec<Seal>,
+}
+
+impl IcpEvent {
+    /// Construct an `IcpEvent` from its required fields. The
+    /// additional, optional `dt` is set via [`Self::with_dt`].
+    pub fn new(init: IcpEventInit) -> Self {
+        Self {
+            v: init.v,
+            d: init.d,
+            i: init.i,
+            s: init.s,
+            kt: init.kt,
+            k: init.k,
+            nt: init.nt,
+            n: init.n,
+            bt: init.bt,
+            b: init.b,
+            c: init.c,
+            a: init.a,
+            dt: None,
+        }
+    }
+
+    /// Attach a signed-in rotation timestamp. Included in the SAID
+    /// digest, so tampering invalidates the signature.
+    /// Attach a signed-in timestamp. Included in the SAID digest, so
+    /// tampering invalidates the signature.
+    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
+        self.dt = Some(dt);
+        self
+    }
+}
+
+/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, (dt) (+ x if non-empty, legacy)
 impl Serialize for IcpEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 13;
+        let field_count = 13 + usize::from(self.dt.is_some());
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "icp")?;
@@ -376,6 +433,9 @@ impl Serialize for IcpEvent {
         map.serialize_entry("b", &self.b)?;
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
+        if let Some(dt) = &self.dt {
+            map.serialize_entry("dt", dt)?;
+        }
         map.end()
     }
 }
@@ -419,12 +479,65 @@ pub struct RotEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
+    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dt: Option<DateTime<Utc>>,
 }
 
-/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a (+ x if non-empty, legacy)
+/// Parameter struct for [`RotEvent::new`]. See [`IcpEventInit`] for
+/// the pattern rationale.
+pub struct RotEventInit {
+    pub v: VersionString,
+    pub d: Said,
+    pub i: Prefix,
+    pub s: KeriSequence,
+    pub p: Said,
+    pub kt: Threshold,
+    pub k: Vec<CesrKey>,
+    pub nt: Threshold,
+    pub n: Vec<Said>,
+    pub bt: Threshold,
+    pub br: Vec<Prefix>,
+    pub ba: Vec<Prefix>,
+    pub c: Vec<ConfigTrait>,
+    pub a: Vec<Seal>,
+}
+
+impl RotEvent {
+    /// Construct a `RotEvent` from its required fields. The optional
+    /// `dt` is set via [`Self::with_dt`].
+    pub fn new(init: RotEventInit) -> Self {
+        Self {
+            v: init.v,
+            d: init.d,
+            i: init.i,
+            s: init.s,
+            p: init.p,
+            kt: init.kt,
+            k: init.k,
+            nt: init.nt,
+            n: init.n,
+            bt: init.bt,
+            br: init.br,
+            ba: init.ba,
+            c: init.c,
+            a: init.a,
+            dt: None,
+        }
+    }
+
+    /// Attach a signed-in timestamp. Included in the SAID digest, so
+    /// tampering invalidates the signature.
+    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
+        self.dt = Some(dt);
+        self
+    }
+}
+
+/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, (dt) (+ x if non-empty, legacy)
 impl Serialize for RotEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 15;
+        let field_count = 15 + usize::from(self.dt.is_some());
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "rot")?;
@@ -441,6 +554,9 @@ impl Serialize for RotEvent {
         map.serialize_entry("ba", &self.ba)?;
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
+        if let Some(dt) = &self.dt {
+            map.serialize_entry("dt", dt)?;
+        }
         map.end()
     }
 }
@@ -464,12 +580,48 @@ pub struct IxnEvent {
     pub p: Said,
     /// Anchored seals (the main purpose of IXN events)
     pub a: Vec<Seal>,
+    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dt: Option<DateTime<Utc>>,
 }
 
-/// Spec field order: v, t, d, i, s, p, a (+ x if non-empty, legacy)
+/// Parameter struct for [`IxnEvent::new`].
+pub struct IxnEventInit {
+    pub v: VersionString,
+    pub d: Said,
+    pub i: Prefix,
+    pub s: KeriSequence,
+    pub p: Said,
+    pub a: Vec<Seal>,
+}
+
+impl IxnEvent {
+    /// Construct an `IxnEvent` from its required fields. The optional
+    /// `dt` is set via [`Self::with_dt`].
+    pub fn new(init: IxnEventInit) -> Self {
+        Self {
+            v: init.v,
+            d: init.d,
+            i: init.i,
+            s: init.s,
+            p: init.p,
+            a: init.a,
+            dt: None,
+        }
+    }
+
+    /// Attach a signed-in timestamp. Included in the SAID digest, so
+    /// tampering invalidates the signature.
+    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
+        self.dt = Some(dt);
+        self
+    }
+}
+
+/// Spec field order: v, t, d, i, s, p, a, (dt) (+ x if non-empty, legacy)
 impl Serialize for IxnEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 7;
+        let field_count = 7 + usize::from(self.dt.is_some());
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "ixn")?;
@@ -478,6 +630,9 @@ impl Serialize for IxnEvent {
         map.serialize_entry("s", &self.s)?;
         map.serialize_entry("p", &self.p)?;
         map.serialize_entry("a", &self.a)?;
+        if let Some(dt) = &self.dt {
+            map.serialize_entry("dt", dt)?;
+        }
         map.end()
     }
 }
@@ -532,12 +687,62 @@ pub struct DipEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix
     pub di: Prefix,
+    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dt: Option<DateTime<Utc>>,
 }
 
-/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, di (+ x if non-empty)
+/// Parameter struct for [`DipEvent::new`].
+pub struct DipEventInit {
+    pub v: VersionString,
+    pub d: Said,
+    pub i: Prefix,
+    pub s: KeriSequence,
+    pub kt: Threshold,
+    pub k: Vec<CesrKey>,
+    pub nt: Threshold,
+    pub n: Vec<Said>,
+    pub bt: Threshold,
+    pub b: Vec<Prefix>,
+    pub c: Vec<ConfigTrait>,
+    pub a: Vec<Seal>,
+    pub di: Prefix,
+}
+
+impl DipEvent {
+    /// Construct a `DipEvent` from its required fields. The optional
+    /// `dt` is set via [`Self::with_dt`].
+    pub fn new(init: DipEventInit) -> Self {
+        Self {
+            v: init.v,
+            d: init.d,
+            i: init.i,
+            s: init.s,
+            kt: init.kt,
+            k: init.k,
+            nt: init.nt,
+            n: init.n,
+            bt: init.bt,
+            b: init.b,
+            c: init.c,
+            a: init.a,
+            di: init.di,
+            dt: None,
+        }
+    }
+
+    /// Attach a signed-in timestamp. Included in the SAID digest, so
+    /// tampering invalidates the signature.
+    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
+        self.dt = Some(dt);
+        self
+    }
+}
+
+/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, di, (dt) (+ x if non-empty)
 impl Serialize for DipEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 14;
+        let field_count = 14 + usize::from(self.dt.is_some());
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "dip")?;
@@ -553,6 +758,9 @@ impl Serialize for DipEvent {
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.serialize_entry("di", &self.di)?;
+        if let Some(dt) = &self.dt {
+            map.serialize_entry("dt", dt)?;
+        }
         map.end()
     }
 }
@@ -600,12 +808,66 @@ pub struct DrtEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix (KERI §11).
     pub di: Prefix,
+    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dt: Option<DateTime<Utc>>,
 }
 
-/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, di
+/// Parameter struct for [`DrtEvent::new`].
+pub struct DrtEventInit {
+    pub v: VersionString,
+    pub d: Said,
+    pub i: Prefix,
+    pub s: KeriSequence,
+    pub p: Said,
+    pub kt: Threshold,
+    pub k: Vec<CesrKey>,
+    pub nt: Threshold,
+    pub n: Vec<Said>,
+    pub bt: Threshold,
+    pub br: Vec<Prefix>,
+    pub ba: Vec<Prefix>,
+    pub c: Vec<ConfigTrait>,
+    pub a: Vec<Seal>,
+    pub di: Prefix,
+}
+
+impl DrtEvent {
+    /// Construct a `DrtEvent` from its required fields. The optional
+    /// `dt` is set via [`Self::with_dt`].
+    pub fn new(init: DrtEventInit) -> Self {
+        Self {
+            v: init.v,
+            d: init.d,
+            i: init.i,
+            s: init.s,
+            p: init.p,
+            kt: init.kt,
+            k: init.k,
+            nt: init.nt,
+            n: init.n,
+            bt: init.bt,
+            br: init.br,
+            ba: init.ba,
+            c: init.c,
+            a: init.a,
+            di: init.di,
+            dt: None,
+        }
+    }
+
+    /// Attach a signed-in timestamp. Included in the SAID digest, so
+    /// tampering invalidates the signature.
+    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
+        self.dt = Some(dt);
+        self
+    }
+}
+
+/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, di, (dt)
 impl Serialize for DrtEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 16;
+        let field_count = 16 + usize::from(self.dt.is_some());
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "drt")?;
@@ -623,6 +885,9 @@ impl Serialize for DrtEvent {
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.serialize_entry("di", &self.di)?;
+        if let Some(dt) = &self.dt {
+            map.serialize_entry("dt", dt)?;
+        }
         map.end()
     }
 }
@@ -1063,6 +1328,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
         let json = serde_json::to_string(&icp).unwrap();
         // d, a, c are always serialized (spec requires all fields)
@@ -1131,6 +1397,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
         let signed = SignedEvent::new(
             Event::Icp(icp),

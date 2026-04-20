@@ -409,6 +409,7 @@ pub fn create_keri_identity_multi(
         b,
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;
@@ -505,6 +506,7 @@ pub fn create_keri_identity_with_curve(
         b,
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     // Finalize event (computes and sets SAID)
@@ -591,6 +593,7 @@ pub fn create_keri_identity_with_backend(
         b: vec![],
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;
@@ -676,6 +679,7 @@ pub fn create_keri_identity_from_key(
         b,
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;

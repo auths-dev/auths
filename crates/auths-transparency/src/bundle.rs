@@ -175,6 +175,14 @@ pub enum CheckpointStatus {
     Verified,
     /// The checkpoint signature did not verify.
     InvalidSignature,
+    /// The trust config declared `EcdsaP256` but the checkpoint did not
+    /// carry the ECDSA signature bytes. Distinct from `InvalidSignature`
+    /// so operators can tell a protocol mis-configuration apart from a
+    /// crypto failure.
+    MissingEcdsaSignature,
+    /// The trust config declared `EcdsaP256` but the checkpoint did not
+    /// carry the ECDSA public-key bytes.
+    MissingEcdsaKey,
     /// No checkpoint was available for verification.
     NotProvided,
 }

@@ -9,6 +9,9 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+base64 = "0.22"
+arbitrary = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
 
 [dependencies.auths_keri]
 package = "auths-keri"
@@ -25,6 +28,20 @@ debug = 1
 [[bin]]
 name = "fuzz_cesr_import"
 path = "fuzz_targets/fuzz_cesr_import.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_parse_cesr"
+path = "fuzz_targets/fuzz_parse_cesr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_validate_kel"
+path = "fuzz_targets/fuzz_validate_kel.rs"
 test = false
 doc = false
 bench = false

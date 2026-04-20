@@ -54,10 +54,7 @@ fn get(uri: &str, host: Option<&str>) -> Request<Body> {
 }
 
 fn allowlist_8080() -> HostAllowlist {
-    HostAllowlist::for_bound_addr(
-        "192.168.1.42:8080".parse().unwrap(),
-        Some("my-mac.local"),
-    )
+    HostAllowlist::for_bound_addr("192.168.1.42:8080".parse().unwrap(), Some("my-mac.local"))
 }
 
 #[tokio::test]

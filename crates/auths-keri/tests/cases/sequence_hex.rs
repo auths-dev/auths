@@ -14,6 +14,7 @@ fn make_ixn_with_seq(seq_u128: u128) -> IxnEvent {
         s: KeriSequence::new(seq_u128),
         p: Said::new_unchecked("EPlaceholderPrior00000000000000000000000000".to_string()),
         a: vec![Seal::digest("EPlaceholderSeal000000000000000000000000000")],
+        dt: None,
     }
 }
 
