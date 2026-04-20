@@ -70,6 +70,12 @@ ignore = [
   # no fix available until ssh-key upgrades to rsa v0.10+
   "RUSTSEC-2023-0071",
 
+  # rustls-pemfile unmaintained (RUSTSEC-2025-0134)
+  # Transitive via axum-server → rustls-pemfile. No updated axum-server available.
+  # Not a vulnerability — the crate is archived but functionally correct.
+  # Remove when axum-server drops the dependency.
+  "RUSTSEC-2025-0134",
+
   # rustls-webpki URI name constraint issues (RUSTSEC-2026-0098, RUSTSEC-2026-0099)
   # Transitive via aws-smithy-http-client → hyper-rustls 0.24 → rustls 0.21 → rustls-webpki 0.101.7
   # Not exploitable: auths doesn't validate X.509 certificates; identity is KERI/DID-based.

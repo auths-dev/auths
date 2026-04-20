@@ -87,7 +87,7 @@ single-operator threat model this policy exists to eliminate.
 | Jurisdictions | 1 (US) | ≥ 2 |
 
 **Current state fails the policy.** The machine-readable
-[`witness_policy.json`](../../crates/auths-transparency/data/witness_policy.json)
+[`witness_policy.json`](https://github.com/auths-dev/auths/blob/main/crates/auths-transparency/data/witness_policy.json)
 embeds the target quorum so clients see it as a hard failure until
 the witness set meets the policy. This is intentional — a passing
 verification with only one witness would be worse than a loud

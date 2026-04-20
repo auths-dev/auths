@@ -83,7 +83,9 @@ fn seed_org_identity(backend: &FakeRegistryBackend) {
             "DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
         )],
         nt: Threshold::Simple(1),
-        n: vec!["EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()],
+        n: vec![Said::new_unchecked(
+            "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+        )],
         bt: Threshold::Simple(0),
         b: vec![],
         c: vec![],
