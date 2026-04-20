@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "_doc": "Machine-readable witness-diversity policy. Consumed by the runtime verifier. Human-readable companion: docs/security/witness-diversity.md. Fails closed if quorum unsatisfied.",
+  "quorum": {
+    "min_witnesses": 3,
+    "min_organizations": 3,
+    "min_jurisdictions": 2
+  },
+  "witnesses": [
+    {
+      "name": "auths-dev-us-west",
+      "organization": "auths.dev",
+      "jurisdiction": "US",
+      "status": "active",
+      "curve": "ed25519",
+      "pubkey_b64": "REPLACE_WITH_PINNED_ED25519_VERKEY_BASE64URL_NO_PAD",
+      "kms_provider": "aws-kms",
+      "notes": "Bootstrap witness. Must be joined by ≥2 independent operators before this policy can be satisfied."
+    }
+  ],
+  "retired_witnesses": [],
+  "rotation_notices": []
+}

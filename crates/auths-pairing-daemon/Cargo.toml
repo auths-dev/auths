@@ -12,14 +12,28 @@ categories = ["network-programming", "authentication"]
 
 [dependencies]
 auths-core = { workspace = true }
+auths-keri.workspace = true
 thiserror.workspace = true
+hkdf.workspace = true
+sha2.workspace = true
+hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 tokio = { workspace = true, features = ["sync"] }
+# Startup entropy / CRNG-init probe.
+rand.workspace = true
+# Structured server-side error logging from DaemonError::into_response.
+tracing = "0.1"
 
 # Server feature deps
 axum = { version = "0.8", optional = true }
 tower = { version = "0.5", features = ["util"], optional = true }
-tower-http = { version = "0.6", features = ["trace", "cors"], optional = true }
+# `cors` feature intentionally NOT enabled — this daemon is strictly
+# app-to-daemon on the LAN; a browser hitting it is DNS rebinding or
+# a bug. See router.rs for the full rationale.
+# `limit` → `RequestBodyLimitLayer`; `timeout` → per-request timeout
+# that guards against slow-write clients (Slowloris-adjacent DoS).
+tower-http = { version = "0.6", features = ["trace", "limit", "timeout"], optional = true }
+serde_json = { version = "1", optional = true }
 ring = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 subtle = { workspace = true, optional = true }
@@ -28,16 +42,34 @@ if-addrs = { version = "0.13", optional = true }
 # mDNS feature deps
 mdns-sd = { version = "0.18.0", optional = true }
 
+# TLS feature deps — self-signed cert + SPKI pinning via QR.
+# `crypto` feature provides KeyPair; `pem` emits PEM-encoded cert + key.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "aws_lc_rs"], optional = true }
+zeroize = { workspace = true, optional = true }
+
 [features]
 default = ["server", "mdns"]
-server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:ring", "dep:base64", "dep:subtle", "dep:if-addrs"]
+server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:ring", "dep:base64", "dep:subtle", "dep:if-addrs", "dep:serde_json"]
 mdns = ["dep:mdns-sd"]
+tls = ["dep:rcgen", "dep:zeroize"]
+# Pass-through to auths-crypto's FIPS / CNSA builds via auths-core (direct dep).
+fips = ["auths-core/fips"]
+cnsa = ["auths-core/cnsa"]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 serde_json = "1"
+# Integration tests construct signed Authorization headers end-to-end.
+ring.workspace = true
+base64.workspace = true
+hkdf.workspace = true
+sha2.workspace = true
+hex = "0.4"
+# Ed25519 signing in auth_sig.rs integration tests.
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand.workspace = true
 
 [lints]
 workspace = true

@@ -38,7 +38,6 @@ homepage = "https://github.com/auths-dev/auths"
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
 bs58 = "0.5.1"
-ring = "0.17.14"
 base64 = "0.22.1"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
@@ -46,8 +45,34 @@ git2 = { version = "0.20.4", default-features = false, features = ["vendored-lib
 glob = "0.3"
 parking_lot = "0.12"
 schemars = "0.8"
-subtle = "2.6"
-zeroize = { version = "1.8.1", features = ["serde", "derive"] }
+
+# fn-128.T6: workspace-pinned `rand` so every crate resolves to the same
+# version and the `rand::thread_rng` / `rand::random` clippy bans cannot be
+# bypassed by version skew.
+rand = "0.8"
+
+# -------------------------------------------------------------------------
+# fn-128.T9: EXACT-PINNED crypto crates.
+#
+# Minor-version bumps can change DER encoding, signature layout, AEAD
+# overhead, or trait dispatch and silently invalidate existing signatures.
+# `=x.y.z` ensures `cargo update` cannot drift.
+#
+# Bump procedure:
+# 1. Edit the pin.
+# 2. Run `cargo nextest run -p auths-crypto --test integration 'cases::kat::'`
+#    under both default and `--features fips` builds. Outputs MUST match
+#    byte-for-byte for deterministic KATs.
+# 3. Update `docs/security/dependency-policy.md`.
+# -------------------------------------------------------------------------
+ring = "=0.17.14"
+subtle = "=2.6.1"
+zeroize = { version = "=1.8.2", features = ["serde", "derive"] }
+sha2 = "=0.10.9"
+hkdf = "=0.12.4"
+hmac = "=0.12.1"
+chacha20poly1305 = { version = "=0.10.1", features = ["std"] }
+aes-gcm = { version = "=0.10.3", features = ["std"] }
 # Exact pin: canonicalization changes silently break all existing attestation signatures.
 json-canon = "=0.1.3"
 
@@ -94,3 +119,12 @@ disallowed_methods = "deny"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
+
+[profile.dev]
+# Line-tables-only cuts target/ size by 50-70% and speeds linking.
+# Still get file:line in backtraces; lose variable inspection in lldb.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+# Full debug info OFF for dependencies (we never step into them).
+debug = false

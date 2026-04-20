@@ -31,8 +31,7 @@ ring = "0.17.14"
 blake3 = "1.5"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand = "0.10.0"
-zeroize = "1.8"
-
+zeroize.workspace = true
 # Error handling
 thiserror = "2.0"
 

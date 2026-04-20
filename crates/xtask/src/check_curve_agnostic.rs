@@ -54,6 +54,7 @@ const ALLOWED_IDENT_PREFIXES: &[&str] = &[
     "ED25519_EC_PARAMS",
     "SshEd25519",
     "NistP256",
+    "EcdsaP256",
     "parse_ed25519_seed",
     "parse_ed25519_key_material",
     "build_ed25519_pkcs8",

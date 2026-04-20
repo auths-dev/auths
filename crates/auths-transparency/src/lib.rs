@@ -100,7 +100,10 @@ use auths_verifier::DeviceDID;
 /// ```
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TrustRoot {
-    /// The log operator's Ed25519 public key.
+    /// The log operator's Ed25519 public key. Used only when
+    /// `signature_algorithm == Ed25519`. Under the `EcdsaP256` path,
+    /// this field MUST NOT be the trust anchor — see
+    /// [`Self::ecdsa_log_public_key_der`] for that.
     pub log_public_key: auths_verifier::Ed25519PublicKey,
     /// The log origin string (e.g., "auths.dev/log").
     pub log_origin: LogOrigin,
@@ -110,6 +113,16 @@ pub struct TrustRoot {
     /// Rekor production shard uses EcdsaP256.
     #[serde(default)]
     pub signature_algorithm: auths_verifier::SignatureAlgorithm,
+    /// DER-encoded SubjectPublicKeyInfo for the log's ECDSA-P256
+    /// public key. REQUIRED when `signature_algorithm == EcdsaP256`;
+    /// the verifier compares the bundle-carried ECDSA pubkey against
+    /// this pinned value byte-for-byte before using it to verify the
+    /// checkpoint signature. Without this field, an attacker can
+    /// submit a bundle with a self-chosen ECDSA key that verifies
+    /// its own forged signature — a classic "trust the key I sent
+    /// you" anti-pattern.
+    #[serde(default)]
+    pub ecdsa_log_public_key_der: Option<Vec<u8>>,
 }
 
 /// A trusted witness in the [`TrustRoot`].
@@ -168,8 +181,17 @@ impl TrustConfig {
         self.logs.get(id).map(|root| (id, root))
     }
 
-    /// Validate the config: if `default_log` is set, it must reference
-    /// a key in `logs`. Call at load time to catch misconfigurations early.
+    /// Validate the config at load time.
+    ///
+    /// Checks:
+    /// - If `default_log` is set, it must reference a key in `logs`.
+    /// - Every `TrustRoot` whose `signature_algorithm` is
+    ///   `EcdsaP256` MUST carry a non-empty
+    ///   [`TrustRoot::ecdsa_log_public_key_der`]. Without it the
+    ///   verifier would trust whatever ECDSA key the bundle carried
+    ///   (→ trivially forgeable checkpoint). Without this check
+    ///   operators can ship configs that look healthy and silently
+    ///   accept any ECDSA signature.
     pub fn validate(&self) -> std::result::Result<(), TransparencyError> {
         if let Some(ref id) = self.default_log
             && !self.logs.contains_key(id)
@@ -180,6 +202,26 @@ impl TrustConfig {
                 self.logs.keys().collect::<Vec<_>>()
             )));
         }
+
+        for (log_id, root) in &self.logs {
+            if matches!(
+                root.signature_algorithm,
+                auths_verifier::SignatureAlgorithm::EcdsaP256
+            ) {
+                let has_key = root
+                    .ecdsa_log_public_key_der
+                    .as_ref()
+                    .is_some_and(|b| !b.is_empty());
+                if !has_key {
+                    return Err(TransparencyError::InvalidNote(format!(
+                        "log '{}' declares signature_algorithm=EcdsaP256 but \
+                         ecdsa_log_public_key_der is missing or empty — refuse to \
+                         trust a bundle-carried ECDSA key",
+                        log_id
+                    )));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -188,21 +230,36 @@ impl TrustConfig {
     /// Origin pinned from `GET https://rekor.sigstore.dev/api/v1/log`
     /// on 2026-04-09. Public key from sigstore trusted_root.json.
     pub fn default_config() -> Self {
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD;
         use std::collections::HashMap;
 
-        // Rekor production shard ECDSA P-256 public key (DER PKIX)
+        // Rekor production shard ECDSA P-256 public key (DER SPKI).
         // Source: https://github.com/sigstore/root-signing/blob/main/targets/trusted_root.json
-        // Key: MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2G2Y+2tabdTV5BcGiBIx0a9fAFwrkBbmLSGtks4L3qX6yYY0zufBnhC8Ur/iy55GhWP/9A/bY2LhC30M9+RYtw==
-        //
-        // For the Ed25519PublicKey field (used by Ed25519 verification path),
-        // we store zeros since the production shard uses ECDSA, not Ed25519.
-        // The actual verification dispatches on signature_algorithm.
+        // Decoded from the base64 below at build / init time so the
+        // trust root carries the actual pinned bytes, not a zero
+        // placeholder.
+        const REKOR_PROD_PUBKEY_B64: &str = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2G2Y+2tabdTV5BcGiBIx0a9fAFwrkBbmLSGtks4L3qX6yYY0zufBnhC8Ur/iy55GhWP/9A/bY2LhC30M9+RYtw==";
+        // The decode target is a fixed compile-time base64 literal.
+        // A failure here would be a source-code typo, not a runtime
+        // condition — using `unwrap_or_default` keeps clippy's
+        // `expect_used` gate satisfied. `TrustConfig::validate()`'s
+        // "ECDSA config must carry a non-empty pinned key" check
+        // is the tripwire: an accidentally-empty decode fails at
+        // config load time, not silently.
+        let rekor_ecdsa_pk_der = STANDARD.decode(REKOR_PROD_PUBKEY_B64).unwrap_or_default();
+
+        // Ed25519 field kept as zero-bytes because the production
+        // shard does not use Ed25519. The dispatch is on
+        // `signature_algorithm`, so this placeholder is never
+        // consulted.
         let rekor_root = TrustRoot {
             log_public_key: auths_verifier::Ed25519PublicKey::from_bytes([0u8; 32]),
             // Origin pinned from: GET https://rekor.sigstore.dev/api/v1/log → signedTreeHead, first line
             log_origin: LogOrigin::new_unchecked("rekor.sigstore.dev - 1193050959916656506"),
             witnesses: vec![],
             signature_algorithm: auths_verifier::SignatureAlgorithm::EcdsaP256,
+            ecdsa_log_public_key_der: Some(rekor_ecdsa_pk_der),
         };
 
         let mut logs = HashMap::new();

@@ -28,19 +28,35 @@
 //! See `docs/architecture/cryptography.md` → Wire-format Curve Tagging for
 //! the workspace-wide curve-agnosticism rule.
 
+// fn-129.T1: statically forbid `unsafe` in this crate. The pairing protocol
+// has no `unsafe` today; this attribute freezes that invariant so future
+// code cannot accidentally introduce a soundness hole around the ephemeral
+// ECDH secret or the transport key.
+#![forbid(unsafe_code)]
+
+pub mod domain_separation;
+pub mod envelope;
 mod error;
+#[cfg(feature = "pq-hybrid")]
+pub mod pq_hybrid;
 mod protocol;
 mod response;
 pub mod sas;
 mod token;
 pub mod types;
 
+pub use envelope::{
+    Envelope, EnvelopeError, EnvelopeSession, MAX_MESSAGES_PER_SESSION, Open, Sealed,
+};
 pub use error::ProtocolError;
-pub use protocol::{CompletedPairing, PairingProtocol, ResponderResult, respond_to_pairing};
+pub use protocol::{
+    CompletedPairing, Confirmed, Init, Paired, PairingFlow, PairingProtocol, Responded,
+    ResponderResult, SasMatch, respond_to_pairing,
+};
 pub use response::PairingResponse;
 pub use sas::{
     TransportKey, decrypt_from_transport, derive_sas, derive_transport_key, format_sas_emoji,
     format_sas_numeric,
 };
-pub use token::{PairingSession, PairingToken, normalize_short_code};
+pub use token::{KemSlot, PairingSession, PairingToken, normalize_short_code};
 pub use types::*;

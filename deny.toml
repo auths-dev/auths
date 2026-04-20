@@ -33,8 +33,6 @@ deny = [
     "auths-cli",
     "auths-mcp-server",
     "auths-telemetry",
-    "auths-id",
-    "xtask",
     "jsonschema",
   ], reason = "HTTP clients must be confined to adapter layer" },
 
@@ -70,14 +68,37 @@ ignore = [
   # no fix available until ssh-key upgrades to rsa v0.10+
   "RUSTSEC-2023-0071",
 
+  # rustls-pemfile unmaintained (RUSTSEC-2025-0134)
+  # Transitive via axum-server → rustls-pemfile. No updated axum-server available.
+  # Not a vulnerability — the crate is archived but functionally correct.
+  "RUSTSEC-2025-0134",
+
   # rustls-webpki URI name constraint issues (RUSTSEC-2026-0098, RUSTSEC-2026-0099)
   # Transitive via aws-smithy-http-client → hyper-rustls 0.24 → rustls 0.21 → rustls-webpki 0.101.7
   # Not exploitable: auths doesn't validate X.509 certificates; identity is KERI/DID-based.
   # Waiting for AWS SDK to release with rustls 0.23+ (tracks hyper-rustls 0.27+).
+  # NOTE: These may already be resolved — keep until CI confirms.
   "RUSTSEC-2026-0098",
   "RUSTSEC-2026-0099",
 ]
 
 [sources]
-unknown-registry = "warn"
-unknown-git = "warn"
+# fn-128.T9: tighten from warn → deny. Only pull from the official
+# crates.io registry; deny ad-hoc git deps and private registries unless
+# explicitly allowlisted with a documented rationale.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Radicle integration depends on a fork with auths integration patches.
+# Track upstream merge: https://github.com/radicle-dev/heartwood
+allow-git = ["https://github.com/bordumb/heartwood"]
+
+[graph]
+# Check every target we build for. Prevents a config that is green on
+# x86_64 but pulls a GPL transitive on aarch64.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "wasm32-unknown-unknown" },
+]

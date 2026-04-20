@@ -34,6 +34,7 @@ fn make_signed_icp(kp: &Ed25519KeyPair, next_commitment: &Said) -> IcpEvent {
         b: vec![],
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     finalize_icp_event(icp).unwrap()
@@ -53,6 +54,7 @@ fn make_signed_ixn(
         s: KeriSequence::new(seq),
         p: prev_said.clone(),
         a: seals,
+        dt: None,
     };
 
     let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
@@ -82,6 +84,7 @@ fn make_signed_rot(
         ba: vec![],
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let value = serde_json::to_value(Event::Rot(rot.clone())).unwrap();

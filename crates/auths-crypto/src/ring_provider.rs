@@ -68,6 +68,28 @@ impl RingCryptoProvider {
             .map_err(|_| CryptoError::InvalidSignature)
     }
 
+    /// Sign with Ed25519 synchronously. Returns 64-byte raw signature.
+    ///
+    /// Exists so `key_ops::sign` (the sync curve-agnostic dispatcher) can route
+    /// through a single cfg-swappable provider entry point without taking the
+    /// spawn-blocking cost the trait path pays. When FIPS/CNSA swap in, this
+    /// inherent method is the one line that changes.
+    pub fn ed25519_sign(seed: &[u8; 32], message: &[u8]) -> Result<Vec<u8>, CryptoError> {
+        let kp = Ed25519KeyPair::from_seed_unchecked(seed)
+            .map_err(|e| CryptoError::InvalidPrivateKey(format!("Ed25519: {e}")))?;
+        Ok(kp.sign(message).as_ref().to_vec())
+    }
+
+    /// Derive 32-byte Ed25519 public key from a raw seed, synchronously.
+    pub fn ed25519_public_key(seed: &[u8; 32]) -> Result<[u8; 32], CryptoError> {
+        let kp = Ed25519KeyPair::from_seed_unchecked(seed)
+            .map_err(|e| CryptoError::OperationFailed(format!("Ed25519 pubkey: {e}")))?;
+        kp.public_key()
+            .as_ref()
+            .try_into()
+            .map_err(|_| CryptoError::OperationFailed("Ed25519 public key not 32 bytes".into()))
+    }
+
     /// Verify a P-256 signature. Accepts 33-byte compressed or 65-byte uncompressed pubkey.
     pub fn p256_verify(pubkey: &[u8], message: &[u8], signature: &[u8]) -> Result<(), CryptoError> {
         use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
@@ -195,5 +217,176 @@ impl CryptoProvider for RingCryptoProvider {
         })
         .await
         .map_err(|_| CryptoError::OperationFailed("Public key extraction panicked".into()))?
+    }
+
+    async fn sign_p256(&self, seed: &SecureSeed, message: &[u8]) -> Result<Vec<u8>, CryptoError> {
+        // Sync by design: P-256 sign is ~100µs on modern hardware — cheaper than
+        // a spawn_blocking context switch. Matches the inherent `p256_sign`
+        // path at crates/auths-crypto/src/ring_provider.rs:48-56.
+        Self::p256_sign(seed.as_bytes(), message)
+    }
+
+    async fn generate_p256_keypair(&self) -> Result<(SecureSeed, Vec<u8>), CryptoError> {
+        Self::p256_generate()
+    }
+
+    async fn p256_public_key_from_seed(&self, seed: &SecureSeed) -> Result<Vec<u8>, CryptoError> {
+        Self::p256_public_key_from_seed(seed.as_bytes())
+    }
+
+    async fn aead_encrypt(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 12],
+        aad: &[u8],
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        use chacha20poly1305::{
+            ChaCha20Poly1305, Nonce,
+            aead::{Aead, KeyInit, Payload},
+        };
+
+        let cipher = ChaCha20Poly1305::new(key.into());
+        let nonce = Nonce::from_slice(nonce);
+        cipher
+            .encrypt(
+                nonce,
+                Payload {
+                    msg: plaintext,
+                    aad,
+                },
+            )
+            .map_err(|e| CryptoError::OperationFailed(format!("AEAD encrypt: {e}")))
+    }
+
+    async fn aead_decrypt(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 12],
+        aad: &[u8],
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        use chacha20poly1305::{
+            ChaCha20Poly1305, Nonce,
+            aead::{Aead, KeyInit, Payload},
+        };
+
+        let cipher = ChaCha20Poly1305::new(key.into());
+        let nonce = Nonce::from_slice(nonce);
+        cipher
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: ciphertext,
+                    aad,
+                },
+            )
+            // Any AEAD failure (tag mismatch, truncation, AAD mismatch) is an
+            // InvalidSignature — the tag IS the signature over (ct||aad).
+            .map_err(|_| CryptoError::InvalidSignature)
+    }
+
+    async fn hkdf_sha256_expand(
+        &self,
+        ikm: &[u8],
+        salt: &[u8],
+        info: &[u8],
+        out_len: usize,
+    ) -> Result<Vec<u8>, CryptoError> {
+        use hkdf::Hkdf;
+        use sha2::Sha256;
+
+        // RFC 5869 max output: 255 × HashLen. For SHA-256 → 8160 bytes.
+        if out_len > 255 * 32 {
+            return Err(CryptoError::OperationFailed(
+                "HKDF-SHA256 output length exceeds 255 * 32 = 8160 bytes".into(),
+            ));
+        }
+
+        let hk = Hkdf::<Sha256>::new(if salt.is_empty() { None } else { Some(salt) }, ikm);
+        let mut out = vec![0u8; out_len];
+        hk.expand(info, &mut out)
+            .map_err(|e| CryptoError::OperationFailed(format!("HKDF-SHA256 expand: {e}")))?;
+        Ok(out)
+    }
+
+    async fn hkdf_sha384_expand(
+        &self,
+        ikm: &[u8],
+        salt: &[u8],
+        info: &[u8],
+        out_len: usize,
+    ) -> Result<Vec<u8>, CryptoError> {
+        use hkdf::Hkdf;
+        use sha2::Sha384;
+
+        if out_len > 255 * 48 {
+            return Err(CryptoError::OperationFailed(
+                "HKDF-SHA384 output length exceeds 255 * 48 = 12240 bytes".into(),
+            ));
+        }
+
+        let hk = Hkdf::<Sha384>::new(if salt.is_empty() { None } else { Some(salt) }, ikm);
+        let mut out = vec![0u8; out_len];
+        hk.expand(info, &mut out)
+            .map_err(|e| CryptoError::OperationFailed(format!("HKDF-SHA384 expand: {e}")))?;
+        Ok(out)
+    }
+
+    async fn hmac_sha256_compute(&self, key: &[u8], msg: &[u8]) -> Result<[u8; 32], CryptoError> {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key)
+            .map_err(|e| CryptoError::OperationFailed(format!("HMAC-SHA256 key: {e}")))?;
+        mac.update(msg);
+        let tag = mac.finalize().into_bytes();
+        let out: [u8; 32] = tag.into();
+        Ok(out)
+    }
+
+    async fn hmac_sha256_verify(
+        &self,
+        key: &[u8],
+        msg: &[u8],
+        tag: &[u8],
+    ) -> Result<(), CryptoError> {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key)
+            .map_err(|e| CryptoError::OperationFailed(format!("HMAC-SHA256 key: {e}")))?;
+        mac.update(msg);
+        // `verify_slice` uses a constant-time comparator internally.
+        mac.verify_slice(tag)
+            .map_err(|_| CryptoError::InvalidSignature)
+    }
+
+    async fn hmac_sha384_compute(&self, key: &[u8], msg: &[u8]) -> Result<[u8; 48], CryptoError> {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha384;
+
+        let mut mac = <Hmac<Sha384> as Mac>::new_from_slice(key)
+            .map_err(|e| CryptoError::OperationFailed(format!("HMAC-SHA384 key: {e}")))?;
+        mac.update(msg);
+        let tag = mac.finalize().into_bytes();
+        let out: [u8; 48] = tag.into();
+        Ok(out)
+    }
+
+    async fn hmac_sha384_verify(
+        &self,
+        key: &[u8],
+        msg: &[u8],
+        tag: &[u8],
+    ) -> Result<(), CryptoError> {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha384;
+
+        let mut mac = <Hmac<Sha384> as Mac>::new_from_slice(key)
+            .map_err(|e| CryptoError::OperationFailed(format!("HMAC-SHA384 key: {e}")))?;
+        mac.update(msg);
+        mac.verify_slice(tag)
+            .map_err(|_| CryptoError::InvalidSignature)
     }
 }

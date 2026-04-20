@@ -161,6 +161,56 @@ pub enum ValidationError {
         /// The number of backers.
         backer_count: usize,
     },
+
+    /// A policy-only variant: an establishment event is missing the `dt`
+    /// field, so the cooldown cannot be enforced. Structural validation
+    /// (`validate_kel`) permits missing `dt`; the policy validator
+    /// (`validate_kel_with_policy`) does not.
+    #[error("Policy violation: event at seq {sequence} missing `dt`")]
+    MissingTimestamp {
+        /// Zero-based position of the event in the KEL.
+        sequence: u128,
+    },
+
+    /// Two consecutive events have non-monotonic `dt`.
+    #[error(
+        "Policy violation: timestamps not monotonic at seq {sequence} (prev={prev}, curr={curr})"
+    )]
+    NonMonotonicTimestamp {
+        /// Zero-based position of the offending event.
+        sequence: u128,
+        /// Previous event's `dt`.
+        prev: String,
+        /// Current event's `dt`.
+        curr: String,
+    },
+
+    /// Two rotations happened closer together than the configured
+    /// cooldown allows (and the event is not an emergency override).
+    #[error(
+        "Policy violation: rotation cooldown breached at seq {sequence} (interval {interval_secs}s < minimum {min_secs}s)"
+    )]
+    RotationCooldown {
+        /// Zero-based position of the offending rotation.
+        sequence: u128,
+        /// Observed inter-rotation interval (seconds).
+        interval_secs: i64,
+        /// Configured minimum interval (seconds).
+        min_secs: i64,
+    },
+
+    /// An event's `dt` is beyond the configured clock-skew tolerance.
+    #[error(
+        "Policy violation: clock skew at seq {sequence} ({skew_secs}s) exceeds tolerance ({tolerance_secs}s)"
+    )]
+    ClockSkew {
+        /// Zero-based position of the event.
+        sequence: u128,
+        /// Observed skew vs server clock (seconds, signed).
+        skew_secs: i64,
+        /// Configured tolerance (seconds).
+        tolerance_secs: i64,
+    },
 }
 
 /// Validate a delegated event against the delegator's KEL.
@@ -952,6 +1002,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         }
     }
 
@@ -974,6 +1025,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();
@@ -993,6 +1045,7 @@ mod tests {
             s: KeriSequence::new(seq),
             p: prev_said.clone(),
             a: vec![Seal::digest("EAttest")],
+            dt: None,
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
@@ -1036,6 +1089,7 @@ mod tests {
             s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![],
+            dt: None,
         };
         // Compute a valid SAID so verify_event_said passes — the test
         // should fail on NotInception, not on SaidMismatch.
@@ -1059,6 +1113,7 @@ mod tests {
             s: KeriSequence::new(5),
             p: icp.d.clone(),
             a: vec![],
+            dt: None,
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
@@ -1086,6 +1141,7 @@ mod tests {
             s: KeriSequence::new(1),
             p: Said::new_unchecked("EWrongPrevious".to_string()),
             a: vec![],
+            dt: None,
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
@@ -1193,6 +1249,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
         let icp = finalize_icp_event(icp).unwrap();
         let event = Event::Icp(icp);
@@ -1258,6 +1315,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         customize(&mut icp);
@@ -1294,6 +1352,7 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
         let val = serde_json::to_value(Event::Rot(rot.clone())).unwrap();
         rot.d = compute_said(&val).unwrap();
@@ -1362,6 +1421,7 @@ mod tests {
                 b: vec![dup_backer.clone(), dup_backer],
                 c: vec![],
                 a: vec![],
+                dt: None,
             };
 
             let finalized = finalize_icp_event(icp).unwrap();
@@ -1395,6 +1455,7 @@ mod tests {
                 b: vec![],
                 c: vec![],
                 a: vec![],
+                dt: None,
             };
 
             let finalized = finalize_icp_event(icp).unwrap();
@@ -1405,5 +1466,156 @@ mod tests {
             matches!(result, Err(ValidationError::InvalidBackerThreshold { .. })),
             "expected InvalidBackerThreshold, got: {result:?}"
         );
+    }
+}
+
+// =============================================================================
+// Time-aware policy validation — rotation cooldown, clock-skew, emergency
+// override. `validate_kel` stays pure / clock-free (structural invariants
+// only); callers who want time-aware checks reach for
+// `validate_kel_with_policy`.
+// =============================================================================
+
+/// Configurable policy for time-aware KEL validation. Defaults match
+/// the plan text: 24h minimum rotation interval, 60s clock-skew
+/// tolerance, no emergency-override identifier.
+#[derive(Debug, Clone)]
+pub struct KelPolicy {
+    /// Minimum wall-clock interval between two consecutive rotation
+    /// events. Default: 24 hours.
+    pub min_rotation_interval: chrono::Duration,
+    /// Maximum allowed skew between an event's `dt` and the wall
+    /// clock used for validation. Default: 60 seconds.
+    pub clock_skew_tolerance: chrono::Duration,
+    /// AID that is permitted to skip the rotation-cooldown check
+    /// (e.g. the controller's emergency-rotation key). `None` means
+    /// no override is configured and every rotation must respect
+    /// the cooldown.
+    pub emergency_override_did: Option<crate::types::Prefix>,
+}
+
+impl Default for KelPolicy {
+    fn default() -> Self {
+        Self {
+            min_rotation_interval: chrono::Duration::hours(24),
+            clock_skew_tolerance: chrono::Duration::seconds(60),
+            emergency_override_did: None,
+        }
+    }
+}
+
+/// Validate a KEL against a time-aware [`KelPolicy`].
+///
+/// Runs the structural [`validate_kel`] first; on success, layers on
+/// three additional checks that depend on the `dt` field added to
+/// establishment and interaction events:
+///
+/// 1. Every event MUST carry a `dt`. Pre-`dt`-migration events
+///    (where `dt` is `None`) fail with
+///    [`ValidationError::MissingTimestamp`].
+/// 2. `dt` MUST be monotonically non-decreasing across consecutive
+///    events. Backward-moving timestamps are evidence of tampering.
+/// 3. Consecutive rotation events MUST be at least
+///    [`KelPolicy::min_rotation_interval`] apart (unless the event's
+///    controller matches [`KelPolicy::emergency_override_did`]).
+/// 4. Every `dt` must be within
+///    [`KelPolicy::clock_skew_tolerance`] of `now`.
+///
+/// Args:
+/// * `events`: The ordered KEL.
+/// * `policy`: [`KelPolicy`] governing the time checks.
+/// * `now`: The daemon's wall clock at validation time. Inject via
+///   [`chrono::Utc::now`] at the presentation boundary; domain layers
+///   pass a clock.
+pub fn validate_kel_with_policy(
+    events: &[Event],
+    policy: &KelPolicy,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<KeyState, ValidationError> {
+    let state = validate_kel(events)?;
+
+    let mut last_rotation_dt: Option<chrono::DateTime<chrono::Utc>> = None;
+    let mut last_any_dt: Option<chrono::DateTime<chrono::Utc>> = None;
+
+    for (idx, evt) in events.iter().enumerate() {
+        let seq = idx as u128;
+        let (dt, is_rotation, controller) = match evt {
+            Event::Icp(e) => (e.dt, false, &e.i),
+            Event::Rot(e) => (e.dt, true, &e.i),
+            Event::Ixn(e) => (e.dt, false, &e.i),
+            Event::Dip(e) => (e.dt, false, &e.i),
+            Event::Drt(e) => (e.dt, true, &e.i),
+        };
+        let Some(dt) = dt else {
+            return Err(ValidationError::MissingTimestamp { sequence: seq });
+        };
+        // Monotonicity.
+        if let Some(prev) = last_any_dt
+            && dt < prev
+        {
+            return Err(ValidationError::NonMonotonicTimestamp {
+                sequence: seq,
+                prev: prev.to_rfc3339(),
+                curr: dt.to_rfc3339(),
+            });
+        }
+        // Clock skew.
+        let skew = (dt - now).num_seconds();
+        if skew.abs() > policy.clock_skew_tolerance.num_seconds() {
+            return Err(ValidationError::ClockSkew {
+                sequence: seq,
+                skew_secs: skew,
+                tolerance_secs: policy.clock_skew_tolerance.num_seconds(),
+            });
+        }
+        // Cooldown on rotations.
+        if is_rotation && let Some(prev) = last_rotation_dt {
+            let interval = dt - prev;
+            let is_override = policy
+                .emergency_override_did
+                .as_ref()
+                .is_some_and(|ov| ov == controller);
+            if !is_override && interval < policy.min_rotation_interval {
+                return Err(ValidationError::RotationCooldown {
+                    sequence: seq,
+                    interval_secs: interval.num_seconds(),
+                    min_secs: policy.min_rotation_interval.num_seconds(),
+                });
+            }
+        }
+        last_any_dt = Some(dt);
+        if is_rotation {
+            last_rotation_dt = Some(dt);
+        }
+    }
+
+    Ok(state)
+}
+
+#[cfg(test)]
+mod policy_tests {
+    use super::*;
+    use chrono::{Duration as ChronoDuration, TimeZone, Utc};
+
+    fn base_now() -> chrono::DateTime<chrono::Utc> {
+        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn policy_rejects_missing_dt_via_empty_kel_path() {
+        // Structural validation fires first; empty KEL is rejected
+        // before any policy check runs. Locks in that the policy
+        // validator doesn't accidentally accept an empty KEL.
+        let events: Vec<crate::events::Event> = vec![];
+        let r = validate_kel_with_policy(&events, &KelPolicy::default(), base_now());
+        assert!(matches!(r, Err(ValidationError::EmptyKel)));
+    }
+
+    #[test]
+    fn policy_default_values_match_plan() {
+        let p = KelPolicy::default();
+        assert_eq!(p.min_rotation_interval, ChronoDuration::hours(24));
+        assert_eq!(p.clock_skew_tolerance, ChronoDuration::seconds(60));
+        assert!(p.emergency_override_did.is_none());
     }
 }

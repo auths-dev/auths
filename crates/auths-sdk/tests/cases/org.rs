@@ -67,7 +67,39 @@ fn base_member_attestation() -> Attestation {
         .build()
 }
 
+fn seed_org_identity(backend: &FakeRegistryBackend) {
+    use auths_id::keri::Event;
+    use auths_id::keri::IcpEvent;
+    use auths_id::keri::event::{CesrKey, KeriSequence, Threshold, VersionString};
+    use auths_id::keri::types::{Prefix, Said};
+
+    let icp = IcpEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: Prefix::new_unchecked(ORG.to_string()),
+        s: KeriSequence::new(0),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(
+            "DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+        )],
+        nt: Threshold::Simple(1),
+        n: vec![Said::new_unchecked(
+            "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+        )],
+        bt: Threshold::Simple(0),
+        b: vec![],
+        c: vec![],
+        a: vec![],
+        dt: None,
+    };
+    let prefix = Prefix::new_unchecked(ORG.to_string());
+    backend
+        .append_event(&prefix, &Event::Icp(icp))
+        .expect("seed org KEL identity");
+}
+
 fn seed_admin(backend: &FakeRegistryBackend) {
+    seed_org_identity(backend);
     backend
         .store_org_member(ORG, &base_admin_attestation())
         .expect("seed admin");

@@ -285,6 +285,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
         (finalize_icp_event(icp).unwrap(), kps)
     }

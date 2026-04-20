@@ -299,6 +299,7 @@ pub fn rotate_registry_identity(
         ba: vec![],
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -489,6 +490,7 @@ pub fn rotate_registry_identity_multi(
         ba: vec![],
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))

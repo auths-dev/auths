@@ -1,0 +1,56 @@
+name: cargo-deny
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "deny.toml"
+      - "crates/*/Cargo.toml"
+      - ".github/workflows/cargo-deny.yml"
+  push:
+    branches: [main]
+
+# fn-128.T9: cargo-deny enforces the exact-pin contract, RUSTSEC advisories,
+# license allowlist, and source restriction (crates.io only). See
+# docs/security/dependency-policy.md.
+
+jobs:
+  cargo-deny:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        checks:
+          - advisories
+          - bans licenses sources
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93"
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --version "=0.19.0" --locked
+      - name: cargo deny check ${{ matrix.checks }}
+        run: cargo deny --manifest-path ./Cargo.toml check ${{ matrix.checks }}
+
+  cargo-tree-duplicates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93"
+      - name: cargo tree -d (duplicate version check)
+        run: |
+          # Fail if any of the exact-pinned crypto crates has more than one
+          # resolved version in the graph. This catches transitive bumps
+          # that would otherwise slip past the `=x.y.z` pin.
+          set -e
+          DUPES=$(cargo tree --workspace --duplicates --edges=normal 2>/dev/null | \
+            grep -E "^(ring|subtle|zeroize|sha2|hkdf|hmac|chacha20poly1305|aes-gcm|json-canon) " || true)
+          if [ -n "$DUPES" ]; then
+            echo "FAIL: duplicate versions of exact-pinned crypto crates detected:"
+            echo "$DUPES"
+            echo "See docs/security/dependency-policy.md for the bump procedure."
+            exit 1
+          fi
+          echo "OK: no duplicate versions among exact-pinned crypto crates."

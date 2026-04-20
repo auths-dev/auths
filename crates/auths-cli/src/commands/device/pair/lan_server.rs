@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
-use auths_pairing_daemon::{PairingDaemonBuilder, PairingDaemonHandle};
+use auths_pairing_daemon::{HostAllowlist, PairingDaemonBuilder, PairingDaemonHandle};
 use auths_sdk::pairing::{CreateSessionRequest, SubmitResponseRequest};
 
 /// Detect the LAN IP address of this machine.
@@ -34,9 +34,12 @@ impl LanPairingServer {
         let daemon = PairingDaemonBuilder::new().build(session)?;
         let pairing_token_b64 = daemon.token().to_string();
 
-        let (router, handle) = daemon.into_parts();
+        // Bind FIRST so we know the port, then build the router with
+        // a Host/Origin/Referer allowlist scoped to the bound
+        // `SocketAddr`. Reversing this order would either leave the
+        // port unknown (fail-closed allowlist → 421 for every request)
+        // or require mutable state in the middleware.
         let cancel = CancellationToken::new();
-
         let listener = tokio::net::TcpListener::bind(SocketAddr::new(bind_ip, 0))
             .await
             .map_err(|e| {
@@ -48,6 +51,8 @@ impl LanPairingServer {
                 )
             })?;
         let addr = listener.local_addr()?;
+        let allowlist = HostAllowlist::for_bound_addr(addr, None);
+        let (router, handle) = daemon.into_parts(allowlist);
 
         let cancel_clone = cancel.clone();
         let task = tokio::spawn(async move {

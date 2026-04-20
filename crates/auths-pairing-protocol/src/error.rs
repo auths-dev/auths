@@ -21,17 +21,8 @@ pub enum ProtocolError {
     #[error("key generation failed: {0}")]
     KeyGenFailed(String),
 
-    #[error("RNG failure: {0}")]
-    RngFailed(String),
-
     #[error("invalid pairing URI: {0}")]
     InvalidUri(String),
-
-    #[error("invalid short code: {0}")]
-    InvalidShortCode(String),
-
-    #[error("short code not found: {0}")]
-    ShortCodeNotFound(String),
 
     #[error("encryption failed: {0}")]
     EncryptionFailed(String),

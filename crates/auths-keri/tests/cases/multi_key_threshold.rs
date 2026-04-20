@@ -67,6 +67,7 @@ fn make_three_key_icp() -> (IcpEvent, [Ed25519KeyPair; 3]) {
         b: vec![],
         c: vec![],
         a: vec![],
+        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).unwrap();

@@ -663,7 +663,7 @@ pub enum PairingStatus {
     /// The session was registered; contains the token for QR display and TTL info.
     SessionCreated {
         /// Pairing token (used to render the QR code).
-        token: PairingToken,
+        token: Box<PairingToken>,
         /// Session time-to-live in seconds.
         ttl_seconds: u64,
     },
@@ -716,7 +716,7 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
 
     if let Some(cb) = on_status {
         cb(PairingStatus::SessionCreated {
-            token: session.token.clone(),
+            token: Box::new(session.token.clone()),
             ttl_seconds: created.ttl_seconds,
         });
     }
@@ -866,6 +866,8 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         ephemeral_pubkey: token_data.ephemeral_pubkey.to_string(),
         expires_at: chrono::DateTime::from_timestamp(token_data.expires_at, 0).unwrap_or(now),
         capabilities: token_data.capabilities.clone(),
+        kem_slot: None,
+        daemon_spki_sha256: None,
     };
 
     if token.is_expired(now) {

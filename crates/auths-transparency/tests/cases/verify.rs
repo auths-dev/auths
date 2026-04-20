@@ -100,6 +100,7 @@ fn verify_bundle_end_to_end_single_entry() {
         log_origin: LogOrigin::new("test.dev/log").unwrap(),
         witnesses: vec![],
         signature_algorithm: Default::default(),
+        ecdsa_log_public_key_der: None,
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());
@@ -187,6 +188,7 @@ fn verify_bundle_multi_leaf_tree() {
         log_origin: LogOrigin::new("test.dev/log").unwrap(),
         witnesses: vec![],
         signature_algorithm: Default::default(),
+        ecdsa_log_public_key_der: None,
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());
@@ -276,6 +278,7 @@ fn verify_bundle_with_witnesses() {
             public_key: Ed25519PublicKey::from_bytes(w1_pk),
         }],
         signature_algorithm: Default::default(),
+        ecdsa_log_public_key_der: None,
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());

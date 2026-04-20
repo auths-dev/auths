@@ -20,6 +20,7 @@ hex = { version = "0.4.3", features = ["serde"] }
 ring.workspace = true
 # P-256 verification for KERI events. Uses compressed SEC1 keys (33 bytes).
 p256 = { version = "0.13", features = ["ecdsa"] }
+chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 schemars = { workspace = true, optional = true }
@@ -28,6 +29,11 @@ thiserror.workspace = true
 
 [features]
 default = []
+# Pass-through to auths-crypto's FIPS 140-3 build (AWS-LC-FIPS). No local
+# re-implementation — every ed25519/p256/aead/kdf call goes through the
+# provider trait, so flipping this feature cascades automatically.
+fips = ["auths-crypto/fips"]
+cnsa = ["auths-crypto/cnsa"]
 cesr = []
 schema = ["dep:schemars"]
 

@@ -19,6 +19,17 @@ disallowed-methods = [
   { path = "ring::signature::UnparsedPublicKey::new", reason = "use DevicePublicKey::verify — dispatches on curve.", allow-invalid = true },
   { path = "auths_crypto::parse_ed25519_seed", reason = "use parse_key_material — returns TypedSeed.", allow-invalid = true },
   { path = "auths_crypto::parse_ed25519_key_material", reason = "use parse_key_material — returns TypedSeed.", allow-invalid = true },
+
+  # === fn-128.T6 RNG discipline: OsRng only for security-sensitive randomness ===
+  # See docs/security/rng-policy.md. `rand::random()` and `rand::thread_rng()`
+  # can delegate to non-syscall-backed RNGs depending on feature resolution;
+  # the sanctioned sources are `rand::rngs::OsRng`,
+  # `p256::elliptic_curve::rand_core::OsRng`, and `ring::rand::SystemRandom`.
+  { path = "rand::thread_rng", reason = "use rand::rngs::OsRng for security-sensitive randomness; see docs/security/rng-policy.md", allow-invalid = true },
+  { path = "rand::random", reason = "use rand::rngs::OsRng explicitly; rand::random() may delegate to thread_rng.", allow-invalid = true },
+]
+disallowed-types = [
+  { path = "rand::rngs::ThreadRng", reason = "use rand::rngs::OsRng; see docs/security/rng-policy.md" },
 ]
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true

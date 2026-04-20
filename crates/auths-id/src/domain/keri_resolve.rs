@@ -174,6 +174,7 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
+            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();

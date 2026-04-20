@@ -102,6 +102,14 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: check-rfc6979
+        name: "RFC 6979 deterministic ECDSA enforcement (tree-sitter AST check)"
+        entry: cargo run --package xtask -- check-rfc6979
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
       # - id: cargo-deny
       #   name: cargo deny (licenses + bans)
       #   entry: bash -c 'cargo deny check > .cargo/cargo-deny.log 2>&1; exit $?'

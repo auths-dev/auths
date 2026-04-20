@@ -117,14 +117,16 @@ impl NapiPairingHandle {
             .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
 
         let token = daemon.token().to_string();
-        let (router, handle) = daemon.into_parts();
-
+        // Bind first, then build the router with a Host allowlist
+        // scoped to the bound port — see auths_pairing_daemon docs.
         let listener = tokio::net::TcpListener::bind(SocketAddr::new(bind_addr, 0))
             .await
             .map_err(|e| format_error("AUTHS_PAIRING_ERROR", format!("Failed to bind: {e}")))?;
         let local_addr = listener
             .local_addr()
             .map_err(|e| format_error("AUTHS_PAIRING_ERROR", format!("No local addr: {e}")))?;
+        let allowlist = auths_pairing_daemon::HostAllowlist::for_bound_addr(local_addr, None);
+        let (router, handle) = daemon.into_parts(allowlist);
         let endpoint = format!("http://{}:{}", local_addr.ip(), local_addr.port());
 
         let server_task = tokio::task::spawn(async move {
@@ -412,6 +414,8 @@ pub async fn join_pairing_session(
         ephemeral_pubkey: ephemeral_pubkey_str,
         expires_at: chrono::DateTime::from_timestamp(expires_at, 0).unwrap_or(now),
         capabilities,
+        kem_slot: None,
+        daemon_spki_sha256: None,
     };
 
     let (pairing_response, _shared_secret) = auths_core::pairing::PairingResponse::create(

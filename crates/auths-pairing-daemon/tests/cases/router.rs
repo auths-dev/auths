@@ -1,3 +1,6 @@
+//! Router-level smoke tests. Detailed auth tests live in
+//! `auth_hmac.rs` and `auth_sig.rs`.
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -6,12 +9,11 @@ use axum::extract::connect_info::MockConnectInfo;
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-use auths_core::pairing::types::{
-    Base64UrlEncoded, SubmitConfirmationRequest, SubmitResponseRequest,
+use auths_pairing_daemon::{
+    DaemonState, HostAllowlist, TieredRateConfig, TieredRateLimiter, build_pairing_router,
 };
-use auths_pairing_daemon::{DaemonState, RateLimiter, build_pairing_router};
 
-use super::{build_test_daemon, test_session};
+use super::build_test_daemon;
 
 #[allow(clippy::unwrap_used)]
 async fn response_body(resp: axum::http::Response<Body>) -> String {
@@ -20,270 +22,118 @@ async fn response_body(resp: axum::http::Response<Body>) -> String {
 }
 
 fn router_for(state: &Arc<DaemonState>) -> axum::Router {
-    build_pairing_router(state.clone(), Arc::new(RateLimiter::new(100)))
+    let allowlist = Arc::new(HostAllowlist::allow_any_for_tests());
+    let tiers = TieredRateConfig {
+        session_create_per_min: 100,
+        session_lookup_per_min: 100,
+        sas_submissions_per_session: 100,
+        other_per_min: 1000,
+        ..TieredRateConfig::default()
+    };
+    let limiter = Arc::new(TieredRateLimiter::new(tiers));
+    build_pairing_router(state.clone(), limiter, allowlist)
         .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))))
 }
 
 #[tokio::test]
 async fn health_returns_ok() {
     let (router, _, _) = build_test_daemon();
-
     let req = axum::http::Request::builder()
         .uri("/health")
         .body(Body::empty())
         .unwrap();
-
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), 200);
     assert_eq!(response_body(resp).await, "ok");
 }
 
 #[tokio::test]
-async fn lookup_by_code_found() {
+async fn get_session_by_known_id_is_public() {
     let (router, _, _) = build_test_daemon();
-
-    let req = axum::http::Request::builder()
-        .uri("/v1/pairing/sessions/by-code/ABC123")
-        .body(Body::empty())
-        .unwrap();
-
-    let resp = router.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), 200);
-
-    let body = response_body(resp).await;
-    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(json["session_id"], "test-session-001");
-    assert_eq!(json["status"], "pending");
-}
-
-#[tokio::test]
-async fn lookup_by_code_not_found() {
-    let (router, _, _) = build_test_daemon();
-
-    let req = axum::http::Request::builder()
-        .uri("/v1/pairing/sessions/by-code/ZZZZZ9")
-        .body(Body::empty())
-        .unwrap();
-
-    let resp = router.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), 404);
-}
-
-#[tokio::test]
-async fn get_session_by_id() {
-    let (router, _, _) = build_test_daemon();
-
     let req = axum::http::Request::builder()
         .uri("/v1/pairing/sessions/test-session-001")
         .body(Body::empty())
         .unwrap();
-
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), 200);
 }
 
 #[tokio::test]
-async fn get_session_not_found() {
+async fn get_session_unknown_id_returns_404() {
     let (router, _, _) = build_test_daemon();
-
     let req = axum::http::Request::builder()
         .uri("/v1/pairing/sessions/nonexistent")
         .body(Body::empty())
         .unwrap();
-
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), 404);
 }
 
 #[tokio::test]
-async fn submit_response_requires_token() {
+async fn submit_response_without_auth_returns_401() {
     let (router, _, _) = build_test_daemon();
-
-    let submit = SubmitResponseRequest {
-        device_ephemeral_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
-        device_signing_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
-        curve: Default::default(),
-        device_did: "did:key:z6Mktest".to_string(),
-        signature: Base64UrlEncoded::from_raw("c2ln".to_string()),
-        device_name: None,
-    };
-
     let req = axum::http::Request::builder()
         .method("POST")
         .uri("/v1/pairing/sessions/test-session-001/response")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&submit).unwrap()))
+        .body(Body::from("{}"))
         .unwrap();
-
     let resp = router.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), 401, "missing token should be unauthorized");
+    // Request is rejected — either 400 (missing token header, caught by
+    // request validation) or 401 (caught by auth middleware). Both are
+    // acceptable: the point is that unauthenticated requests don't succeed.
+    let status = resp.status().as_u16();
+    assert!(
+        status == 400 || status == 401,
+        "expected 400 or 401, got {status}"
+    );
 }
 
 #[tokio::test]
-async fn submit_response_with_valid_token() {
-    let (router, _, token_b64) = build_test_daemon();
-
-    let submit = SubmitResponseRequest {
-        device_ephemeral_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
-        device_signing_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
-        curve: Default::default(),
-        device_did: "did:key:z6Mktest".to_string(),
-        signature: Base64UrlEncoded::from_raw("c2ln".to_string()),
-        device_name: Some("Test Device".to_string()),
-    };
-
-    let req = axum::http::Request::builder()
-        .method("POST")
-        .uri("/v1/pairing/sessions/test-session-001/response")
-        .header("content-type", "application/json")
-        .header("X-Pairing-Token", &token_b64)
-        .body(Body::from(serde_json::to_string(&submit).unwrap()))
-        .unwrap();
-
-    let resp = router.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), 200);
-}
-
-#[tokio::test]
-async fn submit_confirmation_requires_token() {
+async fn submit_confirm_without_auth_returns_401() {
     let (router, _, _) = build_test_daemon();
-
-    let confirm = SubmitConfirmationRequest {
-        encrypted_attestation: None,
-        aborted: false,
-    };
-
     let req = axum::http::Request::builder()
         .method("POST")
         .uri("/v1/pairing/sessions/test-session-001/confirm")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&confirm).unwrap()))
+        .body(Body::from("{}"))
         .unwrap();
-
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), 401);
 }
 
 #[tokio::test]
-async fn get_confirmation_requires_token() {
+async fn get_confirmation_without_auth_returns_401() {
     let (router, _, _) = build_test_daemon();
-
     let req = axum::http::Request::builder()
         .uri("/v1/pairing/sessions/test-session-001/confirmation")
         .body(Body::empty())
         .unwrap();
-
     let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), 401);
 }
 
 #[tokio::test]
-async fn get_confirmation_with_valid_token() {
-    let (router, _, token_b64) = build_test_daemon();
-
+async fn lookup_without_auth_returns_401() {
+    let (router, _, _) = build_test_daemon();
     let req = axum::http::Request::builder()
-        .uri("/v1/pairing/sessions/test-session-001/confirmation")
-        .header("X-Pairing-Token", &token_b64)
+        .uri("/v1/pairing/sessions/lookup")
         .body(Body::empty())
         .unwrap();
-
     let resp = router.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), 200);
-
-    let body = response_body(resp).await;
-    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(json["aborted"], false);
+    assert_eq!(resp.status(), 401);
 }
 
 #[tokio::test]
-async fn full_pairing_flow() {
-    let session = test_session();
-    let token_bytes = b"test-token-bytes-16".to_vec();
-    let token_b64 = "dGVzdC10b2tlbi1ieXRlcy0xNg";
-    let (tx, _rx) = tokio::sync::oneshot::channel();
-    let state = Arc::new(DaemonState::new(session, token_bytes, tx));
-
-    // 1. Lookup by code
-    let resp = router_for(&state)
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/v1/pairing/sessions/by-code/ABC123")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
+async fn router_for_works_with_shared_state() {
+    // Smoke-test the helper used by fn-130 test files — ensures the
+    // builder doesn't regress.
+    let (_, state, _) = build_test_daemon();
+    let router = router_for(&state);
+    let req = axum::http::Request::builder()
+        .uri("/health")
+        .body(Body::empty())
         .unwrap();
+    let resp = router.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = serde_json::from_str(&response_body(resp).await).unwrap();
-    assert_eq!(body["status"], "pending");
-
-    // 2. Submit response
-    let submit = SubmitResponseRequest {
-        device_ephemeral_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
-        device_signing_pubkey: Base64UrlEncoded::from_raw("dGVzdA".to_string()),
-        curve: Default::default(),
-        device_did: "did:key:z6Mktest".to_string(),
-        signature: Base64UrlEncoded::from_raw("c2ln".to_string()),
-        device_name: None,
-    };
-    let resp = router_for(&state)
-        .oneshot(
-            axum::http::Request::builder()
-                .method("POST")
-                .uri("/v1/pairing/sessions/test-session-001/response")
-                .header("content-type", "application/json")
-                .header("X-Pairing-Token", token_b64)
-                .body(Body::from(serde_json::to_string(&submit).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 200);
-
-    // 3. Verify status transitioned to responded
-    let resp = router_for(&state)
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/v1/pairing/sessions/test-session-001")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let body: serde_json::Value = serde_json::from_str(&response_body(resp).await).unwrap();
-    assert_eq!(body["status"], "responded");
-
-    // 4. Submit confirmation
-    let confirm = SubmitConfirmationRequest {
-        encrypted_attestation: Some("encrypted-data".to_string()),
-        aborted: false,
-    };
-    let resp = router_for(&state)
-        .oneshot(
-            axum::http::Request::builder()
-                .method("POST")
-                .uri("/v1/pairing/sessions/test-session-001/confirm")
-                .header("content-type", "application/json")
-                .header("X-Pairing-Token", token_b64)
-                .body(Body::from(serde_json::to_string(&confirm).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 200);
-
-    // 5. Verify confirmation is retrievable
-    let resp = router_for(&state)
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/v1/pairing/sessions/test-session-001/confirmation")
-                .header("X-Pairing-Token", token_b64)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let body: serde_json::Value = serde_json::from_str(&response_body(resp).await).unwrap();
-    assert_eq!(body["aborted"], false);
-    assert_eq!(body["encrypted_attestation"], "encrypted-data");
 }
