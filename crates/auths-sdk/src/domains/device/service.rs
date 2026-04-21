@@ -257,6 +257,7 @@ pub fn extend_device(
         None,
         None, // commit_sha
         None,
+        None, // supersedes_rid
     )
     .map_err(DeviceExtensionError::AttestationFailed)?;
 
@@ -361,6 +362,7 @@ fn sign_attestation(
         None,
         None, // commit_sha
         None,
+        None, // supersedes_rid
     )
     .map_err(DeviceError::AttestationError)
 }

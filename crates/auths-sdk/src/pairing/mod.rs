@@ -9,7 +9,8 @@ pub mod lan;
 
 // Re-exports of pairing types from auths-core for CLI consumption
 pub use auths_core::pairing::types::{
-    Base64UrlEncoded, CreateSessionRequest, SubmitConfirmationRequest, SubmitResponseRequest,
+    Base64UrlEncoded, CreateSessionRequest, SessionMode, SubmitConfirmationRequest,
+    SubmitResponseRequest,
 };
 pub use auths_core::pairing::{
     PairingResponse, PairingSession, PairingToken, QrOptions, normalize_short_code, render_qr,
@@ -399,6 +400,7 @@ pub fn create_pairing_attestation(
         None,
         None, // commit_sha
         None,
+        None, // supersedes_rid
     )
     .map_err(|e| PairingError::AttestationFailed(e.to_string()))?;
 
@@ -450,6 +452,7 @@ pub fn build_pairing_session_request(
         short_code: session.token.short_code.clone(),
         capabilities: session.token.capabilities.clone(),
         expires_at: session.token.expires_at.timestamp(),
+        mode: auths_core::pairing::types::SessionMode::default(),
     };
 
     Ok(PairingSessionRequest {

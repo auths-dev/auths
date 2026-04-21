@@ -26,6 +26,7 @@ fn tight_router() -> axum::Router {
         short_code: "ABC123".to_string(),
         capabilities: vec![],
         expires_at: 9999999999,
+        mode: Default::default(),
     };
     let (tx, _rx) = tokio::sync::oneshot::channel();
     let state = Arc::new(DaemonState::new(session, b"tok".to_vec(), tx));

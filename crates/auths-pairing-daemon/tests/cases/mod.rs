@@ -31,6 +31,7 @@ pub fn test_session() -> CreateSessionRequest {
         short_code: "ABC123".to_string(),
         capabilities: vec!["sign_commit".to_string()],
         expires_at: 9999999999,
+        mode: Default::default(),
     }
 }
 

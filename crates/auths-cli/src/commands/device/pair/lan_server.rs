@@ -85,6 +85,14 @@ impl LanPairingServer {
         &self.pairing_token_b64
     }
 
+    /// The session mode this server was started for. Used by the CLI
+    /// pair wrapper to branch between normal pairing and rotation after
+    /// `/response` lands. The daemon handshake verification is
+    /// identical for both.
+    pub fn session_mode(&self) -> auths_sdk::pairing::SessionMode {
+        self.handle.session_mode()
+    }
+
     /// Advertise via mDNS if discovery is available.
     pub fn advertise(
         &self,

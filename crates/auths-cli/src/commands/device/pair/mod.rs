@@ -11,6 +11,8 @@ mod lan;
 mod lan_server;
 mod offline;
 mod online;
+#[cfg(feature = "lan-pairing")]
+mod rotate;
 
 use anyhow::Result;
 use auths_sdk::core_config::EnvironmentConfig;
@@ -89,6 +91,16 @@ pub struct PairCommand {
     /// SAS compare.
     #[clap(long)]
     pub verify: bool,
+
+    /// Re-issue this controller's attestation for an already-paired
+    /// device under a new signing key. The phone side generates a new
+    /// Secure Enclave key, signs the rotation with its old key, and
+    /// this command creates a superseding attestation that points to
+    /// the new key.
+    ///
+    /// Requires an existing pair for the device being rotated.
+    #[clap(long)]
+    pub rotate: bool,
 }
 
 /// Dispatch table:
@@ -151,6 +163,7 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
                 cmd.no_qr,
                 cmd.no_mdns,
                 cmd.verify,
+                cmd.rotate,
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,

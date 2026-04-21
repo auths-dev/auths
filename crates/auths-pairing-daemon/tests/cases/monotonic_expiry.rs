@@ -14,6 +14,7 @@ fn session() -> CreateSessionRequest {
         short_code: "ABC123".into(),
         capabilities: vec![],
         expires_at: 9999999999,
+        mode: Default::default(),
     }
 }
 

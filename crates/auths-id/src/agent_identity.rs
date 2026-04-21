@@ -338,6 +338,7 @@ fn sign_agent_attestation(
         config.delegated_by.clone(),
         None, // commit_sha
         Some(SignerType::Agent),
+        None, // supersedes_rid
     )?;
 
     resign_attestation(

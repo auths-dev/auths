@@ -133,6 +133,7 @@ fn create_test_attestation(
         None,
         None, // commit_sha
         None, // signer_type
+        None, // supersedes_rid
     )
     .expect("Failed to create signed attestation")
 }

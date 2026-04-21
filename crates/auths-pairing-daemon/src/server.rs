@@ -363,6 +363,15 @@ impl PairingDaemonHandle {
     pub fn connection_cap(&self) -> &Arc<Semaphore> {
         &self.connection_cap
     }
+
+    /// The session mode this daemon was started for. Callers (e.g. the
+    /// CLI pair wrapper) branch on this after `wait_for_response`
+    /// returns to decide whether to create a fresh attestation or a
+    /// superseding one. The daemon itself does not use this — its
+    /// handshake verification is identical for both modes.
+    pub fn session_mode(&self) -> auths_core::pairing::types::SessionMode {
+        self.state.session().mode
+    }
 }
 
 impl PairingDaemonHandle {

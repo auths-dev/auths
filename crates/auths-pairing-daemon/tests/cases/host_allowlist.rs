@@ -29,6 +29,7 @@ fn router_with_allowlist(allowlist: HostAllowlist) -> axum::Router {
         short_code: "ABC123".to_string(),
         capabilities: vec![],
         expires_at: 9999999999,
+        mode: Default::default(),
     };
     let token_bytes = b"test-token-bytes-16".to_vec();
     let (tx, _rx) = tokio::sync::oneshot::channel();

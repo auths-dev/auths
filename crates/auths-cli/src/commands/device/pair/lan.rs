@@ -24,11 +24,16 @@ use super::lan_server::{LanPairingServer, detect_lan_ip};
 /// 5. Display QR + short code
 /// 6. Wait for response
 /// 7. Verify + create attestation
+// Flags are all flat UX toggles — grouping them into a struct would cost
+// more at call sites (build the struct, name the fields) than it buys in
+// clarity. Accept the lint.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_initiate_lan(
     now: chrono::DateTime<chrono::Utc>,
     no_qr: bool,
     no_mdns: bool,
     verify: bool,
+    rotate: bool,
     expiry_secs: u64,
     capabilities: &[String],
     env_config: &EnvironmentConfig,
@@ -59,7 +64,12 @@ pub async fn handle_initiate_lan(
 
     let session_id = session.token.session_id.clone();
 
-    // Build the CreateSessionRequest for the LAN server
+    // Build the CreateSessionRequest for the LAN server.
+    let mode = if rotate {
+        auths_sdk::pairing::SessionMode::Rotate
+    } else {
+        auths_sdk::pairing::SessionMode::Pair
+    };
     let request = CreateSessionRequest {
         session_id: session_id.clone(),
         controller_did: session.token.controller_did.clone(),
@@ -69,6 +79,7 @@ pub async fn handle_initiate_lan(
         short_code: session.token.short_code.clone(),
         capabilities: session.token.capabilities.clone(),
         expires_at: session.token.expires_at.timestamp(),
+        mode,
     };
 
     // Start the LAN server bound to the detected LAN IP
@@ -196,15 +207,28 @@ pub async fn handle_initiate_lan(
             // a silent daemon.
             let _confirmation = server.wait_for_confirmation(Duration::from_secs(5)).await;
 
-            handle_pairing_response(
-                now,
-                &mut session,
-                response_data,
-                &auths_dir,
-                capabilities,
-                env_config,
-                verify,
-            )?;
+            match server.session_mode() {
+                auths_sdk::pairing::SessionMode::Pair => {
+                    handle_pairing_response(
+                        now,
+                        &mut session,
+                        response_data,
+                        &auths_dir,
+                        capabilities,
+                        env_config,
+                        verify,
+                    )?;
+                }
+                auths_sdk::pairing::SessionMode::Rotate => {
+                    super::rotate::handle_rotation_response(
+                        now,
+                        &session,
+                        response_data,
+                        &auths_dir,
+                        env_config,
+                    )?;
+                }
+            }
 
             server.shutdown();
         }

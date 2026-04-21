@@ -52,6 +52,20 @@ pub enum SessionStatus {
     Expired,
 }
 
+/// What a session is for. Defaults to `Pair` so existing wire messages
+/// without a mode field continue to work unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum SessionMode {
+    /// Initial pairing: first time the device is bound to the controller.
+    #[default]
+    Pair,
+    /// Device-key rotation: the device is already bound; this session
+    /// swaps in a new signing key and records a superseding attestation.
+    Rotate,
+}
+
 /// Request to create a new pairing session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -63,6 +77,14 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     pub capabilities: Vec<String>,
     pub expires_at: i64,
+    /// Session mode. Absent on legacy messages — deserializes to
+    /// `SessionMode::Pair` so existing clients keep working.
+    #[serde(default, skip_serializing_if = "is_default_mode")]
+    pub mode: SessionMode,
+}
+
+fn is_default_mode(m: &SessionMode) -> bool {
+    matches!(m, SessionMode::Pair)
 }
 
 /// Response to session creation.

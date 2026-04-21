@@ -72,6 +72,19 @@ pub(crate) fn print_completion(device_name: Option<&str>, device_did: &str) {
     println!();
 }
 
+/// Print a styled completion footer for a device-key rotation.
+pub(crate) fn print_rotation_completion(device_name: Option<&str>, device_did: &str) {
+    println!();
+    let label = device_name.unwrap_or("device");
+    println!(
+        "{}Rotated signing key for {} {}",
+        CHECK,
+        style(label).bold(),
+        style(format!("({device_did})")).dim()
+    );
+    println!();
+}
+
 /// Display SAS and prompt for explicit Y/N confirmation (no default).
 ///
 /// Returns `true` if the user confirms the SAS matches, `false` on rejection.
