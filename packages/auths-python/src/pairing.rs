@@ -49,7 +49,7 @@ impl PyPairingHandle {
         _py: Python<'_>,
         timeout_secs: u64,
     ) -> PyResult<(String, Option<String>, String, String)> {
-        let handle = self.handle.take().ok_or_else(|| {
+        let mut handle = self.handle.take().ok_or_else(|| {
             PyRuntimeError::new_err(
                 "[AUTHS_PAIRING_ERROR] Handle already consumed (wait_for_response called twice)",
             )
@@ -356,6 +356,7 @@ pub fn join_pairing_session_ffi(
             ),
             device_name: pairing_response.device_name,
             subkey_chain: None,
+            new_device_signing_pubkey: None,
         };
 
         let submit_url = format!("{}/v1/pairing/sessions/{}/response", endpoint, session_id);

@@ -317,6 +317,7 @@ fn bind_device(
         None,
         None, // commit_sha
         None,
+        None, // supersedes_rid
     )
     .map_err(|e| SetupError::StorageError(e.into()))?;
 

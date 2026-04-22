@@ -2,7 +2,7 @@
 
 use std::net::IpAddr;
 
-use auths_core::pairing::types::{Base64UrlEncoded, CreateSessionRequest};
+use auths_core::pairing::types::{Base64UrlEncoded, CreateSessionRequest, SessionMode};
 use auths_pairing_daemon::{
     DaemonError, MockNetworkDiscovery, MockNetworkInterfaces, PairingDaemonBuilder,
 };
@@ -15,6 +15,7 @@ fn session() -> CreateSessionRequest {
         short_code: "ABC123".into(),
         capabilities: vec![],
         expires_at: 9999999999,
+        mode: SessionMode::Pair,
     }
 }
 

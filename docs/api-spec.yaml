@@ -509,7 +509,7 @@ components:
 
     CreateSessionRequest:
       type: object
-      required: [session_id, controller_did, ephemeral_pubkey, short_code, expires_at]
+      required: [session_id, controller_did, ephemeral_pubkey, short_code, expires_at, mode]
       properties:
         session_id:
           type: string
@@ -528,6 +528,18 @@ components:
         expires_at:
           type: integer
           description: Unix seconds.
+        mode:
+          $ref: "#/components/schemas/SessionMode"
+
+    SessionMode:
+      type: string
+      enum: [pair, rotate]
+      description: |
+        What a session is for. Always carried explicitly on the wire — no
+        implicit default so verifiers never guess at intent.
+        - `pair` — initial pairing: first time a device is bound to the controller.
+        - `rotate` — device-key rotation: the device is already bound; this
+          session swaps in a new signing key and records a superseding attestation.
 
     CurveTag:
       type: string
@@ -559,14 +571,29 @@ components:
         signature:
           type: string
           description: |
-            Base64url-no-pad-encoded signature over the canonical binding message:
-            `short_code || initiator_x25519 || device_x25519`.
+            Base64url-no-pad-encoded signature over the canonical binding message.
+
+            For `pair` sessions:
+              `session_id || short_code || initiator_eph || device_eph`
+
+            For `rotate` sessions:
+              `session_id || short_code || initiator_eph || device_eph || new_pubkey`
+
             Encoding depends on `curve`:
             - `ed25519` → raw 64 B.
             - `p256` → raw r‖s (64 B, per ADR 002). DER is not accepted on the wire.
         device_name:
           type: string
           nullable: true
+        new_device_signing_pubkey:
+          type: string
+          nullable: true
+          description: |
+            Rotation extension — the NEW signing pubkey the controller should attest.
+            Present only on `rotate` sessions. Same encoding rules as `device_signing_pubkey`.
+            When present, `device_signing_pubkey` holds the OLD (current) pubkey that
+            signed the rotation binding, and the binding-message layout includes this
+            new pubkey so the OLD key's signature commits to the transition.
 
     SubmitConfirmationRequest:
       type: object

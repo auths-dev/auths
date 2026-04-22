@@ -257,10 +257,19 @@ impl EnvironmentConfigBuilder {
 pub enum PassphraseCachePolicy {
     /// Store passphrase in OS keychain permanently.
     Always,
-    /// Cache passphrase in the running agent's memory (default).
-    #[default]
+    /// Cache passphrase in the running agent's memory — prompt once per
+    /// agent lifetime.
     Session,
-    /// Store passphrase in OS keychain with a configurable TTL.
+    /// Store passphrase in OS keychain with a configurable TTL (default).
+    ///
+    /// Chosen as the default so unconfigured users get macOS Keychain +
+    /// Touch ID caching out of the box, matching the UX of other
+    /// keychain-backed developer tools. `impl Default for PassphraseConfig`
+    /// supplies the complementary defaults (`duration = "1h"`,
+    /// `biometric = true` on macOS). Users who explicitly opt into
+    /// `Session` via `~/.auths/config.toml` retain the previous
+    /// prompt-each-time behavior.
+    #[default]
     Duration,
     /// Never cache — always prompt.
     Never,

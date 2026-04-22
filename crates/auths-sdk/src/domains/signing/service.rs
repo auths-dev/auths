@@ -663,6 +663,7 @@ fn create_and_sign_attestation(
         None,
         commit_sha,
         None,
+        None, // supersedes_rid
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
@@ -793,6 +794,7 @@ pub fn sign_artifact_ephemeral(
         None,
         Some(validated_sha),
         Some(SignerType::Workload),
+        None, // supersedes_rid
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
@@ -911,6 +913,7 @@ pub fn sign_artifact_raw(
         None,
         validated_commit_sha,
         None,
+        None, // supersedes_rid
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 

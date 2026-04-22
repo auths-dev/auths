@@ -398,6 +398,7 @@ pub fn add_organization_member(
         },
         None, // commit_sha
         None,
+        None, // supersedes_rid
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 

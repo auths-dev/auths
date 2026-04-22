@@ -620,6 +620,7 @@ mod tests {
                 .filter_map(|c| c.parse().ok())
                 .collect(),
             delegated_by: None,
+            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
         }

@@ -15,7 +15,9 @@ use auths_sdk::signing::PassphraseProvider;
 
 use crate::core::fs::{create_restricted_dir, write_sensitive_file};
 
-use crate::core::provider::{CliPassphraseProvider, PrefilledPassphraseProvider};
+// `CliPassphraseProvider` / `PrefilledPassphraseProvider` are no longer
+// needed here — the caller threads in the CLI's pre-wrapped
+// `KeychainPassphraseProvider`.
 
 // Emoji with plain-text fallbacks for non-emoji terminals.
 pub(crate) static LOCK: Emoji<'_, '_> = Emoji("🔐 ", "");
@@ -57,19 +59,31 @@ pub(crate) fn print_pairing_header(mode: &str, registry: &str, controller_did: &
 }
 
 /// Print a styled completion footer with device info.
+///
+/// One-line format matching the Signal/WhatsApp "device linked" UX:
+/// `✅ Paired with <device name> (<DID>)`.
 pub(crate) fn print_completion(device_name: Option<&str>, device_did: &str) {
     println!();
+    let label = device_name.unwrap_or("new device");
     println!(
-        "{}",
-        style(format!("━━━ {CHECK}Pairing Complete ━━━"))
-            .green()
-            .bold()
+        "{}Paired with {} {}",
+        CHECK,
+        style(label).bold(),
+        style(format!("({device_did})")).dim()
     );
     println!();
-    if let Some(name) = device_name {
-        println!("  {} {}", style("Device:").dim(), style(name).bold());
-    }
-    println!("  {} {}", style("DID:").dim(), style(device_did).dim());
+}
+
+/// Print a styled completion footer for a device-key rotation.
+pub(crate) fn print_rotation_completion(device_name: Option<&str>, device_did: &str) {
+    println!();
+    let label = device_name.unwrap_or("device");
+    println!(
+        "{}Rotated signing key for {} {}",
+        CHECK,
+        style(label).bold(),
+        style(format!("({device_did})")).dim()
+    );
     println!();
 }
 
@@ -126,13 +140,23 @@ pub(crate) fn display_sas_mismatch_warning() {
 }
 
 /// Handle a successful pairing response — verify signature, complete ECDH, create attestation.
+///
+/// When `verify_sas` is false (default for `auths pair`), the SAS is
+/// printed for the user's reference but no Y/N prompt blocks the
+/// flow — this matches the Signal/WhatsApp initial-pair experience
+/// where the QR itself is the out-of-band channel. Pass `verify_sas:
+/// true` to restore the interactive confirmation (via `auths pair
+/// --verify`).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_pairing_response(
     now: chrono::DateTime<chrono::Utc>,
     session: &mut PairingSession,
     response: SubmitResponseRequest,
     auths_dir: &Path,
     capabilities: &[String],
+    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
+    verify_sas: bool,
 ) -> Result<()> {
     use auths_sdk::keychain::get_platform_keychain_with_config;
     use auths_sdk::pairing::{self, DecryptedPairingResponse, PairingCompletionResult};
@@ -217,12 +241,25 @@ pub(crate) fn handle_pairing_response(
         short_code,
     );
 
-    // SAS verification ceremony
-    let confirmed = prompt_sas_confirmation(&sas_bytes)?;
-    if !confirmed {
-        display_sas_mismatch_warning();
-        drop(transport_key);
-        anyhow::bail!("SAS verification failed — pairing aborted");
+    // SAS display. Default path (matching Signal/WhatsApp initial-pair
+    // UX): print the SAS for the user's reference and continue — the
+    // QR scan is the authenticated out-of-band channel. Users who want
+    // the interactive check opt in via `auths pair --verify`.
+    if verify_sas {
+        let confirmed = prompt_sas_confirmation(&sas_bytes)?;
+        if !confirmed {
+            display_sas_mismatch_warning();
+            drop(transport_key);
+            anyhow::bail!("SAS verification failed — pairing aborted");
+        }
+    } else {
+        use auths_pairing_protocol::sas;
+        println!(
+            "  {} {}  {}",
+            style("SAS:").dim(),
+            sas::format_sas_emoji(&sas_bytes),
+            style(format!("({})", sas::format_sas_numeric(&sas_bytes))).dim()
+        );
     }
 
     if !auths_dir.exists() {
@@ -264,15 +301,11 @@ pub(crate) fn handle_pairing_response(
         .find(|a| !a.contains("--next-"))
         .ok_or_else(|| anyhow!("No signing key found for identity {}", controller_did))?;
 
-    let cli_provider = CliPassphraseProvider::new();
-    let passphrase = cli_provider
-        .get_passphrase(&format!(
-            "Enter passphrase for key '{}' to sign:",
-            identity_key_alias
-        ))
-        .context("Failed to get passphrase")?;
-    let passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync> =
-        Arc::new(PrefilledPassphraseProvider::new(passphrase));
+    // `passphrase_provider` is the CLI-level provider configured by
+    // `factories::load_cli_config` — already wrapped with
+    // `KeychainPassphraseProvider` per user config, so first invocation
+    // prompts + caches and subsequent invocations surface Touch ID
+    // (or the user's configured policy) without re-prompting.
     let key_storage: Arc<dyn auths_sdk::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
 
     let attest_spinner = create_wait_spinner(&format!("{GEAR}Creating device attestation..."));

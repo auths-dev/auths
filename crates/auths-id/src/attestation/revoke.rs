@@ -108,6 +108,7 @@ pub fn create_signed_revocation(
         role: None,
         capabilities: vec![],
         delegated_by: None,
+        supersedes_attestation_rid: None,
         signer_type: None,
         environment_claim: None,
         commit_sha: None,

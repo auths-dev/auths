@@ -55,6 +55,9 @@ pub struct CanonicalRevocationData<'a> {
 /// * `capabilities` - Capabilities to grant (included in the signed envelope)
 /// * `role` - Optional org role (e.g., "admin", "member") included in the signed envelope
 /// * `delegated_by` - Optional DID of the delegator included in the signed envelope
+/// * `supersedes_rid` - RID of a prior attestation this one supersedes (rotation path).
+///   `None` for normal attestations. Threaded into the struct before signing so the
+///   signature covers the supersede marker — a man-in-the-middle cannot strip it.
 #[allow(clippy::too_many_arguments)]
 pub fn create_signed_attestation(
     now: DateTime<Utc>,
@@ -74,6 +77,7 @@ pub fn create_signed_attestation(
     delegated_by: Option<IdentityDID>,
     commit_sha: Option<String>,
     signer_type: Option<SignerType>,
+    supersedes_rid: Option<&str>,
 ) -> Result<Attestation, AttestationError> {
     // Length must match the declared curve. No length dispatch — the curve
     // came in-band from the caller, so this is pure validation.
@@ -127,6 +131,7 @@ pub fn create_signed_attestation(
         role,
         capabilities,
         delegated_by: delegated_canonical,
+        supersedes_attestation_rid: supersedes_rid.map(ResourceId::new),
         signer_type,
         environment_claim: None,
         commit_sha,
@@ -175,6 +180,61 @@ pub fn create_signed_attestation(
     }
 
     Ok(attestation)
+}
+
+/// Creates a signed attestation that supersedes a prior one — used by the
+/// device-key rotation flow.
+///
+/// Delegates to `create_signed_attestation` with `supersedes_rid` set, so
+/// the `supersedes_attestation_rid` marker is part of the canonical bytes
+/// the signature covers. A man-in-the-middle cannot strip it to make a
+/// superseded attestation look current.
+///
+/// The caller is responsible for confirming the rotation request was
+/// authenticated (the daemon verifies the binding signature against the
+/// OLD pubkey before this fn is called); this helper does not itself
+/// validate the supersede relationship.
+#[allow(clippy::too_many_arguments)]
+pub fn create_superseding_attestation(
+    now: DateTime<Utc>,
+    rid: &str,
+    identity_did: &IdentityDID,
+    device_did: &DeviceDID,
+    device_public_key: &[u8],
+    device_curve: auths_crypto::CurveType,
+    payload: Option<Value>,
+    meta: &AttestationMetadata,
+    signer: &dyn SecureSigner,
+    passphrase_provider: &dyn PassphraseProvider,
+    identity_alias: Option<&KeyAlias>,
+    device_alias: Option<&KeyAlias>,
+    capabilities: Vec<Capability>,
+    role: Option<Role>,
+    delegated_by: Option<IdentityDID>,
+    commit_sha: Option<String>,
+    signer_type: Option<SignerType>,
+    supersedes_rid: &str,
+) -> Result<Attestation, AttestationError> {
+    create_signed_attestation(
+        now,
+        rid,
+        identity_did,
+        device_did,
+        device_public_key,
+        device_curve,
+        payload,
+        meta,
+        signer,
+        passphrase_provider,
+        identity_alias,
+        device_alias,
+        capabilities,
+        role,
+        delegated_by,
+        commit_sha,
+        signer_type,
+        Some(supersedes_rid),
+    )
 }
 
 /// Generates the canonical byte representation specifically for revocation data.

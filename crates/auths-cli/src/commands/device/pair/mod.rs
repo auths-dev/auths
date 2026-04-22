@@ -11,9 +11,14 @@ mod lan;
 mod lan_server;
 mod offline;
 mod online;
+#[cfg(feature = "lan-pairing")]
+mod rotate;
+
+use std::sync::Arc;
 
 use anyhow::Result;
 use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::signing::PassphraseProvider;
 use chrono::Utc;
 use clap::Parser;
 
@@ -79,6 +84,26 @@ pub struct PairCommand {
     #[cfg(feature = "lan-pairing")]
     #[clap(long, hide_short_help = true)]
     pub no_mdns: bool,
+
+    /// Prompt to manually verify the short-authentication-string (SAS)
+    /// codes match between devices before completing the pair.
+    ///
+    /// Default is off — the QR scan is treated as the authenticated
+    /// out-of-band channel, matching Signal/WhatsApp UX. Opt in here
+    /// if you're pairing over an untrusted network and want a visual
+    /// SAS compare.
+    #[clap(long)]
+    pub verify: bool,
+
+    /// Re-issue this controller's attestation for an already-paired
+    /// device under a new signing key. The phone side generates a new
+    /// Secure Enclave key, signs the rotation with its old key, and
+    /// this command creates a superseding attestation that points to
+    /// the new key.
+    ///
+    /// Requires an existing pair for the device being rotated.
+    #[clap(long)]
+    pub rotate: bool,
 }
 
 /// Dispatch table:
@@ -90,9 +115,23 @@ pub struct PairCommand {
 /// | `pair --join CODE`           | LAN join: mDNS discover -> join       |
 /// | `pair --join CODE --registry`| Online join (existing)                |
 /// | `pair --offline`             | Offline mode (no network)             |
-pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<()> {
+pub fn handle_pair(
+    cmd: PairCommand,
+    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
+    env_config: &EnvironmentConfig,
+) -> Result<()> {
     #[allow(clippy::disallowed_methods)]
     let now = Utc::now();
+
+    // Eagerly start the auths-agent so future signings in the same
+    // terminal session can short-circuit to it. Quiet + best-effort:
+    // if the agent can't start (perms, disk full, etc.), we proceed
+    // via the passphrase provider path — never abort pair on agent
+    // startup failure.
+    if let Err(e) = crate::commands::agent::ensure_agent_running(true) {
+        log::debug!("auths-agent auto-start skipped: {e}");
+    }
+
     match (&cmd.join, &cmd.registry, cmd.offline) {
         // Offline mode takes priority
         (None, _, true) => {
@@ -140,8 +179,11 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
                 now,
                 cmd.no_qr,
                 cmd.no_mdns,
+                cmd.verify,
+                cmd.rotate,
                 cmd.timeout,
                 &cmd.capabilities,
+                passphrase_provider,
                 env_config,
             ))
         }

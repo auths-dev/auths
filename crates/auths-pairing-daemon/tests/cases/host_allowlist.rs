@@ -13,7 +13,7 @@ use axum::extract::connect_info::MockConnectInfo;
 use axum::http::{Method, Request};
 use tower::ServiceExt;
 
-use auths_core::pairing::types::{Base64UrlEncoded, CreateSessionRequest};
+use auths_core::pairing::types::{Base64UrlEncoded, CreateSessionRequest, SessionMode};
 use auths_pairing_daemon::{
     DaemonState, HostAllowlist, TieredRateConfig, TieredRateLimiter, build_pairing_router,
 };
@@ -29,6 +29,7 @@ fn router_with_allowlist(allowlist: HostAllowlist) -> axum::Router {
         short_code: "ABC123".to_string(),
         capabilities: vec![],
         expires_at: 9999999999,
+        mode: SessionMode::Pair,
     };
     let token_bytes = b"test-token-bytes-16".to_vec();
     let (tx, _rx) = tokio::sync::oneshot::channel();

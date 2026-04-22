@@ -1,35 +1,40 @@
 // crate-level allow during curve-agnostic refactor.
 #![allow(clippy::disallowed_methods)]
 
-//! UniFFI bindings for Auths mobile identity creation.
+//! UniFFI bindings for Auths mobile identity + pairing + auth flows.
 //!
-//! This crate provides Swift and Kotlin bindings for creating KERI identities
-//! on mobile devices. It generates keypairs and inception events without
-//! requiring Git storage - the inception event is returned for the app to
-//! POST to the registry server.
+//! Every private-key operation lives off-Rust: the mobile side holds
+//! the keys in the Secure Enclave (iOS) or Keystore StrongBox / TEE
+//! (Android) and produces signatures externally. This crate only ever
+//! sees public keys and signatures.
+//!
+//! Curve: P-256 only. Ed25519 has been removed.
+//! Wire formats: see ADRs 002 (signatures = raw r‖s) and 003 (pubkeys
+//! = 33-byte compressed SEC1).
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use ring::rand::SystemRandom;
-use ring::signature::{Ed25519KeyPair, KeyPair};
 
-// Use proc-macro based approach (no UDL)
 uniffi::setup_scaffolding!();
 
-// Signature-injection FFI (P-256, SE-anchored). Private keys never
-// cross this boundary — the caller hands us a pubkey, we hand back a
-// signing payload, the caller signs externally, and we assemble the
-// response body.
+// Signature-injection FFI. The mobile side holds the private key in
+// the Secure Enclave / StrongBox / TEE; the FFI only ever sees pubkeys
+// + signatures.
 pub mod auth_challenge_context;
+pub mod identity_context;
 pub mod pairing_context;
+
 pub use auth_challenge_context::{
     AuthChallengeContext, assemble_auth_challenge_response, build_auth_challenge_signing_payload,
+};
+pub use identity_context::{
+    P256IdentityInceptionContext, assemble_p256_identity, build_p256_identity_inception_payload,
 };
 pub use pairing_context::{
     PairingBindingContext, assemble_pairing_response_body, build_pairing_binding_message,
 };
 
 /// KERI protocol version string.
-const KERI_VERSION: &str = "KERI10JSON";
+pub(crate) const KERI_VERSION: &str = "KERI10JSON";
 
 // ============================================================================
 // Error Types
@@ -66,52 +71,24 @@ pub enum MobileError {
 // Result Types
 // ============================================================================
 
-/// Result of creating a new KERI identity.
+/// Result of creating a new P-256 KERI identity.
 ///
-/// Contains all the data needed to:
-/// 1. Store keys in iOS Keychain (current_key_pkcs8, next_key_pkcs8)
-/// 2. POST inception event to server (inception_event_json)
-/// 3. Display the DID to the user (did)
+/// The private keys stayed in the Secure Enclave — they never appear
+/// here. The inception-event JSON goes to the registry at
+/// `/v1/identities/{prefix}/kel`; the DID is what's shown to the user.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct IdentityResult {
-    /// The KERI prefix (the identifier without "did:keri:" prefix)
+    /// The KERI prefix (identifier without the `did:keri:` scheme).
     pub prefix: String,
 
-    /// The full DID: "did:keri:{prefix}"
+    /// The full DID: `did:keri:{prefix}`.
     pub did: String,
 
-    /// The device name provided by the user
+    /// The device name provided by the user (display-only).
     pub device_name: String,
 
-    /// Current signing keypair in PKCS8 DER format (hex encoded for safe FFI)
-    /// Store this in iOS Keychain
-    pub current_key_pkcs8_hex: String,
-
-    /// Next rotation keypair in PKCS8 DER format (hex encoded for safe FFI)
-    /// Store this in iOS Keychain for future key rotation
-    pub next_key_pkcs8_hex: String,
-
-    /// Current public key (32 bytes, hex encoded)
-    pub current_public_key_hex: String,
-
-    /// Next public key (32 bytes, hex encoded)
-    pub next_public_key_hex: String,
-
-    /// The signed inception event as JSON string.
-    /// POST this to the registry server at /v1/identities/{prefix}/kel
-    pub inception_event_json: String,
-}
-
-/// Pending sync status for offline-first architecture.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct PendingSync {
-    /// The KERI prefix that needs syncing
-    pub prefix: String,
-
-    /// The DID that needs syncing
-    pub did: String,
-
-    /// The inception event JSON to POST
+    /// The signed inception event as JSON. POST to the registry at
+    /// `/v1/identities/{prefix}/kel`.
     pub inception_event_json: String,
 }
 
@@ -130,61 +107,63 @@ pub struct PairingInfo {
 }
 
 /// The response payload for Swift to POST to the registry.
-///
-/// This matches `SubmitResponseRequest` in the registry server.
-/// The session ID is NOT included here — it's a URL path parameter,
-/// not a POST body field. Swift should look up the session ID via
-/// `GET /v1/pairing/sessions/by-code/{short_code}` before POSTing.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct PairingResponsePayload {
     pub device_ephemeral_pubkey: String,
     pub device_signing_pubkey: String,
     /// Signing curve for `device_signing_pubkey` / `signature`. Carried
-    /// in-band per the wire-format-curve-tagging rule (CLAUDE.md §4) so
-    /// verifiers never infer curve from byte length. The signature-injection
-    /// assembler emits `"p256"`.
+    /// in-band per the wire-format-curve-tagging rule so verifiers
+    /// never infer curve from byte length. Emitted as `"p256"`.
     pub curve: String,
     pub device_did: String,
     pub signature: String,
     pub device_name: String,
+    /// Rotation extension: the NEW signing pubkey the controller should
+    /// attest. Absent on normal pair bodies.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub new_device_signing_pubkey: Option<String>,
 }
 
 // ============================================================================
-// Internal KERI Event Types (for serialization)
+// Internal KERI Event Types
 // ============================================================================
 
-/// Internal representation of ICP event for serialization.
+/// Internal representation of an ICP event used by the FFI's own
+/// builders. The authoritative typed form lives in `auths-keri`; this
+/// one exists because the FFI assembles the JSON directly and needs
+/// the `x` signature field (which `auths-keri::events::IcpEvent` does
+/// not model — signatures there are attached out-of-band).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct IcpEvent {
-    /// Type tag
-    t: String,
-    /// Version string
-    v: String,
-    /// SAID (empty for pre-finalization, filled after)
+pub(crate) struct IcpEvent {
+    /// Type tag (`"icp"`).
+    pub(crate) t: String,
+    /// Version string.
+    pub(crate) v: String,
+    /// SAID (empty pre-finalization, filled after).
     #[serde(skip_serializing_if = "String::is_empty", default)]
-    d: String,
-    /// Identifier prefix (same as d for inception)
-    i: String,
-    /// Sequence number
-    s: String,
-    /// Key threshold
-    kt: String,
-    /// Current public keys
-    k: Vec<String>,
-    /// Next key threshold
-    nt: String,
-    /// Next key commitments
-    n: Vec<String>,
-    /// Witness threshold
-    bt: String,
-    /// Witness list
-    b: Vec<String>,
-    /// Anchored seals
+    pub(crate) d: String,
+    /// Identifier prefix (equals `d` for inception).
+    pub(crate) i: String,
+    /// Sequence number.
+    pub(crate) s: String,
+    /// Key threshold.
+    pub(crate) kt: String,
+    /// Current public keys (CESR-prefixed, base64url-no-pad).
+    pub(crate) k: Vec<String>,
+    /// Next-key threshold.
+    pub(crate) nt: String,
+    /// Next-key commitments (Blake3 of committed pubkey, `E`-prefixed).
+    pub(crate) n: Vec<String>,
+    /// Witness threshold.
+    pub(crate) bt: String,
+    /// Witness list.
+    pub(crate) b: Vec<String>,
+    /// Anchored seals.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    a: Vec<serde_json::Value>,
-    /// Signature (empty for pre-signing)
+    pub(crate) a: Vec<serde_json::Value>,
+    /// Signature (empty pre-signing).
     #[serde(skip_serializing_if = "String::is_empty", default)]
-    x: String,
+    pub(crate) x: String,
 }
 
 // ============================================================================
@@ -218,200 +197,53 @@ fn compute_said(event: &serde_json::Value) -> Option<String> {
 }
 
 /// Compute next-key commitment (Blake3 hash of public key).
-fn compute_next_commitment(public_key: &[u8]) -> String {
+pub(crate) fn compute_next_commitment(public_key: &[u8]) -> String {
     let hash = blake3::hash(public_key);
     let encoded = URL_SAFE_NO_PAD.encode(hash.as_bytes());
     format!("E{}", encoded)
 }
 
 /// Finalize an ICP event by computing and setting the SAID.
-fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, MobileError> {
-    let value = serde_json::to_value(&icp)
-        .map_err(|e| MobileError::Serialization(e.to_string()))?;
-
+pub(crate) fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, MobileError> {
+    let value = serde_json::to_value(&icp).map_err(|e| MobileError::Serialization(e.to_string()))?;
     let said = compute_said(&value)
         .ok_or_else(|| MobileError::Serialization("SAID computation failed".to_string()))?;
-
-    // Set both d and i to the SAID (for inception, prefix = SAID)
     icp.d = said.clone();
     icp.i = said;
-
     Ok(icp)
 }
 
-/// Serialize event for signing (canonical JSON with empty signature field).
-fn serialize_for_signing(icp: &IcpEvent) -> Result<Vec<u8>, MobileError> {
-    let signing_icp = icp.clone();
-
-    serde_json::to_vec(&signing_icp).map_err(|e| MobileError::Serialization(e.to_string()))
+/// Serialize an ICP event in its signing-canonical form (empty `x`).
+pub(crate) fn serialize_for_signing(icp: &IcpEvent) -> Result<Vec<u8>, MobileError> {
+    serde_json::to_vec(icp).map_err(|e| MobileError::Serialization(e.to_string()))
 }
 
 // ============================================================================
-// Public API Functions
+// Inception event validation (for the mobile side to sanity-check before POST)
 // ============================================================================
 
-/// Create a new KERI identity for this device.
-///
-/// This generates:
-/// - Two Ed25519 keypairs (current + next for pre-rotation)
-/// - A signed KERI inception event
-///
-/// The returned data should be:
-/// 1. Keys stored in iOS Keychain (current_key_pkcs8_hex, next_key_pkcs8_hex)
-/// 2. Inception event POSTed to registry server
-///
-/// # Arguments
-/// * `device_name` - Friendly name for this device (e.g., "Pierre's iPhone")
-///
-/// # Returns
-/// IdentityResult containing keys and inception event
-#[uniffi::export]
-pub fn create_identity(device_name: String) -> Result<IdentityResult, MobileError> {
-    let rng = SystemRandom::new();
-
-    // Generate current keypair
-    let current_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| MobileError::KeyGeneration(e.to_string()))?;
-    let current_keypair = Ed25519KeyPair::from_pkcs8(current_pkcs8.as_ref())
-        .map_err(|e| MobileError::KeyGeneration(e.to_string()))?;
-
-    // Generate next keypair (for pre-rotation)
-    let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| MobileError::KeyGeneration(e.to_string()))?;
-    let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
-        .map_err(|e| MobileError::KeyGeneration(e.to_string()))?;
-
-    // Encode current public key with derivation code prefix
-    // 'D' prefix indicates Ed25519 in KERI
-    let current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
-    );
-
-    // Compute next-key commitment (Blake3 hash of next public key)
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
-
-    // Build inception event (without SAID)
-    let icp = IcpEvent {
-        t: "icp".to_string(),
-        v: KERI_VERSION.to_string(),
-        d: String::new(),
-        i: String::new(),
-        s: "0".to_string(),
-        kt: "1".to_string(),
-        k: vec![current_pub_encoded],
-        nt: "1".to_string(),
-        n: vec![next_commitment],
-        bt: "0".to_string(),
-        b: vec![],
-        a: vec![],
-        x: String::new(),
-    };
-
-    // Finalize event (computes and sets SAID)
-    let mut finalized = finalize_icp_event(icp)?;
-    let prefix = finalized.i.clone();
-
-    // Sign the event with the current key. The signature is embedded
-    // into the event's `x` field, which `validate_inception_event`
-    // (and downstream consumers) expect to be present.
-    let canonical = serialize_for_signing(&finalized)?;
-    let sig = current_keypair.sign(&canonical);
-    finalized.x = URL_SAFE_NO_PAD.encode(sig.as_ref());
-
-    // Serialize the final signed event
-    let inception_event_json =
-        serde_json::to_string(&finalized).map_err(|e| MobileError::Serialization(e.to_string()))?;
-
-    Ok(IdentityResult {
-        prefix: prefix.clone(),
-        did: format!("did:keri:{}", prefix),
-        device_name,
-        current_key_pkcs8_hex: hex::encode(current_pkcs8.as_ref()),
-        next_key_pkcs8_hex: hex::encode(next_pkcs8.as_ref()),
-        current_public_key_hex: hex::encode(current_keypair.public_key().as_ref()),
-        next_public_key_hex: hex::encode(next_keypair.public_key().as_ref()),
-        inception_event_json,
-    })
-}
-
-/// Get the public key from a PKCS8-encoded private key.
-///
-/// # Arguments
-/// * `pkcs8_hex` - The private key in PKCS8 DER format (hex encoded)
-///
-/// # Returns
-/// The Ed25519 public key as hex-encoded bytes (32 bytes)
-#[uniffi::export]
-pub fn get_public_key_from_pkcs8(pkcs8_hex: String) -> Result<String, MobileError> {
-    let pkcs8_bytes =
-        hex::decode(&pkcs8_hex).map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-
-    let keypair = Ed25519KeyPair::from_pkcs8(&pkcs8_bytes)
-        .map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-
-    Ok(hex::encode(keypair.public_key().as_ref()))
-}
-
-/// Generate a device DID (did:key) from a public key.
-///
-/// This creates a did:key identifier in the Ed25519 multicodec format.
-///
-/// # Arguments
-/// * `public_key_hex` - The Ed25519 public key (32 bytes, hex encoded)
-///
-/// # Returns
-/// A did:key identifier like "did:key:z6Mk..."
-#[uniffi::export]
-pub fn generate_device_did(public_key_hex: String) -> Result<String, MobileError> {
-    let public_key =
-        hex::decode(&public_key_hex).map_err(|e| MobileError::InvalidKeyData(e.to_string()))?;
-
-    if public_key.len() != 32 {
-        return Err(MobileError::InvalidKeyData(format!(
-            "Expected 32 bytes, got {}",
-            public_key.len()
-        )));
-    }
-
-    // Ed25519 multicodec prefix: 0xed01
-    let mut multicodec = vec![0xed, 0x01];
-    multicodec.extend_from_slice(&public_key);
-
-    // Base58btc encode with 'z' prefix
-    let encoded = bs58::encode(&multicodec).into_string();
-    Ok(format!("did:key:z{}", encoded))
-}
-
-/// Validate that an inception event JSON is well-formed.
-///
-/// # Arguments
-/// * `inception_event_json` - The inception event as JSON string
-///
-/// # Returns
-/// The KERI prefix if valid, or an error
+/// Validate that an inception-event JSON is well-formed and carries a
+/// non-empty signature. Does NOT re-verify the signature — the
+/// assemblers already did that at creation time; this is a structural
+/// check the mobile side can run before posting to the registry.
 #[uniffi::export]
 pub fn validate_inception_event(inception_event_json: String) -> Result<String, MobileError> {
     let event: IcpEvent = serde_json::from_str(&inception_event_json)
         .map_err(|e| MobileError::Serialization(format!("Invalid JSON: {}", e)))?;
-
     if event.t != "icp" {
         return Err(MobileError::Serialization(format!(
             "Expected icp event, got {}",
             event.t
         )));
     }
-
     if event.i.is_empty() {
         return Err(MobileError::Serialization(
             "Missing identifier prefix".to_string(),
         ));
     }
-
     if event.x.is_empty() {
         return Err(MobileError::Serialization("Missing signature".to_string()));
     }
-
     Ok(event.i)
 }
 
@@ -422,28 +254,18 @@ pub fn validate_inception_event(inception_event_json: String) -> Result<String, 
 /// Parsed auth challenge URI for display before user approves.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct AuthChallengeInfo {
-    /// Session ID from the auth server.
     pub session_id: String,
-    /// Hex-encoded challenge nonce.
     pub challenge: String,
-    /// Domain the challenge is bound to (anti-phishing).
     pub domain: String,
-    /// Auth server endpoint URL to POST the signed response to.
     pub auth_server_url: String,
 }
 
 // ============================================================================
-// Auth Challenge API
+// Auth Challenge URI Parser
 // ============================================================================
 
-/// Parse an auth challenge QR code URI.
-///
-/// The QR code contains: `auths://auth?id={id}&c={challenge}&d={domain}&e={base64(server_url)}`
-///
-/// Returns the parsed fields so the app can display them and then call
-/// [`build_auth_challenge_signing_payload`](crate::build_auth_challenge_signing_payload)
-/// + POST the assembled body returned by
-/// [`assemble_auth_challenge_response`](crate::assemble_auth_challenge_response).
+/// Parse an auth challenge QR code URI of the form
+/// `auths://auth?id={id}&c={challenge}&d={domain}&e={base64(server_url)}`.
 #[uniffi::export]
 pub fn parse_auth_challenge_uri(uri: String) -> Result<AuthChallengeInfo, MobileError> {
     let rest = uri
@@ -471,18 +293,14 @@ pub fn parse_auth_challenge_uri(uri: String) -> Result<AuthChallengeInfo, Mobile
         .ok_or_else(|| MobileError::PairingFailed("Missing session ID (id)".to_string()))?;
     let challenge = challenge
         .ok_or_else(|| MobileError::PairingFailed("Missing challenge (c)".to_string()))?;
-    let domain = domain
-        .ok_or_else(|| MobileError::PairingFailed("Missing domain (d)".to_string()))?;
+    let domain =
+        domain.ok_or_else(|| MobileError::PairingFailed("Missing domain (d)".to_string()))?;
     let endpoint_b64 = endpoint_b64
         .ok_or_else(|| MobileError::PairingFailed("Missing endpoint (e)".to_string()))?;
 
-    // The endpoint is base64-encoded (standard encoding, as produced by browser btoa())
     let endpoint_bytes = URL_SAFE_NO_PAD
         .decode(&endpoint_b64)
-        .or_else(|_| {
-            // Browser btoa() uses standard base64 with padding, try that too
-            base64::engine::general_purpose::STANDARD.decode(&endpoint_b64)
-        })
+        .or_else(|_| base64::engine::general_purpose::STANDARD.decode(&endpoint_b64))
         .map_err(|e| MobileError::PairingFailed(format!("Invalid endpoint encoding: {e}")))?;
     let auth_server_url = String::from_utf8(endpoint_bytes)
         .map_err(|e| MobileError::PairingFailed(format!("Invalid endpoint UTF-8: {e}")))?;
@@ -496,21 +314,22 @@ pub fn parse_auth_challenge_uri(uri: String) -> Result<AuthChallengeInfo, Mobile
 }
 
 // ============================================================================
-// Internal Pairing Helpers
+// Pairing URI Parser
 // ============================================================================
 
 /// Internal parsed token fields shared between parse and create functions.
-struct TokenFields {
-    controller_did: String,
-    endpoint: String,
-    short_code: String,
-    ephemeral_pubkey: String,
-    expires_at_unix: i64,
-    capabilities: Vec<String>,
+pub(crate) struct TokenFields {
+    pub(crate) controller_did: String,
+    pub(crate) endpoint: String,
+    pub(crate) short_code: String,
+    pub(crate) session_id: String,
+    pub(crate) ephemeral_pubkey: String,
+    pub(crate) expires_at_unix: i64,
+    pub(crate) capabilities: Vec<String>,
 }
 
 /// Parse the query parameters from an `auths://pair?...` URI.
-fn parse_token_fields(uri: &str) -> Result<TokenFields, MobileError> {
+pub(crate) fn parse_token_fields(uri: &str) -> Result<TokenFields, MobileError> {
     let rest = uri
         .strip_prefix("auths://pair?")
         .ok_or_else(|| MobileError::PairingFailed("Expected auths://pair? scheme".to_string()))?;
@@ -519,6 +338,7 @@ fn parse_token_fields(uri: &str) -> Result<TokenFields, MobileError> {
     let mut endpoint_b64 = None;
     let mut ephemeral_pubkey = None;
     let mut short_code = None;
+    let mut session_id = None;
     let mut expires_unix = None;
     let mut caps_str = None;
 
@@ -529,6 +349,7 @@ fn parse_token_fields(uri: &str) -> Result<TokenFields, MobileError> {
                 "e" => endpoint_b64 = Some(value.to_string()),
                 "k" => ephemeral_pubkey = Some(value.to_string()),
                 "sc" => short_code = Some(value.to_string()),
+                "sid" => session_id = Some(value.to_string()),
                 "x" => expires_unix = value.parse::<i64>().ok(),
                 "c" => caps_str = Some(value.to_string()),
                 _ => {}
@@ -549,6 +370,8 @@ fn parse_token_fields(uri: &str) -> Result<TokenFields, MobileError> {
         .ok_or_else(|| MobileError::PairingFailed("Missing ephemeral pubkey (k)".to_string()))?;
     let short_code = short_code
         .ok_or_else(|| MobileError::PairingFailed("Missing short code (sc)".to_string()))?;
+    let session_id = session_id
+        .ok_or_else(|| MobileError::PairingFailed("Missing session id (sid)".to_string()))?;
     let expires_at_unix = expires_unix
         .ok_or_else(|| MobileError::PairingFailed("Missing or invalid expiry (x)".to_string()))?;
 
@@ -561,25 +384,17 @@ fn parse_token_fields(uri: &str) -> Result<TokenFields, MobileError> {
         controller_did,
         endpoint,
         short_code,
+        session_id,
         ephemeral_pubkey,
         expires_at_unix,
         capabilities,
     })
 }
 
-// ============================================================================
-// Pairing API Functions
-// ============================================================================
-
 /// Parse a pairing URI for display before user approves.
-///
-/// Extracts the pairing token info from an `auths://pair?...` URI so the
-/// app can show the controller DID, short code, and capabilities before
-/// the user confirms pairing.
 #[uniffi::export]
 pub fn parse_pairing_uri(uri: String) -> Result<PairingInfo, MobileError> {
     let fields = parse_token_fields(&uri)?;
-
     Ok(PairingInfo {
         controller_did: fields.controller_did,
         endpoint: fields.endpoint,
@@ -589,118 +404,36 @@ pub fn parse_pairing_uri(uri: String) -> Result<PairingInfo, MobileError> {
     })
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn create_identity_returns_valid_result() {
-        let result = create_identity("Test iPhone".to_string()).unwrap();
-
-        // Prefix should start with 'E' (Blake3 SAID prefix)
-        assert!(result.prefix.starts_with('E'));
-
-        // DID should be formatted correctly
-        assert!(result.did.starts_with("did:keri:E"));
-
-        // Keys should be present and valid hex
-        assert!(!result.current_key_pkcs8_hex.is_empty());
-        assert!(!result.next_key_pkcs8_hex.is_empty());
-        hex::decode(&result.current_key_pkcs8_hex).unwrap();
-        hex::decode(&result.next_key_pkcs8_hex).unwrap();
-
-        // Public keys should be 32 bytes (64 hex chars)
-        assert_eq!(result.current_public_key_hex.len(), 64);
-        assert_eq!(result.next_public_key_hex.len(), 64);
-
-        // Inception event should be valid JSON
-        let event: serde_json::Value = serde_json::from_str(&result.inception_event_json).unwrap();
-        assert_eq!(event["t"], "icp");
-        assert_eq!(event["v"], KERI_VERSION);
-        assert!(!event["x"].as_str().unwrap().is_empty());
+    fn validate_inception_event_rejects_wrong_type() {
+        let r = validate_inception_event(r#"{"t":"rot","i":"x","x":"y"}"#.to_string());
+        assert!(r.is_err());
     }
 
     #[test]
-    fn inception_event_has_correct_structure() {
-        let result = create_identity("Test Device".to_string()).unwrap();
-        let event: IcpEvent = serde_json::from_str(&result.inception_event_json).unwrap();
-
-        // SAID equals prefix
-        assert_eq!(event.d, event.i);
-        assert_eq!(event.d, result.prefix);
-
-        // Sequence is 0
-        assert_eq!(event.s, "0");
-
-        // Single key
-        assert_eq!(event.k.len(), 1);
-        assert!(event.k[0].starts_with('D')); // Ed25519 prefix
-
-        // Single next commitment
-        assert_eq!(event.n.len(), 1);
-        assert!(event.n[0].starts_with('E')); // Blake3 hash prefix
-
-        // No witnesses
-        assert_eq!(event.bt, "0");
-        assert!(event.b.is_empty());
+    fn validate_inception_event_rejects_missing_prefix() {
+        let r = validate_inception_event(r#"{"t":"icp","i":"","x":"y"}"#.to_string());
+        assert!(r.is_err());
     }
 
     #[test]
-    fn get_public_key_from_pkcs8_works() {
-        let result = create_identity("Test".to_string()).unwrap();
-
-        let public_key = get_public_key_from_pkcs8(result.current_key_pkcs8_hex).unwrap();
-
-        // Should match the public key we got during creation
-        assert_eq!(public_key, result.current_public_key_hex);
+    fn validate_inception_event_rejects_missing_signature() {
+        let r = validate_inception_event(r#"{"t":"icp","i":"Eabc","x":""}"#.to_string());
+        assert!(r.is_err());
     }
-
-    #[test]
-    fn generate_device_did_works() {
-        let result = create_identity("Test".to_string()).unwrap();
-
-        let device_did = generate_device_did(result.current_public_key_hex).unwrap();
-
-        assert!(device_did.starts_with("did:key:z"));
-    }
-
-    #[test]
-    fn validate_inception_event_works() {
-        let result = create_identity("Test".to_string()).unwrap();
-
-        let prefix = validate_inception_event(result.inception_event_json).unwrap();
-
-        assert_eq!(prefix, result.prefix);
-    }
-
-    #[test]
-    fn validate_inception_event_rejects_invalid() {
-        let result = validate_inception_event("not json".to_string());
-        assert!(result.is_err());
-
-        let result = validate_inception_event(r#"{"t":"rot"}"#.to_string());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn multiple_identities_have_different_prefixes() {
-        let result1 = create_identity("Device 1".to_string()).unwrap();
-        let result2 = create_identity("Device 2".to_string()).unwrap();
-
-        assert_ne!(result1.prefix, result2.prefix);
-        assert_ne!(result1.current_key_pkcs8_hex, result2.current_key_pkcs8_hex);
-    }
-
-    // ========================================================================
-    // Auth challenge tests
-    // ========================================================================
 
     #[test]
     fn test_parse_auth_challenge_uri() {
-        // Browser btoa("http://192.168.1.40:3001") = "aHR0cDovLzE5Mi4xNjguMS40MDozMDAx"
         let uri = "auths://auth?id=550e8400-e29b-41d4-a716-446655440000&c=deadbeef&d=192.168.1.40&e=aHR0cDovLzE5Mi4xNjguMS40MDozMDAx".to_string();
         let info = parse_auth_challenge_uri(uri).unwrap();
-
         assert_eq!(info.session_id, "550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(info.challenge, "deadbeef");
         assert_eq!(info.domain, "192.168.1.40");
@@ -709,18 +442,10 @@ mod tests {
 
     #[test]
     fn test_parse_auth_challenge_uri_rejects_wrong_scheme() {
-        let result = parse_auth_challenge_uri("auths://pair?id=test".to_string());
-        assert!(result.is_err());
-
-        let result = parse_auth_challenge_uri("https://example.com".to_string());
-        assert!(result.is_err());
+        assert!(parse_auth_challenge_uri("auths://pair?id=test".to_string()).is_err());
+        assert!(parse_auth_challenge_uri("https://example.com".to_string()).is_err());
     }
 
-    // ========================================================================
-    // Pairing tests
-    // ========================================================================
-
-    /// Build a valid test pairing URI with a future expiry.
     fn make_test_pairing_uri() -> String {
         use rand_core::OsRng;
         use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
@@ -728,41 +453,30 @@ mod tests {
         let secret = EphemeralSecret::random_from_rng(OsRng);
         let pubkey = X25519PublicKey::from(&secret);
         let pubkey_b64 = URL_SAFE_NO_PAD.encode(pubkey.as_bytes());
-
         let endpoint_b64 = URL_SAFE_NO_PAD.encode(b"http://localhost:3000");
         let expires = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs()
-            + 300; // 5 minutes from now
-
+            + 300;
         format!(
-            "auths://pair?d=did:keri:test123&e={}&k={}&sc=AB3DEF&x={}&c=sign_commit",
+            "auths://pair?d=did:keri:test123&e={}&k={}&sc=AB3DEF&sid=sess-test&x={}&c=sign_commit",
             endpoint_b64, pubkey_b64, expires
         )
     }
 
     #[test]
     fn test_parse_pairing_uri() {
-        let uri = make_test_pairing_uri();
-        let info = parse_pairing_uri(uri).unwrap();
-
+        let info = parse_pairing_uri(make_test_pairing_uri()).unwrap();
         assert_eq!(info.controller_did, "did:keri:test123");
         assert_eq!(info.endpoint, "http://localhost:3000");
         assert_eq!(info.short_code, "AB3DEF");
         assert_eq!(info.capabilities, vec!["sign_commit"]);
-        assert!(info.expires_at_unix > 0);
     }
 
     #[test]
     fn test_parse_pairing_uri_invalid() {
-        // Bad prefix
-        let result = parse_pairing_uri("https://example.com".to_string());
-        assert!(result.is_err());
-
-        // Missing required params
-        let result = parse_pairing_uri("auths://pair?d=did:keri:test".to_string());
-        assert!(result.is_err());
+        assert!(parse_pairing_uri("https://example.com".to_string()).is_err());
+        assert!(parse_pairing_uri("auths://pair?d=did:keri:test".to_string()).is_err());
     }
-
 }

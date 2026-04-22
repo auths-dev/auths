@@ -159,6 +159,7 @@ pub fn create_org(
             None,
             None, // commit_sha
             None,
+            None, // supersedes_rid
         )
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 

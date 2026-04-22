@@ -3,6 +3,7 @@
 //! Starts an ephemeral HTTP server on the local network. The mobile app
 //! connects directly via the IP:port embedded in the QR code.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -11,6 +12,7 @@ use console::style;
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::pairing::CreateSessionRequest;
 use auths_sdk::pairing::{PairingToken, QrOptions, render_qr};
+use auths_sdk::signing::PassphraseProvider;
 
 use super::common::*;
 use super::lan_server::{LanPairingServer, detect_lan_ip};
@@ -24,12 +26,19 @@ use super::lan_server::{LanPairingServer, detect_lan_ip};
 /// 5. Display QR + short code
 /// 6. Wait for response
 /// 7. Verify + create attestation
+// Flags are all flat UX toggles — grouping them into a struct would cost
+// more at call sites (build the struct, name the fields) than it buys in
+// clarity. Accept the lint.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_initiate_lan(
     now: chrono::DateTime<chrono::Utc>,
     no_qr: bool,
     no_mdns: bool,
+    verify: bool,
+    rotate: bool,
     expiry_secs: u64,
     capabilities: &[String],
+    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
     let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
@@ -58,7 +67,12 @@ pub async fn handle_initiate_lan(
 
     let session_id = session.token.session_id.clone();
 
-    // Build the CreateSessionRequest for the LAN server
+    // Build the CreateSessionRequest for the LAN server.
+    let mode = if rotate {
+        auths_sdk::pairing::SessionMode::Rotate
+    } else {
+        auths_sdk::pairing::SessionMode::Pair
+    };
     let request = CreateSessionRequest {
         session_id: session_id.clone(),
         controller_did: session.token.controller_did.clone(),
@@ -68,10 +82,11 @@ pub async fn handle_initiate_lan(
         short_code: session.token.short_code.clone(),
         capabilities: session.token.capabilities.clone(),
         expires_at: session.token.expires_at.timestamp(),
+        mode,
     };
 
     // Start the LAN server bound to the detected LAN IP
-    let server = LanPairingServer::start(request, lan_ip).await?;
+    let mut server = LanPairingServer::start(request, lan_ip).await?;
     let port = server.addr().port();
     let endpoint = format!("http://{}:{}", lan_ip, port);
 
@@ -187,26 +202,54 @@ pub async fn handle_initiate_lan(
                 adv.shutdown();
             }
 
-            handle_pairing_response(
-                now,
-                &mut session,
-                response_data,
-                &auths_dir,
-                capabilities,
-                env_config,
-            )?;
+            // Phone auto-fires /confirm as soon as it processes
+            // /response. Keep the listener up briefly so that confirm
+            // actually lands and the session is recorded as fully
+            // settled. If the phone fails to confirm within the
+            // window, we still proceed — phone-side logic tolerates
+            // a silent daemon.
+            let _confirmation = server.wait_for_confirmation(Duration::from_secs(5)).await;
+
+            match server.session_mode() {
+                auths_sdk::pairing::SessionMode::Pair => {
+                    handle_pairing_response(
+                        now,
+                        &mut session,
+                        response_data,
+                        &auths_dir,
+                        capabilities,
+                        Arc::clone(&passphrase_provider),
+                        env_config,
+                        verify,
+                    )?;
+                }
+                auths_sdk::pairing::SessionMode::Rotate => {
+                    super::rotate::handle_rotation_response(
+                        now,
+                        &session,
+                        response_data,
+                        &auths_dir,
+                        Arc::clone(&passphrase_provider),
+                        env_config,
+                    )?;
+                }
+            }
+
+            server.shutdown();
         }
         Err(auths_sdk::error::PairingError::LanTimeout) => {
             wait_spinner.finish_with_message(format!("{}", style("Session expired.").yellow()));
             if let Some(adv) = _advertiser {
                 adv.shutdown();
             }
+            server.shutdown();
         }
         Err(e) => {
             wait_spinner.finish_and_clear();
             if let Some(adv) = _advertiser {
                 adv.shutdown();
             }
+            server.shutdown();
             return Err(anyhow::anyhow!("LAN pairing failed: {}", e));
         }
     }

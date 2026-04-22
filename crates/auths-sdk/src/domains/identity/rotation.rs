@@ -471,6 +471,7 @@ fn finalize_rotation_storage(
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
 
     use auths_core::PrefilledPassphraseProvider;
     use auths_core::ports::clock::SystemClock;
@@ -489,29 +490,48 @@ mod tests {
     use crate::domains::identity::types::{CreateDeveloperIdentityConfig, IdentityConfig};
     use crate::domains::signing::types::GitSigningScope;
 
-    fn fake_ctx(passphrase: &str) -> AuthsContext {
+    /// Serialize tests that touch the process-global `MEMORY_KEYCHAIN`.
+    /// Parallel `cargo test` runs let one test's `clear_all()` wipe
+    /// another test's just-written keys, which surfaces as a spurious
+    /// DID-mismatch under `retrieve_precommitted_key`. Hold this guard
+    /// for the lifetime of any test that both writes and reads the
+    /// shared keychain.
+    fn keychain_test_guard() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        // A poisoned mutex means a previous test panicked while holding
+        // the guard; the keychain state is reset by `clear_all()` on
+        // the next `fake_ctx` call anyway, so recovering from poison
+        // is safe.
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn fake_ctx(passphrase: &str) -> (MutexGuard<'static, ()>, AuthsContext) {
+        // Hold the keychain serialization guard for the caller's
+        // lifetime: the test holds the tuple, the guard drops when the
+        // tuple drops. The clear happens *after* we own the lock so no
+        // concurrent test can be mid-write.
+        let guard = keychain_test_guard();
         MEMORY_KEYCHAIN.lock().unwrap().clear_all().ok();
-        AuthsContext::builder()
-            .registry(
-                Arc::new(FakeRegistryBackend::new()) as Arc<dyn RegistryBackend + Send + Sync>
-            )
-            .key_storage(Arc::new(MemoryKeychainHandle))
-            .clock(Arc::new(SystemClock))
-            .identity_storage(
-                Arc::new(FakeIdentityStorage::new()) as Arc<dyn IdentityStorage + Send + Sync>
-            )
-            .attestation_sink(
-                Arc::new(FakeAttestationSink::new()) as Arc<dyn AttestationSink + Send + Sync>
-            )
-            .attestation_source(
-                Arc::new(FakeAttestationSource::new())
-                    as Arc<dyn AttestationSource + Send + Sync>,
-            )
-            .passphrase_provider(
-                Arc::new(PrefilledPassphraseProvider::new(passphrase))
-                    as Arc<dyn PassphraseProvider + Send + Sync>,
-            )
-            .build()
+        let ctx =
+            {
+                AuthsContext::builder()
+                    .registry(Arc::new(FakeRegistryBackend::new())
+                        as Arc<dyn RegistryBackend + Send + Sync>)
+                    .key_storage(Arc::new(MemoryKeychainHandle))
+                    .clock(Arc::new(SystemClock))
+                    .identity_storage(Arc::new(FakeIdentityStorage::new())
+                        as Arc<dyn IdentityStorage + Send + Sync>)
+                    .attestation_sink(Arc::new(FakeAttestationSink::new())
+                        as Arc<dyn AttestationSink + Send + Sync>)
+                    .attestation_source(Arc::new(FakeAttestationSource::new())
+                        as Arc<dyn AttestationSource + Send + Sync>)
+                    .passphrase_provider(Arc::new(PrefilledPassphraseProvider::new(passphrase))
+                        as Arc<dyn PassphraseProvider + Send + Sync>)
+                    .build()
+            };
+        (guard, ctx)
     }
 
     fn provision_identity(ctx: &AuthsContext) -> KeyAlias {
@@ -541,7 +561,7 @@ mod tests {
 
     #[test]
     fn resolve_rotation_context_returns_identity_and_prefix() {
-        let ctx = fake_ctx("Test-passphrase1!");
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
         let config = IdentityRotationConfig {
@@ -565,7 +585,7 @@ mod tests {
 
     #[test]
     fn resolve_rotation_context_auto_discovers_alias() {
-        let ctx = fake_ctx("Test-passphrase1!");
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
         let _key_alias = provision_identity(&ctx);
 
         let config = IdentityRotationConfig {
@@ -580,7 +600,7 @@ mod tests {
 
     #[test]
     fn resolve_rotation_context_missing_identity_returns_error() {
-        let ctx = fake_ctx("unused");
+        let (_keychain_guard, ctx) = fake_ctx("unused");
 
         let config = IdentityRotationConfig {
             repo_path: std::path::PathBuf::from("/unused"),
@@ -599,7 +619,7 @@ mod tests {
 
     #[test]
     fn retrieve_precommitted_key_succeeds_after_setup() {
-        let ctx = fake_ctx("Test-passphrase1!");
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
         let config = IdentityRotationConfig {
@@ -620,7 +640,7 @@ mod tests {
 
     #[test]
     fn retrieve_precommitted_key_wrong_did_returns_error() {
-        let ctx = fake_ctx("Test-passphrase1!");
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
         let config = IdentityRotationConfig {
@@ -641,7 +661,7 @@ mod tests {
 
     #[test]
     fn retrieve_precommitted_key_missing_key_returns_error() {
-        let ctx = fake_ctx("Test-passphrase1!");
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
 
         #[allow(clippy::disallowed_methods)]
         // INVARIANT: test-only literal with valid did:keri: prefix
@@ -676,7 +696,7 @@ mod tests {
 
     #[test]
     fn generate_rotation_keys_produces_valid_event() {
-        let ctx = fake_ctx("Test-passphrase1!");
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
         let config = IdentityRotationConfig {
@@ -702,7 +722,7 @@ mod tests {
 
     #[test]
     fn finalize_rotation_storage_persists_keys() {
-        let ctx = fake_ctx("Test-passphrase1!");
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
         let key_alias = provision_identity(&ctx);
 
         let config = IdentityRotationConfig {
@@ -868,7 +888,7 @@ mod tests {
 
     #[test]
     fn rotate_identity_stores_p256_next_key_as_p256_pkcs8() {
-        let ctx = fake_ctx("Test-passphrase1!");
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
 
         let signer = StorageSigner::new(MemoryKeychainHandle);
         let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");

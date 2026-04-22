@@ -52,6 +52,19 @@ pub enum SessionStatus {
     Expired,
 }
 
+/// What a session is for. Every wire message carries this explicitly
+/// — there is no implicit default, so verifiers never guess at intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum SessionMode {
+    /// Initial pairing: first time the device is bound to the controller.
+    Pair,
+    /// Device-key rotation: the device is already bound; this session
+    /// swaps in a new signing key and records a superseding attestation.
+    Rotate,
+}
+
 /// Request to create a new pairing session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -63,6 +76,8 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     pub capabilities: Vec<String>,
     pub expires_at: i64,
+    /// Session mode — always present on the wire.
+    pub mode: SessionMode,
 }
 
 /// Response to session creation.
@@ -102,6 +117,18 @@ pub struct SubmitResponseRequest {
     /// `Some(_)` with an explicit unsupported-extension error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subkey_chain: Option<crate::subkey_chain::SubkeyChain>,
+    /// Rotation extension: the NEW device signing pubkey being attested.
+    ///
+    /// Present only on rotation responses (`SessionMode::Rotate`). The
+    /// `signature` field still covers the binding message; for rotation
+    /// the binding includes this new pubkey, so the OLD key's signature
+    /// commits to the transition. The Mac's CLI post-handler uses this
+    /// field as the pubkey in the superseding attestation while looking
+    /// up the existing attestation by the OLD `device_did`.
+    ///
+    /// Absent on normal pair responses — deserializes to `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_device_signing_pubkey: Option<Base64UrlEncoded>,
 }
 
 /// Response when getting session status.
