@@ -15,7 +15,9 @@ use auths_sdk::signing::PassphraseProvider;
 
 use crate::core::fs::{create_restricted_dir, write_sensitive_file};
 
-use crate::core::provider::{CliPassphraseProvider, PrefilledPassphraseProvider};
+// `CliPassphraseProvider` / `PrefilledPassphraseProvider` are no longer
+// needed here — the caller threads in the CLI's pre-wrapped
+// `KeychainPassphraseProvider`.
 
 // Emoji with plain-text fallbacks for non-emoji terminals.
 pub(crate) static LOCK: Emoji<'_, '_> = Emoji("🔐 ", "");
@@ -145,12 +147,14 @@ pub(crate) fn display_sas_mismatch_warning() {
 /// where the QR itself is the out-of-band channel. Pass `verify_sas:
 /// true` to restore the interactive confirmation (via `auths pair
 /// --verify`).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_pairing_response(
     now: chrono::DateTime<chrono::Utc>,
     session: &mut PairingSession,
     response: SubmitResponseRequest,
     auths_dir: &Path,
     capabilities: &[String],
+    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
     verify_sas: bool,
 ) -> Result<()> {
@@ -297,15 +301,11 @@ pub(crate) fn handle_pairing_response(
         .find(|a| !a.contains("--next-"))
         .ok_or_else(|| anyhow!("No signing key found for identity {}", controller_did))?;
 
-    let cli_provider = CliPassphraseProvider::new();
-    let passphrase = cli_provider
-        .get_passphrase(&format!(
-            "Enter passphrase for key '{}' to sign:",
-            identity_key_alias
-        ))
-        .context("Failed to get passphrase")?;
-    let passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync> =
-        Arc::new(PrefilledPassphraseProvider::new(passphrase));
+    // `passphrase_provider` is the CLI-level provider configured by
+    // `factories::load_cli_config` — already wrapped with
+    // `KeychainPassphraseProvider` per user config, so first invocation
+    // prompts + caches and subsequent invocations surface Touch ID
+    // (or the user's configured policy) without re-prompting.
     let key_storage: Arc<dyn auths_sdk::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
 
     let attest_spinner = create_wait_spinner(&format!("{GEAR}Creating device attestation..."));

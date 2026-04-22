@@ -1246,11 +1246,15 @@ pub struct Attestation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delegated_by: Option<CanonicalDid>,
 
-    /// RID of a prior attestation that this one supersedes (for device-key
-    /// rotation). Absent on non-rotation attestations. Included in the
-    /// canonical JSON before signing — the signature covers this field,
-    /// so a malicious intermediary cannot strip it to make a superseded
-    /// attestation look current.
+    /// Identifier of the prior attestation this one supersedes (device-key
+    /// rotation). Holds the *subject DID* of the predecessor — that's
+    /// the unique-per-device anchor the attestation storage is keyed by;
+    /// `Attestation::rid` is repo-scoped (shared across every attestation
+    /// under one identity) and doesn't disambiguate on its own.
+    ///
+    /// Absent on non-rotation attestations. Included in the canonical
+    /// JSON before signing, so a malicious intermediary cannot strip it
+    /// to make a superseded attestation look current.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersedes_attestation_rid: Option<ResourceId>,
 

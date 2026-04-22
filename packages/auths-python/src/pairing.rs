@@ -356,6 +356,7 @@ pub fn join_pairing_session_ffi(
             ),
             device_name: pairing_response.device_name,
             subkey_chain: None,
+            new_device_signing_pubkey: None,
         };
 
         let submit_url = format!("{}/v1/pairing/sessions/{}/response", endpoint, session_id);

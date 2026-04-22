@@ -212,7 +212,9 @@ pub fn handle_device(
             list_devices(now, &repo_path, &config, include_revoked)
         }
         DeviceSubcommand::Resolve { device_did } => resolve_device(&repo_path, &device_did),
-        DeviceSubcommand::Pair(pair_cmd) => super::pair::handle_pair(pair_cmd, env_config),
+        DeviceSubcommand::Pair(pair_cmd) => {
+            super::pair::handle_pair(pair_cmd, passphrase_provider.clone(), env_config)
+        }
         DeviceSubcommand::VerifyAttestation(verify_cmd) => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(super::verify_attestation::handle_verify(verify_cmd))

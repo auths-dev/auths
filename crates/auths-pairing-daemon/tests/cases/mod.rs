@@ -17,7 +17,7 @@ mod token;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use auths_core::pairing::types::{Base64UrlEncoded, CreateSessionRequest};
+use auths_core::pairing::types::{Base64UrlEncoded, CreateSessionRequest, SessionMode};
 use auths_pairing_daemon::{
     DaemonState, HostAllowlist, TieredRateConfig, TieredRateLimiter, build_pairing_router,
 };
@@ -31,7 +31,7 @@ pub fn test_session() -> CreateSessionRequest {
         short_code: "ABC123".to_string(),
         capabilities: vec!["sign_commit".to_string()],
         expires_at: 9999999999,
-        mode: Default::default(),
+        mode: SessionMode::Pair,
     }
 }
 

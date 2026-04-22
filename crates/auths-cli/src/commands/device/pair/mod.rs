@@ -14,8 +14,11 @@ mod online;
 #[cfg(feature = "lan-pairing")]
 mod rotate;
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::signing::PassphraseProvider;
 use chrono::Utc;
 use clap::Parser;
 
@@ -112,9 +115,23 @@ pub struct PairCommand {
 /// | `pair --join CODE`           | LAN join: mDNS discover -> join       |
 /// | `pair --join CODE --registry`| Online join (existing)                |
 /// | `pair --offline`             | Offline mode (no network)             |
-pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<()> {
+pub fn handle_pair(
+    cmd: PairCommand,
+    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
+    env_config: &EnvironmentConfig,
+) -> Result<()> {
     #[allow(clippy::disallowed_methods)]
     let now = Utc::now();
+
+    // Eagerly start the auths-agent so future signings in the same
+    // terminal session can short-circuit to it. Quiet + best-effort:
+    // if the agent can't start (perms, disk full, etc.), we proceed
+    // via the passphrase provider path — never abort pair on agent
+    // startup failure.
+    if let Err(e) = crate::commands::agent::ensure_agent_running(true) {
+        log::debug!("auths-agent auto-start skipped: {e}");
+    }
+
     match (&cmd.join, &cmd.registry, cmd.offline) {
         // Offline mode takes priority
         (None, _, true) => {
@@ -166,6 +183,7 @@ pub fn handle_pair(cmd: PairCommand, env_config: &EnvironmentConfig) -> Result<(
                 cmd.rotate,
                 cmd.timeout,
                 &cmd.capabilities,
+                passphrase_provider,
                 env_config,
             ))
         }

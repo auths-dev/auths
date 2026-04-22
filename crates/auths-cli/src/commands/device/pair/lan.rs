@@ -3,6 +3,7 @@
 //! Starts an ephemeral HTTP server on the local network. The mobile app
 //! connects directly via the IP:port embedded in the QR code.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -11,6 +12,7 @@ use console::style;
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::pairing::CreateSessionRequest;
 use auths_sdk::pairing::{PairingToken, QrOptions, render_qr};
+use auths_sdk::signing::PassphraseProvider;
 
 use super::common::*;
 use super::lan_server::{LanPairingServer, detect_lan_ip};
@@ -36,6 +38,7 @@ pub async fn handle_initiate_lan(
     rotate: bool,
     expiry_secs: u64,
     capabilities: &[String],
+    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
     let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
@@ -215,6 +218,7 @@ pub async fn handle_initiate_lan(
                         response_data,
                         &auths_dir,
                         capabilities,
+                        Arc::clone(&passphrase_provider),
                         env_config,
                         verify,
                     )?;
@@ -225,6 +229,7 @@ pub async fn handle_initiate_lan(
                         &session,
                         response_data,
                         &auths_dir,
+                        Arc::clone(&passphrase_provider),
                         env_config,
                     )?;
                 }

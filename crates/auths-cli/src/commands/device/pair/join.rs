@@ -146,6 +146,7 @@ pub(crate) async fn handle_join(
         signature: Base64UrlEncoded::from_raw(pairing_response.signature.clone()),
         device_name: pairing_response.device_name.clone(),
         subkey_chain: None,
+        new_device_signing_pubkey: None,
     };
 
     relay

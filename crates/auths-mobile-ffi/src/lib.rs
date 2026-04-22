@@ -118,6 +118,10 @@ pub struct PairingResponsePayload {
     pub device_did: String,
     pub signature: String,
     pub device_name: String,
+    /// Rotation extension: the NEW signing pubkey the controller should
+    /// attest. Absent on normal pair bodies.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub new_device_signing_pubkey: Option<String>,
 }
 
 // ============================================================================

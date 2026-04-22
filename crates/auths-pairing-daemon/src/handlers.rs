@@ -439,6 +439,7 @@ mod decode_device_pubkey_tests {
             signature: Base64UrlEncoded::from_raw(URL_SAFE_NO_PAD.encode([0u8; 64])),
             device_name: None,
             subkey_chain: None,
+            new_device_signing_pubkey: None,
         }
     }
 
@@ -549,6 +550,7 @@ mod decode_device_pubkey_tests {
             signature: Base64UrlEncoded::from_raw(URL_SAFE_NO_PAD.encode([0u8; 64])),
             device_name: None,
             subkey_chain: None,
+            new_device_signing_pubkey: None,
         };
         let err = decode_device_pubkey(&r).expect_err("malformed base64 must error");
         assert!(matches!(err, DaemonError::UnauthorizedSig));

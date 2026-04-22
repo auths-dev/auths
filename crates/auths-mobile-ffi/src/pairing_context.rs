@@ -89,6 +89,13 @@ pub struct PairingBindingContext {
     /// `binding_message` prefix is a variable-length short_code, which
     /// makes in-place extraction fragile.
     initiator_ephemeral_bytes: [u8; 33],
+
+    /// Rotation-mode extension: the NEW device signing pubkey (33 B
+    /// compressed SEC1) the Mac will attest. `device_signing_pubkey_compressed`
+    /// in a rotation context holds the OLD pubkey — what the caller signs
+    /// with — while this field is what the response body advertises as
+    /// the new bound key. `None` for normal pair contexts.
+    new_device_signing_pubkey_compressed: Option<Vec<u8>>,
 }
 
 #[uniffi::export]
@@ -269,6 +276,102 @@ pub fn build_pairing_binding_message(
         capabilities: fields.capabilities,
         shared_secret_hex,
         initiator_ephemeral_bytes,
+        new_device_signing_pubkey_compressed: None,
+    }))
+}
+
+/// Build the binding message for a device-key rotation.
+///
+/// Mirrors `build_pairing_binding_message` with two differences:
+/// - The caller supplies both the OLD and NEW signing pubkeys. The
+///   returned context's `device_signing_pubkey_compressed` is the OLD
+///   pubkey (what the Secure Enclave will sign with) and the NEW pubkey
+///   is held separately for inclusion in the response body.
+/// - The binding message appends the NEW pubkey after the pair-mode
+///   bytes, so the OLD key's signature commits to the transition —
+///   a controller verifying the signature against the OLD pubkey is
+///   cryptographically attesting which NEW pubkey the OLD key approved.
+///
+/// Binding message layout for rotation:
+///   `session_id || short_code || initiator_eph || device_eph || new_pubkey`
+#[uniffi::export]
+pub fn build_rotation_binding_message(
+    uri: String,
+    old_device_signing_pubkey_der: Vec<u8>,
+    new_device_signing_pubkey_der: Vec<u8>,
+) -> Result<Arc<PairingBindingContext>, MobileError> {
+    let fields = crate::parse_token_fields(&uri)?;
+
+    let now_unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| MobileError::PairingFailed(format!("System time error: {e}")))?
+        .as_secs() as i64;
+    if now_unix > fields.expires_at_unix {
+        return Err(MobileError::PairingExpired);
+    }
+
+    let old_signing_compressed =
+        normalize_p256_pubkey_to_compressed(&old_device_signing_pubkey_der)?;
+    let new_signing_compressed =
+        normalize_p256_pubkey_to_compressed(&new_device_signing_pubkey_der)?;
+
+    if old_signing_compressed == new_signing_compressed {
+        return Err(MobileError::PairingFailed(
+            "rotation old and new pubkeys are identical".to_string(),
+        ));
+    }
+
+    let device_ephemeral_secret = EphemeralSecret::random(&mut OsRng);
+    let device_ephemeral_public = device_ephemeral_secret.public_key();
+    let device_ephemeral_compressed: [u8; 33] = device_ephemeral_public
+        .to_encoded_point(true)
+        .as_bytes()
+        .try_into()
+        .map_err(|_| MobileError::PairingFailed("device P-256 compression failed".to_string()))?;
+
+    let initiator_ephemeral_bytes: [u8; 33] = URL_SAFE_NO_PAD
+        .decode(&fields.ephemeral_pubkey)
+        .map_err(|e| MobileError::PairingFailed(format!("Invalid pubkey encoding: {e}")))?
+        .try_into()
+        .map_err(|_| {
+            MobileError::PairingFailed(
+                "Invalid ephemeral pubkey length (want 33-byte P-256 SEC1 compressed)".to_string(),
+            )
+        })?;
+    let initiator_ephemeral_public = PublicKey::from_sec1_bytes(&initiator_ephemeral_bytes)
+        .map_err(|e| MobileError::PairingFailed(format!("Invalid P-256 ephemeral pubkey: {e}")))?;
+
+    let shared = device_ephemeral_secret.diffie_hellman(&initiator_ephemeral_public);
+    let shared_bytes = {
+        let raw = shared.raw_secret_bytes();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(raw.as_slice());
+        Zeroizing::new(out)
+    };
+    let shared_secret_hex = hex::encode(*shared_bytes);
+
+    let mut binding_message = Vec::with_capacity(
+        fields.session_id.len() + fields.short_code.len() + 33 + 33 + 33,
+    );
+    binding_message.extend_from_slice(fields.session_id.as_bytes());
+    binding_message.extend_from_slice(fields.short_code.as_bytes());
+    binding_message.extend_from_slice(&initiator_ephemeral_bytes);
+    binding_message.extend_from_slice(&device_ephemeral_compressed);
+    binding_message.extend_from_slice(&new_signing_compressed);
+
+    let device_ephemeral_pubkey_b64 = URL_SAFE_NO_PAD.encode(device_ephemeral_compressed);
+
+    Ok(Arc::new(PairingBindingContext {
+        binding_message,
+        device_signing_pubkey_compressed: old_signing_compressed.to_vec(),
+        device_ephemeral_pubkey_b64,
+        controller_did: fields.controller_did,
+        endpoint: fields.endpoint,
+        short_code: fields.short_code,
+        capabilities: fields.capabilities,
+        shared_secret_hex,
+        initiator_ephemeral_bytes,
+        new_device_signing_pubkey_compressed: Some(new_signing_compressed.to_vec()),
     }))
 }
 
@@ -325,6 +428,70 @@ pub fn assemble_pairing_response_body(
         device_did: derive_device_did(&context.device_signing_pubkey_compressed)?,
         signature: signature_b64,
         device_name,
+        new_device_signing_pubkey: None,
+    };
+
+    serde_json::to_vec(&payload).map_err(|e| MobileError::Serialization(e.to_string()))
+}
+
+/// Assemble the JSON body for a rotation `/response`.
+///
+/// Mirrors `assemble_pairing_response_body` but:
+/// - The signature is verified against the OLD pubkey stored in
+///   `context.device_signing_pubkey_compressed` (what the Secure Enclave
+///   signed with) over the rotation binding message (which includes the
+///   new pubkey in its bytes).
+/// - `device_did` is derived from the OLD pubkey so the Mac can look up
+///   the existing attestation by the same DID it was originally issued
+///   under.
+/// - `new_device_signing_pubkey` carries the NEW compressed pubkey,
+///   base64url-encoded, for the Mac to attest.
+///
+/// Panics at the FFI boundary if the context was built with
+/// `build_pairing_binding_message` rather than `build_rotation_binding_message`
+/// — a rotation body cannot be assembled without a NEW pubkey on hand.
+#[uniffi::export]
+pub fn assemble_rotation_response_body(
+    context: Arc<PairingBindingContext>,
+    signature: Vec<u8>,
+    device_name: String,
+) -> Result<Vec<u8>, MobileError> {
+    let new_pubkey_bytes = context
+        .new_device_signing_pubkey_compressed
+        .as_ref()
+        .ok_or_else(|| {
+            MobileError::PairingFailed(
+                "assemble_rotation_response_body called on a non-rotation context".to_string(),
+            )
+        })?;
+
+    let sig_raw: [u8; 64] = normalize_p256_signature_to_raw(&signature)?;
+
+    let old_pubkey_bytes: &[u8] = &context.device_signing_pubkey_compressed;
+    let verifier = p256::ecdsa::VerifyingKey::from_sec1_bytes(old_pubkey_bytes).map_err(|e| {
+        MobileError::InvalidKeyData(format!("P-256 old pubkey parse failed: {e}"))
+    })?;
+    let sig = p256::ecdsa::Signature::from_slice(&sig_raw).map_err(|e| {
+        MobileError::PairingFailed(format!("signature parse failed: {e}"))
+    })?;
+    verifier.verify(&context.binding_message, &sig).map_err(|e| {
+        MobileError::PairingFailed(format!(
+            "rotation signature does not match binding message under old pubkey: {e}"
+        ))
+    })?;
+
+    let old_pubkey_b64 = URL_SAFE_NO_PAD.encode(old_pubkey_bytes);
+    let new_pubkey_b64 = URL_SAFE_NO_PAD.encode(new_pubkey_bytes);
+    let signature_b64 = URL_SAFE_NO_PAD.encode(sig_raw);
+
+    let payload = PairingResponsePayload {
+        device_ephemeral_pubkey: context.device_ephemeral_pubkey_b64.clone(),
+        device_signing_pubkey: old_pubkey_b64,
+        curve: "p256".to_string(),
+        device_did: derive_device_did(old_pubkey_bytes)?,
+        signature: signature_b64,
+        device_name,
+        new_device_signing_pubkey: Some(new_pubkey_b64),
     };
 
     serde_json::to_vec(&payload).map_err(|e| MobileError::Serialization(e.to_string()))

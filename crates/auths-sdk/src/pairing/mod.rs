@@ -452,7 +452,7 @@ pub fn build_pairing_session_request(
         short_code: session.token.short_code.clone(),
         capabilities: session.token.capabilities.clone(),
         expires_at: session.token.expires_at.timestamp(),
-        mode: auths_core::pairing::types::SessionMode::default(),
+        mode: auths_core::pairing::types::SessionMode::Pair,
     };
 
     Ok(PairingSessionRequest {
@@ -897,6 +897,7 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         signature: Base64UrlEncoded::from_raw(pairing_response.signature),
         device_name: pairing_response.device_name,
         subkey_chain: None,
+        new_device_signing_pubkey: None,
     };
 
     relay
