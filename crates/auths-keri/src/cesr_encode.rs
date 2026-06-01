@@ -44,8 +44,6 @@ pub(crate) fn decode_verkey(qb64: &str) -> Result<(Vec<u8>, String), KeriDecodeE
 ///
 /// Args:
 /// * `digest`: The 32-byte Blake3-256 hash.
-// Wired into `compute_said` / `compute_next_commitment` when the encoding flip lands.
-#[allow(dead_code)]
 pub(crate) fn encode_blake3_digest(digest: &[u8]) -> Result<String, KeriDecodeError> {
     Diger::new(
         None,

@@ -1,6 +1,5 @@
 use crate::error::KeriTranslationError;
 use crate::types::Said;
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
 /// The 44-character `#` placeholder injected into the `d` field (and `i` field
 /// for inception events) before hashing. Matches the length of a CESR-qualified
@@ -80,10 +79,11 @@ pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationEr
         .map_err(KeriTranslationError::SerializationFailed)?;
 
     let hash = blake3::hash(&serialized);
-    Ok(Said::new_unchecked(format!(
-        "E{}",
-        URL_SAFE_NO_PAD.encode(hash.as_bytes())
-    )))
+    // CESR-encode the digest (keripy-identical alignment), not naive `E`+base64url.
+    #[allow(clippy::expect_used)] // INVARIANT: a 32-byte Blake3 digest always CESR-encodes
+    let said = crate::cesr_encode::encode_blake3_digest(hash.as_bytes())
+        .expect("32-byte Blake3 digest always encodes as a CESR Blake3_256 SAID");
+    Ok(Said::new_unchecked(said))
 }
 
 /// Verifies that an event's `d` field matches the spec-compliant SAID.

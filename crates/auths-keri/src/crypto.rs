@@ -3,7 +3,6 @@
 //! Key commitment hashes for pre-rotation are computed here.
 //! SAID computation lives in `said.rs`.
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use subtle::ConstantTimeEq;
 
 use crate::keys::KeriPublicKey;
@@ -30,13 +29,18 @@ use crate::types::Said;
 /// assert!(commitment.as_str().starts_with('E'));
 /// ```
 pub fn compute_next_commitment(key: &KeriPublicKey) -> Said {
-    // NOTE (CESR alignment, part 1/2): this still hashes the raw verkey bytes
-    // (legacy scheme) so commitment values are unchanged while call sites migrate
-    // to the typed key. Part 2 switches this to hash the cesride qb64 of `key`,
-    // which needs no call-site changes precisely because the curve is now in hand.
-    let hash = blake3::hash(key.as_bytes());
-    let encoded = URL_SAFE_NO_PAD.encode(hash.as_bytes());
-    Said::new_unchecked(format!("E{}", encoded))
+    // keripy: the next-key commitment is Diger(ser=verfer.qb64b) — the Blake3-256
+    // digest of the CESR-qualified verkey *text*, itself CESR-encoded (`E…`). The
+    // typed `key` carries the curve needed to produce that qualified form.
+    #[allow(clippy::expect_used)] // INVARIANT: a valid KeriPublicKey always CESR-encodes
+    let qb64 = key
+        .to_qb64()
+        .expect("a valid KeriPublicKey always CESR-encodes");
+    let hash = blake3::hash(qb64.as_bytes());
+    #[allow(clippy::expect_used)] // INVARIANT: a 32-byte Blake3 digest always CESR-encodes
+    let said = crate::cesr_encode::encode_blake3_digest(hash.as_bytes())
+        .expect("32-byte Blake3 digest always encodes");
+    Said::new_unchecked(said)
 }
 
 /// Verify that a public key satisfies a commitment.
