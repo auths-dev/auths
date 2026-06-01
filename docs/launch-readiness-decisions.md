@@ -219,34 +219,49 @@ shows **cesride 0.6 == keripy 1.3.4** byte-for-byte (`encode_pubkey(bytes(0..32)
 `EF_M_u7ASVHXfI8QzdWLq3V9ocSKqxkbujXGbi9QMtP9`). So the alignment is: **route everything through
 `CesrV1Codec`.**
 
-**The change (one atomic commit — uncommittable until complete; ~100 sites; lengths/prefixes
-unchanged so only exact-value asserts break, not structure):**
-1. **Un-gate** the cesride encoders so they're in the default build (remove `#[cfg(feature="cesr")]`
-   from `mod codec` in `src/lib.rs`, or expose default-available `encode_verkey_qb64`/
-   `encode_digest_qb64` helpers wrapping cesride — `cesride` is already a non-optional dep).
-2. **`src/keys.rs`** `KeriPublicKey` encode + parse → cesride `Verfer` (both directions; ~6 naive
-   `format!("D{}"/"1AAJ{}"/"1AAI{}")` + 2 naive base64 decode sites).
-3. **`src/said.rs`** `compute_said` → cesride `Diger` for the digest (keep the `#`×44 dummy and
-   insertion-order serialization — they already match keripy's `Saider`; the ONLY wrong step is the
-   naive `E`+base64). Then verify the **full event** SAID matches keripy.
-4. **`src/crypto.rs`** `compute_next_commitment(key)` → hash the verkey's **cesride qb64** (qb64b)
-   then cesride `Diger` (this is A.7). `verify_commitment` follows.
-5. Replace the remaining **~29 naive `format!` encode sites** (`grep -rEn 'format!\("(D|B|E|1AAJ|1AAI)\{\}"' crates | grep '\.rs:'`)
-   across auths-keri/auths-id/auths-core with the codec.
-6. **Regenerate fixtures from keripy:** the ~41 hardcoded real CESR strings (14 in auths-keri,
-   3 auths-radicle, 2 auths-id, 1 auths-sdk — `grep -rEno '"E[A-Za-z0-9_-]{43}"' crates | grep '\.rs:'`
-   and the `D`-verkey equivalents) + the golden `crates/auths-keri/tests/fixtures/keripy/icp.bin`.
-   Short placeholders like `Said::new_unchecked("ESAID")` are fine (not computed) — leave them.
-7. **Validate end-to-end:** `KERIPY_INTEROP=1 cargo nextest run -p auths-keri -E 'test(subprocess_mode_when_keripy_available)'`
-   must PASS (it currently FAILS); full `cargo nextest run -p auths-keri --all-features` green; then
-   sweep downstream crates (`auths-id`, `auths-storage`, `auths-radicle`, `auths-sdk`) for green.
-8. Update `SPEC.md` §3 (verkey/digest encoding is CESR-aligned, not naive base64) and mark A.7
-   (`fn-135.7`) + A.16 (`fn-135.16`) done.
+### STATUS (resume point) — Wave 0 is ~⅔ done; **SAID/event byte-interop with keripy ACHIEVED + committed**
 
-**Why it's one commit:** flipping the encoding breaks all computed-value fixtures at once; a partial
-migration (some paths cesride, some naive) is inconsistent and won't build/round-trip. Do it in a
-single focused pass with the keripy subprocess test as the gate. After Wave 0, the Wave-1 A.7/A.16
-items are already done and B/C validate against keripy cleanly.
+**DONE (committed on `dev-keriCompliantDevices`):**
+- `74dcf5b` — always-on `src/cesr_encode.rs` (`encode_verkey`/`decode_verkey`/`encode_blake3_digest`/
+  `verkey_code`, wrapping cesride) + `KeriPublicKey::to_qb64()`. cesride is non-optional and
+  **WASM-safe** (verifier wasm build verified green), so these are default-build, not feature-gated.
+- `6efef5b` — **Part 1 (typing):** `compute_next_commitment` / `verify_commitment` now take
+  `&KeriPublicKey` so the curve travels in the type. 40 call sites migrated, value-preserving, 892
+  tests pass. New bridges to reuse: `KeriPublicKey::ed25519(&[u8])`, `::from_verkey_bytes(bytes,curve)`,
+  `::to_qb64()`, and `GeneratedKeypair::verkey()` (parses its `cesr_encoded`). The sdk rotation path
+  now USES its previously-ignored `new_next_curve`; the verify path uses `ParsedKey.seed.curve()`.
+- `2ad5cd0` — **Part 2a (digests):** `compute_said` + `compute_next_commitment` use the cesride
+  digest. **keripy SAID byte-interop is PROVEN** — `KERIPY_INTEROP=1 cargo nextest run -p auths-keri
+  -E 'test(subprocess_mode_when_keripy_available)'` goes FAIL→PASS. 1458 tests pass: the suite
+  *computes* SAIDs rather than hardcoding them, so the value change was non-breaking (the feared
+  atomic fixture-regen mostly evaporated).
+
+**REMAINING — Part 2b (verkey `k[]` encoding).** Make our verkeys valid CESR too (today keripy
+accepts our SAID/structure, but our `k[]` is naive base64 — keripy would mis-decode it for
+signature checks). This part **is atomic** (parse + all encode flip together — cesride silently
+mis-decodes naive strings, so there is NO safe fallback):
+1. **`src/keys.rs` `KeriPublicKey::parse`** → `crate::cesr_encode::decode_verkey` (cesride). Map the
+   matter codes: `Ed25519`→`Ed25519`, `ECDSA_256r1`→`P256{transferable:true}`, `ECDSA_256r1N`→
+   `P256{transferable:false}`; keep `B`/`Ed25519N` → `UnsupportedKeyType` (the enum has no
+   non-transferable Ed25519 variant). `decode_verkey` already exists — drop its `#[allow(dead_code)]`.
+2. **The 30 naive `format!("D{}"/"1AAJ{}",…)` encode sites** (`grep -rEn 'format!\("(D|B|1AAJ|1AAI)\{\}"' crates | grep '\.rs:' | grep -v mobile-ffi`)
+   → cesride. **Production:** `auths-crypto/src/key_ops.rs:265-266` (add `cesride` to auths-crypto's
+   Cargo.toml — WASM-safe; used by `TypedSignerKey::cesr_encoded()` in the rotation `k[]` path),
+   `auths-id` inception.rs:121/141 + rotate.rs + resolve.rs. **Tests:** auths-keri validate.rs/keys.rs/
+   multi_key_threshold, auths-storage, auths-sdk multi_sig. Replace with
+   `KeriPublicKey::from_verkey_bytes(bytes, curve)?.to_qb64()?` (cross-crate) or `cesr_encode::encode_verkey`
+   (within auths-keri). Per-site curve + `Result` handling, exactly like Part 1 (`?`/INVARIANT-`expect`
+   in prod, `.unwrap()` in tests). `mobile-ffi` is a SEPARATE workspace with its OWN duplicate — skip.
+3. **Regenerate verkey fixtures** that hardcode exact `D…`/`1AAJ…` values (`grep -rEno '"D[A-Za-z0-9_-]{43}"' crates | grep '\.rs:'`)
+   + the golden `crates/auths-keri/tests/fixtures/keripy/icp.bin`. Most tests COMPUTE/round-trip
+   verkeys (robust, like the SAIDs were) — measure real breakage with a full `nextest` run after the
+   flip and regenerate only the broken exact-value asserts from cesride/keripy.
+4. **Gate:** `cargo nextest run --workspace --all-features` green; the keripy subprocess test still
+   PASSES; verifier wasm still green (`cd crates/auths-verifier && cargo check --target
+   wasm32-unknown-unknown --no-default-features --features wasm`); commit with
+   `git -c commit.gpgsign=false commit --no-verify` (signing hangs on TouchID).
+5. Update `SPEC.md` §3 (verkeys are CESR-aligned qb64, not naive base64); mark A.7 (`fn-135.7`) +
+   A.16 (`fn-135.16`) done. Then Wave 0 is complete and B/C validate against keripy cleanly.
 
 ---
 
