@@ -100,6 +100,23 @@ pub enum AttestationError {
         /// Maximum permitted age in seconds.
         max_secs: u64,
     },
+
+    /// A delegated attestation claims a capability its delegator does not hold.
+    #[error("Delegated attestation escalates capability beyond its delegator")]
+    CapabilityEscalation,
+
+    /// A delegated attestation expires after (outlives) its delegator.
+    #[error("Delegated attestation outlives its delegator")]
+    DelegationOutlivesParent,
+
+    /// The resolved delegator attestation has been revoked.
+    #[error("Delegator attestation is revoked")]
+    DelegatorRevoked,
+
+    /// A delegated attestation was verified standalone but its delegator could
+    /// not be resolved — fail closed rather than grant unscoped authority.
+    #[error("Delegator attestation could not be resolved")]
+    DelegatorUnresolved,
 }
 
 impl AuthsErrorInfo for AttestationError {
@@ -123,6 +140,10 @@ impl AuthsErrorInfo for AttestationError {
             Self::OrgDidResolutionFailed(_) => "AUTHS-E2016",
             Self::BundleExpired { .. } => "AUTHS-E2017",
             Self::AttestationTooOld { .. } => "AUTHS-E2018",
+            Self::CapabilityEscalation => "AUTHS-E2019",
+            Self::DelegationOutlivesParent => "AUTHS-E2020",
+            Self::DelegatorRevoked => "AUTHS-E2021",
+            Self::DelegatorUnresolved => "AUTHS-E2022",
         }
     }
 
@@ -175,6 +196,12 @@ impl AuthsErrorInfo for AttestationError {
             Self::InternalError(_) => {
                 Some("An unexpected internal error occurred; please report this issue")
             }
+            Self::CapabilityEscalation
+            | Self::DelegationOutlivesParent
+            | Self::DelegatorRevoked
+            | Self::DelegatorUnresolved => Some(
+                "Re-issue the delegated attestation within the delegator's capability and validity scope",
+            ),
         }
     }
 }

@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use auths_crypto::CryptoProvider;
+use chrono::{DateTime, Utc};
 
 use crate::clock::ClockProvider;
 use crate::core::{Attestation, Capability, DevicePublicKey, VerifiedAttestation};
@@ -89,6 +90,45 @@ impl Verifier {
                 required: required.clone(),
                 available: att.capabilities.clone(),
             });
+        }
+        Ok(verified)
+    }
+
+    /// Verify a standalone delegated attestation, enforcing its delegation scope.
+    ///
+    /// Beyond [`Self::verify_with_capability`], when the attestation is delegated
+    /// (`delegated_by.is_some()`) this enforces capability-subset,
+    /// expiry-within-parent, and delegator-not-revoked against the caller-resolved
+    /// delegator. If the attestation is delegated but no delegator is supplied,
+    /// verification **fails closed** — a relying party handed one delegated
+    /// attestation never gets unscoped authority. The caller is responsible for
+    /// independently verifying the delegator (as `verify_chain` verifies each link).
+    ///
+    /// Args:
+    /// * `att`: The (possibly delegated) attestation to verify.
+    /// * `required`: The capability that must be present.
+    /// * `issuer_pk`: Typed issuer public key for `att`.
+    /// * `delegator`: The caller-resolved delegator attestation, or `None`.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let verified = verifier
+    ///     .verify_delegated_with_capability(&att, &cap, &pk, Some(&delegator))
+    ///     .await?;
+    /// ```
+    pub async fn verify_delegated_with_capability(
+        &self,
+        att: &Attestation,
+        required: &Capability,
+        issuer_pk: &DevicePublicKey,
+        delegator: Option<&Attestation>,
+    ) -> Result<VerifiedAttestation, AttestationError> {
+        let verified = self
+            .verify_with_capability(att, required, issuer_pk)
+            .await?;
+        if att.delegated_by.is_some() {
+            let delegator = delegator.ok_or(AttestationError::DelegatorUnresolved)?;
+            enforce_delegation_scope(att, delegator, self.clock.now())?;
         }
         Ok(verified)
     }
@@ -221,4 +261,38 @@ impl Verifier {
         )
         .await
     }
+}
+
+/// Enforce that a delegated child attestation stays within its delegator's scope.
+///
+/// Checks (in order): the child's capabilities are a subset of the delegator's;
+/// the child does not expire after the delegator; and the delegator is not
+/// revoked as of `now`. The delegator is assumed already authenticated by the
+/// caller — this enforces scope, not the delegator's own validity.
+///
+/// Args:
+/// * `child`: The delegated attestation (its `delegated_by` is `Some`).
+/// * `delegator`: The caller-resolved, caller-verified delegator attestation.
+/// * `now`: Reference time for the delegator's revocation check.
+pub(crate) fn enforce_delegation_scope(
+    child: &Attestation,
+    delegator: &Attestation,
+    now: DateTime<Utc>,
+) -> Result<(), AttestationError> {
+    if !child
+        .capabilities
+        .iter()
+        .all(|c| delegator.capabilities.contains(c))
+    {
+        return Err(AttestationError::CapabilityEscalation);
+    }
+    if let (Some(child_exp), Some(delegator_exp)) = (child.expires_at, delegator.expires_at)
+        && child_exp > delegator_exp
+    {
+        return Err(AttestationError::DelegationOutlivesParent);
+    }
+    if delegator.revoked_at.is_some_and(|r| r <= now) {
+        return Err(AttestationError::DelegatorRevoked);
+    }
+    Ok(())
 }

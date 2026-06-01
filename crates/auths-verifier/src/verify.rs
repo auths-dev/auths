@@ -593,6 +593,147 @@ mod tests {
         )
     }
 
+    /// Minimal attestation for delegation-scope unit tests. Signatures are unused:
+    /// `enforce_delegation_scope` enforces scope, not authenticity.
+    fn scope_att(
+        capabilities: Vec<Capability>,
+        expires_at: Option<DateTime<Utc>>,
+        revoked_at: Option<DateTime<Utc>>,
+        delegated: bool,
+    ) -> Attestation {
+        Attestation {
+            version: 1,
+            rid: ResourceId::new("test-rid"),
+            issuer: CanonicalDid::new_unchecked("did:keri:EIssuer"),
+            subject: CanonicalDid::new_unchecked("did:key:zSubject"),
+            device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]).into(),
+            identity_signature: Ed25519Signature::empty(),
+            device_signature: Ed25519Signature::empty(),
+            revoked_at,
+            expires_at,
+            timestamp: Some(fixed_now()),
+            note: None,
+            payload: None,
+            role: None,
+            capabilities,
+            delegated_by: delegated.then(|| CanonicalDid::new_unchecked("did:keri:EDelegator")),
+            signer_type: None,
+            environment_claim: None,
+            commit_sha: None,
+            commit_message: None,
+            author: None,
+            oidc_binding: None,
+        }
+    }
+
+    #[test]
+    fn standalone_delegated_attestation_rejects_escalation() {
+        let now = fixed_now();
+        let delegator = scope_att(vec![Capability::sign_commit()], None, None, false);
+        let child = scope_att(
+            vec![Capability::sign_commit(), Capability::sign_release()],
+            None,
+            None,
+            true,
+        );
+        assert!(matches!(
+            crate::verifier::enforce_delegation_scope(&child, &delegator, now),
+            Err(AttestationError::CapabilityEscalation)
+        ));
+    }
+
+    #[test]
+    fn verifier_rejects_delegation_outliving_parent() {
+        let now = fixed_now();
+        let delegator = scope_att(
+            vec![Capability::sign_commit()],
+            Some(now + Duration::hours(1)),
+            None,
+            false,
+        );
+        let child = scope_att(
+            vec![Capability::sign_commit()],
+            Some(now + Duration::hours(2)),
+            None,
+            true,
+        );
+        assert!(matches!(
+            crate::verifier::enforce_delegation_scope(&child, &delegator, now),
+            Err(AttestationError::DelegationOutlivesParent)
+        ));
+    }
+
+    #[test]
+    fn verifier_rejects_revoked_delegator() {
+        let now = fixed_now();
+        let delegator = scope_att(
+            vec![Capability::sign_commit()],
+            None,
+            Some(now - Duration::hours(1)),
+            false,
+        );
+        let child = scope_att(vec![Capability::sign_commit()], None, None, true);
+        assert!(matches!(
+            crate::verifier::enforce_delegation_scope(&child, &delegator, now),
+            Err(AttestationError::DelegatorRevoked)
+        ));
+    }
+
+    #[test]
+    fn delegation_within_scope_is_accepted() {
+        let now = fixed_now();
+        let delegator = scope_att(
+            vec![Capability::sign_commit(), Capability::sign_release()],
+            Some(now + Duration::hours(2)),
+            None,
+            false,
+        );
+        let child = scope_att(
+            vec![Capability::sign_commit()],
+            Some(now + Duration::hours(1)),
+            None,
+            true,
+        );
+        assert!(crate::verifier::enforce_delegation_scope(&child, &delegator, now).is_ok());
+    }
+
+    #[tokio::test]
+    async fn delegated_attestation_fails_closed_without_delegator() {
+        let (issuer_kp, issuer_pk) = create_test_keypair(&[7u8; 32]);
+        let (device_kp, device_pk) = create_test_keypair(&[8u8; 32]);
+        let issuer_did = ed25519_did(&issuer_pk);
+        let device_did = ed25519_did(&device_pk);
+
+        let mut att = create_signed_attestation(
+            &issuer_kp,
+            &device_kp,
+            &issuer_did,
+            &device_did,
+            None,
+            Some(fixed_now() + Duration::days(365)),
+        );
+        // Promote to a delegated attestation carrying the required capability,
+        // then re-sign so signature verification still passes.
+        att.delegated_by = Some(CanonicalDid::new_unchecked("did:keri:EDelegator"));
+        att.capabilities = vec![Capability::sign_commit()];
+        let bytes = canonicalize_attestation_data(&att.canonical_data()).unwrap();
+        att.identity_signature =
+            Ed25519Signature::try_from_slice(issuer_kp.sign(&bytes).as_ref()).unwrap();
+        att.device_signature =
+            Ed25519Signature::try_from_slice(device_kp.sign(&bytes).as_ref()).unwrap();
+
+        // Delegated, but the caller supplied no delegator -> fail closed.
+        let result = test_verifier()
+            .verify_delegated_with_capability(
+                &att,
+                &Capability::sign_commit(),
+                &ed(&issuer_pk),
+                None,
+            )
+            .await;
+        assert!(matches!(result, Err(AttestationError::DelegatorUnresolved)));
+    }
+
     /// Helper to create a signed attestation
     fn create_signed_attestation(
         issuer_kp: &Ed25519KeyPair,
