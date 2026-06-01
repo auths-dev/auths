@@ -5,6 +5,7 @@
 
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
+use std::fmt;
 
 use crate::types::{CesrKey, ConfigTrait, Prefix, Said, Threshold, VersionString};
 

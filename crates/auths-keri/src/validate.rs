@@ -72,6 +72,16 @@ pub enum ValidationError {
         reason: String,
     },
 
+    /// A rotation's backer delta is invalid: a `br` (cut) entry isn't in the
+    /// prior backer set, or a `ba` (add) entry duplicates a surviving backer.
+    #[error("Invalid backer delta at sequence {sequence}: {reason}")]
+    InvalidBackerDelta {
+        /// Zero-based position of the offending rotation.
+        sequence: u128,
+        /// What was wrong with the delta.
+        reason: String,
+    },
+
     /// Rotation event's key-list size differs from the prior next-commitment
     /// list. Properly expressing this case requires CESR indexed-signature
     /// type codes so verified indices can be mapped distinctly against prior
