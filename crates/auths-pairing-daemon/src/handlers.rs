@@ -198,7 +198,7 @@ fn verify_subkey_chain_if_present(
         // iOS Secure Enclave is P-256 exclusively). An Ed25519-bound
         // session carrying a chain is a client bug; reject it loudly.
         let subkey_compressed: &[u8] = match subkey_pubkey {
-            auths_keri::KeriPublicKey::P256(bytes) => bytes.as_slice(),
+            auths_keri::KeriPublicKey::P256 { key, .. } => key.as_slice(),
             auths_keri::KeriPublicKey::Ed25519(_) => {
                 return Err(DaemonError::InvalidSubkeyChain {
                     reason: "chain only supported for P-256 subkey",
@@ -401,7 +401,10 @@ pub(crate) fn decode_device_pubkey(
                 });
             }
             let arr: [u8; 33] = bytes.try_into().map_err(|_| DaemonError::UnauthorizedSig)?;
-            Ok(auths_keri::KeriPublicKey::P256(arr))
+            Ok(auths_keri::KeriPublicKey::P256 {
+                key: arr,
+                transferable: true,
+            })
         }
     }
 }
@@ -439,7 +442,9 @@ mod decode_device_pubkey_tests {
             signature: Base64UrlEncoded::from_raw(URL_SAFE_NO_PAD.encode([0u8; 64])),
             device_name: None,
             subkey_chain: None,
-            new_device_signing_pubkey: None,
+            initiator_inception_event: String::new(),
+            responder_inception_event: String::new(),
+            shared_kel_inception_event: None,
         }
     }
 
@@ -459,7 +464,7 @@ mod decode_device_pubkey_tests {
         bytes[0] = 0x02;
         let r = req(&bytes, CurveTag::P256);
         let key = decode_device_pubkey(&r).expect("33-byte P-256 must accept");
-        assert!(matches!(key, auths_keri::KeriPublicKey::P256(_)));
+        assert!(matches!(key, auths_keri::KeriPublicKey::P256 { .. }));
     }
 
     #[test]
@@ -550,7 +555,9 @@ mod decode_device_pubkey_tests {
             signature: Base64UrlEncoded::from_raw(URL_SAFE_NO_PAD.encode([0u8; 64])),
             device_name: None,
             subkey_chain: None,
-            new_device_signing_pubkey: None,
+            initiator_inception_event: String::new(),
+            responder_inception_event: String::new(),
+            shared_kel_inception_event: None,
         };
         let err = decode_device_pubkey(&r).expect_err("malformed base64 must error");
         assert!(matches!(err, DaemonError::UnauthorizedSig));

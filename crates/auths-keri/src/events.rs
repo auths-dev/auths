@@ -3,10 +3,8 @@
 //! These types are the single authoritative definition of KERI events for the
 //! entire workspace. All other crates import from here.
 
-use chrono::{DateTime, Utc};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
-use std::fmt;
 
 use crate::types::{CesrKey, ConfigTrait, Prefix, Said, Threshold, VersionString};
 
@@ -113,17 +111,32 @@ pub enum Seal {
         /// Event SAID.
         d: Said,
     },
+    /// Event-location seal (KERI v1.1 §7): `{"i","s","p","t","d"}`.
+    EventLocation {
+        /// AID.
+        i: Prefix,
+        /// Sequence number.
+        s: KeriSequence,
+        /// Prior event SAID.
+        p: Said,
+        /// Event type (ilk).
+        t: String,
+        /// Event SAID.
+        d: Said,
+    },
     /// Latest establishment event seal: `{"i": "<AID>"}`
     LatestEstablishment {
         /// AID.
         i: Prefix,
     },
-    /// Merkle tree root digest seal: `{"rd": "<digest>"}`
+    /// Merkle tree root digest seal: `{"rd": "<digest>"}` (non-spec extension).
+    #[cfg(feature = "seal-extensions")]
     MerkleRoot {
         /// Root digest.
         rd: Said,
     },
-    /// Registrar backer seal: `{"bi": "<AID>", "d": "<SAID>"}`
+    /// Registrar backer seal: `{"bi": "<AID>", "d": "<SAID>"}` (non-spec extension).
+    #[cfg(feature = "seal-extensions")]
     RegistrarBacker {
         /// Backer AID.
         bi: Prefix,
@@ -155,9 +168,12 @@ impl Seal {
             Seal::Digest { d } => Some(d),
             Seal::SourceEvent { d, .. } => Some(d),
             Seal::KeyEvent { d, .. } => Some(d),
-            Seal::RegistrarBacker { d, .. } => Some(d),
-            Seal::MerkleRoot { rd } => Some(rd),
+            Seal::EventLocation { d, .. } => Some(d),
             Seal::LatestEstablishment { .. } => None,
+            #[cfg(feature = "seal-extensions")]
+            Seal::RegistrarBacker { d, .. } => Some(d),
+            #[cfg(feature = "seal-extensions")]
+            Seal::MerkleRoot { rd } => Some(rd),
         }
     }
 }
@@ -183,16 +199,27 @@ impl Serialize for Seal {
                 map.serialize_entry("d", d)?;
                 map.end()
             }
+            Seal::EventLocation { i, s, p, t, d } => {
+                let mut map = serializer.serialize_map(Some(5))?;
+                map.serialize_entry("i", i)?;
+                map.serialize_entry("s", s)?;
+                map.serialize_entry("p", p)?;
+                map.serialize_entry("t", t)?;
+                map.serialize_entry("d", d)?;
+                map.end()
+            }
             Seal::LatestEstablishment { i } => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("i", i)?;
                 map.end()
             }
+            #[cfg(feature = "seal-extensions")]
             Seal::MerkleRoot { rd } => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("rd", rd)?;
                 map.end()
             }
+            #[cfg(feature = "seal-extensions")]
             Seal::RegistrarBacker { bi, d } => {
                 let mut map = serializer.serialize_map(Some(2))?;
                 map.serialize_entry("bi", bi)?;
@@ -208,109 +235,60 @@ impl<'de> Deserialize<'de> for Seal {
         let map: serde_json::Map<String, serde_json::Value> =
             serde_json::Map::deserialize(deserializer)?;
 
-        // Discriminate by field presence (most-specific first)
-        if map.contains_key("rd") {
-            let rd = map
-                .get("rd")
+        let want_str = |k: &str| -> Result<String, D::Error> {
+            map.get(k)
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("rd must be a string"))?;
-            Ok(Seal::MerkleRoot {
-                rd: Said::new_unchecked(rd.to_string()),
-            })
-        } else if map.contains_key("bi") {
-            let bi = map
-                .get("bi")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("bi must be a string"))?;
-            let d = map
-                .get("d")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("d required for registrar backer seal"))?;
-            Ok(Seal::RegistrarBacker {
-                bi: Prefix::new_unchecked(bi.to_string()),
-                d: Said::new_unchecked(d.to_string()),
-            })
-        } else if map.contains_key("i") && map.contains_key("s") && map.contains_key("d") {
-            let i = map
-                .get("i")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("i must be a string"))?;
-            let s: KeriSequence = serde_json::from_value(
-                map.get("s")
+                .map(|v| v.to_string())
+                .ok_or_else(|| serde::de::Error::custom(format!("seal field `{k}` must be a string")))
+        };
+        let want_seq = |k: &str| -> Result<KeriSequence, D::Error> {
+            serde_json::from_value(
+                map.get(k)
                     .cloned()
-                    .ok_or_else(|| serde::de::Error::custom("s required"))?,
+                    .ok_or_else(|| serde::de::Error::custom(format!("seal field `{k}` required")))?,
             )
-            .map_err(serde::de::Error::custom)?;
-            let d = map
-                .get("d")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("d must be a string"))?;
-            Ok(Seal::KeyEvent {
-                i: Prefix::new_unchecked(i.to_string()),
-                s,
-                d: Said::new_unchecked(d.to_string()),
-            })
-        } else if map.contains_key("i") {
-            let i = map
-                .get("i")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("i must be a string"))?;
-            Ok(Seal::LatestEstablishment {
-                i: Prefix::new_unchecked(i.to_string()),
-            })
-        } else if map.contains_key("s") && map.contains_key("d") {
-            let s: KeriSequence = serde_json::from_value(
-                map.get("s")
-                    .cloned()
-                    .ok_or_else(|| serde::de::Error::custom("s required"))?,
-            )
-            .map_err(serde::de::Error::custom)?;
-            let d = map
-                .get("d")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("d must be a string"))?;
-            Ok(Seal::SourceEvent {
-                s,
-                d: Said::new_unchecked(d.to_string()),
-            })
-        } else if map.contains_key("d") {
-            let d = map
-                .get("d")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("d must be a string"))?;
-            Ok(Seal::Digest {
-                d: Said::new_unchecked(d.to_string()),
-            })
-        } else {
-            Err(serde::de::Error::custom("unrecognized seal format"))
-        }
-    }
-}
+            .map_err(serde::de::Error::custom)
+        };
 
-/// Type of data anchored by a seal.
-///
-/// **DEPRECATED:** This enum is retained for backwards compatibility with existing
-/// stored attestations. New code should use `Seal::digest()` directly — the type
-/// information lives in the anchored document, not the seal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "kebab-case")]
-#[non_exhaustive]
-pub enum SealType {
-    /// Device attestation seal
-    DeviceAttestation,
-    /// Capability delegation seal
-    Delegation,
-    /// Identity provider binding seal
-    IdpBinding,
-}
+        // Match on the EXACT sorted field set — no silent field-dropping (F-37).
+        let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();
+        keys.sort_unstable();
 
-impl fmt::Display for SealType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SealType::DeviceAttestation => write!(f, "device-attestation"),
-            SealType::Delegation => write!(f, "delegation"),
-            SealType::IdpBinding => write!(f, "idp-binding"),
+        match keys.as_slice() {
+            ["d"] => Ok(Seal::Digest {
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            ["d", "s"] => Ok(Seal::SourceEvent {
+                s: want_seq("s")?,
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            ["d", "i", "s"] => Ok(Seal::KeyEvent {
+                i: Prefix::new_unchecked(want_str("i")?),
+                s: want_seq("s")?,
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            ["d", "i", "p", "s", "t"] => Ok(Seal::EventLocation {
+                i: Prefix::new_unchecked(want_str("i")?),
+                s: want_seq("s")?,
+                p: Said::new_unchecked(want_str("p")?),
+                t: want_str("t")?,
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            ["i"] => Ok(Seal::LatestEstablishment {
+                i: Prefix::new_unchecked(want_str("i")?),
+            }),
+            #[cfg(feature = "seal-extensions")]
+            ["rd"] => Ok(Seal::MerkleRoot {
+                rd: Said::new_unchecked(want_str("rd")?),
+            }),
+            #[cfg(feature = "seal-extensions")]
+            ["bi", "d"] => Ok(Seal::RegistrarBacker {
+                bi: Prefix::new_unchecked(want_str("bi")?),
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            other => Err(serde::de::Error::custom(format!(
+                "unrecognized seal field set: {other:?}"
+            ))),
         }
     }
 }
@@ -354,14 +332,6 @@ pub struct IcpEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
-    /// Signed-in wall-clock timestamp (ISO 8601, ms precision). When
-    /// present, it is part of the SAID digest — any tampering breaks
-    /// the event signature. Time-aware policy checks
-    /// (rotation cooldown, clock-skew rejection) live in
-    /// [`crate::validate::validate_kel_with_policy`]; `validate_kel`
-    /// itself stays pure / clock-free.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
 }
 
 /// Parameter struct for [`IcpEvent::new`]. Mirrors the existing
@@ -385,8 +355,7 @@ pub struct IcpEventInit {
 }
 
 impl IcpEvent {
-    /// Construct an `IcpEvent` from its required fields. The
-    /// additional, optional `dt` is set via [`Self::with_dt`].
+    /// Construct an `IcpEvent` from its required fields.
     pub fn new(init: IcpEventInit) -> Self {
         Self {
             v: init.v,
@@ -401,24 +370,14 @@ impl IcpEvent {
             b: init.b,
             c: init.c,
             a: init.a,
-            dt: None,
         }
-    }
-
-    /// Attach a signed-in rotation timestamp. Included in the SAID
-    /// digest, so tampering invalidates the signature.
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, (dt) (+ x if non-empty, legacy)
+/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a
 impl Serialize for IcpEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 13 + usize::from(self.dt.is_some());
+        let field_count = 13;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "icp")?;
@@ -433,9 +392,6 @@ impl Serialize for IcpEvent {
         map.serialize_entry("b", &self.b)?;
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -479,9 +435,6 @@ pub struct RotEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
-    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
 }
 
 /// Parameter struct for [`RotEvent::new`]. See [`IcpEventInit`] for
@@ -504,8 +457,7 @@ pub struct RotEventInit {
 }
 
 impl RotEvent {
-    /// Construct a `RotEvent` from its required fields. The optional
-    /// `dt` is set via [`Self::with_dt`].
+    /// Construct a `RotEvent` from its required fields.
     pub fn new(init: RotEventInit) -> Self {
         Self {
             v: init.v,
@@ -522,22 +474,14 @@ impl RotEvent {
             ba: init.ba,
             c: init.c,
             a: init.a,
-            dt: None,
         }
-    }
-
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, (dt) (+ x if non-empty, legacy)
+/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a
 impl Serialize for RotEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 15 + usize::from(self.dt.is_some());
+        let field_count = 15;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "rot")?;
@@ -554,9 +498,6 @@ impl Serialize for RotEvent {
         map.serialize_entry("ba", &self.ba)?;
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -580,9 +521,6 @@ pub struct IxnEvent {
     pub p: Said,
     /// Anchored seals (the main purpose of IXN events)
     pub a: Vec<Seal>,
-    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
 }
 
 /// Parameter struct for [`IxnEvent::new`].
@@ -596,8 +534,7 @@ pub struct IxnEventInit {
 }
 
 impl IxnEvent {
-    /// Construct an `IxnEvent` from its required fields. The optional
-    /// `dt` is set via [`Self::with_dt`].
+    /// Construct an `IxnEvent` from its required fields.
     pub fn new(init: IxnEventInit) -> Self {
         Self {
             v: init.v,
@@ -606,22 +543,14 @@ impl IxnEvent {
             s: init.s,
             p: init.p,
             a: init.a,
-            dt: None,
         }
-    }
-
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order: v, t, d, i, s, p, a, (dt) (+ x if non-empty, legacy)
+/// Spec field order: v, t, d, i, s, p, a
 impl Serialize for IxnEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 7 + usize::from(self.dt.is_some());
+        let field_count = 7;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "ixn")?;
@@ -630,9 +559,6 @@ impl Serialize for IxnEvent {
         map.serialize_entry("s", &self.s)?;
         map.serialize_entry("p", &self.p)?;
         map.serialize_entry("a", &self.a)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -687,9 +613,6 @@ pub struct DipEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix
     pub di: Prefix,
-    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
 }
 
 /// Parameter struct for [`DipEvent::new`].
@@ -710,8 +633,7 @@ pub struct DipEventInit {
 }
 
 impl DipEvent {
-    /// Construct a `DipEvent` from its required fields. The optional
-    /// `dt` is set via [`Self::with_dt`].
+    /// Construct a `DipEvent` from its required fields.
     pub fn new(init: DipEventInit) -> Self {
         Self {
             v: init.v,
@@ -727,22 +649,14 @@ impl DipEvent {
             c: init.c,
             a: init.a,
             di: init.di,
-            dt: None,
         }
-    }
-
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, di, (dt) (+ x if non-empty)
+/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, di
 impl Serialize for DipEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 14 + usize::from(self.dt.is_some());
+        let field_count = 14;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "dip")?;
@@ -758,9 +672,6 @@ impl Serialize for DipEvent {
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.serialize_entry("di", &self.di)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -808,9 +719,6 @@ pub struct DrtEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix (KERI §11).
     pub di: Prefix,
-    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
 }
 
 /// Parameter struct for [`DrtEvent::new`].
@@ -833,8 +741,7 @@ pub struct DrtEventInit {
 }
 
 impl DrtEvent {
-    /// Construct a `DrtEvent` from its required fields. The optional
-    /// `dt` is set via [`Self::with_dt`].
+    /// Construct a `DrtEvent` from its required fields.
     pub fn new(init: DrtEventInit) -> Self {
         Self {
             v: init.v,
@@ -852,22 +759,14 @@ impl DrtEvent {
             c: init.c,
             a: init.a,
             di: init.di,
-            dt: None,
         }
-    }
-
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, di, (dt)
+/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, di
 impl Serialize for DrtEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 16 + usize::from(self.dt.is_some());
+        let field_count = 16;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "drt")?;
@@ -885,9 +784,6 @@ impl Serialize for DrtEvent {
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.serialize_entry("di", &self.di)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -1328,7 +1224,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         let json = serde_json::to_string(&icp).unwrap();
         // d, a, c are always serialized (spec requires all fields)
@@ -1342,7 +1237,7 @@ mod tests {
 
     #[test]
     fn event_enum_deserializes_by_t_field() {
-        let json = r#"{"v":"KERI10JSON","t":"icp","i":"E123","s":"0","kt":"1","k":["DKey"],"nt":"1","n":["ENext"],"bt":"0","b":[]}"#;
+        let json = r#"{"v":"KERI10JSON000000_","t":"icp","i":"E123","s":"0","kt":"1","k":["DKey"],"nt":"1","n":["ENext"],"bt":"0","b":[]}"#;
         let event: Event = serde_json::from_str(json).unwrap();
         assert!(event.is_inception());
         assert_eq!(event.sequence().value(), 0);
@@ -1355,6 +1250,33 @@ mod tests {
         assert_eq!(json, r#"{"d":"EDigest123"}"#);
         let parsed: Seal = serde_json::from_str(&json).unwrap();
         assert_eq!(seal, parsed);
+    }
+
+    #[test]
+    fn seal_event_location_roundtrips() {
+        // A.8 (F-36): the KERI §7 event-location seal {i,s,p,t,d} round-trips.
+        let seal = Seal::EventLocation {
+            i: Prefix::new_unchecked("EPrefix".to_string()),
+            s: KeriSequence::new(3),
+            p: Said::new_unchecked("EPrior".to_string()),
+            t: "ixn".to_string(),
+            d: Said::new_unchecked("EDigest".to_string()),
+        };
+        let json = serde_json::to_string(&seal).unwrap();
+        let parsed: Seal = serde_json::from_str(&json).unwrap();
+        assert_eq!(seal, parsed);
+        assert_eq!(parsed.digest_value().map(|d| d.as_str()), Some("EDigest"));
+    }
+
+    #[test]
+    fn seal_rejects_malformed_i_s() {
+        // A.8 (F-37): a malformed {i,s} seal (no d) must error, not silently
+        // collapse to a LatestEstablishment {i} that drops `s`.
+        let r: Result<Seal, _> = serde_json::from_str(r#"{"i":"EPrefix","s":"3"}"#);
+        assert!(r.is_err(), "malformed {{i,s}} seal must be rejected");
+        // and an entirely unknown field set errors too.
+        let r2: Result<Seal, _> = serde_json::from_str(r#"{"zz":"x"}"#);
+        assert!(r2.is_err());
     }
 
     #[test]
@@ -1397,7 +1319,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         let signed = SignedEvent::new(
             Event::Icp(icp),

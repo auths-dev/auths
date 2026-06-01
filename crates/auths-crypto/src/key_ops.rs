@@ -193,7 +193,7 @@ pub fn public_key(seed: &TypedSeed) -> Result<Vec<u8>, CryptoError> {
 /// ```ignore
 /// let s = TypedSignerKey::from_pkcs8(&pkcs8)?;
 /// let sig = s.sign(b"payload bytes")?;
-/// let cesr = s.cesr_encoded_pubkey(); // "D..." for Ed25519, "1AAI..." for P-256 (spec-correct)
+/// let cesr = s.cesr_encoded_pubkey(); // "D..." for Ed25519, "1AAJ..." for P-256 (transferable verkey)
 /// let pkcs8 = s.to_pkcs8()?;          // curve-aware encode (replaces build_ed25519_pkcs8_v2)
 /// ```
 #[derive(Debug)]
@@ -252,16 +252,18 @@ impl TypedSignerKey {
     /// CESR-encoded public key string.
     ///
     /// Uses the spec-correct derivation codes:
-    /// - `D` + base64url(32 bytes) for Ed25519
-    /// - `1AAI` + base64url(33 bytes compressed SEC1) for P-256
+    /// - `D` + base64url(32 bytes) for Ed25519 (transferable verkey)
+    /// - `1AAJ` + base64url(33 bytes compressed SEC1) for P-256 (transferable verkey)
     ///
-    /// `1AAJ` is the CESR spec's P-256 *signature* code and is rejected by
-    /// `KeriPublicKey::parse` as a verkey prefix (fn-116.5 strict).
+    /// Per the CESR master code table, `1AAJ` (`ECDSA_256r1`) is the
+    /// transferable secp256r1 verkey code — the P-256 analogue of Ed25519 `D`.
+    /// (`1AAI` / `ECDSA_256r1N` is the non-transferable variant.) Auths
+    /// identities rotate, so signers emit the transferable code.
     pub fn cesr_encoded_pubkey(&self) -> String {
         use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
         match self.seed.curve() {
             CurveType::Ed25519 => format!("D{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
-            CurveType::P256 => format!("1AAI{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
+            CurveType::P256 => format!("1AAJ{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
         }
     }
 
@@ -503,7 +505,7 @@ mod tests {
             let pkcs8 = sk.to_pkcs8_der().unwrap();
             let s = TypedSignerKey::from_pkcs8(pkcs8.as_bytes()).unwrap();
             assert_eq!(s.curve(), CurveType::P256);
-            assert!(s.cesr_encoded_pubkey().starts_with("1AAI"));
+            assert!(s.cesr_encoded_pubkey().starts_with("1AAJ"));
             assert_eq!(s.public_key().len(), 33);
             let sig = s.sign(b"msg").unwrap();
             assert_eq!(sig.len(), 64);

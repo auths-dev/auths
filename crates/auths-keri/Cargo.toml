@@ -36,6 +36,7 @@ fips = ["auths-crypto/fips"]
 cnsa = ["auths-crypto/cnsa"]
 cesr = []
 schema = ["dep:schemars"]
+seal-extensions = []
 
 [dev-dependencies]
 proptest = "1.4"

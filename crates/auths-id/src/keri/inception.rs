@@ -124,8 +124,8 @@ fn generate_keypair(curve: CurveType) -> Result<GeneratedKeypair, InceptionError
             let compressed = verifying_key.to_encoded_point(true);
             let public_key = compressed.as_bytes().to_vec();
 
-            // CESR encode with 1AAJ prefix (P-256 transferable)
-            let cesr_encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(&public_key));
+            // CESR encode with 1AAJ prefix (P-256 transferable verkey)
+            let cesr_encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(&public_key));
 
             // PKCS8 DER encoding
             let pkcs8_doc = signing_key
@@ -409,7 +409,6 @@ pub fn create_keri_identity_multi(
         b,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;
@@ -506,7 +505,6 @@ pub fn create_keri_identity_with_curve(
         b,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     // Finalize event (computes and sets SAID)
@@ -593,7 +591,6 @@ pub fn create_keri_identity_with_backend(
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;
@@ -679,7 +676,6 @@ pub fn create_keri_identity_from_key(
         b,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;
@@ -915,12 +911,12 @@ mod tests {
         // shape as the legacy single-curve entry point.
         let kps = generate_keypairs_for_init(&[auths_crypto::CurveType::P256]).unwrap();
         assert_eq!(kps.len(), 1);
-        assert!(kps[0].cesr_encoded.starts_with("1AAI"));
+        assert!(kps[0].cesr_encoded.starts_with("1AAJ"));
         assert_eq!(kps[0].public_key.len(), 33);
 
         let legacy = generate_keypair_for_init(auths_crypto::CurveType::P256).unwrap();
         assert_eq!(legacy.public_key.len(), 33);
-        assert!(legacy.cesr_encoded.starts_with("1AAI"));
+        assert!(legacy.cesr_encoded.starts_with("1AAJ"));
     }
 
     #[test]
@@ -929,12 +925,12 @@ mod tests {
         let kps = generate_keypairs_for_init(&[P256, P256, Ed25519]).unwrap();
         assert_eq!(kps.len(), 3);
 
-        // Per-entry curve dispatch: P-256 entries are 33 bytes with "1AAI"
+        // Per-entry curve dispatch: P-256 entries are 33 bytes with "1AAJ"
         // CESR prefix; Ed25519 is 32 bytes with "D".
         assert_eq!(kps[0].public_key.len(), 33);
-        assert!(kps[0].cesr_encoded.starts_with("1AAI"));
+        assert!(kps[0].cesr_encoded.starts_with("1AAJ"));
         assert_eq!(kps[1].public_key.len(), 33);
-        assert!(kps[1].cesr_encoded.starts_with("1AAI"));
+        assert!(kps[1].cesr_encoded.starts_with("1AAJ"));
         assert_eq!(kps[2].public_key.len(), 32);
         assert!(kps[2].cesr_encoded.starts_with('D'));
 

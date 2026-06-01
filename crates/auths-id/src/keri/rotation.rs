@@ -125,7 +125,7 @@ fn parse_next_key(
         .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
     let cesr_prefix = match parsed.seed.curve() {
         auths_crypto::CurveType::Ed25519 => "D",
-        auths_crypto::CurveType::P256 => "1AAI",
+        auths_crypto::CurveType::P256 => "1AAJ",
     };
     let cesr_encoded = format!(
         "{}{}",
@@ -193,7 +193,6 @@ pub fn rotate_keys(
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -274,7 +273,6 @@ pub fn abandon_identity(
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -343,7 +341,6 @@ pub fn rotate_keys_with_backend(
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))

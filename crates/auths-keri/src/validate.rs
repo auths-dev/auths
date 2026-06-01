@@ -6,9 +6,10 @@
 
 use crate::crypto::verify_commitment;
 use crate::events::{Event, IcpEvent, IxnEvent, KeriSequence, RotEvent, Seal};
+use crate::keys::KeriPublicKey;
 use crate::said::compute_said;
 use crate::state::KeyState;
-use crate::types::{ConfigTrait, Prefix, Said};
+use crate::types::{CesrKey, ConfigTrait, Prefix, Said, Threshold};
 
 /// Errors specific to KEL validation.
 ///
@@ -58,6 +59,17 @@ pub enum ValidationError {
     SignatureFailed {
         /// Zero-based position of the event whose signature failed.
         sequence: u128,
+    },
+
+    /// A threshold (`kt`, `nt`, or `bt`) is structurally unsatisfiable against
+    /// the list it governs — e.g. `kt=5` over a single key, or a weighted
+    /// clause whose length differs from the key-list length.
+    #[error("Unsatisfiable threshold at sequence {sequence}: {reason}")]
+    ThresholdNotSatisfiable {
+        /// Zero-based position of the offending event.
+        sequence: u128,
+        /// Which threshold and why it cannot be met.
+        reason: String,
     },
 
     /// Rotation event's key-list size differs from the prior next-commitment
@@ -383,9 +395,44 @@ fn validate_backer_uniqueness(backers: &[Prefix]) -> Result<(), ValidationError>
     Ok(())
 }
 
+/// Structural threshold satisfiability for an establishment event's
+/// `kt`/`nt`/`bt` against the key, next-commitment, and backer lists.
+fn validate_thresholds(
+    sequence: u128,
+    kt: &Threshold,
+    k_len: usize,
+    nt: &Threshold,
+    n_len: usize,
+    bt: &Threshold,
+    b_len: usize,
+) -> Result<(), ValidationError> {
+    let check = |t: &Threshold, len: usize, which: &str| {
+        t.validate_satisfiable(len)
+            .map_err(|e| ValidationError::ThresholdNotSatisfiable {
+                sequence,
+                reason: format!("{which}: {}", e.reason),
+            })
+    };
+    check(kt, k_len, "kt")?;
+    check(nt, n_len, "nt")?;
+    check(bt, b_len, "bt")?;
+    Ok(())
+}
+
 fn validate_inception(icp: &IcpEvent) -> Result<KeyState, ValidationError> {
     // Validate backer uniqueness
     validate_backer_uniqueness(&icp.b)?;
+
+    // Threshold satisfiability (kt over k, nt over n, bt over b).
+    validate_thresholds(
+        icp.s.value(),
+        &icp.kt,
+        icp.k.len(),
+        &icp.nt,
+        icp.n.len(),
+        &icp.bt,
+        icp.b.len(),
+    )?;
 
     // Validate bt consistency: empty backers must have bt == 0
     let bt_val = icp.bt.simple_value().unwrap_or(0);
@@ -429,38 +476,97 @@ fn verify_chain_linkage(event: &Event, state: &KeyState) -> Result<(), Validatio
     Ok(())
 }
 
+/// Returns whether the new key list reveals enough prior next-key commitments
+/// to satisfy the typed prior `nt` threshold.
+///
+/// Each prior commitment index `j` counts as "revealed" when some new key
+/// hashes to `next_commitment[j]`; the typed [`Threshold::is_satisfied`] then
+/// decides over those indices. This replaces the legacy
+/// `simple_value().unwrap_or(1)` collapse, which silently reduced any weighted
+/// `nt` to a 1-of-N (F-15).
+fn prior_commitments_satisfy_threshold(
+    next_commitment: &[Said],
+    next_threshold: &Threshold,
+    new_keys: &[CesrKey],
+) -> bool {
+    let revealed: Vec<u32> = next_commitment
+        .iter()
+        .enumerate()
+        .filter_map(|(j, commitment)| {
+            let matched = new_keys.iter().any(|key| {
+                key.parse()
+                    .map(|pk| verify_commitment(pk.as_bytes(), commitment))
+                    .unwrap_or(false)
+            });
+            matched.then_some(j as u32)
+        })
+        .collect();
+    next_threshold.is_satisfied(&revealed, next_commitment.len())
+}
+
 fn validate_rotation(
     rot: &RotEvent,
     sequence: u128,
     state: &mut KeyState,
 ) -> Result<(), ValidationError> {
-    // Verify all pre-rotation commitments (not just first key)
-    if !state.next_commitment.is_empty() {
-        let required = state.next_threshold.simple_value().unwrap_or(1);
-        let mut matched_count = 0u64;
-        for commitment in &state.next_commitment {
-            let matched = rot.k.iter().any(|key| {
-                key.parse()
-                    .map(|pk| verify_commitment(pk.as_bytes(), commitment))
-                    .unwrap_or(false)
-            });
-            if matched {
-                matched_count += 1;
-            }
-        }
-        if matched_count < required {
-            return Err(ValidationError::CommitmentMismatch { sequence });
-        }
+    // Threshold satisfiability for the new establishment config. `br`/`ba` are
+    // deltas, so the post-rotation backer count is the prior set minus removals
+    // plus additions.
+    let post_backer_count = state
+        .backers
+        .iter()
+        .filter(|b| !rot.br.contains(b))
+        .count()
+        + rot.ba.len();
+    validate_thresholds(
+        sequence,
+        &rot.kt,
+        rot.k.len(),
+        &rot.nt,
+        rot.n.len(),
+        &rot.bt,
+        post_backer_count,
+    )?;
+
+    // Verify all pre-rotation commitments against the typed prior `nt`.
+    if !state.next_commitment.is_empty()
+        && !prior_commitments_satisfy_threshold(&state.next_commitment, &state.next_threshold, &rot.k)
+    {
+        return Err(ValidationError::CommitmentMismatch { sequence });
     }
 
-    // Validate backer uniqueness in br and ba
+    // Validate backer uniqueness within br and ba.
     validate_backer_uniqueness(&rot.br)?;
     validate_backer_uniqueness(&rot.ba)?;
-    // Check no overlap between br and ba
+    // br and ba must not overlap.
     for aid in &rot.ba {
         if rot.br.contains(aid) {
             return Err(ValidationError::DuplicateBacker {
                 aid: aid.as_str().to_string(),
+            });
+        }
+    }
+    // Each `br` (cut) must be a current backer; each `ba` (add) must not already
+    // be a surviving backer. Otherwise apply_rotation's retain+extend would
+    // silently corrupt the backer set and `bt` accounting (F-05).
+    for aid in &rot.br {
+        if !state.backers.contains(aid) {
+            return Err(ValidationError::InvalidBackerDelta {
+                sequence,
+                reason: format!("br entry {} not in prior backers", aid.as_str()),
+            });
+        }
+    }
+    let survivors: Vec<_> = state
+        .backers
+        .iter()
+        .filter(|b| !rot.br.contains(b))
+        .collect();
+    for aid in &rot.ba {
+        if survivors.contains(&aid) {
+            return Err(ValidationError::InvalidBackerDelta {
+                sequence,
+                reason: format!("ba entry {} duplicates a surviving backer", aid.as_str()),
             });
         }
     }
@@ -570,22 +676,10 @@ fn validate_delegated_rotation(
     }
 
     // Standard rotation commitment/backer checks applied to drt fields.
-    if !state.next_commitment.is_empty() {
-        let required = state.next_threshold.simple_value().unwrap_or(1);
-        let mut matched_count = 0u64;
-        for commitment in &state.next_commitment {
-            let matched = drt.k.iter().any(|key| {
-                key.parse()
-                    .map(|pk| verify_commitment(pk.as_bytes(), commitment))
-                    .unwrap_or(false)
-            });
-            if matched {
-                matched_count += 1;
-            }
-        }
-        if matched_count < required {
-            return Err(ValidationError::CommitmentMismatch { sequence });
-        }
+    if !state.next_commitment.is_empty()
+        && !prior_commitments_satisfy_threshold(&state.next_commitment, &state.next_threshold, &drt.k)
+    {
+        return Err(ValidationError::CommitmentMismatch { sequence });
     }
 
     validate_backer_uniqueness(&drt.br)?;
@@ -634,13 +728,30 @@ pub fn verify_event_crypto(
                 return Err(ValidationError::SignatureFailed { sequence: 0 });
             }
 
-            // Only enforce i == d for self-addressing AIDs (E-prefixed)
+            // Self-addressing AIDs (E-prefixed): `i` MUST equal the SAID `d`.
             let is_self_addressing = icp.i.as_str().starts_with('E');
-            if is_self_addressing && icp.i.as_str() != icp.d.as_str() {
-                return Err(ValidationError::InvalidSaid {
-                    expected: icp.d.clone(),
-                    actual: Said::new_unchecked(icp.i.as_str().to_string()),
-                });
+            if is_self_addressing {
+                if icp.i.as_str() != icp.d.as_str() {
+                    return Err(ValidationError::InvalidSaid {
+                        expected: icp.d.clone(),
+                        actual: Said::new_unchecked(icp.i.as_str().to_string()),
+                    });
+                }
+            } else {
+                // Basic-derivation AIDs (D / 1AAI / 1AAJ ...): the prefix IS the
+                // single inception key, so `i` MUST equal `k[0]`. Without this a
+                // basic-derivation prefix could point at an arbitrary key list.
+                let i_key = KeriPublicKey::parse(icp.i.as_str())
+                    .map_err(|_| ValidationError::SignatureFailed { sequence: 0 })?;
+                let k0 = icp.k[0]
+                    .parse()
+                    .map_err(|_| ValidationError::SignatureFailed { sequence: 0 })?;
+                if i_key.as_bytes() != k0.as_bytes() {
+                    return Err(ValidationError::InvalidSaid {
+                        expected: Said::new_unchecked(icp.k[0].as_str().to_string()),
+                        actual: Said::new_unchecked(icp.i.as_str().to_string()),
+                    });
+                }
             }
 
             Ok(())
@@ -657,20 +768,12 @@ pub fn verify_event_crypto(
                 return Err(ValidationError::SignatureFailed { sequence });
             }
 
-            // Verify all pre-rotation commitments
-            let required = state.next_threshold.simple_value().unwrap_or(1);
-            let mut matched_count = 0u64;
-            for commitment in &state.next_commitment {
-                let matched = rot.k.iter().any(|key| {
-                    key.parse()
-                        .map(|pk| verify_commitment(pk.as_bytes(), commitment))
-                        .unwrap_or(false)
-                });
-                if matched {
-                    matched_count += 1;
-                }
-            }
-            if matched_count < required {
+            // Verify pre-rotation commitments against the typed prior `nt`.
+            if !prior_commitments_satisfy_threshold(
+                &state.next_commitment,
+                &state.next_threshold,
+                &rot.k,
+            ) {
                 return Err(ValidationError::CommitmentMismatch { sequence });
             }
 
@@ -759,41 +862,19 @@ pub fn compute_event_said(event: &Event) -> Result<Said, ValidationError> {
     compute_said(&value).map_err(|e| ValidationError::Serialization(e.to_string()))
 }
 
-/// Serialize event for signing (clears d, i for icp, and x fields).
+/// Serialize a finalized event for signing.
+///
+/// KERI signs over the fully-formed event bytes — `d` (SAID) and `i` (prefix)
+/// already populated by `finalize_*_event`, and the version string declaring
+/// the true body length. A spec verifier (KERIpy/KERIox) parses `v` first and
+/// frames the body by that length, so the signed bytes MUST equal the wire
+/// bytes. (The prior implementation cleared `d`/`i` after finalization, making
+/// the signed body shorter than `v` claimed — a hard interop break.)
 ///
 /// Args:
-/// * `event` - The event to serialize for signing.
+/// * `event` - The finalized event to serialize for signing.
 pub fn serialize_for_signing(event: &Event) -> Result<Vec<u8>, ValidationError> {
-    match event {
-        Event::Icp(e) => {
-            let mut e = e.clone();
-            e.d = Said::default();
-            e.i = Prefix::default();
-            serde_json::to_vec(&Event::Icp(e))
-        }
-        Event::Rot(e) => {
-            let mut e = e.clone();
-            e.d = Said::default();
-            serde_json::to_vec(&Event::Rot(e))
-        }
-        Event::Ixn(e) => {
-            let mut e = e.clone();
-            e.d = Said::default();
-            serde_json::to_vec(&Event::Ixn(e))
-        }
-        Event::Dip(e) => {
-            let mut e = e.clone();
-            e.d = Said::default();
-            e.i = Prefix::default();
-            serde_json::to_vec(&Event::Dip(e))
-        }
-        Event::Drt(e) => {
-            let mut e = e.clone();
-            e.d = Said::default();
-            serde_json::to_vec(&Event::Drt(e))
-        }
-    }
-    .map_err(|e| ValidationError::Serialization(e.to_string()))
+    serde_json::to_vec(event).map_err(|e| ValidationError::Serialization(e.to_string()))
 }
 
 /// Validate a signed event's crypto (signatures + commitments) against key state.
@@ -858,24 +939,54 @@ pub fn validate_signed_event(
     if matches!(event, Event::Rot(_) | Event::Drt(_))
         && let Some(state) = current_state
     {
-        // Reject asymmetric rotations (prior next count != new key count)
-        // until CESR indexed-signature type codes let us map verified indices
-        // distinctly against prior and current lists.
-        if state.next_commitment.len() != keys.len() {
+        let symmetric = state.next_commitment.len() == keys.len();
+        let prior_kt_simple = state.next_threshold.simple_value();
+        let new_kt_is_one = matches!(threshold, crate::types::Threshold::Simple(1));
+
+        if symmetric {
+            // Symmetric shape: signatures verified against new k[i]
+            // automatically cover prior n[i] — the classic in-place
+            // key rotation path.
+            if !state
+                .next_threshold
+                .is_satisfied(&verified_indices, keys.len())
+            {
+                return Err(ValidationError::SignatureFailed { sequence });
+            }
+        } else if prior_kt_simple == Some(1) && new_kt_is_one {
+            // Asymmetric growth/shrink under kt=1: a single verified
+            // signature under the new current-threshold is enough
+            // PROVIDED the verified signer's new-k index corresponds
+            // to a key whose reveal matches one of the prior n
+            // commitments. The single-controller case matches Stage
+            // 1's kt=1 shared-KEL operation; extending to kt>1
+            // across asymmetric shapes is the CESR indexed-signature
+            // work tracked upstream.
+            let any_prior_match = verified_indices.iter().any(|&idx| {
+                let Some(key) = keys.get(idx as usize) else {
+                    return false;
+                };
+                let Ok(parsed) = key.parse() else {
+                    return false;
+                };
+                let pk_bytes = parsed.as_bytes();
+                state
+                    .next_commitment
+                    .iter()
+                    .any(|commit| crate::crypto::verify_commitment(pk_bytes, commit))
+            });
+            if !any_prior_match {
+                return Err(ValidationError::SignatureFailed { sequence });
+            }
+        } else {
+            // Asymmetric rotation with kt > 1 (or prior nt > 1) still
+            // needs CESR indexed-signature support to disambiguate
+            // which signatures attest to which prior commitments.
             return Err(ValidationError::AsymmetricKeyRotation {
                 sequence,
                 prior_next_count: state.next_commitment.len(),
                 new_key_count: keys.len(),
             });
-        }
-
-        // "Same indices apply to both lists" simplification — valid only when
-        // the two lists have matching shapes (enforced just above).
-        if !state
-            .next_threshold
-            .is_satisfied(&verified_indices, keys.len())
-        {
-            return Err(ValidationError::SignatureFailed { sequence });
         }
     }
 
@@ -1002,7 +1113,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         }
     }
 
@@ -1025,7 +1135,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();
@@ -1045,7 +1154,6 @@ mod tests {
             s: KeriSequence::new(seq),
             p: prev_said.clone(),
             a: vec![Seal::digest("EAttest")],
-            dt: None,
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
@@ -1089,7 +1197,6 @@ mod tests {
             s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![],
-            dt: None,
         };
         // Compute a valid SAID so verify_event_said passes — the test
         // should fail on NotInception, not on SaidMismatch.
@@ -1113,7 +1220,6 @@ mod tests {
             s: KeriSequence::new(5),
             p: icp.d.clone(),
             a: vec![],
-            dt: None,
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
@@ -1141,7 +1247,6 @@ mod tests {
             s: KeriSequence::new(1),
             p: Said::new_unchecked("EWrongPrevious".to_string()),
             a: vec![],
-            dt: None,
         };
 
         let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();
@@ -1249,7 +1354,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         let icp = finalize_icp_event(icp).unwrap();
         let event = Event::Icp(icp);
@@ -1315,7 +1419,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         customize(&mut icp);
@@ -1352,7 +1455,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         let val = serde_json::to_value(Event::Rot(rot.clone())).unwrap();
         rot.d = compute_said(&val).unwrap();
@@ -1421,7 +1523,6 @@ mod tests {
                 b: vec![dup_backer.clone(), dup_backer],
                 c: vec![],
                 a: vec![],
-                dt: None,
             };
 
             let finalized = finalize_icp_event(icp).unwrap();
@@ -1455,18 +1556,118 @@ mod tests {
                 b: vec![],
                 c: vec![],
                 a: vec![],
-                dt: None,
             };
 
             let finalized = finalize_icp_event(icp).unwrap();
             let events = vec![Event::Icp(finalized)];
             (keypair, validate_kel(&events))
         };
+        // `bt=2` over zero backers is now caught by the stricter structural
+        // threshold-satisfiability guard (A.4) before the legacy
+        // empty-backers/bt!=0 check.
         assert!(
-            matches!(result, Err(ValidationError::InvalidBackerThreshold { .. })),
-            "expected InvalidBackerThreshold, got: {result:?}"
+            matches!(result, Err(ValidationError::ThresholdNotSatisfiable { .. })),
+            "expected ThresholdNotSatisfiable, got: {result:?}"
         );
     }
+
+    #[test]
+    fn sign_over_finalized_bytes_roundtrips() {
+        // A.2: the bytes handed to the signer must equal the wire bytes, whose
+        // length the version string `v` declares. (Previously d/i were cleared
+        // after finalize, making the signed body shorter than `v` claimed.)
+        let (icp, _kp) = make_signed_icp();
+        let bytes = serialize_for_signing(&Event::Icp(icp.clone())).unwrap();
+        assert_eq!(
+            bytes.len() as u32,
+            icp.v.size,
+            "signed byte length must equal the version-string size field"
+        );
+        let reparsed: Event = serde_json::from_slice(&bytes).unwrap();
+        assert!(reparsed.is_inception());
+    }
+
+    #[test]
+    fn threshold_rejects_kt_gt_k() {
+        // A.4: a signing threshold larger than the key-list length is
+        // structurally unsatisfiable and must be rejected at validation.
+        let kp = gen_keypair();
+        let key = encode_pubkey(&kp);
+        let icp = IcpEvent {
+            v: VersionString::placeholder(),
+            d: Said::default(),
+            i: Prefix::default(),
+            s: KeriSequence::new(0),
+            kt: Threshold::Simple(5),
+            k: vec![CesrKey::new_unchecked(key)],
+            nt: Threshold::Simple(1),
+            n: vec![Said::new_unchecked("ENextCommitment".to_string())],
+            bt: Threshold::Simple(0),
+            b: vec![],
+            c: vec![],
+            a: vec![],
+        };
+        let finalized = finalize_icp_event(icp).unwrap();
+        let result = validate_kel(&[Event::Icp(finalized)]);
+        assert!(
+            matches!(result, Err(ValidationError::ThresholdNotSatisfiable { .. })),
+            "expected ThresholdNotSatisfiable, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rotation_rejects_br_not_in_prior() {
+        // A.10 (F-05): a rotation that cuts a backer not in the prior set, or
+        // adds a backer that already survives, must be rejected before
+        // apply_rotation corrupts the backer set.
+        let mut state = KeyState::from_inception(
+            Prefix::new_unchecked("EPrefix".to_string()),
+            vec![CesrKey::new_unchecked("DKey1".to_string())],
+            vec![], // empty next_commitment -> commitment check skipped
+            Threshold::Simple(1),
+            Threshold::Simple(0),
+            Said::new_unchecked("ESAID".to_string()),
+            vec![Prefix::new_unchecked("BWit1".to_string())],
+            Threshold::Simple(0),
+            vec![],
+        );
+
+        let make_rot = |br: Vec<Prefix>, ba: Vec<Prefix>| RotEvent {
+            v: VersionString::placeholder(),
+            d: Said::default(),
+            i: Prefix::new_unchecked("EPrefix".to_string()),
+            s: KeriSequence::new(1),
+            p: Said::new_unchecked("ESAID".to_string()),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked("DKey2".to_string())],
+            nt: Threshold::Simple(0),
+            n: vec![],
+            bt: Threshold::Simple(0),
+            br,
+            ba,
+            c: vec![],
+            a: vec![],
+        };
+
+        // br entry not in prior backers -> rejected.
+        let bad_cut = make_rot(vec![Prefix::new_unchecked("BWitX".to_string())], vec![]);
+        assert!(matches!(
+            validate_rotation(&bad_cut, 1, &mut state.clone()),
+            Err(ValidationError::InvalidBackerDelta { .. })
+        ));
+
+        // ba entry duplicating a surviving backer -> rejected.
+        let bad_add = make_rot(vec![], vec![Prefix::new_unchecked("BWit1".to_string())]);
+        assert!(matches!(
+            validate_rotation(&bad_add, 1, &mut state.clone()),
+            Err(ValidationError::InvalidBackerDelta { .. })
+        ));
+
+        // valid delta (cut the existing backer) -> ok.
+        let ok = make_rot(vec![Prefix::new_unchecked("BWit1".to_string())], vec![]);
+        assert!(validate_rotation(&ok, 1, &mut state.clone()).is_ok());
+    }
+
 }
 
 // =============================================================================
@@ -1529,6 +1730,7 @@ impl Default for KelPolicy {
 ///   pass a clock.
 pub fn validate_kel_with_policy(
     events: &[Event],
+    timestamps: &[Option<chrono::DateTime<chrono::Utc>>],
     policy: &KelPolicy,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<KeyState, ValidationError> {
@@ -1539,14 +1741,14 @@ pub fn validate_kel_with_policy(
 
     for (idx, evt) in events.iter().enumerate() {
         let seq = idx as u128;
-        let (dt, is_rotation, controller) = match evt {
-            Event::Icp(e) => (e.dt, false, &e.i),
-            Event::Rot(e) => (e.dt, true, &e.i),
-            Event::Ixn(e) => (e.dt, false, &e.i),
-            Event::Dip(e) => (e.dt, false, &e.i),
-            Event::Drt(e) => (e.dt, true, &e.i),
+        let (is_rotation, controller) = match evt {
+            Event::Icp(e) => (false, &e.i),
+            Event::Rot(e) => (true, &e.i),
+            Event::Ixn(e) => (false, &e.i),
+            Event::Dip(e) => (false, &e.i),
+            Event::Drt(e) => (true, &e.i),
         };
-        let Some(dt) = dt else {
+        let Some(dt) = timestamps.get(idx).copied().flatten() else {
             return Err(ValidationError::MissingTimestamp { sequence: seq });
         };
         // Monotonicity.
@@ -1607,7 +1809,7 @@ mod policy_tests {
         // before any policy check runs. Locks in that the policy
         // validator doesn't accidentally accept an empty KEL.
         let events: Vec<crate::events::Event> = vec![];
-        let r = validate_kel_with_policy(&events, &KelPolicy::default(), base_now());
+        let r = validate_kel_with_policy(&events, &[], &KelPolicy::default(), base_now());
         assert!(matches!(r, Err(ValidationError::EmptyKel)));
     }
 

@@ -63,7 +63,7 @@ pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::KeriTranslationError;
 pub use events::{
     DipEvent, DrtEvent, Event, IcpEvent, IndexedSignature, IxnEvent, KERI_VERSION_PREFIX,
-    KeriSequence, RotEvent, Seal, SealType, SignedEvent, parse_attachment, serialize_attachment,
+    KeriSequence, RotEvent, Seal, SignedEvent, parse_attachment, serialize_attachment,
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};

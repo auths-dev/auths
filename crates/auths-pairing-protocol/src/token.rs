@@ -305,7 +305,10 @@ impl PairingSession {
                         device_signing_pubkey.len()
                     ))
                 })?;
-                KeriPublicKey::P256(arr)
+                KeriPublicKey::P256 {
+                    key: arr,
+                    transferable: true,
+                }
             }
         };
 

@@ -101,6 +101,7 @@ pub mod anchor;
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 // INVARIANT: file-based KEL cache — entire module is an I/O adapter
 pub mod cache;
+pub mod device_kel;
 pub mod event;
 #[cfg(feature = "git-storage")]
 pub mod inception;
@@ -113,6 +114,7 @@ pub mod resolve;
 #[cfg(feature = "git-storage")]
 pub mod rotation;
 pub mod seal;
+pub mod shared_kel;
 pub mod state;
 pub mod types;
 pub mod validate;
@@ -146,7 +148,7 @@ pub use rotation::{
     RotationError, RotationResult, abandon_identity, get_key_state, get_key_state_with_backend,
     rotate_keys, rotate_keys_with_backend,
 };
-pub use seal::{Seal, SealType};
+pub use seal::Seal;
 pub use state::KeyState;
 pub use types::{KeriTypeError, Prefix, Said, prefix_from_did};
 pub use validate::{

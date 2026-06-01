@@ -102,7 +102,10 @@ impl KeyState {
             next_commitment: next.clone(),
             sequence: 0,
             last_event_said: said,
-            is_abandoned: next.is_empty(),
+            // A non-rotating inception (empty `n`) is non-transferable, not
+            // abandoned. Abandonment is a post-inception state reached only by
+            // a rotation to an empty next commitment (see `apply_rotation`).
+            is_abandoned: false,
             threshold,
             next_threshold,
             backers,
@@ -227,6 +230,26 @@ mod tests {
     }
 
     #[test]
+    fn non_transferable_inception_is_not_abandoned() {
+        // An inception with an empty next commitment is born non-transferable,
+        // which is distinct from being abandoned (a post-rotation state).
+        let state = KeyState::from_inception(
+            Prefix::new_unchecked("EPrefix".to_string()),
+            vec![make_key("DKey1")],
+            vec![],
+            Threshold::Simple(1),
+            Threshold::Simple(0),
+            Said::new_unchecked("ESAID".to_string()),
+            vec![],
+            Threshold::Simple(0),
+            vec![],
+        );
+        assert!(state.is_non_transferable);
+        assert!(!state.is_abandoned);
+        assert!(!state.can_rotate());
+    }
+
+    #[test]
     fn key_state_apply_rotation() {
         let mut state = make_state();
 
@@ -262,14 +285,21 @@ mod tests {
 
     #[test]
     fn abandoned_identity_cannot_rotate() {
-        let state = KeyState::from_inception(
-            Prefix::new_unchecked("EPrefix".to_string()),
-            vec![make_key("DKey1")],
+        // Abandonment is reached by rotating to an empty next commitment,
+        // not at inception (a non-transferable inception is a separate state —
+        // see `non_transferable_inception_is_not_abandoned`).
+        let mut state = make_state();
+        assert!(!state.is_abandoned);
+
+        state.apply_rotation(
+            vec![make_key("DKey2")],
             vec![],
             Threshold::Simple(1),
             Threshold::Simple(0),
-            Said::new_unchecked("ESAID".to_string()),
-            vec![],
+            1,
+            Said::new_unchecked("ESAID_ROT".to_string()),
+            &[],
+            &[],
             Threshold::Simple(0),
             vec![],
         );

@@ -211,7 +211,10 @@ fn build_keri_public_key(curve: CurveType, bytes: &[u8]) -> Result<KeriPublicKey
                     bytes.len()
                 ))
             })?;
-            Ok(KeriPublicKey::P256(arr))
+            Ok(KeriPublicKey::P256 {
+                key: arr,
+                transferable: true,
+            })
         }
     }
 }

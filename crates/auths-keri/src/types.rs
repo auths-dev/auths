@@ -405,6 +405,48 @@ impl Threshold {
         }
     }
 
+    /// Check that this threshold is structurally satisfiable against a key
+    /// (or commitment / backer) list of length `count`.
+    ///
+    /// This is a structural guard run at validation entry — it rejects events
+    /// whose threshold can never be met regardless of which signatures arrive:
+    /// a `Simple(n)` with `n > count`, a non-zero `Simple` over an empty list,
+    /// or a `Weighted` clause whose length doesn't match `count`.
+    ///
+    /// Args:
+    /// * `count` - Length of the list the threshold governs (`k`, `n`, or `b`).
+    ///
+    /// Usage:
+    /// ```
+    /// use auths_keri::Threshold;
+    /// assert!(Threshold::Simple(2).validate_satisfiable(3).is_ok());
+    /// assert!(Threshold::Simple(5).validate_satisfiable(1).is_err());
+    /// ```
+    pub fn validate_satisfiable(&self, count: usize) -> Result<(), KeriTypeError> {
+        match self {
+            Threshold::Simple(0) => Ok(()),
+            Threshold::Simple(n) if *n as usize > count => Err(KeriTypeError {
+                type_name: "Threshold",
+                reason: format!("simple threshold {n} exceeds list length {count}"),
+            }),
+            Threshold::Simple(_) => Ok(()),
+            Threshold::Weighted(clauses) => {
+                for clause in clauses {
+                    if clause.len() != count {
+                        return Err(KeriTypeError {
+                            type_name: "Threshold",
+                            reason: format!(
+                                "weighted clause length {} != list length {count}",
+                                clause.len()
+                            ),
+                        });
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// Check if the threshold is satisfied by the given set of verified key indices.
     ///
     /// For `Simple(n)`: at least `n` unique indices must be verified.
@@ -657,11 +699,10 @@ impl<'de> Deserialize<'de> for VersionString {
             })?;
             let kind = s[6..10].to_string();
             Ok(Self { kind, size })
-        } else if s.starts_with("KERI10") && s.len() >= 10 {
-            // Legacy format without size — accept for backwards compat
-            let kind = s[6..s.len().min(10)].to_string();
-            Ok(Self { kind, size: 0 })
         } else {
+            // KERI v1.1 mandates the full 17-char form (`KERI10JSON{size:06x}_`).
+            // Short/legacy strings are rejected — they are wire-incompatible
+            // with spec verifiers, which parse the declared size from `v`.
             Err(serde::de::Error::custom(format!(
                 "invalid KERI version string: {s:?}"
             )))
@@ -975,10 +1016,12 @@ mod tests {
     }
 
     #[test]
-    fn version_string_parse_legacy() {
-        let vs: VersionString = serde_json::from_str("\"KERI10JSON\"").unwrap();
-        assert_eq!(vs.kind, "JSON");
-        assert_eq!(vs.size, 0); // legacy has no size
+    fn version_string_rejects_legacy_short() {
+        // KERI v1.1 mandates the 17-char form; the legacy short form
+        // (`KERI10JSON` with no size/terminator) must be rejected, not
+        // silently accepted with size 0.
+        assert!(serde_json::from_str::<VersionString>("\"KERI10JSON\"").is_err());
+        assert!(serde_json::from_str::<VersionString>("\"KERI10JSON0001\"").is_err());
     }
 
     #[test]
