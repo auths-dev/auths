@@ -199,6 +199,57 @@ support."**
 
 ---
 
+## 1.6 Wave 0 — CESR encoding alignment (Option A; DO FIRST, blocks everything)
+
+**Discovered + decided 2026-06: our wire encoding is NOT byte-interoperable with keripy, and the
+user chose Option A — align to keripy.** This is a prerequisite re-foundation: until it lands,
+every keripy interop check fails and A.7/B/C cannot validate against the reference. **A.7 collapses
+into this wave** (the commitment fix is just one of the encodings being corrected).
+
+**Root cause (proven):** `auths-keri` has TWO encoders. The default path uses **naive
+`format!("D{}", base64url(raw))`** for verkeys, `"E{}"+base64` for digests/SAIDs — self-consistent
+but NOT CESR's qb64 alignment. The correct cesride-backed `CesrV1Codec` (`src/codec.rs`:
+`encode_pubkey`/`encode_digest`/`decode_qualified`) exists but is gated behind the **optional `cesr`
+feature** (`default = []`) and used only for "CESR export". keripy rejects our events; our SAID
+`EEpOF…` ≠ keripy's `EBKTh…`; our verkey `DAAEC…` ≠ keripy's `DAAB…`.
+
+**Proven fix (committed `9354fba`):** the test `codec::tests::cesr_primitives_match_keripy_reference`
+shows **cesride 0.6 == keripy 1.3.4** byte-for-byte (`encode_pubkey(bytes(0..32),Ed25519)` →
+`DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f`; `encode_digest(blake3(verkey.qb64b))` →
+`EF_M_u7ASVHXfI8QzdWLq3V9ocSKqxkbujXGbi9QMtP9`). So the alignment is: **route everything through
+`CesrV1Codec`.**
+
+**The change (one atomic commit — uncommittable until complete; ~100 sites; lengths/prefixes
+unchanged so only exact-value asserts break, not structure):**
+1. **Un-gate** the cesride encoders so they're in the default build (remove `#[cfg(feature="cesr")]`
+   from `mod codec` in `src/lib.rs`, or expose default-available `encode_verkey_qb64`/
+   `encode_digest_qb64` helpers wrapping cesride — `cesride` is already a non-optional dep).
+2. **`src/keys.rs`** `KeriPublicKey` encode + parse → cesride `Verfer` (both directions; ~6 naive
+   `format!("D{}"/"1AAJ{}"/"1AAI{}")` + 2 naive base64 decode sites).
+3. **`src/said.rs`** `compute_said` → cesride `Diger` for the digest (keep the `#`×44 dummy and
+   insertion-order serialization — they already match keripy's `Saider`; the ONLY wrong step is the
+   naive `E`+base64). Then verify the **full event** SAID matches keripy.
+4. **`src/crypto.rs`** `compute_next_commitment(key)` → hash the verkey's **cesride qb64** (qb64b)
+   then cesride `Diger` (this is A.7). `verify_commitment` follows.
+5. Replace the remaining **~29 naive `format!` encode sites** (`grep -rEn 'format!\("(D|B|E|1AAJ|1AAI)\{\}"' crates | grep '\.rs:'`)
+   across auths-keri/auths-id/auths-core with the codec.
+6. **Regenerate fixtures from keripy:** the ~41 hardcoded real CESR strings (14 in auths-keri,
+   3 auths-radicle, 2 auths-id, 1 auths-sdk — `grep -rEno '"E[A-Za-z0-9_-]{43}"' crates | grep '\.rs:'`
+   and the `D`-verkey equivalents) + the golden `crates/auths-keri/tests/fixtures/keripy/icp.bin`.
+   Short placeholders like `Said::new_unchecked("ESAID")` are fine (not computed) — leave them.
+7. **Validate end-to-end:** `KERIPY_INTEROP=1 cargo nextest run -p auths-keri -E 'test(subprocess_mode_when_keripy_available)'`
+   must PASS (it currently FAILS); full `cargo nextest run -p auths-keri --all-features` green; then
+   sweep downstream crates (`auths-id`, `auths-storage`, `auths-radicle`, `auths-sdk`) for green.
+8. Update `SPEC.md` §3 (verkey/digest encoding is CESR-aligned, not naive base64) and mark A.7
+   (`fn-135.7`) + A.16 (`fn-135.16`) done.
+
+**Why it's one commit:** flipping the encoding breaks all computed-value fixtures at once; a partial
+migration (some paths cesride, some naive) is inconsistent and won't build/round-trip. Do it in a
+single focused pass with the keripy subprocess test as the gate. After Wave 0, the Wave-1 A.7/A.16
+items are already done and B/C validate against keripy cleanly.
+
+---
+
 ## 2. Build sequence (dependency DAG)
 
 Do waves in order; within a wave, tasks are independent. All are auths-keri-local or cleanly
