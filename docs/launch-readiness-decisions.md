@@ -156,6 +156,49 @@ A.7 (it reuses `compute_next_commitment`, whose signature changes).
 
 ---
 
+## 1.5 Validation strategy — prove the risky decisions, don't re-ask
+
+Interop tests + property tests + an optional model are **validation layered after the build**
+(§2). Most decisions (A.3, A.13, C.4, A.5, all F/G/SDK/CLI work) never touch interop. **Two
+exceptions** fold validation *into* the build so a fresh session doesn't rebuild fixtures twice
+or implement a wire format blind:
+
+- **A.7 / A.16 — generate the regenerated fixtures FROM keripy, not from ourselves.** A.7 already
+  forces a fixture regen (A.16); make those the committed **keripy golden vectors**. If keripy's
+  `n[]` commitment digest matches ours, A.7 is proven empirically in the same step — don't
+  hand-regenerate and then redo it for interop later. (Oracle = keripy, the most authoritative
+  impl; subprocess generation is already wired in `crates/auths-keri/tests/cases/keripy_interop.rs`
+  under `KERIPY_INTEROP=1`.)
+- **B (dual-index) — write a keripy-generated key-removal `rot` as the target fixture FIRST**, then
+  implement B.1–B.4 to parse/accept it. Do **not** implement the dual-index index semantics from
+  this doc's prose and discover divergence later — build against the reference's bytes.
+
+**Run early (informs a decision, doesn't block the build):** a ~30-min probe of whether
+keripy/keriox even emit a P-256 (`1AAJ`) verkey. KERI reference impls are Ed25519-first; if they
+don't do secp256r1, P-256 is validated only against the CESR code table + our own vectors (not
+cross-impl), which may revisit **P-256-as-default**. Know this before investing in P-256 interop
+fixtures.
+
+**Layer after the build (any order):**
+1. **proptest invariant suite** in `auths-keri` — threshold soundness (random index subsets vs
+   `Threshold::is_satisfied`), SAID tamper-evidence (any field mutation changes `d`), first-seen
+   monotonicity, **ECDSA low-s non-malleability** (sign, flip `s→n−s`, assert the verifier rejects
+   high-s), parse∘serialize round-trip stability.
+2. **Full H.3 cross-impl gate** (`fn-142.5`) — commit keripy/keriox golden vectors for
+   icp/rot-with-removal/ixn/dip/drt; CI asserts round-trip with **no toolchain installed** (vectors
+   are committed; `interop_vectors.rs` is the loader). The A.7 vectors above seed this.
+3. **Optional TLA+/Alloy model** of KEL-replay + first-seen + threshold + duplicity, checking the
+   safety property *"no two honest validators accept divergent KELs without `detect_duplicity`
+   flagging it."* This is the rigorous answer to the kt=1-without-witnesses question — do it only if
+   duplicity is a launch concern.
+
+This collapses most spec/expert questions into checked artifacts (low-s → proptest; dual-index →
+B's keripy fixture; qb64 commitment → A.16 keripy vectors). The residual genuine expert questions
+are just **RB/NRB `bt` accounting** and **"is P-256 sane as the default given reference-impl
+support."**
+
+---
+
 ## 2. Build sequence (dependency DAG)
 
 Do waves in order; within a wave, tasks are independent. All are auths-keri-local or cleanly
