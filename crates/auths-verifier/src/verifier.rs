@@ -7,7 +7,7 @@ use auths_crypto::CryptoProvider;
 use crate::clock::ClockProvider;
 use crate::core::{Attestation, Capability, DevicePublicKey, VerifiedAttestation};
 use crate::error::AttestationError;
-use crate::types::{DeviceDID, VerificationReport};
+use crate::types::{CanonicalDid, VerificationReport};
 use crate::verify;
 use crate::witness::WitnessVerifyConfig;
 
@@ -207,7 +207,7 @@ impl Verifier {
     pub async fn verify_device_authorization(
         &self,
         identity_did: &str,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
         attestations: &[Attestation],
         identity_pk: &DevicePublicKey,
     ) -> Result<VerificationReport, AttestationError> {

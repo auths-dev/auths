@@ -2,7 +2,7 @@ use auths_verifier::core::{
     Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
 };
 use auths_verifier::error::AuthsErrorInfo;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use auths_verifier::verify::{
     verify_at_time as rust_verify_at_time, verify_chain as rust_verify_chain,
     verify_chain_with_capability as rust_verify_chain_with_capability,
@@ -155,7 +155,8 @@ pub fn verify_device_authorization(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
-    let device = DeviceDID::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
+    let device =
+        CanonicalDid::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
 
     {
         match runtime().block_on(rust_verify_device_authorization(

@@ -13,7 +13,7 @@ use auths_id::ports::registry::{
 };
 use auths_keri::Prefix;
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 
 /// PostgreSQL-backed registry storage (stub).
 ///
@@ -96,7 +96,7 @@ impl RegistryBackend for PostgresAdapter {
         })
     }
 
-    fn load_attestation(&self, _did: &DeviceDID) -> Result<Option<Attestation>, RegistryError> {
+    fn load_attestation(&self, _did: &CanonicalDid) -> Result<Option<Attestation>, RegistryError> {
         Err(RegistryError::NotImplemented {
             method: "load_attestation",
         })
@@ -104,7 +104,7 @@ impl RegistryBackend for PostgresAdapter {
 
     fn visit_attestation_history(
         &self,
-        _did: &DeviceDID,
+        _did: &CanonicalDid,
         _visitor: &mut dyn FnMut(&Attestation) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         Err(RegistryError::NotImplemented {
@@ -114,7 +114,7 @@ impl RegistryBackend for PostgresAdapter {
 
     fn visit_devices(
         &self,
-        _visitor: &mut dyn FnMut(&DeviceDID) -> ControlFlow<()>,
+        _visitor: &mut dyn FnMut(&CanonicalDid) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         Err(RegistryError::NotImplemented {
             method: "visit_devices",

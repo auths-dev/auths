@@ -1,4 +1,4 @@
-use auths_verifier::{DeviceDID, IdentityDID, Role};
+use auths_verifier::{CanonicalDid, IdentityDID, Role};
 use serde::{Deserialize, Serialize};
 
 use crate::checkpoint::SignedCheckpoint;
@@ -241,7 +241,7 @@ pub enum DelegationStatus {
         /// The role granted to the member.
         member_role: Role,
         /// The device that performed the action on behalf of the member.
-        device_did: DeviceDID,
+        device_did: CanonicalDid,
     },
     /// The delegation chain could not be verified.
     ChainBroken {
@@ -360,7 +360,7 @@ mod tests {
             org_did: IdentityDID::new_unchecked("did:keri:EOrg123"),
             member_did: IdentityDID::new_unchecked("did:keri:EMember456"),
             member_role: Role::Admin,
-            device_did: DeviceDID::new_unchecked("did:key:z6MkDevice789"),
+            device_did: CanonicalDid::new_unchecked("did:key:z6MkDevice789"),
         };
         let json = serde_json::to_string(&status).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

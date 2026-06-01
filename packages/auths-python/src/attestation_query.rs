@@ -5,7 +5,7 @@ use auths_id::attestation::group::AttestationGroup;
 use auths_id::storage::attestation::AttestationSource;
 use auths_storage::git::{GitRegistryBackend, RegistryAttestationStorage, RegistryConfig};
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -162,7 +162,7 @@ pub fn get_latest_attestation(
         })?;
         let group = AttestationGroup::from_list(all);
         let did =
-            DeviceDID::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
+            CanonicalDid::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
         Ok(group.latest(&did).map(attestation_to_py))
     }
 }

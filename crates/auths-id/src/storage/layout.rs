@@ -1,4 +1,4 @@
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
@@ -233,31 +233,28 @@ impl StorageLayoutConfig {
     // --- Organization Reference Helpers ---
 
     /// Constructs the full Git reference path for storing an organization member's attestation.
-    pub fn org_member_ref(&self, org_did: &str, member_did: &DeviceDID) -> String {
+    pub fn org_member_ref(&self, org_did: &str, member_did: &CanonicalDid) -> String {
         format!(
             "refs/auths/org/{}/members/{}",
-            sanitize_did_for_ref(org_did),
+            sanitize_did(org_did),
             member_did.ref_name()
         )
     }
 
     /// Returns the base Git reference prefix for listing all members of an organization.
     pub fn org_members_prefix(&self, org_did: &str) -> String {
-        format!("refs/auths/org/{}/members", sanitize_did_for_ref(org_did))
+        format!("refs/auths/org/{}/members", sanitize_did(org_did))
     }
 
     /// Returns the Git reference path for storing organization identity/metadata.
     pub fn org_identity_ref(&self, org_did: &str) -> String {
-        format!("refs/auths/org/{}/identity", sanitize_did_for_ref(org_did))
+        format!("refs/auths/org/{}/identity", sanitize_did(org_did))
     }
 }
 
-/// Sanitizes a DID string for use in Git reference paths.
-pub fn sanitize_did_for_ref(did: &str) -> String {
-    did.chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '_' })
-        .collect()
-}
+// Use the workspace-canonical sanitizer (`:` → `_`) paired with
+// `unsanitize_did` for lossless round-trip.
+use crate::storage::registry::shard::sanitize_did;
 
 /// Determines the actual repository path from an optional `--repo` argument.
 ///
@@ -306,7 +303,10 @@ pub fn attestation_blob_name(config: &StorageLayoutConfig) -> &str {
 }
 
 /// Constructs the full Git reference path for storing a specific device's attestations.
-pub fn attestation_ref_for_device(config: &StorageLayoutConfig, device_did: &DeviceDID) -> String {
+pub fn attestation_ref_for_device(
+    config: &StorageLayoutConfig,
+    device_did: &CanonicalDid,
+) -> String {
     format!(
         "{}/{}/signatures",
         config

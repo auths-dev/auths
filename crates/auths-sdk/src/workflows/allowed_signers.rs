@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use auths_core::error::AuthsErrorInfo;
 use auths_id::error::StorageError;
 use auths_id::storage::attestation::AttestationSource;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use serde::{Deserialize, Serialize};
 use ssh_key::PublicKey as SshPublicKey;
 use thiserror::Error;
@@ -36,7 +36,7 @@ pub struct SignerEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SignerPrincipal {
     /// A device DID-derived principal (from attestation without email payload).
-    DeviceDid(DeviceDID),
+    DeviceDid(CanonicalDid),
     /// An email address principal (from manual entry or attestation with email).
     Email(EmailAddress),
 }
@@ -504,7 +504,7 @@ fn principal_from_attestation(att: &auths_verifier::core::Attestation) -> Signer
     }
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: att.subject is a validated CanonicalDid from a deserialized attestation
-    let device_did = DeviceDID::new_unchecked(att.subject.as_str());
+    let device_did = CanonicalDid::new_unchecked(att.subject.as_str());
     SignerPrincipal::DeviceDid(device_did)
 }
 
@@ -600,11 +600,11 @@ fn parse_entry_line(
 fn parse_principal(s: &str) -> Option<SignerPrincipal> {
     if let Some(local) = s.strip_suffix("@auths.local") {
         let did_str = format!("did:key:{}", local);
-        if let Ok(did) = DeviceDID::parse(&did_str) {
+        if let Ok(did) = CanonicalDid::parse(&did_str) {
             return Some(SignerPrincipal::DeviceDid(did));
         }
     }
-    if let Ok(did) = DeviceDID::parse(s) {
+    if let Ok(did) = CanonicalDid::parse(s) {
         return Some(SignerPrincipal::DeviceDid(did));
     }
     if let Ok(addr) = EmailAddress::new(s) {
@@ -659,7 +659,7 @@ mod tests {
     fn principal_display_did() {
         #[allow(clippy::disallowed_methods)]
         // INVARIANT: test-only literal with valid did:key: prefix
-        let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkTest123");
         let p = SignerPrincipal::DeviceDid(did);
         assert_eq!(p.to_string(), "z6MkTest123@auths.local");
     }
@@ -672,7 +672,7 @@ mod tests {
 
         #[allow(clippy::disallowed_methods)]
         // INVARIANT: test-only literal with valid did:key: prefix
-        let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkTest123");
         let did_p = SignerPrincipal::DeviceDid(did);
         let parsed = parse_principal(&did_p.to_string()).unwrap();
         assert_eq!(parsed, did_p);

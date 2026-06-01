@@ -46,7 +46,6 @@ fn make_signed_icp() -> (Event, Prefix, Ed25519KeyPair) {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).unwrap();
@@ -63,7 +62,6 @@ fn make_signed_ixn(prefix: &Prefix, seq: u128, prev_said: &str, keypair: &Ed2551
         s: KeriSequence::new(seq),
         p: Said::new_unchecked(prev_said.to_string()),
         a: vec![Seal::digest("EBench")],
-        dt: None,
     };
 
     let value = serde_json::to_value(Event::Ixn(ixn.clone())).unwrap();

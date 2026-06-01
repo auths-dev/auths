@@ -21,7 +21,6 @@ fn make_test_icp() -> IcpEvent {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     }
 }
 
@@ -45,7 +44,6 @@ fn make_test_rot() -> RotEvent {
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     }
 }
 
@@ -57,7 +55,6 @@ fn make_test_ixn() -> IxnEvent {
         s: KeriSequence::new(2),
         p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
         a: vec![Seal::digest("ESealDigest234567890123456789012345678901")],
-        dt: None,
     }
 }
 
@@ -212,7 +209,6 @@ fn environment_claim_excluded_from_canonical_form() {
         role: None,
         capabilities: vec![],
         delegated_by: None,
-        supersedes_attestation_rid: None,
         signer_type: None,
         environment_claim: Some(serde_json::json!({"provider": "aws", "region": "us-east-1"})),
         commit_sha: None,
@@ -258,7 +254,6 @@ fn environment_claim_roundtrips_through_json() {
         role: None,
         capabilities: vec![],
         delegated_by: None,
-        supersedes_attestation_rid: None,
         signer_type: None,
         environment_claim: Some(serde_json::json!({"provider": "aws"})),
         commit_sha: None,

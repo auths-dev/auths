@@ -21,7 +21,7 @@ use auths_verifier::PublicKeyHex;
 use auths_verifier::core::Attestation;
 pub use auths_verifier::core::Role;
 
-use auths_verifier::types::{DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, IdentityDID};
 
 use crate::domains::org::error::OrgError;
 
@@ -361,7 +361,7 @@ pub fn add_organization_member(
 
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: cmd.member_did is a did:key string from the CLI, validated by the caller
-    let member_did = DeviceDID::new_unchecked(&cmd.member_did);
+    let member_did = CanonicalDid::new_unchecked(&cmd.member_did);
     let meta = AttestationMetadata {
         note: cmd
             .note
@@ -373,32 +373,34 @@ pub fn add_organization_member(
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: admin_att.issuer is a CanonicalDid from a verified attestation loaded by find_admin()
     let admin_issuer_did = IdentityDID::new_unchecked(admin_att.issuer.as_str());
+    let delegated_by = {
+        #[allow(clippy::disallowed_methods)]
+        // INVARIANT: admin_att.subject is a CanonicalDid from a verified attestation loaded by find_admin()
+        Some(IdentityDID::new_unchecked(admin_att.subject.to_string()))
+    };
     let attestation = create_signed_attestation(
         now,
-        &rid,
-        &admin_issuer_did,
-        &member_did,
-        &cmd.member_public_key,
-        cmd.member_curve,
-        Some(serde_json::json!({
-            "org_role": cmd.role.to_string(),
-            "org_did": format!("did:keri:{}", cmd.org_prefix),
-        })),
-        &meta,
+        auths_id::attestation::create::AttestationInput {
+            rid: &rid,
+            identity_did: &admin_issuer_did,
+            subject: &member_did,
+            device_public_key: &cmd.member_public_key,
+            device_curve: cmd.member_curve,
+            payload: Some(serde_json::json!({
+                "org_role": cmd.role.to_string(),
+                "org_did": format!("did:keri:{}", cmd.org_prefix),
+            })),
+            meta: &meta,
+            identity_alias: Some(&cmd.signer_alias),
+            device_alias: None,
+            capabilities: parsed_caps,
+            role: Some(cmd.role),
+            delegated_by,
+            commit_sha: None,
+            signer_type: None,
+        },
         ctx.signer,
         ctx.passphrase_provider,
-        Some(&cmd.signer_alias),
-        None,
-        parsed_caps,
-        Some(cmd.role),
-        {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: admin_att.subject is a CanonicalDid from a verified attestation loaded by find_admin()
-            Some(IdentityDID::new_unchecked(admin_att.subject.to_string()))
-        },
-        None, // commit_sha
-        None,
-        None, // supersedes_rid
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 
@@ -458,23 +460,25 @@ pub fn revoke_organization_member(
     let now = ctx.clock.now();
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: cmd.member_did is a did:key string from the CLI, validated by the caller
-    let member_did = DeviceDID::new_unchecked(&cmd.member_did);
+    let member_did = CanonicalDid::new_unchecked(&cmd.member_did);
 
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: admin_att.issuer is a CanonicalDid from a verified attestation loaded by find_admin()
     let admin_issuer_did = IdentityDID::new_unchecked(admin_att.issuer.as_str());
     let revocation = create_signed_revocation(
-        admin_att.rid.as_str(),
-        &admin_issuer_did,
-        &member_did,
-        &cmd.member_public_key,
-        cmd.member_curve,
-        cmd.note,
-        None,
-        now,
+        auths_id::attestation::revoke::RevocationInput {
+            rid: admin_att.rid.as_str(),
+            identity_did: &admin_issuer_did,
+            subject: &member_did,
+            device_public_key: &cmd.member_public_key,
+            device_curve: cmd.member_curve,
+            note: cmd.note,
+            payload: None,
+            timestamp: now,
+            identity_alias: &cmd.signer_alias,
+        },
         ctx.signer,
         ctx.passphrase_provider,
-        &cmd.signer_alias,
     )
     .map_err(|e| OrgError::Signing(e.to_string()))?;
 

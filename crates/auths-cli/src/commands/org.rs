@@ -23,7 +23,7 @@ use auths_sdk::workflows::org::{
     AddMemberCommand, OrgContext, RevokeMemberCommand, Role, add_organization_member,
     member_role_order, revoke_organization_member,
 };
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use auths_verifier::{Capability, Prefix, PublicKeyHex};
 
 use clap::ValueEnum;
@@ -397,30 +397,31 @@ pub fn handle_org(
 
             let signer = StorageSigner::new(get_platform_keychain()?);
             #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
-            let org_did = DeviceDID::new_unchecked(controller_did.to_string());
+            let org_did = CanonicalDid::new_unchecked(controller_did.to_string());
 
             let attestation = create_signed_attestation(
                 now,
-                &rid,
-                &controller_did,
-                &org_did,
-                &org_pk_bytes,
-                org_curve,
-                Some(serde_json::json!({
-                    "org_role": "admin",
-                    "org_name": name
-                })),
-                &meta,
+                auths_sdk::attestation::AttestationInput {
+                    rid: &rid,
+                    identity_did: &controller_did,
+                    subject: &org_did,
+                    device_public_key: &org_pk_bytes,
+                    device_curve: org_curve,
+                    payload: Some(serde_json::json!({
+                        "org_role": "admin",
+                        "org_name": name
+                    })),
+                    meta: &meta,
+                    identity_alias: Some(&alias),
+                    device_alias: None, // Self-attestation, no device signature
+                    capabilities: admin_capabilities,
+                    role: Some(Role::Admin),
+                    delegated_by: None,
+                    commit_sha: None,
+                    signer_type: None,
+                },
                 &signer,
                 passphrase_provider.as_ref(),
-                Some(&alias),
-                None, // Self-attestation, no device signature
-                admin_capabilities,
-                Some(Role::Admin),
-                None, // Root admin has no delegator
-                None, // commit_sha
-                None,
-                None, // supersedes_rid
             )
             .context("Failed to create admin attestation")?;
 
@@ -513,7 +514,7 @@ pub fn handle_org(
 
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: subject_did accepts both did:key and did:keri
-            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
+            let subject_device_did = CanonicalDid::new_unchecked(subject_did.clone());
 
             // --- Resolve device public key using the custom resolver IF did:key ---
             let device_resolved = resolver.resolve(&subject_did).with_context(|| {
@@ -536,23 +537,24 @@ pub fn handle_org(
             let signer = StorageSigner::new(key_storage);
             let attestation = create_signed_attestation(
                 now,
-                &rid,
-                &controller_did,
-                &subject_device_did,
-                &device_pk_bytes,
-                device_curve,
-                Some(payload),
-                &meta,
+                auths_sdk::attestation::AttestationInput {
+                    rid: &rid,
+                    identity_did: &controller_did,
+                    subject: &subject_device_did,
+                    device_public_key: &device_pk_bytes,
+                    device_curve,
+                    payload: Some(payload),
+                    meta: &meta,
+                    identity_alias: Some(&signer_alias),
+                    device_alias: None, // No device signature for org attestations
+                    capabilities: vec![],
+                    role: None,
+                    delegated_by: None,
+                    commit_sha: None,
+                    signer_type: None,
+                },
                 &signer,
                 passphrase_provider.as_ref(),
-                Some(&signer_alias),
-                None, // No device signature for org attestations
-                vec![],
-                None,
-                None,
-                None, // commit_sha
-                None,
-                None, // supersedes_rid
             )
             .context("Failed to create signed attestation object")?;
 
@@ -611,7 +613,7 @@ pub fn handle_org(
             let rid = managed_identity.storage_id;
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: accepts both did:key and did:keri
-            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
+            let subject_device_did = CanonicalDid::new_unchecked(subject_did.clone());
 
             // Look up the subject's public key from existing attestations
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
@@ -627,17 +629,19 @@ pub fn handle_org(
             println!("🔏 Creating signed revocation...");
             let signer = StorageSigner::new(get_platform_keychain()?);
             let attestation = create_signed_revocation(
-                &rid,
-                &controller_did,
-                &subject_device_did,
-                device_public_key.as_bytes(),
-                device_public_key.curve(),
-                note,
-                None,
-                now,
+                auths_sdk::attestation::RevocationInput {
+                    rid: &rid,
+                    identity_did: &controller_did,
+                    subject: &subject_device_did,
+                    device_public_key: device_public_key.as_bytes(),
+                    device_curve: device_public_key.curve(),
+                    note,
+                    payload: None,
+                    timestamp: now,
+                    identity_alias: &signer_alias,
+                },
                 &signer,
                 passphrase_provider.as_ref(),
-                &signer_alias,
             )
             .context("Failed to create revocation")?;
 
@@ -683,7 +687,7 @@ pub fn handle_org(
 
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: subject_did from CLI arg, used for lookup only
-            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
+            let subject_device_did = CanonicalDid::new_unchecked(subject_did.clone());
             if let Some(list) = group.by_device.get(subject_device_did.as_str()) {
                 for (i, att) in list.iter().enumerate() {
                     if !include_revoked
@@ -825,7 +829,7 @@ pub fn handle_org(
             .context("Failed to add member")?;
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry
-            let member_did = DeviceDID::new_unchecked(member.clone());
+            let member_did = CanonicalDid::new_unchecked(member.clone());
 
             println!("\n✅ Member added successfully!");
             println!("   Member ID:    {}", member);
@@ -908,7 +912,7 @@ pub fn handle_org(
             };
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry
-            let member_did = DeviceDID::new_unchecked(member.clone());
+            let member_did = CanonicalDid::new_unchecked(member.clone());
             let member_curve = member_resolved.curve();
 
             let _revocation = revoke_organization_member(

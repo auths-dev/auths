@@ -263,7 +263,7 @@ pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageErro
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_core::witness::{RECEIPT_TYPE, Receipt};
+    use auths_core::witness::{Receipt, ReceiptTag};
     use auths_keri::{KeriSequence, Said, VersionString};
     use git2::RepositoryInitOptions;
     use ring::rand::SystemRandom;
@@ -287,7 +287,7 @@ mod tests {
     fn make_test_receipt(event_said: &str, witness_did: &str, seq: u128) -> Receipt {
         Receipt {
             v: VersionString::placeholder(),
-            t: RECEIPT_TYPE.into(),
+            t: ReceiptTag,
             d: Said::new_unchecked(event_said.to_string()),
             i: Prefix::new_unchecked(witness_did.to_string()),
             s: KeriSequence::new(seq),

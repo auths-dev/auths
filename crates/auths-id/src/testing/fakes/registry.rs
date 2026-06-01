@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use auths_core::storage::keychain::IdentityDID;
 use auths_keri::Prefix;
 use auths_verifier::core::Attestation;
-use auths_verifier::types::{CanonicalDid, DeviceDID};
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 
 use crate::keri::event::Event;
@@ -231,22 +231,22 @@ impl RegistryBackend for FakeRegistryBackend {
         Ok(())
     }
 
-    fn load_attestation(&self, did: &DeviceDID) -> Result<Option<Attestation>, RegistryError> {
+    fn load_attestation(&self, did: &CanonicalDid) -> Result<Option<Attestation>, RegistryError> {
         let state = self.state.lock().unwrap();
         #[allow(clippy::disallowed_methods)]
-        // INVARIANT: did.as_str() is a valid DID string from DeviceDID
+        // INVARIANT: did.as_str() is a valid DID string from CanonicalDid
         let canonical = CanonicalDid::new_unchecked(did.as_str());
         Ok(state.attestations.get(&canonical).cloned())
     }
 
     fn visit_attestation_history(
         &self,
-        did: &DeviceDID,
+        did: &CanonicalDid,
         visitor: &mut dyn FnMut(&Attestation) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         let state = self.state.lock().unwrap();
         #[allow(clippy::disallowed_methods)]
-        // INVARIANT: did.as_str() is a valid DID string from DeviceDID
+        // INVARIANT: did.as_str() is a valid DID string from CanonicalDid
         let canonical = CanonicalDid::new_unchecked(did.as_str());
         if let Some(history) = state.attestation_history.get(&canonical) {
             for att in history {
@@ -260,11 +260,11 @@ impl RegistryBackend for FakeRegistryBackend {
 
     fn visit_devices(
         &self,
-        visitor: &mut dyn FnMut(&DeviceDID) -> ControlFlow<()>,
+        visitor: &mut dyn FnMut(&CanonicalDid) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         let state = self.state.lock().unwrap();
         for canonical_did in state.attestations.keys() {
-            if let Ok(device_did) = DeviceDID::parse(canonical_did.as_str())
+            if let Ok(device_did) = CanonicalDid::parse(canonical_did.as_str())
                 && visitor(&device_did).is_break()
             {
                 break;

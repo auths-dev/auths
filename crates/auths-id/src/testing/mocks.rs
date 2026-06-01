@@ -1,5 +1,5 @@
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use mockall::mock;
 
 use crate::error::StorageError;
@@ -31,7 +31,7 @@ mock! {
     impl AttestationSource for AttestationSource {
         fn load_attestations_for_device(
             &self,
-            device_did: &DeviceDID,
+            device_did: &CanonicalDid,
         ) -> Result<Vec<Attestation>, StorageError>;
 
         fn load_all_attestations(&self) -> Result<Vec<Attestation>, StorageError>;
@@ -42,7 +42,7 @@ mock! {
             offset: usize,
         ) -> Result<Vec<Attestation>, StorageError>;
 
-        fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError>;
+        fn discover_device_dids(&self) -> Result<Vec<CanonicalDid>, StorageError>;
     }
 }
 

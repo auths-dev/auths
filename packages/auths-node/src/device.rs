@@ -12,7 +12,7 @@ use auths_storage::git::{
 };
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use napi_derive::napi;
 
 use crate::error::format_error;
@@ -178,7 +178,7 @@ pub fn extend_device_authorization(
 
     let ext_config = DeviceExtensionConfig {
         repo_path: repo,
-        device_did: DeviceDID::parse(&device_did)
+        device_did: CanonicalDid::parse(&device_did)
             .map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?,
         expires_in: expires_in as u64,
         identity_key_alias: alias,

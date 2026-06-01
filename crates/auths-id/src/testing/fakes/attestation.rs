@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use auths_verifier::core::{Attestation, VerifiedAttestation};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 
 use crate::attestation::export::AttestationSink;
 use crate::error::StorageError;
@@ -60,7 +60,7 @@ impl Default for FakeAttestationSource {
 impl AttestationSource for FakeAttestationSource {
     fn load_attestations_for_device(
         &self,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
     ) -> Result<Vec<Attestation>, StorageError> {
         let guard = self.attestations.lock().unwrap();
         Ok(guard
@@ -74,11 +74,11 @@ impl AttestationSource for FakeAttestationSource {
         Ok(self.attestations.lock().unwrap().clone())
     }
 
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
+    fn discover_device_dids(&self) -> Result<Vec<CanonicalDid>, StorageError> {
         let guard = self.attestations.lock().unwrap();
-        let dids: std::collections::HashSet<DeviceDID> = guard
+        let dids: std::collections::HashSet<CanonicalDid> = guard
             .iter()
-            .filter_map(|a| DeviceDID::parse(a.subject.as_str()).ok())
+            .filter_map(|a| CanonicalDid::parse(a.subject.as_str()).ok())
             .collect();
         Ok(dids.into_iter().collect())
     }

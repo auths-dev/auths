@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{IndexError, Result};
 use crate::index::{AttestationIndex, IndexedAttestation};
 use auths_verifier::core::{CommitOid, ResourceId};
 use auths_verifier::types::{CanonicalDid, IdentityDID};
@@ -6,8 +6,23 @@ use chrono::Utc;
 use git2::Repository;
 use std::path::Path;
 
-/// Default attestation ref prefix to scan during rebuild.
-pub const DEFAULT_ATTESTATION_PREFIX: &str = "refs/auths/devices/nodes";
+/// Default attestation ref prefix to scan during rebuild. Subject-type-neutral:
+/// attestations are keyed by their subject DID, whatever kind of DID that is.
+pub const DEFAULT_ATTESTATION_PREFIX: &str = "refs/auths/attestations/nodes";
+
+/// The deprecated pre-multi-device attestation prefix. Repos carrying
+/// refs under this namespace were never shipped to end users; the
+/// rebuild path hard-breaks instead of silently returning zero indexed
+/// refs (which would look like a clean index to the caller).
+pub const DEPRECATED_ATTESTATION_PREFIX: &str = "refs/auths/devices/nodes";
+
+/// Guidance message returned when a rebuild encounters the deprecated
+/// prefix. Pinned so the test asserting the exact text stays in sync.
+pub const DEPRECATED_PREFIX_GUIDANCE: &str = "\
+auths-index: repository holds refs under the deprecated prefix \
+'refs/auths/devices/nodes/*' (pre-multi-device-identity layout). \
+Reset with `rm -rf ~/.auths && auths init` and re-pair your devices. \
+Pre-launch posture: no automatic migration is provided.";
 
 /// Rebuilds the attestation index from Git refs.
 ///
@@ -21,6 +36,21 @@ pub fn rebuild_attestations_from_git(
 ) -> Result<RebuildStats> {
     let repo = Repository::open(repo_path)?;
     let mut stats = RebuildStats::default();
+
+    // Hard-break on the deprecated pre-multi-device-identity layout.
+    // Pre-launch we never ship a silent migration; tell the user to reset.
+    {
+        let refs_scan = repo.references()?;
+        for reference in refs_scan.filter_map(|r| r.ok()) {
+            if let Some(name) = reference.name()
+                && name.starts_with(DEPRECATED_ATTESTATION_PREFIX)
+            {
+                return Err(IndexError::DeprecatedPrefix(
+                    DEPRECATED_PREFIX_GUIDANCE.to_string(),
+                ));
+            }
+        }
+    }
 
     // Clear existing index before rebuild
     index.clear()?;
@@ -158,5 +188,43 @@ mod tests {
         assert_eq!(stats.refs_scanned, 0);
         assert_eq!(stats.attestations_indexed, 0);
         assert_eq!(stats.errors, 0);
+    }
+
+    #[test]
+    fn deprecated_prefix_rebuild_hard_breaks() {
+        // Seed a bare repo with a ref under the deprecated prefix and
+        // assert the rebuilder returns DeprecatedPrefix with the pinned
+        // guidance text.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let repo = Repository::init_bare(tmp.path()).expect("init_bare");
+        // Write a throwaway blob + tree and point a ref at it so git2
+        // surfaces the ref during iteration.
+        let blob = repo.blob(b"legacy marker").expect("blob");
+        let mut builder = repo.treebuilder(None).expect("treebuilder");
+        builder.insert("marker", blob, 0o100644).expect("insert");
+        let tree = builder.write().expect("write tree");
+        let tree_obj = repo.find_tree(tree).expect("find tree");
+        let sig = git2::Signature::now("test", "test@example.com").expect("sig");
+        let commit_oid = repo
+            .commit(None, &sig, &sig, "legacy", &tree_obj, &[])
+            .expect("commit");
+        let ref_name = format!("{}/legacy/signatures", DEPRECATED_ATTESTATION_PREFIX);
+        repo.reference(&ref_name, commit_oid, true, "test")
+            .expect("ref");
+
+        let index = AttestationIndex::in_memory().expect("open index");
+        let err = rebuild_attestations_from_git(
+            &index,
+            tmp.path(),
+            DEFAULT_ATTESTATION_PREFIX,
+            "attestation.json",
+        )
+        .expect_err("should hard-break on legacy prefix");
+        match err {
+            IndexError::DeprecatedPrefix(msg) => {
+                assert_eq!(msg, DEPRECATED_PREFIX_GUIDANCE);
+            }
+            other => panic!("expected DeprecatedPrefix, got {other:?}"),
+        }
     }
 }

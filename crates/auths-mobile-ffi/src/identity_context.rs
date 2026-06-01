@@ -217,7 +217,7 @@ pub fn assemble_p256_identity(
 // internals. A later refactor can lift them into a shared module.)
 // ---------------------------------------------------------------------------
 
-fn normalize_p256_pubkey_to_compressed(bytes: &[u8]) -> Result<[u8; 33], MobileError> {
+pub(crate) fn normalize_p256_pubkey_to_compressed(bytes: &[u8]) -> Result<[u8; 33], MobileError> {
     use p256::ecdsa::VerifyingKey;
     use p256::pkcs8::DecodePublicKey;
 
@@ -255,19 +255,13 @@ fn normalize_p256_pubkey_to_compressed(bytes: &[u8]) -> Result<[u8; 33], MobileE
     )))
 }
 
-fn normalize_p256_signature_to_raw(bytes: &[u8]) -> Result<[u8; 64], MobileError> {
+pub(crate) fn normalize_p256_signature_to_raw(bytes: &[u8]) -> Result<[u8; 64], MobileError> {
     if bytes.len() == 64 {
         let mut arr = [0u8; 64];
         arr.copy_from_slice(bytes);
         return Ok(arr);
     }
-    let sig = p256::ecdsa::Signature::from_der(bytes).map_err(|e| {
-        MobileError::InvalidKeyData(format!(
-            "signature must be 64-byte raw r||s or X9.62 DER: {e}"
-        ))
-    })?;
-    let raw: [u8; 64] = sig.to_bytes().into();
-    Ok(raw)
+    crate::signature::ecdsa_p256_der_to_raw(bytes)
 }
 
 // ---------------------------------------------------------------------------

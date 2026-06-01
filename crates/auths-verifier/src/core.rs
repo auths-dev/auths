@@ -1246,18 +1246,6 @@ pub struct Attestation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delegated_by: Option<CanonicalDid>,
 
-    /// Identifier of the prior attestation this one supersedes (device-key
-    /// rotation). Holds the *subject DID* of the predecessor — that's
-    /// the unique-per-device anchor the attestation storage is keyed by;
-    /// `Attestation::rid` is repo-scoped (shared across every attestation
-    /// under one identity) and doesn't disambiguate on its own.
-    ///
-    /// Absent on non-rotation attestations. Included in the canonical
-    /// JSON before signing, so a malicious intermediary cannot strip it
-    /// to make a superseded attestation look current.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub supersedes_attestation_rid: Option<ResourceId>,
-
     /// The type of entity that produced this signature (human, agent, workload).
     /// Included in the canonical JSON before signing — the signature covers this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1392,9 +1380,6 @@ pub struct CanonicalAttestationData<'a> {
     /// DID of the delegating attestation (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delegated_by: Option<&'a CanonicalDid>,
-    /// RID of a prior attestation this one supersedes (included in signed envelope).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub supersedes_attestation_rid: Option<&'a str>,
     /// Type of signer (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signer_type: Option<&'a SignerType>,
@@ -1470,7 +1455,6 @@ impl Attestation {
                 Some(&self.capabilities)
             },
             delegated_by: self.delegated_by.as_ref(),
-            supersedes_attestation_rid: self.supersedes_attestation_rid.as_deref(),
             signer_type: self.signer_type.as_ref(),
             commit_sha: self.commit_sha.as_deref(),
         }
@@ -1482,7 +1466,7 @@ impl Attestation {
             "RID: {}\nIssuer DID: {}\nSubject DID: {}\nDevice PK: {}\nIdentity Sig: {}\nDevice Sig: {}\nRevoked At: {:?}\nExpires: {:?}\nNote: {:?}",
             self.rid,
             self.issuer,
-            self.subject, // DeviceDID implements Display
+            self.subject, // CanonicalDid implements Display
             hex::encode(self.device_public_key.as_bytes()),
             hex::encode(self.identity_signature.as_bytes()),
             hex::encode(self.device_signature.as_bytes()),

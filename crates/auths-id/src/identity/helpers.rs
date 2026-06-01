@@ -15,7 +15,7 @@ use ring::signature::Ed25519KeyPair;
 use crate::storage::attestation::AttestationSource;
 
 use auths_verifier::core::{Attestation, ResourceId};
-use auths_verifier::types::{DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, IdentityDID};
 
 pub use crate::identity::managed::ManagedIdentity;
 
@@ -26,7 +26,7 @@ const OID_ED25519: pkcs8::der::asn1::ObjectIdentifier =
 pub struct Identity {
     pub did: IdentityDID,
     pub rid: ResourceId,
-    pub device_dids: Vec<DeviceDID>,
+    pub device_dids: Vec<CanonicalDid>,
 }
 
 impl Identity {

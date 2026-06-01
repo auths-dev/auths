@@ -85,7 +85,8 @@ impl PendingEvent {
             .filter_map(|aid| self.witness_list.iter().position(|w| w == aid))
             .map(|pos| pos as u32)
             .collect();
-        self.threshold.is_satisfied(&indices, self.witness_list.len())
+        self.threshold
+            .is_satisfied(&indices, self.witness_list.len())
     }
 }
 

@@ -39,7 +39,6 @@ fn seeded_inception_event(seed: u8) -> Event {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).expect("fixture event must finalize");

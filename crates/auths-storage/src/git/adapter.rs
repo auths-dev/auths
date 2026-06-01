@@ -47,7 +47,7 @@ use log::warn;
 
 use auths_core::storage::keychain::IdentityDID;
 use auths_verifier::core::{Attestation, VerifiedAttestation};
-use auths_verifier::types::{CanonicalDid, DeviceDID};
+use auths_verifier::types::CanonicalDid;
 use git2::{Oid, Repository, Signature, Tree};
 
 use auths_id::keri::event::Event;
@@ -89,6 +89,81 @@ use auths_id::storage::registry::shard::{
 
 /// The Git ref where the registry tree is stored.
 pub const REGISTRY_REF: &str = "refs/auths/registry";
+
+/// Git ref prefix for per-device KEL state (one KEL per physical device).
+#[allow(dead_code)] // consumed by the KEL helpers in auths-id once they land
+pub const DEVICE_KEL_REF_PREFIX: &str = "refs/auths/device-kel";
+
+/// Git ref prefix for shared identity KEL state.
+///
+/// The shared KEL's controllers are the per-device DIDs; pairing adds a
+/// controller via `rot`, and pair-recovery swaps one controller for
+/// another in a single rotation.
+#[allow(dead_code)] // consumed by the KEL helpers in auths-id once they land
+pub const SHARED_KEL_REF_PREFIX: &str = "refs/auths/shared-kel";
+
+#[cfg(test)]
+mod kel_prefix_tests {
+    use super::*;
+
+    #[test]
+    fn device_and_shared_kel_prefixes_are_disjoint_siblings() {
+        assert!(DEVICE_KEL_REF_PREFIX.starts_with("refs/auths/"));
+        assert!(SHARED_KEL_REF_PREFIX.starts_with("refs/auths/"));
+        assert_ne!(DEVICE_KEL_REF_PREFIX, SHARED_KEL_REF_PREFIX);
+        assert!(!DEVICE_KEL_REF_PREFIX.starts_with(SHARED_KEL_REF_PREFIX));
+        assert!(!SHARED_KEL_REF_PREFIX.starts_with(DEVICE_KEL_REF_PREFIX));
+        assert_ne!(DEVICE_KEL_REF_PREFIX, REGISTRY_REF);
+        assert_ne!(SHARED_KEL_REF_PREFIX, REGISTRY_REF);
+    }
+
+    #[test]
+    fn backend_round_trip_write_read_under_shared_kel_prefix() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let repo = git2::Repository::init_bare(tmp.path()).expect("init_bare");
+        let blob = repo.blob(b"shared-kel event payload").expect("blob");
+        let mut builder = repo.treebuilder(None).expect("treebuilder");
+        builder
+            .insert("event.json", blob, 0o100644)
+            .expect("insert");
+        let tree = builder.write().expect("write tree");
+        let tree_obj = repo.find_tree(tree).expect("find tree");
+        let sig = git2::Signature::now("test", "test@example.com").expect("sig");
+        let commit_oid = repo
+            .commit(None, &sig, &sig, "shared-kel rot", &tree_obj, &[])
+            .expect("commit");
+        let ref_name = format!("{}/Eaaabbb/rot", SHARED_KEL_REF_PREFIX);
+        repo.reference(&ref_name, commit_oid, true, "round-trip")
+            .expect("ref");
+
+        // Read back
+        let r = repo.find_reference(&ref_name).expect("find ref");
+        let resolved = r.target().expect("target");
+        assert_eq!(resolved, commit_oid);
+        assert!(r.name().unwrap().starts_with(SHARED_KEL_REF_PREFIX));
+    }
+
+    #[test]
+    fn backend_round_trip_write_read_under_device_kel_prefix() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let repo = git2::Repository::init_bare(tmp.path()).expect("init_bare");
+        let blob = repo.blob(b"device-kel icp payload").expect("blob");
+        let mut builder = repo.treebuilder(None).expect("treebuilder");
+        builder.insert("icp.json", blob, 0o100644).expect("insert");
+        let tree = builder.write().expect("write tree");
+        let tree_obj = repo.find_tree(tree).expect("find tree");
+        let sig = git2::Signature::now("test", "test@example.com").expect("sig");
+        let commit_oid = repo
+            .commit(None, &sig, &sig, "device-kel icp", &tree_obj, &[])
+            .expect("commit");
+        let ref_name = format!("{}/Eddd222/icp", DEVICE_KEL_REF_PREFIX);
+        repo.reference(&ref_name, commit_oid, true, "round-trip")
+            .expect("ref");
+
+        let r = repo.find_reference(&ref_name).expect("find ref");
+        assert_eq!(r.target().unwrap(), commit_oid);
+    }
+}
 
 /// Advisory lock for protecting concurrent registry access.
 ///
@@ -1107,12 +1182,12 @@ impl RegistryBackend for GitRegistryBackend {
         Ok(())
     }
 
-    fn load_attestation(&self, did: &DeviceDID) -> Result<Option<Attestation>, RegistryError> {
+    fn load_attestation(&self, did: &CanonicalDid) -> Result<Option<Attestation>, RegistryError> {
         let repo = self.open_repo()?;
         let tree = self.current_tree(&repo)?;
         let navigator = TreeNavigator::new(&repo, tree);
 
-        let sanitized_did = sanitize_did(&did.to_string());
+        let sanitized_did = sanitize_did(did.as_ref());
         let device_base = device_path(&sanitized_did)?;
         let att_path = paths::attestation_file(&device_base);
 
@@ -1128,14 +1203,14 @@ impl RegistryBackend for GitRegistryBackend {
 
     fn visit_attestation_history(
         &self,
-        did: &DeviceDID,
+        did: &CanonicalDid,
         visitor: &mut dyn FnMut(&Attestation) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         let repo = self.open_repo()?;
         let tree = self.current_tree(&repo)?;
         let navigator = TreeNavigator::new(&repo, tree);
 
-        let sanitized_did = sanitize_did(&did.to_string());
+        let sanitized_did = sanitize_did(did.as_ref());
         let device_base = device_path(&sanitized_did)?;
         let history_path = paths::history_dir(&device_base);
         let history_parts = path_parts(&history_path);
@@ -1176,7 +1251,7 @@ impl RegistryBackend for GitRegistryBackend {
 
     fn visit_devices(
         &self,
-        visitor: &mut dyn FnMut(&DeviceDID) -> ControlFlow<()>,
+        visitor: &mut dyn FnMut(&CanonicalDid) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         let repo = self.open_repo()?;
         let tree = self.current_tree(&repo)?;
@@ -1205,7 +1280,7 @@ impl RegistryBackend for GitRegistryBackend {
                 // Level 3: device DIDs
                 if let Err(e) = navigator.visit_dir(&s2_parts, |sanitized_did| {
                     let did_str = unsanitize_did(sanitized_did);
-                    let did = match DeviceDID::parse(&did_str) {
+                    let did = match CanonicalDid::parse(&did_str) {
                         Ok(d) => d,
                         Err(_) => {
                             log::warn!("Skipping unparseable DID from tree: {}", did_str);
@@ -1608,7 +1683,7 @@ impl AttestationSource for GitRegistryBackend {
     /// not a history. This returns a single-element vector if found.
     fn load_attestations_for_device(
         &self,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
     ) -> Result<Vec<Attestation>, StorageError> {
         match self.load_attestation(device_did) {
             Ok(Some(att)) => Ok(vec![att]),
@@ -1663,7 +1738,7 @@ impl AttestationSource for GitRegistryBackend {
     }
 
     /// Discover all device DIDs that have attestations stored.
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
+    fn discover_device_dids(&self) -> Result<Vec<CanonicalDid>, StorageError> {
         let mut dids = Vec::new();
 
         self.visit_devices(&mut |did| {
@@ -2345,7 +2420,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();
@@ -2387,7 +2461,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let event = Event::Rot(rot.clone());
@@ -2411,7 +2484,6 @@ mod tests {
             s: KeriSequence::new(seq),
             p: Said::new_unchecked(prev_said.to_string()),
             a: vec![Seal::digest("ETest")],
-            dt: None,
         };
 
         let event = Event::Ixn(ixn.clone());
@@ -2436,7 +2508,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         let finalized = finalize_icp_event(icp).unwrap();
         let prefix = finalized.i.clone();
@@ -2520,7 +2591,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         let event = Event::Rot(rot.clone());
         rot.d = compute_event_said(&event).unwrap();
@@ -2561,7 +2631,6 @@ mod tests {
             s: KeriSequence::new(0),
             p: Said::new_unchecked("EPrev".to_string()),
             a: vec![Seal::digest("ETest")],
-            dt: None,
         };
         let event = Event::Ixn(ixn.clone());
         ixn.d = compute_event_said(&event).unwrap();
@@ -2605,7 +2674,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let event = Event::Icp(icp);
@@ -2669,11 +2737,11 @@ mod tests {
     fn store_and_load_attestation() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkTest123");
         let attestation = AttestationBuilder::default()
             .rid("test-rid")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .build();
 
         backend.store_attestation(&attestation).unwrap();
@@ -2688,7 +2756,7 @@ mod tests {
     #[test]
     fn load_nonexistent_attestation() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new_unchecked("did:key:z6MkNonexistent");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkNonexistent");
 
         let result = backend.load_attestation(&did).unwrap();
         assert!(result.is_none());
@@ -2698,13 +2766,13 @@ mod tests {
     fn store_attestation_overwrites_existing() {
         // Verify latest-view semantics: store_attestation overwrites existing
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new_unchecked("did:key:z6MkTestDevice");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkTestDevice");
 
         // Store first attestation with rid="original"
         let original = AttestationBuilder::default()
             .rid("original")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .note(Some("original note".to_string()))
             .build();
         backend.store_attestation(&original).unwrap();
@@ -2718,7 +2786,7 @@ mod tests {
         let updated = AttestationBuilder::default()
             .rid("updated")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .note(Some("updated note".to_string()))
             .build();
         backend.store_attestation(&updated).unwrap();
@@ -2732,12 +2800,12 @@ mod tests {
     #[test]
     fn replay_same_attestation_rejected() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new_unchecked("did:key:z6MkReplay1");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkReplay1");
 
         let att = AttestationBuilder::default()
             .rid("same-rid")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .timestamp(Some(Utc::now()))
             .build();
 
@@ -2754,19 +2822,19 @@ mod tests {
     #[test]
     fn replay_older_attestation_rejected() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new_unchecked("did:key:z6MkReplay2");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkReplay2");
 
         let newer = AttestationBuilder::default()
             .rid("rid-newer")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .timestamp(Some(Utc::now()))
             .build();
 
         let older = AttestationBuilder::default()
             .rid("rid-older")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .timestamp(Some(Utc::now() - chrono::Duration::hours(1)))
             .build();
 
@@ -2778,19 +2846,19 @@ mod tests {
     #[test]
     fn newer_attestation_accepted() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new_unchecked("did:key:z6MkReplay3");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkReplay3");
 
         let older = AttestationBuilder::default()
             .rid("rid-old")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .timestamp(Some(Utc::now() - chrono::Duration::hours(1)))
             .build();
 
         let newer = AttestationBuilder::default()
             .rid("rid-new")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .timestamp(Some(Utc::now()))
             .build();
 
@@ -2804,12 +2872,12 @@ mod tests {
     #[test]
     fn replay_revoked_attestation_rejected() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new_unchecked("did:key:z6MkReplay4");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkReplay4");
 
         let revoked = AttestationBuilder::default()
             .rid("rid-revoked")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .revoked_at(Some(Utc::now()))
             .timestamp(Some(Utc::now()))
             .build();
@@ -2817,7 +2885,7 @@ mod tests {
         let unrevoked_old = AttestationBuilder::default()
             .rid("rid-unrevoked")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .timestamp(Some(Utc::now() - chrono::Duration::hours(1)))
             .build();
 
@@ -2829,12 +2897,12 @@ mod tests {
     #[test]
     fn first_attestation_always_accepted() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new_unchecked("did:key:z6MkReplay5");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkReplay5");
 
         let att = AttestationBuilder::default()
             .rid("first-ever")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .timestamp(Some(Utc::now()))
             .build();
 
@@ -2844,19 +2912,19 @@ mod tests {
     #[test]
     fn attestation_without_timestamp_rejected_when_existing_has_timestamp() {
         let (_dir, backend) = setup_test_repo();
-        let did = DeviceDID::new_unchecked("did:key:z6MkReplay6");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkReplay6");
 
         let with_ts = AttestationBuilder::default()
             .rid("rid-with-ts")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .timestamp(Some(Utc::now()))
             .build();
 
         let without_ts = AttestationBuilder::default()
             .rid("rid-no-ts")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .build();
 
         backend.store_attestation(&with_ts).unwrap();
@@ -2868,19 +2936,19 @@ mod tests {
     fn visit_devices() {
         let (_dir, backend) = setup_test_repo();
 
-        let did1 = DeviceDID::new_unchecked("did:key:z6MkTest1");
-        let did2 = DeviceDID::new_unchecked("did:key:z6MkTest2");
+        let did1 = CanonicalDid::new_unchecked("did:key:z6MkTest1");
+        let did2 = CanonicalDid::new_unchecked("did:key:z6MkTest2");
 
         let att1 = AttestationBuilder::default()
             .rid("rid1")
             .issuer("did:keri:EIssuer")
-            .subject(&did1.to_string())
+            .subject(did1.as_ref())
             .build();
 
         let att2 = AttestationBuilder::default()
             .rid("rid2")
             .issuer("did:keri:EIssuer")
-            .subject(&did2.to_string())
+            .subject(did2.as_ref())
             .device_public_key(Ed25519PublicKey::from_bytes([1u8; 32]))
             .build();
 
@@ -2911,11 +2979,11 @@ mod tests {
         assert_eq!(meta.device_count, 0);
 
         // Add device
-        let did = DeviceDID::new_unchecked("did:key:z6MkTest");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkTest");
         let att = AttestationBuilder::default()
             .rid("rid")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .build();
         backend.store_attestation(&att).unwrap();
 
@@ -2929,12 +2997,12 @@ mod tests {
         let (_dir, backend) = setup_test_repo();
 
         let org = "EOrg1234567890";
-        let member_did = DeviceDID::new_unchecked("did:key:z6MkMember1");
+        let member_did = CanonicalDid::new_unchecked("did:key:z6MkMember1");
 
         let member_att = AttestationBuilder::default()
             .rid("org-member")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&member_did.to_string())
+            .subject(member_did.as_ref())
             .role(Some(Role::Member))
             .build();
 
@@ -3076,11 +3144,11 @@ mod tests {
         let base_tree = backend.current_tree(&repo).unwrap();
 
         // Create attestation with subject "did:key:z6MkCorrect"
-        let correct_did = DeviceDID::new_unchecked("did:key:z6MkCorrect");
+        let correct_did = CanonicalDid::new_unchecked("did:key:z6MkCorrect");
         let att = AttestationBuilder::default()
             .rid("mismatch-test")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&correct_did.to_string())
+            .subject(correct_did.as_ref())
             .build();
 
         // But store it under a WRONG filename
@@ -3126,11 +3194,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store attestation with WRONG issuer (but correct subject)
-        let member_did = DeviceDID::new_unchecked("did:key:z6MkWrongIssuer");
+        let member_did = CanonicalDid::new_unchecked("did:key:z6MkWrongIssuer");
         let att = AttestationBuilder::default()
             .rid("issuer-mismatch-test")
             .issuer("did:keri:EDifferentOrg") // WRONG issuer
-            .subject(&member_did.to_string())
+            .subject(member_did.as_ref())
             .build();
 
         backend.store_org_member(org, &att).unwrap();
@@ -3163,21 +3231,21 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store active member
-        let active_did = DeviceDID::new_unchecked("did:key:z6MkActive1");
+        let active_did = CanonicalDid::new_unchecked("did:key:z6MkActive1");
         let active_att = AttestationBuilder::default()
             .rid("active")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&active_did.to_string())
+            .subject(active_did.as_ref())
             .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &active_att).unwrap();
 
         // Store revoked member
-        let revoked_did = DeviceDID::new_unchecked("did:key:z6MkRevoked");
+        let revoked_did = CanonicalDid::new_unchecked("did:key:z6MkRevoked");
         let revoked_att = AttestationBuilder::default()
             .rid("revoked")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&revoked_did.to_string())
+            .subject(revoked_did.as_ref())
             .revoked_at(Some(Utc::now()))
             .role(Some(Role::Member))
             .build();
@@ -3207,11 +3275,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store revoked member
-        let revoked_did = DeviceDID::new_unchecked("did:key:z6MkRevoked");
+        let revoked_did = CanonicalDid::new_unchecked("did:key:z6MkRevoked");
         let revoked_att = AttestationBuilder::default()
             .rid("revoked")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&revoked_did.to_string())
+            .subject(revoked_did.as_ref())
             .revoked_at(Some(Utc::now()))
             .role(Some(Role::Member))
             .build();
@@ -3237,11 +3305,11 @@ mod tests {
 
         // Store member with past expiry
         let past = Utc::now() - Duration::hours(1);
-        let expired_did = DeviceDID::new_unchecked("did:key:z6MkExpired");
+        let expired_did = CanonicalDid::new_unchecked("did:key:z6MkExpired");
         let expired_att = AttestationBuilder::default()
             .rid("expired")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&expired_did.to_string())
+            .subject(expired_did.as_ref())
             .expires_at(Some(past))
             .role(Some(Role::Member))
             .build();
@@ -3269,22 +3337,22 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store member from correct org issuer
-        let org_member_did = DeviceDID::new_unchecked("did:key:z6MkOrgMember");
+        let org_member_did = CanonicalDid::new_unchecked("did:key:z6MkOrgMember");
         let org_issuer = format!("did:keri:{}", org);
         let org_att = AttestationBuilder::default()
             .rid("org")
             .issuer(&org_issuer)
-            .subject(&org_member_did.to_string())
+            .subject(org_member_did.as_ref())
             .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &org_att).unwrap();
 
         // Store member with WRONG issuer - should be marked Invalid
-        let wrong_did = DeviceDID::new_unchecked("did:key:z6MkWrongIssuer");
+        let wrong_did = CanonicalDid::new_unchecked("did:key:z6MkWrongIssuer");
         let wrong_att = AttestationBuilder::default()
             .rid("wrong")
             .issuer("did:keri:EDifferentIssuer") // WRONG!
-            .subject(&wrong_did.to_string())
+            .subject(wrong_did.as_ref())
             .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &wrong_att).unwrap();
@@ -3325,21 +3393,21 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store admin
-        let admin_did = DeviceDID::new_unchecked("did:key:z6MkAdminUser");
+        let admin_did = CanonicalDid::new_unchecked("did:key:z6MkAdminUser");
         let admin_att = AttestationBuilder::default()
             .rid("admin")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&admin_did.to_string())
+            .subject(admin_did.as_ref())
             .role(Some(Role::Admin))
             .build();
         backend.store_org_member(org, &admin_att).unwrap();
 
         // Store member
-        let member_did = DeviceDID::new_unchecked("did:key:z6MkMemberUser");
+        let member_did = CanonicalDid::new_unchecked("did:key:z6MkMemberUser");
         let member_att = AttestationBuilder::default()
             .rid("member")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&member_did.to_string())
+            .subject(member_did.as_ref())
             .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &member_att).unwrap();
@@ -3367,22 +3435,22 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store member with sign_commit capability
-        let signer_did = DeviceDID::new_unchecked("did:key:z6MkSigner1");
+        let signer_did = CanonicalDid::new_unchecked("did:key:z6MkSigner1");
         let signer_att = AttestationBuilder::default()
             .rid("signer")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&signer_did.to_string())
+            .subject(signer_did.as_ref())
             .role(Some(Role::Member))
             .capabilities(vec![Capability::sign_commit()])
             .build();
         backend.store_org_member(org, &signer_att).unwrap();
 
         // Store member without capabilities
-        let nocap_did = DeviceDID::new_unchecked("did:key:z6MkNoCaps1");
+        let nocap_did = CanonicalDid::new_unchecked("did:key:z6MkNoCaps1");
         let nocap_att = AttestationBuilder::default()
             .rid("nocap")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&nocap_did.to_string())
+            .subject(nocap_did.as_ref())
             .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &nocap_att).unwrap();
@@ -3410,22 +3478,22 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store member with both capabilities
-        let both_did = DeviceDID::new_unchecked("did:key:z6MkBothCaps");
+        let both_did = CanonicalDid::new_unchecked("did:key:z6MkBothCaps");
         let both_att = AttestationBuilder::default()
             .rid("both")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&both_did.to_string())
+            .subject(both_did.as_ref())
             .role(Some(Role::Member))
             .capabilities(vec![Capability::sign_commit(), Capability::sign_release()])
             .build();
         backend.store_org_member(org, &both_att).unwrap();
 
         // Store member with only sign_commit
-        let one_did = DeviceDID::new_unchecked("did:key:z6MkOneCap1");
+        let one_did = CanonicalDid::new_unchecked("did:key:z6MkOneCap1");
         let one_att = AttestationBuilder::default()
             .rid("one")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&one_did.to_string())
+            .subject(one_did.as_ref())
             .role(Some(Role::Member))
             .capabilities(vec![Capability::sign_commit()])
             .build();
@@ -3453,11 +3521,11 @@ mod tests {
         let org = "EOrg1234567890";
 
         // Store valid member
-        let valid_did = DeviceDID::new_unchecked("did:key:z6MkValid11");
+        let valid_did = CanonicalDid::new_unchecked("did:key:z6MkValid11");
         let valid_att = AttestationBuilder::default()
             .rid("valid")
             .issuer(&format!("did:keri:{}", org))
-            .subject(&valid_did.to_string())
+            .subject(valid_did.as_ref())
             .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &valid_att).unwrap();
@@ -3526,11 +3594,11 @@ mod tests {
         ];
 
         for (did_str, revoked_at, expires_at) in &dids {
-            let did = DeviceDID::new_unchecked(*did_str);
+            let did = CanonicalDid::new_unchecked(*did_str);
             let att = AttestationBuilder::default()
                 .rid("test")
                 .issuer(&format!("did:keri:{}", org))
-                .subject(&did.to_string())
+                .subject(did.as_ref())
                 .revoked_at(*revoked_at)
                 .expires_at(*expires_at)
                 .role(Some(Role::Member))
@@ -3565,11 +3633,11 @@ mod tests {
     fn attestation_source_load_for_device() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new_unchecked("did:key:z6MkSourceTest");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkSourceTest");
         let attestation = AttestationBuilder::default()
             .rid("source-test")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .build();
 
         backend.store_attestation(&attestation).unwrap();
@@ -3584,7 +3652,7 @@ mod tests {
     fn attestation_source_load_for_nonexistent() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new_unchecked("did:key:z6MkNonexistent");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkNonexistent");
         let loaded = backend.load_attestations_for_device(&did).unwrap();
         assert!(loaded.is_empty());
     }
@@ -3595,11 +3663,11 @@ mod tests {
 
         // Store multiple attestations
         for i in 0..3 {
-            let did = DeviceDID::new_unchecked(format!("did:key:z6MkDevice{}", i));
+            let did = CanonicalDid::new_unchecked(format!("did:key:z6MkDevice{}", i));
             let attestation = AttestationBuilder::default()
                 .rid(format!("rid-{}", i))
                 .issuer("did:keri:EIssuer")
-                .subject(&did.to_string())
+                .subject(did.as_ref())
                 .device_public_key(Ed25519PublicKey::from_bytes([i as u8; 32]))
                 .build();
             backend.store_attestation(&attestation).unwrap();
@@ -3615,14 +3683,14 @@ mod tests {
 
         // Store attestations for multiple devices
         let dids: Vec<_> = (0..3)
-            .map(|i| DeviceDID::new_unchecked(format!("did:key:z6MkDiscover{}", i)))
+            .map(|i| CanonicalDid::new_unchecked(format!("did:key:z6MkDiscover{}", i)))
             .collect();
 
         for did in &dids {
             let attestation = AttestationBuilder::default()
                 .rid("discover-test")
                 .issuer("did:keri:EIssuer")
-                .subject(&did.to_string())
+                .subject(did.as_ref())
                 .build();
             backend.store_attestation(&attestation).unwrap();
         }
@@ -3644,11 +3712,11 @@ mod tests {
     fn attestation_sink_export() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new_unchecked("did:key:z6MkSinkTest");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkSinkTest");
         let attestation = AttestationBuilder::default()
             .rid("sink-test")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .build();
 
         // Test AttestationSink trait
@@ -3666,13 +3734,13 @@ mod tests {
     fn attestation_sink_export_updates_existing() {
         let (_dir, backend) = setup_test_repo();
 
-        let did = DeviceDID::new_unchecked("did:key:z6MkUpdateTest");
+        let did = CanonicalDid::new_unchecked("did:key:z6MkUpdateTest");
 
         // First export
         let attestation1 = AttestationBuilder::default()
             .rid("original")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .build();
         backend
             .export(&VerifiedAttestation::dangerous_from_unchecked(attestation1))
@@ -3682,7 +3750,7 @@ mod tests {
         let attestation2 = AttestationBuilder::default()
             .rid("updated")
             .issuer("did:keri:EIssuer")
-            .subject(&did.to_string())
+            .subject(did.as_ref())
             .revoked_at(Some(Utc::now())) // Changed!
             .build();
         backend
@@ -3923,7 +3991,6 @@ mod index_consistency_tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();
@@ -3961,7 +4028,6 @@ mod index_consistency_tests {
             role: None,
             capabilities: vec![],
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
         }
@@ -4124,7 +4190,7 @@ mod tenant_isolation_tests {
     use std::sync::Arc;
 
     use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
-    use auths_verifier::types::{CanonicalDid, DeviceDID};
+    use auths_verifier::types::CanonicalDid;
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use ring::rand::SystemRandom;
@@ -4179,7 +4245,6 @@ mod tenant_isolation_tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();
@@ -4208,7 +4273,6 @@ mod tenant_isolation_tests {
             role: None,
             capabilities: vec![],
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
         }
@@ -4268,7 +4332,7 @@ mod tenant_isolation_tests {
         let globocorp = setup_tenant_backend(&base, "globocorp");
 
         let att = make_test_attestation("did:key:z6MkTest123");
-        let did = DeviceDID::new_unchecked(att.subject.as_str());
+        let did = CanonicalDid::new_unchecked(att.subject.as_str());
         acme.store_attestation(&att).unwrap();
 
         // globocorp sees no attestation for the device written to acme

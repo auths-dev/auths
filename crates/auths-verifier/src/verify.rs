@@ -1,4 +1,14 @@
 //! Free-function verification API wrapping [`crate::verifier::Verifier`].
+//!
+//! **Fail-open duplicity policy**: a diverging shared KEL is reported via
+//! `VerificationReport::duplicity_warning` but does not invalidate an
+//! attestation whose own signature checks out. Rationale: fail-closed would
+//! turn one bad rotation on the identity's shared KEL into a workspace-wide
+//! outage for every attestation signed by a current controller — strictly
+//! worse than surfacing the fork and letting the user resolve via
+//! `auths device remove` on the side they trust. The warning channel is
+//! structured (`DuplicityReport`) so downstream policy — CLI status,
+//! iOS banner, future CI gates — can decide what to do with it.
 
 #[cfg(feature = "native")]
 use crate::core::Capability;
@@ -130,7 +140,7 @@ pub async fn verify_chain(
 #[cfg(feature = "native")]
 pub async fn verify_device_authorization(
     identity_did: &str,
-    device_did: &crate::types::DeviceDID,
+    device_did: &crate::types::CanonicalDid,
     attestations: &[Attestation],
     identity_pk: &DevicePublicKey,
 ) -> Result<VerificationReport, AttestationError> {
@@ -139,12 +149,12 @@ pub async fn verify_device_authorization(
         .await
 }
 
-use crate::types::DeviceDID;
+use crate::types::CanonicalDid;
 
 /// Checks if a device appears in a list of **already-verified** attestations.
 pub fn is_device_listed(
     identity_did: &str,
-    device_did: &DeviceDID,
+    device_did: &CanonicalDid,
     attestations: &[VerifiedAttestation],
     now: DateTime<Utc>,
 ) -> bool {
@@ -470,7 +480,7 @@ pub(crate) async fn verify_chain_inner(
 
 pub(crate) async fn verify_device_authorization_inner(
     identity_did: &str,
-    device_did: &DeviceDID,
+    device_did: &CanonicalDid,
     attestations: &[Attestation],
     identity_pk: &DevicePublicKey,
     provider: &dyn CryptoProvider,
@@ -546,7 +556,7 @@ mod tests {
     use super::*;
     use crate::clock::ClockProvider;
     use crate::core::{Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
-    use crate::types::{CanonicalDid, DeviceDID};
+    use crate::types::CanonicalDid;
     use crate::verifier::Verifier;
     use auths_crypto::RingCryptoProvider;
     use auths_crypto::testing::create_test_keypair;
@@ -562,7 +572,7 @@ mod tests {
 
     /// Build a `did:key:z...` string from a 32-byte Ed25519 public key (test helper).
     fn ed25519_did(pk: &[u8; 32]) -> String {
-        DeviceDID::from_public_key(pk, auths_crypto::CurveType::Ed25519).to_string()
+        CanonicalDid::from_public_key_did_key(pk, auths_crypto::CurveType::Ed25519).to_string()
     }
 
     struct TestClock(DateTime<Utc>);
@@ -610,7 +620,6 @@ mod tests {
             role: None,
             capabilities: vec![],
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
             commit_sha: None,
@@ -1006,7 +1015,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1031,7 +1040,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (_, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         assert!(!is_device_listed(&root_did, &device_did, &[], fixed_now()));
     }
@@ -1042,7 +1051,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1067,7 +1076,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1092,7 +1101,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let att_expired = verified(create_signed_attestation(
             &root_kp,
@@ -1135,7 +1144,7 @@ mod tests {
         let other_did = ed25519_did(&other_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &other_kp,
@@ -1161,7 +1170,7 @@ mod tests {
         let device_did_str = ed25519_did(&device_pk);
         let (_, other_device_pk) = create_test_keypair(&[4u8; 32]);
         let other_device_did_str = ed25519_did(&other_device_pk);
-        let other_device_did = DeviceDID::new_unchecked(&other_device_did_str);
+        let other_device_did = CanonicalDid::new_unchecked(&other_device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1206,7 +1215,6 @@ mod tests {
             role,
             capabilities: capabilities.clone(),
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
             commit_sha: None,
@@ -1544,7 +1552,6 @@ mod tests {
             role: None,
             capabilities: vec![],
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
             commit_sha: None,
@@ -1646,7 +1653,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let att = create_signed_attestation(
             &root_kp,
@@ -1673,7 +1680,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (_, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let result = test_verifier()
             .verify_device_authorization(&root_did, &device_did, &[], &ed(&root_pk))
@@ -1695,7 +1702,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let mut att = create_signed_attestation(
             &root_kp,
@@ -1727,7 +1734,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
         let (_, wrong_pk) = create_test_keypair(&[99u8; 32]);
 
         let att = create_signed_attestation(
@@ -1757,7 +1764,7 @@ mod tests {
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did_str = ed25519_did(&device_pk);
-        let device_did = DeviceDID::new_unchecked(&device_did_str);
+        let device_did = CanonicalDid::new_unchecked(&device_did_str);
 
         let att_expired = create_signed_attestation(
             &root_kp,
@@ -1806,7 +1813,7 @@ mod tests {
     ) -> auths_keri::witness::SignedReceipt {
         let receipt = auths_keri::witness::Receipt {
             v: auths_keri::VersionString::placeholder(),
-            t: "rct".into(),
+            t: auths_keri::witness::ReceiptTag,
             d: Said::new_unchecked(event_said.to_string()),
             i: auths_keri::Prefix::new_unchecked(witness_did.to_string()),
             s: auths_keri::KeriSequence::new(seq),
@@ -1969,7 +1976,6 @@ mod tests {
             role: None,
             capabilities: vec![],
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
             commit_sha: None,

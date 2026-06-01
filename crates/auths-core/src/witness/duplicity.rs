@@ -22,6 +22,8 @@ use auths_keri::{Prefix, Said};
 
 use super::error::{DuplicityEvidence, WitnessReport};
 use super::receipt::Receipt;
+#[cfg(test)]
+use super::receipt::ReceiptTag;
 
 /// Duplicity detector implementing first-seen-always-seen policy.
 ///
@@ -295,14 +297,14 @@ mod tests {
         let receipts = vec![
             Receipt {
                 v: VersionString::placeholder(),
-                t: "rct".into(),
+                t: ReceiptTag,
                 d: Said::new_unchecked("EEVENT_SAID".into()),
                 i: Prefix::new_unchecked("W1".into()),
                 s: KeriSequence::new(5),
             },
             Receipt {
                 v: VersionString::placeholder(),
-                t: "rct".into(),
+                t: ReceiptTag,
                 d: Said::new_unchecked("EEVENT_SAID".into()),
                 i: Prefix::new_unchecked("W2".into()),
                 s: KeriSequence::new(5),
@@ -320,14 +322,14 @@ mod tests {
         let receipts = vec![
             Receipt {
                 v: VersionString::placeholder(),
-                t: "rct".into(),
+                t: ReceiptTag,
                 d: Said::new_unchecked("ESAID_A".into()),
                 i: Prefix::new_unchecked("W1".into()),
                 s: KeriSequence::new(5),
             },
             Receipt {
                 v: VersionString::placeholder(),
-                t: "rct".into(),
+                t: ReceiptTag,
                 d: Said::new_unchecked("ESAID_B".into()),
                 i: Prefix::new_unchecked("W2".into()),
                 s: KeriSequence::new(5),

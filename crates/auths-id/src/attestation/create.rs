@@ -7,7 +7,7 @@ use auths_verifier::core::{
     Attestation, Ed25519Signature, ResourceId, Role, SignerType, canonicalize_attestation_data,
 };
 use auths_verifier::error::AttestationError;
-use auths_verifier::types::{CanonicalDid, DeviceDID};
+use auths_verifier::types::CanonicalDid;
 
 use chrono::{DateTime, Utc};
 use log::debug;
@@ -27,58 +27,92 @@ pub struct CanonicalRevocationData<'a> {
     pub version: u32,
     pub rid: &'a str,
     pub issuer: &'a CanonicalDid,
-    pub subject: &'a DeviceDID,
+    pub subject: &'a CanonicalDid,
     pub timestamp: &'a Option<DateTime<Utc>>,
     pub revoked_at: &'a Option<DateTime<Utc>>, // Should always be Some(...)
     pub note: &'a Option<String>,
 }
 
+/// Inputs for `create_signed_attestation`.
+///
+/// Collapses the long positional argument list into a named-field struct so
+/// the call sites stay readable as the shape of an attestation evolves.
+/// Callers build one of these and hand it in; the function signs over the
+/// canonical bytes and returns the complete attestation.
+pub struct AttestationInput<'a> {
+    /// Resource identifier for this attestation.
+    pub rid: &'a str,
+    /// The identity DID (e.g., "did:keri:...") issuing the attestation.
+    pub identity_did: &'a IdentityDID,
+    /// The subject of the attestation — typed as `&CanonicalDid` so
+    /// callers can supply either `did:key:` or `did:keri:` shapes. The
+    /// wire format (`Attestation.subject`) is also `CanonicalDid`, so
+    /// this field type matches the downstream serialized shape
+    /// exactly. Field named `subject` to match wire semantics.
+    pub subject: &'a CanonicalDid,
+    /// Raw device public key bytes (32 Ed25519, 33 P-256 compressed).
+    pub device_public_key: &'a [u8],
+    /// Signing curve of `device_public_key`. Carried in-band so the
+    /// attestation interior never infers curve from byte length.
+    pub device_curve: auths_crypto::CurveType,
+    /// Optional JSON payload for the attestation.
+    pub payload: Option<Value>,
+    /// Attestation metadata (timestamp, expiry, notes).
+    pub meta: &'a AttestationMetadata,
+    /// Identity-key alias in the keychain; `None` = device-only signing.
+    pub identity_alias: Option<&'a KeyAlias>,
+    /// Device-key alias; `None` = no device signature.
+    pub device_alias: Option<&'a KeyAlias>,
+    /// Capabilities to grant (included in the signed envelope).
+    pub capabilities: Vec<Capability>,
+    /// Optional org role included in the signed envelope.
+    pub role: Option<Role>,
+    /// Optional delegator DID included in the signed envelope.
+    pub delegated_by: Option<IdentityDID>,
+    /// Git commit SHA this attestation anchors, if any.
+    pub commit_sha: Option<String>,
+    /// Signer type (machine, human, etc.).
+    pub signer_type: Option<SignerType>,
+}
+
 /// Creates a signed attestation by signing internally using the provided SecureSigner.
 ///
-/// This function constructs the canonical attestation data, signs it using the signer
-/// for both identity and device (if device_alias is provided), and returns the complete
-/// attestation with embedded signatures.
+/// Constructs the canonical attestation data, signs it using the signer for
+/// both identity and device (if `device_alias` is provided), and returns the
+/// complete attestation with embedded signatures.
 ///
-/// # Arguments
-/// * `rid` - Resource identifier for this attestation
-/// * `identity_did` - The identity DID (e.g., "did:keri:...") issuing the attestation
-/// * `device_did` - The device DID being attested
-/// * `device_public_key` - Raw device public key bytes (32 Ed25519, 33 P-256 compressed)
-/// * `device_curve` - The signing curve of `device_public_key`. Carried in-band so the
-///   attestation interior never infers curve from byte length.
-/// * `payload` - Optional JSON payload for the attestation
-/// * `meta` - Attestation metadata (timestamp, expiry, notes)
-/// * `signer` - SecureSigner implementation for signing operations
-/// * `passphrase_provider` - Provider for obtaining passphrases during signing
-/// * `identity_alias` - Optional alias of the identity key in the keychain (None = device-only signing)
-/// * `device_alias` - Optional alias of the device key (None means no device signature)
-/// * `capabilities` - Capabilities to grant (included in the signed envelope)
-/// * `role` - Optional org role (e.g., "admin", "member") included in the signed envelope
-/// * `delegated_by` - Optional DID of the delegator included in the signed envelope
-/// * `supersedes_rid` - RID of a prior attestation this one supersedes (rotation path).
-///   `None` for normal attestations. Threaded into the struct before signing so the
-///   signature covers the supersede marker — a man-in-the-middle cannot strip it.
-#[allow(clippy::too_many_arguments)]
+/// Args:
+/// * `now`: Creation timestamp, validated against `input.meta.timestamp` for clock drift.
+/// * `input`: Attestation payload + metadata (see [`AttestationInput`]).
+/// * `signer`: SecureSigner implementation for signing operations.
+/// * `passphrase_provider`: Provider for obtaining passphrases during signing.
+///
+/// Usage:
+/// ```ignore
+/// let att = create_signed_attestation(now, input, signer, passphrase)?;
+/// ```
 pub fn create_signed_attestation(
     now: DateTime<Utc>,
-    rid: &str,
-    identity_did: &IdentityDID,
-    device_did: &DeviceDID,
-    device_public_key: &[u8],
-    device_curve: auths_crypto::CurveType,
-    payload: Option<Value>,
-    meta: &AttestationMetadata,
+    input: AttestationInput<'_>,
     signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
-    identity_alias: Option<&KeyAlias>,
-    device_alias: Option<&KeyAlias>,
-    capabilities: Vec<Capability>,
-    role: Option<Role>,
-    delegated_by: Option<IdentityDID>,
-    commit_sha: Option<String>,
-    signer_type: Option<SignerType>,
-    supersedes_rid: Option<&str>,
 ) -> Result<Attestation, AttestationError> {
+    let AttestationInput {
+        rid,
+        identity_did,
+        subject,
+        device_public_key,
+        device_curve,
+        payload,
+        meta,
+        identity_alias,
+        device_alias,
+        capabilities,
+        role,
+        delegated_by,
+        commit_sha,
+        signer_type,
+    } = input;
     // Length must match the declared curve. No length dispatch — the curve
     // came in-band from the caller, so this is pure validation.
     let expected = device_curve.public_key_len();
@@ -107,8 +141,8 @@ pub fn create_signed_attestation(
     // INVARIANT: identity_did is an IdentityDID which guarantees valid DID format
     let issuer_canonical = CanonicalDid::new_unchecked(identity_did.as_str());
     #[allow(clippy::disallowed_methods)]
-    // INVARIANT: device_did is a validated DeviceDID from the caller
-    let subject_canonical = CanonicalDid::new_unchecked(device_did.as_str());
+    // INVARIANT: subject is a validated CanonicalDid from the caller
+    let subject_canonical = CanonicalDid::new_unchecked(subject.as_str());
     let delegated_canonical = delegated_by.as_ref().map(|d| CanonicalDid::from(d.clone()));
 
     let mut attestation = Attestation {
@@ -131,7 +165,6 @@ pub fn create_signed_attestation(
         role,
         capabilities,
         delegated_by: delegated_canonical,
-        supersedes_attestation_rid: supersedes_rid.map(ResourceId::new),
         signer_type,
         environment_claim: None,
         commit_sha,
@@ -180,61 +213,6 @@ pub fn create_signed_attestation(
     }
 
     Ok(attestation)
-}
-
-/// Creates a signed attestation that supersedes a prior one — used by the
-/// device-key rotation flow.
-///
-/// Delegates to `create_signed_attestation` with `supersedes_rid` set, so
-/// the `supersedes_attestation_rid` marker is part of the canonical bytes
-/// the signature covers. A man-in-the-middle cannot strip it to make a
-/// superseded attestation look current.
-///
-/// The caller is responsible for confirming the rotation request was
-/// authenticated (the daemon verifies the binding signature against the
-/// OLD pubkey before this fn is called); this helper does not itself
-/// validate the supersede relationship.
-#[allow(clippy::too_many_arguments)]
-pub fn create_superseding_attestation(
-    now: DateTime<Utc>,
-    rid: &str,
-    identity_did: &IdentityDID,
-    device_did: &DeviceDID,
-    device_public_key: &[u8],
-    device_curve: auths_crypto::CurveType,
-    payload: Option<Value>,
-    meta: &AttestationMetadata,
-    signer: &dyn SecureSigner,
-    passphrase_provider: &dyn PassphraseProvider,
-    identity_alias: Option<&KeyAlias>,
-    device_alias: Option<&KeyAlias>,
-    capabilities: Vec<Capability>,
-    role: Option<Role>,
-    delegated_by: Option<IdentityDID>,
-    commit_sha: Option<String>,
-    signer_type: Option<SignerType>,
-    supersedes_rid: &str,
-) -> Result<Attestation, AttestationError> {
-    create_signed_attestation(
-        now,
-        rid,
-        identity_did,
-        device_did,
-        device_public_key,
-        device_curve,
-        payload,
-        meta,
-        signer,
-        passphrase_provider,
-        identity_alias,
-        device_alias,
-        capabilities,
-        role,
-        delegated_by,
-        commit_sha,
-        signer_type,
-        Some(supersedes_rid),
-    )
 }
 
 /// Generates the canonical byte representation specifically for revocation data.

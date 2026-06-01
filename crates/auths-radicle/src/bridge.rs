@@ -17,7 +17,7 @@
 use std::fmt;
 
 use auths_verifier::IdentityDID;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 use thiserror::Error;
@@ -242,7 +242,7 @@ pub enum BridgeError {
     /// Failed to load attestation for device.
     #[error("failed to load attestation for device {device_did}: {reason}")]
     AttestationLoad {
-        device_did: DeviceDID,
+        device_did: CanonicalDid,
         reason: String,
     },
 
@@ -288,7 +288,7 @@ pub enum BridgeError {
 /// let result = bridge.verify_signer(&request)?;
 /// ```
 pub trait RadicleAuthsBridge: Send + Sync {
-    /// Map a Radicle public key to an Auths DeviceDID.
+    /// Map a Radicle public key to an Auths CanonicalDid.
     fn device_did(&self, key: &PublicKey) -> Did;
 
     /// Verify a signer against Auths policy.

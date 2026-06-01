@@ -1,6 +1,6 @@
 use crate::core::{Attestation, DevicePublicKey, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use crate::error::AttestationError;
-use crate::types::DeviceDID;
+use crate::types::CanonicalDid;
 use crate::verifier::Verifier;
 use crate::witness::WitnessVerifyConfig;
 use auths_keri::witness::SignedReceipt;
@@ -534,7 +534,7 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
                 return ERR_VERIFY_JSON_PARSE;
             }
         };
-        let device_did = match DeviceDID::parse(device_did_str) {
+        let device_did = match CanonicalDid::parse(device_did_str) {
             Ok(d) => d,
             Err(e) => {
                 error!(

@@ -20,8 +20,20 @@ uniffi::setup_scaffolding!();
 // the Secure Enclave / StrongBox / TEE; the FFI only ever sees pubkeys
 // + signatures.
 pub mod auth_challenge_context;
+pub mod device_kel_rotation;
 pub mod identity_context;
 pub mod pairing_context;
+pub mod shared_kel_context;
+pub(crate) mod signature;
+
+pub use device_kel_rotation::{
+    P256DeviceKelRotationContext, P256DeviceKelRotationResult, assemble_p256_device_kel_rot,
+    build_p256_device_kel_rot_payload,
+};
+pub use shared_kel_context::{
+    P256SharedKelRotationContext, SharedKelChangeRequest, assemble_shared_kel_rot,
+    build_shared_kel_rot_payload,
+};
 
 pub use auth_challenge_context::{
     AuthChallengeContext, assemble_auth_challenge_response, build_auth_challenge_signing_payload,
@@ -65,6 +77,9 @@ pub enum MobileError {
 
     #[error("Pairing failed: {0}")]
     PairingFailed(String),
+
+    #[error("Pre-committed next key does not match the prior KEL commitment: {0}")]
+    CommitmentMismatch(String),
 }
 
 // ============================================================================
@@ -118,10 +133,10 @@ pub struct PairingResponsePayload {
     pub device_did: String,
     pub signature: String,
     pub device_name: String,
-    /// Rotation extension: the NEW signing pubkey the controller should
-    /// attest. Absent on normal pair bodies.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub new_device_signing_pubkey: Option<String>,
+    /// Phone's own device-KEL inception event, base64url-no-pad JSON —
+    /// returned so the Mac can verify it during the pairing handshake.
+    #[serde(default)]
+    pub responder_inception_event: String,
 }
 
 // ============================================================================
@@ -133,6 +148,12 @@ pub struct PairingResponsePayload {
 /// one exists because the FFI assembles the JSON directly and needs
 /// the `x` signature field (which `auths-keri::events::IcpEvent` does
 /// not model — signatures there are attached out-of-band).
+///
+// TODO(stage-2): dedupe with auths_keri::events::IcpEvent — add an
+// `x` field upstream and delete this copy. The drift test
+// `tests/icp_event_drift.rs` asserts the field sets differ only by
+// `x` so a future spec evolution that adds a field here (or there)
+// will fail CI instead of silently drifting.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct IcpEvent {
     /// Type tag (`"icp"`).

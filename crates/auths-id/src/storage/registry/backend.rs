@@ -40,7 +40,7 @@ use std::sync::Arc;
 
 use auths_core::storage::keychain::IdentityDID;
 use auths_verifier::core::{Attestation, Capability, ResourceId};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use thiserror::Error;
 
 use crate::keri::Prefix;
@@ -582,7 +582,7 @@ pub trait RegistryBackend: Send + Sync {
     /// # Arguments
     ///
     /// * `did` - The device DID
-    fn load_attestation(&self, did: &DeviceDID) -> Result<Option<Attestation>, RegistryError>;
+    fn load_attestation(&self, did: &CanonicalDid) -> Result<Option<Attestation>, RegistryError>;
 
     /// Visit attestation history for a device (append-only audit trail).
     ///
@@ -595,7 +595,7 @@ pub trait RegistryBackend: Send + Sync {
     /// * `visitor` - Callback invoked for each historical attestation
     fn visit_attestation_history(
         &self,
-        did: &DeviceDID,
+        did: &CanonicalDid,
         visitor: &mut dyn FnMut(&Attestation) -> ControlFlow<()>,
     ) -> Result<(), RegistryError>;
 
@@ -604,7 +604,7 @@ pub trait RegistryBackend: Send + Sync {
     /// Calls `visitor` for each device DID. Return `ControlFlow::Break(())` to stop early.
     fn visit_devices(
         &self,
-        visitor: &mut dyn FnMut(&DeviceDID) -> ControlFlow<()>,
+        visitor: &mut dyn FnMut(&CanonicalDid) -> ControlFlow<()>,
     ) -> Result<(), RegistryError>;
 
     // =========================================================================
@@ -878,13 +878,13 @@ impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
         (**self).store_attestation(attestation)
     }
 
-    fn load_attestation(&self, did: &DeviceDID) -> Result<Option<Attestation>, RegistryError> {
+    fn load_attestation(&self, did: &CanonicalDid) -> Result<Option<Attestation>, RegistryError> {
         (**self).load_attestation(did)
     }
 
     fn visit_attestation_history(
         &self,
-        did: &DeviceDID,
+        did: &CanonicalDid,
         visitor: &mut dyn FnMut(&Attestation) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         (**self).visit_attestation_history(did, visitor)
@@ -892,7 +892,7 @@ impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
 
     fn visit_devices(
         &self,
-        visitor: &mut dyn FnMut(&DeviceDID) -> ControlFlow<()>,
+        visitor: &mut dyn FnMut(&CanonicalDid) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         (**self).visit_devices(visitor)
     }

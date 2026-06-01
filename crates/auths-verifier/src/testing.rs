@@ -42,7 +42,6 @@ pub struct AttestationBuilder {
     role: Option<Role>,
     capabilities: Vec<Capability>,
     delegated_by: Option<CanonicalDid>,
-    supersedes_attestation_rid: Option<ResourceId>,
     signer_type: Option<SignerType>,
     environment_claim: Option<Value>,
 }
@@ -73,7 +72,6 @@ impl Default for AttestationBuilder {
             role: None,
             capabilities: vec![],
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
         }
@@ -237,7 +235,6 @@ impl AttestationBuilder {
             role: self.role,
             capabilities: self.capabilities,
             delegated_by: self.delegated_by,
-            supersedes_attestation_rid: self.supersedes_attestation_rid,
             signer_type: self.signer_type,
             environment_claim: self.environment_claim,
         }

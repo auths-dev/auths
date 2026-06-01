@@ -20,7 +20,7 @@ use auths_storage::git::RegistryConfig;
 use auths_storage::git::RegistryIdentityStorage;
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -275,7 +275,7 @@ pub fn create_agent_identity(
 
         // Build a self-attestation for the standalone agent
         let attestation_json = {
-            let device_did = DeviceDID::from_public_key(&pub_bytes, curve);
+            let device_did = CanonicalDid::from_public_key_did_key(&pub_bytes, curve);
             let att = serde_json::json!({
                 "version": 1,
                 "rid": repo.file_name().unwrap_or_default().to_string_lossy(),
@@ -445,7 +445,7 @@ pub fn delegate_agent(
         })?;
 
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
-        let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
+        let device_did = CanonicalDid::new_unchecked(result.device_did.to_string());
         let attestations = attestation_storage
             .load_attestations_for_device(&device_did)
             .map_err(|e| {
@@ -656,7 +656,10 @@ pub fn generate_inmemory_keypair(curve: Option<String>) -> PyResult<(String, Str
         auths_id::keri::inception::generate_keypair_for_init(curve_type).map_err(|e| {
             PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}"))
         })?;
-    let did = auths_verifier::types::DeviceDID::from_public_key(&generated.public_key, curve_type);
+    let did = auths_verifier::types::CanonicalDid::from_public_key_did_key(
+        &generated.public_key,
+        curve_type,
+    );
     let seed = extract_seed_bytes(generated.pkcs8.as_ref()).map_err(|e| {
         PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
     })?;

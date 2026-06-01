@@ -58,7 +58,10 @@ fn assert_spec_shape(json: &str, ordered: &[&str]) {
         );
     }
 
-    assert!(!json.contains("\"dt\":"), "no in-body dt is permitted: {json}");
+    assert!(
+        !json.contains("\"dt\":"),
+        "no in-body dt is permitted: {json}"
+    );
     assert!(
         !json.contains("\"x\":"),
         "no legacy in-body signature x is permitted: {json}"
@@ -167,7 +170,9 @@ fn icp_matches_spec_field_set() {
     let json = serde_json::to_string(&Event::Icp(sample_icp())).unwrap();
     assert_spec_shape(
         &json,
-        &["v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c", "a"],
+        &[
+            "v", "t", "d", "i", "s", "kt", "k", "nt", "n", "bt", "b", "c", "a",
+        ],
     );
 }
 

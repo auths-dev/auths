@@ -1,5 +1,5 @@
 use auths_core::error::AuthsErrorInfo;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use thiserror::Error;
 
 /// Errors from device linking and revocation operations.
@@ -76,14 +76,14 @@ pub enum DeviceExtensionError {
     #[error("no attestation found for device {device_did}")]
     NoAttestationFound {
         /// The DID of the device with no attestation.
-        device_did: DeviceDID,
+        device_did: CanonicalDid,
     },
 
     /// The device has already been revoked.
     #[error("device {device_did} is already revoked")]
     AlreadyRevoked {
         /// The DID of the revoked device.
-        device_did: DeviceDID,
+        device_did: CanonicalDid,
     },
 
     /// Creating a new attestation failed.

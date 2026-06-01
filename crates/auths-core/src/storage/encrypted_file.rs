@@ -3,7 +3,6 @@
 //! Uses Argon2id for key derivation and XChaCha20-Poly1305 for encryption.
 //! Stores keys in `~/.auths/keys.enc` with Unix permissions 0600.
 
-use rand::RngCore;
 use crate::error::AgentError;
 use crate::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use argon2::{Argon2, Version};
@@ -12,6 +11,7 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit},
 };
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 #[allow(clippy::disallowed_types)]

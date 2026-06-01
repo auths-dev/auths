@@ -39,7 +39,7 @@
 use auths_core::witness::{EventHash, WitnessProvider};
 use auths_policy::{CanonicalCapability, DidParseError, evaluate_strict};
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 
 use crate::keri::KeyState;
@@ -245,7 +245,7 @@ pub enum ReceiptVerificationResult {
     /// Duplicity detected (conflicting SAIDs)
     Duplicity { event_a: Said, event_b: Said },
     /// Invalid receipt signature
-    InvalidSignature { witness_did: DeviceDID },
+    InvalidSignature { witness_did: CanonicalDid },
 }
 
 /// Witness public key resolver.
@@ -317,7 +317,7 @@ pub fn verify_receipts(
                         Err(_) => {
                             #[allow(clippy::disallowed_methods)]
                             return ReceiptVerificationResult::InvalidSignature {
-                                witness_did: DeviceDID::new_unchecked(receipt.i.as_str()),
+                                witness_did: CanonicalDid::new_unchecked(receipt.i.as_str()),
                             };
                         }
                     };
@@ -326,13 +326,13 @@ pub fn verify_receipts(
                     Ok(false) => {
                         return ReceiptVerificationResult::InvalidSignature {
                             #[allow(clippy::disallowed_methods)] // INVARIANT: receipt.i is a witness DID from a deserialized KERI receipt
-                            witness_did: DeviceDID::new_unchecked(receipt.i.as_str()),
+                            witness_did: CanonicalDid::new_unchecked(receipt.i.as_str()),
                         };
                     }
                     Err(_) => {
                         return ReceiptVerificationResult::InvalidSignature {
                             #[allow(clippy::disallowed_methods)] // INVARIANT: receipt.i is a witness DID from a deserialized KERI receipt
-                            witness_did: DeviceDID::new_unchecked(receipt.i.as_str()),
+                            witness_did: CanonicalDid::new_unchecked(receipt.i.as_str()),
                         };
                     }
                 }
@@ -758,7 +758,7 @@ mod tests {
     ) -> auths_core::witness::Receipt {
         auths_core::witness::Receipt {
             v: auths_keri::VersionString::placeholder(),
-            t: auths_core::witness::RECEIPT_TYPE.into(),
+            t: auths_core::witness::ReceiptTag,
             d: Said::new_unchecked(event_said.to_string()),
             i: Prefix::new_unchecked(witness_did.to_string()),
             s: auths_keri::KeriSequence::new(seq),

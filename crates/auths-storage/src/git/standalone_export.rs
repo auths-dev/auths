@@ -5,7 +5,7 @@ use auths_id::storage::layout::{
     StorageLayoutConfig, attestation_blob_name, attestation_ref_for_device,
 };
 use auths_verifier::core::{Attestation, VerifiedAttestation};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use git2::{Repository, Signature, Tree};
 use log::{debug, info};
 use std::path::PathBuf;
@@ -94,8 +94,8 @@ impl AttestationSink for GitRefSink {
         );
 
         #[allow(clippy::disallowed_methods)]
-        // INVARIANT: attestation.subject is a validated CanonicalDid; DeviceDID is needed for ref path construction
-        let device_did = DeviceDID::new_unchecked(attestation.subject.as_str());
+        // INVARIANT: attestation.subject is a validated CanonicalDid; CanonicalDid is needed for ref path construction
+        let device_did = CanonicalDid::new_unchecked(attestation.subject.as_str());
         let ref_path = attestation_ref_for_device(&self.config, &device_did);
         debug!("Target ref path for export: {}", ref_path);
 

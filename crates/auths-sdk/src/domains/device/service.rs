@@ -11,7 +11,7 @@ use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::identity::IdentityStorage;
 use auths_verifier::core::{Capability, ResourceId};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 
 use crate::context::AuthsContext;
@@ -22,7 +22,7 @@ use crate::domains::device::types::{
 
 struct AttestationParams {
     identity_did: IdentityDID,
-    device_did: DeviceDID,
+    device_did: CanonicalDid,
     device_public_key: auths_verifier::DevicePublicKey,
     payload: Option<serde_json::Value>,
     meta: AttestationMetadata,
@@ -34,7 +34,7 @@ struct AttestationParams {
 fn build_attestation_params(
     config: &DeviceLinkConfig,
     identity_did: IdentityDID,
-    device_did: DeviceDID,
+    device_did: CanonicalDid,
     device_public_key: auths_verifier::DevicePublicKey,
     now: DateTime<Utc>,
 ) -> AttestationParams {
@@ -133,7 +133,7 @@ pub fn link_device(
 /// revoke_device("did:key:z6Mk...", "my-identity", &ctx, Some("Lost laptop"), &clock)?;
 /// ```
 pub fn revoke_device(
-    device_did: &str,
+    subject: &str,
     identity_key_alias: &KeyAlias,
     ctx: &AuthsContext,
     note: Option<String>,
@@ -144,23 +144,25 @@ pub fn revoke_device(
     let prefix = parse_did_keri(identity.controller_did.as_str()).map_err(|e| {
         DeviceError::AnchorError(auths_id::keri::AnchorError::InvalidDid(e.to_string()))
     })?;
-    let device_pk = find_device_public_key(ctx.attestation_source.as_ref(), device_did)?;
+    let device_pk = find_device_public_key(ctx.attestation_source.as_ref(), subject)?;
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
 
-    let target_did = DeviceDID::from_public_key(device_pk.as_bytes(), device_pk.curve());
+    let target_did = CanonicalDid::from_public_key_did_key(device_pk.as_bytes(), device_pk.curve());
 
     let revocation = create_signed_revocation(
-        &identity.storage_id,
-        &identity.controller_did,
-        &target_did,
-        device_pk.as_bytes(),
-        device_pk.curve(),
-        note,
-        None,
-        now,
+        auths_id::attestation::revoke::RevocationInput {
+            rid: &identity.storage_id,
+            identity_did: &identity.controller_did,
+            subject: &target_did,
+            device_public_key: device_pk.as_bytes(),
+            device_curve: device_pk.curve(),
+            note,
+            payload: None,
+            timestamp: now,
+            identity_alias: identity_key_alias,
+        },
         &signer,
         ctx.passphrase_provider.as_ref(),
-        identity_key_alias,
     )
     .map_err(DeviceError::AttestationError)?;
 
@@ -215,7 +217,7 @@ pub fn extend_device(
 
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: config.device_did is a did:key string supplied by the CLI from an existing attestation
-    let device_did_obj = DeviceDID::new_unchecked(config.device_did.clone());
+    let device_did_obj = CanonicalDid::new_unchecked(config.device_did.clone());
     let latest =
         group
             .latest(&device_did_obj)
@@ -241,23 +243,24 @@ pub fn extend_device(
 
     let extended = create_signed_attestation(
         now,
-        &identity.storage_id,
-        &identity.controller_did,
-        &device_did_obj,
-        latest.device_public_key.as_bytes(),
-        latest.device_public_key.curve(),
-        latest.payload.clone(),
-        &meta,
+        auths_id::attestation::create::AttestationInput {
+            rid: &identity.storage_id,
+            identity_did: &identity.controller_did,
+            subject: &device_did_obj,
+            device_public_key: latest.device_public_key.as_bytes(),
+            device_curve: latest.device_public_key.curve(),
+            payload: latest.payload.clone(),
+            meta: &meta,
+            identity_alias: Some(&config.identity_key_alias),
+            device_alias: config.device_key_alias.as_ref(),
+            capabilities: vec![],
+            role: None,
+            delegated_by: None,
+            commit_sha: None,
+            signer_type: None,
+        },
         &signer,
         ctx.passphrase_provider.as_ref(),
-        Some(&config.identity_key_alias),
-        config.device_key_alias.as_ref(),
-        vec![],
-        None,
-        None,
-        None, // commit_sha
-        None,
-        None, // supersedes_rid
     )
     .map_err(DeviceExtensionError::AttestationFailed)?;
 
@@ -280,7 +283,7 @@ pub fn extend_device(
 
     Ok(DeviceExtensionResult {
         #[allow(clippy::disallowed_methods)] // INVARIANT: config.device_did was already validated above when constructing device_did_obj
-        device_did: DeviceDID::new_unchecked(config.device_did),
+        device_did: CanonicalDid::new_unchecked(config.device_did),
         new_expires_at,
         previous_expires_at,
     })
@@ -307,7 +310,7 @@ fn extract_device_key(
     config: &DeviceLinkConfig,
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
-) -> Result<(DeviceDID, auths_verifier::DevicePublicKey), DeviceError> {
+) -> Result<(CanonicalDid, auths_verifier::DevicePublicKey), DeviceError> {
     let alias = config
         .device_key_alias
         .as_ref()
@@ -323,7 +326,7 @@ fn extract_device_key(
     let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes).map_err(|e| {
         DeviceError::CryptoError(auths_core::AgentError::InvalidInput(e.to_string()))
     })?;
-    let device_did = DeviceDID::from_public_key(&pk_bytes, curve);
+    let device_did = CanonicalDid::from_public_key_did_key(&pk_bytes, curve);
 
     if let Some(ref expected) = config.device_did
         && expected != &device_did.to_string()
@@ -346,42 +349,43 @@ fn sign_attestation(
 ) -> Result<auths_verifier::core::Attestation, DeviceError> {
     create_signed_attestation(
         now,
-        rid,
-        &params.identity_did,
-        &params.device_did,
-        params.device_public_key.as_bytes(),
-        params.device_public_key.curve(),
-        params.payload.clone(),
-        &params.meta,
+        auths_id::attestation::create::AttestationInput {
+            rid,
+            identity_did: &params.identity_did,
+            subject: &params.device_did,
+            device_public_key: params.device_public_key.as_bytes(),
+            device_curve: params.device_public_key.curve(),
+            payload: params.payload.clone(),
+            meta: &params.meta,
+            identity_alias: Some(&params.identity_alias),
+            device_alias: params.device_alias.as_ref(),
+            capabilities: params.capabilities.clone(),
+            role: None,
+            delegated_by: None,
+            commit_sha: None,
+            signer_type: None,
+        },
         signer,
         passphrase_provider,
-        Some(&params.identity_alias),
-        params.device_alias.as_ref(),
-        params.capabilities.clone(),
-        None,
-        None,
-        None, // commit_sha
-        None,
-        None, // supersedes_rid
     )
     .map_err(DeviceError::AttestationError)
 }
 
 fn find_device_public_key(
     attestation_source: &dyn AttestationSource,
-    device_did: &str,
+    subject: &str,
 ) -> Result<auths_verifier::DevicePublicKey, DeviceError> {
     let attestations = attestation_source
         .load_all_attestations()
         .map_err(|e| DeviceError::StorageError(e.into()))?;
 
     for att in &attestations {
-        if att.subject.as_str() == device_did {
+        if att.subject.as_str() == subject {
             return Ok(att.device_public_key.clone());
         }
     }
 
     Err(DeviceError::DeviceNotFound {
-        did: device_did.to_string(),
+        did: subject.to_string(),
     })
 }

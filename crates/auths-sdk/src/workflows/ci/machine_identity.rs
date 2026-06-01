@@ -5,7 +5,7 @@ use auths_oidc_port::{
     JwksClient, JwtValidator, OidcError, OidcValidationConfig, TimestampClient, TimestampConfig,
 };
 use auths_verifier::core::{Attestation, Ed25519Signature, OidcBinding, ResourceId};
-use auths_verifier::types::{CanonicalDid, DeviceDID};
+use auths_verifier::types::CanonicalDid;
 use ring::signature::Ed25519KeyPair;
 
 /// Configuration for creating a machine identity from an OIDC token.
@@ -249,8 +249,8 @@ pub fn sign_commit_with_identity(
 ) -> Result<Attestation, Box<dyn std::error::Error>> {
     let issuer = CanonicalDid::parse(&params.issuer_did)
         .map_err(|e| format!("Invalid issuer DID: {}", e))?;
-    let subject =
-        DeviceDID::parse(&params.device_did).map_err(|e| format!("Invalid device DID: {}", e))?;
+    let subject = CanonicalDid::parse(&params.device_did)
+        .map_err(|e| format!("Invalid device DID: {}", e))?;
 
     let device_pk = auths_verifier::DevicePublicKey::ed25519(device_public_key);
 
@@ -271,7 +271,7 @@ pub fn sign_commit_with_identity(
         rid: ResourceId::new(rid),
         issuer: issuer.clone(),
         #[allow(clippy::disallowed_methods)]
-        // INVARIANT: subject is a validated DeviceDID parsed on line 255
+        // INVARIANT: subject is a validated CanonicalDid parsed on line 255
         subject: CanonicalDid::new_unchecked(subject.as_str()),
         device_public_key: device_pk,
         identity_signature: Ed25519Signature::empty(),
@@ -284,7 +284,6 @@ pub fn sign_commit_with_identity(
         role: None,
         capabilities: vec![],
         delegated_by: None,
-        supersedes_attestation_rid: None,
         signer_type: None,
         environment_claim: None,
         commit_sha: Some(params.commit_sha.clone()),

@@ -50,6 +50,8 @@ pub mod storage;
 pub mod storage_layout;
 /// Re-exports of trust and pinned identity types from `auths-core`.
 pub mod trust;
+/// Re-exports of verification helpers from `auths-verifier`.
+pub mod verify;
 /// Re-exports of witness server and config types.
 pub mod witness;
 

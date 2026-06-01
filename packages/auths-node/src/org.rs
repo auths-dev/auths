@@ -18,7 +18,7 @@ use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 use auths_verifier::Capability;
 use auths_verifier::PublicKeyHex;
 use auths_verifier::core::Role;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use napi_derive::napi;
 
 use crate::error::format_error;
@@ -152,30 +152,31 @@ pub fn create_org(
     };
 
     let signer = StorageSigner::new(keychain);
-    let org_did_device = DeviceDID::from_public_key(&org_pk_bytes, org_curve);
+    let org_did_device = CanonicalDid::from_public_key_did_key(&org_pk_bytes, org_curve);
 
     let attestation = create_signed_attestation(
         now,
-        &rid,
-        &controller_did,
-        &org_did_device,
-        &org_pk_bytes,
-        org_curve,
-        Some(serde_json::json!({
-            "org_role": "admin",
-            "org_name": label
-        })),
-        &meta,
+        auths_sdk::attestation::AttestationInput {
+            rid: &rid,
+            identity_did: &controller_did,
+            subject: &org_did_device,
+            device_public_key: &org_pk_bytes,
+            device_curve: org_curve,
+            payload: Some(serde_json::json!({
+                "org_role": "admin",
+                "org_name": label
+            })),
+            meta: &meta,
+            identity_alias: Some(&alias),
+            device_alias: None,
+            capabilities: admin_capabilities,
+            role: Some(Role::Admin),
+            delegated_by: None,
+            commit_sha: None,
+            signer_type: None,
+        },
         &signer,
         &provider,
-        Some(&alias),
-        None,
-        admin_capabilities,
-        Some(Role::Admin),
-        None,
-        None, // commit_sha
-        None,
-        None, // supersedes_rid
     )
     .map_err(|e| format_error("AUTHS_ORG_ERROR", e))?;
 

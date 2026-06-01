@@ -351,7 +351,7 @@ pub async fn join_pairing_session(
 
     // Curve-agnostic parse: `ParsedKey.seed` is a `TypedSeed` carrying the
     // detected curve; `public_key` is 32 bytes for Ed25519, 33 for P-256.
-    // Pairing-response wire format is Ed25519-pinned today (DeviceDID::from_ed25519
+    // Pairing-response wire format is Ed25519-pinned today (CanonicalDid::from_ed25519
     // + 32-byte pubkey), so we enforce that here.
     let parsed = auths_crypto::parse_key_material(&pkcs8_bytes).map_err(|e| {
         format_error(
@@ -359,8 +359,10 @@ pub async fn join_pairing_session(
             format!("Failed to parse key material: {e}"),
         )
     })?;
-    let device_did =
-        auths_verifier::types::DeviceDID::from_public_key(&parsed.public_key, parsed.seed.curve());
+    let device_did = auths_verifier::types::CanonicalDid::from_public_key_did_key(
+        &parsed.public_key,
+        parsed.seed.curve(),
+    );
 
     let lookup_url = format!("{}/v1/pairing/sessions/by-code/{}", endpoint, short_code);
 
@@ -442,7 +444,9 @@ pub async fn join_pairing_session(
         ),
         device_name: pairing_response.device_name,
         subkey_chain: None,
-        new_device_signing_pubkey: None,
+        initiator_inception_event: String::new(),
+        responder_inception_event: String::new(),
+        shared_kel_inception_event: None,
     };
 
     let submit_url = format!("{}/v1/pairing/sessions/{}/response", endpoint, session_id);

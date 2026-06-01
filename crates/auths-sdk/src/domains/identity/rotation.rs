@@ -97,7 +97,6 @@ pub fn compute_rotation_event(
         ba,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -837,7 +836,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let ctx =

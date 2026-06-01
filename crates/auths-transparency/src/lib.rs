@@ -77,7 +77,7 @@ pub use witness::{
     cosignature_signed_message, extract_cosignatures, parse_cosignature, serialize_cosignature,
 };
 
-use auths_verifier::DeviceDID;
+use auths_verifier::CanonicalDid;
 
 /// Trust root for verifying transparency log checkpoints.
 ///
@@ -135,7 +135,7 @@ pub struct TrustRoot {
 /// Usage:
 /// ```ignore
 /// let witness = TrustRootWitness {
-///     witness_did: DeviceDID::parse("did:key:z6Mk...")?,
+///     witness_did: CanonicalDid::parse("did:key:z6Mk...")?,
 ///     name: "witness-1".into(),
 ///     public_key: Ed25519PublicKey::from_bytes(key_bytes),
 /// };
@@ -143,7 +143,7 @@ pub struct TrustRoot {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TrustRootWitness {
     /// The witness's device DID.
-    pub witness_did: DeviceDID,
+    pub witness_did: CanonicalDid,
     /// Human-readable witness name.
     pub name: String,
     /// Witness Ed25519 public key.

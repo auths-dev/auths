@@ -77,7 +77,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                         WitnessServerConfig {
                             #[allow(clippy::disallowed_methods)]
                             // INVARIANT: caller-supplied witness DID
-                            witness_did: auths_verifier::types::DeviceDID::new_unchecked(
+                            witness_did: auths_verifier::types::CanonicalDid::new_unchecked(
                                 did_override,
                             ),
                             ..cfg

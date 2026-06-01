@@ -563,7 +563,7 @@ mod tests {
     use crate::merkle::compute_root;
     use crate::proof::InclusionProof;
     use crate::types::LogOrigin;
-    use auths_verifier::{CanonicalDid, DeviceDID, Ed25519PublicKey, Ed25519Signature};
+    use auths_verifier::{CanonicalDid, Ed25519PublicKey, Ed25519Signature};
     use ring::signature::{Ed25519KeyPair, KeyPair};
 
     fn fixed_now() -> DateTime<Utc> {
@@ -593,9 +593,11 @@ mod tests {
 
         let actor_keypair = Ed25519KeyPair::from_seed_unchecked(&[2u8; 32]).unwrap();
         let actor_public_key: [u8; 32] = actor_keypair.public_key().as_ref().try_into().unwrap();
-        let actor_did =
-            DeviceDID::from_public_key(&actor_public_key, auths_crypto::CurveType::Ed25519)
-                .to_string();
+        let actor_did = CanonicalDid::from_public_key_did_key(
+            &actor_public_key,
+            auths_crypto::CurveType::Ed25519,
+        )
+        .to_string();
 
         let trust_root = TrustRoot {
             log_public_key: Ed25519PublicKey::from_bytes(log_public_key),
@@ -619,7 +621,7 @@ mod tests {
         let content = EntryContent {
             entry_type: EntryType::DeviceBind,
             body: EntryBody::DeviceBind {
-                device_did: DeviceDID::new_unchecked(&fixture.actor_did),
+                device_did: CanonicalDid::new_unchecked(&fixture.actor_did),
                 public_key: Ed25519PublicKey::from_bytes(fixture.actor_public_key),
             },
             actor_did: CanonicalDid::new_unchecked(&fixture.actor_did),
@@ -777,7 +779,7 @@ mod tests {
             log_origin: LogOrigin::new("test.dev/log").unwrap(),
             witnesses: vec![
                 TrustRootWitness {
-                    witness_did: DeviceDID::from_public_key(
+                    witness_did: CanonicalDid::from_public_key_did_key(
                         &w1_pk,
                         auths_crypto::CurveType::Ed25519,
                     ),
@@ -785,7 +787,7 @@ mod tests {
                     public_key: Ed25519PublicKey::from_bytes(w1_pk),
                 },
                 TrustRootWitness {
-                    witness_did: DeviceDID::from_public_key(
+                    witness_did: CanonicalDid::from_public_key_did_key(
                         &w2_pk,
                         auths_crypto::CurveType::Ed25519,
                     ),

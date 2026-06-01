@@ -35,7 +35,7 @@ pub trait RefWriter: Send + Sync {
     ///
     /// Usage:
     /// ```ignore
-    /// writer.delete_ref("refs/auths/devices/nodes/old-device/signatures")?;
+    /// writer.delete_ref("refs/auths/attestations/nodes/old-device/signatures")?;
     /// ```
     fn delete_ref(&self, refname: &str) -> Result<(), StorageError>;
 }

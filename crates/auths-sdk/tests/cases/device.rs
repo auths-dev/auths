@@ -101,7 +101,7 @@ fn extend_device_updates_expiry() {
     );
     let config = DeviceExtensionConfig {
         repo_path: registry_path,
-        device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did.clone()),
+        device_did: auths_verifier::types::CanonicalDid::new_unchecked(device_did.clone()),
         expires_in: 31_536_000,
         identity_key_alias: key_alias.clone(),
         device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
@@ -136,7 +136,7 @@ fn extend_device_nonexistent_device_returns_error() {
     );
     let config = DeviceExtensionConfig {
         repo_path: registry_path,
-        device_did: auths_verifier::types::DeviceDID::new_unchecked("did:key:zDoesNotExist"),
+        device_did: auths_verifier::types::CanonicalDid::new_unchecked("did:key:zDoesNotExist"),
         expires_in: 2_592_000,
         identity_key_alias: key_alias,
         device_key_alias: Some(KeyAlias::new_unchecked("device-key")),

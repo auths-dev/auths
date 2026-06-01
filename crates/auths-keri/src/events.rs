@@ -240,16 +240,17 @@ impl<'de> Deserialize<'de> for Seal {
             map.get(k)
                 .and_then(|v| v.as_str())
                 .map(|v| v.to_string())
-                .ok_or_else(|| serde::de::Error::custom(format!("seal field `{k}` must be a string")))
+                .ok_or_else(|| {
+                    serde::de::Error::custom(format!("seal field `{k}` must be a string"))
+                })
         };
-        let want_seq = |k: &str| -> Result<KeriSequence, D::Error> {
-            serde_json::from_value(
-                map.get(k)
-                    .cloned()
-                    .ok_or_else(|| serde::de::Error::custom(format!("seal field `{k}` required")))?,
-            )
-            .map_err(serde::de::Error::custom)
-        };
+        let want_seq =
+            |k: &str| -> Result<KeriSequence, D::Error> {
+                serde_json::from_value(map.get(k).cloned().ok_or_else(|| {
+                    serde::de::Error::custom(format!("seal field `{k}` required"))
+                })?)
+                .map_err(serde::de::Error::custom)
+            };
 
         // Match on the EXACT sorted field set — no silent field-dropping (F-37).
         let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();

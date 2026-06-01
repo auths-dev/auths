@@ -16,7 +16,7 @@ use auths_id::attestation::core::resign_attestation;
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_verifier::core::{Capability, ResourceId, SignerType};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -535,7 +535,7 @@ pub fn sign_artifact(
     }
     let device_pk_bytes = device_resolved.public_key_bytes;
 
-    let device_did = DeviceDID::from_public_key(&device_pk_bytes, device_resolved.curve);
+    let device_did = CanonicalDid::from_public_key_did_key(&device_pk_bytes, device_resolved.curve);
 
     let artifact_meta = params
         .artifact
@@ -627,7 +627,7 @@ fn create_and_sign_attestation(
     now: DateTime<Utc>,
     rid: &ResourceId,
     controller_did: &IdentityDID,
-    device_did: &DeviceDID,
+    subject: &CanonicalDid,
     device_pk_bytes: &[u8],
     device_curve: auths_crypto::CurveType,
     payload: serde_json::Value,
@@ -647,23 +647,24 @@ fn create_and_sign_attestation(
 
     let mut attestation = create_signed_attestation(
         now,
-        rid,
-        controller_did,
-        device_did,
-        device_pk_bytes,
-        device_curve,
-        Some(payload),
-        meta,
+        auths_id::attestation::create::AttestationInput {
+            rid: rid.as_str(),
+            identity_did: controller_did,
+            subject,
+            device_public_key: device_pk_bytes,
+            device_curve,
+            payload: Some(payload),
+            meta,
+            identity_alias,
+            device_alias: Some(device_alias),
+            capabilities: vec![Capability::sign_release()],
+            role: None,
+            delegated_by: None,
+            commit_sha,
+            signer_type: None,
+        },
         signer,
         &noop_provider,
-        identity_alias,
-        Some(device_alias),
-        vec![Capability::sign_release()],
-        None,
-        None,
-        commit_sha,
-        None,
-        None, // supersedes_rid
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
@@ -724,7 +725,8 @@ pub fn sign_artifact_ephemeral(
     let pubkey_vec = auths_crypto::typed_public_key(&typed_seed)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
-    let device_did = DeviceDID::from_public_key(&pubkey_vec, auths_crypto::CurveType::P256);
+    let device_did =
+        CanonicalDid::from_public_key_did_key(&pubkey_vec, auths_crypto::CurveType::P256);
     #[allow(clippy::disallowed_methods)]
     let identity_did = IdentityDID::new_unchecked(device_did.as_str());
 
@@ -778,23 +780,24 @@ pub fn sign_artifact_ephemeral(
     // 6. Create signed attestation with Workload signer type
     let attestation = create_signed_attestation(
         now,
-        &rid,
-        &identity_did,
-        &device_did,
-        &pubkey_vec,
-        auths_crypto::CurveType::P256,
-        Some(payload_value),
-        &meta,
+        auths_id::attestation::create::AttestationInput {
+            rid: rid.as_str(),
+            identity_did: &identity_did,
+            subject: &device_did,
+            device_public_key: &pubkey_vec,
+            device_curve: auths_crypto::CurveType::P256,
+            payload: Some(payload_value),
+            meta: &meta,
+            identity_alias: Some(&identity_alias),
+            device_alias: Some(&device_alias),
+            capabilities: vec![Capability::sign_release()],
+            role: None,
+            delegated_by: None,
+            commit_sha: Some(validated_sha),
+            signer_type: Some(SignerType::Workload),
+        },
         &signer,
         &noop_provider,
-        Some(&identity_alias),
-        Some(&device_alias),
-        vec![Capability::sign_release()],
-        None,
-        None,
-        Some(validated_sha),
-        Some(SignerType::Workload),
-        None, // supersedes_rid
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
@@ -852,7 +855,7 @@ pub fn sign_artifact_raw(
     let pubkey = auths_crypto::typed_public_key(&typed)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
-    let device_did = DeviceDID::from_public_key(&pubkey, curve);
+    let device_did = CanonicalDid::from_public_key_did_key(&pubkey, curve);
 
     let digest_hex = hex::encode(Sha256::digest(data));
     let artifact_meta = ArtifactMetadata {
@@ -897,23 +900,24 @@ pub fn sign_artifact_raw(
 
     let attestation = create_signed_attestation(
         now,
-        &rid,
-        identity_did,
-        &device_did,
-        &pubkey,
-        curve,
-        Some(payload),
-        &meta,
+        auths_id::attestation::create::AttestationInput {
+            rid: rid.as_str(),
+            identity_did,
+            subject: &device_did,
+            device_public_key: &pubkey,
+            device_curve: curve,
+            payload: Some(payload),
+            meta: &meta,
+            identity_alias: Some(&identity_alias),
+            device_alias: Some(&device_alias),
+            capabilities: vec![Capability::sign_release()],
+            role: None,
+            delegated_by: None,
+            commit_sha: validated_commit_sha,
+            signer_type: None,
+        },
         &signer,
         &noop_provider,
-        Some(&identity_alias),
-        Some(&device_alias),
-        vec![Capability::sign_release()],
-        None,
-        None,
-        validated_commit_sha,
-        None,
-        None, // supersedes_rid
     )
     .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 

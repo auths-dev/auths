@@ -5,7 +5,7 @@ use auths_verifier::core::{
     Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
 };
 use auths_verifier::error::AuthsErrorInfo;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use auths_verifier::verify::{
     verify_at_time as rust_verify_at_time, verify_chain as rust_verify_chain,
     verify_chain_with_capability as rust_verify_chain_with_capability,
@@ -154,7 +154,7 @@ pub async fn verify_device_authorization(
     let identity_pk = decode_device_public_key(&identity_pk_hex, "identity public key")?;
     let attestations = parse_attestations(&attestations_json)?;
     let device =
-        DeviceDID::parse(&device_did).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
+        CanonicalDid::parse(&device_did).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
 
     match rust_verify_device_authorization(&identity_did, &device, &attestations, &identity_pk)
         .await

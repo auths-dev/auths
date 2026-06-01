@@ -19,6 +19,44 @@ use serde::{Deserialize, Serialize};
 /// Receipt type identifier.
 pub const RECEIPT_TYPE: &str = "rct";
 
+/// The receipt message-type tag. Always serializes the constant `"rct"` and
+/// rejects any other value on parse, so a `Receipt` can never carry a forged
+/// or mistyped `t` (e.g. `"icp"`) that would otherwise serialize and verify
+/// locally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ReceiptTag;
+
+impl Serialize for ReceiptTag {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(RECEIPT_TYPE)
+    }
+}
+
+impl<'de> Deserialize<'de> for ReceiptTag {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s == RECEIPT_TYPE {
+            Ok(ReceiptTag)
+        } else {
+            Err(serde::de::Error::custom(format!(
+                "receipt `t` must be {RECEIPT_TYPE:?}, got {s:?}"
+            )))
+        }
+    }
+}
+
+impl PartialEq<str> for ReceiptTag {
+    fn eq(&self, other: &str) -> bool {
+        other == RECEIPT_TYPE
+    }
+}
+
+impl PartialEq<&str> for ReceiptTag {
+    fn eq(&self, other: &&str) -> bool {
+        *other == RECEIPT_TYPE
+    }
+}
+
 /// A witness receipt for a KEL event (spec-compliant `rct` message).
 ///
 /// Per the spec, `d` is the SAID of the **referenced key event** (NOT the receipt's own SAID).
@@ -26,12 +64,12 @@ pub const RECEIPT_TYPE: &str = "rct";
 ///
 /// Usage:
 /// ```
-/// use auths_keri::witness::Receipt;
+/// use auths_keri::witness::{Receipt, ReceiptTag};
 /// use auths_keri::{Said, Prefix, VersionString, KeriSequence};
 ///
 /// let receipt = Receipt {
 ///     v: VersionString::placeholder(),
-///     t: "rct".into(),
+///     t: ReceiptTag,
 ///     d: Said::new_unchecked("EEventSaid123".into()),
 ///     i: Prefix::new_unchecked("EControllerAid".into()),
 ///     s: KeriSequence::new(5),
@@ -42,8 +80,8 @@ pub struct Receipt {
     /// Version string
     pub v: VersionString,
 
-    /// Type identifier ("rct" for receipt)
-    pub t: String,
+    /// Type identifier — always `"rct"`; rejects other values on parse.
+    pub t: ReceiptTag,
 
     /// SAID of the referenced key event (NOT the receipt's own SAID)
     pub d: Said,
@@ -169,7 +207,7 @@ impl ReceiptBuilder {
     pub fn build(self) -> Option<SignedReceipt> {
         let mut receipt = Receipt {
             v: VersionString::placeholder(),
-            t: RECEIPT_TYPE.into(),
+            t: ReceiptTag,
             d: self.d?,
             i: self.i?,
             s: self.s?,
@@ -193,7 +231,7 @@ mod tests {
     fn sample_receipt() -> Receipt {
         Receipt {
             v: VersionString::json(100),
-            t: RECEIPT_TYPE.into(),
+            t: ReceiptTag,
             d: Said::new_unchecked("EEventSaid123".into()),
             i: Prefix::new_unchecked("EControllerAid".into()),
             s: KeriSequence::new(5),
@@ -270,6 +308,18 @@ mod tests {
         assert_eq!(json["t"], RECEIPT_TYPE);
         assert!(json["v"].as_str().unwrap().starts_with("KERI10JSON"));
         assert_eq!(json["s"], "5");
+    }
+
+    #[test]
+    fn receipt_t_must_be_rct() {
+        let good = serde_json::to_value(sample_receipt()).unwrap();
+        assert_eq!(good["t"], RECEIPT_TYPE);
+        assert!(serde_json::from_value::<Receipt>(good).is_ok());
+
+        let mut forged = serde_json::to_value(sample_receipt()).unwrap();
+        forged["t"] = serde_json::Value::String("icp".into());
+        let err = serde_json::from_value::<Receipt>(forged).unwrap_err();
+        assert!(err.to_string().contains("rct"));
     }
 
     #[test]

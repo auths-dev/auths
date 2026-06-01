@@ -140,6 +140,13 @@ pub fn handle_status(
 fn print_status(report: &StatusReport, now: DateTime<Utc>) {
     let out = Output::new();
 
+    // Shared-identity duplicity surfaces at the top so users see it
+    // before anything else. Fail-open: exit code stays 0 regardless.
+    if let Some(warning) = maybe_format_duplicity_warning(report) {
+        out.println(&warning);
+        out.newline();
+    }
+
     // Identity
     if let Some(ref id) = report.identity {
         out.println(&format!("Identity:    {}", out.info(&id.controller_did)));
@@ -228,6 +235,82 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
             out.println(&format!("  • {}", step.summary));
             out.println(&format!("    {}", out.dim(&format!("→ {}", step.command))));
         }
+    }
+}
+
+/// Render the pinned duplicity warning when the local KEL stream
+/// contains a diverging rotation.
+///
+/// Walks `refs/auths/shared-kel/*` via git2, turns each matching ref
+/// into a [`KelEventRef`] (prefix + sequence + SAID), and asks the
+/// duplicity detector whether any same-prefix same-seq events carry
+/// differing SAIDs. Fail-open: returns `None` if no shared KEL is
+/// replicated locally or if the scan errors (a missing shared KEL is
+/// the pre-first-pair norm, not an error state).
+fn maybe_format_duplicity_warning(_report: &StatusReport) -> Option<String> {
+    use auths_sdk::keri::copy::format_duplicity_warning;
+    use auths_sdk::verify::{DuplicityReport, KelEventRef, detect_duplicity};
+
+    // Resolve the auths home repo. Any failure → None (pre-first-pair
+    // case is the common one; not worth a log line).
+    let auths_dir = match auths_sdk::paths::auths_home() {
+        Ok(p) => p,
+        Err(_) => return None,
+    };
+    let repo = match git2::Repository::open(&auths_dir) {
+        Ok(r) => r,
+        Err(_) => return None,
+    };
+
+    // Scan refs under the shared-KEL namespace. Ref names have the
+    // shape `refs/auths/shared-kel/<prefix>/<seq>/<said-or-role>`;
+    // we extract prefix + seq and treat the ref target OID as the
+    // SAID for divergence purposes (two refs at the same (prefix,
+    // seq) with different OIDs indicates a fork in the local replica).
+    let prefix_str = "refs/auths/shared-kel/";
+    let mut rows: Vec<(String, u64, String)> = Vec::new();
+    let refs = match repo.references() {
+        Ok(r) => r,
+        Err(_) => return None,
+    };
+    for r in refs.filter_map(|r| r.ok()) {
+        let Some(name) = r.name() else { continue };
+        let Some(rest) = name.strip_prefix(prefix_str) else {
+            continue;
+        };
+        let mut parts = rest.splitn(3, '/');
+        let Some(prefix) = parts.next() else { continue };
+        let Some(seq_str) = parts.next() else {
+            continue;
+        };
+        let Ok(seq) = seq_str.parse::<u64>() else {
+            continue;
+        };
+        let said = r.target().map(|oid| oid.to_string()).unwrap_or_default();
+        if said.is_empty() {
+            continue;
+        }
+        rows.push((prefix.to_string(), seq, said));
+    }
+
+    if rows.is_empty() {
+        return None;
+    }
+
+    // Build KelEventRefs on borrowed storage. `detect_duplicity`
+    // returns the first divergence it finds.
+    let events: Vec<KelEventRef<'_>> = rows
+        .iter()
+        .map(|(prefix, seq, said)| KelEventRef {
+            prefix: prefix.as_str(),
+            seq: *seq,
+            said: said.as_str(),
+        })
+        .collect();
+
+    match detect_duplicity(&events) {
+        DuplicityReport::Clean => None,
+        DuplicityReport::Diverging { seq, .. } => Some(format_duplicity_warning(seq)),
     }
 }
 

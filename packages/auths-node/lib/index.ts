@@ -116,7 +116,7 @@ export {
   Role,
   WellKnownCapability,
   type IdentityDID,
-  type DeviceDID,
+  type CanonicalDid,
   type BundleAttestation,
   type IdentityBundle,
 } from './types'

@@ -6,7 +6,7 @@ use auths_id::storage::layout::{
 };
 use auths_id::storage::registry::shard::unsanitize_did;
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use git2::{ErrorCode, Repository, Tree};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -108,7 +108,7 @@ impl GitAttestationStorage {
 impl AttestationSource for GitAttestationStorage {
     fn load_attestations_for_device(
         &self,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
     ) -> Result<Vec<Attestation>, StorageError> {
         let repo = self.open_repo()?;
         let sig_ref = attestation_ref_for_device(&self.config, device_did);
@@ -164,7 +164,7 @@ impl AttestationSource for GitAttestationStorage {
         Ok(all_attestations)
     }
 
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
+    fn discover_device_dids(&self) -> Result<Vec<CanonicalDid>, StorageError> {
         let repo = self.open_repo()?;
         let mut discovered_dids = HashSet::new();
         let patterns = default_attestation_prefixes(&self.config);
@@ -200,7 +200,7 @@ impl AttestationSource for GitAttestationStorage {
                                     full_ref_name
                                 );
                                 let did_str = unsanitize_did(sanitized_did);
-                                if let Ok(did) = DeviceDID::parse(&did_str) {
+                                if let Ok(did) = CanonicalDid::parse(&did_str) {
                                     discovered_dids.insert(did);
                                 } else {
                                     log::warn!("Skipping unparseable DID from ref: {}", did_str);

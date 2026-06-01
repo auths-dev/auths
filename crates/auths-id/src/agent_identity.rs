@@ -38,7 +38,7 @@ use auths_core::signing::{PassphraseProvider, StorageSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage, extract_public_key_bytes};
 use auths_verifier::core::{Attestation, SignerType};
 use auths_verifier::error::AttestationError;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use std::sync::Arc;
 
 use crate::attestation::core::resign_attestation;
@@ -238,7 +238,12 @@ fn ensure_git_repo(path: &Path) -> Result<(), AgentProvisioningError> {
         std::fs::create_dir_all(path)?;
     }
     if git2::Repository::open(path).is_err() {
-        git2::Repository::init(path)?;
+        let repo = git2::Repository::init(path)?;
+        // KELs are stored as Git objects; an automatic `git gc` that prunes an
+        // unreferenced object is silent identity loss. Disable GC + pruning.
+        let mut cfg = repo.config()?;
+        cfg.set_i32("gc.auto", 0)?;
+        cfg.set_str("gc.pruneExpire", "never")?;
     }
     Ok(())
 }
@@ -315,30 +320,31 @@ fn sign_agent_attestation(
 ) -> Result<Attestation, AgentProvisioningError> {
     let (device_pk, curve) = extract_public_key_bytes(&*keychain, key_alias, passphrase_provider)
         .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
-    let device_did = DeviceDID::from_public_key(&device_pk, curve);
+    let device_did = CanonicalDid::from_public_key_did_key(&device_pk, curve);
     let meta = build_attestation_meta(now, config);
     let signer = StorageSigner::new(keychain);
 
     let rid = format!("agent:{}", config.agent_name);
     let mut att = create_signed_attestation(
         now,
-        &rid,
-        controller_did,
-        &device_did,
-        &device_pk,
-        curve,
-        None,
-        &meta,
+        crate::attestation::create::AttestationInput {
+            rid: &rid,
+            identity_did: controller_did,
+            subject: &device_did,
+            device_public_key: &device_pk,
+            device_curve: curve,
+            payload: None,
+            meta: &meta,
+            identity_alias: Some(key_alias),
+            device_alias: Some(key_alias),
+            capabilities: vec![],
+            role: None,
+            delegated_by: config.delegated_by.clone(),
+            commit_sha: None,
+            signer_type: Some(SignerType::Agent),
+        },
         &signer,
         passphrase_provider,
-        Some(key_alias),
-        Some(key_alias),
-        vec![],
-        None,
-        config.delegated_by.clone(),
-        None, // commit_sha
-        Some(SignerType::Agent),
-        None, // supersedes_rid
     )?;
 
     resign_attestation(

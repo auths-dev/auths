@@ -15,7 +15,7 @@ use auths_storage::git::{
 };
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use napi_derive::napi;
 
 use crate::error::format_error;
@@ -196,7 +196,7 @@ pub fn create_agent_identity(
     })?;
 
     #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
-    let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
+    let device_did = CanonicalDid::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .map_err(|e| {
@@ -339,7 +339,7 @@ pub fn delegate_agent(
     })?;
 
     #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
-    let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
+    let device_did = CanonicalDid::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .map_err(|e| {
@@ -501,9 +501,11 @@ pub fn generate_inmemory_keypair(curve: Option<String>) -> napi::Result<NapiInMe
     let parsed = auths_crypto::parse_key_material(generated.pkcs8.as_ref())
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key parse failed: {e}")))?;
 
-    let did =
-        auths_verifier::types::DeviceDID::from_public_key(&generated.public_key, curve_choice)
-            .to_string();
+    let did = auths_verifier::types::CanonicalDid::from_public_key_did_key(
+        &generated.public_key,
+        curve_choice,
+    )
+    .to_string();
 
     Ok(NapiInMemoryKeypair {
         private_key_hex: hex::encode(parsed.seed.as_bytes()),

@@ -9,8 +9,7 @@ pub mod lan;
 
 // Re-exports of pairing types from auths-core for CLI consumption
 pub use auths_core::pairing::types::{
-    Base64UrlEncoded, CreateSessionRequest, SessionMode, SubmitConfirmationRequest,
-    SubmitResponseRequest,
+    Base64UrlEncoded, CreateSessionRequest, SubmitConfirmationRequest, SubmitResponseRequest,
 };
 pub use auths_core::pairing::{
     PairingResponse, PairingSession, PairingToken, QrOptions, normalize_short_code, render_qr,
@@ -23,7 +22,7 @@ use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::export::AttestationSink;
 use auths_id::storage::identity::IdentityStorage;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -142,7 +141,7 @@ pub struct PairingSessionRequest {
 /// let response = DecryptedPairingResponse {
 ///     auths_dir: auths_dir.to_path_buf(),
 ///     device_pubkey: pubkey_bytes,
-///     device_did: DeviceDID::new_unchecked("did:key:z6Mk..."),
+///     device_did: CanonicalDid::new_unchecked("did:key:z6Mk..."),
 ///     device_name: Some("iPhone 15".into()),
 ///     capabilities: vec!["sign_commit".into()],
 ///     identity_key_alias: "main".into(),
@@ -157,7 +156,7 @@ pub struct DecryptedPairingResponse {
     /// re-derives curve from byte length.
     pub curve: auths_crypto::CurveType,
     /// DID of the responding device.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// Optional human-readable device name.
     pub device_name: Option<String>,
     /// Capability strings to grant.
@@ -182,14 +181,14 @@ pub enum PairingCompletionResult {
     /// Pairing completed successfully with a signed attestation.
     Success {
         /// The DID of the paired device.
-        device_did: DeviceDID,
+        device_did: CanonicalDid,
         /// Optional human-readable name of the paired device.
         device_name: Option<String>,
     },
     /// Attestation creation failed; caller should fall back to raw device info storage.
     Fallback {
         /// The DID of the device that could not be fully attested.
-        device_did: DeviceDID,
+        device_did: CanonicalDid,
         /// Optional human-readable name of the device.
         device_name: Option<String>,
         /// The error message from the failed attestation attempt.
@@ -298,10 +297,10 @@ pub fn verify_device_did(
     curve: auths_crypto::CurveType,
     claimed_did: &str,
 ) -> Result<(), PairingError> {
-    use auths_verifier::types::DeviceDID;
+    use auths_verifier::types::CanonicalDid;
 
-    let derived = DeviceDID::from_public_key(device_pubkey, curve);
-    let claimed = DeviceDID::parse(claimed_did).map_err(|_| PairingError::DidMismatch {
+    let derived = CanonicalDid::from_public_key_did_key(device_pubkey, curve);
+    let claimed = CanonicalDid::parse(claimed_did).map_err(|_| PairingError::DidMismatch {
         response: claimed_did.to_string(),
         derived: derived.to_string(),
     })?;
@@ -341,7 +340,7 @@ pub fn create_pairing_attestation(
     use auths_id::identity::helpers::ManagedIdentity;
     use auths_id::storage::git_refs::AttestationMetadata;
     use auths_verifier::Capability;
-    use auths_verifier::types::DeviceDID;
+    use auths_verifier::types::CanonicalDid;
 
     let managed_identity: ManagedIdentity = params
         .identity_storage
@@ -378,29 +377,30 @@ pub fn create_pairing_attestation(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let target_did = DeviceDID::parse(params.device_did_str)
+    let target_did = CanonicalDid::parse(params.device_did_str)
         .map_err(|e| PairingError::AttestationFailed(format!("invalid device DID: {e}")))?;
     let secure_signer = StorageSigner::new(Arc::clone(&params.key_storage));
 
     let attestation = create_signed_attestation(
         now,
-        &rid,
-        &controller_did,
-        &target_did,
-        params.device_pubkey,
-        curve,
-        None,
-        &meta,
+        auths_id::attestation::create::AttestationInput {
+            rid: &rid,
+            identity_did: &controller_did,
+            subject: &target_did,
+            device_public_key: params.device_pubkey,
+            device_curve: curve,
+            payload: None,
+            meta: &meta,
+            identity_alias: Some(params.identity_key_alias),
+            device_alias: None,
+            capabilities: device_capabilities,
+            role: None,
+            delegated_by: None,
+            commit_sha: None,
+            signer_type: None,
+        },
         &secure_signer,
         params.passphrase_provider.as_ref(),
-        Some(params.identity_key_alias),
-        None,
-        device_capabilities,
-        None,
-        None,
-        None, // commit_sha
-        None,
-        None, // supersedes_rid
     )
     .map_err(|e| PairingError::AttestationFailed(e.to_string()))?;
 
@@ -452,7 +452,7 @@ pub fn build_pairing_session_request(
         short_code: session.token.short_code.clone(),
         capabilities: session.token.capabilities.clone(),
         expires_at: session.token.expires_at.timestamp(),
-        mode: auths_core::pairing::types::SessionMode::Pair,
+        recovery_target: None,
     };
 
     Ok(PairingSessionRequest {
@@ -611,7 +611,7 @@ pub fn load_device_signing_material(
         .map_err(|e| PairingError::KeyExchangeFailed(format!("failed to parse key: {e}")))?;
 
     let curve = parsed.seed.curve();
-    let device_did = DeviceDID::from_public_key(&parsed.public_key, curve);
+    let device_did = CanonicalDid::from_public_key_did_key(&parsed.public_key, curve);
 
     Ok(DeviceSigningMaterial {
         seed: parsed.seed,
@@ -654,7 +654,7 @@ pub struct DeviceSigningMaterial {
     /// Public key bytes (32 for Ed25519, 33 for P-256 compressed).
     pub public_key: Vec<u8>,
     /// DID of the local device.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// DID of the controller identity this device belongs to.
     pub controller_did: String,
 }
@@ -806,7 +806,7 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
         device_pubkey: device_signing_bytes,
         curve,
         #[allow(clippy::disallowed_methods)] // INVARIANT: response.device_did was verified by session.verify_response() which validated the signature against the device's signing key
-        device_did: DeviceDID::new_unchecked(response.device_did.to_string()),
+        device_did: CanonicalDid::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
         capabilities: session.token.capabilities.clone(),
         identity_key_alias,
@@ -897,7 +897,9 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         signature: Base64UrlEncoded::from_raw(pairing_response.signature),
         device_name: pairing_response.device_name,
         subkey_chain: None,
-        new_device_signing_pubkey: None,
+        initiator_inception_event: String::new(),
+        responder_inception_event: String::new(),
+        shared_kel_inception_event: None,
     };
 
     relay
@@ -906,7 +908,7 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
 
     Ok(PairingCompletionResult::Success {
-        device_did: DeviceDID::parse(&pairing_response.device_did).map_err(|e| {
+        device_did: CanonicalDid::parse(&pairing_response.device_did).map_err(|e| {
             PairingError::AttestationFailed(format!("invalid device DID in response: {e}"))
         })?,
         device_name: None,

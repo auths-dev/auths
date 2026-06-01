@@ -90,7 +90,6 @@ fn seed_org_identity(backend: &FakeRegistryBackend) {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
     let prefix = Prefix::new_unchecked(ORG.to_string());
     backend
@@ -131,7 +130,7 @@ fn make_ctx<'a>(
 // ── Regression: identity DID (did:keri:) as member DID ──────────────────────
 // These tests reproduce the bug where members added with did:keri: DIDs
 // silently vanish from list/find results because the storage layer previously
-// used DeviceDID::parse (which rejects did:keri:).
+// used CanonicalDid::parse (which rejects did:keri:).
 
 const KERI_MEMBER_DID: &str = "did:keri:EH-Bgtw9tm61YHxUWOw37UweX_7LNJC89t0Pl7ateDdM";
 

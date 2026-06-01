@@ -2,7 +2,7 @@ use auths_sdk::ports::AttestationSource;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::storage::{GitAttestationStorage, GitIdentityStorage};
 use auths_sdk::storage_layout::{StorageLayoutConfig, attestation_ref_for_device, identity_ref};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use tempfile::tempdir;
 
 /// Default uses the agnostic layout (`refs/auths/`).
@@ -12,7 +12,7 @@ fn test_default_layout() {
 
     assert_eq!(identity_ref(&config), "refs/auths/identity");
 
-    let device_did = DeviceDID::new_unchecked("did:key:z6MkTest123");
+    let device_did = CanonicalDid::new_unchecked("did:key:z6MkTest123");
     let attestation_ref = attestation_ref_for_device(&config, &device_did);
     assert!(
         attestation_ref.starts_with("refs/auths/keys/"),
@@ -30,7 +30,7 @@ fn test_radicle_preset() {
 
     assert_eq!(identity_ref(&config), "refs/rad/id");
 
-    let device_did = DeviceDID::new_unchecked("did:key:z6MkTest123");
+    let device_did = CanonicalDid::new_unchecked("did:key:z6MkTest123");
     let attestation_ref = attestation_ref_for_device(&config, &device_did);
     assert!(
         attestation_ref.starts_with("refs/keys/"),
@@ -48,7 +48,7 @@ fn test_gitoxide_preset_ref_paths() {
 
     assert_eq!(identity_ref(&config), "refs/auths/id");
 
-    let device_did = DeviceDID::new_unchecked("did:key:z6MkTest789");
+    let device_did = CanonicalDid::new_unchecked("did:key:z6MkTest789");
     let attestation_ref = attestation_ref_for_device(&config, &device_did);
     assert!(
         attestation_ref.starts_with("refs/auths/devices/"),

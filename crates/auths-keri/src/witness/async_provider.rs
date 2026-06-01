@@ -175,7 +175,7 @@ impl AsyncWitnessProvider for NoOpAsyncWitness {
     ) -> Result<Receipt, WitnessError> {
         Ok(Receipt {
             v: crate::VersionString::placeholder(),
-            t: super::receipt::RECEIPT_TYPE.into(),
+            t: super::receipt::ReceiptTag,
             d: Said::new_unchecked("ENoop".into()),
             i: Prefix::new_unchecked("did:key:noop".into()),
             s: crate::KeriSequence::new(0),

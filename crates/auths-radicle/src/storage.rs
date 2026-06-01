@@ -10,7 +10,7 @@ use auths_id::keri::state::KeyState;
 use auths_id::keri::validate::replay_kel;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use git2::{ErrorCode, Repository};
 use radicle_core::{Did, RepoId};
 
@@ -206,7 +206,7 @@ impl AuthsStorage for GitRadicleStorage {
         identity_did: &Did,
     ) -> Result<Attestation, BridgeError> {
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did is a validated radicle Did
-        let dev_did = DeviceDID::new_unchecked(device_did.to_string());
+        let dev_did = CanonicalDid::new_unchecked(device_did.to_string());
         let nid = device_did_to_nid(device_did)?;
         let did_key_ref = self.layout.device_did_key_ref(&nid);
         let did_keri_ref = self.layout.device_did_keri_ref(&nid);
@@ -384,7 +384,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         }
     }
 

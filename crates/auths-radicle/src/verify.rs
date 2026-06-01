@@ -472,7 +472,7 @@ mod tests {
     use auths_keri::{Prefix, Said};
     use auths_verifier::IdentityDID;
     use auths_verifier::types::CanonicalDid;
-    use auths_verifier::types::DeviceDID as VerifierDeviceDID;
+    use auths_verifier::types::CanonicalDid as VerifierDeviceDID;
     use chrono::{DateTime, Utc};
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -620,7 +620,6 @@ mod tests {
                 .filter_map(|c| c.parse().ok())
                 .collect(),
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
         }

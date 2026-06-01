@@ -74,19 +74,6 @@ pub(crate) fn print_completion(device_name: Option<&str>, device_did: &str) {
     println!();
 }
 
-/// Print a styled completion footer for a device-key rotation.
-pub(crate) fn print_rotation_completion(device_name: Option<&str>, device_did: &str) {
-    println!();
-    let label = device_name.unwrap_or("device");
-    println!(
-        "{}Rotated signing key for {} {}",
-        CHECK,
-        style(label).bold(),
-        style(format!("({device_did})")).dim()
-    );
-    println!();
-}
-
 /// Display SAS and prompt for explicit Y/N confirmation (no default).
 ///
 /// Returns `true` if the user confirms the SAS matches, `false` on rejection.
@@ -315,7 +302,7 @@ pub(crate) fn handle_pairing_response(
         device_pubkey: device_signing_bytes,
         curve,
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from pairing protocol response
-        device_did: auths_verifier::types::DeviceDID::new_unchecked(response.device_did.to_string()),
+        device_did: auths_verifier::types::CanonicalDid::new_unchecked(response.device_did.to_string()),
         device_name: response.device_name.clone(),
         capabilities: capabilities.to_vec(),
         identity_key_alias,

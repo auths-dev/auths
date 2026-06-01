@@ -560,12 +560,8 @@ fn validate_rotation(
     // Threshold satisfiability for the new establishment config. `br`/`ba` are
     // deltas, so the post-rotation backer count is the prior set minus removals
     // plus additions.
-    let post_backer_count = state
-        .backers
-        .iter()
-        .filter(|b| !rot.br.contains(b))
-        .count()
-        + rot.ba.len();
+    let post_backer_count =
+        state.backers.iter().filter(|b| !rot.br.contains(b)).count() + rot.ba.len();
     validate_thresholds(
         sequence,
         &rot.kt,
@@ -578,7 +574,11 @@ fn validate_rotation(
 
     // Verify all pre-rotation commitments against the typed prior `nt`.
     if !state.next_commitment.is_empty()
-        && !prior_commitments_satisfy_threshold(&state.next_commitment, &state.next_threshold, &rot.k)
+        && !prior_commitments_satisfy_threshold(
+            &state.next_commitment,
+            &state.next_threshold,
+            &rot.k,
+        )
     {
         return Err(ValidationError::CommitmentMismatch { sequence });
     }
@@ -749,7 +749,11 @@ fn validate_delegated_rotation(
 
     // Standard rotation commitment/backer checks applied to drt fields.
     if !state.next_commitment.is_empty()
-        && !prior_commitments_satisfy_threshold(&state.next_commitment, &state.next_threshold, &drt.k)
+        && !prior_commitments_satisfy_threshold(
+            &state.next_commitment,
+            &state.next_threshold,
+            &drt.k,
+        )
     {
         return Err(ValidationError::CommitmentMismatch { sequence });
     }
@@ -1799,7 +1803,6 @@ mod tests {
         let inherit = make_rot(vec![], vec![], vec![]);
         assert!(validate_rotation(&inherit, 1, &mut nrb_state()).is_ok());
     }
-
 }
 
 // =============================================================================

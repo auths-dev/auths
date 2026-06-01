@@ -31,7 +31,7 @@ use std::path::PathBuf;
 
 use auths_id::error::StorageError;
 use auths_verifier::core::{Attestation, VerifiedAttestation};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 #[cfg(feature = "indexed-storage")]
 use auths_verifier::types::IdentityDID;
 
@@ -134,7 +134,7 @@ impl AttestationSource for RegistryAttestationStorage {
     /// - If history is empty (legacy device), only current exists
     fn load_attestations_for_device(
         &self,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
     ) -> Result<Vec<Attestation>, StorageError> {
         let mut attestations = Vec::new();
 
@@ -189,7 +189,7 @@ impl AttestationSource for RegistryAttestationStorage {
     }
 
     /// Discovers device DIDs that have attestations stored in the registry.
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
+    fn discover_device_dids(&self) -> Result<Vec<CanonicalDid>, StorageError> {
         let mut devices = Vec::new();
 
         self.backend
@@ -234,7 +234,8 @@ impl AttestationSink for RegistryAttestationStorage {
                 }
             };
 
-            let device_did_sanitized = attestation.subject.to_string().replace([':', '/'], "_");
+            let device_did_sanitized =
+                auths_id::storage::registry::shard::sanitize_did(attestation.subject.as_ref());
             let git_ref = format!(
                 "{}/{}/signatures",
                 config.device_attestation_prefix, device_did_sanitized
@@ -344,7 +345,7 @@ mod tests {
     fn test_attestation_history() {
         let (_dir, storage) = setup_test_repo();
 
-        let device_did = DeviceDID::new_unchecked("did:key:zHistoryDevice");
+        let device_did = CanonicalDid::new_unchecked("did:key:zHistoryDevice");
 
         // Store first attestation
         let att1 = create_test_attestation("did:key:zHistoryDevice", None);

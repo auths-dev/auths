@@ -11,8 +11,6 @@ mod lan;
 mod lan_server;
 mod offline;
 mod online;
-#[cfg(feature = "lan-pairing")]
-mod rotate;
 
 use std::sync::Arc;
 
@@ -95,15 +93,12 @@ pub struct PairCommand {
     #[clap(long)]
     pub verify: bool,
 
-    /// Re-issue this controller's attestation for an already-paired
-    /// device under a new signing key. The phone side generates a new
-    /// Secure Enclave key, signs the rotation with its old key, and
-    /// this command creates a superseding attestation that points to
-    /// the new key.
-    ///
-    /// Requires an existing pair for the device being rotated.
-    #[clap(long)]
-    pub rotate: bool,
+    /// Stolen-laptop recovery: replace the identified old Mac (by
+    /// `did:keri:` prefix) with this newly-invoked Mac as a shared-KEL
+    /// controller. The surviving controller (phone) signs a single
+    /// rotation that drops the old DID and adds the new one.
+    #[clap(long, value_name = "OLD_DID")]
+    pub recover: Option<String>,
 }
 
 /// Dispatch table:
@@ -180,7 +175,7 @@ pub fn handle_pair(
                 cmd.no_qr,
                 cmd.no_mdns,
                 cmd.verify,
-                cmd.rotate,
+                cmd.recover.clone(),
                 cmd.timeout,
                 &cmd.capabilities,
                 passphrase_provider,

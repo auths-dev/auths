@@ -268,7 +268,7 @@ pub fn join_pairing_session_ffi(
                 "[AUTHS_PAIRING_ERROR] Failed to parse key material: {e}"
             ))
         })?;
-        let device_did = auths_verifier::types::DeviceDID::from_public_key(
+        let device_did = auths_verifier::types::CanonicalDid::from_public_key_did_key(
             &parsed.public_key,
             parsed.seed.curve(),
         );
@@ -356,7 +356,9 @@ pub fn join_pairing_session_ffi(
             ),
             device_name: pairing_response.device_name,
             subkey_chain: None,
-            new_device_signing_pubkey: None,
+            initiator_inception_event: String::new(),
+            responder_inception_event: String::new(),
+            shared_kel_inception_event: None,
         };
 
         let submit_url = format!("{}/v1/pairing/sessions/{}/response", endpoint, session_id);

@@ -1,12 +1,12 @@
 //! Symmetric encryption utilities.
 
-use rand::RngCore;
 use aes_gcm::{
     Aes256Gcm, Nonce as AesNonce,
     aead::{Aead, KeyInit},
 };
 use argon2::{Algorithm as Argon2Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{ChaCha20Poly1305, Nonce as ChaChaNonce};
+use rand::RngCore;
 use zeroize::Zeroizing;
 
 use crate::crypto::EncryptionAlgorithm;

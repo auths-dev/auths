@@ -125,6 +125,27 @@ pub enum DeviceSubcommand {
         capabilities: Option<Vec<String>>,
     },
 
+    /// Remove a device from the shared identity's controller set by
+    /// signing a rotation on the shared KEL.
+    ///
+    /// Semantically distinct from `revoke`: `remove` changes *who can
+    /// sign for the identity* by producing a new `rot` event; `revoke`
+    /// produces an attestation revocation that marks a specific
+    /// attestation inactive without touching the controller set.
+    ///
+    /// Self-removal is rejected at the CLI with a pointer to
+    /// `auths identity forget`. The authoritative guard lives in the
+    /// SDK — even callers that bypass the CLI check hit
+    /// `SharedKelError::WouldOrphanIdentity`.
+    Remove {
+        /// The controller DID (`did:keri:E…`) to drop.
+        #[arg(long, visible_alias = "device", help = "The controller DID to remove.")]
+        device_did: String,
+
+        #[arg(long, help = "Your identity's signing key name.")]
+        key: String,
+    },
+
     /// Revoke an existing device authorization using the identity key.
     Revoke {
         #[arg(long, visible_alias = "device", help = "The device's ID to revoke.")]
@@ -264,6 +285,40 @@ pub fn handle_device(
             .map_err(anyhow::Error::new)?;
 
             display_link_result(&result, &device_did)
+        }
+
+        DeviceSubcommand::Remove { device_did, key } => {
+            // Stage-1 honest-limitation path: true shared-KEL removal
+            // emits a rotation whose `k` list shrinks, and that requires
+            // CESR indexed-signature support in the validator (not yet
+            // implemented). Until that lands, the CLI surfaces the
+            // structured SDK error so users understand why this path
+            // isn't wired end-to-end.
+            //
+            // Self-removal pre-flight (UX only — SDK error remains the
+            // authoritative guard):
+            // load the caller's identity and reject if `device_did`
+            // matches. The caller can then reach for `auths identity
+            // forget` to wipe their own state.
+            let ctx = build_auths_context(
+                &repo_path,
+                env_config,
+                Some(Arc::clone(&passphrase_provider)),
+            )?;
+            let _ = key; // keychain gate runs inside the SDK once wired
+            let identity = ctx.identity_storage.load_identity().map_err(|e| {
+                anyhow::anyhow!("failed to load identity for self-removal check: {e}")
+            })?;
+            if device_did == identity.controller_did.as_str() {
+                return Err(anyhow::anyhow!(
+                    "Cannot remove this device from its own identity. \
+                     Use `auths identity forget` to delete this device's copy of the identity."
+                ));
+            }
+            Err(anyhow::anyhow!(
+                "{}",
+                auths_sdk::keri::SharedKelError::RemovalNotYetSupported
+            ))
         }
 
         DeviceSubcommand::Revoke {
@@ -425,7 +480,7 @@ fn handle_extend(
     let config = auths_sdk::types::DeviceExtensionConfig {
         repo_path: repo_path.to_path_buf(),
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from CLI arg validated upstream
-        device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did),
+        device_did: auths_verifier::types::CanonicalDid::new_unchecked(device_did),
         expires_in,
         identity_key_alias: KeyAlias::new_unchecked(key),
         device_key_alias: Some(KeyAlias::new_unchecked(device_key)),
@@ -450,7 +505,7 @@ fn handle_extend(
 fn resolve_device(repo_path: &Path, device_did_str: &str) -> Result<()> {
     let attestation_storage = RegistryAttestationStorage::new(repo_path.to_path_buf());
     #[allow(clippy::disallowed_methods)] // INVARIANT: device_did_str from attestation storage
-    let device_did = auths_verifier::types::DeviceDID::new_unchecked(device_did_str);
+    let device_did = auths_verifier::types::CanonicalDid::new_unchecked(device_did_str);
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .with_context(|| format!("Failed to load attestations for device {device_did_str}"))?;

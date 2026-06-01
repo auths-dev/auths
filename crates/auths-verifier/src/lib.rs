@@ -54,6 +54,7 @@ pub mod clock;
 pub mod commit;
 pub mod commit_error;
 pub mod core;
+pub mod duplicity;
 pub mod error;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
@@ -69,9 +70,9 @@ pub mod witness;
 
 // Re-export verification types for convenience
 pub use types::{
-    AssuranceLevel, AssuranceLevelParseError, CanonicalDid, ChainLink, DeviceDID,
-    DidConversionError, DidParseError, IdentityDID, VerificationReport, VerificationStatus,
-    signer_hex_to_did, validate_did,
+    AssuranceLevel, AssuranceLevelParseError, CanonicalDid, ChainLink, DidConversionError,
+    DidParseError, IdentityDID, VerificationReport, VerificationStatus, signer_hex_to_did,
+    validate_did,
 };
 
 // Re-export action envelope
@@ -212,6 +213,7 @@ mod tests {
             warnings: vec!["Key expires soon".to_string()],
             witness_quorum: None,
             anchored: None,
+            duplicity_warning: None,
         };
 
         let json = serde_json::to_string(&report).expect("serialization failed");

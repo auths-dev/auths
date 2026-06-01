@@ -1,7 +1,7 @@
 use auths_core::storage::keychain::KeyAlias;
 use auths_verifier::Capability;
 use auths_verifier::core::ResourceId;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -30,7 +30,7 @@ pub struct DeviceExtensionConfig {
     /// Path to the auths registry.
     pub repo_path: PathBuf,
     /// DID of the device whose authorization to extend.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// Duration in seconds until expiration (per RFC 6749).
     pub expires_in: u64,
     /// Keychain alias for the identity signing key.
@@ -86,7 +86,7 @@ pub struct DeviceLinkConfig {
 #[derive(Debug, Clone)]
 pub struct DeviceLinkResult {
     /// The DID of the linked device.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// The resource identifier of the created attestation.
     pub attestation_id: ResourceId,
 }
@@ -101,7 +101,7 @@ pub struct DeviceLinkResult {
 #[derive(Debug, Clone)]
 pub struct DeviceExtensionResult {
     /// The DID of the device whose authorization was extended.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// The new expiration timestamp for the device authorization.
     pub new_expires_at: chrono::DateTime<chrono::Utc>,
     /// The previous expiration timestamp (None if the device had no expiry set).
@@ -132,7 +132,7 @@ pub enum DeviceReadiness {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceStatus {
     /// The device DID.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// Current device readiness status.
     pub readiness: DeviceReadiness,
     /// Expiration timestamp, if set.

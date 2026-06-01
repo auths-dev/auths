@@ -3,7 +3,7 @@ use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::core::{Attestation, Ed25519Signature, ResourceId};
 use auths_verifier::error::AttestationError;
-use auths_verifier::types::{CanonicalDid, DeviceDID};
+use auths_verifier::types::CanonicalDid;
 
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
@@ -12,39 +12,61 @@ use serde_json::Value;
 /// Revocation version - stays at v1 since revocations don't need org fields
 pub const REVOCATION_VERSION: u32 = 1;
 
+/// Inputs for `create_signed_revocation`.
+pub struct RevocationInput<'a> {
+    /// Resource identifier of the attestation being revoked.
+    pub rid: &'a str,
+    /// Issuing identity DID (`did:keri:…`).
+    pub identity_did: &'a IdentityDID,
+    /// Subject DID being revoked. Wire-format compatible: accepts
+    /// either `did:key:` or `did:keri:` forms.
+    pub subject: &'a CanonicalDid,
+    /// Raw device public key bytes (32 Ed25519, 33 P-256 compressed).
+    pub device_public_key: &'a [u8],
+    /// Signing curve of `device_public_key`.
+    pub device_curve: auths_crypto::CurveType,
+    /// Optional note explaining the revocation reason.
+    pub note: Option<String>,
+    /// Optional JSON payload (usually `None`).
+    pub payload: Option<Value>,
+    /// Timestamp of the revocation.
+    pub timestamp: DateTime<Utc>,
+    /// Identity-key alias in the keychain.
+    pub identity_alias: &'a KeyAlias,
+}
+
 /// Creates a signed revocation attestation using the provided SecureSigner.
 ///
-/// This function constructs the canonical revocation data, signs it using the
-/// identity key via the signer, and returns the complete revocation attestation.
+/// Constructs the canonical revocation data, signs it using the identity
+/// key via the signer, and returns the complete revocation attestation.
 ///
-/// # Arguments
-/// * `rid` - Resource identifier for the attestation being revoked
-/// * `identity_did` - The identity DID (e.g., "did:keri:...") issuing the revocation
-/// * `device_did` - The device DID being revoked
-/// * `device_public_key` - Raw device public key bytes (32 Ed25519, 33 P-256 compressed)
-/// * `device_curve` - Signing curve of `device_public_key`. Carried in-band so the
-///   revocation interior never infers curve from byte length.
-/// * `note` - Optional note explaining the revocation reason
-/// * `payload_arg` - Optional JSON payload (usually None for revocations)
-/// * `timestamp_arg` - Timestamp of the revocation
-/// * `signer` - SecureSigner implementation for signing operations
-/// * `passphrase_provider` - Provider for obtaining passphrases during signing
-/// * `identity_alias` - Alias of the identity key in the keychain
-#[allow(clippy::too_many_arguments)]
+/// Args:
+/// * `input`: Revocation payload + metadata (see [`RevocationInput`]).
+/// * `signer`: SecureSigner implementation.
+/// * `passphrase_provider`: Provider for obtaining passphrases during signing.
+///
+/// Usage:
+/// ```ignore
+/// let revocation = create_signed_revocation(input, signer, passphrase)?;
+/// ```
 pub fn create_signed_revocation(
-    rid: &str,
-    identity_did: &IdentityDID,
-    device_did: &DeviceDID,
-    device_public_key: &[u8],
-    device_curve: auths_crypto::CurveType,
-    note: Option<String>,
-    payload_arg: Option<Value>,
-    timestamp_arg: DateTime<Utc>,
+    input: RevocationInput<'_>,
     signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
-    identity_alias: &KeyAlias,
 ) -> Result<Attestation, AttestationError> {
-    warn!("Creating revocation for device {}", device_did);
+    let RevocationInput {
+        rid,
+        identity_did,
+        subject,
+        device_public_key,
+        device_curve,
+        note,
+        payload: payload_arg,
+        timestamp: timestamp_arg,
+        identity_alias,
+    } = input;
+
+    warn!("Creating revocation for subject {}", subject);
 
     // 1. Construct the revocation-specific canonical data
     let revoked_at_value = Some(timestamp_arg);
@@ -55,7 +77,7 @@ pub fn create_signed_revocation(
         version: REVOCATION_VERSION,
         rid,
         issuer: &issuer_canonical,
-        subject: device_did,
+        subject,
         timestamp: &Some(timestamp_arg),
         revoked_at: &revoked_at_value,
         note: &note,
@@ -92,8 +114,8 @@ pub fn create_signed_revocation(
     Ok(Attestation {
         version: REVOCATION_VERSION,
         #[allow(clippy::disallowed_methods)]
-        // INVARIANT: device_did is a validated DeviceDID from the caller
-        subject: CanonicalDid::new_unchecked(device_did.as_str()),
+        // INVARIANT: subject is a validated CanonicalDid from the caller
+        subject: CanonicalDid::new_unchecked(subject.as_str()),
         issuer: revocation_issuer,
         rid: ResourceId::new(rid),
         payload: payload_arg.clone(),
@@ -108,7 +130,6 @@ pub fn create_signed_revocation(
         role: None,
         capabilities: vec![],
         delegated_by: None,
-        supersedes_attestation_rid: None,
         signer_type: None,
         environment_claim: None,
         commit_sha: None,
@@ -224,7 +245,7 @@ pub fn canonicalize_presigned_revocation(
 #[allow(clippy::too_many_arguments)]
 pub fn create_presigned_revocation(
     identity_did: &IdentityDID,
-    device_did: &DeviceDID,
+    device_did: &CanonicalDid,
     anchor_sn: u128,
     not_before: DateTime<Utc>,
     not_after: DateTime<Utc>,

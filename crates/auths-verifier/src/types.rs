@@ -23,6 +23,17 @@ pub struct VerificationReport {
     /// Whether the attestation is anchored in the issuer's KEL via an ixn seal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchored: Option<auths_keri::AnchorStatus>,
+    /// Structured duplicity warning from the shared-KEL detector.
+    ///
+    /// Fail-open: `Valid` with a `Some(Diverging { … })` warning still
+    /// means the attestation signature verified. The warning surfaces
+    /// so CLI / iOS / CI can render a banner and point the user at
+    /// `auths device remove` to resolve.
+    ///
+    /// `None` indicates no divergence was observed (or no shared-KEL
+    /// replay was performed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duplicity_warning: Option<crate::duplicity::DuplicityReport>,
 }
 
 impl VerificationReport {
@@ -39,6 +50,7 @@ impl VerificationReport {
             warnings: Vec::new(),
             witness_quorum: None,
             anchored: None,
+            duplicity_warning: None,
         }
     }
 
@@ -50,7 +62,16 @@ impl VerificationReport {
             warnings: Vec::new(),
             witness_quorum: None,
             anchored: None,
+            duplicity_warning: None,
         }
+    }
+
+    /// Attach a duplicity warning to this report. Does not change `status` —
+    /// fail-open policy: a diverging shared KEL is an orthogonal signal to
+    /// per-attestation signature validity.
+    pub fn with_duplicity_warning(mut self, warning: crate::duplicity::DuplicityReport) -> Self {
+        self.duplicity_warning = Some(warning);
+        self
     }
 }
 
@@ -308,159 +329,11 @@ impl PartialEq<IdentityDID> for &str {
     }
 }
 
-// ============================================================================
-// DeviceDID Type
-// ============================================================================
-
-/// Wrapper around a device DID string that ensures Git-safe ref formatting.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct DeviceDID(String);
-
-impl DeviceDID {
-    /// Wraps a DID string without validation (for trusted internal paths).
-    pub fn new_unchecked<S: Into<String>>(s: S) -> Self {
-        DeviceDID(s.into())
-    }
-
-    /// Validates and parses a `did:key:z` string into a `DeviceDID`.
-    ///
-    /// Args:
-    /// * `s`: A DID string that must start with `did:key:z` followed by non-empty base58 content.
-    ///
-    /// Usage:
-    /// ```rust
-    /// # use auths_verifier::DeviceDID;
-    /// let did = DeviceDID::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
-    /// assert_eq!(did.as_str(), "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK");
-    /// ```
-    pub fn parse(s: &str) -> Result<Self, DidParseError> {
-        match s.strip_prefix("did:key:z") {
-            Some("") => Err(DidParseError::EmptyIdentifier),
-            Some(_) => Ok(Self(s.to_string())),
-            None => Err(DidParseError::InvalidDevicePrefix(s.to_string())),
-        }
-    }
-
-    /// Constructs a `did:key:z...` identifier from a public key and its curve type.
-    ///
-    /// Args:
-    /// * `pubkey`: Raw public key bytes (32 for Ed25519, 33 for P-256 compressed).
-    /// * `curve`: The curve type of the key.
-    pub fn from_public_key(pubkey: &[u8], curve: auths_crypto::CurveType) -> Self {
-        match curve {
-            auths_crypto::CurveType::Ed25519 => {
-                let mut prefixed = vec![0xED, 0x01];
-                prefixed.extend_from_slice(pubkey);
-                let encoded = bs58::encode(prefixed).into_string();
-                Self(format!("did:key:z{}", encoded))
-            }
-            auths_crypto::CurveType::P256 => {
-                let mut prefixed = vec![0x80, 0x24];
-                prefixed.extend_from_slice(pubkey);
-                let encoded = bs58::encode(prefixed).into_string();
-                Self(format!("did:key:z{}", encoded))
-            }
-        }
-    }
-
-    /// Constructs a `did:key:z...` identifier from a [`auths_crypto::TypedSignerKey`].
-    ///
-    /// Single curve-dispatching constructor that replaces the manual
-    /// `match curve { Ed25519 => from_ed25519, P256 => p256_pubkey_to_did_key }`
-    /// pattern at SDK / FFI call sites. Picks the right multicodec varint per
-    /// the signer's typed curve, so callers never re-derive curve from byte
-    /// length.
-    ///
-    /// Usage:
-    /// ```ignore
-    /// let did = DeviceDID::from_typed_pubkey(&typed_signer);
-    /// ```
-    pub fn from_typed_pubkey(signer: &auths_crypto::TypedSignerKey) -> Self {
-        Self::from_public_key(signer.public_key(), signer.curve())
-    }
-
-    /// Returns a sanitized version of the DID for use in Git refs,
-    /// replacing all non-alphanumeric characters with `_`.
-    pub fn ref_name(&self) -> String {
-        self.0
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-            .collect()
-    }
-
-    /// Compares a sanitized DID ref name to this real DeviceDID.
-    /// Used to match Git refs to known device DIDs.
-    pub fn matches_sanitized_ref(&self, ref_name: &str) -> bool {
-        self.ref_name() == ref_name
-    }
-
-    /// Tries to reverse-lookup a real DID from a sanitized string,
-    /// given a list of known real DIDs.
-    pub fn from_sanitized<'a>(
-        sanitized: &str,
-        known_dids: &'a [DeviceDID],
-    ) -> Option<&'a DeviceDID> {
-        known_dids.iter().find(|did| did.ref_name() == sanitized)
-    }
-
-    /// Optionally expose the inner raw DID
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for DeviceDID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl FromStr for DeviceDID {
+impl FromStr for CanonicalDid {
     type Err = DidParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
-    }
-}
-
-impl TryFrom<&str> for DeviceDID {
-    type Error = DidParseError;
-
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
-        Self::parse(s)
-    }
-}
-
-impl TryFrom<String> for DeviceDID {
-    type Error = DidParseError;
-
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        Self::parse(&s)
-    }
-}
-
-impl From<DeviceDID> for String {
-    fn from(did: DeviceDID) -> String {
-        did.0
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for DeviceDID {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Self::parse(&s).map_err(serde::de::Error::custom)
-    }
-}
-
-impl Deref for DeviceDID {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -477,7 +350,7 @@ impl Deref for DeviceDID {
 /// let did = signer_hex_to_did("d75a980182b10ab7d54bfed3c964073a0ee172f3daa3f4a18446b7ddc8").unwrap_err();
 /// // (example key is wrong length — a real 32-byte hex key would succeed)
 /// ```
-pub fn signer_hex_to_did(hex_key: &str) -> Result<DeviceDID, DidConversionError> {
+pub fn signer_hex_to_did(hex_key: &str) -> Result<CanonicalDid, DidConversionError> {
     signer_hex_to_did_with_curve(hex_key, auths_crypto::CurveType::P256)
 }
 
@@ -491,13 +364,13 @@ pub fn signer_hex_to_did(hex_key: &str) -> Result<DeviceDID, DidConversionError>
 pub fn signer_hex_to_did_with_curve(
     hex_key: &str,
     curve: auths_crypto::CurveType,
-) -> Result<DeviceDID, DidConversionError> {
+) -> Result<CanonicalDid, DidConversionError> {
     let bytes = hex::decode(hex_key).map_err(|e| DidConversionError::InvalidHex(e.to_string()))?;
     let expected = curve.public_key_len();
     if bytes.len() != expected {
         return Err(DidConversionError::WrongKeyLength(bytes.len()));
     }
-    Ok(DeviceDID::from_public_key(&bytes, curve))
+    Ok(CanonicalDid::from_public_key_did_key(&bytes, curve))
 }
 
 /// Validate a DID string (accepts both `did:keri:` and `did:key:` formats).
@@ -528,8 +401,8 @@ pub enum DidConversionError {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum DidParseError {
-    /// DeviceDID must start with `did:key:z`.
-    #[error("DeviceDID must start with 'did:key:z', got: {0}")]
+    /// A `did:key:z…`-shaped DID was required but the prefix didn't match.
+    #[error("did:key: DID must start with 'did:key:z', got: {0}")]
     InvalidDevicePrefix(String),
     /// IdentityDID must start with `did:keri:`.
     #[error("IdentityDID must start with 'did:keri:', got: {0}")]
@@ -598,6 +471,51 @@ impl CanonicalDid {
     /// Returns the method-specific identifier (the part after `did:method:`).
     pub fn method_specific_id(&self) -> &str {
         self.0.splitn(3, ':').nth(2).unwrap_or("")
+    }
+
+    /// Returns a sanitized version of the DID for use in Git refs,
+    /// replacing all non-alphanumeric characters with `_`.
+    pub fn ref_name(&self) -> String {
+        self.0
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect()
+    }
+
+    /// Compares a sanitized DID ref name to this canonical DID.
+    pub fn matches_sanitized_ref(&self, ref_name: &str) -> bool {
+        self.ref_name() == ref_name
+    }
+
+    /// Tries to reverse-lookup a real DID from a sanitized string,
+    /// given a list of known real DIDs.
+    pub fn from_sanitized<'a>(sanitized: &str, known_dids: &'a [Self]) -> Option<&'a Self> {
+        known_dids.iter().find(|did| did.ref_name() == sanitized)
+    }
+
+    /// Construct a `did:key:z…` DID from a raw public key + curve tag.
+    ///
+    /// Constructs a `did:key:z…` DID from a raw public key + curve
+    /// using multicodec varint prefixes.
+    ///
+    /// Args:
+    /// * `pubkey`: 32 bytes (Ed25519) or 33 bytes (P-256 compressed SEC1).
+    /// * `curve`: The curve type carried in-band per the wire-format rules.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let did = CanonicalDid::from_public_key_did_key(&bytes, CurveType::P256);
+    /// ```
+    pub fn from_public_key_did_key(pubkey: &[u8], curve: auths_crypto::CurveType) -> Self {
+        let varint: &[u8] = match curve {
+            auths_crypto::CurveType::Ed25519 => &[0xED, 0x01],
+            auths_crypto::CurveType::P256 => &[0x80, 0x24],
+        };
+        let mut prefixed = Vec::with_capacity(varint.len() + pubkey.len());
+        prefixed.extend_from_slice(varint);
+        prefixed.extend_from_slice(pubkey);
+        let encoded = bs58::encode(prefixed).into_string();
+        Self(format!("did:key:z{}", encoded))
     }
 
     /// Validates that this DID uses the `keri` method with a valid KERI prefix.
@@ -700,12 +618,6 @@ impl PartialEq<&str> for CanonicalDid {
 impl From<IdentityDID> for CanonicalDid {
     fn from(did: IdentityDID) -> Self {
         Self(did.into_inner())
-    }
-}
-
-impl From<DeviceDID> for CanonicalDid {
-    fn from(did: DeviceDID) -> Self {
-        Self(did.0)
     }
 }
 
@@ -847,6 +759,7 @@ mod tests {
                 ],
             }),
             anchored: None,
+            duplicity_warning: None,
         };
 
         let json = serde_json::to_string(&report).unwrap();

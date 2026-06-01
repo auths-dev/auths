@@ -1,13 +1,14 @@
-use auths_verifier::{DeviceDID, DidParseError, IdentityDID};
+use auths_verifier::{CanonicalDid, DidParseError, IdentityDID};
 use std::convert::TryFrom;
 
 // ============================================================================
-// DeviceDID::parse()
+// CanonicalDid::parse()
 // ============================================================================
 
 #[test]
 fn device_did_parse_valid_did_key_z() {
-    let did = DeviceDID::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
+    let did =
+        CanonicalDid::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
     assert_eq!(
         did.as_str(),
         "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"
@@ -16,44 +17,31 @@ fn device_did_parse_valid_did_key_z() {
 
 #[test]
 fn device_did_parse_minimal_valid() {
-    let did = DeviceDID::parse("did:key:zA").unwrap();
+    let did = CanonicalDid::parse("did:key:zA").unwrap();
     assert_eq!(did.as_str(), "did:key:zA");
 }
 
+// CanonicalDid::parse accepts any well-formed DID — the strict
+// `did:key:z…` shape enforcement previously lived on DeviceDID (now
+// deleted). Runtime callers enforce shape at their presentation
+// boundary via `IdentityDID::parse` when they need `did:keri:`-only.
+
 #[test]
-fn device_did_parse_rejects_wrong_multibase_prefix() {
-    let err = DeviceDID::parse("did:key:fOtherBase").unwrap_err();
-    assert!(matches!(err, DidParseError::InvalidDevicePrefix(_)));
+fn canonical_did_parse_accepts_did_keri() {
+    let did = CanonicalDid::parse("did:keri:EPrefix").unwrap();
+    assert_eq!(did.as_str(), "did:keri:EPrefix");
 }
 
 #[test]
-fn device_did_parse_rejects_empty_after_z() {
-    let err = DeviceDID::parse("did:key:z").unwrap_err();
+fn canonical_did_parse_rejects_garbage() {
+    let err = CanonicalDid::parse("garbage").unwrap_err();
+    assert!(matches!(err, DidParseError::InvalidFormat(_)));
+}
+
+#[test]
+fn canonical_did_parse_rejects_empty_string() {
+    let err = CanonicalDid::parse("").unwrap_err();
     assert!(matches!(err, DidParseError::EmptyIdentifier));
-}
-
-#[test]
-fn device_did_parse_rejects_empty_did_key() {
-    let err = DeviceDID::parse("did:key:").unwrap_err();
-    assert!(matches!(err, DidParseError::InvalidDevicePrefix(_)));
-}
-
-#[test]
-fn device_did_parse_rejects_wrong_scheme() {
-    let err = DeviceDID::parse("did:keri:EPrefix").unwrap_err();
-    assert!(matches!(err, DidParseError::InvalidDevicePrefix(_)));
-}
-
-#[test]
-fn device_did_parse_rejects_garbage() {
-    let err = DeviceDID::parse("garbage").unwrap_err();
-    assert!(matches!(err, DidParseError::InvalidDevicePrefix(_)));
-}
-
-#[test]
-fn device_did_parse_rejects_empty_string() {
-    let err = DeviceDID::parse("").unwrap_err();
-    assert!(matches!(err, DidParseError::InvalidDevicePrefix(_)));
 }
 
 // ============================================================================
@@ -124,14 +112,14 @@ fn identity_did_from_prefix_roundtrips_through_prefix() {
 
 #[test]
 fn device_did_fromstr_works() {
-    let did: DeviceDID = "did:key:z6MkTest".parse().unwrap();
+    let did: CanonicalDid = "did:key:z6MkTest".parse().unwrap();
     assert_eq!(did.as_str(), "did:key:z6MkTest");
 }
 
 #[test]
-fn device_did_fromstr_rejects_invalid() {
-    let err = "garbage".parse::<DeviceDID>().unwrap_err();
-    assert!(matches!(err, DidParseError::InvalidDevicePrefix(_)));
+fn canonical_did_fromstr_rejects_garbage() {
+    let err = "garbage".parse::<CanonicalDid>().unwrap_err();
+    assert!(matches!(err, DidParseError::InvalidFormat(_)));
 }
 
 #[test]
@@ -153,9 +141,9 @@ fn identity_did_fromstr_rejects_invalid() {
 #[test]
 fn device_did_display_roundtrips_through_fromstr() {
     let original =
-        DeviceDID::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
+        CanonicalDid::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
     let displayed = original.to_string();
-    let parsed: DeviceDID = displayed.parse().unwrap();
+    let parsed: CanonicalDid = displayed.parse().unwrap();
     assert_eq!(original, parsed);
 }
 
@@ -192,23 +180,23 @@ fn did_parse_error_display_is_useful() {
 #[test]
 fn device_did_try_from_string_matches_parse() {
     let s = "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK".to_string();
-    let from_parse = DeviceDID::parse(&s).unwrap();
-    let from_try: DeviceDID = DeviceDID::try_from(s).unwrap();
+    let from_parse = CanonicalDid::parse(&s).unwrap();
+    let from_try: CanonicalDid = CanonicalDid::try_from(s).unwrap();
     assert_eq!(from_parse, from_try);
 }
 
 #[test]
 fn device_did_try_from_str_matches_parse() {
     let s = "did:key:z6MkTest";
-    let from_parse = DeviceDID::parse(s).unwrap();
-    let from_try: DeviceDID = DeviceDID::try_from(s).unwrap();
+    let from_parse = CanonicalDid::parse(s).unwrap();
+    let from_try: CanonicalDid = CanonicalDid::try_from(s).unwrap();
     assert_eq!(from_parse, from_try);
 }
 
 #[test]
 fn device_did_try_from_invalid_returns_error() {
-    assert!(DeviceDID::try_from("garbage".to_string()).is_err());
-    assert!(DeviceDID::try_from("garbage").is_err());
+    assert!(CanonicalDid::try_from("garbage".to_string()).is_err());
+    assert!(CanonicalDid::try_from("garbage").is_err());
 }
 
 #[test]
@@ -239,13 +227,14 @@ fn identity_did_try_from_invalid_returns_error() {
 
 #[test]
 fn device_did_serde_roundtrip() {
-    let did = DeviceDID::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
+    let did =
+        CanonicalDid::parse("did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").unwrap();
     let json = serde_json::to_string(&did).unwrap();
     assert_eq!(
         json,
         "\"did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK\""
     );
-    let parsed: DeviceDID = serde_json::from_str(&json).unwrap();
+    let parsed: CanonicalDid = serde_json::from_str(&json).unwrap();
     assert_eq!(did, parsed);
 }
 
@@ -260,14 +249,17 @@ fn identity_did_serde_roundtrip() {
 
 #[test]
 fn device_did_serde_rejects_invalid() {
-    let result: Result<DeviceDID, _> = serde_json::from_str("\"garbage\"");
+    let result: Result<CanonicalDid, _> = serde_json::from_str("\"garbage\"");
     assert!(result.is_err());
 }
 
 #[test]
-fn device_did_serde_rejects_wrong_prefix() {
-    let result: Result<DeviceDID, _> = serde_json::from_str("\"did:keri:EPrefix\"");
-    assert!(result.is_err());
+fn canonical_did_serde_accepts_did_keri() {
+    // CanonicalDid intentionally accepts both `did:key:` and
+    // `did:keri:` shapes — the strict device-only parse that lived
+    // on DeviceDID went away with the type.
+    let result: Result<CanonicalDid, _> = serde_json::from_str("\"did:keri:EPrefix\"");
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -289,7 +281,7 @@ fn identity_did_serde_rejects_did_key() {
 #[test]
 fn device_did_as_str_matches_original() {
     let s = "did:key:z6MkTest";
-    let did = DeviceDID::parse(s).unwrap();
+    let did = CanonicalDid::parse(s).unwrap();
     assert_eq!(did.as_str(), s);
 }
 

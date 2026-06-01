@@ -8,7 +8,7 @@ use auths_radicle::verify::AuthsStorage;
 use auths_verifier::AttestationBuilder;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::{Attestation, Capability};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 
@@ -79,7 +79,7 @@ impl AuthsStorage for MockStorage {
             .get(&(device_did.clone(), identity_did.clone()))
             .cloned()
             .ok_or_else(|| BridgeError::AttestationLoad {
-                device_did: DeviceDID::new_unchecked(device_did.to_string()),
+                device_did: CanonicalDid::new_unchecked(device_did.to_string()),
                 reason: "Not found".into(),
             })
     }

@@ -12,6 +12,8 @@ pub use auths_keri::{
 };
 
 use auths_core::witness::Receipt;
+#[cfg(test)]
+use auths_core::witness::ReceiptTag;
 use std::collections::HashSet;
 
 use super::types::Said;
@@ -86,7 +88,7 @@ mod tests {
     fn make_receipt(witness_id: &str) -> Receipt {
         Receipt {
             v: VersionString::placeholder(),
-            t: "rct".into(),
+            t: ReceiptTag,
             d: Said::new_unchecked("EReceipt".into()),
             i: Prefix::new_unchecked(witness_id.into()),
             s: KeriSequence::new(0),
@@ -150,7 +152,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![Seal::digest("EAttest")],
-            dt: None,
         };
         let json = serde_json::to_string(&icp).unwrap();
         assert!(json.contains("\"s\":\"0\""));

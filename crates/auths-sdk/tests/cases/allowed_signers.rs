@@ -1,7 +1,7 @@
 use auths_sdk::testing::fakes::FakeAllowedSignersStore;
 use auths_sdk::workflows::allowed_signers::*;
 use auths_verifier::core::Ed25519PublicKey;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 
 #[test]
 fn email_validation_accepts_valid() {
@@ -36,7 +36,7 @@ fn signer_principal_display_email() {
 
 #[test]
 fn signer_principal_display_did() {
-    let did = DeviceDID::new_unchecked("did:key:z6MkTest123");
+    let did = CanonicalDid::new_unchecked("did:key:z6MkTest123");
     let p = SignerPrincipal::DeviceDid(did);
     assert_eq!(p.to_string(), "z6MkTest123@auths.local");
 }

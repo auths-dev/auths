@@ -1,6 +1,6 @@
 use auths_core::crypto::said::compute_next_commitment;
 use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
-use auths_verifier::types::{CanonicalDid, DeviceDID};
+use auths_verifier::types::CanonicalDid;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::rand::SystemRandom;
@@ -52,7 +52,6 @@ pub fn test_inception_event(key_seed: &str) -> Event {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).expect("fixture event must finalize");
@@ -68,18 +67,18 @@ pub fn test_inception_event(key_seed: &str) -> Event {
 ///
 /// Usage:
 /// ```ignore
-/// let did = DeviceDID::new_unchecked("did:key:zTest");
+/// let did = CanonicalDid::new_unchecked("did:key:zTest");
 /// let att = test_attestation(&did, "did:keri:ETestOrg");
 /// backend.store_attestation(&att).unwrap();
 /// ```
-pub fn test_attestation(device_did: &DeviceDID, issuer: &str) -> Attestation {
+pub fn test_attestation(device_did: &CanonicalDid, issuer: &str) -> Attestation {
     #[allow(clippy::disallowed_methods)] // INVARIANT: test-only literal with valid DID format
     let issuer = CanonicalDid::new_unchecked(issuer);
     Attestation {
         version: 1,
         rid: ResourceId::new("test-rid"),
         issuer,
-        subject: device_did.clone().into(),
+        subject: device_did.clone(),
         device_public_key: Ed25519PublicKey::from_bytes([0u8; 32]).into(),
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),
@@ -95,7 +94,6 @@ pub fn test_attestation(device_did: &DeviceDID, issuer: &str) -> Attestation {
         role: None,
         capabilities: vec![],
         delegated_by: None,
-        supersedes_attestation_rid: None,
         signer_type: None,
         environment_claim: None,
     }
