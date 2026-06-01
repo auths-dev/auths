@@ -61,13 +61,16 @@ pub fn compute_rotation_event(
     state: &KeyState,
     next_signer: &auths_crypto::TypedSignerKey,
     new_next_public_key: &[u8],
-    _new_next_curve: auths_crypto::CurveType,
+    new_next_curve: auths_crypto::CurveType,
     witness_config: Option<&WitnessConfig>,
 ) -> Result<(RotEvent, Vec<u8>), RotationError> {
     let prefix = &state.prefix;
 
     let new_current_pub_encoded = next_signer.cesr_encoded();
-    let new_next_commitment = compute_next_commitment(new_next_public_key);
+    let new_next_verkey =
+        auths_keri::KeriPublicKey::from_verkey_bytes(new_next_public_key, new_next_curve)
+            .map_err(|e| RotationError::RotationFailed(format!("next verkey: {e}")))?;
+    let new_next_commitment = compute_next_commitment(&new_next_verkey);
 
     let (bt, br, ba) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
@@ -364,7 +367,10 @@ fn retrieve_precommitted_key(
     let parsed = auths_crypto::parse_key_material(&decrypted)
         .map_err(|e| RotationError::KeyDecryptionFailed(e.to_string()))?;
 
-    if !verify_commitment(&parsed.public_key, &state.next_commitment[0]) {
+    let next_verkey =
+        auths_keri::KeriPublicKey::from_verkey_bytes(&parsed.public_key, parsed.seed.curve())
+            .map_err(|e| RotationError::RotationFailed(format!("next verkey: {e}")))?;
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(RotationError::RotationFailed(
             "commitment mismatch: next key does not match previous commitment".into(),
         ));

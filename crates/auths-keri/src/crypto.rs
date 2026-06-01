@@ -6,52 +6,57 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use subtle::ConstantTimeEq;
 
+use crate::keys::KeriPublicKey;
 use crate::types::Said;
 
-/// Compute next-key commitment hash for pre-rotation.
+/// Compute the next-key commitment digest for pre-rotation.
 ///
-/// The commitment is computed by:
-/// 1. Hashing the public key bytes with Blake3
-/// 2. Encoding the hash as Base64url (no padding)
-/// 3. Prefixing with 'E' (KERI derivation code for Blake3-256)
+/// The commitment is the Blake3-256 digest of the next verkey, CESR-encoded with
+/// the `E` derivation code. It goes in the current event's `n` field and must be
+/// satisfied by the next rotation's `k`.
 ///
-/// This commitment is included in the current event's 'n' field and must
-/// be satisfied by the next rotation event's 'k' field.
+/// The key is typed (`KeriPublicKey`) so its curve travels with it — the curve is
+/// required to encode the verkey, and a typed key makes a "key without a curve"
+/// unrepresentable at the call site.
 ///
 /// Args:
-/// * `public_key` - The raw public key bytes (32 bytes for Ed25519)
+/// * `key` - The next public key (Ed25519 or P-256), carrying its curve.
 ///
 /// Usage:
 /// ```
-/// use auths_keri::compute_next_commitment;
-/// let commitment = compute_next_commitment(&[0u8; 32]);
+/// use auths_keri::{compute_next_commitment, KeriPublicKey};
+/// let commitment = compute_next_commitment(&KeriPublicKey::Ed25519([0u8; 32]));
 /// assert_eq!(commitment.as_str().len(), 44);
 /// assert!(commitment.as_str().starts_with('E'));
 /// ```
-pub fn compute_next_commitment(public_key: &[u8]) -> Said {
-    let hash = blake3::hash(public_key);
+pub fn compute_next_commitment(key: &KeriPublicKey) -> Said {
+    // NOTE (CESR alignment, part 1/2): this still hashes the raw verkey bytes
+    // (legacy scheme) so commitment values are unchanged while call sites migrate
+    // to the typed key. Part 2 switches this to hash the cesride qb64 of `key`,
+    // which needs no call-site changes precisely because the curve is now in hand.
+    let hash = blake3::hash(key.as_bytes());
     let encoded = URL_SAFE_NO_PAD.encode(hash.as_bytes());
     Said::new_unchecked(format!("E{}", encoded))
 }
 
-/// Verify that a public key matches a commitment.
+/// Verify that a public key satisfies a commitment.
 ///
 /// Args:
-/// * `public_key` - The raw public key bytes to verify
-/// * `commitment` - The commitment `Said` from a previous event's 'n' field
+/// * `key` - The next public key to check, carrying its curve.
+/// * `commitment` - The commitment `Said` from a previous event's `n` field.
 ///
 /// Usage:
 /// ```
-/// use auths_keri::{compute_next_commitment, verify_commitment};
-/// let key = [1u8; 32];
+/// use auths_keri::{compute_next_commitment, verify_commitment, KeriPublicKey};
+/// let key = KeriPublicKey::Ed25519([1u8; 32]);
 /// let c = compute_next_commitment(&key);
 /// assert!(verify_commitment(&key, &c));
-/// assert!(!verify_commitment(&[2u8; 32], &c));
+/// assert!(!verify_commitment(&KeriPublicKey::Ed25519([2u8; 32]), &c));
 /// ```
 // Defense-in-depth: both values are derived from public data, but constant-time
 // comparison prevents timing side-channels on commitment verification.
-pub fn verify_commitment(public_key: &[u8], commitment: &Said) -> bool {
-    let computed = compute_next_commitment(public_key);
+pub fn verify_commitment(key: &KeriPublicKey, commitment: &Said) -> bool {
+    let computed = compute_next_commitment(key);
     computed
         .as_str()
         .as_bytes()
@@ -65,15 +70,18 @@ mod tests {
 
     #[test]
     fn commitment_verification_works() {
-        let key = [1u8; 32];
+        let key = KeriPublicKey::Ed25519([1u8; 32]);
         let commitment = compute_next_commitment(&key);
         assert!(verify_commitment(&key, &commitment));
-        assert!(!verify_commitment(&[2u8; 32], &commitment));
+        assert!(!verify_commitment(
+            &KeriPublicKey::Ed25519([2u8; 32]),
+            &commitment
+        ));
     }
 
     #[test]
     fn commitment_is_deterministic() {
-        let key = [42u8; 32];
+        let key = KeriPublicKey::Ed25519([42u8; 32]);
         let c1 = compute_next_commitment(&key);
         let c2 = compute_next_commitment(&key);
         assert_eq!(c1, c2);
@@ -82,8 +90,7 @@ mod tests {
 
     #[test]
     fn commitment_has_correct_length() {
-        let key = [0u8; 32];
-        let commitment = compute_next_commitment(&key);
+        let commitment = compute_next_commitment(&KeriPublicKey::Ed25519([0u8; 32]));
         // 'E' + 43 chars of base64url
         assert_eq!(commitment.as_str().len(), 44);
     }

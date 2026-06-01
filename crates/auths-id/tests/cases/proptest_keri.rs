@@ -92,7 +92,9 @@ fn make_signed_rot(
 fn build_valid_kel(ixn_count: usize) -> Vec<Event> {
     let kp = gen_keypair();
     let next_kp = gen_keypair();
-    let next_commitment = compute_next_commitment(next_kp.public_key().as_ref());
+    let next_commitment = compute_next_commitment(
+        &auths_keri::KeriPublicKey::ed25519(next_kp.public_key().as_ref()).unwrap(),
+    );
 
     let icp = make_signed_icp(&kp, &next_commitment);
     let prefix = icp.i.clone();
@@ -167,7 +169,7 @@ proptest! {
         // Append another inception
         let extra_kp = gen_keypair();
         let extra_next = gen_keypair();
-        let extra_icp = make_signed_icp(&extra_kp, &compute_next_commitment(extra_next.public_key().as_ref()));
+        let extra_icp = make_signed_icp(&extra_kp, &compute_next_commitment(&auths_keri::KeriPublicKey::ed25519(extra_next.public_key().as_ref()).unwrap()));
         let mut bad_events = events;
         bad_events.push(Event::Icp(extra_icp));
 
@@ -185,7 +187,7 @@ proptest! {
         let kp = gen_keypair();
         let next_kp = gen_keypair();
         let wrong_kp = gen_keypair();
-        let next_commitment = compute_next_commitment(next_kp.public_key().as_ref());
+        let next_commitment = compute_next_commitment(&auths_keri::KeriPublicKey::ed25519(next_kp.public_key().as_ref()).unwrap());
 
         let icp = make_signed_icp(&kp, &next_commitment);
         let prefix = icp.i.clone();
@@ -199,7 +201,7 @@ proptest! {
             &prev_said,
             1,
             &wrong_kp,
-            &compute_next_commitment(future_kp.public_key().as_ref()),
+            &compute_next_commitment(&auths_keri::KeriPublicKey::ed25519(future_kp.public_key().as_ref()).unwrap()),
         );
         events.push(Event::Rot(rot));
 
@@ -225,8 +227,8 @@ proptest! {
         let kp1 = gen_keypair();
         let kp2 = gen_keypair();
         let kp3 = gen_keypair();
-        let commitment2 = compute_next_commitment(kp2.public_key().as_ref());
-        let commitment3 = compute_next_commitment(kp3.public_key().as_ref());
+        let commitment2 = compute_next_commitment(&auths_keri::KeriPublicKey::ed25519(kp2.public_key().as_ref()).unwrap());
+        let commitment3 = compute_next_commitment(&auths_keri::KeriPublicKey::ed25519(kp3.public_key().as_ref()).unwrap());
 
         let icp = make_signed_icp(&kp1, &commitment2);
         let prefix = icp.i.clone();

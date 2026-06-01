@@ -518,7 +518,7 @@ fn prior_commitments_satisfy_threshold(
         .filter_map(|(j, commitment)| {
             let matched = new_keys.iter().any(|key| {
                 key.parse()
-                    .map(|pk| verify_commitment(pk.as_bytes(), commitment))
+                    .map(|pk| verify_commitment(&pk, commitment))
                     .unwrap_or(false)
             });
             matched.then_some(j as u32)
@@ -1045,11 +1045,10 @@ pub fn validate_signed_event(
                 let Ok(parsed) = key.parse() else {
                     return false;
                 };
-                let pk_bytes = parsed.as_bytes();
                 state
                     .next_commitment
                     .iter()
-                    .any(|commit| crate::crypto::verify_commitment(pk_bytes, commit))
+                    .any(|commit| crate::crypto::verify_commitment(&parsed, commit))
             });
             if !any_prior_match {
                 return Err(ValidationError::SignatureFailed { sequence });
@@ -1509,7 +1508,9 @@ mod tests {
         let kp2 = gen_keypair();
 
         // Use make_custom_signed_icp with pre-committed key for kp2
-        let commitment2 = crate::crypto::compute_next_commitment(kp2.public_key().as_ref());
+        let commitment2 = crate::crypto::compute_next_commitment(
+            &crate::keys::KeriPublicKey::ed25519(kp2.public_key().as_ref()).unwrap(),
+        );
         let (icp, _kp1) = make_custom_signed_icp(|icp| {
             icp.n = vec![commitment2.clone()];
         });

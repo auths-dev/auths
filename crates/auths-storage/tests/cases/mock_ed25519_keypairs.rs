@@ -235,7 +235,9 @@ pub fn mock_inception_event(index: usize) -> Event {
     let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
 
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8).unwrap();
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+    let next_commitment = compute_next_commitment(
+        &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref()).unwrap(),
+    );
 
     let icp = IcpEvent {
         v: VersionString::placeholder(),

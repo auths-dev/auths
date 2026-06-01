@@ -258,10 +258,10 @@ pub fn rotate_registry_identity(
 
     let next_keypair = load_keypair_from_der_or_seed(decrypted_next_pkcs8.as_ref())?;
 
-    if !verify_commitment(
-        next_keypair.public_key().as_ref(),
-        &state.next_commitment[0],
-    ) {
+    #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+    let next_verkey = auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+        .expect("ring Ed25519 public key is 32 bytes");
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(InitError::InvalidData(
             "Commitment mismatch: next key does not match previous commitment".into(),
         ));
@@ -276,7 +276,11 @@ pub fn rotate_registry_identity(
         "D{}",
         URL_SAFE_NO_PAD.encode(next_keypair.public_key().as_ref())
     );
-    let new_next_commitment = compute_next_commitment(new_next_keypair.public_key().as_ref());
+    #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+    let new_next_verkey =
+        auths_keri::KeriPublicKey::ed25519(new_next_keypair.public_key().as_ref())
+            .expect("ring Ed25519 public key is 32 bytes");
+    let new_next_commitment = compute_next_commitment(&new_next_verkey);
 
     let bt = match witness_config {
         Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
@@ -434,7 +438,10 @@ pub fn rotate_registry_identity_multi(
         }
         let pkcs8 = Pkcs8Der::new(decrypt_keypair(&encrypted, &next_pass)?.to_vec());
         let keypair = load_keypair_from_der_or_seed(pkcs8.as_ref())?;
-        if !verify_commitment(keypair.public_key().as_ref(), &state.next_commitment[idx]) {
+        #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+        let next_verkey = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+            .expect("ring Ed25519 public key is 32 bytes");
+        if !verify_commitment(&next_verkey, &state.next_commitment[idx]) {
             return Err(InitError::InvalidData(format!(
                 "Commitment mismatch at slot {idx}: next key does not match previous commitment"
             )));
@@ -465,7 +472,7 @@ pub fn rotate_registry_identity_multi(
         .collect();
     let n: Vec<Said> = new_next_kps
         .iter()
-        .map(|kp| compute_next_commitment(&kp.public_key))
+        .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
 
     let bt = match witness_config {

@@ -159,7 +159,10 @@ mod tests {
             "D{}",
             URL_SAFE_NO_PAD.encode(current_kp.public_key().as_ref())
         );
-        let next_commitment = compute_next_commitment(next_kp.public_key().as_ref());
+        let next_commitment = compute_next_commitment(
+            &auths_keri::KeriPublicKey::ed25519(next_kp.public_key().as_ref())
+                .expect("ed25519 verkey is 32 bytes"),
+        );
 
         let icp = IcpEvent {
             v: VersionString::placeholder(),

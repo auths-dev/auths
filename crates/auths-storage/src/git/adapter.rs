@@ -2405,7 +2405,9 @@ mod tests {
 
         let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
-        let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+        let next_commitment = compute_next_commitment(
+            &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref()).unwrap(),
+        );
 
         let icp = IcpEvent {
             v: VersionString::placeholder(),
@@ -2444,7 +2446,9 @@ mod tests {
         // Generate the next-next key for the new commitment
         let nn_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let nn_keypair = Ed25519KeyPair::from_pkcs8(nn_pkcs8.as_ref()).unwrap();
-        let nn_commitment = compute_next_commitment(nn_keypair.public_key().as_ref());
+        let nn_commitment = compute_next_commitment(
+            &auths_keri::KeriPublicKey::ed25519(nn_keypair.public_key().as_ref()).unwrap(),
+        );
 
         let mut rot = RotEvent {
             v: VersionString::placeholder(),
@@ -2574,7 +2578,9 @@ mod tests {
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let kp = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
         let key_enc = format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()));
-        let next_commit = compute_next_commitment(kp.public_key().as_ref());
+        let next_commit = compute_next_commitment(
+            &auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref()).unwrap(),
+        );
 
         let mut rot = RotEvent {
             v: VersionString::placeholder(),
@@ -3976,7 +3982,9 @@ mod index_consistency_tests {
 
         let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
-        let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+        let next_commitment = compute_next_commitment(
+            &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref()).unwrap(),
+        );
 
         let icp = IcpEvent {
             v: VersionString::placeholder(),
@@ -4230,7 +4238,9 @@ mod tenant_isolation_tests {
 
         let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
-        let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+        let next_commitment = compute_next_commitment(
+            &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref()).unwrap(),
+        );
 
         let icp = IcpEvent {
             v: VersionString::placeholder(),

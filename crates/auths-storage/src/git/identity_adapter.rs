@@ -141,7 +141,10 @@ impl RegistryIdentityStorage {
         );
 
         // Compute next-key commitment
-        let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+        #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+        let next_verkey = auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .expect("ring Ed25519 public key is 32 bytes");
+        let next_commitment = compute_next_commitment(&next_verkey);
 
         // Determine witness fields from config
         let (bt, b) = match witness_config {

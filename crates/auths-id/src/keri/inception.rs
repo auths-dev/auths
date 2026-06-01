@@ -55,6 +55,19 @@ pub struct GeneratedKeypair {
     pub cesr_encoded: String,
 }
 
+impl GeneratedKeypair {
+    /// The public key as a typed [`auths_keri::KeriPublicKey`], curve carried in
+    /// the type. Bridges the raw bytes + CESR tag into the typed key that KERI
+    /// functions (e.g. `compute_next_commitment`) consume, so the curve is never
+    /// re-guessed from byte length.
+    pub fn verkey(&self) -> auths_keri::KeriPublicKey {
+        #[allow(clippy::expect_used)]
+        // INVARIANT: cesr_encoded comes from our own keygen and always parses
+        auths_keri::KeriPublicKey::parse(&self.cesr_encoded)
+            .expect("self-generated keypair has a valid CESR-encoded public key")
+    }
+}
+
 /// Public alias for single-curve keypair generation.
 ///
 /// Thin wrapper over [`generate_keypairs_for_init`]; preserved so existing
@@ -382,7 +395,7 @@ pub fn create_keri_identity_multi(
         .collect();
     let n: Vec<Said> = next_kps
         .iter()
-        .map(|kp| compute_next_commitment(&kp.public_key))
+        .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
 
     let (bt, b) = match witness_config {
@@ -477,7 +490,7 @@ pub fn create_keri_identity_with_curve(
 
     // Compute next-key commitment (Blake3 hash of the CESR-qualified next public key bytes)
     // The commitment is curve-agnostic: Blake3(raw_public_key_bytes)
-    let next_commitment = compute_next_commitment(&next.public_key);
+    let next_commitment = compute_next_commitment(&next.verkey());
 
     // Determine witness fields from config
     let (bt, b) = match witness_config {
@@ -576,7 +589,10 @@ pub fn create_keri_identity_with_backend(
         "D{}",
         URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
     );
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+    let next_commitment = compute_next_commitment(
+        &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?,
+    );
 
     let icp = IcpEvent {
         v: VersionString::placeholder(),
@@ -650,7 +666,10 @@ pub fn create_keri_identity_from_key(
         "D{}",
         URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
     );
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+    let next_commitment = compute_next_commitment(
+        &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?,
+    );
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
@@ -851,7 +870,10 @@ mod tests {
 
         if let Event::Icp(icp) = &events[0] {
             // Verify the next commitment matches the next public key
-            let expected_commitment = compute_next_commitment(&result.next_public_key);
+            let expected_commitment = compute_next_commitment(
+                &auths_keri::KeriPublicKey::ed25519(&result.next_public_key)
+                    .expect("ed25519 verkey is 32 bytes"),
+            );
             assert_eq!(icp.n[0], expected_commitment);
         } else {
             panic!("Expected inception event");

@@ -37,7 +37,10 @@ pub fn test_inception_event(key_seed: &str) -> Event {
 
     let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+    let next_commitment = compute_next_commitment(
+        &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .expect("ed25519 verkey is 32 bytes"),
+    );
 
     let icp = IcpEvent {
         v: VersionString::placeholder(),

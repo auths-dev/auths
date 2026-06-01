@@ -163,14 +163,18 @@ pub fn rotate_keys(
     let curve = detect_curve_from_state(&state);
     let (next_pub_bytes, next_seed, next_cesr) = parse_next_key(next_keypair_pkcs8.as_ref())?;
 
-    if !verify_commitment(&next_pub_bytes, &state.next_commitment[0]) {
+    #[allow(clippy::expect_used)]
+    // INVARIANT: next_cesr is produced by parse_next_key and always parses
+    let next_verkey =
+        auths_keri::KeriPublicKey::parse(&next_cesr).expect("valid CESR from parse_next_key");
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(RotationError::CommitmentMismatch);
     }
 
     let new_next = generate_keypair_for_init(curve)
         .map_err(|e| RotationError::KeyGeneration(e.to_string()))?;
 
-    let new_next_commitment = compute_next_commitment(&new_next.public_key);
+    let new_next_commitment = compute_next_commitment(&new_next.verkey());
 
     let bt = match witness_config {
         Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
@@ -246,9 +250,13 @@ pub fn abandon_identity(
         return Err(RotationError::IdentityAbandoned);
     }
 
-    let (next_pub_bytes, next_seed, next_cesr) = parse_next_key(next_keypair_pkcs8.as_ref())?;
+    let (_next_pub_bytes, next_seed, next_cesr) = parse_next_key(next_keypair_pkcs8.as_ref())?;
 
-    if !verify_commitment(&next_pub_bytes, &state.next_commitment[0]) {
+    #[allow(clippy::expect_used)]
+    // INVARIANT: next_cesr is produced by parse_next_key and always parses
+    let next_verkey =
+        auths_keri::KeriPublicKey::parse(&next_cesr).expect("valid CESR from parse_next_key");
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(RotationError::CommitmentMismatch);
     }
 
@@ -316,14 +324,18 @@ pub fn rotate_keys_with_backend(
     let curve = detect_curve_from_state(&state);
     let (next_pub_bytes, next_seed, next_cesr) = parse_next_key(next_keypair_pkcs8.as_ref())?;
 
-    if !verify_commitment(&next_pub_bytes, &state.next_commitment[0]) {
+    #[allow(clippy::expect_used)]
+    // INVARIANT: next_cesr is produced by parse_next_key and always parses
+    let next_verkey =
+        auths_keri::KeriPublicKey::parse(&next_cesr).expect("valid CESR from parse_next_key");
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(RotationError::CommitmentMismatch);
     }
 
     let new_next = generate_keypair_for_init(curve)
         .map_err(|e| RotationError::KeyGeneration(e.to_string()))?;
 
-    let new_next_commitment = compute_next_commitment(&new_next.public_key);
+    let new_next_commitment = compute_next_commitment(&new_next.verkey());
 
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {

@@ -141,7 +141,7 @@ pub fn initialize_registry_identity(
         .map_err(|e| InitError::Crypto(e.to_string()))?;
 
     let current_pub_encoded = current.cesr_encoded.clone();
-    let next_commitment = compute_next_commitment(&next.public_key);
+    let next_commitment = compute_next_commitment(&next.verkey());
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
@@ -276,7 +276,7 @@ pub fn initialize_registry_identity_multi(
         .collect();
     let n: Vec<Said> = next_kps
         .iter()
-        .map(|kp| compute_next_commitment(&kp.public_key))
+        .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
 
     let (bt, b) = match witness_config {

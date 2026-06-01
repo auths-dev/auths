@@ -214,6 +214,63 @@ impl KeriPublicKey {
         crate::cesr_encode::encode_verkey(self.as_bytes(), code)
     }
 
+    /// Construct a transferable Ed25519 verkey from a 32-byte slice.
+    ///
+    /// Ergonomic bridge for raw-byte sources (e.g. a `ring` public key) into the
+    /// typed key. Returns `Err(InvalidLength)` if the slice is not 32 bytes.
+    ///
+    /// Usage:
+    /// ```
+    /// use auths_keri::KeriPublicKey;
+    /// let key = KeriPublicKey::ed25519(&[0u8; 32]).unwrap();
+    /// assert!(matches!(key, KeriPublicKey::Ed25519(_)));
+    /// ```
+    pub fn ed25519(bytes: &[u8]) -> Result<Self, KeriDecodeError> {
+        let arr: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| KeriDecodeError::InvalidLength {
+                expected: 32,
+                actual: bytes.len(),
+            })?;
+        Ok(KeriPublicKey::Ed25519(arr))
+    }
+
+    /// Construct a transferable verkey from raw bytes plus an explicit curve.
+    ///
+    /// The complement of [`Self::as_bytes`] + [`Self::curve`]: rebuilds the typed key
+    /// when you hold curve-tagged bytes (a `CurveType` carried alongside a `Vec<u8>`),
+    /// instead of re-guessing the curve from byte length. Encodes as transferable
+    /// (`D` / `1AAJ`). Returns `Err(InvalidLength)` if the length doesn't match the curve.
+    ///
+    /// Usage:
+    /// ```
+    /// use auths_keri::KeriPublicKey;
+    /// use auths_crypto::CurveType;
+    /// let key = KeriPublicKey::from_verkey_bytes(&[0u8; 32], CurveType::Ed25519).unwrap();
+    /// assert_eq!(key.curve(), CurveType::Ed25519);
+    /// ```
+    pub fn from_verkey_bytes(
+        bytes: &[u8],
+        curve: auths_crypto::CurveType,
+    ) -> Result<Self, KeriDecodeError> {
+        match curve {
+            auths_crypto::CurveType::Ed25519 => Self::ed25519(bytes),
+            auths_crypto::CurveType::P256 => {
+                let arr: [u8; 33] =
+                    bytes
+                        .try_into()
+                        .map_err(|_| KeriDecodeError::InvalidLength {
+                            expected: 33,
+                            actual: bytes.len(),
+                        })?;
+                Ok(KeriPublicKey::P256 {
+                    key: arr,
+                    transferable: true,
+                })
+            }
+        }
+    }
+
     /// Verify a signature against this public key.
     ///
     /// Dispatches to the correct algorithm based on the key's curve:
