@@ -48,6 +48,10 @@ mod validate;
 /// Witness protocol types: receipts, providers, and error reporting for split-view defense.
 pub mod witness;
 
+/// CESR-correct primitive encoding (verkeys, digests, SAIDs) via `cesride` — the
+/// byte-interoperable wire format that replaces the legacy naive base64 scheme.
+mod cesr_encode;
+
 #[cfg(feature = "cesr")]
 mod codec;
 #[cfg(feature = "cesr")]

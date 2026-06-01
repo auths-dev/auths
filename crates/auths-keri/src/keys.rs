@@ -199,6 +199,21 @@ impl KeriPublicKey {
         }
     }
 
+    /// Encode this key as a CESR-qualified qb64 string, byte-identical to keripy.
+    ///
+    /// Ed25519 → `D…`; transferable P-256 → `1AAJ…`; non-transferable P-256 → `1AAI…`.
+    /// This is the CESR-correct encoding (proper lead-byte alignment), not the legacy
+    /// naive `D` + base64url(raw) form.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let qb64 = key.to_qb64()?;
+    /// ```
+    pub fn to_qb64(&self) -> Result<String, KeriDecodeError> {
+        let code = crate::cesr_encode::verkey_code(self.curve(), self.is_transferable());
+        crate::cesr_encode::encode_verkey(self.as_bytes(), code)
+    }
+
     /// Verify a signature against this public key.
     ///
     /// Dispatches to the correct algorithm based on the key's curve:
