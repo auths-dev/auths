@@ -82,6 +82,19 @@ pub enum ValidationError {
         reason: String,
     },
 
+    /// A rotation flips the registrar-backer role (`RB` <-> `NRB`) while
+    /// retaining prior backers via a partial `br`/`ba` delta. `RB` and `NRB`
+    /// carry different backer-list semantics, so a surviving backer would be
+    /// governed by semantics it was never admitted under. A role flip must
+    /// rebuild `b[]` — every prior backer cut (F-23).
+    #[error("Invalid backer role flip at sequence {sequence}: {reason}")]
+    BackerRoleFlip {
+        /// Zero-based position of the offending rotation.
+        sequence: u128,
+        /// Which roles flipped and how many backers survived.
+        reason: String,
+    },
+
     /// Rotation event's key-list size differs from the prior next-commitment
     /// list. Properly expressing this case requires CESR indexed-signature
     /// type codes so verified indices can be mapped distinctly against prior
@@ -514,6 +527,31 @@ fn prior_commitments_satisfy_threshold(
     next_threshold.is_satisfied(&revealed, next_commitment.len())
 }
 
+/// Registrar-backer role designated by an event's config traits.
+///
+/// `RB` and `NRB` are mutually exclusive backer semantics; the latter wins when
+/// both appear (per [`ConfigTrait`] supersedence). `Unspecified` means the
+/// event's `c[]` named neither, so the role is inherited rather than changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BackerRole {
+    Registrar,
+    NoRegistrar,
+    Unspecified,
+}
+
+/// Resolve the registrar-backer role designated by a config-trait list.
+fn backer_role(traits: &[ConfigTrait]) -> BackerRole {
+    let mut role = BackerRole::Unspecified;
+    for t in traits {
+        match t {
+            ConfigTrait::RegistrarBackers => role = BackerRole::Registrar,
+            ConfigTrait::NoRegistrarBackers => role = BackerRole::NoRegistrar,
+            _ => {}
+        }
+    }
+    role
+}
+
 fn validate_rotation(
     rot: &RotEvent,
     sequence: u128,
@@ -577,6 +615,30 @@ fn validate_rotation(
             return Err(ValidationError::InvalidBackerDelta {
                 sequence,
                 reason: format!("ba entry {} duplicates a surviving backer", aid.as_str()),
+            });
+        }
+    }
+
+    // Reject a silent RB<->NRB role flip that retains prior backers. A
+    // non-empty `c[]` naming the opposite role must rebuild `b[]` — cut every
+    // prior backer — or a survivor ends up governed by semantics it was never
+    // admitted under (F-23). An empty `c[]` inherits the role, so cannot flip.
+    if !rot.c.is_empty() {
+        let old_role = backer_role(&state.config_traits);
+        let new_role = backer_role(&rot.c);
+        let is_flip = matches!(
+            (old_role, new_role),
+            (BackerRole::Registrar, BackerRole::NoRegistrar)
+                | (BackerRole::NoRegistrar, BackerRole::Registrar)
+        );
+        if is_flip && !survivors.is_empty() {
+            return Err(ValidationError::BackerRoleFlip {
+                sequence,
+                reason: format!(
+                    "{old_role:?}->{new_role:?} but {} prior backer(s) survive; \
+                     a role flip must cut all prior backers",
+                    survivors.len()
+                ),
             });
         }
     }
@@ -1630,7 +1692,7 @@ mod tests {
         // A.10 (F-05): a rotation that cuts a backer not in the prior set, or
         // adds a backer that already survives, must be rejected before
         // apply_rotation corrupts the backer set.
-        let mut state = KeyState::from_inception(
+        let state = KeyState::from_inception(
             Prefix::new_unchecked("EPrefix".to_string()),
             vec![CesrKey::new_unchecked("DKey1".to_string())],
             vec![], // empty next_commitment -> commitment check skipped
@@ -1676,6 +1738,66 @@ mod tests {
         // valid delta (cut the existing backer) -> ok.
         let ok = make_rot(vec![Prefix::new_unchecked("BWit1".to_string())], vec![]);
         assert!(validate_rotation(&ok, 1, &mut state.clone()).is_ok());
+    }
+
+    #[test]
+    fn rotation_rejects_silent_backer_role_flip() {
+        // A.13 (F-23): flipping RB<->NRB while a prior backer survives is
+        // rejected; the same flip is allowed once every prior backer is cut
+        // (b[] rebuilt). An empty c[] inherits the role and never flips.
+        let nrb_state = || {
+            KeyState::from_inception(
+                Prefix::new_unchecked("EPrefix".to_string()),
+                vec![CesrKey::new_unchecked("DKey1".to_string())],
+                vec![],
+                Threshold::Simple(1),
+                Threshold::Simple(0),
+                Said::new_unchecked("ESAID".to_string()),
+                vec![Prefix::new_unchecked("BWit1".to_string())],
+                Threshold::Simple(0),
+                vec![ConfigTrait::NoRegistrarBackers],
+            )
+        };
+
+        let make_rot = |br: Vec<Prefix>, ba: Vec<Prefix>, c: Vec<ConfigTrait>| RotEvent {
+            v: VersionString::placeholder(),
+            d: Said::default(),
+            i: Prefix::new_unchecked("EPrefix".to_string()),
+            s: KeriSequence::new(1),
+            p: Said::new_unchecked("ESAID".to_string()),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked("DKey2".to_string())],
+            nt: Threshold::Simple(0),
+            n: vec![],
+            bt: Threshold::Simple(0),
+            br,
+            ba,
+            c,
+            a: vec![],
+        };
+
+        // Flip NRB->RB while BWit1 survives -> rejected.
+        let flip_keep = make_rot(vec![], vec![], vec![ConfigTrait::RegistrarBackers]);
+        assert!(matches!(
+            validate_rotation(&flip_keep, 1, &mut nrb_state()),
+            Err(ValidationError::BackerRoleFlip { .. })
+        ));
+
+        // Flip NRB->RB after cutting every prior backer -> ok (b[] rebuilt).
+        let flip_rebuild = make_rot(
+            vec![Prefix::new_unchecked("BWit1".to_string())],
+            vec![],
+            vec![ConfigTrait::RegistrarBackers],
+        );
+        assert!(validate_rotation(&flip_rebuild, 1, &mut nrb_state()).is_ok());
+
+        // Same role kept (NRB->NRB) with the backer surviving -> ok (no flip).
+        let same_role = make_rot(vec![], vec![], vec![ConfigTrait::NoRegistrarBackers]);
+        assert!(validate_rotation(&same_role, 1, &mut nrb_state()).is_ok());
+
+        // Empty c[] inherits the role -> ok even though the backer survives.
+        let inherit = make_rot(vec![], vec![], vec![]);
+        assert!(validate_rotation(&inherit, 1, &mut nrb_state()).is_ok());
     }
 
 }
