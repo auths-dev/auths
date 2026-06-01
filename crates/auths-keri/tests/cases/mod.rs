@@ -2,6 +2,7 @@
 mod codec;
 #[cfg(feature = "cesr")]
 mod event;
+mod interop_vectors;
 mod keripy_interop;
 mod multi_key_threshold;
 #[cfg(feature = "cesr")]
