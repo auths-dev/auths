@@ -1,5 +1,6 @@
 //! Symmetric encryption utilities.
 
+use rand::RngCore;
 use aes_gcm::{
     Aes256Gcm, Nonce as AesNonce,
     aead::{Aead, KeyInit},
@@ -91,7 +92,8 @@ pub fn encrypt_bytes(
 ) -> Result<Vec<u8>, AgentError> {
     validate_passphrase(passphrase)?;
 
-    let salt: [u8; SALT_LEN] = rand::random();
+    let mut salt = [0u8; SALT_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut salt);
 
     let params = get_kdf_params()?;
     let m_cost = params.m_cost();
@@ -103,7 +105,8 @@ pub fn encrypt_bytes(
         .hash_password_into(passphrase.as_bytes(), &salt, &mut *key)
         .map_err(|e| AgentError::CryptoError(format!("Argon2 key derivation failed: {}", e)))?;
 
-    let nonce: [u8; NONCE_LEN] = rand::random();
+    let mut nonce = [0u8; NONCE_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
 
     let ciphertext = match algo {
         EncryptionAlgorithm::AesGcm256 => {
