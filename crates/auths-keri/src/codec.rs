@@ -210,3 +210,36 @@ impl CesrCodec for CesrV1Codec {
         )))
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    /// Pins our cesride encoding against known **keripy 1.3.4** reference values
+    /// for the 32-byte Ed25519 key `bytes(0..32)`. If cesride matches keripy here,
+    /// routing all wire encoding through `CesrV1Codec` makes us byte-interoperable.
+    /// keripy: `Verfer(raw=bytes(range(32)), code=Ed25519).qb64` and
+    /// `Diger(ser=verfer.qb64b).qb64`.
+    #[test]
+    fn cesr_primitives_match_keripy_reference() {
+        let codec = CesrV1Codec::new();
+        let key: Vec<u8> = (0u8..32).collect();
+
+        let verkey_qb64 = codec.encode_pubkey(&key, KeyType::Ed25519).unwrap();
+        assert_eq!(
+            verkey_qb64, "DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f",
+            "Ed25519 verkey qb64 must match keripy CESR alignment"
+        );
+
+        // Pre-rotation commitment = Blake3-256 digest over the verkey's qb64 TEXT bytes.
+        let digest = blake3::hash(verkey_qb64.as_bytes());
+        let commitment = codec
+            .encode_digest(digest.as_bytes(), DigestType::Blake3_256)
+            .unwrap();
+        assert_eq!(
+            commitment, "EF_M_u7ASVHXfI8QzdWLq3V9ocSKqxkbujXGbi9QMtP9",
+            "commitment digest must match keripy Diger(ser=verfer.qb64b)"
+        );
+    }
+}
