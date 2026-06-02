@@ -10,6 +10,15 @@ The Stage 1 implementation plan lives in
 `docs/plans/toward_keri_witnesses.md`. KERI spec-compliance findings that
 shape several epics below are catalogued in `docs/plans/keri_compliance.md`.
 
+> **⚠️ Status correction (2026-06-02).** §1 below describes the shared-KEL
+> controller model as shipped. That is **aspirational — ahead of the code.** The
+> machinery (`shared_kel.rs`, `initialize_registry_identity_multi`) exists and is
+> unit-tested, but **no command, workflow, or pairing flow calls it**: `init` is
+> single-controller, and `link`/`pair`/`recover` all create **attestations**
+> (`create_signed_attestation`). Device management is attestation-based today. The
+> verified current state and the scoped plan to make controllership live are in
+> `docs/architecture/device-model.md`.
+
 ---
 
 ## 1. Current Status
