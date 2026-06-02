@@ -97,11 +97,11 @@ fn icp_field_order_is_pinned() {
 fn rot_field_order_is_pinned() {
     let rot = make_test_rot();
     let json = serde_json::to_string(&KeriEvent::Rot(rot)).unwrap();
-    // `a` is omitted when empty (canonical auths-keri format)
+    // rot carries no config-traits `c` (inception-only, per keripy); `a` is present.
     assert_key_order(
         &json,
         &[
-            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "c",
+            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "a",
         ],
     );
 }
