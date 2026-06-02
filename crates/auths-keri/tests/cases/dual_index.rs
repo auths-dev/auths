@@ -4,7 +4,10 @@
 //! group of two `2A` (Ed25519_Big) sigers for a 3→2 key removal: new `k[0]`
 //! reveals prior `n[1]`, new `k[1]` reveals prior `n[2]`.
 
-use auths_keri::{IndexedSignature, parse_attachment, serialize_attachment};
+use auths_keri::{
+    Event, IndexedSignature, SignedEvent, ValidationError, parse_attachment, replay_kel,
+    serialize_attachment, validate_signed_event,
+};
 use std::path::Path;
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -12,6 +15,10 @@ fn fixture(name: &str) -> Vec<u8> {
         .join("tests/fixtures/keripy")
         .join(name);
     std::fs::read(&p).unwrap_or_else(|_| panic!("fixture missing: {}", p.display()))
+}
+
+fn load_event(name: &str) -> Event {
+    serde_json::from_slice(&fixture(name)).unwrap_or_else(|e| panic!("parse {name}: {e}"))
 }
 
 /// Our code-directed parser must read keripy's dual-index attachment with the
@@ -84,5 +91,48 @@ fn reemits_keripy_rot_remove_attachment_byte_for_byte() {
     assert_eq!(
         reemitted, att,
         "our dual-index emission must equal keripy's bytes exactly"
+    );
+}
+
+/// End-to-end §1.5: auths must ACCEPT keripy's 3→2 dual-index removal rotation
+/// (rejected as AsymmetricKeyRotation before B.4). Replays the keripy icp to the
+/// prior key state, then validates the keripy rot + its dual-index attachment.
+#[test]
+fn asymmetric_rotation_kt2_now_accepted() {
+    let icp = load_event("rot_remove.icp.json");
+    let prior = replay_kel(std::slice::from_ref(&icp)).expect("icp replays to a key state");
+    let rot = load_event("rot_remove.rot.json");
+    let sigs = parse_attachment(&fixture("rot_remove.rot.att")).unwrap();
+    validate_signed_event(&SignedEvent::new(rot, sigs), Some(&prior))
+        .expect("keripy dual-index removal rotation must validate");
+}
+
+/// Each rotation signature binds to the specific prior commitment it reveals.
+#[test]
+fn dual_index_rotation_binds_prior_commitment() {
+    let icp = load_event("rot_remove.icp.json");
+    let prior = replay_kel(std::slice::from_ref(&icp)).unwrap();
+    let rot = load_event("rot_remove.rot.json");
+    let good = parse_attachment(&fixture("rot_remove.rot.att")).unwrap();
+
+    // Genuine binding validates.
+    validate_signed_event(&SignedEvent::new(rot.clone(), good.clone()), Some(&prior))
+        .expect("genuine dual-index binding must validate");
+
+    // A wrong prior_index (revealing a commitment the key does not satisfy) drops
+    // that signature; the prior nt=2 is no longer met.
+    let mut wrong = good.clone();
+    wrong[0].prior_index = Some(2); // k[0]=s3 was committed at n[1], not n[2]
+    assert!(matches!(
+        validate_signed_event(&SignedEvent::new(rot.clone(), wrong), Some(&prior)),
+        Err(ValidationError::SignatureFailed { .. })
+    ));
+
+    // Two signatures naming the SAME prior commitment count once → nt=2 unmet.
+    let mut dup = good.clone();
+    dup[1] = good[0].clone();
+    assert!(
+        validate_signed_event(&SignedEvent::new(rot, dup), Some(&prior)).is_err(),
+        "two sigs revealing the same prior commitment must not satisfy nt=2"
     );
 }

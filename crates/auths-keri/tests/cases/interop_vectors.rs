@@ -182,7 +182,7 @@ fn rot_matches_spec_field_set() {
     assert_spec_shape(
         &json,
         &[
-            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "c", "a",
+            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "a",
         ],
     );
 }
@@ -210,7 +210,7 @@ fn drt_matches_spec_field_set() {
     assert_spec_shape(
         &json,
         &[
-            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "c", "a", "di",
+            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "a", "di",
         ],
     );
 }

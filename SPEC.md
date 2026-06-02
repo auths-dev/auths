@@ -33,10 +33,10 @@ The deserializer rejects any event whose field set differs from the one below fo
 | `t`   | Ordered fields |
 |-------|----------------|
 | `icp` | `v, t, d, i, s, kt, k, nt, n, bt, b, c, a` |
-| `rot` | `v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a` |
+| `rot` | `v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a` |
 | `ixn` | `v, t, d, i, s, p, a` |
 | `dip` | `v, t, d, i, s, kt, k, nt, n, bt, b, c, a, di` |
-| `drt` | `v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, di` |
+| `drt` | `v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a, di` |
 
 The event type tag `t` is injected immediately after `v` and is a constant per type;
 it is **not** a free-form field. A parsed event whose `t` does not match the structural

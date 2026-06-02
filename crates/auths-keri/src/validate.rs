@@ -1015,53 +1015,46 @@ pub fn validate_signed_event(
     if matches!(event, Event::Rot(_) | Event::Drt(_))
         && let Some(state) = current_state
     {
-        let symmetric = state.next_commitment.len() == keys.len();
-        let prior_kt_simple = state.next_threshold.simple_value();
-        let new_kt_is_one = matches!(threshold, crate::types::Threshold::Simple(1));
+        let n_len = state.next_commitment.len();
 
-        if symmetric {
-            // Symmetric shape: signatures verified against new k[i]
-            // automatically cover prior n[i] — the classic in-place
-            // key rotation path.
-            if !state
-                .next_threshold
-                .is_satisfied(&verified_indices, keys.len())
-            {
-                return Err(ValidationError::SignatureFailed { sequence });
-            }
-        } else if prior_kt_simple == Some(1) && new_kt_is_one {
-            // Asymmetric growth/shrink under kt=1: a single verified
-            // signature under the new current-threshold is enough
-            // PROVIDED the verified signer's new-k index corresponds
-            // to a key whose reveal matches one of the prior n
-            // commitments. The single-controller case matches Stage
-            // 1's kt=1 shared-KEL operation; extending to kt>1
-            // across asymmetric shapes is the CESR indexed-signature
-            // work tracked upstream.
-            let any_prior_match = verified_indices.iter().any(|&idx| {
-                let Some(key) = keys.get(idx as usize) else {
-                    return false;
-                };
-                let Ok(parsed) = key.parse() else {
-                    return false;
-                };
-                state
-                    .next_commitment
-                    .iter()
-                    .any(|commit| crate::crypto::verify_commitment(&parsed, commit))
-            });
-            if !any_prior_match {
-                return Err(ValidationError::SignatureFailed { sequence });
-            }
-        } else {
-            // Asymmetric rotation with kt > 1 (or prior nt > 1) still
-            // needs CESR indexed-signature support to disambiguate
-            // which signatures attest to which prior commitments.
+        // A rotation that changes the key-set cardinality but carries no
+        // dual-index information is unbindable — there is no way to know which
+        // prior commitment each signature reveals. Surface the diagnostic error
+        // rather than a generic signature failure.
+        if n_len != keys.len() && signed.signatures.iter().all(|s| s.prior_index.is_none()) {
             return Err(ValidationError::AsymmetricKeyRotation {
                 sequence,
-                prior_next_count: state.next_commitment.len(),
+                prior_next_count: n_len,
                 new_key_count: keys.len(),
             });
+        }
+
+        // Bind each verifying signature to the prior commitment it reveals: the
+        // new key `k[index]` must hash to `n[prior_index]` (or `n[index]` for a
+        // single-index sig). The prior `nt` must then be met over the DISTINCT
+        // prior-commitment indices so revealed.
+        let mut verified_prior: Vec<u32> = Vec::new();
+        for sig in &signed.signatures {
+            let Some(key) = keys.get(sig.index as usize) else {
+                continue;
+            };
+            let Ok(pk) = key.parse() else {
+                continue;
+            };
+            if pk.verify_signature(&canonical, &sig.sig).is_err() {
+                continue;
+            }
+            let j = sig.prior_index.unwrap_or(sig.index) as usize;
+            let Some(commitment) = state.next_commitment.get(j) else {
+                continue;
+            };
+            if crate::crypto::verify_commitment(&pk, commitment) {
+                verified_prior.push(j as u32);
+            }
+        }
+
+        if !state.next_threshold.is_satisfied(&verified_prior, n_len) {
+            return Err(ValidationError::SignatureFailed { sequence });
         }
     }
 

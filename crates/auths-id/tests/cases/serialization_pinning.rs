@@ -100,7 +100,7 @@ fn rot_field_order_is_pinned() {
     assert_key_order(
         &json,
         &[
-            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "c", "a",
+            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "a",
         ],
     );
 }

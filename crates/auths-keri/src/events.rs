@@ -399,7 +399,7 @@ impl Serialize for IcpEvent {
 
 /// Rotation event — rotates to pre-committed key.
 ///
-/// Spec field order: `[v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a]`
+/// Spec field order: `[v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a]`
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RotEvent {
@@ -478,10 +478,10 @@ impl RotEvent {
     }
 }
 
-/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a
+/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a
 impl Serialize for RotEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 15;
+        let field_count = 14;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "rot")?;
@@ -496,7 +496,6 @@ impl Serialize for RotEvent {
         map.serialize_entry("bt", &self.bt)?;
         map.serialize_entry("br", &self.br)?;
         map.serialize_entry("ba", &self.ba)?;
-        map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.end()
     }
@@ -678,7 +677,7 @@ impl Serialize for DipEvent {
 ///
 /// Same field set as ROT but type `drt`. Validation requires checking the
 /// delegator's KEL for an anchoring seal.
-/// Spec field order: `[v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a]`
+/// Spec field order: `[v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a]`
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct DrtEvent {
@@ -760,10 +759,10 @@ impl DrtEvent {
     }
 }
 
-/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, di
+/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a, di
 impl Serialize for DrtEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 16;
+        let field_count = 15;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "drt")?;
@@ -778,7 +777,6 @@ impl Serialize for DrtEvent {
         map.serialize_entry("bt", &self.bt)?;
         map.serialize_entry("br", &self.br)?;
         map.serialize_entry("ba", &self.ba)?;
-        map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.serialize_entry("di", &self.di)?;
         map.end()
