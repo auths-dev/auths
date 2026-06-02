@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::keys::{KeriDecodeError, KeriPublicKey};
 
@@ -80,7 +80,7 @@ fn validate_said_derivation_code(s: &str) -> Result<(), KeriTypeError> {
 /// let prefix = Prefix::new("ETest123abc".to_string())?;
 /// assert_eq!(prefix.as_str(), "ETest123abc");
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 pub struct Prefix(String);
@@ -113,6 +113,19 @@ impl Prefix {
     /// Returns true if the inner string is empty (placeholder during event construction).
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+// Wire deserialization rejects an empty prefix: a present-but-empty identifier is
+// never valid on the wire, and `#[serde(default)]` removal only catches a *missing*
+// field. Internal placeholders go through `Default`/`new_unchecked`, not this path.
+impl<'de> Deserialize<'de> for Prefix {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Err(serde::de::Error::custom("Prefix must not be empty"));
+        }
+        Ok(Self(s))
     }
 }
 
@@ -173,14 +186,15 @@ impl PartialEq<Prefix> for &str {
 /// distinct — a prefix identifies an *identity*, a SAID identifies an *event*.
 ///
 /// Args:
-/// * Inner `String` should start with `'E'` (enforced by `new()`, not by serde).
+/// * Inner `String` must be non-empty (rejected on deserialize) and should start
+///   with `'E'` (the Blake3 digest derivation code, enforced by `new()`).
 ///
 /// Usage:
 /// ```ignore
 /// let said = Said::new("ESAID123".to_string())?;
 /// assert_eq!(said.as_str(), "ESAID123");
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 pub struct Said(String);
@@ -212,6 +226,19 @@ impl Said {
     /// Returns true if the inner string is empty (placeholder during event construction).
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+// Wire deserialization rejects an empty SAID: an event must carry a real `d`/`n`
+// on the wire (removing `#[serde(default)]` on `d` only catches a *missing* field).
+// `compute_said`'s placeholder and other internal uses go through `new_unchecked`.
+impl<'de> Deserialize<'de> for Said {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Err(serde::de::Error::custom("Said must not be empty"));
+        }
+        Ok(Self(s))
     }
 }
 

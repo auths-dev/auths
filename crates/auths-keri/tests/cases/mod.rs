@@ -10,4 +10,5 @@ mod roundtrip;
 mod sequence_hex;
 #[cfg(feature = "cesr")]
 mod stream;
+mod wire_requires_d;
 mod witness_flows;

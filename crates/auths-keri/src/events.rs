@@ -309,7 +309,6 @@ pub struct IcpEvent {
     /// Version string
     pub v: VersionString,
     /// SAID (Self-Addressing Identifier) — Blake3 hash of event
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix (same as `d` for self-addressing inception)
     pub i: Prefix,
@@ -407,7 +406,6 @@ pub struct RotEvent {
     /// Version string
     pub v: VersionString,
     /// SAID of this event
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix
     pub i: Prefix,
@@ -513,7 +511,6 @@ pub struct IxnEvent {
     /// Version string
     pub v: VersionString,
     /// SAID of this event
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix
     pub i: Prefix,
@@ -588,7 +585,6 @@ pub struct DipEvent {
     /// Version string
     pub v: VersionString,
     /// SAID
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix (same as `d` for self-addressing)
     pub i: Prefix,
@@ -689,7 +685,6 @@ pub struct DrtEvent {
     /// Version string
     pub v: VersionString,
     /// SAID
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix
     pub i: Prefix,
@@ -1239,7 +1234,7 @@ mod tests {
 
     #[test]
     fn event_enum_deserializes_by_t_field() {
-        let json = r#"{"v":"KERI10JSON000000_","t":"icp","i":"E123","s":"0","kt":"1","k":["DKey"],"nt":"1","n":["ENext"],"bt":"0","b":[]}"#;
+        let json = r#"{"v":"KERI10JSON000000_","t":"icp","d":"ETestSaid","i":"E123","s":"0","kt":"1","k":["DKey"],"nt":"1","n":["ENext"],"bt":"0","b":[]}"#;
         let event: Event = serde_json::from_str(json).unwrap();
         assert!(event.is_inception());
         assert_eq!(event.sequence().value(), 0);
