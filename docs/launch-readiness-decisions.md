@@ -6,9 +6,10 @@ using the settled decisions in §1. Per-task acceptance criteria live in the `.f
 specs (`flowctl cat <id>`); this doc is the decisions + sequence + gotchas that aren't
 in those specs.
 
-Status when written: **20/55 tasks done**, branch `dev-keriCompliantDevices`, working
-tree clean. The big `DeviceDID → CanonicalDid` refactor is **committed** (`54a1bc2`) — it
-is no longer a blocker (earlier versions of this doc said it was; ignore that).
+Status: **~24/55 tasks done** — **Wave 0 (CESR alignment) and Wave 1 (A.3, A.13) are
+complete**; branch `dev-keriCompliantDevices`. Next per §2 is Wave 2 (Epic B, dual-index
+CESR). The big `DeviceDID → CanonicalDid` refactor is **committed** (`54a1bc2`) — it is no
+longer a blocker (earlier versions of this doc said it was; ignore that).
 
 ---
 
@@ -303,10 +304,10 @@ Do waves in order; within a wave, tasks are independent. All are auths-keri-loca
 committable now (tree is clean).
 
 ```
-WAVE 1  (auths-keri interop fixes — highest value, lowest risk)
-  A.7  (commitment qb64)  ──►  A.16 (regen fixtures)
-  A.3  (require d on wire)
-  A.13 (remove DID, mark done)
+WAVE 1  ✓ COMPLETE (auths-keri interop fixes)
+  A.7 + A.16  ✓ (folded into Wave 0 — keripy byte-interop)
+  A.3   ✓ require non-empty d on wire        (405d47f)
+  A.13  ✓ remove DID config trait            (8a01f87)
 
 WAVE 2  (B — dual-index CESR; consensus-critical wire format)
   B.1 (prior_index field) ──► B.3 (code-directed parser) ──► B.2 (emit) + B.4 (validate)
@@ -385,10 +386,11 @@ WAVE 5  (independent, any order)
 
 ## 5. Done log (already committed on `dev-keriCompliantDevices`)
 
-Epic A: A.1 A.2 A.4 A.6 A.8 A.9 A.10 A.11 A.12 A.15 A.17 (+ A.13 role-flip half, `0f9c011`).
+Epic A: A.1 A.2 A.3 (`405d47f`) A.4 A.6 A.7 A.8 A.9 A.10 A.11 A.12 A.13 (`8a01f87`, +role-flip half `0f9c011`) A.15 A.16 A.17. (A.7/A.16 landed with the Wave 0 CESR alignment.)
 Epic D: D.3 (`5ac8a43`) D.4 (in `54a1bc2`) D.6 (`ad4ae53`).
 Epic E: E.2 E.3 E.4.  Epic F: F.2.  Epic G: G.1 (`5b44f0e`).  Epic H: H.2 (`6857684`).
 Refactor: `54a1bc2` DeviceDID→CanonicalDid (176 files, carried D.4 + 45 clippy fixes).
 Docs: `SPEC.md`, `docs/architecture/{identity-model,cryptography,dormant-crate-audit}.md`, this file.
 
-Remaining: 35 tasks — §1 decides 6 of them, §2/§3 build ~15, §4 lists ~14 that need you/infra.
+Remaining: ~31 tasks (Wave 0 + Wave 1 now complete) — Waves 2–5 build ~23 (B/C/D + the
+independents), §4 lists ~8 that need you/infra.
