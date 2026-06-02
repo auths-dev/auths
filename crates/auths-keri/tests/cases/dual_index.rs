@@ -73,7 +73,10 @@ fn dual_index_attachment_roundtrips() {
     };
     let att = serialize_attachment(std::slice::from_ref(&sig)).unwrap();
     let s = std::str::from_utf8(&att).unwrap();
-    assert!(s.starts_with("-AAB2A"), "dual-index siger must use the 2A code: {s}");
+    assert!(
+        s.starts_with("-AAB2A"),
+        "dual-index siger must use the 2A code: {s}"
+    );
     assert_eq!(att.len(), 4 + 92, "counter (4) + one 2A siger (92)");
     let back = parse_attachment(&att).unwrap();
     assert_eq!(back.len(), 1);

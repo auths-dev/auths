@@ -1366,8 +1366,14 @@ mod tests {
         let event = Event::Icp(icp);
         let canonical = serialize_for_signing(&event).unwrap();
         let sig = keypair.sign(&canonical).as_ref().to_vec();
-        let signed =
-            SignedEvent::new(event, vec![IndexedSignature { index: 0, prior_index: None, sig }]);
+        let signed = SignedEvent::new(
+            event,
+            vec![IndexedSignature {
+                index: 0,
+                prior_index: None,
+                sig,
+            }],
+        );
 
         validate_signed_event(&signed, None).expect("correct signature must validate");
     }
