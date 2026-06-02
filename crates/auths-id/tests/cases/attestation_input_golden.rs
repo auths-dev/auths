@@ -12,9 +12,9 @@ use chrono::TimeZone;
 use sha2::{Digest, Sha256};
 
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
+use auths_crypto::testing::seeded_p256_keypair;
 use auths_id::attestation::create::AttestationInput;
 use auths_id::storage::git_refs::AttestationMetadata;
-use auths_test_utils::crypto::seeded_p256_keypair;
 use auths_verifier::core::canonicalize_attestation_data;
 use auths_verifier::types::CanonicalDid;
 
