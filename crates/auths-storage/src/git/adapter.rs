@@ -2380,8 +2380,7 @@ mod tests {
     use auths_keri::{CesrKey, Threshold, VersionString};
     use auths_verifier::AttestationBuilder;
     use auths_verifier::core::{Ed25519PublicKey, Role};
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
     use chrono::{DateTime, Utc};
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -2401,7 +2400,10 @@ mod tests {
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+        let key_encoded = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
 
         let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
@@ -2438,10 +2440,10 @@ mod tests {
         new_keypair: &Ed25519KeyPair,
     ) -> (Event, Ed25519KeyPair) {
         let rng = SystemRandom::new();
-        let new_key_encoded = format!(
-            "D{}",
-            URL_SAFE_NO_PAD.encode(new_keypair.public_key().as_ref())
-        );
+        let new_key_encoded = auths_keri::KeriPublicKey::ed25519(new_keypair.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
 
         // Generate the next-next key for the new commitment
         let nn_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
@@ -2577,7 +2579,10 @@ mod tests {
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let kp = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let key_enc = format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()));
+        let key_enc = auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
         let next_commit = compute_next_commitment(
             &auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref()).unwrap(),
         );
@@ -3959,8 +3964,7 @@ mod index_consistency_tests {
     use auths_keri::{CesrKey, Threshold, VersionString};
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::types::CanonicalDid;
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
     use chrono::Utc;
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -3978,7 +3982,10 @@ mod index_consistency_tests {
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+        let key_encoded = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
 
         let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
@@ -4199,8 +4206,7 @@ mod tenant_isolation_tests {
 
     use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::types::CanonicalDid;
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
     use tempfile::TempDir;
@@ -4234,7 +4240,10 @@ mod tenant_isolation_tests {
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+        let key_encoded = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
 
         let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();

@@ -8,8 +8,6 @@ use auths_id::keri::types::{Prefix, Said};
 use auths_id::ports::registry::{RegistryBackend, RegistryError};
 use auths_keri::{CesrKey, Threshold, VersionString};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use tempfile::TempDir;
 
@@ -21,7 +19,10 @@ fn seeded_inception_event(seed: u8) -> Event {
     let next_seed = [seed.wrapping_add(128); 32];
 
     let keypair = Ed25519KeyPair::from_seed_unchecked(&current_seed).unwrap();
-    let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+    let key_encoded = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+        .unwrap()
+        .to_qb64()
+        .unwrap();
 
     let next_keypair = Ed25519KeyPair::from_seed_unchecked(&next_seed).unwrap();
     let next_commitment = compute_next_commitment(

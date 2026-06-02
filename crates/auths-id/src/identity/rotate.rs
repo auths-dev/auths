@@ -7,7 +7,6 @@
 //! - [`rotate_keri_identity`]: GitKel-based storage (legacy, per-identity refs)
 //! - [`rotate_registry_identity`]: Packed registry storage (single `refs/auths/registry` ref)
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -272,10 +271,13 @@ pub fn rotate_registry_identity(
     let new_next_keypair = Ed25519KeyPair::from_pkcs8(new_next_pkcs8.as_ref())
         .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
 
-    let new_current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(next_keypair.public_key().as_ref())
-    );
+    #[allow(clippy::expect_used)]
+    // INVARIANT: ring Ed25519 public key is always 32 bytes; cesride encode of a valid 32-byte verkey is infallible
+    let new_current_pub_encoded =
+        auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .expect("ring Ed25519 public key is 32 bytes")
+            .to_qb64()
+            .expect("cesride verkey encode is infallible");
     #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
     let new_next_verkey =
         auths_keri::KeriPublicKey::ed25519(new_next_keypair.public_key().as_ref())
@@ -416,7 +418,7 @@ pub fn rotate_registry_identity_multi(
     // Decrypt each prior-committed next key in order. These become the new
     // current keys at indices 0..prior_key_count.
     let mut new_current_pkcs8s: Vec<Pkcs8Der> = Vec::with_capacity(prior_key_count);
-    let mut new_current_pubs: Vec<Vec<u8>> = Vec::with_capacity(prior_key_count);
+    let mut new_current_pubs: Vec<auths_keri::KeriPublicKey> = Vec::with_capacity(prior_key_count);
     let mut prior_next_aliases: Vec<KeyAlias> = Vec::with_capacity(prior_key_count);
 
     let next_pass = passphrase_provider.get_passphrase(&format!(
@@ -446,7 +448,7 @@ pub fn rotate_registry_identity_multi(
                 "Commitment mismatch at slot {idx}: next key does not match previous commitment"
             )));
         }
-        new_current_pubs.push(keypair.public_key().as_ref().to_vec());
+        new_current_pubs.push(next_verkey);
         new_current_pkcs8s.push(pkcs8);
         prior_next_aliases.push(alias);
     }
@@ -455,7 +457,7 @@ pub fn rotate_registry_identity_multi(
     let added = crate::keri::inception::generate_keypairs_for_init(&shape.add_devices)
         .map_err(|e| InitError::Crypto(e.to_string()))?;
     for kp in &added {
-        new_current_pubs.push(kp.public_key.clone());
+        new_current_pubs.push(kp.verkey());
         new_current_pkcs8s.push(kp.pkcs8.clone());
     }
 
@@ -468,8 +470,12 @@ pub fn rotate_registry_identity_multi(
 
     let k: Vec<CesrKey> = new_current_pubs
         .iter()
-        .map(|pk| CesrKey::new_unchecked(format!("D{}", URL_SAFE_NO_PAD.encode(pk))))
-        .collect();
+        .map(|vk| {
+            vk.to_qb64()
+                .map(CesrKey::new_unchecked)
+                .map_err(|e| InitError::InvalidData(e.to_string()))
+        })
+        .collect::<Result<_, _>>()?;
     let n: Vec<Said> = new_next_kps
         .iter()
         .map(|kp| compute_next_commitment(&kp.verkey()))

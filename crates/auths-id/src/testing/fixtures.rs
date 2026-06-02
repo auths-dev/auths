@@ -1,8 +1,6 @@
 use auths_core::crypto::said::compute_next_commitment;
 use auths_verifier::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
 use auths_verifier::types::CanonicalDid;
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -33,7 +31,10 @@ pub fn test_inception_event(key_seed: &str) -> Event {
 
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-    let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+    let key_encoded = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+        .expect("ed25519 verkey is 32 bytes")
+        .to_qb64()
+        .expect("cesride verkey encode is infallible");
 
     let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();

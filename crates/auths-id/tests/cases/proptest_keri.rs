@@ -4,8 +4,6 @@ use auths_id::keri::{
     finalize_icp_event, validate_kel, verify_event_said,
 };
 use auths_keri::{CesrKey, Threshold, VersionString};
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use proptest::prelude::*;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -17,7 +15,10 @@ fn gen_keypair() -> Ed25519KeyPair {
 }
 
 fn encode_pubkey(kp: &Ed25519KeyPair) -> String {
-    format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()))
+    auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+        .unwrap()
+        .to_qb64()
+        .unwrap()
 }
 
 fn make_signed_icp(kp: &Ed25519KeyPair, next_commitment: &Said) -> IcpEvent {

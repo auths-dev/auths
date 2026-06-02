@@ -344,9 +344,11 @@ mod tests {
 
     #[test]
     fn decode_ed25519_key() {
-        use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
         let key_bytes = [1u8; 32];
-        let encoded = format!("D{}", URL_SAFE_NO_PAD.encode(key_bytes));
+        let encoded = KeriPublicKey::ed25519(&key_bytes)
+            .unwrap()
+            .to_qb64()
+            .unwrap();
 
         let key = KeriPublicKey::parse(&encoded).unwrap();
         assert_eq!(key.as_bytes(), &key_bytes);

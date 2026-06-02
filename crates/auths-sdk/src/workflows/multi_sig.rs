@@ -235,8 +235,7 @@ mod tests {
     use auths_keri::{
         CesrKey, Fraction, IcpEvent, KeriSequence, Prefix, Said, VersionString, finalize_icp_event,
     };
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
     use tempfile::tempdir;
@@ -248,7 +247,10 @@ mod tests {
     }
 
     fn cesr_pub(kp: &Ed25519KeyPair) -> String {
-        format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()))
+        auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap()
     }
 
     fn half() -> Fraction {

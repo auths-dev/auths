@@ -260,11 +260,16 @@ impl TypedSignerKey {
     /// (`1AAI` / `ECDSA_256r1N` is the non-transferable variant.) Auths
     /// identities rotate, so signers emit the transferable code.
     pub fn cesr_encoded_pubkey(&self) -> String {
-        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-        match self.seed.curve() {
-            CurveType::Ed25519 => format!("D{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
-            CurveType::P256 => format!("1AAJ{}", URL_SAFE_NO_PAD.encode(&self.public_key)),
-        }
+        use cesride::Matter;
+        let code = match self.seed.curve() {
+            CurveType::Ed25519 => cesride::matter::Codex::Ed25519,
+            CurveType::P256 => cesride::matter::Codex::ECDSA_256r1,
+        };
+        #[allow(clippy::expect_used)]
+        // INVARIANT: every constructor validates public_key length against the curve, so cesride encode under the matching fixed-size code cannot fail
+        cesride::Verfer::new(Some(code), Some(&self.public_key), None, None, None)
+            .and_then(|v| v.qb64())
+            .expect("cesride verkey encode is infallible for a validated key")
     }
 
     /// Legacy alias; callers should prefer [`cesr_encoded_pubkey`].

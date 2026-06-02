@@ -14,8 +14,6 @@ use auths_id::keri::validate::finalize_icp_event;
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_keri::{CesrKey, Threshold, VersionString};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -27,7 +25,10 @@ fn make_signed_icp() -> (Event, Prefix, Ed25519KeyPair) {
     let rng = SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-    let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+    let key_encoded = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+        .unwrap()
+        .to_qb64()
+        .unwrap();
 
     let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();

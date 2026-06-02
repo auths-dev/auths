@@ -92,26 +92,30 @@ CESR derivation code. Length-based curve dispatch is forbidden.
 
 | Curve | Transferable | Non-transferable |
 |-------|--------------|------------------|
-| Ed25519 | `D` + base64url(32) | `B` + base64url(32) |
-| P-256 (secp256r1) | `1AAJ` + base64url(33, compressed SEC1) | `1AAI` + base64url(33, compressed SEC1) |
+| Ed25519 | `D…` (qb64, 44 chars / 32 key bytes) | `B…` (qb64, 44 chars) |
+| P-256 (secp256r1) | `1AAJ…` (qb64, 48 chars / 33-byte compressed SEC1) | `1AAI…` (qb64, 48 chars) |
 
 `1AAJ` = `ECDSA_256r1` (transferable), `1AAI` = `ECDSA_256r1N` (non-transferable), per the
-CESR master code table as implemented by `cesride` and `keripy` `MatterCodex`. The
-transferability recorded from the code is load-bearing: it determines whether the
+CESR master code table as implemented by `cesride` and `keripy` `MatterCodex`.
+
+Verkeys are encoded as full CESR **`qb64`** via `cesride` — **byte-identical to `keripy`'s
+`Verfer.qb64`** — not a naive `code + base64url(raw)` concatenation. CESR's lead-byte
+alignment shifts the payload, so e.g. `Verfer(bytes(0..32), Ed25519).qb64` is
+`DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f`, which differs from a naive `"D" +
+base64url(bytes)`. Encoding and decoding route exclusively through
+`KeriPublicKey::{to_qb64, parse}` (both cesride-backed).
+
+The transferability recorded from the code is load-bearing: it determines whether the
 identifier may rotate (§7) and feeds the basic-derivation check (§3.3).
 
 ### 3.2 Pre-rotation commitments
 
-A next-key commitment in `n[]` is `E` + base64url(Blake3-256(<key material>)).
-
-- **Current behavior (ENFORCED):** `<key material>` is the **raw public-key bytes**.
-- **Resolved target (PENDING — A.7):** `<key material>` MUST be the **CESR-qualified
-  `qb64` form** of the verkey (code + key bytes), so a commitment binds the curve and
-  transferability, not just the raw bytes. Migrating this changes the on-disk commitment
-  digest and therefore requires fixture regeneration (A.16) and ideally a KERIox
-  cross-vector. Until A.7 lands, commitments are over raw bytes.
-
-This divergence is recorded here deliberately so it is not mistaken for conformance.
+A next-key commitment in `n[]` is the CESR-qualified Blake3-256 digest (`E…` qb64) of the
+**CESR-qualified `qb64` form** of the next verkey — i.e. `Diger(ser=Verfer.qb64b)`,
+**byte-identical to `keripy`** (ENFORCED — A.7). The commitment binds the curve and
+transferability, not just the raw key bytes. `compute_next_commitment` takes a typed
+`KeriPublicKey`, so the curve required to produce the qualified form always travels with
+the key and length-based dispatch is impossible.
 
 ### 3.3 Basic-derivation binding (ENFORCED — A.9)
 
@@ -210,7 +214,7 @@ A receipt body is `{v, t, d, i, s}` where:
 | A.2 | Sign finalized canonical bytes | ENFORCED |
 | A.4 / F-15 | Threshold satisfiability; no weighted→1-of-N collapse | ENFORCED |
 | A.6 | P-256 `1AAJ`/`1AAI`, Ed25519 `D`/`B`; no length dispatch | ENFORCED |
-| A.7 / C-05 | Commitment over CESR-qualified `qb64` | **PENDING(A.7)** |
+| A.7 / C-05 | Commitment over CESR-qualified `qb64` | ENFORCED |
 | A.8 | Event-location seal `{i,s,p,t,d}`; extensions feature-gated | ENFORCED |
 | A.9 | Basic-derivation `i == k[0]` for single-key inception | ENFORCED |
 | A.10 / F-05 | Rotation backer-delta validation (`br`⊆prior, `ba`∩survivors=∅) | ENFORCED |

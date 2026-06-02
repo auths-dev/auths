@@ -29,11 +29,10 @@ pub(crate) fn encode_verkey(raw: &[u8], code: &str) -> Result<String, KeriDecode
 
 /// Decode a CESR-qualified verkey qb64 into its raw bytes and matter code.
 ///
+/// The inverse of [`encode_verkey`]; drives [`crate::keys::KeriPublicKey::parse`].
+///
 /// Args:
 /// * `qb64`: The CESR-qualified verkey string (e.g. `"DAAB…"`, `"1AAJ…"`).
-// Wired into `KeriPublicKey::parse` when the encoding flip lands; kept here so the
-// encode/decode pair is defined and keripy-pinned together.
-#[allow(dead_code)]
 pub(crate) fn decode_verkey(qb64: &str) -> Result<(Vec<u8>, String), KeriDecodeError> {
     let verfer = Verfer::new(None, None, None, Some(qb64), None)
         .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))?;

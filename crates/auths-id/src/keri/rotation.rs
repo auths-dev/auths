@@ -9,7 +9,6 @@ use std::ops::ControlFlow;
 
 use auths_crypto::Pkcs8Der;
 use auths_keri::KeriPublicKey;
-use base64::Engine;
 
 use auths_core::crypto::said::{compute_next_commitment, verify_commitment};
 use auths_keri::compute_said;
@@ -123,15 +122,10 @@ fn parse_next_key(
 ) -> Result<(Vec<u8>, auths_crypto::TypedSeed, String), RotationError> {
     let parsed = auths_crypto::parse_key_material(pkcs8)
         .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
-    let cesr_prefix = match parsed.seed.curve() {
-        auths_crypto::CurveType::Ed25519 => "D",
-        auths_crypto::CurveType::P256 => "1AAJ",
-    };
-    let cesr_encoded = format!(
-        "{}{}",
-        cesr_prefix,
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&parsed.public_key)
-    );
+    let cesr_encoded =
+        auths_keri::KeriPublicKey::from_verkey_bytes(&parsed.public_key, parsed.seed.curve())
+            .and_then(|k| k.to_qb64())
+            .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
     Ok((parsed.public_key, parsed.seed, cesr_encoded))
 }
 

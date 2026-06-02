@@ -8,12 +8,10 @@
 //!       threshold accepts any 2-of-3 signatures and rejects 1-of-3 and 0-of-3.
 
 use auths_keri::{
-    CesrKey, Event, Fraction, IcpEvent, IndexedSignature, KeriSequence, Prefix, Said, SignedEvent,
-    Threshold, ValidationError, VersionString, finalize_icp_event, serialize_for_signing,
-    validate_signed_event,
+    CesrKey, Event, Fraction, IcpEvent, IndexedSignature, KeriPublicKey, KeriSequence, Prefix,
+    Said, SignedEvent, Threshold, ValidationError, VersionString, finalize_icp_event,
+    serialize_for_signing, validate_signed_event,
 };
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -24,7 +22,10 @@ fn gen_keypair() -> Ed25519KeyPair {
 }
 
 fn cesr_pub(kp: &Ed25519KeyPair) -> String {
-    format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()))
+    KeriPublicKey::ed25519(kp.public_key().as_ref())
+        .unwrap()
+        .to_qb64()
+        .unwrap()
 }
 
 fn half() -> Fraction {

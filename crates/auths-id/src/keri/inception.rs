@@ -6,7 +6,6 @@
 //! 3. Building and finalizing inception event with SAID
 //! 4. Storing event in Git-backed KEL
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -118,7 +117,10 @@ fn generate_keypair(curve: CurveType) -> Result<GeneratedKeypair, InceptionError
             let keypair = Ed25519KeyPair::from_pkcs8(pkcs8_doc.as_ref())
                 .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
             let public_key = keypair.public_key().as_ref().to_vec();
-            let cesr_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(&public_key));
+            let cesr_encoded =
+                auths_keri::KeriPublicKey::from_verkey_bytes(&public_key, CurveType::Ed25519)
+                    .and_then(|k| k.to_qb64())
+                    .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
             Ok(GeneratedKeypair {
                 pkcs8: Pkcs8Der::new(pkcs8_doc.as_ref().to_vec()),
                 public_key,
@@ -138,7 +140,10 @@ fn generate_keypair(curve: CurveType) -> Result<GeneratedKeypair, InceptionError
             let public_key = compressed.as_bytes().to_vec();
 
             // CESR encode with 1AAJ prefix (P-256 transferable verkey)
-            let cesr_encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(&public_key));
+            let cesr_encoded =
+                auths_keri::KeriPublicKey::from_verkey_bytes(&public_key, CurveType::P256)
+                    .and_then(|k| k.to_qb64())
+                    .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
 
             // PKCS8 DER encoding
             let pkcs8_doc = signing_key
@@ -585,10 +590,10 @@ pub fn create_keri_identity_with_backend(
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
         .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
 
-    let current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
-    );
+    let current_pub_encoded =
+        auths_keri::KeriPublicKey::ed25519(current_keypair.public_key().as_ref())
+            .and_then(|k| k.to_qb64())
+            .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?;
     let next_commitment = compute_next_commitment(
         &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
             .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?,
@@ -662,10 +667,10 @@ pub fn create_keri_identity_from_key(
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
         .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
 
-    let current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
-    );
+    let current_pub_encoded =
+        auths_keri::KeriPublicKey::ed25519(current_keypair.public_key().as_ref())
+            .and_then(|k| k.to_qb64())
+            .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?;
     let next_commitment = compute_next_commitment(
         &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
             .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?,

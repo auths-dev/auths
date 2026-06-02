@@ -1159,8 +1159,6 @@ mod tests {
     use super::*;
     use crate::events::{IndexedSignature, KeriSequence, Seal, SignedEvent};
     use crate::types::{CesrKey, Threshold, VersionString};
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -1171,7 +1169,8 @@ mod tests {
     }
 
     fn encode_pubkey(kp: &Ed25519KeyPair) -> String {
-        format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()))
+        crate::cesr_encode::encode_verkey(kp.public_key().as_ref(), cesride::matter::Codex::Ed25519)
+            .unwrap()
     }
 
     fn make_raw_icp(key: &str, next: &str) -> IcpEvent {
@@ -1195,7 +1194,7 @@ mod tests {
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+        let key_encoded = encode_pubkey(&keypair);
 
         let icp = IcpEvent {
             v: VersionString::placeholder(),
@@ -1479,7 +1478,7 @@ mod tests {
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+        let key_encoded = encode_pubkey(&keypair);
 
         let mut icp = IcpEvent {
             v: VersionString::placeholder(),
@@ -1584,7 +1583,7 @@ mod tests {
             let rng = SystemRandom::new();
             let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
             let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-            let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+            let key_encoded = encode_pubkey(&keypair);
 
             let dup_backer = Prefix::new_unchecked("DWit1".to_string());
             let icp = IcpEvent {
@@ -1618,7 +1617,7 @@ mod tests {
             let rng = SystemRandom::new();
             let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
             let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-            let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+            let key_encoded = encode_pubkey(&keypair);
 
             let icp = IcpEvent {
                 v: VersionString::placeholder(),

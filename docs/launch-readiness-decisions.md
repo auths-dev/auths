@@ -219,7 +219,7 @@ shows **cesride 0.6 == keripy 1.3.4** byte-for-byte (`encode_pubkey(bytes(0..32)
 `EF_M_u7ASVHXfI8QzdWLq3V9ocSKqxkbujXGbi9QMtP9`). So the alignment is: **route everything through
 `CesrV1Codec`.**
 
-### STATUS (resume point) — Wave 0 is ~⅔ done; **SAID/event byte-interop with keripy ACHIEVED + committed**
+### STATUS — Wave 0 COMPLETE; **full SAID + commitment + verkey byte-interop with keripy ACHIEVED**
 
 **DONE (committed on `dev-keriCompliantDevices`):**
 - `74dcf5b` — always-on `src/cesr_encode.rs` (`encode_verkey`/`decode_verkey`/`encode_blake3_digest`/
@@ -236,9 +236,39 @@ shows **cesride 0.6 == keripy 1.3.4** byte-for-byte (`encode_pubkey(bytes(0..32)
   *computes* SAIDs rather than hardcoding them, so the value change was non-breaking (the feared
   atomic fixture-regen mostly evaporated).
 
-**REMAINING — Part 2b (verkey `k[]` encoding).** Make our verkeys valid CESR too (today keripy
-accepts our SAID/structure, but our `k[]` is naive base64 — keripy would mis-decode it for
-signature checks). This part **is atomic** (parse + all encode flip together — cesride silently
+**DONE — Part 2b (verkey `k[]` encoding) [uncommitted; ready for the user to commit].** Verkeys are
+now valid CESR `qb64` (cesride), byte-identical to keripy, so keripy can decode `k[]` for signature
+checks. Done atomically (parse + every encode site flipped together — cesride silently mis-decodes
+naive, no safe fallback). What landed vs. the plan below:
+- **More encode sites than the planned 30** — the single-line `format!("D{}",…)` grep missed several
+  **hidden multi-line production encoders**: `auths-id/src/keri/inception.rs` (×3 — `generate_keypair`
+  *and* both `create_keri_identity{,_from_key}` entry points), `identity/rotate.rs` (×2),
+  `keri/rotation.rs::parse_next_key` (the curve-dispatcher), `auths-storage/src/git/identity_adapter.rs`.
+  A full `URL_SAFE_NO_PAD.encode` sweep + per-site classification (verkey vs. pairing/sig/fingerprint)
+  found them all.
+- **Latent bug fixed:** `rotate.rs` `new_current_pubs` now carries typed `KeriPublicKey`
+  (`kp.verkey()` / pre-committed `next_verkey`) instead of a hardcoded `"D"`, so a P-256 added device
+  is no longer mis-encoded as Ed25519.
+- **No fixture regen:** all-zero verkey literals (`DAAA…`) coincide under naive & cesride; `icp.bin`
+  round-trips unchanged. Only the wrong-length / unknown-prefix unit asserts changed variant
+  (cesride malformed → `DecodeError`), fixed in place. **A.7 + A.16 done.**
+- **Gates GREEN:** `cargo nextest run --workspace --features test-utils,witness-client` (the **macOS
+  CI gate**, ci.yml) = **2499/2499 pass**; plain `--workspace` also 2499/2499; `KERIPY_INTEROP=1`
+  subprocess test PASSES (genuinely runs keripy 1.3.4); verifier wasm32 green; `clippy --all-targets
+  --all-features … -D warnings` exit 0 on the 5 touched crates.
+- **On `--all-features` (FIPS), macOS is deliberately unsupported — not a CESR/build regression.** CI
+  runs `--all-features` on **Ubuntu only**; the macOS job runs `--features test-utils,witness-client`
+  with the comment *"exclude FIPS, requires Go + Linux"* (ci.yml). FIPS-on-macOS can't sign through
+  git: macOS **SIP** strips `DYLD_*` from the protected `/usr/bin/git`, so the `auths-sign` git spawns
+  can't locate `libaws_lc_fips_*_crypto.dylib` (signal 6/dyld) — `golden_path` then fails at
+  `git commit`. It's a platform boundary (no test-harness fix; directly-spawned `auths` cmds inherit
+  `DYLD` fine), and nothing here touches the FIPS/aws-lc provider.
+
+**→ Wave 0 (CESR alignment, Option A) is COMPLETE.** B/C now validate against the keripy reference.
+
+<details><summary>Original Part 2b plan (for reference)</summary>
+
+This part **is atomic** (parse + all encode flip together — cesride silently
 mis-decodes naive strings, so there is NO safe fallback):
 1. **`src/keys.rs` `KeriPublicKey::parse`** → `crate::cesr_encode::decode_verkey` (cesride). Map the
    matter codes: `Ed25519`→`Ed25519`, `ECDSA_256r1`→`P256{transferable:true}`, `ECDSA_256r1N`→
@@ -262,6 +292,8 @@ mis-decodes naive strings, so there is NO safe fallback):
    `git -c commit.gpgsign=false commit --no-verify` (signing hangs on TouchID).
 5. Update `SPEC.md` §3 (verkeys are CESR-aligned qb64, not naive base64); mark A.7 (`fn-135.7`) +
    A.16 (`fn-135.16`) done. Then Wave 0 is complete and B/C validate against keripy cleanly.
+
+</details>
 
 ---
 
