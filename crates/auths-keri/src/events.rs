@@ -1035,8 +1035,37 @@ pub fn serialize_attachment(signatures: &[IndexedSignature]) -> Result<Vec<u8>, 
     Ok(out.into_bytes())
 }
 
+/// CESR Indexer hard-code length: codes whose first char is a digit (`0`–`4`)
+/// are multi-char selectors; all others are single-char. Mirrors cesride's
+/// `indexer` hardage (whose tables are `pub(crate)`).
+fn indexer_hard_len(first: u8) -> usize {
+    if first.is_ascii_digit() { 2 } else { 1 }
+}
+
+/// `(full qb64 size, ondex size)` for a CESR Indexer signature code, mirroring
+/// cesride `indexer/tables.rs` (its `sizage` is `pub(crate)`, not callable here).
+///
+/// `os > 0` marks a dual-index ("Big") code carrying a *distinct* prior-commitment
+/// index (ondex); single-index codes have `os == 0` (ondex echoes index).
+fn indexer_sizage(code: &str) -> Option<(usize, usize)> {
+    Some(match code {
+        // single-index: Ed25519 A/B, secp256k1 C/D, P-256 E/F (+ Crt variants)
+        "A" | "B" | "C" | "D" | "E" | "F" => (88, 0),
+        // dual-index ("Big"): Ed25519 2A/2B, secp256k1 2C/2D, P-256 2E/2F
+        "2A" | "2B" | "2C" | "2D" | "2E" | "2F" => (92, 2),
+        // large/huge index variants (completeness; not emitted by auths)
+        "0A" | "0B" => (156, 1),
+        "3A" | "3B" => (160, 3),
+        _ => return None,
+    })
+}
+
 /// Parse a CESR `-A##` indexed-signature group into the constituent
 /// `IndexedSignature`s.
+///
+/// Code-directed: each siger's width is read from its CESR hard code (so a group
+/// may mix single-index `A` (88 ch) and dual-index `2A` (92 ch), or curves). A
+/// signature under a dual-index code populates `prior_index` from its ondex.
 pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, AttachmentError> {
     use cesride::{Indexer, Siger};
 
@@ -1059,27 +1088,35 @@ pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, Attachmen
     let mut out = Vec::with_capacity(count);
     let mut cursor = body;
     for _ in 0..count {
-        // Ed25519 indexed sigs are 88 chars in CESR (2-char code + 86 body).
-        // P-256 ECDSA indexed sigs also 88 chars (code ECDSA_256r1 + body).
-        // Both match; parse fixed-width.
-        if cursor.len() < 88 {
+        let first = *cursor.as_bytes().first().ok_or_else(|| {
+            AttachmentError::Decode("truncated group: expected another signature".into())
+        })?;
+        let hs = indexer_hard_len(first);
+        if cursor.len() < hs {
+            return Err(AttachmentError::Decode("truncated siger hard code".into()));
+        }
+        let code = &cursor[..hs];
+        let (fs, os) = indexer_sizage(code)
+            .ok_or_else(|| AttachmentError::Decode(format!("unknown indexer code {code:?}")))?;
+        if cursor.len() < fs {
             return Err(AttachmentError::Decode(format!(
-                "insufficient bytes for siger: need 88, have {}",
+                "insufficient bytes for {code} siger: need {fs}, have {}",
                 cursor.len()
             )));
         }
-        let (siger_qb64, remainder) = cursor.split_at(88);
+        let (siger_qb64, remainder) = cursor.split_at(fs);
         cursor = remainder;
 
         let siger = Siger::new(None, None, None, None, None, None, Some(siger_qb64), None)
             .map_err(|e| AttachmentError::Decode(format!("Siger: {e}")))?;
-        let index = siger.index();
-        let sig_bytes = siger.raw();
+        // A distinct prior-commitment index is carried only by dual-index codes
+        // (os > 0); single-index codes report ondex == index, which is not a binding.
+        let prior_index = (os > 0).then(|| siger.ondex());
 
         out.push(IndexedSignature {
-            index,
-            prior_index: None,
-            sig: sig_bytes,
+            index: siger.index(),
+            prior_index,
+            sig: siger.raw(),
         });
     }
 

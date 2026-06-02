@@ -1,5 +1,6 @@
 #[cfg(feature = "cesr")]
 mod codec;
+mod dual_index;
 #[cfg(feature = "cesr")]
 mod event;
 mod interop_vectors;
