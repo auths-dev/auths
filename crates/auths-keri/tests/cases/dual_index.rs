@@ -5,10 +5,25 @@
 //! reveals prior `n[1]`, new `k[1]` reveals prior `n[2]`.
 
 use auths_keri::{
-    Event, IndexedSignature, SignedEvent, ValidationError, parse_attachment, replay_kel,
-    serialize_attachment, validate_signed_event,
+    CesrKey, Event, IcpEvent, IndexedSignature, KeriPublicKey, KeriSequence, Prefix, RotEvent,
+    Said, SignedEvent, Threshold, ValidationError, VersionString, compute_next_commitment,
+    finalize_icp_event, finalize_rot_event, parse_attachment, replay_kel, serialize_attachment,
+    serialize_for_signing, validate_signed_event,
 };
+use ring::rand::SystemRandom;
+use ring::signature::{Ed25519KeyPair, KeyPair};
 use std::path::Path;
+
+fn ed25519() -> Ed25519KeyPair {
+    let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
+    Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap()
+}
+fn vk(kp: &Ed25519KeyPair) -> KeriPublicKey {
+    KeriPublicKey::ed25519(kp.public_key().as_ref()).unwrap()
+}
+fn cesr(kp: &Ed25519KeyPair) -> CesrKey {
+    CesrKey::new_unchecked(vk(kp).to_qb64().unwrap())
+}
 
 fn fixture(name: &str) -> Vec<u8> {
     let p = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -138,4 +153,71 @@ fn dual_index_rotation_binds_prior_commitment() {
         validate_signed_event(&SignedEvent::new(rot, dup), Some(&prior)).is_err(),
         "two sigs revealing the same prior commitment must not satisfy nt=2"
     );
+}
+
+/// A `kt=1`/`nt=1` shared KEL removing a controller (3→2): a single surviving
+/// signer authorises the shrink. The attachment is serialized then re-parsed
+/// (the real wire path), so a slot-0 signer's `A`-coded sig arrives with
+/// `prior_index == None` and must still bind to prior `n[0]` — the case the old
+/// asymmetric guard wrongly rejected.
+#[test]
+fn single_signer_removal_validates() {
+    let cur: Vec<_> = (0..3).map(|_| ed25519()).collect();
+    let nxt: Vec<_> = (0..3).map(|_| ed25519()).collect();
+    let icp = finalize_icp_event(IcpEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: Prefix::default(),
+        s: KeriSequence::new(0),
+        kt: Threshold::Simple(1),
+        k: cur.iter().map(cesr).collect(),
+        nt: Threshold::Simple(1),
+        n: nxt
+            .iter()
+            .map(|k| compute_next_commitment(&vk(k)))
+            .collect(),
+        bt: Threshold::Simple(0),
+        b: vec![],
+        c: vec![],
+        a: vec![],
+    })
+    .unwrap();
+    let prior = replay_kel(std::slice::from_ref(&Event::Icp(icp.clone()))).unwrap();
+
+    // Reveal slots 0 and 1; drop slot 2. New k = [nxt0, nxt1].
+    let fresh = ed25519();
+    let rot = finalize_rot_event(RotEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: icp.i.clone(),
+        s: KeriSequence::new(1),
+        p: icp.d.clone(),
+        kt: Threshold::Simple(1),
+        k: vec![cesr(&nxt[0]), cesr(&nxt[1])],
+        nt: Threshold::Simple(1),
+        n: vec![compute_next_commitment(&vk(&fresh))],
+        bt: Threshold::Simple(0),
+        br: vec![],
+        ba: vec![],
+        c: vec![],
+        a: vec![],
+    })
+    .unwrap();
+    let canonical = serialize_for_signing(&Event::Rot(rot.clone())).unwrap();
+
+    // Slot-0 survivor signs at new index 0, revealing prior n[0].
+    let authored = IndexedSignature {
+        index: 0,
+        prior_index: Some(0),
+        sig: nxt[0].sign(&canonical).as_ref().to_vec(),
+    };
+    // Round-trip through the wire: Some(0) == index ⇒ code A ⇒ parses to None.
+    let wire =
+        parse_attachment(&serialize_attachment(std::slice::from_ref(&authored)).unwrap()).unwrap();
+    assert_eq!(
+        wire[0].prior_index, None,
+        "slot-0 sig must use single-index A"
+    );
+    validate_signed_event(&SignedEvent::new(Event::Rot(rot), wire), Some(&prior))
+        .expect("single-signer slot-0 removal must validate");
 }

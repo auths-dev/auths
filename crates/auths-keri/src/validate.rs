@@ -1017,22 +1017,10 @@ pub fn validate_signed_event(
     {
         let n_len = state.next_commitment.len();
 
-        // A rotation that changes the key-set cardinality but carries no
-        // dual-index information is unbindable — there is no way to know which
-        // prior commitment each signature reveals. Surface the diagnostic error
-        // rather than a generic signature failure.
-        if n_len != keys.len() && signed.signatures.iter().all(|s| s.prior_index.is_none()) {
-            return Err(ValidationError::AsymmetricKeyRotation {
-                sequence,
-                prior_next_count: n_len,
-                new_key_count: keys.len(),
-            });
-        }
-
         // Bind each verifying signature to the prior commitment it reveals: the
         // new key `k[index]` must hash to `n[prior_index]` (or `n[index]` for a
-        // single-index sig). The prior `nt` must then be met over the DISTINCT
-        // prior-commitment indices so revealed.
+        // single-index sig, where keripy emits code `A` with ondex == index). The
+        // prior `nt` must then be met over the DISTINCT prior-commitment indices.
         let mut verified_prior: Vec<u32> = Vec::new();
         for sig in &signed.signatures {
             let Some(key) = keys.get(sig.index as usize) else {
@@ -1051,6 +1039,18 @@ pub fn validate_signed_event(
             if crate::crypto::verify_commitment(&pk, commitment) {
                 verified_prior.push(j as u32);
             }
+        }
+
+        // A cardinality-changing rotation in which NO signature revealed a prior
+        // commitment is unbindable — surface the diagnostic rather than a generic
+        // signature failure. (A well-formed removal binds at least one; a single
+        // signer at prior slot 0 binds via the index == ondex fallback.)
+        if n_len != keys.len() && verified_prior.is_empty() {
+            return Err(ValidationError::AsymmetricKeyRotation {
+                sequence,
+                prior_next_count: n_len,
+                new_key_count: keys.len(),
+            });
         }
 
         if !state.next_threshold.is_satisfied(&verified_prior, n_len) {
