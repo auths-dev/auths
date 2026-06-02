@@ -4,6 +4,9 @@
 description of how devices actually relate to an identity **today**, and the scoped plan for
 making the shared-KEL controller model live if/when we choose to.
 
+> For the broader picture — what it takes for *every* trust decision to be KERI-native (witnesses +
+> OOBI, ACDC/TEL), not just device membership — see `keri-only-roadmap.md`. This note is its Tier 1.
+
 > **Corrects the record:** `multi_device_accepted_risks.md` describes a "Stage 1 shipped" world
 > where "the user's identity is a shared KEL whose controllers are those device DIDs." That is
 > *aspirational — ahead of the code*. The shared-KEL controller machinery exists and is unit-tested
