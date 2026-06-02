@@ -20,6 +20,7 @@ use crate::keri::{
     CesrKey, Event, GitKel, KeriSequence, Prefix, RotEvent, Said, Threshold, VersionString,
     rotate_keys, serialize_for_signing, validate_kel,
 };
+use crate::keri::shared_kel::ControllerDescriptor;
 use std::sync::Arc;
 
 use crate::storage::layout::StorageLayoutConfig;
@@ -52,14 +53,37 @@ pub struct RotationShape {
     /// Curves for newly-added device slots. One fresh keypair is generated
     /// per entry and appended to the new `k` list.
     pub add_devices: Vec<auths_crypto::CurveType>,
+    /// Externally-supplied controllers (paired remote devices) to append to
+    /// the new `k`/`n` lists. Unlike [`RotationShape::add_devices`], NO local
+    /// keypair is generated and the controller's private key is never required
+    /// here — the owning device holds it. The controller's `current_verkey`
+    /// goes into `k`, its caller-supplied next-key commitment into `n`.
+    pub add_controllers: Vec<ProvidedController>,
     /// Indices into the prior `n` commitment list to exclude from the new
-    /// `k` list. Requires CESR indexed-signature support (tracked for a
-    /// future pass); current validator rejects asymmetric rotations.
+    /// `k` list. A surviving controller signs a dual-index rotation the
+    /// validator binds; at least one prior controller must remain.
     pub remove_indices: Vec<u32>,
     /// New signing threshold. `None` keeps the prior `kt`.
     pub new_kt: Option<Threshold>,
     /// New next-rotation threshold. `None` keeps the prior `nt`.
     pub new_nt: Option<Threshold>,
+}
+
+/// A controller whose key material lives on another device, supplied to a
+/// growth rotation.
+///
+/// The `descriptor.current_verkey` is placed into the new `k` list and
+/// `next_commitment` into `n`. No local keypair is generated or stored for this
+/// slot, so the owning device retains sole custody of the private key. A slot
+/// added this way cannot be rotated locally — the owning device must reveal its
+/// next key (committed by `next_commitment`) to author the next rotation.
+#[derive(Debug, Clone)]
+pub struct ProvidedController {
+    /// The device's semantic identity + its current verkey (placed in `k`).
+    pub descriptor: ControllerDescriptor,
+    /// Commitment to the device's next key (placed in `n`), supplied by the
+    /// owning device (e.g. over the pairing channel).
+    pub next_commitment: Said,
 }
 
 /// Rotates a KERI identity using the GitKel backend.
@@ -416,7 +440,10 @@ pub fn rotate_registry_identity_multi(
             "rotation must retain at least one prior controller to authorise it".to_string(),
         ));
     }
-    let new_key_count = surviving_count + shape.add_devices.len();
+    // Local slots carry generated key material; provided controllers carry only
+    // a verkey + commitment (the owning device holds the private key).
+    let local_new_key_count = surviving_count + shape.add_devices.len();
+    let new_key_count = local_new_key_count + shape.add_controllers.len();
 
     let new_kt = shape.new_kt.unwrap_or_else(|| state.threshold.clone());
     let new_nt = shape.new_nt.unwrap_or_else(|| state.next_threshold.clone());
@@ -484,8 +511,38 @@ pub fn rotate_registry_identity_multi(
         }
     }
 
-    // Generate a fresh next keypair per new slot.
-    let new_next_curves: Vec<auths_crypto::CurveType> = (0..new_key_count)
+    // Append externally-supplied controllers (paired remote devices): each
+    // verkey enters `k`, its caller-supplied commitment enters `n`. No local
+    // key material is generated or stored — the owning device holds the private
+    // key. Reject a verkey already present in the new controller set.
+    let mut provided_next_commitments: Vec<Said> =
+        Vec::with_capacity(shape.add_controllers.len());
+    if !shape.add_controllers.is_empty() {
+        let mut seen: Vec<String> = new_current_pubs
+            .iter()
+            .map(|vk| vk.to_qb64().map_err(|e| InitError::InvalidData(e.to_string())))
+            .collect::<Result<_, _>>()?;
+        for pc in &shape.add_controllers {
+            let qb = pc
+                .descriptor
+                .current_verkey
+                .to_qb64()
+                .map_err(|e| InitError::InvalidData(e.to_string()))?;
+            if seen.contains(&qb) {
+                return Err(InitError::InvalidData(format!(
+                    "controller verkey already present in the controller set ({})",
+                    pc.descriptor.identity_did
+                )));
+            }
+            seen.push(qb);
+            new_current_pubs.push(pc.descriptor.current_verkey.clone());
+            provided_next_commitments.push(pc.next_commitment.clone());
+        }
+    }
+
+    // Generate a fresh next keypair per LOCAL new slot (survivors + add_devices).
+    // Provided controllers contribute their own caller-supplied commitment to `n`.
+    let new_next_curves: Vec<auths_crypto::CurveType> = (0..local_new_key_count)
         .map(|_| auths_crypto::CurveType::P256)
         .collect();
     let new_next_kps = crate::keri::inception::generate_keypairs_for_init(&new_next_curves)
@@ -499,10 +556,11 @@ pub fn rotate_registry_identity_multi(
                 .map_err(|e| InitError::InvalidData(e.to_string()))
         })
         .collect::<Result<_, _>>()?;
-    let n: Vec<Said> = new_next_kps
+    let mut n: Vec<Said> = new_next_kps
         .iter()
         .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
+    n.extend(provided_next_commitments);
 
     let bt = match witness_config {
         Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
