@@ -648,9 +648,6 @@ pub enum ConfigTrait {
     /// Do-Not-Delegate: cannot act as delegator.
     #[serde(rename = "DND")]
     DoNotDelegate,
-    /// Delegate-Is-Delegator: delegated AID treated same as delegator.
-    #[serde(rename = "DID")]
-    DelegateIsDelegator,
     /// Registrar Backers: backer list provides registrar backer AIDs.
     #[serde(rename = "RB")]
     RegistrarBackers,
@@ -1010,12 +1007,11 @@ mod tests {
         let all = vec![
             ConfigTrait::EstablishmentOnly,
             ConfigTrait::DoNotDelegate,
-            ConfigTrait::DelegateIsDelegator,
             ConfigTrait::RegistrarBackers,
             ConfigTrait::NoRegistrarBackers,
         ];
         let json = serde_json::to_string(&all).unwrap();
-        assert_eq!(json, r#"["EO","DND","DID","RB","NRB"]"#);
+        assert_eq!(json, r#"["EO","DND","RB","NRB"]"#);
         let parsed: Vec<ConfigTrait> = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, all);
     }

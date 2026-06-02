@@ -77,7 +77,7 @@ event.
 | `n` | next commitments | list of pre-rotation digests (§3.2). |
 | `b` | backers | ordered list of backer AIDs (icp/dip). |
 | `br`,`ba` | backer cuts / adds | rotation backer deltas (rot/drt). |
-| `c` | config traits | list of `EO`/`DND`/`DID`/`RB`/`NRB` (§5). |
+| `c` | config traits | list of `EO`/`DND`/`RB`/`NRB` (§5). |
 | `a` | anchors | list of seals (§6). |
 | `di` | delegator AID | present only on `dip`/`drt`. |
 
@@ -154,7 +154,6 @@ with an ambiguous single index.
 | `DND` | Do-Not-Delegate — identifier may not act as a delegator. | ENFORCED (rejected in `validate_delegation`). |
 | `RB`  | Registrar Backers — `b[]` names registrar-backer AIDs. | role-flip ENFORCED (A.13) |
 | `NRB` | No Registrar Backers — backers are witnesses. | role-flip ENFORCED (A.13) |
-| `DID` | Delegate-Is-Delegator — delegated AID treated as the delegator. | PENDING(A.13 follow-up) |
 
 ### 5.1 Registrar-backer role flips (ENFORCED — A.13)
 
@@ -163,10 +162,10 @@ role (`RB`↔`NRB`) while any prior backer survives is **rejected** — a role f
 rebuild `b[]` (cut every prior backer via `br`). An empty `c[]` inherits the role and
 cannot flip.
 
-`DID` honoring in `validate_delegation` is **PENDING**: it is a non-standard trait whose
-seal-waiver semantics require a written decision before implementation, since a wrong
-relaxation is a delegation-authorization bypass. Full registrar-backer `bt` accounting is
-likewise deferred to a tracked issue (Epic H.5).
+The non-standard `Delegate-Is-Delegator` (`DID`) trait was **removed** (A.13): a config trait
+that waives the delegation seal is a delegation-authorization bypass, and it was never consumed
+by `validate_delegation` (which fail-closes on the anchoring seal regardless). Full
+registrar-backer `bt` accounting is deferred to a tracked issue (Epic H.5).
 
 ---
 
@@ -221,7 +220,7 @@ A receipt body is `{v, t, d, i, s}` where:
 | A.11 | Reject legacy/short version & sequence strings | ENFORCED |
 | A.12 | Non-transferable ≠ abandoned | ENFORCED |
 | A.13 / F-23 | Reject silent `RB`↔`NRB` role flips | ENFORCED |
-| A.13 follow-up | `DID` honoring in delegation | **PENDING** |
+| A.13 | Remove non-standard `DID` (delegate-is-delegator) trait | ENFORCED |
 | B.1–B.4 | Dual-index CESR signatures | **PENDING(Epic B)** |
 | D.4 / F-27 | Typed receipt `t = "rct"` | ENFORCED |
 

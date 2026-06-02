@@ -141,13 +141,6 @@
           ]
         },
         {
-          "description": "Delegate-Is-Delegator: delegated AID treated same as delegator.",
-          "type": "string",
-          "enum": [
-            "DID"
-          ]
-        },
-        {
           "description": "Registrar Backers: backer list provides registrar backer AIDs.",
           "type": "string",
           "enum": [
