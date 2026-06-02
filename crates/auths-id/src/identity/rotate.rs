@@ -370,14 +370,6 @@ pub fn rotate_registry_identity_multi(
     witness_config: Option<&WitnessConfig>,
     shape: RotationShape,
 ) -> Result<RotationKeyInfo, InitError> {
-    if !shape.remove_indices.is_empty() {
-        return Err(InitError::InvalidData(
-            "Removing device slots requires CESR indexed-signature support (not yet implemented). \
-             Rotate with add-only or threshold-only changes; or use expand for migration."
-                .to_string(),
-        ));
-    }
-
     // Load the base DID from the first current slot and verify the registry.
     let first_cur = KeyAlias::new_unchecked(format!("{}--{}", current_alias, 0));
     let (did, _role, _encrypted) = keychain
@@ -406,7 +398,25 @@ pub fn rotate_registry_identity_multi(
     }
 
     let prior_key_count = state.current_keys.len();
-    let new_key_count = prior_key_count + shape.add_devices.len();
+
+    // Validate removal targets (dedup, in range). At least one prior controller
+    // must survive to authorise the rotation — a surviving signer reveals a prior
+    // commitment (dual-index). Replacing the whole set is the swap/recovery path.
+    let mut remove: Vec<usize> = shape.remove_indices.iter().map(|&i| i as usize).collect();
+    remove.sort_unstable();
+    remove.dedup();
+    if let Some(&bad) = remove.iter().find(|&&i| i >= prior_key_count) {
+        return Err(InitError::InvalidData(format!(
+            "remove index {bad} out of range (prior controller count {prior_key_count})"
+        )));
+    }
+    let surviving_count = prior_key_count - remove.len();
+    if surviving_count == 0 {
+        return Err(InitError::InvalidData(
+            "rotation must retain at least one prior controller to authorise it".to_string(),
+        ));
+    }
+    let new_key_count = surviving_count + shape.add_devices.len();
 
     let new_kt = shape.new_kt.unwrap_or_else(|| state.threshold.clone());
     let new_nt = shape.new_nt.unwrap_or_else(|| state.next_threshold.clone());
@@ -416,11 +426,13 @@ pub fn rotate_registry_identity_multi(
     crate::keri::inception::validate_threshold_for_key_count(&new_nt, new_key_count)
         .map_err(|e| InitError::InvalidData(e.to_string()))?;
 
-    // Decrypt each prior-committed next key in order. These become the new
-    // current keys at indices 0..prior_key_count.
-    let mut new_current_pkcs8s: Vec<Pkcs8Der> = Vec::with_capacity(prior_key_count);
-    let mut new_current_pubs: Vec<auths_keri::KeriPublicKey> = Vec::with_capacity(prior_key_count);
+    // Decrypt each SURVIVING prior-committed next key in slot order. These become
+    // the new current keys at indices 0..surviving_count. `prior_indices[new_i]`
+    // records the prior `n[]` slot each survivor reveals (its dual-index ondex).
+    let mut new_current_pkcs8s: Vec<Pkcs8Der> = Vec::with_capacity(new_key_count);
+    let mut new_current_pubs: Vec<auths_keri::KeriPublicKey> = Vec::with_capacity(new_key_count);
     let mut prior_next_aliases: Vec<KeyAlias> = Vec::with_capacity(prior_key_count);
+    let mut prior_indices: Vec<u32> = Vec::with_capacity(surviving_count);
 
     let next_pass = passphrase_provider.get_passphrase(&format!(
         "Enter passphrase for pre-committed keys under alias '{}':",
@@ -432,6 +444,12 @@ pub fn rotate_registry_identity_multi(
             "{}--next-{}-{}",
             current_alias, state.sequence, idx
         ));
+        if remove.contains(&idx) {
+            // Removed controller: its pre-committed next key is dropped from the
+            // new set. Keep the alias only so the cleanup pass deletes it.
+            prior_next_aliases.push(alias);
+            continue;
+        }
         let (did_check, _role, encrypted) = keychain.load_key(&alias)?;
         if did_check != did {
             return Err(InitError::InvalidData(format!(
@@ -451,15 +469,19 @@ pub fn rotate_registry_identity_multi(
         }
         new_current_pubs.push(next_verkey);
         new_current_pkcs8s.push(pkcs8);
+        prior_indices.push(idx as u32);
         prior_next_aliases.push(alias);
     }
 
-    // Generate added device keypairs and append to the new current set.
-    let added = crate::keri::inception::generate_keypairs_for_init(&shape.add_devices)
-        .map_err(|e| InitError::Crypto(e.to_string()))?;
-    for kp in &added {
-        new_current_pubs.push(kp.verkey());
-        new_current_pkcs8s.push(kp.pkcs8.clone());
+    // Generate added device keypairs and append to the new current set (a pure
+    // removal adds none — skip, as the generator rejects an empty curve list).
+    if !shape.add_devices.is_empty() {
+        let added = crate::keri::inception::generate_keypairs_for_init(&shape.add_devices)
+            .map_err(|e| InitError::Crypto(e.to_string()))?;
+        for kp in &added {
+            new_current_pubs.push(kp.verkey());
+            new_current_pkcs8s.push(kp.pkcs8.clone());
+        }
     }
 
     // Generate a fresh next keypair per new slot.
@@ -510,15 +532,18 @@ pub fn rotate_registry_identity_multi(
     rot.d = compute_said(&rot_value)
         .map_err(|e| InitError::Keri(format!("SAID computation failed: {}", e)))?;
 
-    // Sign with index 0's newly-revealed key. Multi-sig aggregation is the
-    // signing-workflow module's job.
+    // Sign with surviving slot 0's newly-revealed key (kt=1). Its `prior_index`
+    // is the prior `n[]` slot it reveals — for a shrink this drives the dual-index
+    // CESR siger so the validator can bind it; for a same-cardinality rotation it
+    // equals the index and stays byte-identical to the legacy single-index form.
+    // Multi-sig aggregation is the signing-workflow module's job.
     let canonical = serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| InitError::Keri(e.to_string()))?;
     let signer_keypair = load_keypair_from_der_or_seed(new_current_pkcs8s[0].as_ref())?;
     let sig = signer_keypair.sign(&canonical);
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
-        prior_index: None,
+        prior_index: prior_indices.first().copied(),
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;

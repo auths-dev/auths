@@ -117,20 +117,19 @@ pub fn rot_add_controller(
     apply_shared_kel_change(current, &SharedKelChange::AddController { new })
 }
 
-/// Remove-controller rotation entry point. Blocked today on CESR
-/// indexed-signature validator support. Returns `RemovalNotYetSupported`
-/// so callers surface the blocker cleanly; the controller-set math
-/// itself is wired via [`apply_shared_kel_change`].
+/// Remove-controller rotation entry point.
+///
+/// Returns the new controller set with `target` dropped. The shrink `rot` is
+/// authored by [`crate::identity::rotate::rotate_registry_identity_multi`] with
+/// the target's slot in `remove_indices`; a surviving controller signs a
+/// dual-index rotation the validator now accepts. The orphan guard
+/// ([`SharedKelError::WouldOrphanIdentity`]) is enforced in
+/// [`apply_shared_kel_change`].
 pub fn rot_remove_controller(
     current: &[ControllerDescriptor],
     target: &IdentityDID,
 ) -> Result<Vec<ControllerDescriptor>, SharedKelError> {
-    // Pre-validate the target + orphan guard at the math layer so the
-    // caller gets a specific error. Then convert any remove-successful
-    // result back into the blocker error — the event can't actually
-    // author until validator support lands.
-    let _ = apply_shared_kel_change(current, &SharedKelChange::RemoveController { target })?;
-    Err(SharedKelError::RemovalNotYetSupported)
+    apply_shared_kel_change(current, &SharedKelChange::RemoveController { target })
 }
 
 /// Change requested by a shared-KEL rotation caller.
