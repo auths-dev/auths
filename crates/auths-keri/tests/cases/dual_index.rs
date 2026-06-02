@@ -54,3 +54,35 @@ fn mixed_curve_attachment_parses() {
     assert_eq!((sigs[0].index, sigs[0].prior_index), (5, None));
     assert_eq!((sigs[1].index, sigs[1].prior_index), (0, Some(1)));
 }
+
+/// A signature with `prior_index = Some(j)` (and j != index) must emit a 92-char
+/// dual-index `2A` siger and round-trip.
+#[test]
+fn dual_index_attachment_roundtrips() {
+    let sig = IndexedSignature {
+        index: 0,
+        prior_index: Some(1),
+        sig: vec![9u8; 64],
+    };
+    let att = serialize_attachment(std::slice::from_ref(&sig)).unwrap();
+    let s = std::str::from_utf8(&att).unwrap();
+    assert!(s.starts_with("-AAB2A"), "dual-index siger must use the 2A code: {s}");
+    assert_eq!(att.len(), 4 + 92, "counter (4) + one 2A siger (92)");
+    let back = parse_attachment(&att).unwrap();
+    assert_eq!(back.len(), 1);
+    assert_eq!((back[0].index, back[0].prior_index), (0, Some(1)));
+    assert_eq!(back[0].sig, vec![9u8; 64]);
+}
+
+/// Strongest §1.5 check: parse keripy's dual-index attachment, then re-emit it
+/// through our serializer — the bytes must be byte-for-byte identical to keripy.
+#[test]
+fn reemits_keripy_rot_remove_attachment_byte_for_byte() {
+    let att = fixture("rot_remove.rot.att");
+    let sigs = parse_attachment(&att).unwrap();
+    let reemitted = serialize_attachment(&sigs).unwrap();
+    assert_eq!(
+        reemitted, att,
+        "our dual-index emission must equal keripy's bytes exactly"
+    );
+}

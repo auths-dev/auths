@@ -1012,14 +1012,20 @@ pub fn serialize_attachment(signatures: &[IndexedSignature]) -> Result<Vec<u8>, 
     out.push_str(&encode_count_b64(signatures.len())?);
 
     for sig in signatures {
-        // Ed25519 indexed signature — single-curve for now. P-256 indexed
-        // signatures would use `indexer::Codex::ECDSA_256r1`; auths' current
-        // flows produce Ed25519 in this sign path.
+        // Ed25519 indexed signature (auths' sign paths produce Ed25519). A
+        // distinct prior-commitment index (`prior_index != index`) needs the
+        // dual-index "Big" code `2A`, which carries both indices; otherwise the
+        // single-index `A` (ondex == index) keeps the legacy 88-char bytes.
+        let (code, ondex) = if sig.prior_index.is_some_and(|j| j != sig.index) {
+            (indexer::Codex::Ed25519_Big, sig.prior_index)
+        } else {
+            (indexer::Codex::Ed25519, None)
+        };
         let siger = Siger::new(
             None,
             Some(sig.index),
-            None,
-            Some(indexer::Codex::Ed25519),
+            ondex,
+            Some(code),
             Some(&sig.sig),
             None,
             None,
