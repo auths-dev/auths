@@ -621,6 +621,7 @@ pub fn create_keri_identity_with_backend(
     let sig = current_keypair.sign(&canonical);
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InceptionError::Serialization(e.to_string()))?;

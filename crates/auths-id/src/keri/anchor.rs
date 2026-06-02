@@ -215,7 +215,11 @@ pub fn try_stage_anchor<T: serde::Serialize>(
     let sig = sign_ixn(&ixn, signer, signer_alias, passphrase_provider)?;
 
     let attachment =
-        auths_keri::serialize_attachment(&[auths_keri::IndexedSignature { index: 0, sig }])
+        auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+            index: 0,
+            prior_index: None,
+            sig,
+        }])
             .map_err(|e| AnchorError::Serialization(e.to_string()))?;
 
     batch.stage_event(

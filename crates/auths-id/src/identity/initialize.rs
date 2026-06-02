@@ -179,6 +179,7 @@ pub fn initialize_registry_identity(
             .map_err(|e| InitError::Crypto(e.to_string()))?;
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig_bytes,
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
@@ -320,6 +321,7 @@ pub fn initialize_registry_identity_multi(
     .map_err(|e| InitError::Crypto(e.to_string()))?;
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig_bytes,
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;

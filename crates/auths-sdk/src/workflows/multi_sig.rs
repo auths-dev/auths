@@ -166,6 +166,7 @@ pub fn sign_partial(
 
     Ok(IndexedSignature {
         index: signer_index,
+        prior_index: None,
         sig: sig.as_ref().to_vec(),
     })
 }
@@ -313,6 +314,7 @@ mod tests {
         let canonical = serialize_for_signing(&event).unwrap();
         let partial0 = IndexedSignature {
             index: 0,
+            prior_index: None,
             sig: kps[0].sign(&canonical).as_ref().to_vec(),
         };
 
@@ -347,10 +349,12 @@ mod tests {
         let partials = vec![
             IndexedSignature {
                 index: 0,
+                prior_index: None,
                 sig: kps[0].sign(&canonical).as_ref().to_vec(),
             },
             IndexedSignature {
                 index: 2,
+                prior_index: None,
                 sig: kps[2].sign(&canonical).as_ref().to_vec(),
             },
         ];
@@ -364,6 +368,7 @@ mod tests {
     fn partial_roundtrip_via_disk() {
         let sig = IndexedSignature {
             index: 1,
+            prior_index: None,
             sig: vec![7u8; 64],
         };
         let dir = tempdir().unwrap();

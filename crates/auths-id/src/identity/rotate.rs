@@ -317,6 +317,7 @@ pub fn rotate_registry_identity(
     let sig = next_keypair.sign(&canonical);
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
@@ -517,6 +518,7 @@ pub fn rotate_registry_identity_multi(
     let sig = signer_keypair.sign(&canonical);
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;

@@ -78,6 +78,7 @@ fn sign_icp(icp: &IcpEvent, kp: &Ed25519KeyPair, index: u32) -> IndexedSignature
     let canonical = serialize_for_signing(&Event::Icp(icp.clone())).unwrap();
     IndexedSignature {
         index,
+        prior_index: None,
         sig: kp.sign(&canonical).as_ref().to_vec(),
     }
 }

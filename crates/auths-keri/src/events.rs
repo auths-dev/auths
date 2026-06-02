@@ -941,8 +941,16 @@ impl Event {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexedSignature {
-    /// Index into the key list (which key signed).
+    /// Index into the new key list `k[]` (which current key signed).
     pub index: u32,
+    /// For a rotation signature, the index into the prior event's next-key
+    /// commitment list `n[]` that this signature reveals (CESR *ondex*).
+    ///
+    /// `Some(j)` emits a dual-index ("Big", `2A`) siger; `None` emits the
+    /// single-index code (`A`) with ondex == index — preserving the wire
+    /// bytes of every single-index signer (inception, symmetric rotation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_index: Option<u32>,
     /// Raw signature bytes (64 bytes for Ed25519).
     #[serde(with = "hex::serde")]
     pub sig: Vec<u8>,
@@ -1070,6 +1078,7 @@ pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, Attachmen
 
         out.push(IndexedSignature {
             index,
+            prior_index: None,
             sig: sig_bytes,
         });
     }
@@ -1129,6 +1138,7 @@ mod tests {
     fn attachment_roundtrip_single_sig() {
         let sigs = vec![IndexedSignature {
             index: 0,
+            prior_index: None,
             sig: vec![0x42u8; 64],
         }];
         let bytes = serialize_attachment(&sigs).unwrap();
@@ -1145,14 +1155,17 @@ mod tests {
         let sigs = vec![
             IndexedSignature {
                 index: 0,
+                prior_index: None,
                 sig: vec![0x01u8; 64],
             },
             IndexedSignature {
                 index: 1,
+                prior_index: None,
                 sig: vec![0x02u8; 64],
             },
             IndexedSignature {
                 index: 2,
+                prior_index: None,
                 sig: vec![0x03u8; 64],
             },
         ];
@@ -1292,10 +1305,15 @@ mod tests {
     fn indexed_signature_serde_roundtrip() {
         let sig = IndexedSignature {
             index: 2,
+            prior_index: None,
             sig: vec![0xab; 64],
         };
         let json = serde_json::to_string(&sig).unwrap();
         assert!(json.contains("\"index\":2"));
+        assert!(
+            !json.contains("prior_index"),
+            "a None prior_index must be omitted from the wire: {json}"
+        );
         let parsed: IndexedSignature = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, sig);
     }
@@ -1321,6 +1339,7 @@ mod tests {
             Event::Icp(icp),
             vec![IndexedSignature {
                 index: 0,
+                prior_index: None,
                 sig: vec![0u8; 64],
             }],
         );

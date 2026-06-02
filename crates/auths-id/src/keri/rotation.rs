@@ -357,7 +357,11 @@ pub fn rotate_keys_with_backend(
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
     let sig = sign_rotation(&next_seed, &canonical)?;
     let attachment =
-        auths_keri::serialize_attachment(&[auths_keri::IndexedSignature { index: 0, sig }])
+        auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+            index: 0,
+            prior_index: None,
+            sig,
+        }])
             .map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     backend
