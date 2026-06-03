@@ -234,10 +234,9 @@ pub fn assemble_shared_kel_rot(
     // Return the pre-serialized unsigned event joined with the
     // verified signature. The Swift-side driver ships this blob to
     // the daemon which in turn hands it to the Mac-side rot
-    // authorship code — once CESR indexed-signature support lands,
-    // the Rust side interprets this as a real rot event; until then
-    // the Rust side returns `SharedKelError::RemovalNotYetSupported`
-    // for remove/swap shapes.
+    // authorship code, which interprets this as a real rot event.
+    // (Multi-device membership is moving to KERI delegation; see
+    // docs/architecture/device-model.md.)
     let mut out = Vec::with_capacity(context.unsigned_event.len() + sig_raw.len() + 3);
     out.extend_from_slice(&context.unsigned_event);
     out.extend_from_slice(b"||sig=");

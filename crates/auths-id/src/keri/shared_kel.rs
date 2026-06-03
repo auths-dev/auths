@@ -21,14 +21,12 @@
 //! shared-KEL rotation. Raising the threshold is a separate, later
 //! change.
 //!
-//! **Event authorship**: the add path (append-controller) is wired end
-//! to end against the existing symmetric-rotation validator. Removal
-//! via rotation shrinks the `k` list and therefore requires CESR
-//! indexed-signature support so the validator can map "prior-next slot
-//! N was revealed" distinctly from "new-current slot M is fresh". That
-//! support is not implemented in `auths-keri::validate` today and is
-//! tracked as blocking work; `rot_remove_controller` below returns a
-//! structured error pointing callers at it.
+//! **Superseded (2026-06-03):** multi-device membership moved to KERI
+//! delegation (`keri::delegation`) — a device is a *delegated identifier* the
+//! root anchors via `ixn`, not a controller in a shared `k` list. One device
+//! cannot author a keripy-valid `rot` of a multi-device `k` (it can't reveal the
+//! other devices' pre-committed keys). This module is retained for reference;
+//! see `docs/architecture/device-model.md` "Design decision (2026-06-03)".
 
 use auths_core::storage::keychain::IdentityDID;
 use auths_crypto::CurveType;
@@ -79,9 +77,7 @@ pub struct SharedKelRotArtifacts {
 //
 // These helpers thin-wrap the existing multi-slot machinery in
 // `identity::initialize` + `identity::rotate` so the shared-KEL semantic
-// layer has a single public surface. Remove + swap flows still need the
-// validator's CESR indexed-signature support; the helpers below emit
-// `SharedKelError::RemovalNotYetSupported` for those shapes.
+// layer has a single public surface. (Superseded by `keri::delegation`.)
 
 /// Inception entry point for a shared identity KEL.
 ///
@@ -168,16 +164,6 @@ pub enum SharedKelError {
     /// Construction of the rotation event failed.
     #[error("rotation event construction failed: {0}")]
     EventConstruction(String),
-    /// Controller removal via rotation is blocked until CESR
-    /// indexed-signature support lands in the validator. Callers can
-    /// model inactivity via attestation revocation today; true removal
-    /// arrives alongside the indexed-sig wiring.
-    #[error(
-        "shared-KEL controller removal requires CESR indexed-signature support in \
-         the validator (not yet implemented); use attestation revocation to mark \
-         the device inactive in the meantime"
-    )]
-    RemovalNotYetSupported,
 }
 
 /// Resolve a controller DID to its index in the current controller

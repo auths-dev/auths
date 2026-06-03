@@ -42,19 +42,14 @@ pub async fn handle_initiate_lan(
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
     // `rotate` is now its own command (`auths identity rotate`); the
-    // `recover` path swaps a shared-KEL controller rather than minting
-    // a superseding attestation.
-    //
-    // End-to-end recovery is blocked on validator support for asymmetric
-    // rotation events (CESR indexed signatures). Until that lands, reject
-    // `--recover` up front with a structured error — the surviving
-    // controller would have no way to author the swap rotation even if
-    // the ceremony completed.
+    // Stolen-device recovery is not yet a one-shot flow under the delegation
+    // model. Until a dedicated recovery ceremony lands, recover by removing the
+    // lost device's delegation and pairing a replacement.
     if let Some(ref old_did) = recover {
         let _ = old_did;
         return Err(anyhow::anyhow!(
-            "{}",
-            auths_sdk::keri::SharedKelError::RemovalNotYetSupported
+            "Device recovery (--recover) is not yet supported under the delegation model. \
+             Remove the lost device with `auths device remove <did>`, then pair a new one."
         ));
     }
     let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)

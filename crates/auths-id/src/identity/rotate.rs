@@ -356,9 +356,10 @@ pub fn rotate_registry_identity(
 /// `{next_alias}--{idx}` (current) and `{next_alias}--next-{new_seq}-{idx}`
 /// (next).
 ///
-/// Removing devices (`shape.remove_indices` non-empty) requires CESR
-/// indexed-signature support and is rejected here; `validate_signed_event`
-/// enforces the same restriction at verification time.
+/// `shape.remove_indices` authors a dual-index shrink rotation (the validator
+/// binds each surviving signature to the prior commitment it reveals). Note:
+/// multi-device membership now uses KERI delegation (`keri::delegation`); this
+/// shared-`k` path is retained for single-host multi-slot identities.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn rotate_registry_identity_multi(
     backend: Arc<dyn RegistryBackend + Send + Sync>,

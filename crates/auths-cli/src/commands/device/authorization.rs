@@ -288,37 +288,31 @@ pub fn handle_device(
         }
 
         DeviceSubcommand::Remove { device_did, key } => {
-            // Stage-1 honest-limitation path: true shared-KEL removal
-            // emits a rotation whose `k` list shrinks, and that requires
-            // CESR indexed-signature support in the validator (not yet
-            // implemented). Until that lands, the CLI surfaces the
-            // structured SDK error so users understand why this path
-            // isn't wired end-to-end.
+            // Remove = revoke the device's KERI delegation: the root anchors a
+            // revocation marker so verifiers stop honouring the device. Single-
+            // author (the root's key signs); the device's key is not needed.
             //
-            // Self-removal pre-flight (UX only — SDK error remains the
-            // authoritative guard):
-            // load the caller's identity and reject if `device_did`
-            // matches. The caller can then reach for `auths identity
-            // forget` to wipe their own state.
+            // Self-removal pre-flight (UX only — the SDK is the authoritative
+            // guard): reject removing the root identity itself; point the caller
+            // at `auths identity forget` to wipe their own state.
             let ctx = build_auths_context(
                 &repo_path,
                 env_config,
                 Some(Arc::clone(&passphrase_provider)),
             )?;
-            let _ = key; // keychain gate runs inside the SDK once wired
             let identity = ctx.identity_storage.load_identity().map_err(|e| {
                 anyhow::anyhow!("failed to load identity for self-removal check: {e}")
             })?;
             if device_did == identity.controller_did.as_str() {
                 return Err(anyhow::anyhow!(
-                    "Cannot remove this device from its own identity. \
+                    "Cannot remove the root identity itself. \
                      Use `auths identity forget` to delete this device's copy of the identity."
                 ));
             }
-            Err(anyhow::anyhow!(
-                "{}",
-                auths_sdk::keri::SharedKelError::RemovalNotYetSupported
-            ))
+            let root_alias = KeyAlias::new_unchecked(key);
+            auths_sdk::domains::device::remove_device(&ctx, &root_alias, &device_did)
+                .map_err(anyhow::Error::new)?;
+            display_revoke_result(&device_did, &repo_path)
         }
 
         DeviceSubcommand::Revoke {
