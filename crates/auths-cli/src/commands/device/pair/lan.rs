@@ -41,15 +41,15 @@ pub async fn handle_initiate_lan(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    // `rotate` is now its own command (`auths identity rotate`); the
-    // Stolen-device recovery is not yet a one-shot flow under the delegation
-    // model. Until a dedicated recovery ceremony lands, recover by removing the
-    // lost device's delegation and pairing a replacement.
+    // Recovery (--recover) is a one-shot pair-replacement-then-revoke flow under the
+    // delegation model, but only over the relay path today (the LAN joiner is an
+    // external app). Redirect LAN recovery to online recovery or the manual path.
     if let Some(ref old_did) = recover {
         let _ = old_did;
         return Err(anyhow::anyhow!(
-            "Device recovery (--recover) is not yet supported under the delegation model. \
-             Remove the lost device with `auths device remove <did>`, then pair a new one."
+            "Device recovery (--recover) over LAN is not yet supported. Use online recovery \
+             (`auths pair --recover <did> --registry <url>`), or remove the lost device with \
+             `auths device remove <did>` and pair a replacement."
         ));
     }
     let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)

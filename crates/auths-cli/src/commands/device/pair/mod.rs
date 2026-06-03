@@ -93,10 +93,10 @@ pub struct PairCommand {
     #[clap(long)]
     pub verify: bool,
 
-    /// Stolen-laptop recovery: replace the identified old Mac (by
-    /// `did:keri:` prefix) with this newly-invoked Mac as a shared-KEL
-    /// controller. The surviving controller (phone) signs a single
-    /// rotation that drops the old DID and adds the new one.
+    /// Lost/stolen-device recovery: pair a replacement delegated device, then
+    /// revoke the old device's delegation (by `did:keri:`). The replacement is
+    /// authorized before the old one is revoked, so the identity is never left
+    /// with zero usable devices. Supported over the relay path (with `--registry`).
     #[clap(long, value_name = "OLD_DID")]
     pub recover: Option<String>,
 }
@@ -163,6 +163,7 @@ pub fn handle_pair(
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,
+                cmd.recover.clone(),
             ))
         }
 
@@ -194,6 +195,7 @@ pub fn handle_pair(
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,
+                cmd.recover.clone(),
             ))
         }
     }

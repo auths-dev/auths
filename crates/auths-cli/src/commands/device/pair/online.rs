@@ -15,6 +15,7 @@ use crate::factories::storage::build_auths_context;
 use super::common::*;
 
 /// Initiate a pairing session using the registry relay.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_initiate_online(
     now: chrono::DateTime<chrono::Utc>,
     registry: &str,
@@ -22,6 +23,7 @@ pub(crate) async fn handle_initiate_online(
     expiry_secs: u64,
     capabilities: &[String],
     env_config: &EnvironmentConfig,
+    recover: Option<String>,
 ) -> Result<()> {
     let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
         .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
@@ -114,6 +116,28 @@ pub(crate) async fn handle_initiate_online(
         capabilities: capabilities.to_vec(),
         expiry_secs,
     };
+
+    // Recovery: pair the replacement, then revoke the lost device's delegation.
+    if let Some(old_did) = recover {
+        let recovery = auths_sdk::pairing::recover_device(
+            params,
+            &relay,
+            &ctx,
+            now,
+            &old_did,
+            Some(&on_status),
+        )
+        .await
+        .map_err(anyhow::Error::from)?;
+        wait_spinner.finish_and_clear();
+        print_completion(recovery.new_device_name.as_deref(), &recovery.new_device_did);
+        println!(
+            "  {} {}",
+            style("Revoked old device:").dim(),
+            style(&recovery.revoked_old_did).yellow()
+        );
+        return Ok(());
+    }
 
     let auths_sdk::pairing::PairingCompletionResult::Success {
         device_did,

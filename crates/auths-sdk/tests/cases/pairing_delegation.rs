@@ -33,7 +33,7 @@ use auths_sdk::domains::signing::types::GitSigningScope;
 use auths_sdk::pairing::{
     PairingCompletionResult, PairingError, PairingSessionParams, anchor_pairing_response,
     build_delegated_join_response, build_pairing_session_request, finalize_delegated_join,
-    initiate_online_pairing, join_pairing_session, load_controller_did,
+    initiate_online_pairing, join_pairing_session, load_controller_did, recover_device,
 };
 use chrono::Utc;
 
@@ -431,4 +431,75 @@ fn anchor_rejects_a_tampered_device_dip() {
         anchor_pairing_response(&root_ctx, &tampered, None).is_err(),
         "a tampered device dip must be rejected"
     );
+}
+
+#[tokio::test]
+async fn recover_pairs_a_replacement_and_revokes_the_old_device() {
+    let relay = FakeRelay::new();
+    let (_root_tmp, root_did, root_ctx, _root_kc) = setup_root_identity();
+    let (_joiner_tmp, joiner_ctx, _joiner_kc) = setup_fresh_joiner();
+    let now = Utc::now();
+    let root_alias = KeyAlias::new_unchecked("test-key");
+
+    // An existing delegated device — the one about to be lost.
+    let old = auths_sdk::domains::device::add_device(
+        &root_ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("old-laptop"),
+        CurveType::Ed25519,
+    )
+    .expect("add the soon-to-be-lost device");
+    let old_did = old.device_did.clone();
+
+    // Recover: the initiator pairs a replacement while a joiner responds, then the
+    // old delegation is revoked.
+    let initiator = async {
+        recover_device(
+            root_params(&root_did),
+            &relay,
+            &root_ctx,
+            now,
+            &old_did,
+            None,
+        )
+        .await
+    };
+    let joiner = async {
+        let code = relay.wait_for_short_code().await;
+        join_pairing_session(
+            &joiner_ctx,
+            &code,
+            "fake://relay",
+            &relay,
+            now,
+            CurveType::Ed25519,
+            KeyAlias::new_unchecked("new-laptop"),
+            Some("New laptop".to_string()),
+            Duration::from_secs(10),
+        )
+        .await
+    };
+
+    let (recovery_res, join_res) = tokio::join!(initiator, joiner);
+    let recovery = recovery_res.expect("recovery");
+    join_res.expect("joiner pairing");
+
+    assert_eq!(recovery.revoked_old_did, old_did);
+    assert!(recovery.new_device_did.as_str().starts_with("did:keri:"));
+    assert_ne!(recovery.new_device_did.as_str(), old_did);
+
+    // The delegation set: the replacement is live, the old device is revoked, and the
+    // identity was never left with zero usable devices (pair happened before revoke).
+    let devices =
+        auths_sdk::domains::device::list_delegated_devices(&root_ctx).expect("list devices");
+    let new = devices
+        .iter()
+        .find(|d| d.device_did.as_str() == recovery.new_device_did.as_str())
+        .expect("the replacement device is in the delegation set");
+    assert!(!new.revoked, "the replacement device is live");
+    let old_entry = devices
+        .iter()
+        .find(|d| d.device_did == old_did)
+        .expect("the old device is still in the set (as revoked)");
+    assert!(old_entry.revoked, "the old device is revoked");
 }

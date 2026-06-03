@@ -550,6 +550,91 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
     })
 }
 
+/// The outcome of a device recovery: a replacement device was paired and the lost
+/// device's delegation revoked.
+pub struct RecoveryResult {
+    /// The newly-paired delegated device's `did:keri:`.
+    pub new_device_did: CanonicalDid,
+    /// The new device's friendly name, if it supplied one.
+    pub new_device_name: Option<String>,
+    /// The old device DID whose delegation was revoked.
+    pub revoked_old_did: String,
+}
+
+/// Recover from a lost/stolen device: pair a replacement delegated device, then
+/// revoke the old device's delegation.
+///
+/// The replacement is paired and anchored **first**, so the identity is never left
+/// with zero usable devices; only then is the old delegation revoked. If pairing
+/// succeeds but the revoke fails, this returns an error that names the new device so
+/// the caller can report both states — the new device stays paired and the old one
+/// can be removed manually.
+///
+/// Args:
+/// * `params`: Session parameters for pairing the replacement device.
+/// * `relay`: Pairing relay client.
+/// * `ctx`: Runtime context (the root identity's registry + signing key).
+/// * `now`: Current time (injected by caller).
+/// * `old_device_did`: The `did:keri:` of the device being replaced.
+/// * `on_status`: Optional progress callback for the pairing phase.
+///
+/// Usage:
+/// ```ignore
+/// let r = recover_device(params, &relay, &ctx, now, &old_did, None).await?;
+/// println!("paired {}, revoked {}", r.new_device_did, r.revoked_old_did);
+/// ```
+pub async fn recover_device<R: PairingRelayClient>(
+    params: PairingSessionParams,
+    relay: &R,
+    ctx: &AuthsContext,
+    now: DateTime<Utc>,
+    old_device_did: &str,
+    on_status: Option<&(dyn Fn(PairingStatus) + Send + Sync)>,
+) -> Result<RecoveryResult, PairingError> {
+    // Pair the replacement first — the identity must never have zero usable devices.
+    let PairingCompletionResult::Success {
+        device_did,
+        device_name,
+    } = initiate_online_pairing(params, relay, ctx, now, on_status).await?;
+
+    // Resolve the root's signing alias to author the revocation.
+    let managed = ctx
+        .identity_storage
+        .load_identity()
+        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: controller_did is a validated IdentityDID from IdentityStorage.
+    let root_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
+    let aliases = ctx
+        .key_storage
+        .list_aliases_for_identity(&root_identity_did)
+        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
+    let root_alias = aliases
+        .into_iter()
+        .find(|a| !a.contains("--next-"))
+        .ok_or_else(|| {
+            PairingError::IdentityNotFound(format!(
+                "no signing key found for {}",
+                managed.controller_did
+            ))
+        })?;
+
+    // Only now revoke the old delegation.
+    crate::domains::device::remove_device(ctx, &root_alias, old_device_did).map_err(|e| {
+        PairingError::StorageError(format!(
+            "replacement device {device_did} was paired, but revoking the old device \
+             {old_device_did} failed: {e}. Remove it manually with \
+             `auths device remove {old_device_did}`."
+        ))
+    })?;
+
+    Ok(RecoveryResult {
+        new_device_did: device_did,
+        new_device_name: device_name,
+        revoked_old_did: old_device_did.to_string(),
+    })
+}
+
 /// Orchestrate joining a pairing session as a delegated device.
 ///
 /// The joining device generates its own key, builds + self-signs its `dip`
