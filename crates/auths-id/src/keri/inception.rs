@@ -810,6 +810,66 @@ mod tests {
         assert!(!state.is_abandoned);
     }
 
+    fn witness_cfg(threshold: usize, aids: &[&str]) -> WitnessConfig {
+        use crate::witness_config::{WitnessPolicy, WitnessRef};
+        WitnessConfig {
+            witnesses: aids
+                .iter()
+                .enumerate()
+                .map(|(i, aid)| WitnessRef {
+                    url: format!("http://w{i}:3333").parse().unwrap(),
+                    aid: Prefix::new_unchecked((*aid).to_string()),
+                })
+                .collect(),
+            threshold,
+            timeout_ms: 5000,
+            // Warn (not Enforce): inception designates b[] regardless, but the
+            // test witnesses are unreachable — Enforce would (correctly) fail
+            // receipt collection. We assert designation, not live collection.
+            policy: WitnessPolicy::Warn,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn icp_designates_configured_witnesses_and_replays_backers() {
+        let (_dir, repo) = setup_repo();
+        let aids = [
+            "BWitnessOne00000000000000000000000000000000",
+            "BWitnessTwo00000000000000000000000000000000",
+        ];
+        let cfg = witness_cfg(2, &aids);
+        let result = create_keri_identity_with_curve(
+            &repo,
+            Some(&cfg),
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
+        let kel = GitKel::new(&repo, result.prefix.as_str());
+        // The designated witnesses survive replay into the key-state.
+        let state = validate_kel(&kel.get_events().unwrap()).unwrap();
+        let designated: Vec<&str> = state.backers.iter().map(|p| p.as_str()).collect();
+        assert_eq!(designated, aids);
+        assert_eq!(state.backer_threshold, Threshold::Simple(2));
+    }
+
+    #[test]
+    fn icp_zero_witness_path_is_valid() {
+        let (_dir, repo) = setup_repo();
+        let result = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
+        let kel = GitKel::new(&repo, result.prefix.as_str());
+        let state = validate_kel(&kel.get_events().unwrap()).unwrap();
+        assert!(state.backers.is_empty());
+        assert_eq!(state.backer_threshold, Threshold::Simple(0));
+    }
+
     #[test]
     fn inception_event_has_correct_structure() {
         let (_dir, repo) = setup_repo();
