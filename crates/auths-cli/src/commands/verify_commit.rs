@@ -265,7 +265,10 @@ async fn resolve_signer_kel(
     if let Some(oobi_base) = &cmd.oobi {
         let prefix = auths_id::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
         let resolver = HttpOobiResolver::new(oobi_base.clone()).map_err(|e| e.to_string())?;
-        let events = resolver.fetch_kel(&prefix).await.map_err(|e| e.to_string())?;
+        let events = resolver
+            .fetch_kel(&prefix)
+            .await
+            .map_err(|e| e.to_string())?;
         auths_id::keri::verify_prefix_binding(&prefix, &events).map_err(|e| e.to_string())?;
         Ok(events)
     } else {

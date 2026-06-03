@@ -304,3 +304,4 @@ This table is the source of truth for which wire boundaries carry a curve tag an
 | Node FFI action-envelope verify | Explicit `curve` field | Sibling param |
 | On-disk `known_identities.json` pinned entries | Curve field on the JSON record | `curve` key |
 | OOBI static KEL export (`.well-known/keri/oobi/<aid>/keri.cesr`) | CESR prefix (verbatim event bodies) | Per-key string (`k[]`/`n[]`) within each serialized event |
+| Key-State Notice (`.well-known/keri/oobi/<aid>/ksn.json`) | CESR prefix (verbatim in the signed `KeyState`) | Per-key string in `state.current_keys` / `state.next_commitment` |

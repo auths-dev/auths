@@ -8,8 +8,6 @@ pub mod copy;
 pub mod resolver;
 
 pub use auths_id::keri::cache;
-#[cfg(feature = "backend-git")]
-pub use resolver::KelResolverChain;
 pub use auths_id::keri::parse_did_keri;
 pub use auths_id::keri::shared_kel::{
     ControllerDescriptor, SharedKelChange, SharedKelError, apply_shared_kel_change,
@@ -19,3 +17,5 @@ pub use auths_id::keri::shared_kel::{
 pub use auths_id::keri::try_stage_anchor;
 pub use auths_id::storage::keri::KeriGitStorage;
 pub use auths_id::storage::registry::backend::AtomicWriteBatch;
+#[cfg(feature = "backend-git")]
+pub use resolver::KelResolverChain;

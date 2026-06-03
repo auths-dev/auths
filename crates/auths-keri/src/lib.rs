@@ -39,6 +39,8 @@ mod error;
 mod events;
 pub mod kel_io;
 mod keys;
+/// Key-State Notice (KSN) — signed snapshot of current key-state for thin clients.
+pub mod ksn;
 /// Routed KERI message types (qry, rpy, pro, bar, xip, exn).
 pub mod messages;
 mod said;
@@ -71,6 +73,7 @@ pub use events::{
     parse_attachment, serialize_attachment,
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
+pub use ksn::{KSN_TYPE, KSN_VERSION, KeyStateNotice, KsnError, SignedKsn};
 pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};
 pub use state::{AnchorStatus, KeyState};
 pub use types::{

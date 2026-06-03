@@ -122,9 +122,8 @@ impl RemoteKelSource {
         })?;
         fetch_registry_ref(&repo, &self.remote_url)?;
 
-        let backend = GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(
-            tmp.path(),
-        ));
+        let backend =
+            GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(tmp.path()));
         collect_capped_with(&backend, prefix, MAX_KEL_EVENTS, MAX_KEL_BYTES)
     }
 }
@@ -251,9 +250,8 @@ mod tests {
     /// Build a source registry on disk holding one identity's inception.
     fn source_registry() -> (TempDir, Event, Prefix) {
         let dir = TempDir::new().unwrap();
-        let backend = GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(
-            dir.path(),
-        ));
+        let backend =
+            GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(dir.path()));
         backend.init_if_needed().unwrap();
         let (event, prefix) = icp_event();
         backend.append_event(&prefix, &event).unwrap();
@@ -273,7 +271,8 @@ mod tests {
     fn unknown_identity_on_remote_is_not_found() {
         let (src, _event, _prefix) = source_registry();
         let url = format!("file://{}", src.path().display());
-        let missing = Prefix::new_unchecked("ENeverProvisionedHere000000000000000000000000".to_string());
+        let missing =
+            Prefix::new_unchecked("ENeverProvisionedHere000000000000000000000000".to_string());
 
         let err = RemoteKelSource::new(url).fetch_kel(&missing).unwrap_err();
         assert!(matches!(err, RemoteKelError::NotFound(_)));
@@ -283,9 +282,8 @@ mod tests {
     fn event_cap_rejects_oversized_kel() {
         // A real backend with one event, read under a zero-event cap → Oversized.
         let dir = TempDir::new().unwrap();
-        let backend = GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(
-            dir.path(),
-        ));
+        let backend =
+            GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(dir.path()));
         backend.init_if_needed().unwrap();
         let (event, prefix) = icp_event();
         backend.append_event(&prefix, &event).unwrap();
@@ -297,9 +295,8 @@ mod tests {
     #[test]
     fn byte_cap_rejects_oversized_kel() {
         let dir = TempDir::new().unwrap();
-        let backend = GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(
-            dir.path(),
-        ));
+        let backend =
+            GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(dir.path()));
         backend.init_if_needed().unwrap();
         let (event, prefix) = icp_event();
         backend.append_event(&prefix, &event).unwrap();

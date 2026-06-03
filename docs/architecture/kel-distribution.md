@@ -73,11 +73,42 @@ transport — they are not reimplemented per transport.
 
 ## C3 — Key-State Notice (KSN)
 
-*(Defined when C3 lands.)* A signed snapshot of current key-state for thin/CI clients that do not want
-the full log. Under `kt=1` with no witnesses (`multi_device_accepted_risks.md`) a self-signed KSN is
-**trust-on-first-sight only** — never authoritative when the full KEL is resolvable, and never
-sufficient for a revocation check (revocation is a root-KEL fact). The KSN wire format reserves an
-optional witness-receipt group so **Epic D** hardens it without a format break.
+A signed snapshot of current key-state for thin/CI clients that cannot replay the full log.
+Types in `auths_keri::ksn`:
+
+- `KeyStateNotice { version, t: "ksn", state, dt }` — the controller-signed body. `state` is the
+  `KeyState` (carries CESR-tagged `current_keys`, `sequence`, `delegator`, thresholds, backers). `dt` is
+  an injected RFC-3339 timestamp. `canonical_bytes()` is the deterministic struct-order JSON the
+  controller signs.
+- `SignedKsn { notice, signature, receipts }` — the body + detached controller signature (over
+  `canonical_bytes`) + a **reserved** `receipts: Vec<SignedReceipt>` slot. The receipts are **not**
+  covered by the controller signature (witnesses receipt the signed notice after the fact), so Epic D
+  populates the slot without a wire-format break or invalidating the signature. Empty (and omitted) in v1.
+
+### Serving / consuming
+
+Served as `ksn.json` (a `SignedKsn`) alongside `keri.cesr` under the same OOBI path:
+`<host>/.well-known/keri/oobi/<aid>/ksn.json`. A thin client deserializes it, calls
+`SignedKsn::verify()` and `SignedKsn::check_not_stale(last_seen_seq)`.
+
+### Verification (the forgery-rejection checklist)
+
+`SignedKsn::verify()` requires ALL of: `t == "ksn"`; a current key is named; that key decodes (curve
+from its CESR tag); and the signature verifies over the canonical bytes **by that current key** (the
+signer *is* the key the state names as current — self-attested). Rollback is rejected separately by
+`check_not_stale(last_seen_seq)` (monotonicity on `sequence`). Tampering, an unsigned/garbage signature,
+a signature by a non-current key, or a wrong `t` all fail.
+
+### Trust model — trust-on-first-sight (the `kt=1` caveat)
+
+A verified KSN returns `VerifiedKsn { state, trust: TrustOnFirstSight }`. The verdict is explicit that a
+controller-signed KSN is **a latency optimization, never a trust upgrade**:
+`is_authoritative_over_kel()` and `satisfies_revocation_check()` both return `false`. Rationale: under
+`kt=1` with no witnesses (`multi_device_accepted_risks.md`), a compromised controller can sign a
+self-consistent notice naming its own key — so a KSN is only as good as trust-on-first-sight, never
+authoritative when the full KEL is resolvable, and never sufficient for a revocation check (revocation is
+a root-KEL fact, and a delegated-device KSN is flagged via `names_delegated_device()`). Epic D adds a
+`Witnessed` trust level once `bt`-of-`b` receipts fill the reserved slot.
 
 ## Non-goal (this epic): external KERI-tooling byte-interop
 

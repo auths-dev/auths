@@ -39,9 +39,7 @@ pub enum KelResolveError {
 
     /// The resolved KEL's inception SAID does not match the requested prefix —
     /// the source served a *different* identity's KEL (tamper / substitution).
-    #[error(
-        "resolved KEL is for a different identity: requested {requested}, derived {derived}"
-    )]
+    #[error("resolved KEL is for a different identity: requested {requested}, derived {derived}")]
     PrefixMismatch {
         /// The prefix the caller asked for.
         requested: String,
@@ -249,7 +247,8 @@ mod tests {
     #[test]
     fn prefix_binding_rejects_substituted_kel() {
         let icp = icp_event();
-        let wrong = Prefix::new_unchecked("ENotTheRightPrefixAtAll0000000000000000000000".to_string());
+        let wrong =
+            Prefix::new_unchecked("ENotTheRightPrefixAtAll0000000000000000000000".to_string());
         let events = vec![Event::Icp(icp)];
         let err = verify_prefix_binding(&wrong, &events).unwrap_err();
         assert!(matches!(err, KelResolveError::PrefixMismatch { .. }));
@@ -257,7 +256,8 @@ mod tests {
 
     #[test]
     fn prefix_binding_rejects_empty_kel() {
-        let prefix = Prefix::new_unchecked("EwhateverPrefix000000000000000000000000000000".to_string());
+        let prefix =
+            Prefix::new_unchecked("EwhateverPrefix000000000000000000000000000000".to_string());
         let err = verify_prefix_binding(&prefix, &[]).unwrap_err();
         assert!(matches!(err, KelResolveError::NotFound(_)));
     }

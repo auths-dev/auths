@@ -242,9 +242,8 @@ mod tests {
     fn remote_fallback_resolves_with_no_local_seeding() {
         // Source registry on disk (the "remote").
         let src = TempDir::new().unwrap();
-        let source = GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(
-            src.path(),
-        ));
+        let source =
+            GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(src.path()));
         source.init_if_needed().unwrap();
         let (event, prefix) = icp_and_prefix(2);
         source.append_event(&prefix, &event).unwrap();

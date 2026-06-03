@@ -249,7 +249,9 @@ mod tests {
 
         let resolver = HttpOobiResolver::new("https://127.0.0.1").unwrap();
         let (_e, prefix) = icp_and_prefix();
-        let err = resolver.guard_url(&resolver.oobi_url(&prefix).unwrap()).unwrap_err();
+        let err = resolver
+            .guard_url(&resolver.oobi_url(&prefix).unwrap())
+            .unwrap_err();
         assert!(matches!(err, HttpOobiError::BlockedHost(_)));
 
         let insecure = HttpOobiResolver::new("http://registry.example.com").unwrap();

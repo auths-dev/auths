@@ -168,9 +168,8 @@ mod tests {
 
     fn registry_with_icp() -> (TempDir, GitRegistryBackend, Event, Prefix) {
         let dir = TempDir::new().unwrap();
-        let backend = GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(
-            dir.path(),
-        ));
+        let backend =
+            GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(dir.path()));
         backend.init_if_needed().unwrap();
         let (event, prefix) = icp_and_prefix();
         backend.append_event(&prefix, &event).unwrap();
@@ -209,7 +208,8 @@ mod tests {
     fn missing_identity_is_not_found() {
         let (_src, backend, _event, _prefix) = registry_with_icp();
         let out = TempDir::new().unwrap();
-        let missing = Prefix::new_unchecked("ENotProvisioned00000000000000000000000000000".to_string());
+        let missing =
+            Prefix::new_unchecked("ENotProvisioned00000000000000000000000000000".to_string());
         let err = export_identity_oobi(&backend, &missing, out.path()).unwrap_err();
         assert!(matches!(err, OobiExportError::NotFound(_)));
     }
