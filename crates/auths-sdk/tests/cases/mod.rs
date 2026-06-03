@@ -7,6 +7,7 @@ mod device;
 mod diagnostics;
 mod ephemeral_signing;
 pub mod helpers;
+mod local_signer;
 mod org;
 mod pairing;
 mod pairing_delegation;
