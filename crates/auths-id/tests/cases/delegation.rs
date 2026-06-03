@@ -77,7 +77,9 @@ fn delegated_device_is_anchored_by_root() {
     // The device key is a DISTINCT AID stored under the device alias — the root
     // never holds it (true device-bound custody).
     let (root_key_did, _, _) = keychain.load_key(&root_alias).expect("root key present");
-    let (dev_key_did, _, _) = keychain.load_key(&device_alias).expect("device key present");
+    let (dev_key_did, _, _) = keychain
+        .load_key(&device_alias)
+        .expect("device key present");
     assert_ne!(
         root_key_did.as_str(),
         dev_key_did.as_str(),

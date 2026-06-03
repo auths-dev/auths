@@ -130,7 +130,10 @@ pub(crate) async fn handle_initiate_online(
         .await
         .map_err(anyhow::Error::from)?;
         wait_spinner.finish_and_clear();
-        print_completion(recovery.new_device_name.as_deref(), &recovery.new_device_did);
+        print_completion(
+            recovery.new_device_name.as_deref(),
+            &recovery.new_device_did,
+        );
         println!(
             "  {} {}",
             style("Revoked old device:").dim(),

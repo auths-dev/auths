@@ -134,9 +134,9 @@ impl AuthsErrorInfo for DeviceError {
             Self::CryptoError(e) => e.suggestion(),
             Self::StorageError(e) => e.suggestion(),
             Self::AnchorError(e) => e.suggestion(),
-            Self::DelegationError(_) => {
-                Some("The device delegation could not be authored or anchored; check the root identity")
-            }
+            Self::DelegationError(_) => Some(
+                "The device delegation could not be authored or anchored; check the root identity",
+            ),
         }
     }
 }

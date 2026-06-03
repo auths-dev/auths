@@ -79,10 +79,9 @@ pub use types::{
 };
 pub use validate::{
     KelPolicy, ValidationError, compute_event_said, finalize_dip_event, finalize_drt_event,
-    finalize_icp_event, finalize_ixn_event,
-    finalize_rot_event, find_seal_in_kel, parse_kel_json, replay_kel, serialize_for_signing,
-    validate_delegation, validate_for_append, validate_kel, validate_kel_with_policy,
-    validate_signed_event, verify_event_crypto, verify_event_said,
+    finalize_icp_event, finalize_ixn_event, finalize_rot_event, find_seal_in_kel, parse_kel_json,
+    replay_kel, serialize_for_signing, validate_delegation, validate_for_append, validate_kel,
+    validate_kel_with_policy, validate_signed_event, verify_event_crypto, verify_event_said,
 };
 
 #[cfg(feature = "cesr")]

@@ -252,7 +252,12 @@ fn prefilled() -> Arc<dyn PassphraseProvider + Send + Sync> {
 
 /// A root identity over real git storage. Returns the keychain handle so tests can
 /// assert the device key is NEVER stored under the root.
-fn setup_root_identity() -> (tempfile::TempDir, String, AuthsContext, IsolatedKeychainHandle) {
+fn setup_root_identity() -> (
+    tempfile::TempDir,
+    String,
+    AuthsContext,
+    IsolatedKeychainHandle,
+) {
     let tmp = tempfile::TempDir::new().expect("temp dir");
     let registry_path = tmp.path().join(".auths");
     let kc = IsolatedKeychainHandle::new();
@@ -275,7 +280,8 @@ fn setup_root_identity() -> (tempfile::TempDir, String, AuthsContext, IsolatedKe
         InitializeResult::Developer(r) => r,
         _ => unreachable!("developer identity"),
     };
-    let ctx = build_test_context_with_provider(&registry_path, Arc::new(kc.clone()), Some(prefilled()));
+    let ctx =
+        build_test_context_with_provider(&registry_path, Arc::new(kc.clone()), Some(prefilled()));
     let did = load_controller_did(ctx.identity_storage.as_ref()).expect("root did");
     (tmp, did, ctx, kc)
 }
@@ -285,7 +291,8 @@ fn setup_fresh_joiner() -> (tempfile::TempDir, AuthsContext, IsolatedKeychainHan
     let tmp = tempfile::TempDir::new().expect("temp dir");
     let registry_path = tmp.path().join(".auths-joiner");
     let kc = IsolatedKeychainHandle::new();
-    let ctx = build_test_context_with_provider(&registry_path, Arc::new(kc.clone()), Some(prefilled()));
+    let ctx =
+        build_test_context_with_provider(&registry_path, Arc::new(kc.clone()), Some(prefilled()));
     (tmp, ctx, kc)
 }
 

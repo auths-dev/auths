@@ -199,8 +199,16 @@ fn list_delegated_devices_reflects_revocation() {
         1,
         "only one device is live after revocation"
     );
-    assert!(listed.iter().any(|d| d.device_did == d2.device_did && !d.revoked));
-    assert!(listed.iter().any(|d| d.device_did == d1.device_did && d.revoked));
+    assert!(
+        listed
+            .iter()
+            .any(|d| d.device_did == d2.device_did && !d.revoked)
+    );
+    assert!(
+        listed
+            .iter()
+            .any(|d| d.device_did == d1.device_did && d.revoked)
+    );
 }
 
 #[test]
@@ -266,7 +274,10 @@ fn delegated_device_rotates_its_own_key() {
     );
 
     // The root anchored the drt → validate_delegation passes for the drt.
-    let drt = ctx.registry.get_event(&device_prefix, 1).expect("drt event");
+    let drt = ctx
+        .registry
+        .get_event(&device_prefix, 1)
+        .expect("drt event");
     let mut root_kel = Vec::new();
     ctx.registry
         .visit_events(&root_prefix, 0, &mut |e| {

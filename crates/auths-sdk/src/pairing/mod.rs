@@ -230,7 +230,6 @@ pub fn verify_device_did(
     Ok(())
 }
 
-
 /// Build a pairing session and its registry registration payload.
 ///
 /// Generates a new `PairingSession` with an ephemeral X25519 keypair and
@@ -284,7 +283,6 @@ pub fn build_pairing_session_request(
         create_request,
     })
 }
-
 
 /// Load device signing material from the local keychain via the context's injected providers.
 ///

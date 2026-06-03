@@ -96,7 +96,8 @@ pub(crate) async fn handle_join(
 
     // Generate our own key + a self-signed delegated inception, and sign the ECDH
     // response with that same key (so SAS + verify_response prove custody of the dip key).
-    let create_spinner = create_wait_spinner(&format!("{GEAR}Creating delegated pairing response..."));
+    let create_spinner =
+        create_wait_spinner(&format!("{GEAR}Creating delegated pairing response..."));
     let device_alias = KeyAlias::new_unchecked("device");
     let (submit_req, pending, shared_secret) = build_delegated_join_response(
         now,

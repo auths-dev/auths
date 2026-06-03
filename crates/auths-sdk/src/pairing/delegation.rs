@@ -25,7 +25,9 @@ use zeroize::Zeroizing;
 
 use auths_core::crypto::signer::encrypt_keypair;
 use auths_core::pairing::types::{SubmitConfirmationRequest, SubmitResponseRequest};
-use auths_core::pairing::{Base64UrlEncoded, GetConfirmationResponse, PairingResponse, PairingToken};
+use auths_core::pairing::{
+    Base64UrlEncoded, GetConfirmationResponse, PairingResponse, PairingToken,
+};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, extract_public_key_bytes};
 use auths_crypto::CurveType;
 use auths_id::keri::delegation::{DeviceDipBundle, anchor_received_dip, build_device_dip};
@@ -235,9 +237,12 @@ pub fn finalize_delegated_join(
             "initiator aborted the pairing (SAS mismatch)".to_string(),
         ));
     }
-    let encoded = confirmation.encrypted_attestation.as_deref().ok_or_else(|| {
-        PairingError::StorageError("confirmation carried no anchoring event".to_string())
-    })?;
+    let encoded = confirmation
+        .encrypted_attestation
+        .as_deref()
+        .ok_or_else(|| {
+            PairingError::StorageError("confirmation carried no anchoring event".to_string())
+        })?;
     let anchor_ixn = decode_anchor_ixn(encoded)?;
 
     if anchor_ixn.i != pending.root_prefix {
@@ -253,13 +258,9 @@ pub fn finalize_delegated_join(
         ..
     } = pending;
 
-    validate_delegation(
-        &Event::Dip(bundle.dip.clone()),
-        &[Event::Ixn(anchor_ixn)],
-    )
-    .map_err(|e| {
-        PairingError::AttestationFailed(format!("delegation not anchored by the root: {e}"))
-    })?;
+    validate_delegation(&Event::Dip(bundle.dip.clone()), &[Event::Ixn(anchor_ixn)]).map_err(
+        |e| PairingError::AttestationFailed(format!("delegation not anchored by the root: {e}")),
+    )?;
 
     // A fresh device's registry may not be initialized yet — this is its first event.
     ctx.registry
@@ -275,18 +276,31 @@ pub fn finalize_delegated_join(
 
     let pass = ctx
         .passphrase_provider
-        .get_passphrase(&format!("Create passphrase for device key '{}':", device_alias))
+        .get_passphrase(&format!(
+            "Create passphrase for device key '{}':",
+            device_alias
+        ))
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
     let enc_cur = encrypt_keypair(bundle.current_pkcs8.as_ref(), &pass)
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
     ctx.key_storage
-        .store_key(&device_alias, &bundle.device_did, KeyRole::Primary, &enc_cur)
+        .store_key(
+            &device_alias,
+            &bundle.device_did,
+            KeyRole::Primary,
+            &enc_cur,
+        )
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
     let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", device_alias));
     let enc_next = encrypt_keypair(bundle.next_pkcs8.as_ref(), &pass)
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
     ctx.key_storage
-        .store_key(&next_alias, &bundle.device_did, KeyRole::NextRotation, &enc_next)
+        .store_key(
+            &next_alias,
+            &bundle.device_did,
+            KeyRole::NextRotation,
+            &enc_next,
+        )
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
 
     CanonicalDid::parse(bundle.device_did.as_str())

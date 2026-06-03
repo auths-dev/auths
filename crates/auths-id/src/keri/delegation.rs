@@ -94,8 +94,10 @@ pub fn incept_delegated_device(
         keychain,
     )?;
 
-    let pass = passphrase_provider
-        .get_passphrase(&format!("Create passphrase for device key '{}':", device_alias))?;
+    let pass = passphrase_provider.get_passphrase(&format!(
+        "Create passphrase for device key '{}':",
+        device_alias
+    ))?;
     let enc_cur = encrypt_keypair(bundle.current_pkcs8.as_ref(), &pass)?;
     keychain.store_key(device_alias, &device_did, KeyRole::Primary, &enc_cur)?;
     let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", device_alias));
@@ -176,8 +178,8 @@ pub fn build_device_dip(
     .map_err(|e| InitError::Keri(e.to_string()))?;
 
     let device_prefix = dip.i.clone();
-    let dip_canonical =
-        serialize_for_signing(&Event::Dip(dip.clone())).map_err(|e| InitError::Keri(e.to_string()))?;
+    let dip_canonical = serialize_for_signing(&Event::Dip(dip.clone()))
+        .map_err(|e| InitError::Keri(e.to_string()))?;
     let dip_sig = sign_with_pkcs8_for_init(device_curve, &device_cur.pkcs8, &dip_canonical)
         .map_err(|e| InitError::Crypto(e.to_string()))?;
     let attachment = serialize_attachment(&[IndexedSignature {
@@ -295,8 +297,8 @@ pub fn author_root_anchor_ixn(
     })
     .map_err(|e| InitError::Keri(e.to_string()))?;
 
-    let canonical =
-        serialize_for_signing(&Event::Ixn(ixn.clone())).map_err(|e| InitError::Keri(e.to_string()))?;
+    let canonical = serialize_for_signing(&Event::Ixn(ixn.clone()))
+        .map_err(|e| InitError::Keri(e.to_string()))?;
     let (_did, _role, encrypted) = keychain.load_key(root_alias)?;
     let pass = passphrase_provider
         .get_passphrase(&format!("Enter passphrase for root key '{}':", root_alias))?;
@@ -547,8 +549,8 @@ pub fn rotate_delegated_device(
     let drt_said = drt.d.clone();
 
     // The device signs the drt with its revealed (new current) key.
-    let canonical =
-        serialize_for_signing(&Event::Drt(drt.clone())).map_err(|e| InitError::Keri(e.to_string()))?;
+    let canonical = serialize_for_signing(&Event::Drt(drt.clone()))
+        .map_err(|e| InitError::Keri(e.to_string()))?;
     let sig = sign_with_pkcs8_for_init(device_curve, &revealed_pkcs8, &canonical)
         .map_err(|e| InitError::Crypto(e.to_string()))?;
     let attachment = serialize_attachment(&[IndexedSignature {
@@ -589,7 +591,12 @@ pub fn rotate_delegated_device(
     let new_next_alias =
         KeyAlias::new_unchecked(format!("{}--next-{}", device_alias, new_sequence));
     let enc_next = encrypt_keypair(fresh_next.pkcs8.as_ref(), &store_pass)?;
-    keychain.store_key(&new_next_alias, &device_did, KeyRole::NextRotation, &enc_next)?;
+    keychain.store_key(
+        &new_next_alias,
+        &device_did,
+        KeyRole::NextRotation,
+        &enc_next,
+    )?;
     let _ = keychain.delete_key(&next_alias);
 
     Ok(())

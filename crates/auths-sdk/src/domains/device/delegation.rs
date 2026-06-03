@@ -49,11 +49,12 @@ pub fn add_device(
     device_alias: &KeyAlias,
     device_curve: auths_crypto::CurveType,
 ) -> Result<DeviceDelegationResult, DeviceError> {
-    let managed = ctx.identity_storage.load_identity().map_err(|e| {
-        DeviceError::IdentityNotFound {
-            did: format!("identity load failed: {e}"),
-        }
-    })?;
+    let managed =
+        ctx.identity_storage
+            .load_identity()
+            .map_err(|e| DeviceError::IdentityNotFound {
+                did: format!("identity load failed: {e}"),
+            })?;
     let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
         DeviceError::IdentityNotFound {
             did: format!("invalid root did:keri: {e}"),
@@ -104,11 +105,12 @@ pub fn remove_device(
     root_alias: &KeyAlias,
     device_did: &str,
 ) -> Result<(), DeviceError> {
-    let managed = ctx.identity_storage.load_identity().map_err(|e| {
-        DeviceError::IdentityNotFound {
-            did: format!("identity load failed: {e}"),
-        }
-    })?;
+    let managed =
+        ctx.identity_storage
+            .load_identity()
+            .map_err(|e| DeviceError::IdentityNotFound {
+                did: format!("identity load failed: {e}"),
+            })?;
     let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
         DeviceError::IdentityNotFound {
             did: format!("invalid root did:keri: {e}"),
@@ -156,12 +158,15 @@ pub struct DeviceDelegationInfo {
 /// ```ignore
 /// let live = list_delegated_devices(&ctx)?.into_iter().filter(|d| !d.revoked).count();
 /// ```
-pub fn list_delegated_devices(ctx: &AuthsContext) -> Result<Vec<DeviceDelegationInfo>, DeviceError> {
-    let managed = ctx.identity_storage.load_identity().map_err(|e| {
-        DeviceError::IdentityNotFound {
-            did: format!("identity load failed: {e}"),
-        }
-    })?;
+pub fn list_delegated_devices(
+    ctx: &AuthsContext,
+) -> Result<Vec<DeviceDelegationInfo>, DeviceError> {
+    let managed =
+        ctx.identity_storage
+            .load_identity()
+            .map_err(|e| DeviceError::IdentityNotFound {
+                did: format!("identity load failed: {e}"),
+            })?;
     let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
         DeviceError::IdentityNotFound {
             did: format!("invalid root did:keri: {e}"),
