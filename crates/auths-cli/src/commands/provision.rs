@@ -176,7 +176,15 @@ fn display_resolved_state(config: &NodeConfig, out: &Output) -> Result<()> {
         out.println("  Witness:");
         out.println(&format!(
             "    {}",
-            out.key_value("urls", &format!("{:?}", witness.urls))
+            out.key_value(
+                "witnesses",
+                &witness
+                    .witnesses
+                    .iter()
+                    .map(|w| format!("{} ({})", w.url, w.aid))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
         ));
         out.println(&format!(
             "    {}",
@@ -266,7 +274,14 @@ fn print_provision_summary(config: &NodeConfig, out: &Output) {
     if let Some(ref w) = config.witness {
         out.println(&format!(
             "  {}",
-            out.key_value("Witnesses", &w.urls.join(", "))
+            out.key_value(
+                "Witnesses",
+                &w.witnesses
+                    .iter()
+                    .map(|e| e.url.clone())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
         ));
         out.println(&format!("  {}", out.key_value("Witness policy", &w.policy)));
     }
@@ -318,10 +333,17 @@ name = "prod-node-01"
 environment = "production"
 
 [witness]
-urls = ["https://witness1.example.com", "https://witness2.example.com"]
 threshold = 2
 timeout_ms = 10000
 policy = "enforce"
+
+[[witness.witnesses]]
+url = "https://witness1.example.com"
+aid = "BWitnessOne00000000000000000000000000000000"
+
+[[witness.witnesses]]
+url = "https://witness2.example.com"
+aid = "BWitnessTwo00000000000000000000000000000000"
 "#;
         let f = write_test_toml(toml);
         let config = load_node_config(f.path()).unwrap();
@@ -332,7 +354,7 @@ policy = "enforce"
             "prod-node-01"
         );
         let w = config.witness.unwrap();
-        assert_eq!(w.urls.len(), 2);
+        assert_eq!(w.witnesses.len(), 2);
         assert_eq!(w.threshold, 2);
         assert_eq!(w.timeout_ms, 10000);
         assert_eq!(w.policy, "enforce");

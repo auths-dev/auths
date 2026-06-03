@@ -128,6 +128,22 @@ pub trait AsyncWitnessProvider: Send + Sync {
         event_said: &Said,
     ) -> Result<Option<Receipt>, WitnessError>;
 
+    /// Resolve this witness's AID — its curve-tagged CESR verkey prefix.
+    ///
+    /// The AID is the witness's stable identity: what an identity designates in
+    /// `b[]`, what KAWA dedupes quorum by, and what a collected receipt's
+    /// signature is verified against. Implementations that talk to a real
+    /// witness resolve it from the server's `/health` (`witness_did`).
+    ///
+    /// # Default
+    ///
+    /// Unsupported — providers that can resolve their own identity override this.
+    async fn witness_aid(&self) -> Result<Prefix, WitnessError> {
+        Err(WitnessError::Rejected {
+            reason: "witness_aid resolution not supported by this provider".to_string(),
+        })
+    }
+
     /// Get the minimum quorum required for consistency.
     ///
     /// When using a multi-witness setup, this specifies how many witnesses

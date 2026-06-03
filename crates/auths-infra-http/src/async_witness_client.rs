@@ -45,6 +45,9 @@ struct ErrorResponse {
 #[derive(Debug, Deserialize)]
 struct HealthResponse {
     status: String,
+    /// The witness's advertised identity (a `did:key`); present on real servers.
+    #[serde(default)]
+    witness_did: String,
 }
 
 impl HttpAsyncWitnessClient {
@@ -250,6 +253,49 @@ impl AsyncWitnessProvider for HttpAsyncWitnessClient {
             .map_err(|e| WitnessError::Serialization(e.to_string()))?;
 
         Ok(health.status == "ok")
+    }
+
+    async fn witness_aid(&self) -> Result<Prefix, WitnessError> {
+        let url = format!("{}/health", self.base_url);
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                WitnessError::Timeout(self.timeout.as_millis() as u64)
+            } else {
+                WitnessError::Network(e.to_string())
+            }
+        })?;
+        if !response.status().is_success() {
+            return Err(WitnessError::Network(format!(
+                "witness /health returned status {}",
+                response.status()
+            )));
+        }
+        let health: HealthResponse = response
+            .json()
+            .await
+            .map_err(|e| WitnessError::Serialization(e.to_string()))?;
+        if health.witness_did.is_empty() {
+            return Err(WitnessError::Rejected {
+                reason: "witness /health did not advertise a witness_did".to_string(),
+            });
+        }
+        // The witness advertises its identity as a `did:key`; convert it to the
+        // curve-tagged CESR verkey prefix used in `b[]` and receipt verification.
+        let decoded = auths_crypto::did_key_decode(&health.witness_did).map_err(|e| {
+            WitnessError::Rejected {
+                reason: format!("witness /health did:key invalid: {e}"),
+            }
+        })?;
+        let key = auths_keri::KeriPublicKey::from_verkey_bytes(decoded.bytes(), decoded.curve())
+            .map_err(|e| WitnessError::Rejected {
+                reason: format!("witness verkey undecodable: {e}"),
+            })?;
+        let qb64 = key.to_qb64().map_err(|e| WitnessError::Rejected {
+            reason: format!("witness verkey encode failed: {e}"),
+        })?;
+        Prefix::new(qb64).map_err(|e| WitnessError::Rejected {
+            reason: format!("witness AID invalid: {e}"),
+        })
     }
 }
 

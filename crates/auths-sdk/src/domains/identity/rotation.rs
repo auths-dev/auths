@@ -76,10 +76,7 @@ pub fn compute_rotation_event(
         Some(cfg) if cfg.is_enabled() => (
             Threshold::Simple(cfg.threshold as u64),
             vec![],
-            cfg.witness_urls
-                .iter()
-                .map(|u| Prefix::new_unchecked(u.to_string()))
-                .collect(),
+            cfg.aids().cloned().collect(),
         ),
         _ => (Threshold::Simple(0), vec![], vec![]),
     };

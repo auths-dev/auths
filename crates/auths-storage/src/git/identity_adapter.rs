@@ -149,10 +149,7 @@ impl RegistryIdentityStorage {
         let (bt, b) = match witness_config {
             Some(cfg) if cfg.is_enabled() => (
                 Threshold::Simple(cfg.threshold as u64),
-                cfg.witness_urls
-                    .iter()
-                    .map(|u| Prefix::new_unchecked(u.to_string()))
-                    .collect(),
+                cfg.aids().cloned().collect(),
             ),
             _ => (Threshold::Simple(0), vec![]),
         };

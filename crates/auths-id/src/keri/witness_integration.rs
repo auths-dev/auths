@@ -89,8 +89,7 @@ pub fn collect_and_store_receipts(
 
     // Build witness clients from URLs
     let witnesses: Vec<Arc<dyn AsyncWitnessProvider>> = config
-        .witness_urls
-        .iter()
+        .urls()
         .map(|url| {
             let client = HttpAsyncWitnessClient::new(url.to_string(), config.threshold)
                 .with_timeout(std::time::Duration::from_millis(config.timeout_ms));
