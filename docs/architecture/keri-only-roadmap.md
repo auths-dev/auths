@@ -153,7 +153,53 @@ remove are rotations, not attestation writes.
 
 ---
 
+## Epic A2 — Device add & delegation pairing (precursor to B)
+
+> **Added 2026-06-03.** Epic A delivered the delegation *engine* (`incept_delegated_device`,
+> `add_device`/`remove_device`/`list_delegated_devices`, CLI `device remove`) but **nothing in the binary
+> delegates a device** — the only CLI "add" is `id expand --add-device`, which is the old shared-`k[]`
+> rotation, not delegation. This epic completes the device-bound surface: a device joins as a delegated
+> KERI identifier, added **locally** (a host-held slot) or **paired remotely so the device holds its own
+> key**. Epic B (verification) depends on this — you can't verify delegation-based signing until devices
+> can be delegated. Closes #199 + #201.
+
+**Goal:** a device becomes a delegated AID of the root (its own KEL, `dip` anchored by the root via
+`ixn`), holding its **own** key in the remote case. Reuses the Epic A engine + the existing
+`auths device pair` transport; replaces attestation-based pairing.
+
+**Already exists:** SDK `add_device` (local-generate) / `remove_device` / `list_delegated_devices`;
+`incept_delegated_device` + `validate_delegation`; `auths device pair` LAN/online/offline transport
+(attestation-based today, `pairing/mod.rs:334 create_pairing_attestation`); `dip`/`drt` events.
+
+- **A2.1 — Local `auths device add` (CLI → SDK), well-engineered.** Generate a device key on this host,
+  delegate it (root anchors the `dip`), store metadata (label). UX: `auths device add --label "…"
+  [--curve] [--key <root-alias>]` → prints the device DID. Dedup (reject re-delegating a key already in
+  the set); typed errors; tests. Closes the local half of #201.
+- **A2.2 — Delegated device key rotation (`drt`).** A delegated device must rotate its own key: ensure
+  `add_device` records the device's pre-committed next key, and add `drt` authoring anchored by the root.
+- **A2.3 — Remote pairing onto delegation.** Rewire `auths device pair` (LAN/online/offline): the joining
+  device generates its **own** key + next-commitment, builds its `dip` (delegated by the root prefix),
+  and transmits it over the pairing channel; the initiator (root) anchors it. Mutual verification (device
+  verifies the root; root verifies the device's `dip`, channel-bound). Replaces
+  `create_pairing_attestation`. Closes #199.
+- **A2.4 — `device list` / `status` from the delegation set.** Wire `auths device list` + the `status`
+  device summary to `list_delegated_devices` (live = delegated − revoked); surface
+  `auths_verifier::duplicity::detect_duplicity` as a non-fatal warning. Closes #201's display tail.
+- **A2.5 — Recovery (stolen device).** Revoke the lost device's delegation + pair a replacement (the
+  `auths device pair --recover` flow, now meaningful under delegation).
+
+**Acceptance:** `auths device add` delegates a local device; `auths device pair` pairs a *remote* device
+that holds its own key (proven by `validate_delegation` against a key the initiator never held);
+`auths device list` shows the live set; `auths device remove` revokes — all end-to-end through the binary.
+
+---
+
 ## Epic B — KEL-native verification (move the trust root off `allowed_signers`)
+
+> **Refresh (2026-06-03, post-delegation pivot):** B2 below was written for the shared-`k[]` model
+> ("device in `k[]`"). Under delegation (Model D), verification resolves the signer's **device KEL →
+> root-anchored delegation** (`validate_delegation`) **minus revocation** — not membership in a shared
+> `k[]`. This is issue #200. Depends on Epic A2 (delegated devices must exist to verify them).
 
 **Goal:** verifying a commit/artifact = locate the signer's KEL, replay it, confirm the signing key is
 authorized in current (or signing-time) key-state, and confirm the device→identity chain.
@@ -175,11 +221,12 @@ allowlist file, it is "Sigstore with extra steps." Replaying the KEL is the diff
 - **B2 — KEL-native verify function.**
   - *Files:* new `verify_commit_against_kel` in `auths-verifier/src/verify.rs` (reuse the
     `verify_device_link:244` replay logic); call it from `commands/verify_commit.rs`.
-  - *Do:* given (commit, signature, signer `did`), replay the KEL → confirm the signing key ∈
-    authorized key-state → confirm device→identity chain. Return a typed verdict.
-  - *Verify:* a commit signed by a device in `k[]` verifies; one signed by a *removed* device fails;
-    a key never in `k[]` fails.
-  - *Depends:* A2/A3 (so `k[]` reflects devices), B1 (to know the KEL), B4 (KEL source).
+  - *Do:* given (commit, signature, signer device `did`), resolve the device's delegated KEL →
+    `validate_delegation` against the root (the root anchored its `dip`) → confirm **not revoked** →
+    confirm the signing key is the device's current key. Return a typed verdict.
+  - *Verify:* a commit signed by a *delegated* device verifies; one signed by a *revoked* device fails;
+    a device the root never delegated fails.
+  - *Depends:* Epic A2 (delegated devices exist), B1 (signer `did` on the commit), B4 (KEL source).
 
 - **B3 — demote `allowed_signers` to a KEL-derived cache (or drop it).**
   - *Files:* `auths-sdk/src/workflows/allowed_signers.rs:363` (`sync`), `:382` (`load_all_attestations`).
