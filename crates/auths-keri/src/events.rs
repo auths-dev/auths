@@ -341,17 +341,29 @@ pub struct IcpEvent {
 /// a `with_*` method, not by widening this `Init` struct — that's
 /// what makes the pattern future-proof.
 pub struct IcpEventInit {
+    /// Version string (`KERI10JSON…`); a placeholder until finalized.
     pub v: VersionString,
+    /// Self-addressing identifier (the event SAID); blank until finalized.
     pub d: Said,
+    /// Identifier prefix; for inception this equals the SAID (self-addressing).
     pub i: Prefix,
+    /// Sequence number (0 for inception).
     pub s: KeriSequence,
+    /// Signing threshold over the current keys `k`.
     pub kt: Threshold,
+    /// Current signing keys (CESR-encoded verkeys).
     pub k: Vec<CesrKey>,
+    /// Next-key threshold over the pre-rotation commitments `n`.
     pub nt: Threshold,
+    /// Pre-rotation commitments (digests of the next keys).
     pub n: Vec<Said>,
+    /// Backer (witness) threshold.
     pub bt: Threshold,
+    /// Backer (witness) prefixes.
     pub b: Vec<Prefix>,
+    /// Configuration traits (e.g. establishment-only, do-not-delegate).
     pub c: Vec<ConfigTrait>,
+    /// Anchored seals.
     pub a: Vec<Seal>,
 }
 

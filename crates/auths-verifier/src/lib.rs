@@ -53,6 +53,7 @@ pub mod action;
 pub mod clock;
 pub mod commit;
 pub mod commit_error;
+pub mod commit_kel;
 pub mod core;
 pub mod duplicity;
 pub mod error;
@@ -127,6 +128,7 @@ pub use auths_keri::{
 
 // Re-export commit verification types
 pub use commit::VerifiedCommit;
+pub use commit_kel::{CommitVerdict, verify_commit_against_kel};
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};
 
 // Re-export crypto provider trait for downstream consumers
