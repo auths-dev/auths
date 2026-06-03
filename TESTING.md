@@ -202,3 +202,75 @@ cargo nextest run -E 'test(full_keri_lifecycle)'
 # Lint
 cargo clippy --all-targets --all-features -- -D warnings
 ```
+
+## Manual End-to-End CLI Testing (installed binary, isolated home)
+
+The automated suites exercise the SDK/core in isolation. To drive the **real
+installed CLI** end-to-end — creating an identity, signing a git commit, verifying
+it, pairing a device — without touching your personal `~/.auths` or global git
+config, install the branch build and point it at a throwaway home directory.
+
+`auths` resolves its identity repository from the `AUTHS_HOME` environment variable
+(falling back to `$HOME/.auths`). Overriding `AUTHS_HOME` sandboxes **all** CLI
+state into a temp directory, so nothing leaks into your real environment.
+
+### 1. Install the branch binaries
+
+```bash
+# Builds + installs `auths`, `auths-sign`, `auths-verify` from the CURRENT working tree
+cargo install --path crates/auths-cli --force
+```
+
+`--force` overwrites any earlier install so you always run the current branch. The
+binaries land in `~/.cargo/bin` (ensure it is on `$PATH`).
+
+> Re-run this after **every** local change — the installed binary is a snapshot and
+> does not pick up source edits until reinstalled.
+
+### 2. Point the CLI at a throwaway home + repo
+
+```bash
+export AUTHS_HOME="$(mktemp -d)/.auths"      # sandbox: all identity state lives here
+
+TEST_REPO="$(mktemp -d)"                       # throwaway repo to sign commits in
+git -C "$TEST_REPO" init -q
+git -C "$TEST_REPO" config user.name  "Test User"
+git -C "$TEST_REPO" config user.email "test@example.com"
+```
+
+### 3. Create an identity, sign, and verify
+
+```bash
+auths init                                     # provisions the identity under $AUTHS_HOME
+auths status                                   # identity + delegated devices
+
+cd "$TEST_REPO"
+echo hello > file.txt && git add file.txt
+git commit -m "signed commit"                  # signed via the auths git integration
+git log --show-signature -1                    # expect a good signature
+auths verify HEAD                              # CLI-side verification
+```
+
+### 4. Exercise device pairing (optional)
+
+```bash
+# Controller side (this terminal): start a session and print a short code / QR
+auths pair --registry <RELAY-URL>
+
+# Joining device (a second sandbox — fresh AUTHS_HOME, no prior identity):
+AUTHS_HOME="$(mktemp -d)/.auths" auths pair --join <SHORT-CODE> --registry <RELAY-URL>
+```
+
+The joiner becomes a KERI **delegated identifier**: it generates + holds its own
+key, the controller anchors it, and `auths status` on the controller lists it.
+
+### 5. Clean up
+
+```bash
+rm -rf "$AUTHS_HOME" "$TEST_REPO"
+unset AUTHS_HOME
+```
+
+Because every stateful path is under `$AUTHS_HOME` or the temp repo, your personal
+`~/.auths` and global git config are never modified. To test another branch,
+`git checkout` it and repeat from step 1.

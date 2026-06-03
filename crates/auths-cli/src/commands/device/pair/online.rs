@@ -115,37 +115,14 @@ pub(crate) async fn handle_initiate_online(
         expiry_secs,
     };
 
-    match initiate_online_pairing(params, &relay, &ctx, now, Some(&on_status))
+    let auths_sdk::pairing::PairingCompletionResult::Success {
+        device_did,
+        device_name,
+    } = initiate_online_pairing(params, &relay, &ctx, now, Some(&on_status))
         .await
-        .map_err(anyhow::Error::from)?
-    {
-        auths_sdk::pairing::PairingCompletionResult::Success {
-            device_did,
-            device_name,
-        } => {
-            wait_spinner.finish_and_clear();
-            print_completion(device_name.as_deref(), &device_did);
-        }
-        auths_sdk::pairing::PairingCompletionResult::Fallback {
-            device_did,
-            device_name: _,
-            error,
-        } => {
-            wait_spinner.finish_and_clear();
-            println!();
-            println!(
-                "  {}{} {}",
-                WARN,
-                style("Could not create attestation:").yellow(),
-                error
-            );
-            println!("  You can manually link this device using:");
-            println!(
-                "    {}",
-                style(format!("auths device link --device {} ...", device_did)).dim()
-            );
-        }
-    }
+        .map_err(anyhow::Error::from)?;
+    wait_spinner.finish_and_clear();
+    print_completion(device_name.as_deref(), &device_did);
 
     Ok(())
 }

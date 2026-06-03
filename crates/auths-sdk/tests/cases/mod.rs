@@ -9,6 +9,7 @@ mod ephemeral_signing;
 pub mod helpers;
 mod org;
 mod pairing;
+mod pairing_delegation;
 mod rotation;
 mod setup;
 mod signing;

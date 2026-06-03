@@ -130,4 +130,23 @@ pub trait PairingRelayClient: Send + Sync {
         url: &str,
         session_id: &str,
     ) -> impl Future<Output = Result<GetConfirmationResponse, NetworkError>> + Send;
+
+    /// Waits for a SAS confirmation to arrive (anchor payload or abort), polling
+    /// until ready or `timeout` elapses.
+    ///
+    /// Returns `None` if `timeout` elapses before a confirmation is available.
+    /// Mirrors [`wait_for_update`](Self::wait_for_update) for the confirmation
+    /// channel so an SDK orchestrator can block for the initiator's anchor without
+    /// owning a timer (the transport adapter owns the runtime).
+    ///
+    /// Args:
+    /// * `url`: Base URL of the pairing server.
+    /// * `session_id`: The session to watch.
+    /// * `timeout`: Maximum time to wait before returning `None`.
+    fn wait_for_confirmation(
+        &self,
+        url: &str,
+        session_id: &str,
+        timeout: Duration,
+    ) -> impl Future<Output = Result<Option<GetConfirmationResponse>, NetworkError>> + Send;
 }

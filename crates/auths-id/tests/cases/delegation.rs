@@ -124,7 +124,7 @@ fn build_device_dip_is_backend_free_and_anchor_received_dip_delegates() {
 
     // Initiator half: anchor the received dip on the root's registry. No device
     // private key is needed here — the dip is already signed.
-    let device_did = anchor_received_dip(
+    let (device_did, anchor_ixn) = anchor_received_dip(
         backend.as_ref(),
         &root_prefix,
         &root_alias,
@@ -136,6 +136,12 @@ fn build_device_dip_is_backend_free_and_anchor_received_dip_delegates() {
     )
     .expect("anchor the received dip");
     assert_eq!(device_did.as_str(), bundle.device_did.as_str());
+
+    // The returned ixn is the root's anchor — it authors over the root prefix and
+    // carries the delegation seal for this dip.
+    assert_eq!(anchor_ixn.i, root_prefix);
+    validate_delegation(&Event::Dip(bundle.dip.clone()), &[Event::Ixn(anchor_ixn)])
+        .expect("the returned ixn alone proves the delegation");
 
     // Same outcome as a same-host add: the root anchored the delegation.
     let dip = backend

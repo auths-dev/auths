@@ -207,8 +207,9 @@ pub fn build_device_dip(
 ///
 /// This is the **initiator** half of delegation. The dip is taken as-is — its
 /// signature is the device's, validated by the backend on append — so this never
-/// needs the device's private key. The returned DID identifies the now-delegated
-/// device.
+/// needs the device's private key. Returns the now-delegated device's DID and the
+/// root's anchoring `ixn` (remote pairing relays the `ixn` back to the joiner so it
+/// can confirm the anchor via `validate_delegation`).
 ///
 /// Args:
 /// * `backend`: Registry holding the root KEL; the dip is appended to the device KEL here.
@@ -235,7 +236,7 @@ pub fn anchor_received_dip(
     dip_attachment: &[u8],
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
-) -> Result<IdentityDID, InitError> {
+) -> Result<(IdentityDID, IxnEvent), InitError> {
     let device_prefix = dip.i.clone();
     let dip_said = dip.d.clone();
 
@@ -243,7 +244,7 @@ pub fn anchor_received_dip(
         .append_signed_event(&device_prefix, &Event::Dip(dip.clone()), dip_attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    author_root_anchor_ixn(
+    let anchor_ixn = author_root_anchor_ixn(
         backend,
         root_prefix,
         root_alias,
@@ -260,11 +261,13 @@ pub fn anchor_received_dip(
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: device_prefix is from a validated dip, a valid did:keri prefix.
     let device_did = IdentityDID::new_unchecked(format!("did:keri:{}", device_prefix));
-    Ok(device_did)
+    Ok((device_did, anchor_ixn))
 }
 
 /// Author an `ixn` on the root KEL anchoring the given seals, signed by the root's
-/// current key. Single-author — no other identity's key is required.
+/// current key. Single-author — no other identity's key is required. Returns the
+/// finalized, signed `ixn` (callers that relay the anchor — e.g. remote pairing —
+/// need its bytes; same-host callers may ignore it).
 pub fn author_root_anchor_ixn(
     backend: &(dyn RegistryBackend + Send + Sync),
     root_prefix: &Prefix,
@@ -273,7 +276,7 @@ pub fn author_root_anchor_ixn(
     anchors: Vec<Seal>,
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
-) -> Result<(), InitError> {
+) -> Result<IxnEvent, InitError> {
     let root_state = backend
         .get_key_state(root_prefix)
         .map_err(|e| InitError::Registry(e.to_string()))?;
@@ -307,9 +310,9 @@ pub fn author_root_anchor_ixn(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
     backend
-        .append_signed_event(root_prefix, &Event::Ixn(ixn), &attachment)
+        .append_signed_event(root_prefix, &Event::Ixn(ixn.clone()), &attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
-    Ok(())
+    Ok(ixn)
 }
 
 /// One device the root has delegated, with its current revocation status.
@@ -450,6 +453,7 @@ pub fn revoke_delegated_device(
         passphrase_provider,
         keychain,
     )
+    .map(|_| ())
 }
 
 /// Rotate a delegated device's own key (`drt`), anchored by the root.
