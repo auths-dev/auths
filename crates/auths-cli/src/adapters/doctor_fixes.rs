@@ -3,68 +3,6 @@
 use std::path::PathBuf;
 
 use auths_sdk::ports::diagnostics::{CheckResult, DiagnosticError, DiagnosticFix};
-use auths_sdk::storage::RegistryAttestationStorage;
-use auths_sdk::workflows::allowed_signers::AllowedSigners;
-
-/// Regenerates the allowed_signers file from attestation storage.
-///
-/// Safe fix — runs without user confirmation since it only writes
-/// a derived file and doesn't overwrite user-authored configuration.
-pub struct AllowedSignersFix {
-    repo_path: PathBuf,
-}
-
-impl AllowedSignersFix {
-    pub fn new(repo_path: PathBuf) -> Self {
-        Self { repo_path }
-    }
-}
-
-impl DiagnosticFix for AllowedSignersFix {
-    fn name(&self) -> &str {
-        "Regenerate allowed_signers"
-    }
-
-    fn is_safe(&self) -> bool {
-        true
-    }
-
-    fn can_fix(&self, check: &CheckResult) -> bool {
-        check.name == "Allowed signers file" && !check.passed
-    }
-
-    fn apply(&self) -> Result<String, DiagnosticError> {
-        let home = dirs::home_dir()
-            .ok_or_else(|| DiagnosticError::ExecutionFailed("no home directory".into()))?;
-        let ssh_dir = home.join(".ssh");
-        std::fs::create_dir_all(&ssh_dir)
-            .map_err(|e| DiagnosticError::ExecutionFailed(format!("create .ssh dir: {e}")))?;
-        let signers_path = ssh_dir.join("allowed_signers");
-
-        let storage = RegistryAttestationStorage::new(&self.repo_path);
-        let store = super::allowed_signers_store::FileAllowedSignersStore;
-        let mut signers = AllowedSigners::load(&signers_path, &store)
-            .unwrap_or_else(|_| AllowedSigners::new(&signers_path));
-        let report = signers
-            .sync(&storage, None)
-            .map_err(|e| DiagnosticError::ExecutionFailed(format!("sync signers: {e}")))?;
-        signers
-            .save(&store)
-            .map_err(|e| DiagnosticError::ExecutionFailed(format!("save signers: {e}")))?;
-
-        let signers_str = signers_path
-            .to_str()
-            .ok_or_else(|| DiagnosticError::ExecutionFailed("path not UTF-8".into()))?;
-        set_git_config_value("gpg.ssh.allowedSignersFile", signers_str)?;
-
-        Ok(format!(
-            "Wrote {} signer(s) to {}, set gpg.ssh.allowedSignersFile",
-            report.added,
-            signers_path.display()
-        ))
-    }
-}
-
 /// Sets the 5 git signing config keys for auths.
 ///
 /// Unsafe fix — may overwrite existing non-auths git signing config,

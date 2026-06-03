@@ -96,10 +96,6 @@ pub struct UnifiedVerifyCommand {
     #[arg(default_value = "HEAD")]
     pub target: String,
 
-    /// Path to allowed signers file (commit verification).
-    #[arg(long, default_value = ".auths/allowed_signers")]
-    pub allowed_signers: PathBuf,
-
     /// Path to identity bundle JSON (for CI/CD stateless commit verification).
     #[arg(long, value_parser)]
     pub identity_bundle: Option<PathBuf>,
@@ -141,8 +137,6 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
         VerifyTarget::GitRef(ref_str) => {
             let commit_cmd = VerifyCommitCommand {
                 commit: ref_str,
-                allowed_signers: cmd.allowed_signers,
-                identity_bundle: cmd.identity_bundle,
                 witness_receipts: cmd.witness_receipts,
                 witness_threshold: cmd.witness_threshold,
                 witness_keys: cmd.witness_keys,

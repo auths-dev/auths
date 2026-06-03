@@ -1,4 +1,3 @@
-pub mod allowed_signers;
 pub mod approval;
 pub mod artifact;
 pub mod audit;

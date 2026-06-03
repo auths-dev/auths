@@ -20,7 +20,6 @@ use crate::commands::device::pair::PairCommand;
 use crate::commands::doctor::DoctorCommand;
 use crate::commands::emergency::EmergencyCommand;
 use crate::commands::error_lookup::ErrorLookupCommand;
-use crate::commands::git::GitCommand;
 use crate::commands::id::IdCommand;
 use crate::commands::init::InitCommand;
 use crate::commands::key::KeyCommand;
@@ -35,7 +34,6 @@ use crate::commands::reset::ResetCommand;
 use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
 use crate::commands::sign_commit::SignCommitCommand;
-use crate::commands::signers::SignersCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
@@ -114,8 +112,6 @@ pub enum RootCommand {
     #[command(hide = true)]
     SignCommit(SignCommitCommand),
     #[command(hide = true)]
-    Signers(SignersCommand),
-    #[command(hide = true)]
     Error(ErrorLookupCommand),
     #[command(hide = true)]
     Id(IdCommand),
@@ -127,8 +123,6 @@ pub enum RootCommand {
     Approval(ApprovalCommand),
     #[command(hide = true)]
     Policy(PolicyCommand),
-    #[command(hide = true)]
-    Git(GitCommand),
     #[command(hide = true)]
     Namespace(NamespaceCommand),
     #[command(hide = true)]

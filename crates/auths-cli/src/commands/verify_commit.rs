@@ -23,18 +23,6 @@ pub struct VerifyCommitCommand {
     #[arg(default_value = "HEAD")]
     pub commit: String,
 
-    /// Path to allowed signers file.
-    #[arg(long, default_value = ".auths/allowed_signers")]
-    pub allowed_signers: PathBuf,
-
-    /// Path to identity bundle JSON (for CI/CD stateless verification).
-    ///
-    /// When provided, verification uses the bundle's public key instead of
-    /// the allowed_signers file. This enables stateless verification without
-    /// requiring access to identity repositories.
-    #[arg(long, value_parser, help = "Path to identity bundle JSON (for CI)")]
-    pub identity_bundle: Option<PathBuf>,
-
     /// Path to witness signatures JSON file.
     #[arg(long = "witness-signatures")]
     pub witness_receipts: Option<PathBuf>,

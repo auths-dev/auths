@@ -1,5 +1,4 @@
 mod agents;
-mod allowed_signers;
 mod artifact;
 mod audit;
 

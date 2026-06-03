@@ -1,6 +1,5 @@
 mod agent;
 mod agent_persistence;
-mod allowed_signers_store;
 mod artifact;
 mod diagnostics;
 mod git;
@@ -11,7 +10,6 @@ mod transparency_log;
 
 pub use agent::FakeAgentProvider;
 pub use agent_persistence::FakeAgentPersistence;
-pub use allowed_signers_store::FakeAllowedSignersStore;
 pub use artifact::FakeArtifactSource;
 pub use diagnostics::{FakeCryptoDiagnosticProvider, FakeGitDiagnosticProvider};
 pub use git::FakeGitLogProvider;
