@@ -15,6 +15,80 @@ making the shared-KEL controller model live if/when we choose to.
 
 ---
 
+## Design decision (2026-06-03): the multi-device key-custody model
+
+> **This section supersedes the shared-`k[]`-controller framing in the rest of this note for the
+> *multi-device* case.** Recorded after a design pass on Epic A. **Decided (2026-06-03): Model D
+> (delegation).**
+>
+> The KERI delegation primitives this rests on already exist and are tested lower in the stack —
+> `DipEvent`/`DrtEvent` construction (`auths-keri/src/events.rs:616`), `validate_delegated_inception`
+> (`validate.rs:683`), `validate_delegation` (`validate.rs:260`, which already verifies the delegator
+> *anchored* the delegated event), and the `ixn` anchoring machinery (`auths-id/src/keri/anchor.rs`).
+> The shared-`k[]` detour was the wrong layer; delegation was waiting underneath.
+
+### The problem a design pass surfaced
+
+The shared-KEL model records each device as an entry in the identity KEL's `k[]`, and treats adding or
+removing a device as a `rot`. But KERI **pre-rotation** requires every key in a rotation's new `k[]` to
+be the revealed pre-image of a prior `n[]` commitment — and **a single device holds only its own
+pre-committed next key**. It has the *digests* of the other devices' next keys (from prior `n[]`), never
+the pre-images. Therefore:
+
+> **One device cannot author a keripy-valid `rot` that rotates a multi-device `k[]`.** It cannot produce
+> the revealed next keys of the other controllers.
+
+The current `rotate_registry_identity_multi` "works" only because it decrypts **every** survivor's next
+key from the *local* keychain (`rotate.rs` survivor loop) — i.e. it assumes **one host holds all
+controllers' keys**. That is single-host-many-keys, **not** device-bound multi-device. The dual-index
+removal fixtures were keripy-validated under exactly that one-host assumption (one test held `s0..s4`).
+
+### The two coherent models
+
+**Model D — Delegation (recommended).** Each device is a KERI **delegated identifier** (`dip`) of the
+root identity. The root **anchors** a delegation seal (`ixn`) authorizing a device; removal anchors a
+revocation. Each device runs its own KEL and rotates independently (`drt`).
+- **keripy-valid** — delegated AIDs are standard KERI.
+- **True device-bound** — each device holds only its own key + KEL.
+- **Single-author set changes** — device add/remove is an `ixn` anchor signed by the root's *current*
+  key (no pre-rotation reveal, no other device's private key). Simpler than a shrink `rot`.
+- **Verification** — a commit signer's device KEL chains to a root-anchored delegation → authorized.
+- **Unifies with agents** — Epic E models agents as delegated identifiers too: devices and agents
+  become one `dip`/`drt` concept.
+- **Reuses what's built** — `dip`/`drt` events, device KELs, the dual-index CESR primitive, the
+  verification core. The shared-`k[]` controller layer (`shared_kel.rs`) is retired for multi-device.
+- **Tradeoff** — introduces a root/primary asymmetry (the root key anchors delegations). For developer
+  identity this is desirable (a clear root of trust); root-key loss is a recovery concern, not a
+  per-operation one, since set changes are `ixn` anchors the delegates don't need to co-sign.
+
+**Model S — Per-device-custody shared KEL.** Keep `k[]` = device verkeys. A rotation's author rotates
+**only its own slot** (reveals its own next key), **carries** the other survivors forward from prior
+`k[]`/`n[]` (public state), and appends provided controllers.
+- Single-author ✓ and passes the *auths* validator (kt=1 met by the author; prior nt met by its one
+  reveal).
+- **But the carried slots are not revealed pre-images, so the shared KEL diverges from keripy
+  pre-rotation.** Auths-valid, not keripy-valid.
+
+### Recommendation: **Model D (delegation)**
+
+keripy-faithfulness is a stated project value (Wave 0 byte-interop; the dual-index validator was built
+against keripy). Model S formalizes a keripy divergence for the shared KEL; Model D stays keripy-native,
+is the cleaner device-bound model, supports independent device rotation, makes device add/remove a
+simple `ixn` anchor (no shrink-`rot` gymnastics), and **unifies devices with agents**.
+
+### Impact on Epic A (Model D — decided)
+
+- fn-143.1 → "incept/author a **delegated device identifier** + root-anchored delegation seal" (replaces
+  the keychain-layout work).
+- fn-143.3 / .4 → "delegate / revoke a device" via root `ixn` anchoring (replaces shared-KEL add/shrink
+  rotations).
+- fn-143.2 (provided-controller append) is largely **superseded**; its lesson — a remote device's key is
+  never held locally — carries into the delegation pairing handshake.
+- **Retained:** device KELs, `dip`/`drt`, the dual-index CESR primitive, verification core, witnesses
+  (Epic D). `shared_kel.rs`'s controller-set helpers are retired for multi-device.
+
+---
+
 ## TL;DR
 
 - **Commit signing is decoupled from the device model.** `auths-sign` signs with a local keychain

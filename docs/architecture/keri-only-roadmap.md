@@ -55,7 +55,7 @@ service; ACDC/TEL credential layer.
 | Capability | Today | Goal-native target | Status |
 |---|---|---|---|
 | Identity / rotation / anchoring | KEL `icp`/`rot`/`ixn` | same | ✅ done |
-| Device membership | attestation | controller in `k[]` | model built, **unwired** (Epic A) |
+| Device membership | attestation | delegated identifier (`dip`, root-anchored) | primitives built, **unwired** (Epic A) |
 | Device removal | error / attestation flag | shrink-`k` rotation | core built, **unwired** (Epic A) |
 | Commit/artifact trust | `allowed_signers` allowlist | KEL replay → key authorized? | ❌ (Epic B) |
 | Signer identity on a commit | none (bare SSH key) | `did:keri` in-band | ❌ (Epic B) |
@@ -67,7 +67,7 @@ service; ACDC/TEL credential layer.
 ## Critical path
 
 ```
-Epic A (device ∈ KEL) ─┐
+Epic A (delegated devices) ─┐
                        ├─► MVP: device-bound, KEL-verifiable signing (KEL via bundle/local refs)
 Epic B (KEL-native verify) ─┘        │  honest caveat: ordering = trust-on-first-sight until Epic D
                                      ▼
@@ -87,11 +87,22 @@ documented `kt=1` risk).
 
 ## Epic A — KEL-native device membership
 
-**Goal:** a device's signing key is a verifiable controller in the identity's `k[]`, so its authority
-is provable by replaying the KEL. Add/remove a device = a KEL rotation.
+> **⚠️ Re-grounded 2026-06-03 → delegation (Model D).** A design pass found that one device cannot
+> author a keripy-valid `rot` of a multi-device `k[]` — it can't reveal the *other* devices'
+> pre-committed next keys (the old `rotate_registry_identity_multi` only "works" by assuming one host
+> holds every key). So devices are now **KERI delegated identifiers**: each device runs its own KEL
+> (`dip`/`drt`), and the root **anchors** the delegation via an `ixn` (add) or a revocation (remove) —
+> single-author, keripy-valid, no pre-rotation reveal, no other device's key. This also **unifies
+> devices with agents** (Epic E is the same `dip`/`drt` mechanism). The `k[]`/shrink-rotation task
+> detail below is superseded; authoritative design + re-scoped tasks: `device-model.md` "Design
+> decision (2026-06-03)". The primitives already exist (`DipEvent`, `validate_delegation`, the anchor
+> machinery), so this builds on tested code.
 
-**Why it matters:** "device-bound" is meaningless if the binding is an external allowlist. This makes
-the binding part of the identity itself — the core of the thesis.
+**Goal:** a device's authority to sign is provable by KERI **delegation** — its delegated KEL chains to
+a root-anchored delegation seal — replacing attestation-based binding.
+
+**Why it matters:** "device-bound" is meaningless if the binding is an external allowlist. Delegation
+makes the binding part of the identity's signed event log, keripy-faithfully.
 
 **Already exists:** the whole controller model + dual-index removal (see Assets). It is dormant — these
 tasks wire it into the product.
