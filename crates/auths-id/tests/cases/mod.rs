@@ -1,5 +1,6 @@
 mod anchor_lifecycle;
 mod attestation_input_golden;
+mod delegation;
 mod keri;
 mod lifecycle;
 mod proptest_keri;

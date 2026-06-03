@@ -1084,6 +1084,33 @@ pub fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, ValidationError
     Ok(icp)
 }
 
+/// Create a delegated inception (`dip`) event with a properly computed SAID.
+///
+/// Mirrors [`finalize_icp_event`] for `dip`: a delegated AID's prefix is
+/// self-addressing (the SAID of its own inception event), so `i` is set to `d`.
+///
+/// Args:
+/// * `dip` - The delegated inception event to finalize (with `di` set to the delegator).
+pub fn finalize_dip_event(
+    mut dip: crate::events::DipEvent,
+) -> Result<crate::events::DipEvent, ValidationError> {
+    let value = serde_json::to_value(Event::Dip(dip.clone()))
+        .map_err(|e| ValidationError::Serialization(e.to_string()))?;
+    let said = compute_said(&value).map_err(|e| ValidationError::Serialization(e.to_string()))?;
+
+    dip.d = said.clone();
+    // A delegated AID is self-addressing: its prefix is the SAID of the dip.
+    if dip.i.is_empty() || dip.i.as_str().starts_with('E') {
+        dip.i = Prefix::new_unchecked(said.into_inner());
+    }
+
+    let final_bytes = serde_json::to_vec(&Event::Dip(dip.clone()))
+        .map_err(|e| ValidationError::Serialization(e.to_string()))?;
+    dip.v = crate::types::VersionString::json(final_bytes.len() as u32);
+
+    Ok(dip)
+}
+
 /// Create a rotation event with a properly computed SAID.
 ///
 /// Args:

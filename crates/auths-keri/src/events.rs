@@ -614,18 +614,31 @@ pub struct DipEvent {
 
 /// Parameter struct for [`DipEvent::new`].
 pub struct DipEventInit {
+    /// Version string (KERI version + serialization + byte count).
     pub v: VersionString,
+    /// Self-addressing identifier (SAID) of this event.
     pub d: Said,
+    /// Identifier prefix (AID); self-addressing for a delegated AID (`i == d`).
     pub i: Prefix,
+    /// Sequence number (0 for inception).
     pub s: KeriSequence,
+    /// Current signing threshold.
     pub kt: Threshold,
+    /// Current signing public keys (CESR-encoded).
     pub k: Vec<CesrKey>,
+    /// Next (rotation) threshold.
     pub nt: Threshold,
+    /// Next-key commitments (pre-rotation digests).
     pub n: Vec<Said>,
+    /// Backer (witness) threshold.
     pub bt: Threshold,
+    /// Backer (witness) list.
     pub b: Vec<Prefix>,
+    /// Configuration traits.
     pub c: Vec<ConfigTrait>,
+    /// Anchored seals.
     pub a: Vec<Seal>,
+    /// Delegator prefix — the AID delegating this identifier.
     pub di: Prefix,
 }
 

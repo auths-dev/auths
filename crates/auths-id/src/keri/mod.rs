@@ -101,6 +101,7 @@ pub mod anchor;
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 // INVARIANT: file-based KEL cache — entire module is an I/O adapter
 pub mod cache;
+pub mod delegation;
 pub mod device_kel;
 pub mod event;
 #[cfg(feature = "git-storage")]
@@ -152,6 +153,7 @@ pub use seal::Seal;
 pub use state::KeyState;
 pub use types::{KeriTypeError, Prefix, Said, prefix_from_did};
 pub use validate::{
-    ValidationError, compute_event_said, finalize_icp_event, replay_kel, serialize_for_signing,
-    validate_for_append, validate_kel, verify_event_crypto, verify_event_said,
+    ValidationError, compute_event_said, finalize_dip_event, finalize_icp_event, replay_kel,
+    serialize_for_signing, validate_delegation, validate_for_append, validate_kel,
+    verify_event_crypto, verify_event_said,
 };

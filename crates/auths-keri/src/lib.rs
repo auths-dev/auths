@@ -66,8 +66,9 @@ mod version;
 pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::KeriTranslationError;
 pub use events::{
-    DipEvent, DrtEvent, Event, IcpEvent, IndexedSignature, IxnEvent, KERI_VERSION_PREFIX,
-    KeriSequence, RotEvent, Seal, SignedEvent, parse_attachment, serialize_attachment,
+    DipEvent, DipEventInit, DrtEvent, Event, IcpEvent, IndexedSignature, IxnEvent,
+    KERI_VERSION_PREFIX, KeriSequence, RotEvent, Seal, SignedEvent, parse_attachment,
+    serialize_attachment,
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};
@@ -77,7 +78,8 @@ pub use types::{
     VersionString,
 };
 pub use validate::{
-    KelPolicy, ValidationError, compute_event_said, finalize_icp_event, finalize_ixn_event,
+    KelPolicy, ValidationError, compute_event_said, finalize_dip_event, finalize_icp_event,
+    finalize_ixn_event,
     finalize_rot_event, find_seal_in_kel, parse_kel_json, replay_kel, serialize_for_signing,
     validate_delegation, validate_for_append, validate_kel, validate_kel_with_policy,
     validate_signed_event, verify_event_crypto, verify_event_said,
