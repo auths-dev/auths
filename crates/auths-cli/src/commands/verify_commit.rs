@@ -1,20 +1,18 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
+use auths_id::keri::resolve_kel_events;
 use auths_keri::witness::SignedReceipt;
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
-    Attestation, IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
+    Attestation, CommitVerdict, IdentityBundle, VerificationReport, verify_chain_with_witnesses,
+    verify_commit_against_kel,
 };
-use chrono::{DateTime, Duration, Utc};
 use clap::Parser;
 use serde::Serialize;
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::PathBuf;
 
 use crate::subprocess::git_command;
-use tempfile::NamedTempFile;
 
 use super::verify_helpers::parse_witness_keys;
 
@@ -109,104 +107,52 @@ impl VerifyCommitResult {
     }
 }
 
-/// Source of allowed signers for SSH verification.
-enum SignersSource {
-    /// User-provided allowed_signers file.
-    File(PathBuf),
-    /// Identity bundle (creates temp signers file from bundle's public key).
-    Bundle {
-        temp_signers: NamedTempFile,
-        bundle: IdentityBundle,
-    },
-}
-
-impl SignersSource {
-    fn signers_path(&self) -> &Path {
-        match self {
-            SignersSource::File(p) => p,
-            SignersSource::Bundle { temp_signers, .. } => temp_signers.path(),
-        }
-    }
-
-    fn bundle(&self) -> Option<&IdentityBundle> {
-        match self {
-            SignersSource::File(_) => None,
-            SignersSource::Bundle { bundle, .. } => Some(bundle),
-        }
-    }
-}
-
 /// Handle verify-commit command.
 /// Exit codes: 0=valid, 1=invalid/unsigned, 2=error
 #[allow(clippy::disallowed_methods)]
 pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
-    let now = Utc::now();
-
-    if let Err(e) = check_ssh_keygen() {
-        return handle_error(&cmd, 2, &format!("OpenSSH required: {}", e));
-    }
-
-    let source = match resolve_signers_source(&cmd) {
-        Ok(s) => s,
-        Err(e) => return handle_error(&cmd, 2, &e.to_string()),
+    // KEL-native verification: the trust root is the replayed KEL + the `.auths/roots`
+    // pin, not an allowlist. No `ssh-keygen` subprocess, no `allowed_signers`.
+    let auths_home = match auths_sdk::paths::auths_home() {
+        Ok(h) => h,
+        Err(e) => return handle_error(&cmd, 2, &format!("Could not locate ~/.auths: {e}")),
     };
-
-    let results = match verify_commits(&cmd, &source, now).await {
+    let repo = match git2::Repository::open(&auths_home) {
         Ok(r) => r,
+        Err(e) => {
+            return handle_error(
+                &cmd,
+                2,
+                &format!("Could not open the identity repository at {auths_home:?}: {e}"),
+            );
+        }
+    };
+    let pinned_roots = load_project_pinned_roots();
+    let provider = auths_crypto::RingCryptoProvider;
+
+    let commits = match resolve_commits(&cmd.commit) {
+        Ok(c) => c,
         Err(e) => return handle_error(&cmd, 2, &e.to_string()),
     };
-
+    let mut results = Vec::with_capacity(commits.len());
+    for commit_ref in &commits {
+        results.push(verify_one_commit(&repo, &pinned_roots, &provider, &cmd, commit_ref).await);
+    }
     output_results(&results)
 }
 
-/// Build a SignersSource from either --identity-bundle or --allowed-signers.
-fn resolve_signers_source(cmd: &VerifyCommitCommand) -> Result<SignersSource> {
-    if let Some(ref bundle_path) = cmd.identity_bundle {
-        let bundle_content = fs::read_to_string(bundle_path)
-            .with_context(|| format!("Failed to read identity bundle: {:?}", bundle_path))?;
-
-        let bundle: IdentityBundle = serde_json::from_str(&bundle_content)
-            .with_context(|| format!("Failed to parse identity bundle: {:?}", bundle_path))?;
-
-        let public_key_bytes = hex::decode(bundle.public_key_hex.as_str())
-            .context("Invalid public key hex in bundle")?;
-
-        // Curve carried in-band on the bundle JSON; never inferred from length.
-        let curve = bundle.curve;
-        if public_key_bytes.len() != curve.public_key_len() {
-            anyhow::bail!(
-                "Bundle public key length {} does not match declared curve {} (expected {} bytes)",
-                public_key_bytes.len(),
-                curve,
-                curve.public_key_len(),
-            );
-        }
-        let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &public_key_bytes)
-            .context("Invalid public key in bundle")?;
-        let ssh_key = auths_sdk::workflows::git_integration::public_key_to_ssh(&device_pk)
-            .context("Failed to encode public key as SSH")?;
-        let temp_signers_content = format!("{} {}", bundle.identity_did, ssh_key);
-
-        let mut temp_signers =
-            NamedTempFile::new().context("Failed to create temporary allowed_signers file")?;
-        temp_signers
-            .write_all(temp_signers_content.as_bytes())
-            .context("Failed to write temporary allowed_signers")?;
-        temp_signers.flush()?;
-
-        Ok(SignersSource::Bundle {
-            temp_signers,
-            bundle,
-        })
-    } else {
-        if !cmd.allowed_signers.exists() {
-            return Err(anyhow!(
-                "Allowed signers file not found: {:?}\n\nCreate it with:\n  mkdir -p .auths\n  echo 'user@example.com ssh-ed25519 AAAA...' > .auths/allowed_signers",
-                cmd.allowed_signers
-            ));
-        }
-        Ok(SignersSource::File(cmd.allowed_signers.clone()))
+/// The project's pinned trusted roots, read from `<git-toplevel>/.auths/roots` — the
+/// committed trust declaration seeded by `auths init`. Empty when run outside a repo or
+/// when nothing is pinned (so every commit is `RootNotPinned` until a root is pinned).
+fn load_project_pinned_roots() -> Vec<String> {
+    let Ok(output) = git_command(&["rev-parse", "--show-toplevel"]).output() else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
     }
+    let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    auths_sdk::workflows::roots::load_pinned_roots(&root.join(".auths")).unwrap_or_default()
 }
 
 /// Resolve the commit spec to a list of commit SHAs.
@@ -300,231 +246,207 @@ fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBinding
         })
 }
 
-/// Verify all commits in the list.
-async fn verify_commits(
-    cmd: &VerifyCommitCommand,
-    source: &SignersSource,
-    now: DateTime<Utc>,
-) -> Result<Vec<VerifyCommitResult>> {
-    let commits = resolve_commits(&cmd.commit)?;
-    let mut results = Vec::with_capacity(commits.len());
-
-    for sha in &commits {
-        let result = verify_one_commit(cmd, source, sha, now).await;
-        results.push(result);
-    }
-
-    Ok(results)
-}
-
-/// Verify a single commit: SSH signature + optional chain + optional witnesses.
+/// Verify a single commit against the replayed KEL.
+///
+/// Reads the in-band `Auths-Id` / `Auths-Device` trailers, replays the device + root
+/// KELs from the local identity repository, and checks the SSH signature in-process
+/// (no `ssh-keygen`, no `allowed_signers`). The KEL verdict is authoritative; witness
+/// receipts (Epic D) remain an orthogonal opt-in check layered on top.
 async fn verify_one_commit(
+    repo: &git2::Repository,
+    pinned_roots: &[String],
+    provider: &dyn auths_crypto::CryptoProvider,
     cmd: &VerifyCommitCommand,
-    source: &SignersSource,
-    commit_sha: &str,
-    now: DateTime<Utc>,
+    commit_ref: &str,
 ) -> VerifyCommitResult {
-    // Resolve commit ref to SHA
-    let sha = match resolve_commit_sha(commit_sha) {
+    let sha = match resolve_commit_sha(commit_ref) {
         Ok(sha) => sha,
         Err(e) => {
             return VerifyCommitResult::failure(
-                commit_sha.to_string(),
-                format!("Failed to resolve commit: {}", e),
+                commit_ref.to_string(),
+                format!("Failed to resolve commit: {e}"),
             );
         }
     };
 
-    // Get commit signature info
-    let sig_info = match get_commit_signature(&sha) {
-        Ok(info) => info,
+    let raw_commit = match raw_commit_object(&sha) {
+        Ok(c) => c,
         Err(e) => return VerifyCommitResult::failure(sha, e.to_string()),
     };
 
-    // 1. SSH signature check
-    let (ssh_valid, signer) = match sig_info {
-        SignatureInfo::None => {
-            return VerifyCommitResult::failure(sha, "No signature found".to_string());
-        }
-        SignatureInfo::Gpg => {
+    let (root_did, device_did) = match commit_signer_trailers(&raw_commit) {
+        Some(pair) => pair,
+        None => {
             return VerifyCommitResult::failure(
                 sha,
-                "GPG signatures not supported, use SSH signing".to_string(),
+                "Commit carries no Auths-Id/Auths-Device trailer — it was not signed by \
+                 `auths sign` (or predates KEL-native signing). Nothing to verify against."
+                    .to_string(),
             );
         }
-        SignatureInfo::Ssh { signature, payload } => {
-            match verify_ssh_signature(source.signers_path(), &signature, &payload) {
-                Ok(signer) => (true, Some(signer)),
-                Err(e) => {
-                    return VerifyCommitResult {
-                        commit: sha,
-                        valid: false,
-                        ssh_valid: Some(false),
-                        chain_valid: None,
-                        chain_report: None,
-                        witness_quorum: None,
-                        signer: None,
-                        oidc_binding: None,
-                        error: Some(e.to_string()),
-                        warnings: Vec::new(),
-                    };
-                }
+    };
+
+    let device_kel = match resolve_kel_events(repo, &device_did) {
+        Ok(events) => events,
+        Err(e) => {
+            return VerifyCommitResult::failure(
+                sha,
+                format!("Device KEL for {device_did} is unavailable locally: {e}"),
+            );
+        }
+    };
+    let root_kel = match resolve_kel_events(repo, &root_did) {
+        Ok(events) => events,
+        Err(e) => {
+            return VerifyCommitResult::failure(
+                sha,
+                format!("Root KEL for {root_did} is unavailable locally: {e}"),
+            );
+        }
+    };
+
+    let verdict = verify_commit_against_kel(
+        raw_commit.as_bytes(),
+        &device_kel,
+        &root_kel,
+        pinned_roots,
+        provider,
+    )
+    .await;
+    let mut result = verdict_to_result(sha.clone(), verdict);
+
+    if let Ok(Some(quorum)) = verify_witnesses(cmd, None).await {
+        if quorum.verified < quorum.required {
+            result.valid = false;
+            if result.error.is_none() {
+                result.error = Some(format!(
+                    "Witness quorum not met: {}/{}",
+                    quorum.verified, quorum.required
+                ));
             }
         }
-    };
+        result.witness_quorum = Some(quorum);
+    }
 
-    let mut warnings = Vec::new();
-
-    // 2. Attestation chain verification (only when bundle is present)
-    let (chain_valid, chain_report) = if let Some(bundle) = source.bundle() {
-        let (cv, cr, cw) = verify_bundle_chain(bundle, now).await;
-        warnings.extend(cw);
-        (cv, cr)
-    } else {
-        (None, None)
-    };
-
-    // 3. Witness verification
-    let witness_quorum = match verify_witnesses(cmd, source.bundle()).await {
-        Ok(q) => q,
-        Err(e) => {
-            return VerifyCommitResult {
-                commit: sha,
-                valid: false,
-                ssh_valid: Some(ssh_valid),
-                chain_valid,
-                chain_report,
-                witness_quorum: None,
-                signer,
-                oidc_binding: None,
-                error: Some(format!("Witness verification error: {}", e)),
-                warnings,
-            };
-        }
-    };
-
-    // 4. Try to load attestation from git refs for OIDC binding info
-    let oidc_binding =
+    result.oidc_binding =
         try_load_attestation_from_ref(&sha).and_then(|att| extract_oidc_binding_display(&att));
 
-    // 5. Compute overall verdict
-    let mut valid = ssh_valid;
-
-    if let Some(cv) = chain_valid
-        && !cv
-    {
-        valid = false;
-    }
-
-    if let Some(ref q) = witness_quorum
-        && q.verified < q.required
-    {
-        valid = false;
-    }
-
-    VerifyCommitResult {
-        commit: sha,
-        valid,
-        ssh_valid: Some(ssh_valid),
-        chain_valid,
-        chain_report,
-        witness_quorum,
-        signer,
-        oidc_binding,
-        error: None,
-        warnings,
-    }
+    result
 }
 
-/// Verify the attestation chain from an identity bundle.
-///
-/// Returns (chain_valid, chain_report, warnings).
-async fn verify_bundle_chain(
-    bundle: &IdentityBundle,
-    now: DateTime<Utc>,
-) -> (Option<bool>, Option<VerificationReport>, Vec<String>) {
-    if let Err(e) = bundle.check_freshness(now) {
-        return (
-            Some(false),
-            None,
-            vec![format!("Bundle freshness check failed: {}", e)],
-        );
+/// The raw git commit object (headers + message + `gpgsig`), exactly as produced by
+/// `git cat-file commit <sha>` — the bytes the SSH signature is computed over.
+fn raw_commit_object(sha: &str) -> Result<String> {
+    let output = git_command(&["cat-file", "commit", sha])
+        .output()
+        .context("Failed to run git cat-file")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "git cat-file commit {sha} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
+    String::from_utf8(output.stdout).context("Commit object is not valid UTF-8")
+}
 
-    if bundle.attestation_chain.is_empty() {
-        return (
-            None,
-            None,
-            vec!["No attestation chain in bundle; SSH-only verification".to_string()],
-        );
-    }
+/// Extract `(root_did, device_did)` from a commit's `Auths-Id` / `Auths-Device`
+/// trailers. Returns `None` when either is absent (a commit not signed by `auths`).
+fn commit_signer_trailers(raw_commit: &str) -> Option<(String, String)> {
+    let message = raw_commit
+        .split_once("\n\n")
+        .map(|(_, m)| m)
+        .unwrap_or(raw_commit);
+    let trailers = auths_id::trailer::parse_trailers(message);
+    let find = |key: &str| {
+        trailers
+            .iter()
+            .rev()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| v.trim().to_string())
+    };
+    Some((find("Auths-Id")?, find("Auths-Device")?))
+}
 
-    let root_pk_bytes = match hex::decode(bundle.public_key_hex.as_str()) {
-        Ok(pk) => pk,
-        Err(e) => {
-            return (
-                Some(false),
-                None,
-                vec![format!("Invalid public key hex in bundle: {}", e)],
+/// Map a [`CommitVerdict`] onto a CLI result row: the valid flag, the verified signer,
+/// and a human-readable reason for every failure mode.
+fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResult {
+    let mut result = VerifyCommitResult::failure(commit, String::new());
+    match verdict {
+        CommitVerdict::Valid {
+            signer_did,
+            root_did,
+            duplicitous_root,
+        } => {
+            result.valid = true;
+            result.ssh_valid = Some(true);
+            result.signer = Some(signer_did);
+            result.error = None;
+            if duplicitous_root {
+                result.warnings.push(format!(
+                    "Root {root_did} shows KEL duplicity (a fork) — trusting the first event \
+                     seen. Resolve with `auths device remove`."
+                ));
+            }
+        }
+        CommitVerdict::Unsigned => {
+            result.error = Some("No signature found".to_string());
+        }
+        CommitVerdict::GpgUnsupported => {
+            result.error = Some("GPG signatures not supported, use SSH signing".to_string());
+        }
+        CommitVerdict::SshSignatureInvalid => {
+            result.ssh_valid = Some(false);
+            result.error = Some(
+                "SSH signature is invalid (commit tampered, wrong namespace, or bad signature)"
+                    .to_string(),
             );
         }
-    };
-    let root_pk = match auths_verifier::DevicePublicKey::try_new(bundle.curve, &root_pk_bytes)
-        .map_err(|e| format!("Invalid bundle public key: {e}"))
-    {
-        Ok(pk) => pk,
-        Err(msg) => return (Some(false), None, vec![msg]),
-    };
-
-    match verify_chain(&bundle.attestation_chain, &root_pk).await {
-        Ok(mut report) => {
-            if let Ok(home) = auths_sdk::paths::auths_home() {
-                let storage = auths_sdk::storage::RegistryAttestationStorage::new(&home);
-                if let Ok(enriched) = storage.load_all_enriched() {
-                    let anchor_set: std::collections::HashSet<auths_keri::Said> = enriched
-                        .iter()
-                        .filter(|e| e.anchor == auths_keri::AnchorStatus::Anchored)
-                        .map(|e| e.said.clone())
-                        .collect();
-                    let all_anchored = bundle.attestation_chain.iter().all(|att| {
-                        auths_sdk::attestation::canonical_said(att)
-                            .is_some_and(|s| anchor_set.contains(&s))
-                    });
-                    report.anchored = Some(if all_anchored {
-                        auths_keri::AnchorStatus::Anchored
-                    } else {
-                        auths_keri::AnchorStatus::NotAnchored
-                    });
-                }
-            }
-
-            let mut warnings = Vec::new();
-
-            // Scan for upcoming expiry (< 30 days)
-            for att in &bundle.attestation_chain {
-                if let Some(exp) = att.expires_at {
-                    let remaining = exp - now;
-                    if remaining < Duration::zero() {
-                        // Already expired — chain_valid will be false from the report
-                    } else if remaining < Duration::days(30) {
-                        warnings.push(format!(
-                            "Attestation for {} expires in {} days",
-                            att.subject,
-                            remaining.num_days()
-                        ));
-                    }
-                }
-            }
-
-            let is_valid = report.is_valid();
-            (Some(is_valid), Some(report), warnings)
+        CommitVerdict::DeviceKelInvalid(why) => {
+            result.error = Some(format!("Device KEL failed to replay: {why}"));
         }
-        Err(e) => (
-            Some(false),
-            None,
-            vec![format!("Chain verification error: {}", e)],
-        ),
+        CommitVerdict::RootKelInvalid(why) => {
+            result.error = Some(format!("Root KEL failed to replay: {why}"));
+        }
+        CommitVerdict::RootNotPinned(root) => {
+            result.error = Some(format!(
+                "Root {root} is not a pinned trusted root. Pin it in .auths/roots to trust \
+                 commits delegated under it."
+            ));
+        }
+        CommitVerdict::RootAbandoned => {
+            result.error =
+                Some("Root identity is abandoned (its KEL was rotated to a null key)".to_string());
+        }
+        CommitVerdict::NotDelegatedByClaimedRoot {
+            device_did,
+            root_did,
+        } => {
+            result.error = Some(format!(
+                "Device {device_did} is not delegated by the claimed root {root_did}"
+            ));
+        }
+        CommitVerdict::DelegationSealNotFound => {
+            result.error = Some(
+                "Root never anchored this device's delegated inception (no delegation seal)"
+                    .to_string(),
+            );
+        }
+        CommitVerdict::DeviceRevoked => {
+            result.error = Some("Device delegation has been revoked by the root".to_string());
+        }
+        CommitVerdict::SignerKeyMismatch => {
+            result.ssh_valid = Some(false);
+            result.error = Some("Signing key is not the device's current key".to_string());
+        }
+        CommitVerdict::SignedBySupersededKey => {
+            result.ssh_valid = Some(false);
+            result.error = Some(
+                "Commit was signed by a superseded device key (the device has since rotated)"
+                    .to_string(),
+            );
+        }
     }
+    result
 }
 
 /// Verify witness receipts if --witness-receipts was provided.
@@ -729,206 +651,8 @@ fn print_chain_witness_summary_stderr(r: &VerifyCommitResult) {
     }
 }
 
-// ============================================================================
-// Internal helpers (unchanged SSH / Git plumbing)
-// ============================================================================
-
-enum SignatureInfo {
-    None,
-    Gpg,
-    Ssh { signature: String, payload: String },
-}
-
 fn resolve_commit_sha(commit_ref: &str) -> Result<String> {
     super::git_helpers::resolve_commit_sha(commit_ref)
-}
-
-fn get_commit_signature(sha: &str) -> Result<SignatureInfo> {
-    let output = git_command(&["cat-file", "commit", sha])
-        .output()
-        .context("Failed to run git cat-file")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!(
-            "Failed to read commit object for '{}'. Ensure the SHA exists in this repository.\n\nGit reported: {}",
-            sha,
-            stderr.trim()
-        ));
-    }
-
-    let commit_content = String::from_utf8_lossy(&output.stdout);
-
-    if commit_content.contains("-----BEGIN PGP SIGNATURE-----") {
-        return Ok(SignatureInfo::Gpg);
-    }
-
-    if commit_content.contains("-----BEGIN SSH SIGNATURE-----") {
-        let (signature, payload) = extract_ssh_signature(&commit_content)?;
-        return Ok(SignatureInfo::Ssh { signature, payload });
-    }
-
-    let show_output = git_command(&["log", "-1", "--format=%G?", sha])
-        .output()
-        .context("Failed to run git log")?;
-
-    if show_output.status.success() {
-        let sig_status = String::from_utf8_lossy(&show_output.stdout)
-            .trim()
-            .to_string();
-        match sig_status.as_str() {
-            "N" => return Ok(SignatureInfo::None),
-            "G" | "U" | "X" | "Y" | "R" | "E" | "B" => {
-                return Ok(SignatureInfo::Gpg);
-            }
-            _ => {}
-        }
-    }
-
-    Ok(SignatureInfo::None)
-}
-
-fn extract_ssh_signature(commit_content: &str) -> Result<(String, String)> {
-    // Process the commit object content preserving exact byte content for the payload.
-    // git signs/verifies the raw commit bytes with the gpgsig header block removed;
-    // any deviation (missing trailing \n, wrong line endings) causes "incorrect signature".
-    let mut sig_lines: Vec<&str> = Vec::new();
-    let mut payload = String::with_capacity(commit_content.len());
-    let mut in_sig = false;
-
-    let mut remaining = commit_content;
-    while !remaining.is_empty() {
-        // Consume one line, keeping its \n terminator intact.
-        let (line_with_nl, rest) = match remaining.find('\n') {
-            Some(i) => (&remaining[..=i], &remaining[i + 1..]),
-            None => (remaining, ""),
-        };
-        remaining = rest;
-
-        // Line content without the trailing \n, for prefix checks.
-        let line = line_with_nl.strip_suffix('\n').unwrap_or(line_with_nl);
-
-        if line.starts_with("gpgsig ") {
-            in_sig = true;
-            sig_lines.push(line.strip_prefix("gpgsig ").unwrap_or(line));
-            // gpgsig lines are excluded from the payload.
-        } else if in_sig && line.starts_with(' ') {
-            // Continuation line of the gpgsig block.
-            sig_lines.push(line.strip_prefix(' ').unwrap_or(line));
-        } else {
-            in_sig = false;
-            // All non-signature lines go into the payload verbatim, \n included.
-            payload.push_str(line_with_nl);
-        }
-    }
-
-    if sig_lines.is_empty() {
-        return Err(anyhow!("No SSH signature found in commit"));
-    }
-
-    // PEM lines are joined with \n (no trailing \n on the last line).
-    let signature = sig_lines.join("\n");
-
-    Ok((signature, payload))
-}
-
-fn verify_ssh_signature(signers_path: &Path, signature: &str, payload: &str) -> Result<String> {
-    let mut sig_file = NamedTempFile::new().context("Failed to create temp signature file")?;
-    sig_file
-        .write_all(signature.as_bytes())
-        .context("Failed to write signature")?;
-    sig_file.flush()?;
-
-    // Step 1: find-principals — resolves the signer identity from the allowed_signers file.
-    // This must come before verify because `-I "*"` is not a valid wildcard for ssh-keygen
-    // on all OpenSSH versions; using the actual identity is required for verify to succeed.
-    let find_output = Command::new("ssh-keygen")
-        .args(["-Y", "find-principals", "-f"])
-        .arg(signers_path)
-        .arg("-s")
-        .arg(sig_file.path())
-        .output()
-        .context("Failed to run ssh-keygen find-principals")?;
-
-    if !find_output.status.success() {
-        return Err(anyhow!("Signature from non-allowed signer"));
-    }
-    let identity = String::from_utf8_lossy(&find_output.stdout)
-        .trim()
-        .to_string();
-    if identity.is_empty() {
-        return Err(anyhow!("Signature from non-allowed signer"));
-    }
-
-    // Step 2: cryptographically verify with the resolved identity.
-    // Write payload to a temp file and pass as stdin to avoid deadlock on piped stdin.
-    let mut payload_file = NamedTempFile::new().context("Failed to create temp payload file")?;
-    payload_file
-        .write_all(payload.as_bytes())
-        .context("Failed to write payload")?;
-    payload_file.flush()?;
-
-    let stdin_file =
-        std::fs::File::open(payload_file.path()).context("Failed to open payload file as stdin")?;
-
-    let output = Command::new("ssh-keygen")
-        .args(["-Y", "verify", "-f"])
-        .arg(signers_path)
-        .args(["-I", &identity, "-n", "git", "-s"])
-        .arg(sig_file.path())
-        .stdin(stdin_file)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .context("Failed to run ssh-keygen")?;
-
-    if output.status.success() {
-        return Ok(identity);
-    }
-
-    // ssh-keygen writes errors to stdout on some platforms; check both.
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let msg = if !stdout.trim().is_empty() {
-        stdout.trim().to_string()
-    } else {
-        stderr.trim().to_string()
-    };
-
-    if msg.contains("no principal matched") || msg.contains("NONE_ACCEPTED") {
-        return Err(anyhow!("Signature from non-allowed signer"));
-    }
-
-    Err(anyhow!("Signature verification failed: {}", msg))
-}
-
-fn check_ssh_keygen() -> Result<()> {
-    let output = Command::new("ssh-keygen")
-        .arg("-?")
-        .stderr(Stdio::piped())
-        .stdout(Stdio::piped())
-        .output()
-        .with_context(|| {
-            let hint = platform_ssh_install_hint();
-            format!("ssh-keygen not found in PATH. {hint}")
-        })?;
-
-    if output.stderr.is_empty() && output.stdout.is_empty() {
-        let hint = platform_ssh_install_hint();
-        return Err(anyhow!("ssh-keygen not functioning. {hint}"));
-    }
-
-    Ok(())
-}
-
-fn platform_ssh_install_hint() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "ssh-keygen is normally pre-installed on macOS. Check your PATH."
-    } else if cfg!(target_os = "windows") {
-        "Install OpenSSH via Settings > Apps > Optional features, or `winget install Microsoft.OpenSSH.Client`."
-    } else {
-        "Install OpenSSH: `sudo apt install openssh-client` (Debian/Ubuntu) or `sudo dnf install openssh-clients` (Fedora/RHEL)."
-    }
 }
 
 fn handle_error(cmd: &VerifyCommitCommand, exit_code: i32, message: &str) -> Result<()> {
@@ -952,7 +676,6 @@ impl crate::commands::executable::ExecutableCommand for VerifyCommitCommand {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_verifier::AttestationBuilder;
 
     #[test]
     fn verify_commit_result_failure_helper() {
@@ -1051,129 +774,4 @@ mod tests {
         assert!(text.contains("No signature found"));
     }
 
-    #[tokio::test]
-    async fn verify_bundle_chain_empty_chain() {
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: test-only hardcoded DID and hex string literals
-        let bundle = IdentityBundle {
-            identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
-            public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("aa".repeat(32)),
-            curve: Default::default(),
-            attestation_chain: vec![],
-            bundle_timestamp: Utc::now(),
-            max_valid_for_secs: 86400,
-        };
-        let (cv, cr, warnings) = verify_bundle_chain(&bundle, Utc::now()).await;
-        assert!(cv.is_none());
-        assert!(cr.is_none());
-        assert!(!warnings.is_empty());
-        assert!(warnings[0].contains("No attestation chain"));
-    }
-
-    #[tokio::test]
-    async fn verify_bundle_chain_invalid_hex() {
-        #[allow(clippy::disallowed_methods)] // test code
-        let bundle_timestamp = Utc::now();
-
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: test-only hardcoded DID, hex, and canonical DID string literals
-        let bundle = IdentityBundle {
-            identity_did: auths_verifier::IdentityDID::new_unchecked("did:keri:test"),
-            public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("not_hex"),
-            curve: Default::default(),
-            attestation_chain: vec![
-                AttestationBuilder::default()
-                    .rid("test")
-                    .issuer("did:keri:test")
-                    .subject("did:key:zTest")
-                    .build(),
-            ],
-            bundle_timestamp,
-            max_valid_for_secs: 86400,
-        };
-        let (cv, _cr, warnings) = verify_bundle_chain(&bundle, Utc::now()).await;
-        assert_eq!(cv, Some(false));
-        assert!(warnings[0].contains("Invalid public key hex"));
-    }
-
-    // -------------------------------------------------------------------------
-    // extract_ssh_signature regression tests
-    // -------------------------------------------------------------------------
-
-    /// Minimal realistic git commit object containing an SSH signature.
-    ///
-    /// Note: written with `concat!` rather than `\` line continuation because
-    /// Rust's `\` continuation eats all leading whitespace on the next source
-    /// line, which would silently strip the ` ` (space) prefix that git uses
-    /// for gpgsig continuation lines.
-    const COMMIT_WITH_SIG: &str = concat!(
-        "tree 16b8274d517c97653341495042b037c0d74ccfc3\n",
-        "parent 8113dc5221881e744ef8b80597ae4da696c10e67\n",
-        "author Test User <test@example.com> 1700000000 +0000\n",
-        "committer Test User <test@example.com> 1700000000 +0000\n",
-        "gpgsig -----BEGIN SSH SIGNATURE-----\n",
-        " U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgVQuMGFzwtirJulb4hTBb39CGs2\n",
-        " y7l5SUeOmXTFtZmF0AAAADZ2l0AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1lZDI1NTE5\n",
-        " AAAAQJKNt8cKSbaYtOwUMSKU2dVXJMbbJBy5xEdq6TsLh+P47QI+pNDhilsn4XeDjo9B3+\n",
-        " wTsG+4p0du0SnsFkUGTgU=\n",
-        " -----END SSH SIGNATURE-----\n",
-        "\n",
-        "commit message\n",
-    );
-
-    #[test]
-    fn test_extract_ssh_signature_removes_gpgsig_from_payload() {
-        let (_, payload) = extract_ssh_signature(COMMIT_WITH_SIG).unwrap();
-        assert!(
-            !payload.contains("gpgsig"),
-            "payload must not contain the gpgsig header"
-        );
-        assert!(
-            !payload.contains("BEGIN SSH SIGNATURE"),
-            "payload must not contain the signature PEM"
-        );
-    }
-
-    #[test]
-    fn test_extract_ssh_signature_payload_ends_with_newline() {
-        // Regression: the old lines()+join("\n") approach dropped the trailing \n.
-        // ssh-keygen verifies against the raw commit bytes, which end with \n.
-        // A missing trailing newline causes "incorrect signature".
-        let (_, payload) = extract_ssh_signature(COMMIT_WITH_SIG).unwrap();
-        assert!(
-            payload.ends_with('\n'),
-            "payload must end with \\n to match what git signed (got: {:?})",
-            &payload[payload.len().saturating_sub(10)..]
-        );
-    }
-
-    #[test]
-    fn test_extract_ssh_signature_payload_contains_non_sig_headers() {
-        let (_, payload) = extract_ssh_signature(COMMIT_WITH_SIG).unwrap();
-        assert!(payload.contains("tree "));
-        assert!(payload.contains("author "));
-        assert!(payload.contains("committer "));
-        assert!(payload.contains("commit message\n"));
-    }
-
-    #[test]
-    fn test_extract_ssh_signature_pem_stripped_of_continuation_spaces() {
-        let (sig, _) = extract_ssh_signature(COMMIT_WITH_SIG).unwrap();
-        // PEM lines must not start with a space (continuation prefix removed)
-        for line in sig.lines() {
-            assert!(
-                !line.starts_with(' '),
-                "signature line must not start with a space: {:?}",
-                line
-            );
-        }
-        assert!(sig.starts_with("-----BEGIN SSH SIGNATURE-----"));
-        assert!(sig.contains("-----END SSH SIGNATURE-----"));
-    }
-
-    #[test]
-    fn test_extract_ssh_signature_no_sig_returns_error() {
-        let no_sig = "tree abc\nauthor foo <foo@bar.com> 1234 +0000\n\nmessage\n";
-        assert!(extract_ssh_signature(no_sig).is_err());
-    }
 }
