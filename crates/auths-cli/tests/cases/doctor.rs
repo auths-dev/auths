@@ -41,12 +41,6 @@ fn test_doctor_passes_signing_checks_after_init() {
         .find(|c| c["name"] == "Auths identity")
         .unwrap();
     assert_eq!(identity_check["passed"], true, "identity should pass");
-
-    let signers_check = checks
-        .iter()
-        .find(|c| c["name"] == "Allowed signers file")
-        .unwrap();
-    assert_eq!(signers_check["passed"], true, "allowed signers should pass");
 }
 
 #[test]

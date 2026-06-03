@@ -7,7 +7,7 @@ use super::helpers::TestEnv;
 /// This storage mismatch means rotation fails with "KEL not found for prefix".
 /// When this is fixed, remove the early return and test the full rotation flow.
 #[test]
-fn test_key_rotation_preserves_old_commit_verification() {
+fn test_key_rotation_supersedes_old_commit_verification() {
     let env = TestEnv::new();
     env.init_identity();
 
@@ -26,19 +26,21 @@ fn test_key_rotation_preserves_old_commit_verification() {
         String::from_utf8_lossy(&commit.stderr)
     );
 
+    // Add the in-band Auths-Id / Auths-Device trailers. This amends commit A, so the
+    // verifiable hash is captured *after* signing.
+    let sign = env.cmd("auths").args(["sign", "HEAD"]).output().unwrap();
+    assert!(
+        sign.status.success(),
+        "auths sign failed: {}",
+        String::from_utf8_lossy(&sign.stderr)
+    );
     let log_a = env.git_cmd().args(["rev-parse", "HEAD"]).output().unwrap();
     let commit_a_hash = String::from_utf8_lossy(&log_a.stdout).trim().to_string();
 
-    // Verify commit A works
-    let signers = env.allowed_signers_path();
+    // Verify commit A works (KEL-native — no allowlist).
     let verify_a = env
         .cmd("auths")
-        .args([
-            "verify",
-            &commit_a_hash,
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
+        .args(["verify", &commit_a_hash])
         .output()
         .unwrap();
     assert!(
@@ -80,19 +82,17 @@ fn test_key_rotation_preserves_old_commit_verification() {
         panic!("rotation failed unexpectedly: {}", stderr);
     }
 
-    // If rotation succeeded, verify commit A still passes
+    // If rotation succeeded: under current-key KEL verification, commit A was signed by
+    // the now-superseded key, so it no longer verifies as current. Preserving old-key
+    // commits across a rotation requires signing-time (anchored) verification — tracked
+    // as #205.
     let verify_a_after = env
         .cmd("auths")
-        .args([
-            "verify",
-            &commit_a_hash,
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
+        .args(["verify", &commit_a_hash])
         .output()
         .unwrap();
     assert!(
-        verify_a_after.status.success(),
-        "commit A should still verify after rotation"
+        !verify_a_after.status.success(),
+        "after rotation, an old-key commit is superseded under current-key verify (#205)"
     );
 }

@@ -57,8 +57,8 @@ service; ACDC/TEL credential layer.
 | Identity / rotation / anchoring | KEL `icp`/`rot`/`ixn` | same | ✅ done |
 | Device membership | attestation | delegated identifier (`dip`, root-anchored) | primitives built, **unwired** (Epic A) |
 | Device removal | error / attestation flag | shrink-`k` rotation | core built, **unwired** (Epic A) |
-| Commit/artifact trust | `allowed_signers` allowlist | KEL replay → key authorized? | ❌ (Epic B) |
-| Signer identity on a commit | none (bare SSH key) | `did:keri` in-band | ❌ (Epic B) |
+| Commit trust | KEL replay → key authorized? (in-process SSHSIG) | KEL replay → key authorized? | ✅ (Epic B); artifact-path → [#206](https://github.com/bordumb/auths/issues/206) |
+| Signer identity on a commit | `did:keri` in-band (`Auths-Id` + `Auths-Device`) | `did:keri` in-band | ✅ (Epic B) |
 | Third-party gets the KEL | trust-on-first-sight / bundle | native git-remote fetch + OOBI | ❌ (Epic C) |
 | Duplicity / ordering | local first-seen | witness receipts (KAWA) | algorithm built, **no service** (Epic D) |
 | Agent identity | attestation `delegated_by` | delegated KEL (`dip`/`drt`) | events built, **unwired** (Epic E) |
@@ -200,6 +200,15 @@ that holds its own key (proven by `validate_delegation` against a key the initia
 > ("device in `k[]`"). Under delegation (Model D), verification resolves the signer's **device KEL →
 > root-anchored delegation** (`validate_delegation`) **minus revocation** — not membership in a shared
 > `k[]`. This is issue #200. Depends on Epic A2 (delegated devices must exist to verify them).
+
+> **✅ Done (2026-06-03, fn-145):** `Auths-Id` + `Auths-Device` in-band `did:keri:` trailers (B1);
+> `verify_commit_against_kel` in `auths-verifier/src/commit_kel.rs` resolving device KEL →
+> `validate_delegation` against the root → not-revoked → signing key is current (B2); `allowed_signers`
+> **dropped entirely** — Option B, not demoted to a cache (B3); local-refs KEL source (B4, remote fetch
+> is Epic C). Trust = KEL replay + the committed `.auths/roots` pin + in-process SSHSIG; no `ssh-keygen`,
+> no allowlist. **Closes [#200](https://github.com/bordumb/auths/issues/200).** Deferred:
+> signing-time verification [#205], artifact-path verify [#206], `kt>1` multi-key devices [#207],
+> remote/OOB KEL resolution [#208], opt-in `allowed_signers` export for native git interop [#209].
 
 **Goal:** verifying a commit/artifact = locate the signer's KEL, replay it, confirm the signing key is
 authorized in current (or signing-time) key-state, and confirm the device→identity chain.

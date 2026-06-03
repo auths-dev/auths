@@ -113,11 +113,15 @@ fn test_init_happy_path() {
         gitconfig
     );
 
-    // Allowed signers file should exist and be non-empty
-    let signers_path = env.home.path().join(".ssh").join("allowed_signers");
-    assert!(signers_path.exists(), "allowed_signers should exist");
-    let signers = std::fs::read_to_string(&signers_path).unwrap();
-    assert!(!signers.is_empty(), "allowed_signers should not be empty");
+    // KEL-native trust: init pins the local identity as a trusted root in
+    // <repo>/.auths/roots (no allowed_signers allowlist is written anymore).
+    let roots_path = env.repo_path.join(".auths").join("roots");
+    assert!(roots_path.exists(), ".auths/roots pin should exist");
+    let roots = std::fs::read_to_string(&roots_path).unwrap();
+    assert!(
+        roots.contains("did:keri:"),
+        ".auths/roots should pin a did:keri root, got: {roots}"
+    );
 
     // Output uses eprintln, so DID appears in stderr
     let stderr = String::from_utf8_lossy(&output.stderr);

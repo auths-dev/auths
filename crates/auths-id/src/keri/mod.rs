@@ -142,8 +142,8 @@ pub use inception::{
 pub use kel::{GitKel, KelError};
 #[cfg(feature = "git-storage")]
 pub use resolve::{
-    DidKeriResolution, ResolveError, parse_did_keri, resolve_did_keri, resolve_did_keri_at_sequence,
-    resolve_kel_events,
+    DidKeriResolution, ResolveError, parse_did_keri, resolve_did_keri,
+    resolve_did_keri_at_sequence, resolve_kel_events,
 };
 #[cfg(feature = "git-storage")]
 pub use rotation::{

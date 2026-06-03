@@ -22,18 +22,16 @@ fn test_sign_verify_roundtrip() {
         String::from_utf8_lossy(&commit_output.stderr)
     );
 
-    // Verify the commit signature
-    let signers = env.allowed_signers_path();
-    let output = env
-        .cmd("auths")
-        .args([
-            "verify",
-            "HEAD",
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
-        .output()
-        .unwrap();
+    // Write the in-band Auths-Id / Auths-Device trailers that KEL-native verify reads.
+    let sign_output = env.cmd("auths").args(["sign", "HEAD"]).output().unwrap();
+    assert!(
+        sign_output.status.success(),
+        "auths sign failed: {}",
+        String::from_utf8_lossy(&sign_output.stderr)
+    );
+
+    // Verify the commit by KEL replay (no allowlist, no ssh-keygen).
+    let output = env.cmd("auths").args(["verify", "HEAD"]).output().unwrap();
     assert!(
         output.status.success(),
         "verify should succeed, stderr: {}",
@@ -43,13 +41,7 @@ fn test_sign_verify_roundtrip() {
     // Verify JSON output
     let json_output = env
         .cmd("auths")
-        .args([
-            "verify",
-            "HEAD",
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-            "--json",
-        ])
+        .args(["verify", "HEAD", "--json"])
         .output()
         .unwrap();
     assert!(json_output.status.success());
@@ -91,17 +83,7 @@ fn test_verify_unsigned_commit_fails() {
         .args(["config", "--local", "--unset", "commit.gpgsign"])
         .output();
 
-    let signers = env.allowed_signers_path();
-    let output = env
-        .cmd("auths")
-        .args([
-            "verify",
-            "HEAD",
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
-        .output()
-        .unwrap();
+    let output = env.cmd("auths").args(["verify", "HEAD"]).output().unwrap();
     assert!(
         !output.status.success(),
         "verify should fail for unsigned commit"

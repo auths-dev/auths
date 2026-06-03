@@ -106,9 +106,11 @@ Signify is currently broken. Pre-launch posture means we ship and fix.
 
 #### Trailer-format break (one-shot, complete)
 
-Commits signed before this phase carry trailers of the form
-`Auths-Signer: did:key:z…`. Verifiers now only accept
-`Auths-Signer: did:keri:E…`. Pre-launch zero-user migration: dev machines
+Commits signed before this phase carry a single `Auths-Signer: did:key:z…`
+trailer. Verifiers now read two `did:keri:` trailers written by `auths sign`:
+`Auths-Id` (the root identity) and `Auths-Device` (the signing device). Trust
+is decided by KEL replay against the `.auths/roots` pin — there is no
+`allowed_signers` allowlist. Pre-launch zero-user migration: dev machines
 that signed under the old format must `rm -rf ~/.auths && auths init`
 followed by re-signing. No code epic — this is a status acknowledgement,
 not a future task. Authoritative migration note in

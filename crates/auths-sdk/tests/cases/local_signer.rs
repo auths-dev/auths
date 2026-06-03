@@ -62,7 +62,8 @@ fn resolve_local_signer_on_delegate_machine_returns_device_and_root() {
         )
         .expect("append the device dip to the delegate registry");
 
-    let signer = resolve_local_signer(&delegate_ctx).expect("a delegate machine resolves its signer");
+    let signer =
+        resolve_local_signer(&delegate_ctx).expect("a delegate machine resolves its signer");
 
     assert_eq!(
         signer.signer_did.as_str(),

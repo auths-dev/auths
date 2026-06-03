@@ -204,7 +204,8 @@ async fn wrong_signer_key_fails() {
 
 #[tokio::test]
 async fn delegated_by_a_different_root_fails() {
-    let other_root = Prefix::new_unchecked("ENotTheRealRootPrefixAAAAAAAAAAAAAAAAAAAAAAAA".to_string());
+    let other_root =
+        Prefix::new_unchecked("ENotTheRealRootPrefixAAAAAAAAAAAAAAAAAAAAAAAA".to_string());
     let f = build(&fixture_device_key(), true, false, Some(other_root));
     let verdict = verify_commit_against_kel(
         FIXTURE_COMMIT.as_bytes(),

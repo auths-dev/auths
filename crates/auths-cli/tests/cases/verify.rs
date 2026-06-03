@@ -304,6 +304,5 @@ fn test_verify_help_shows_unified_options() {
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("--signer"))
-        .stdout(predicates::str::contains("--signer-key"))
-        .stdout(predicates::str::contains("--allowed-signers"));
+        .stdout(predicates::str::contains("--signer-key"));
 }

@@ -97,9 +97,10 @@ impl DelegatorKelLookup for RootKelLookup<'_> {
 /// for the device. Stateless twin of the backend-bound `delegation_status`.
 fn revocation_status(root_kel: &[Event], device_prefix: &Prefix) -> bool {
     root_kel.iter().any(|event| {
-        event.anchors().iter().any(|seal| {
-            matches!(seal, Seal::Digest { d } if d.as_str() == device_prefix.as_str())
-        })
+        event
+            .anchors()
+            .iter()
+            .any(|seal| matches!(seal, Seal::Digest { d } if d.as_str() == device_prefix.as_str()))
     })
 }
 
@@ -226,8 +227,13 @@ pub async fn verify_commit_against_kel(
         return CommitVerdict::DeviceKelInvalid("device current key is undecodable".to_string());
     };
 
-    match verify_commit_signature(commit_bytes, std::slice::from_ref(&current_pk), provider, None)
-        .await
+    match verify_commit_signature(
+        commit_bytes,
+        std::slice::from_ref(&current_pk),
+        provider,
+        None,
+    )
+    .await
     {
         Ok(_) => CommitVerdict::Valid {
             signer_did: device_did,
@@ -237,7 +243,9 @@ pub async fn verify_commit_against_kel(
         Err(CommitVerificationError::UnsignedCommit) => CommitVerdict::Unsigned,
         Err(CommitVerificationError::GpgNotSupported) => CommitVerdict::GpgUnsupported,
         Err(CommitVerificationError::SignatureInvalid) => CommitVerdict::SshSignatureInvalid,
-        Err(CommitVerificationError::NamespaceMismatch { .. }) => CommitVerdict::SshSignatureInvalid,
+        Err(CommitVerificationError::NamespaceMismatch { .. }) => {
+            CommitVerdict::SshSignatureInvalid
+        }
         Err(CommitVerificationError::UnknownSigner) => {
             classify_unknown_signer(commit_bytes, device_kel, &current_pk)
         }
