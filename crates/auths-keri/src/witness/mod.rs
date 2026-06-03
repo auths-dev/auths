@@ -13,5 +13,7 @@ pub use error::{DuplicityEvidence, WitnessError, WitnessReport};
 pub use first_seen::{FirstSeenConflict, FirstSeenPolicy, InMemoryFirstSeen};
 pub use hash::{EventHash, EventHashParseError};
 pub use provider::WitnessProvider;
-pub use receipt::{RECEIPT_TYPE, Receipt, ReceiptBuilder, ReceiptTag, SignedReceipt};
+pub use receipt::{
+    RECEIPT_TYPE, Receipt, ReceiptBuilder, ReceiptTag, SignedReceipt, StoredReceipt,
+};
 pub use receipt_lookup::{NoWitnessReceipts, WitnessReceipt, WitnessReceiptLookup};

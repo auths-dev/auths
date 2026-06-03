@@ -27,7 +27,7 @@ use tokio::time::{Duration, timeout};
 
 use super::async_provider::AsyncWitnessProvider;
 use super::error::{DuplicityEvidence, WitnessError};
-use super::receipt::Receipt;
+use super::receipt::StoredReceipt;
 
 /// Error during receipt collection.
 #[derive(Debug, thiserror::Error)]
@@ -72,10 +72,10 @@ pub enum CollectionError {
 /// ```rust,ignore
 /// use auths_core::witness::{ReceiptCollector, NoOpAsyncWitness};
 ///
-/// let witnesses: Vec<Arc<dyn AsyncWitnessProvider>> = vec![
-///     Arc::new(NoOpAsyncWitness),
-///     Arc::new(NoOpAsyncWitness),
-///     Arc::new(NoOpAsyncWitness),
+/// let witnesses: Vec<(Prefix, Arc<dyn AsyncWitnessProvider>)> = vec![
+///     (aid1, Arc::new(NoOpAsyncWitness)),
+///     (aid2, Arc::new(NoOpAsyncWitness)),
+///     (aid3, Arc::new(NoOpAsyncWitness)),
 /// ];
 ///
 /// let collector = ReceiptCollector::new(witnesses, 2, 5000);
@@ -83,10 +83,12 @@ pub enum CollectionError {
 ///
 /// let receipts = collector.collect(&prefix, b"{}").await?;
 /// assert!(receipts.len() >= 2);
+/// assert!(receipts.iter().all(|r| !r.witness.as_str().is_empty()));
 /// ```
 pub struct ReceiptCollector {
-    /// List of witnesses to query
-    witnesses: Vec<Arc<dyn AsyncWitnessProvider>>,
+    /// Witnesses to query, each paired with its pinned AID so collected
+    /// receipts can be attributed without an extra `/health` round-trip.
+    witnesses: Vec<(Prefix, Arc<dyn AsyncWitnessProvider>)>,
     /// Minimum receipts required
     threshold: usize,
     /// Timeout per witness in milliseconds
@@ -98,11 +100,13 @@ impl ReceiptCollector {
     ///
     /// # Arguments
     ///
-    /// * `witnesses` - List of witnesses to query
+    /// * `witnesses` - Witnesses to query, each as a `(witness_aid, provider)`
+    ///   pair. The AID is the witness's pinned CESR verkey prefix; it attributes
+    ///   each collected receipt and is later matched against the signature.
     /// * `threshold` - Minimum number of receipts required
     /// * `timeout_ms` - Timeout per witness operation in milliseconds
     pub fn new(
-        witnesses: Vec<Arc<dyn AsyncWitnessProvider>>,
+        witnesses: Vec<(Prefix, Arc<dyn AsyncWitnessProvider>)>,
         threshold: usize,
         timeout_ms: u64,
     ) -> Self {
@@ -111,17 +115,6 @@ impl ReceiptCollector {
             threshold,
             timeout_ms,
         }
-    }
-
-    /// Create a collector from boxed witnesses.
-    pub fn from_boxed(
-        witnesses: Vec<Box<dyn AsyncWitnessProvider>>,
-        threshold: usize,
-        timeout_ms: u64,
-    ) -> Self {
-        let witnesses: Vec<Arc<dyn AsyncWitnessProvider>> =
-            witnesses.into_iter().map(Arc::from).collect();
-        Self::new(witnesses, threshold, timeout_ms)
     }
 
     /// Get the number of witnesses.
@@ -146,14 +139,15 @@ impl ReceiptCollector {
     ///
     /// # Returns
     ///
-    /// * `Ok(receipts)` - At least `threshold` receipts collected
+    /// * `Ok(receipts)` - At least `threshold` receipts collected, each carrying
+    ///   the AID of the witness that produced it
     /// * `Err(CollectionError::Duplicity(_))` - Duplicity detected
     /// * `Err(CollectionError::ThresholdNotMet { .. })` - Not enough receipts
     pub async fn collect(
         &self,
         prefix: &Prefix,
         event_json: &[u8],
-    ) -> Result<Vec<Receipt>, CollectionError> {
+    ) -> Result<Vec<StoredReceipt>, CollectionError> {
         if self.witnesses.is_empty() {
             return Err(CollectionError::NoWitnesses);
         }
@@ -162,8 +156,9 @@ impl ReceiptCollector {
         let mut handles = Vec::with_capacity(self.witnesses.len());
         let timeout_duration = Duration::from_millis(self.timeout_ms);
 
-        for (idx, witness) in self.witnesses.iter().enumerate() {
+        for (idx, (aid, witness)) in self.witnesses.iter().enumerate() {
             let witness = Arc::clone(witness);
+            let aid = aid.clone();
             let prefix = prefix.clone();
             let event_json = event_json.to_vec();
 
@@ -172,7 +167,13 @@ impl ReceiptCollector {
                     timeout(timeout_duration, witness.submit_event(&prefix, &event_json)).await;
 
                 match result {
-                    Ok(Ok(receipt)) => Ok((idx, receipt)),
+                    Ok(Ok(signed)) => Ok((
+                        idx,
+                        StoredReceipt {
+                            signed,
+                            witness: aid,
+                        },
+                    )),
                     Ok(Err(e)) => Err((idx, e)),
                     Err(_) => Err((
                         idx,
@@ -185,17 +186,17 @@ impl ReceiptCollector {
         }
 
         // Collect results
-        let mut receipts = Vec::new();
+        let mut receipts: Vec<StoredReceipt> = Vec::new();
         let mut errors: Vec<(String, WitnessError)> = Vec::new();
 
         for handle in handles {
             match handle.await {
-                Ok(Ok((_idx, receipt))) => {
+                Ok(Ok((_idx, stored))) => {
                     // Check for duplicity against existing receipts
-                    if let Some(evidence) = self.check_receipt_consistency(&receipts, &receipt) {
+                    if let Some(evidence) = self.check_receipt_consistency(&receipts, &stored) {
                         return Err(CollectionError::Duplicity(evidence));
                     }
-                    receipts.push(receipt);
+                    receipts.push(stored);
 
                     // Early return if threshold met
                     if receipts.len() >= self.threshold {
@@ -234,22 +235,25 @@ impl ReceiptCollector {
     }
 
     /// Check if a new receipt is consistent with existing receipts.
+    ///
+    /// Witnesses must agree on the receipted event SAID; a divergence at the
+    /// same sequence is duplicity (a split-view across witnesses).
     fn check_receipt_consistency(
         &self,
-        existing: &[Receipt],
-        new: &Receipt,
+        existing: &[StoredReceipt],
+        new: &StoredReceipt,
     ) -> Option<DuplicityEvidence> {
         if existing.is_empty() {
             return None;
         }
 
-        let expected_said = &existing[0].d;
-        if new.d != *expected_said {
+        let expected_said = &existing[0].signed.receipt.d;
+        if new.signed.receipt.d != *expected_said {
             Some(DuplicityEvidence {
                 prefix: Prefix::default(),
-                sequence: new.s.value(),
+                sequence: new.signed.receipt.s.value(),
                 event_a_said: expected_said.clone(),
-                event_b_said: new.d.clone(),
+                event_b_said: new.signed.receipt.d.clone(),
                 witness_reports: vec![],
             })
         } else {
@@ -261,7 +265,7 @@ impl ReceiptCollector {
 /// Builder for ReceiptCollector.
 #[derive(Default)]
 pub struct ReceiptCollectorBuilder {
-    witnesses: Vec<Arc<dyn AsyncWitnessProvider>>,
+    witnesses: Vec<(Prefix, Arc<dyn AsyncWitnessProvider>)>,
     threshold: Option<usize>,
     timeout_ms: Option<u64>,
 }
@@ -282,16 +286,16 @@ impl ReceiptCollectorBuilder {
         Self::default()
     }
 
-    /// Add a witness.
-    pub fn witness(mut self, witness: Arc<dyn AsyncWitnessProvider>) -> Self {
-        self.witnesses.push(witness);
+    /// Add a witness paired with its pinned AID.
+    pub fn witness(mut self, aid: Prefix, witness: Arc<dyn AsyncWitnessProvider>) -> Self {
+        self.witnesses.push((aid, witness));
         self
     }
 
-    /// Add multiple witnesses.
+    /// Add multiple `(witness_aid, provider)` pairs.
     pub fn witnesses(
         mut self,
-        witnesses: impl IntoIterator<Item = Arc<dyn AsyncWitnessProvider>>,
+        witnesses: impl IntoIterator<Item = (Prefix, Arc<dyn AsyncWitnessProvider>)>,
     ) -> Self {
         self.witnesses.extend(witnesses);
         self
@@ -327,15 +331,24 @@ mod tests {
     use super::*;
     use crate::witness::NoOpAsyncWitness;
 
+    fn aid(n: u8) -> Prefix {
+        Prefix::new_unchecked(format!("BWitness{n:0>36}"))
+    }
+
+    fn noop_witnesses(count: u8) -> Vec<(Prefix, Arc<dyn AsyncWitnessProvider>)> {
+        (0..count)
+            .map(|n| {
+                (
+                    aid(n),
+                    Arc::new(NoOpAsyncWitness) as Arc<dyn AsyncWitnessProvider>,
+                )
+            })
+            .collect()
+    }
+
     #[tokio::test]
     async fn collect_from_noop_witnesses() {
-        let witnesses: Vec<Arc<dyn AsyncWitnessProvider>> = vec![
-            Arc::new(NoOpAsyncWitness),
-            Arc::new(NoOpAsyncWitness),
-            Arc::new(NoOpAsyncWitness),
-        ];
-
-        let collector = ReceiptCollector::new(witnesses, 2, 5000);
+        let collector = ReceiptCollector::new(noop_witnesses(3), 2, 5000);
         let prefix = Prefix::new_unchecked("EPrefix".into());
         let result = collector.collect(&prefix, b"{}").await;
 
@@ -345,14 +358,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn threshold_1_of_3() {
-        let witnesses: Vec<Arc<dyn AsyncWitnessProvider>> = vec![
-            Arc::new(NoOpAsyncWitness),
-            Arc::new(NoOpAsyncWitness),
-            Arc::new(NoOpAsyncWitness),
-        ];
+    async fn collected_receipts_carry_witness_aid() {
+        let collector = ReceiptCollector::new(noop_witnesses(2), 1, 5000);
+        let prefix = Prefix::new_unchecked("EPrefix".into());
+        let receipts = collector.collect(&prefix, b"{}").await.unwrap();
 
-        let collector = ReceiptCollector::new(witnesses, 1, 5000);
+        let attributed: Vec<&str> = receipts.iter().map(|r| r.witness.as_str()).collect();
+        assert!(attributed.contains(&aid(0).as_str()) || attributed.contains(&aid(1).as_str()));
+        assert!(
+            receipts
+                .iter()
+                .all(|r| r.witness.as_str().starts_with("BWitness"))
+        );
+    }
+
+    #[tokio::test]
+    async fn threshold_1_of_3() {
+        let collector = ReceiptCollector::new(noop_witnesses(3), 1, 5000);
         let prefix = Prefix::new_unchecked("EPrefix".into());
         let result = collector.collect(&prefix, b"{}").await;
 
@@ -371,8 +393,8 @@ mod tests {
     #[tokio::test]
     async fn builder_pattern() {
         let collector = ReceiptCollectorBuilder::new()
-            .witness(Arc::new(NoOpAsyncWitness))
-            .witness(Arc::new(NoOpAsyncWitness))
+            .witness(aid(0), Arc::new(NoOpAsyncWitness))
+            .witness(aid(1), Arc::new(NoOpAsyncWitness))
             .threshold(2)
             .timeout_ms(1000)
             .build();

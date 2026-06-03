@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::default_client_builder;
 use auths_core::witness::{
-    AsyncWitnessProvider, DuplicityEvidence, EventHash, Receipt, WitnessError,
+    AsyncWitnessProvider, DuplicityEvidence, EventHash, Receipt, SignedReceipt, WitnessError,
 };
 use auths_keri::{Prefix, Said};
 
@@ -104,7 +104,7 @@ impl AsyncWitnessProvider for HttpAsyncWitnessClient {
         &self,
         prefix: &Prefix,
         event_json: &[u8],
-    ) -> Result<Receipt, WitnessError> {
+    ) -> Result<SignedReceipt, WitnessError> {
         let url = format!("{}/witness/{}/event", self.base_url, prefix);
 
         let event_value: serde_json::Value = serde_json::from_slice(event_json)
@@ -128,7 +128,7 @@ impl AsyncWitnessProvider for HttpAsyncWitnessClient {
 
         if status.is_success() {
             response
-                .json::<Receipt>()
+                .json::<SignedReceipt>()
                 .await
                 .map_err(|e| WitnessError::Serialization(e.to_string()))
         } else if status.as_u16() == 409 {

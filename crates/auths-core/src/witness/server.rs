@@ -521,7 +521,7 @@ async fn submit_event(
     State(state): State<WitnessServerState>,
     AxumPath(prefix_str): AxumPath<String>,
     Json(event): Json<serde_json::Value>,
-) -> Result<Json<Receipt>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<SignedReceipt>, (StatusCode, Json<ErrorResponse>)> {
     let prefix = Prefix::new_unchecked(prefix_str);
 
     // Validate event structure
@@ -597,9 +597,11 @@ async fn submit_event(
     // Check for duplicity
     match storage.check_duplicity(now, &prefix, event_s, &event_d) {
         Ok(None) => {
-            // No duplicity - create and store receipt
-            let receipt = state
-                .create_receipt(&prefix, event_s, &event_d)
+            // No duplicity - sign and store the receipt. The wire `rct` body
+            // stays spec-shaped; the witness signature travels detached in the
+            // `SignedReceipt` so the collector can attribute and verify it.
+            let signed = state
+                .create_signed_receipt(&prefix, event_s, &event_d)
                 .map_err(|e| {
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -610,7 +612,7 @@ async fn submit_event(
                     )
                 })?;
 
-            if let Err(e) = storage.store_receipt(now, &prefix, &receipt) {
+            if let Err(e) = storage.store_receipt(now, &prefix, &signed.receipt) {
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(ErrorResponse {
@@ -620,7 +622,7 @@ async fn submit_event(
                 ));
             }
 
-            Ok(Json(receipt))
+            Ok(Json(signed))
         }
         Ok(Some(existing_said)) => {
             // Duplicity detected!
@@ -802,6 +804,47 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn server_signs_receipt() {
+        let state = test_state();
+        let app = router(state.clone());
+
+        let event = make_valid_icp_event("EPrefix", 0);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/witness/EPrefix/event")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&event).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let signed: SignedReceipt =
+            serde_json::from_slice(&body).expect("witness response must be a SignedReceipt");
+
+        assert!(
+            !signed.signature.is_empty(),
+            "witness must attach a signature"
+        );
+
+        // The signature must verify against the witness's own key.
+        let key = auths_keri::KeriPublicKey::from_verkey_bytes(&state.public_key(), state.curve())
+            .unwrap();
+        let payload = serde_json::to_vec(&signed.receipt).unwrap();
+        assert!(
+            key.verify_signature(&payload, &signed.signature).is_ok(),
+            "witness signature must verify against its advertised key"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

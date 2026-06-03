@@ -89,7 +89,7 @@ mod storage;
 pub use auths_keri::KERI_VERSION_PREFIX;
 pub use auths_keri::witness::{
     AsyncWitnessProvider, DuplicityEvidence, EventHash, EventHashParseError, NoOpAsyncWitness,
-    RECEIPT_TYPE, Receipt, ReceiptBuilder, ReceiptTag, SignedReceipt, WitnessError,
+    RECEIPT_TYPE, Receipt, ReceiptBuilder, ReceiptTag, SignedReceipt, StoredReceipt, WitnessError,
     WitnessProvider, WitnessReport,
 };
 pub use noop::NoOpWitness;

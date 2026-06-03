@@ -16,7 +16,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use auths_keri::witness::{AsyncWitnessProvider, Receipt, WitnessError, EventHash};
+//! use auths_keri::witness::{AsyncWitnessProvider, SignedReceipt, WitnessError, EventHash};
 //! use auths_keri::{Prefix, Said};
 //! use async_trait::async_trait;
 //!
@@ -27,7 +27,7 @@
 //!
 //! #[async_trait]
 //! impl AsyncWitnessProvider for HttpWitness {
-//!     async fn submit_event(&self, prefix: &Prefix, event_json: &[u8]) -> Result<Receipt, WitnessError> {
+//!     async fn submit_event(&self, prefix: &Prefix, event_json: &[u8]) -> Result<SignedReceipt, WitnessError> {
 //!         todo!()
 //!     }
 //!
@@ -46,7 +46,7 @@ use async_trait::async_trait;
 
 use super::error::WitnessError;
 use super::hash::EventHash;
-use super::receipt::Receipt;
+use super::receipt::{Receipt, SignedReceipt};
 
 /// Async witness provider for network-based witness operations.
 ///
@@ -80,7 +80,9 @@ pub trait AsyncWitnessProvider: Send + Sync {
     ///
     /// # Returns
     ///
-    /// * `Ok(Receipt)` - The witness accepted the event and issued a receipt
+    /// * `Ok(SignedReceipt)` - The witness accepted the event and issued a
+    ///   receipt signed with its witness key (verify the signature against the
+    ///   witness's pinned AID before trusting it)
     /// * `Err(WitnessError::Duplicity(_))` - Duplicity detected (split-view attack)
     /// * `Err(WitnessError::Rejected { .. })` - Event rejected (invalid format, etc.)
     /// * `Err(WitnessError::Network(_))` - Network error
@@ -89,7 +91,7 @@ pub trait AsyncWitnessProvider: Send + Sync {
         &self,
         prefix: &Prefix,
         event_json: &[u8],
-    ) -> Result<Receipt, WitnessError>;
+    ) -> Result<SignedReceipt, WitnessError>;
 
     /// Query the current observed head for an identity.
     ///
@@ -188,13 +190,16 @@ impl AsyncWitnessProvider for NoOpAsyncWitness {
         &self,
         _prefix: &Prefix,
         _event_json: &[u8],
-    ) -> Result<Receipt, WitnessError> {
-        Ok(Receipt {
-            v: crate::VersionString::placeholder(),
-            t: super::receipt::ReceiptTag,
-            d: Said::new_unchecked("ENoop".into()),
-            i: Prefix::new_unchecked("did:key:noop".into()),
-            s: crate::KeriSequence::new(0),
+    ) -> Result<SignedReceipt, WitnessError> {
+        Ok(SignedReceipt {
+            receipt: Receipt {
+                v: crate::VersionString::placeholder(),
+                t: super::receipt::ReceiptTag,
+                d: Said::new_unchecked("ENoop".into()),
+                i: Prefix::new_unchecked("did:key:noop".into()),
+                s: crate::KeriSequence::new(0),
+            },
+            signature: Vec::new(),
         })
     }
 
@@ -226,8 +231,9 @@ mod tests {
     async fn noop_witness_submit_returns_dummy_receipt() {
         let witness = NoOpAsyncWitness;
         let prefix = Prefix::new_unchecked("ETest".into());
-        let receipt = witness.submit_event(&prefix, b"{}").await.unwrap();
-        assert_eq!(receipt.t, "rct");
+        let signed = witness.submit_event(&prefix, b"{}").await.unwrap();
+        assert_eq!(signed.receipt.t, "rct");
+        assert!(signed.signature.is_empty());
     }
 
     #[tokio::test]

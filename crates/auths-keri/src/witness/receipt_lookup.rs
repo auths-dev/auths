@@ -104,7 +104,9 @@ mod tests {
         by_said.insert(
             said.to_string(),
             vec![WitnessReceipt {
-                witness: Prefix::new_unchecked("BWit000000000000000000000000000000000000000".to_string()),
+                witness: Prefix::new_unchecked(
+                    "BWit000000000000000000000000000000000000000".to_string(),
+                ),
                 signature: vec![1u8; 64],
             }],
         );

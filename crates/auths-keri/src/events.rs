@@ -974,7 +974,7 @@ impl Event {
 /// Usage:
 /// ```
 /// use auths_keri::IndexedSignature;
-/// let sig = IndexedSignature { index: 0, sig: vec![0u8; 64] };
+/// let sig = IndexedSignature { index: 0, prior_index: None, sig: vec![0u8; 64] };
 /// assert_eq!(sig.index, 0);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -127,8 +127,7 @@ pub fn compute_rotation_event(
 /// * `prior`: The backer set in force before this rotation.
 /// * `desired`: The configured target backer set.
 fn witness_set_delta(prior: &[Prefix], desired: &[Prefix]) -> (Vec<Prefix>, Vec<Prefix>) {
-    let desired_set: std::collections::HashSet<&str> =
-        desired.iter().map(|p| p.as_str()).collect();
+    let desired_set: std::collections::HashSet<&str> = desired.iter().map(|p| p.as_str()).collect();
     let prior_set: std::collections::HashSet<&str> = prior.iter().map(|p| p.as_str()).collect();
     let br = prior
         .iter()

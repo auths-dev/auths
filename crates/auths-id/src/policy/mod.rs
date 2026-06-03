@@ -302,13 +302,15 @@ pub fn verify_receipts(
         };
     }
 
-    // 3. Verify receipt signatures if key resolver provided
+    // 3. Verify receipt signatures if key resolver provided.
+    //    Provenance comes from the stored witness AID, not the receipt body's
+    //    controller `i`. Collection-time verification (witness_integration) is
+    //    the authoritative gate; this resolver path is verifier-side scaffolding.
     if let Some(resolver) = key_resolver {
-        for receipt in &receipts.receipts {
-            if let Some(public_key) = resolver.get_public_key(receipt.i.as_str()) {
-                // body-only receipt — DevicePublicKey construction here is
-                // nominal; verify_receipt_signature is deprecated and always returns Ok(true).
-                let witness_curve = auths_crypto::did_key_decode(receipt.i.as_str())
+        for stored in &receipts.receipts {
+            let witness = stored.witness.as_str();
+            if let Some(public_key) = resolver.get_public_key(witness) {
+                let witness_curve = auths_crypto::did_key_decode(witness)
                     .map(|d| d.curve())
                     .unwrap_or_default();
                 let typed_pk =
@@ -316,23 +318,18 @@ pub fn verify_receipts(
                         Ok(pk) => pk,
                         Err(_) => {
                             #[allow(clippy::disallowed_methods)]
+                            // INVARIANT: witness is a CESR AID from a deserialized stored receipt
                             return ReceiptVerificationResult::InvalidSignature {
-                                witness_did: CanonicalDid::new_unchecked(receipt.i.as_str()),
+                                witness_did: CanonicalDid::new_unchecked(witness),
                             };
                         }
                     };
-                match verify_receipt_signature(receipt, &typed_pk) {
+                match verify_receipt_signature(&stored.signed.receipt, &typed_pk) {
                     Ok(true) => continue,
-                    Ok(false) => {
+                    Ok(false) | Err(_) => {
                         return ReceiptVerificationResult::InvalidSignature {
-                            #[allow(clippy::disallowed_methods)] // INVARIANT: receipt.i is a witness DID from a deserialized KERI receipt
-                            witness_did: CanonicalDid::new_unchecked(receipt.i.as_str()),
-                        };
-                    }
-                    Err(_) => {
-                        return ReceiptVerificationResult::InvalidSignature {
-                            #[allow(clippy::disallowed_methods)] // INVARIANT: receipt.i is a witness DID from a deserialized KERI receipt
-                            witness_did: CanonicalDid::new_unchecked(receipt.i.as_str()),
+                            #[allow(clippy::disallowed_methods)] // INVARIANT: witness is a CESR AID from a deserialized stored receipt
+                            witness_did: CanonicalDid::new_unchecked(witness),
                         };
                     }
                 }
@@ -755,13 +752,19 @@ mod tests {
         event_said: &str,
         witness_did: &str,
         seq: u128,
-    ) -> auths_core::witness::Receipt {
-        auths_core::witness::Receipt {
-            v: auths_keri::VersionString::placeholder(),
-            t: auths_core::witness::ReceiptTag,
-            d: Said::new_unchecked(event_said.to_string()),
-            i: Prefix::new_unchecked(witness_did.to_string()),
-            s: auths_keri::KeriSequence::new(seq),
+    ) -> auths_core::witness::StoredReceipt {
+        auths_core::witness::StoredReceipt {
+            signed: auths_core::witness::SignedReceipt {
+                receipt: auths_core::witness::Receipt {
+                    v: auths_keri::VersionString::placeholder(),
+                    t: auths_core::witness::ReceiptTag,
+                    d: Said::new_unchecked(event_said.to_string()),
+                    i: Prefix::new_unchecked("EController".to_string()),
+                    s: auths_keri::KeriSequence::new(seq),
+                },
+                signature: vec![],
+            },
+            witness: Prefix::new_unchecked(witness_did.to_string()),
         }
     }
 

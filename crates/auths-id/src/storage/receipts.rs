@@ -4,7 +4,7 @@
 //! Receipts are stored in Git refs under `refs/did/keri/<prefix>/receipts/<said>`.
 
 use crate::error::StorageError;
-use auths_core::witness::{Receipt, SignedReceipt};
+use auths_core::witness::{Receipt, SignedReceipt, StoredReceipt};
 use git2::{ErrorCode, Repository, Signature};
 use log::debug;
 use std::path::PathBuf;
@@ -240,18 +240,18 @@ pub fn verify_receipt_signature(
 /// # Returns
 /// * `Ok(())` if all receipts are consistent
 /// * `Err` with duplicity evidence if conflicting SAIDs found
-pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageError> {
+pub fn check_receipt_consistency(receipts: &[StoredReceipt]) -> Result<(), StorageError> {
     if receipts.is_empty() {
         return Ok(());
     }
 
-    let expected_said = &receipts[0].d;
+    let expected_said = &receipts[0].signed.receipt.d;
 
-    for receipt in receipts.iter().skip(1) {
-        if &receipt.d != expected_said {
+    for stored in receipts.iter().skip(1) {
+        if &stored.signed.receipt.d != expected_said {
             return Err(StorageError::InvalidData(format!(
                 "Duplicity detected: receipts claim different SAIDs ({} vs {})",
-                expected_said, receipt.d
+                expected_said, stored.signed.receipt.d
             )));
         }
     }
@@ -263,7 +263,7 @@ pub fn check_receipt_consistency(receipts: &[Receipt]) -> Result<(), StorageErro
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
-    use auths_core::witness::{Receipt, ReceiptTag};
+    use auths_core::witness::{Receipt, ReceiptTag, SignedReceipt, StoredReceipt};
     use auths_keri::{KeriSequence, Said, VersionString};
     use git2::RepositoryInitOptions;
     use ring::rand::SystemRandom;
@@ -284,13 +284,19 @@ mod tests {
         (dir, path, repo)
     }
 
-    fn make_test_receipt(event_said: &str, witness_did: &str, seq: u128) -> Receipt {
-        Receipt {
-            v: VersionString::placeholder(),
-            t: ReceiptTag,
-            d: Said::new_unchecked(event_said.to_string()),
-            i: Prefix::new_unchecked(witness_did.to_string()),
-            s: KeriSequence::new(seq),
+    fn make_test_receipt(event_said: &str, witness_did: &str, seq: u128) -> StoredReceipt {
+        StoredReceipt {
+            signed: SignedReceipt {
+                receipt: Receipt {
+                    v: VersionString::placeholder(),
+                    t: ReceiptTag,
+                    d: Said::new_unchecked(event_said.to_string()),
+                    i: Prefix::new_unchecked("EController".to_string()),
+                    s: KeriSequence::new(seq),
+                },
+                signature: vec![],
+            },
+            witness: Prefix::new_unchecked(witness_did.to_string()),
         }
     }
 
@@ -425,7 +431,7 @@ mod tests {
 
     #[test]
     fn test_check_receipt_consistency_empty() {
-        let receipts: Vec<Receipt> = vec![];
+        let receipts: Vec<StoredReceipt> = vec![];
         assert!(check_receipt_consistency(&receipts).is_ok());
     }
 
@@ -438,7 +444,7 @@ mod tests {
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
         let public_key = keypair.public_key().as_ref().to_vec();
 
-        let receipt = make_test_receipt("ESAID", "did:key:test", 0);
+        let receipt = make_test_receipt("ESAID", "did:key:test", 0).signed.receipt;
         let payload = serde_json::to_vec(&receipt).unwrap();
         let sig = keypair.sign(&payload);
 
@@ -469,7 +475,7 @@ mod tests {
         let keypair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
         let public_key = keypair.public_key().as_ref().to_vec();
 
-        let receipt = make_test_receipt("ESAID", "did:key:test", 0);
+        let receipt = make_test_receipt("ESAID", "did:key:test", 0).signed.receipt;
 
         // Wrong signature (all zeros)
         let signed = SignedReceipt {
@@ -493,7 +499,7 @@ mod tests {
     #[test]
     fn test_legacy_verify_receipt_signature_still_works() {
         // The deprecated body-only function returns Ok(true) for any valid DevicePublicKey.
-        let receipt = make_test_receipt("ESAID", "did:key:test", 0);
+        let receipt = make_test_receipt("ESAID", "did:key:test", 0).signed.receipt;
         let pk =
             auths_verifier::decode_public_key_bytes(&[0u8; 32], auths_crypto::CurveType::Ed25519)
                 .unwrap();

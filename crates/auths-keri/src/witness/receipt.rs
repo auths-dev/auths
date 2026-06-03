@@ -105,6 +105,23 @@ pub struct SignedReceipt {
     pub signature: Vec<u8>,
 }
 
+/// A signed receipt paired with the **witness AID** that produced it.
+///
+/// The wire `rct` body (`SignedReceipt.receipt`) carries the *controller* AID in
+/// its `i` field, never the witness — so a bare `SignedReceipt` cannot say who
+/// attested it. `StoredReceipt` closes that gap: it records the curve-tagged
+/// witness AID (the value designated in `b[]` and the KAWA quorum dedupe key)
+/// alongside the signature, which is what the verify path checks the signature
+/// against. The witness AID is supplied by the collector (which knows each
+/// configured witness's pinned AID), not parsed from the body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredReceipt {
+    /// The signed receipt (spec body + detached witness signature).
+    pub signed: SignedReceipt,
+    /// The attesting witness's AID (curve-tagged CESR verkey prefix).
+    pub witness: Prefix,
+}
+
 impl Receipt {
     /// Create a new receipt builder.
     pub fn builder() -> ReceiptBuilder {
@@ -350,5 +367,22 @@ mod tests {
         let encoded = B64.encode(b"not json");
         let result = SignedReceipt::from_trailer_value(&encoded);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn stored_receipt_roundtrips_with_witness_aid() {
+        let stored = StoredReceipt {
+            signed: sample_signed_receipt(),
+            witness: Prefix::new_unchecked("BWitnessAid000000000000000000000000000000000".into()),
+        };
+        let json = serde_json::to_string(&stored).unwrap();
+        let parsed: StoredReceipt = serde_json::from_str(&json).unwrap();
+        assert_eq!(stored, parsed);
+        assert_eq!(
+            parsed.witness.as_str(),
+            "BWitnessAid000000000000000000000000000000000"
+        );
+        // The controller-AID `i` in the body is distinct from the witness AID.
+        assert_ne!(parsed.signed.receipt.i.as_str(), parsed.witness.as_str());
     }
 }
