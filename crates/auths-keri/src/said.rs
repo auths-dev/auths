@@ -48,7 +48,10 @@ pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationEr
             continue;
         } else if k == "d" {
             new_obj.insert("d".to_string(), placeholder.clone());
-        } else if k == "i" && event_type == "icp" {
+        } else if k == "i" && (event_type == "icp" || event_type == "dip") {
+            // Inception events are self-addressing (prefix == SAID), including
+            // delegated inception (`dip`): blank `i` so the digest is computed
+            // over the placeholder, not the derived prefix.
             new_obj.insert("i".to_string(), placeholder.clone());
         } else {
             new_obj.insert(k.clone(), v.clone());

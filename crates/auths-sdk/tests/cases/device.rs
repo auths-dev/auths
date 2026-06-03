@@ -15,6 +15,14 @@ use auths_sdk::domains::signing::types::GitSigningScope;
 
 use crate::cases::helpers::{build_test_context, build_test_context_with_provider};
 
+use std::ops::ControlFlow;
+
+use auths_crypto::CurveType;
+use auths_id::keri::types::Prefix;
+use auths_id::keri::validate_delegation;
+use auths_id::storage::registry::backend::RegistryBackend;
+use auths_sdk::domains::device::add_device;
+
 fn setup_test_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKeychainHandle) {
     let keychain = IsolatedKeychainHandle::new();
     let signer = StorageSigner::new(keychain.clone());
@@ -37,6 +45,55 @@ fn setup_test_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKe
         _ => unreachable!(),
     };
     (result.key_alias, keychain)
+}
+
+#[test]
+fn add_device_delegates_and_root_anchors() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (root_alias, keychain) = setup_test_identity(tmp.path());
+    let provider: Arc<dyn PassphraseProvider + Send + Sync> =
+        Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"));
+    let ctx =
+        build_test_context_with_provider(tmp.path(), Arc::new(keychain.clone()), Some(provider));
+
+    // Capture the root prefix BEFORE adding the device — `load_identity` would be
+    // ambiguous once a second (delegated) KEL exists.
+    let root_prefix = {
+        let managed = ctx
+            .identity_storage
+            .load_identity()
+            .expect("root identity loads");
+        Prefix::new_unchecked(
+            managed
+                .controller_did
+                .as_str()
+                .strip_prefix("did:keri:")
+                .unwrap()
+                .to_string(),
+        )
+    };
+
+    // Add a device as a delegated identifier of the root.
+    let device_alias = KeyAlias::new_unchecked("laptop");
+    let dev = add_device(&ctx, &root_alias, &device_alias, CurveType::Ed25519)
+        .expect("add a delegated device");
+    assert!(dev.device_did.starts_with("did:keri:"));
+
+    // The root anchored the device's dip → the validator confirms the delegation.
+    // Walk the whole root KEL (the anchoring ixn isn't at a fixed sequence).
+    let device_prefix = Prefix::new_unchecked(dev.device_prefix.clone());
+    let dip = ctx
+        .registry
+        .get_event(&device_prefix, 0)
+        .expect("device dip stored");
+    let mut root_kel = Vec::new();
+    ctx.registry
+        .visit_events(&root_prefix, 0, &mut |e| {
+            root_kel.push(e.clone());
+            ControlFlow::Continue(())
+        })
+        .expect("walk root KEL");
+    validate_delegation(&dip, &root_kel).expect("root must have anchored the delegated device");
 }
 
 fn link_test_device(

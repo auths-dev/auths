@@ -53,6 +53,10 @@ pub enum DeviceError {
     /// Anchoring the attestation in the KEL failed.
     #[error("anchor error: {0}")]
     AnchorError(#[from] auths_id::keri::AnchorError),
+
+    /// Authoring or anchoring a delegated device identifier failed.
+    #[error("device delegation failed: {0}")]
+    DelegationError(#[source] auths_id::error::InitError),
 }
 
 /// Errors from device authorization extension operations.
@@ -115,6 +119,7 @@ impl AuthsErrorInfo for DeviceError {
             Self::CryptoError(e) => e.error_code(),
             Self::StorageError(e) => e.error_code(),
             Self::AnchorError(e) => e.error_code(),
+            Self::DelegationError(_) => "AUTHS-E5106",
         }
     }
 
@@ -129,6 +134,9 @@ impl AuthsErrorInfo for DeviceError {
             Self::CryptoError(e) => e.suggestion(),
             Self::StorageError(e) => e.suggestion(),
             Self::AnchorError(e) => e.suggestion(),
+            Self::DelegationError(_) => {
+                Some("The device delegation could not be authored or anchored; check the root identity")
+            }
         }
     }
 }
