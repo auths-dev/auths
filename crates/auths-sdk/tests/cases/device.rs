@@ -22,7 +22,7 @@ use auths_id::keri::Seal;
 use auths_id::keri::types::Prefix;
 use auths_id::keri::validate_delegation;
 use auths_id::storage::registry::backend::RegistryBackend;
-use auths_sdk::domains::device::{add_device, remove_device};
+use auths_sdk::domains::device::{add_device, list_delegated_devices, remove_device};
 
 fn setup_test_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKeychainHandle) {
     let keychain = IsolatedKeychainHandle::new();
@@ -159,6 +159,48 @@ fn remove_device_revokes_the_delegation() {
     );
     let root_did = format!("did:keri:{}", root_prefix.as_str());
     assert!(remove_device(&ctx, &root_alias, &root_did).is_err());
+}
+
+#[test]
+fn list_delegated_devices_reflects_revocation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (root_alias, keychain) = setup_test_identity(tmp.path());
+    let provider: Arc<dyn PassphraseProvider + Send + Sync> =
+        Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"));
+    let ctx =
+        build_test_context_with_provider(tmp.path(), Arc::new(keychain.clone()), Some(provider));
+
+    let d1 = add_device(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("laptop"),
+        CurveType::Ed25519,
+    )
+    .expect("add laptop");
+    let d2 = add_device(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("phone"),
+        CurveType::Ed25519,
+    )
+    .expect("add phone");
+
+    // Two delegated devices, none revoked yet.
+    let listed = list_delegated_devices(&ctx).expect("list devices");
+    assert_eq!(listed.len(), 2, "both delegations are recorded");
+    assert_eq!(listed.iter().filter(|d| !d.revoked).count(), 2);
+
+    // Revoke one → the live set drops to one (the revoked delegation is still recorded).
+    remove_device(&ctx, &root_alias, &d1.device_did).expect("revoke laptop");
+    let listed = list_delegated_devices(&ctx).expect("list after revoke");
+    assert_eq!(listed.len(), 2);
+    assert_eq!(
+        listed.iter().filter(|d| !d.revoked).count(),
+        1,
+        "only one device is live after revocation"
+    );
+    assert!(listed.iter().any(|d| d.device_did == d2.device_did && !d.revoked));
+    assert!(listed.iter().any(|d| d.device_did == d1.device_did && d.revoked));
 }
 
 fn link_test_device(

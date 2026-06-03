@@ -200,6 +200,61 @@ fn author_root_anchor_ixn(
     Ok(())
 }
 
+/// One device the root has delegated, with its current revocation status.
+pub struct DelegatedDeviceInfo {
+    /// The delegated device's KEL prefix.
+    pub device_prefix: Prefix,
+    /// Whether the root has anchored a revocation for it.
+    pub revoked: bool,
+}
+
+/// List every device the root has delegated, each tagged with whether the root
+/// has revoked it (walks the root KEL collecting delegation `KeyEvent` seals and
+/// revocation digest seals). Order follows first delegation.
+///
+/// Args:
+/// * `backend`: Registry backend holding the root KEL.
+/// * `root_prefix`: The root identity's KEL prefix.
+///
+/// Usage:
+/// ```ignore
+/// let devices = list_delegated_devices(&*backend, &root_prefix)?;
+/// let live = devices.iter().filter(|d| !d.revoked).count();
+/// ```
+pub fn list_delegated_devices(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+) -> Result<Vec<DelegatedDeviceInfo>, InitError> {
+    let mut delegated: Vec<String> = Vec::new();
+    let mut revoked: std::collections::HashSet<String> = std::collections::HashSet::new();
+    backend
+        .visit_events(root_prefix, 0, &mut |event| {
+            for seal in event.anchors() {
+                match seal {
+                    Seal::KeyEvent { i, .. } => {
+                        let p = i.as_str().to_string();
+                        if !delegated.contains(&p) {
+                            delegated.push(p);
+                        }
+                    }
+                    Seal::Digest { d } => {
+                        revoked.insert(d.as_str().to_string());
+                    }
+                    _ => {}
+                }
+            }
+            ControlFlow::Continue(())
+        })
+        .map_err(|e| InitError::Registry(e.to_string()))?;
+    Ok(delegated
+        .into_iter()
+        .map(|p| DelegatedDeviceInfo {
+            revoked: revoked.contains(&p),
+            device_prefix: Prefix::new_unchecked(p),
+        })
+        .collect())
+}
+
 /// Resolve `(delegated, revoked)` for `device_prefix` against the root KEL: the
 /// root anchored its `dip` (KeyEvent seal) and/or revoked it (digest seal of the
 /// device prefix).

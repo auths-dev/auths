@@ -297,6 +297,17 @@ impl RegistryIdentityStorage {
         let mut prefix = None;
         self.backend
             .visit_identities(&mut |p| {
+                // Skip delegated (`dip`-rooted) identities — device/agent delegates
+                // are not the primary root identity.
+                let pfx = auths_keri::Prefix::new_unchecked(p.to_string());
+                if self
+                    .backend
+                    .get_event(&pfx, 0)
+                    .map(|e| e.is_delegated())
+                    .unwrap_or(false)
+                {
+                    return ControlFlow::Continue(());
+                }
                 prefix = Some(p.to_string());
                 ControlFlow::Break(())
             })

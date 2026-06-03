@@ -9,7 +9,10 @@
 use std::sync::Arc;
 
 use auths_core::storage::keychain::{KeyAlias, extract_public_key_bytes};
-use auths_id::keri::delegation::{incept_delegated_device, revoke_delegated_device};
+use auths_id::keri::delegation::{
+    incept_delegated_device, list_delegated_devices as id_list_delegated_devices,
+    revoke_delegated_device,
+};
 use auths_id::keri::parse_did_keri;
 
 use crate::context::AuthsContext;
@@ -131,4 +134,46 @@ pub fn remove_device(
         ctx.key_storage.as_ref(),
     )
     .map_err(DeviceError::DelegationError)
+}
+
+/// A device delegated by the current identity, with its revocation status.
+pub struct DeviceDelegationInfo {
+    /// The delegated device's `did:keri:`.
+    pub device_did: String,
+    /// Whether the root has revoked the delegation.
+    pub revoked: bool,
+}
+
+/// List the devices delegated by the current identity (the delegation set), each
+/// tagged with whether it has been revoked. The live set is the non-revoked
+/// entries — this replaces attestation-based device aggregation for the
+/// delegation model.
+///
+/// Args:
+/// * `ctx`: Auths context.
+///
+/// Usage:
+/// ```ignore
+/// let live = list_delegated_devices(&ctx)?.into_iter().filter(|d| !d.revoked).count();
+/// ```
+pub fn list_delegated_devices(ctx: &AuthsContext) -> Result<Vec<DeviceDelegationInfo>, DeviceError> {
+    let managed = ctx.identity_storage.load_identity().map_err(|e| {
+        DeviceError::IdentityNotFound {
+            did: format!("identity load failed: {e}"),
+        }
+    })?;
+    let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
+        DeviceError::IdentityNotFound {
+            did: format!("invalid root did:keri: {e}"),
+        }
+    })?;
+    let devices = id_list_delegated_devices(ctx.registry.as_ref(), &root_prefix)
+        .map_err(DeviceError::DelegationError)?;
+    Ok(devices
+        .into_iter()
+        .map(|d| DeviceDelegationInfo {
+            device_did: format!("did:keri:{}", d.device_prefix),
+            revoked: d.revoked,
+        })
+        .collect())
 }
