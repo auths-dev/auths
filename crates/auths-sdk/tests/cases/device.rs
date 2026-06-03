@@ -203,6 +203,80 @@ fn list_delegated_devices_reflects_revocation() {
     assert!(listed.iter().any(|d| d.device_did == d1.device_did && d.revoked));
 }
 
+#[test]
+fn delegated_device_rotates_its_own_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (root_alias, keychain) = setup_test_identity(tmp.path());
+    let provider: Arc<dyn PassphraseProvider + Send + Sync> =
+        Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"));
+    let ctx =
+        build_test_context_with_provider(tmp.path(), Arc::new(keychain.clone()), Some(provider));
+
+    let root_prefix = {
+        let m = ctx.identity_storage.load_identity().expect("root identity");
+        Prefix::new_unchecked(
+            m.controller_did
+                .as_str()
+                .strip_prefix("did:keri:")
+                .unwrap()
+                .to_string(),
+        )
+    };
+    let (_pk, root_curve) = auths_core::storage::keychain::extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        &root_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .expect("root curve");
+
+    let device_alias = KeyAlias::new_unchecked("laptop");
+    let dev = add_device(&ctx, &root_alias, &device_alias, CurveType::Ed25519).expect("add device");
+    let device_prefix = Prefix::new_unchecked(dev.device_prefix.clone());
+    let before = ctx
+        .registry
+        .get_key_state(&device_prefix)
+        .expect("device state")
+        .current_keys[0]
+        .as_str()
+        .to_string();
+
+    // The device rotates its OWN key; the root anchors the drt.
+    auths_id::keri::delegation::rotate_delegated_device(
+        ctx.registry.as_ref(),
+        &root_prefix,
+        &root_alias,
+        root_curve,
+        &device_prefix,
+        &device_alias,
+        CurveType::Ed25519,
+        ctx.passphrase_provider.as_ref(),
+        ctx.key_storage.as_ref(),
+    )
+    .expect("rotate the delegated device's key");
+
+    let after = ctx
+        .registry
+        .get_key_state(&device_prefix)
+        .expect("device state after");
+    assert_eq!(after.sequence, 1, "the drt is the sn=1 event");
+    assert_ne!(
+        after.current_keys[0].as_str(),
+        before,
+        "the device's current key rotated"
+    );
+
+    // The root anchored the drt → validate_delegation passes for the drt.
+    let drt = ctx.registry.get_event(&device_prefix, 1).expect("drt event");
+    let mut root_kel = Vec::new();
+    ctx.registry
+        .visit_events(&root_prefix, 0, &mut |e| {
+            root_kel.push(e.clone());
+            ControlFlow::Continue(())
+        })
+        .expect("walk root KEL");
+    validate_delegation(&drt, &root_kel).expect("root must have anchored the drt");
+}
+
 fn link_test_device(
     registry_path: &std::path::Path,
     key_alias: &KeyAlias,

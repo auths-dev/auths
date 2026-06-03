@@ -1128,6 +1128,29 @@ pub fn finalize_rot_event(mut rot: RotEvent) -> Result<RotEvent, ValidationError
     Ok(rot)
 }
 
+/// Create a delegated rotation (`drt`) event with a properly computed SAID.
+///
+/// Mirrors [`finalize_rot_event`]. A `drt` is **not** self-addressing — its `i`
+/// is the existing delegated AID prefix — so only `d` and `v` are set (`i` is
+/// left unchanged, unlike `dip`).
+///
+/// Args:
+/// * `drt` - The delegated rotation event to finalize.
+pub fn finalize_drt_event(
+    mut drt: crate::events::DrtEvent,
+) -> Result<crate::events::DrtEvent, ValidationError> {
+    let value = serde_json::to_value(Event::Drt(drt.clone()))
+        .map_err(|e| ValidationError::Serialization(e.to_string()))?;
+    let said = compute_said(&value).map_err(|e| ValidationError::Serialization(e.to_string()))?;
+    drt.d = said;
+
+    let final_bytes = serde_json::to_vec(&Event::Drt(drt.clone()))
+        .map_err(|e| ValidationError::Serialization(e.to_string()))?;
+    drt.v = crate::types::VersionString::json(final_bytes.len() as u32);
+
+    Ok(drt)
+}
+
 /// Create an interaction event with a properly computed SAID.
 ///
 /// Args:

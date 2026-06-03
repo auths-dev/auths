@@ -732,20 +732,35 @@ pub struct DrtEvent {
 
 /// Parameter struct for [`DrtEvent::new`].
 pub struct DrtEventInit {
+    /// Version string (KERI version + serialization + byte count).
     pub v: VersionString,
+    /// Self-addressing identifier (SAID) of this event.
     pub d: Said,
+    /// Identifier prefix (AID) — the existing delegated AID (not self-addressing).
     pub i: Prefix,
+    /// Sequence number.
     pub s: KeriSequence,
+    /// Prior event SAID (chains to the previous event).
     pub p: Said,
+    /// Current signing threshold.
     pub kt: Threshold,
+    /// Current signing public keys (CESR-encoded) — the revealed pre-rotated keys.
     pub k: Vec<CesrKey>,
+    /// Next (rotation) threshold.
     pub nt: Threshold,
+    /// Next-key commitments (pre-rotation digests).
     pub n: Vec<Said>,
+    /// Backer (witness) threshold.
     pub bt: Threshold,
+    /// Backers (witnesses) to remove.
     pub br: Vec<Prefix>,
+    /// Backers (witnesses) to add.
     pub ba: Vec<Prefix>,
+    /// Configuration traits.
     pub c: Vec<ConfigTrait>,
+    /// Anchored seals.
     pub a: Vec<Seal>,
+    /// Delegator prefix — the AID delegating this identifier.
     pub di: Prefix,
 }
 

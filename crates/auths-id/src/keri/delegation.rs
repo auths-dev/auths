@@ -13,21 +13,24 @@
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
-use auths_core::crypto::said::compute_next_commitment;
+use auths_core::crypto::said::{compute_next_commitment, verify_commitment};
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
 use auths_crypto::{CurveType, Pkcs8Der};
+use ring::signature::KeyPair;
 
 use crate::error::InitError;
+use crate::identity::helpers::load_keypair_from_der_or_seed;
 use crate::keri::inception::{generate_keypair_for_init, sign_with_pkcs8_for_init};
 use crate::keri::{
     CesrKey, Event, KeriSequence, Prefix, Said, Seal, Threshold, VersionString, finalize_dip_event,
-    serialize_for_signing,
+    finalize_drt_event, serialize_for_signing,
 };
 use crate::storage::registry::RegistryBackend;
 use auths_keri::{
-    DipEvent, DipEventInit, IndexedSignature, IxnEvent, finalize_ixn_event, serialize_attachment,
+    DipEvent, DipEventInit, DrtEvent, DrtEventInit, IndexedSignature, IxnEvent, KeriPublicKey,
+    finalize_ixn_event, serialize_attachment,
 };
 
 /// A device incepted as a delegated identifier of a root identity.
@@ -153,7 +156,7 @@ pub fn incept_delegated_device(
 
 /// Author an `ixn` on the root KEL anchoring the given seals, signed by the root's
 /// current key. Single-author — no other identity's key is required.
-fn author_root_anchor_ixn(
+pub fn author_root_anchor_ixn(
     backend: &(dyn RegistryBackend + Send + Sync),
     root_prefix: &Prefix,
     root_alias: &KeyAlias,
@@ -338,4 +341,143 @@ pub fn revoke_delegated_device(
         passphrase_provider,
         keychain,
     )
+}
+
+/// Rotate a delegated device's own key (`drt`), anchored by the root.
+///
+/// The device reveals its pre-committed next key (its new current key), signs a
+/// `drt` on its own KEL advancing to it, commits a fresh next key, and the root
+/// anchors the `drt`. Single signer = the device; the root only anchors. (Local
+/// case: the device's keys live in this keychain under `device_alias`; the remote
+/// case runs the device half on the device.)
+///
+/// Args:
+/// * `backend`: Registry backend holding the device + root KELs.
+/// * `root_prefix` / `root_alias` / `root_curve`: the delegator (anchors the drt).
+/// * `device_prefix`: the delegated device's KEL prefix.
+/// * `device_alias`: keychain alias of the device's current key (its next key is
+///   under `{device_alias}--next-{seq}`).
+/// * `device_curve`: the device key's curve.
+/// * `passphrase_provider` / `keychain`: key custody.
+///
+/// Usage:
+/// ```ignore
+/// rotate_delegated_device(&*backend, &root_prefix, &root_alias, root_curve,
+///     &device_prefix, &device_alias, CurveType::Ed25519, &provider, &keychain)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn rotate_delegated_device(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    device_prefix: &Prefix,
+    device_alias: &KeyAlias,
+    device_curve: CurveType,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<(), InitError> {
+    let device_state = backend
+        .get_key_state(device_prefix)
+        .map_err(|e| InitError::Registry(e.to_string()))?;
+
+    // Reveal the device's pre-committed next key (its new current key).
+    let next_alias = KeyAlias::new_unchecked(format!(
+        "{}--next-{}",
+        device_alias, device_state.last_establishment_sequence
+    ));
+    let (_did, _role, encrypted) = keychain.load_key(&next_alias)?;
+    let pass = passphrase_provider.get_passphrase(&format!(
+        "Enter passphrase for device next key '{}':",
+        next_alias
+    ))?;
+    let revealed_pkcs8 = Pkcs8Der::new(decrypt_keypair(&encrypted, &pass)?.to_vec());
+    let revealed_keypair = load_keypair_from_der_or_seed(revealed_pkcs8.as_ref())?;
+    #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+    let revealed_verkey = KeriPublicKey::ed25519(revealed_keypair.public_key().as_ref())
+        .expect("ring Ed25519 public key is 32 bytes");
+    if device_state.next_commitment.is_empty()
+        || !verify_commitment(&revealed_verkey, &device_state.next_commitment[0])
+    {
+        return Err(InitError::InvalidData(
+            "device next key does not match its prior commitment".to_string(),
+        ));
+    }
+
+    // Commit a fresh next key for the device's subsequent rotation.
+    let fresh_next =
+        generate_keypair_for_init(device_curve).map_err(|e| InitError::Crypto(e.to_string()))?;
+    let new_next_commitment = compute_next_commitment(&fresh_next.verkey());
+
+    let new_sequence = device_state.sequence + 1;
+    let revealed_cesr = revealed_verkey
+        .to_qb64()
+        .map_err(|e| InitError::InvalidData(e.to_string()))?;
+    let drt = finalize_drt_event(DrtEvent::new(DrtEventInit {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: device_prefix.clone(),
+        s: KeriSequence::new(new_sequence),
+        p: device_state.last_event_said.clone(),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(revealed_cesr)],
+        nt: Threshold::Simple(1),
+        n: vec![new_next_commitment],
+        bt: Threshold::Simple(0),
+        br: vec![],
+        ba: vec![],
+        c: vec![],
+        a: vec![],
+        di: root_prefix.clone(),
+    }))
+    .map_err(|e| InitError::Keri(e.to_string()))?;
+    let drt_said = drt.d.clone();
+
+    // The device signs the drt with its revealed (new current) key.
+    let canonical =
+        serialize_for_signing(&Event::Drt(drt.clone())).map_err(|e| InitError::Keri(e.to_string()))?;
+    let sig = sign_with_pkcs8_for_init(device_curve, &revealed_pkcs8, &canonical)
+        .map_err(|e| InitError::Crypto(e.to_string()))?;
+    let attachment = serialize_attachment(&[IndexedSignature {
+        index: 0,
+        prior_index: None,
+        sig,
+    }])
+    .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
+    backend
+        .append_signed_event(device_prefix, &Event::Drt(drt), &attachment)
+        .map_err(|e| InitError::Registry(e.to_string()))?;
+
+    // The root anchors the drt.
+    author_root_anchor_ixn(
+        backend,
+        root_prefix,
+        root_alias,
+        root_curve,
+        vec![Seal::KeyEvent {
+            i: device_prefix.clone(),
+            s: KeriSequence::new(new_sequence),
+            d: drt_said,
+        }],
+        passphrase_provider,
+        keychain,
+    )?;
+
+    // Persist the device's new current (the revealed key) + fresh next.
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: device_prefix is a valid did:keri prefix.
+    let device_did = IdentityDID::new_unchecked(format!("did:keri:{}", device_prefix));
+    let store_pass = passphrase_provider.get_passphrase(&format!(
+        "Create passphrase for rotated device key '{}':",
+        device_alias
+    ))?;
+    let enc_cur = encrypt_keypair(revealed_pkcs8.as_ref(), &store_pass)?;
+    keychain.store_key(device_alias, &device_did, KeyRole::Primary, &enc_cur)?;
+    let new_next_alias =
+        KeyAlias::new_unchecked(format!("{}--next-{}", device_alias, new_sequence));
+    let enc_next = encrypt_keypair(fresh_next.pkcs8.as_ref(), &store_pass)?;
+    keychain.store_key(&new_next_alias, &device_did, KeyRole::NextRotation, &enc_next)?;
+    let _ = keychain.delete_key(&next_alias);
+
+    Ok(())
 }

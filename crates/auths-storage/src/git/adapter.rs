@@ -590,9 +590,25 @@ impl GitRegistryBackend {
                 dip.bt.clone(),
                 dip.c.clone(),
             )),
-            Event::Drt(_) => Err(RegistryError::Internal(
-                "Delegated rotation not yet supported".into(),
-            )),
+            Event::Drt(drt) => {
+                let mut state = current_state.cloned().ok_or_else(|| {
+                    RegistryError::Internal("Delegated rotation without prior state".into())
+                })?;
+                let seq = event.sequence().value();
+                state.apply_rotation(
+                    drt.k.clone(),
+                    drt.n.clone(),
+                    drt.kt.clone(),
+                    drt.nt.clone(),
+                    seq,
+                    drt.d.clone(),
+                    &drt.br,
+                    &drt.ba,
+                    drt.bt.clone(),
+                    drt.c.clone(),
+                );
+                Ok(state)
+            }
         }
     }
 
