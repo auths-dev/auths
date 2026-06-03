@@ -113,6 +113,8 @@ pub mod kel;
 #[cfg(feature = "git-storage")]
 pub mod resolve;
 #[cfg(feature = "git-storage")]
+pub mod kel_resolver;
+#[cfg(feature = "git-storage")]
 pub mod rotation;
 pub mod seal;
 pub mod shared_kel;
@@ -144,6 +146,10 @@ pub use kel::{GitKel, KelError};
 pub use resolve::{
     DidKeriResolution, ResolveError, parse_did_keri, resolve_did_keri,
     resolve_did_keri_at_sequence, resolve_kel_events,
+};
+#[cfg(feature = "git-storage")]
+pub use kel_resolver::{
+    KelResolveError, KelResolver, LocalKelResolver, collect_kel, verify_prefix_binding,
 };
 #[cfg(feature = "git-storage")]
 pub use rotation::{

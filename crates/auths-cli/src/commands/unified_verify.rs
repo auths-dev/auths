@@ -124,6 +124,19 @@ pub struct UnifiedVerifyCommand {
     /// Defaults to <FILE>.auths.json.
     #[arg(long, value_name = "PATH")]
     pub signature: Option<PathBuf>,
+
+    /// Fetch a signer's KEL from this git remote when it is absent locally
+    /// (opt-in). The local registry stays the trusted floor — a remote can only
+    /// advance the key-state, never roll it back. Without it, resolution is
+    /// local-only (no network).
+    #[arg(long)]
+    pub remote: Option<String>,
+
+    /// Fetch signer KELs over HTTP from this OOBI base URL (SSRF-hardened:
+    /// HTTPS-only, no redirects, private/loopback hosts blocked). Takes
+    /// precedence over `--remote`.
+    #[arg(long)]
+    pub oobi: Option<String>,
 }
 
 /// Handle the unified verify command.
@@ -140,6 +153,8 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
                 witness_receipts: cmd.witness_receipts,
                 witness_threshold: cmd.witness_threshold,
                 witness_keys: cmd.witness_keys,
+                remote: cmd.remote,
+                oobi: cmd.oobi,
             };
             handle_verify_commit(commit_cmd).await
         }

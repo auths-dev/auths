@@ -2,8 +2,14 @@
 //! copy constants that both the CLI and mobile surfaces consume.
 
 pub mod copy;
+/// KEL resolver orchestration (local-first, optional git-remote). Requires the
+/// git registry, so it is gated on `backend-git`.
+#[cfg(feature = "backend-git")]
+pub mod resolver;
 
 pub use auths_id::keri::cache;
+#[cfg(feature = "backend-git")]
+pub use resolver::KelResolverChain;
 pub use auths_id::keri::parse_did_keri;
 pub use auths_id::keri::shared_kel::{
     ControllerDescriptor, SharedKelChange, SharedKelError, apply_shared_kel_change,

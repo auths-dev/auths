@@ -1,8 +1,9 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
 use auths_id::ports::registry::RegistryBackend;
+use auths_infra_http::HttpOobiResolver;
+use auths_keri::Event;
 use auths_keri::witness::SignedReceipt;
-use auths_keri::{Event, Prefix};
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
@@ -12,7 +13,6 @@ use auths_verifier::{
 use clap::Parser;
 use serde::Serialize;
 use std::fs;
-use std::ops::ControlFlow;
 use std::path::PathBuf;
 
 use crate::subprocess::git_command;
@@ -37,6 +37,20 @@ pub struct VerifyCommitCommand {
     /// Witness public keys as DID:hex pairs (e.g., "did:key:z6Mk...:abcd1234...").
     #[arg(long, num_args = 1..)]
     pub witness_keys: Vec<String>,
+
+    /// Fetch a signer's KEL from this git remote when it is absent locally
+    /// (opt-in). The local registry stays the trusted floor — a remote can only
+    /// advance the key-state, never roll it back. Without this flag, resolution
+    /// is local-only (no network).
+    #[arg(long)]
+    pub remote: Option<String>,
+
+    /// Fetch signer KELs over HTTP from this OOBI base URL (e.g.
+    /// `https://registry.example`). SSRF-hardened: HTTPS-only, no redirect
+    /// following, private/loopback hosts blocked. Takes precedence over
+    /// `--remote`; the resolved KEL is still prefix-bound + replayed locally.
+    #[arg(long)]
+    pub oobi: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -141,27 +155,6 @@ fn load_project_pinned_roots() -> Vec<String> {
     auths_sdk::workflows::roots::load_pinned_roots(&root.join(".auths")).unwrap_or_default()
 }
 
-/// Collect a prefix's full KEL (all events from sequence 0) from the registry backend —
-/// the store `auths init` and pairing write to (`refs/auths/registry`). Returns `Err`
-/// when the identifier is not a `did:keri:` or has no KEL locally.
-fn registry_kel(registry: &dyn RegistryBackend, did: &str) -> Result<Vec<Event>, String> {
-    let prefix_str = did
-        .strip_prefix("did:keri:")
-        .ok_or_else(|| format!("'{did}' is not a did:keri identifier"))?;
-    let prefix = Prefix::new_unchecked(prefix_str.to_string());
-    let mut events = Vec::new();
-    registry
-        .visit_events(&prefix, 0, &mut |event| {
-            events.push(event.clone());
-            ControlFlow::Continue(())
-        })
-        .map_err(|e| e.to_string())?;
-    if events.is_empty() {
-        return Err(format!("KEL not found for prefix: {prefix_str}"));
-    }
-    Ok(events)
-}
-
 /// Resolve the commit spec to a list of commit SHAs.
 fn resolve_commits(commit_spec: &str) -> Result<Vec<String>> {
     if commit_spec.contains("..") {
@@ -253,6 +246,37 @@ fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBinding
         })
 }
 
+/// Resolve a signer's KEL for verification, honoring the transport flags.
+///
+/// `--oobi` (SSRF-hardened HTTP) takes precedence; otherwise `--remote` (git) or
+/// local-first via the SDK chain. The prefix-binding guard is applied to the HTTP
+/// result here (the SDK chain applies it for local/git internally), so every
+/// transport returns a KEL whose inception SAID matches the requested DID.
+///
+/// Args:
+/// * `registry`: The local registry backend (the trusted floor).
+/// * `cmd`: The verify command (carries `--remote` / `--oobi`).
+/// * `did`: The `did:keri:` to resolve.
+async fn resolve_signer_kel(
+    registry: &dyn RegistryBackend,
+    cmd: &VerifyCommitCommand,
+    did: &str,
+) -> Result<Vec<Event>, String> {
+    if let Some(oobi_base) = &cmd.oobi {
+        let prefix = auths_id::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
+        let resolver = HttpOobiResolver::new(oobi_base.clone()).map_err(|e| e.to_string())?;
+        let events = resolver.fetch_kel(&prefix).await.map_err(|e| e.to_string())?;
+        auths_id::keri::verify_prefix_binding(&prefix, &events).map_err(|e| e.to_string())?;
+        Ok(events)
+    } else {
+        let chain = match &cmd.remote {
+            Some(url) => auths_sdk::keri::KelResolverChain::with_remote(registry, url.clone()),
+            None => auths_sdk::keri::KelResolverChain::local(registry),
+        };
+        chain.resolve_kel(did).map_err(|e| e.to_string())
+    }
+}
+
 /// Verify a single commit against the replayed KEL.
 ///
 /// Reads the in-band `Auths-Id` / `Auths-Device` trailers, replays the device + root
@@ -293,21 +317,25 @@ async fn verify_one_commit(
         }
     };
 
-    let device_kel = match registry_kel(registry, &device_did) {
+    // KEL sourcing is an SDK/adapter concern: local-first, with an opt-in git
+    // remote (`--remote`) or an SSRF-hardened HTTP OOBI host (`--oobi`). The
+    // prefix-binding guard is applied regardless of transport. The command stays
+    // presentation-thin.
+    let device_kel = match resolve_signer_kel(registry, cmd, &device_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
                 sha,
-                format!("Device KEL for {device_did} is unavailable locally: {e}"),
+                format!("Device KEL for {device_did} could not be resolved: {e}"),
             );
         }
     };
-    let root_kel = match registry_kel(registry, &root_did) {
+    let root_kel = match resolve_signer_kel(registry, cmd, &root_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
                 sha,
-                format!("Root KEL for {root_did} is unavailable locally: {e}"),
+                format!("Root KEL for {root_did} could not be resolved: {e}"),
             );
         }
     };

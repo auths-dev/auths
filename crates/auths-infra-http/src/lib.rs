@@ -24,6 +24,7 @@ pub mod namespace;
 mod npm_auth;
 mod oidc_platforms;
 mod oidc_tsa_client;
+mod oobi_resolver;
 mod oidc_validator;
 mod pairing_client;
 mod platform_context;
@@ -43,6 +44,7 @@ pub use oidc_platforms::{
 };
 pub use oidc_tsa_client::HttpTimestampClient;
 pub use oidc_validator::{HttpJwksClient, HttpJwtValidator, OidcTokenClaims};
+pub use oobi_resolver::{HttpOobiError, HttpOobiResolver, MAX_OOBI_BYTES};
 pub use pairing_client::HttpPairingRelayClient;
 pub use platform_context::resolve_verified_platform_context;
 pub use registry_client::HttpRegistryClient;
