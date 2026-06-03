@@ -392,6 +392,14 @@ fn run_developer_setup(
                 path.display()
             ));
         }
+
+        // Pin the local identity as a trusted root for KEL-native verification —
+        // the successor to allowed_signers as the *root* of trust (Epic B).
+        let root_did = result.identity_did.to_string();
+        match auths_sdk::workflows::roots::add_pinned_root(&root.join(".auths"), &root_did) {
+            Ok(()) => out.println(&format!("  Pinned trusted root: {}", root_did)),
+            Err(e) => out.println(&format!("  Note: could not pin trusted root ({e})")),
+        }
     }
 
     // REGISTRATION & DISPLAY
