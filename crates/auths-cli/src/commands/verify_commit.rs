@@ -1,7 +1,9 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
-use auths_id::keri::resolve_kel_events;
+use auths_id::ports::registry::RegistryBackend;
 use auths_keri::witness::SignedReceipt;
+use auths_keri::{Event, Prefix};
+use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     Attestation, CommitVerdict, IdentityBundle, VerificationReport, verify_chain_with_witnesses,
@@ -10,6 +12,7 @@ use auths_verifier::{
 use clap::Parser;
 use serde::Serialize;
 use std::fs;
+use std::ops::ControlFlow;
 use std::path::PathBuf;
 
 use crate::subprocess::git_command;
@@ -105,16 +108,10 @@ pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
         Ok(h) => h,
         Err(e) => return handle_error(&cmd, 2, &format!("Could not locate ~/.auths: {e}")),
     };
-    let repo = match git2::Repository::open(&auths_home) {
-        Ok(r) => r,
-        Err(e) => {
-            return handle_error(
-                &cmd,
-                2,
-                &format!("Could not open the identity repository at {auths_home:?}: {e}"),
-            );
-        }
-    };
+    // The registry backend holds every identity's KEL events (in the `refs/auths/registry`
+    // tree) — the source we replay to decide trust.
+    let registry =
+        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&auths_home));
     let pinned_roots = load_project_pinned_roots();
     let provider = auths_crypto::RingCryptoProvider;
 
@@ -124,7 +121,8 @@ pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
     };
     let mut results = Vec::with_capacity(commits.len());
     for commit_ref in &commits {
-        results.push(verify_one_commit(&repo, &pinned_roots, &provider, &cmd, commit_ref).await);
+        results
+            .push(verify_one_commit(&registry, &pinned_roots, &provider, &cmd, commit_ref).await);
     }
     output_results(&results)
 }
@@ -141,6 +139,27 @@ fn load_project_pinned_roots() -> Vec<String> {
     }
     let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
     auths_sdk::workflows::roots::load_pinned_roots(&root.join(".auths")).unwrap_or_default()
+}
+
+/// Collect a prefix's full KEL (all events from sequence 0) from the registry backend —
+/// the store `auths init` and pairing write to (`refs/auths/registry`). Returns `Err`
+/// when the identifier is not a `did:keri:` or has no KEL locally.
+fn registry_kel(registry: &dyn RegistryBackend, did: &str) -> Result<Vec<Event>, String> {
+    let prefix_str = did
+        .strip_prefix("did:keri:")
+        .ok_or_else(|| format!("'{did}' is not a did:keri identifier"))?;
+    let prefix = Prefix::new_unchecked(prefix_str.to_string());
+    let mut events = Vec::new();
+    registry
+        .visit_events(&prefix, 0, &mut |event| {
+            events.push(event.clone());
+            ControlFlow::Continue(())
+        })
+        .map_err(|e| e.to_string())?;
+    if events.is_empty() {
+        return Err(format!("KEL not found for prefix: {prefix_str}"));
+    }
+    Ok(events)
 }
 
 /// Resolve the commit spec to a list of commit SHAs.
@@ -241,7 +260,7 @@ fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBinding
 /// (no `ssh-keygen`, no `allowed_signers`). The KEL verdict is authoritative; witness
 /// receipts (Epic D) remain an orthogonal opt-in check layered on top.
 async fn verify_one_commit(
-    repo: &git2::Repository,
+    registry: &dyn RegistryBackend,
     pinned_roots: &[String],
     provider: &dyn auths_crypto::CryptoProvider,
     cmd: &VerifyCommitCommand,
@@ -274,7 +293,7 @@ async fn verify_one_commit(
         }
     };
 
-    let device_kel = match resolve_kel_events(repo, &device_did) {
+    let device_kel = match registry_kel(registry, &device_did) {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
@@ -283,7 +302,7 @@ async fn verify_one_commit(
             );
         }
     };
-    let root_kel = match resolve_kel_events(repo, &root_did) {
+    let root_kel = match registry_kel(registry, &root_did) {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
@@ -761,5 +780,4 @@ mod tests {
         assert!(text.contains("INVALID"));
         assert!(text.contains("No signature found"));
     }
-
 }

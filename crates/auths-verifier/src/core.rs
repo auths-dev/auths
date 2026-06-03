@@ -402,13 +402,49 @@ pub struct SignatureLengthError(pub usize);
 /// Accepted byte lengths per curve:
 /// - Ed25519: 32
 /// - P-256: 33 (compressed SEC1) or 65 (uncompressed SEC1)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct DevicePublicKey {
     #[cfg_attr(feature = "schema", schemars(skip))]
     curve: auths_crypto::CurveType,
     #[cfg_attr(feature = "schema", schemars(with = "String"))]
     bytes: Vec<u8>,
+}
+
+impl DevicePublicKey {
+    /// Canonical SEC1 bytes for equality + hashing. P-256 is normalized to its 33-byte
+    /// compressed form, so two encodings of the *same point* compare equal — the SSH
+    /// wire format is 65-byte uncompressed while the KEL/CESR form is 33-byte compressed.
+    /// Pure byte math: a compressed point is `[0x02|0x03 by Y-parity] || X`, and the
+    /// Y-parity is the uncompressed point's final-byte LSB. Ed25519 is unchanged.
+    fn canonical_sec1(&self) -> std::borrow::Cow<'_, [u8]> {
+        if self.curve == auths_crypto::CurveType::P256
+            && self.bytes.len() == 65
+            && self.bytes[0] == 0x04
+        {
+            let mut compressed = vec![0u8; 33];
+            compressed[0] = if self.bytes[64] & 1 == 0 { 0x02 } else { 0x03 };
+            compressed[1..].copy_from_slice(&self.bytes[1..33]);
+            std::borrow::Cow::Owned(compressed)
+        } else {
+            std::borrow::Cow::Borrowed(&self.bytes)
+        }
+    }
+}
+
+impl PartialEq for DevicePublicKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.curve == other.curve && self.canonical_sec1() == other.canonical_sec1()
+    }
+}
+
+impl Eq for DevicePublicKey {}
+
+impl std::hash::Hash for DevicePublicKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.curve.hash(state);
+        self.canonical_sec1().hash(state);
+    }
 }
 
 /// Error returned when constructing a `DevicePublicKey` with invalid key material.
