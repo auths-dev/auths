@@ -10,6 +10,7 @@
 //! This is the keripy-native, single-author, device-bound replacement for
 //! shared-`k[]` controllers — and the same `dip`/`drt` mechanism agents use.
 
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use auths_core::crypto::said::compute_next_commitment;
@@ -116,47 +117,20 @@ pub fn incept_delegated_device(
         .append_signed_event(&device_prefix, &Event::Dip(dip), &dip_attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    // 4. Author the root's anchoring ixn (a KeyEvent seal for the dip), signed by
-    //    the root's current key — single-author, no device key needed.
-    let root_state = backend
-        .get_key_state(root_prefix)
-        .map_err(|e| InitError::Registry(e.to_string()))?;
-    if !root_state.can_emit_ixn() {
-        return Err(InitError::InvalidData(
-            "root identity cannot anchor a delegation (interaction events forbidden)".to_string(),
-        ));
-    }
-    let ixn = finalize_ixn_event(IxnEvent {
-        v: VersionString::placeholder(),
-        d: Said::default(),
-        i: root_prefix.clone(),
-        s: KeriSequence::new(root_state.sequence + 1),
-        p: root_state.last_event_said.clone(),
-        a: vec![Seal::KeyEvent {
+    // 4. Author the root's anchoring ixn (a KeyEvent seal for the dip).
+    author_root_anchor_ixn(
+        backend.as_ref(),
+        root_prefix,
+        root_alias,
+        root_curve,
+        vec![Seal::KeyEvent {
             i: device_prefix.clone(),
             s: KeriSequence::new(0),
             d: dip_said,
         }],
-    })
-    .map_err(|e| InitError::Keri(e.to_string()))?;
-
-    let ixn_canonical =
-        serialize_for_signing(&Event::Ixn(ixn.clone())).map_err(|e| InitError::Keri(e.to_string()))?;
-    let (_root_did, _role, root_encrypted) = keychain.load_key(root_alias)?;
-    let root_pass = passphrase_provider
-        .get_passphrase(&format!("Enter passphrase for root key '{}':", root_alias))?;
-    let root_pkcs8 = Pkcs8Der::new(decrypt_keypair(&root_encrypted, &root_pass)?.to_vec());
-    let ixn_sig = sign_with_pkcs8_for_init(root_curve, &root_pkcs8, &ixn_canonical)
-        .map_err(|e| InitError::Crypto(e.to_string()))?;
-    let ixn_attachment = serialize_attachment(&[IndexedSignature {
-        index: 0,
-        prior_index: None,
-        sig: ixn_sig,
-    }])
-    .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
-    backend
-        .append_signed_event(root_prefix, &Event::Ixn(ixn), &ixn_attachment)
-        .map_err(|e| InitError::Registry(e.to_string()))?;
+        passphrase_provider,
+        keychain,
+    )?;
 
     // 5. Persist the device's keys under its own alias (current + pre-committed next).
     #[allow(clippy::disallowed_methods)]
@@ -175,4 +149,138 @@ pub fn incept_delegated_device(
         device_prefix,
         device_alias: device_alias.clone(),
     })
+}
+
+/// Author an `ixn` on the root KEL anchoring the given seals, signed by the root's
+/// current key. Single-author — no other identity's key is required.
+fn author_root_anchor_ixn(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    anchors: Vec<Seal>,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<(), InitError> {
+    let root_state = backend
+        .get_key_state(root_prefix)
+        .map_err(|e| InitError::Registry(e.to_string()))?;
+    if !root_state.can_emit_ixn() {
+        return Err(InitError::InvalidData(
+            "root identity cannot anchor (interaction events forbidden)".to_string(),
+        ));
+    }
+    let ixn = finalize_ixn_event(IxnEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: root_prefix.clone(),
+        s: KeriSequence::new(root_state.sequence + 1),
+        p: root_state.last_event_said.clone(),
+        a: anchors,
+    })
+    .map_err(|e| InitError::Keri(e.to_string()))?;
+
+    let canonical =
+        serialize_for_signing(&Event::Ixn(ixn.clone())).map_err(|e| InitError::Keri(e.to_string()))?;
+    let (_did, _role, encrypted) = keychain.load_key(root_alias)?;
+    let pass = passphrase_provider
+        .get_passphrase(&format!("Enter passphrase for root key '{}':", root_alias))?;
+    let pkcs8 = Pkcs8Der::new(decrypt_keypair(&encrypted, &pass)?.to_vec());
+    let sig = sign_with_pkcs8_for_init(root_curve, &pkcs8, &canonical)
+        .map_err(|e| InitError::Crypto(e.to_string()))?;
+    let attachment = serialize_attachment(&[IndexedSignature {
+        index: 0,
+        prior_index: None,
+        sig,
+    }])
+    .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
+    backend
+        .append_signed_event(root_prefix, &Event::Ixn(ixn), &attachment)
+        .map_err(|e| InitError::Registry(e.to_string()))?;
+    Ok(())
+}
+
+/// Resolve `(delegated, revoked)` for `device_prefix` against the root KEL: the
+/// root anchored its `dip` (KeyEvent seal) and/or revoked it (digest seal of the
+/// device prefix).
+fn delegation_status(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    device_prefix: &Prefix,
+) -> Result<(bool, bool), InitError> {
+    let mut delegated = false;
+    let mut revoked = false;
+    backend
+        .visit_events(root_prefix, 0, &mut |event| {
+            for seal in event.anchors() {
+                match seal {
+                    Seal::KeyEvent { i, .. } if i.as_str() == device_prefix.as_str() => {
+                        delegated = true;
+                    }
+                    Seal::Digest { d } if d.as_str() == device_prefix.as_str() => {
+                        revoked = true;
+                    }
+                    _ => {}
+                }
+            }
+            ControlFlow::Continue(())
+        })
+        .map_err(|e| InitError::Registry(e.to_string()))?;
+    Ok((delegated, revoked))
+}
+
+/// Revoke a delegated device: the root anchors a revocation marker (a digest seal
+/// of the device's prefix) so verifiers stop treating it as authorized. Single-
+/// author — the root's current key signs the `ixn`; the device's key is not needed.
+/// Idempotent if the device is already revoked.
+///
+/// Args:
+/// * `backend`: Registry backend holding the root KEL.
+/// * `root_prefix`: The root identity's KEL prefix (the delegator).
+/// * `root_alias`: Keychain alias of the root's current signing key.
+/// * `root_curve`: Curve of the root's current key.
+/// * `device_prefix`: The delegated device's KEL prefix to revoke.
+/// * `passphrase_provider`: Passphrase source.
+/// * `keychain`: Key storage.
+///
+/// Usage:
+/// ```ignore
+/// revoke_delegated_device(&*backend, &root_prefix, &root_alias, curve, &device_prefix, &provider, &keychain)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn revoke_delegated_device(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    device_prefix: &Prefix,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<(), InitError> {
+    if device_prefix.as_str() == root_prefix.as_str() {
+        return Err(InitError::InvalidData(
+            "cannot revoke the root identity's own controller".to_string(),
+        ));
+    }
+    let (delegated, revoked) = delegation_status(backend, root_prefix, device_prefix)?;
+    if !delegated {
+        return Err(InitError::InvalidData(format!(
+            "device {device_prefix} is not a delegated controller of the identity"
+        )));
+    }
+    if revoked {
+        return Ok(());
+    }
+    let revocation = Seal::Digest {
+        d: Said::new_unchecked(device_prefix.as_str().to_string()),
+    };
+    author_root_anchor_ixn(
+        backend,
+        root_prefix,
+        root_alias,
+        root_curve,
+        vec![revocation],
+        passphrase_provider,
+        keychain,
+    )
 }

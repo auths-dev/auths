@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use auths_core::storage::keychain::{KeyAlias, extract_public_key_bytes};
-use auths_id::keri::delegation::incept_delegated_device;
+use auths_id::keri::delegation::{incept_delegated_device, revoke_delegated_device};
 use auths_id::keri::parse_did_keri;
 
 use crate::context::AuthsContext;
@@ -79,4 +79,56 @@ pub fn add_device(
         device_did: dev.device_did.as_str().to_string(),
         device_prefix: dev.device_prefix.as_str().to_string(),
     })
+}
+
+/// Remove (revoke) a delegated device.
+///
+/// The root anchors a revocation marker for the device's delegated AID via
+/// [`revoke_delegated_device`], so verifiers stop treating it as authorized.
+/// Single-author — the root's current key signs; the device's key is not needed.
+///
+/// Args:
+/// * `ctx`: Auths context.
+/// * `root_alias`: Keychain alias of the root identity's signing key.
+/// * `device_did`: The delegated device's `did:keri:` to revoke.
+///
+/// Usage:
+/// ```ignore
+/// remove_device(&ctx, &root_alias, "did:keri:E...")?;
+/// ```
+pub fn remove_device(
+    ctx: &AuthsContext,
+    root_alias: &KeyAlias,
+    device_did: &str,
+) -> Result<(), DeviceError> {
+    let managed = ctx.identity_storage.load_identity().map_err(|e| {
+        DeviceError::IdentityNotFound {
+            did: format!("identity load failed: {e}"),
+        }
+    })?;
+    let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
+        DeviceError::IdentityNotFound {
+            did: format!("invalid root did:keri: {e}"),
+        }
+    })?;
+    let device_prefix = parse_did_keri(device_did).map_err(|e| DeviceError::DeviceNotFound {
+        did: format!("invalid device did:keri: {e}"),
+    })?;
+    let (_pk, root_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        root_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .map_err(DeviceError::CryptoError)?;
+
+    revoke_delegated_device(
+        ctx.registry.as_ref(),
+        &root_prefix,
+        root_alias,
+        root_curve,
+        &device_prefix,
+        ctx.passphrase_provider.as_ref(),
+        ctx.key_storage.as_ref(),
+    )
+    .map_err(DeviceError::DelegationError)
 }

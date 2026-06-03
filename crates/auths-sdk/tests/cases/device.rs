@@ -18,10 +18,11 @@ use crate::cases::helpers::{build_test_context, build_test_context_with_provider
 use std::ops::ControlFlow;
 
 use auths_crypto::CurveType;
+use auths_id::keri::Seal;
 use auths_id::keri::types::Prefix;
 use auths_id::keri::validate_delegation;
 use auths_id::storage::registry::backend::RegistryBackend;
-use auths_sdk::domains::device::add_device;
+use auths_sdk::domains::device::{add_device, remove_device};
 
 fn setup_test_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKeychainHandle) {
     let keychain = IsolatedKeychainHandle::new();
@@ -94,6 +95,70 @@ fn add_device_delegates_and_root_anchors() {
         })
         .expect("walk root KEL");
     validate_delegation(&dip, &root_kel).expect("root must have anchored the delegated device");
+}
+
+#[test]
+fn remove_device_revokes_the_delegation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (root_alias, keychain) = setup_test_identity(tmp.path());
+    let provider: Arc<dyn PassphraseProvider + Send + Sync> =
+        Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"));
+    let ctx =
+        build_test_context_with_provider(tmp.path(), Arc::new(keychain.clone()), Some(provider));
+
+    let root_prefix = {
+        let managed = ctx
+            .identity_storage
+            .load_identity()
+            .expect("root identity loads");
+        Prefix::new_unchecked(
+            managed
+                .controller_did
+                .as_str()
+                .strip_prefix("did:keri:")
+                .unwrap()
+                .to_string(),
+        )
+    };
+    let dev = add_device(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("laptop"),
+        CurveType::Ed25519,
+    )
+    .expect("add a delegated device");
+
+    // Revoke it: the root anchors a revocation marker.
+    remove_device(&ctx, &root_alias, &dev.device_did).expect("revoke the device");
+
+    let mut revoked = false;
+    ctx.registry
+        .visit_events(&root_prefix, 0, &mut |e| {
+            if e.anchors()
+                .iter()
+                .any(|s| matches!(s, Seal::Digest { d } if d.as_str() == dev.device_prefix))
+            {
+                revoked = true;
+            }
+            ControlFlow::Continue(())
+        })
+        .expect("walk root KEL");
+    assert!(
+        revoked,
+        "a revocation marker (digest seal of the device prefix) must be anchored"
+    );
+
+    // Revoking an unknown device, or the root identity itself, is a typed error.
+    assert!(
+        remove_device(
+            &ctx,
+            &root_alias,
+            "did:keri:EUnknownDeviceAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        )
+        .is_err()
+    );
+    let root_did = format!("did:keri:{}", root_prefix.as_str());
+    assert!(remove_device(&ctx, &root_alias, &root_did).is_err());
 }
 
 fn link_test_device(

@@ -9,6 +9,6 @@ pub mod service;
 /// Device types and configuration
 pub mod types;
 
-pub use delegation::{DeviceDelegationResult, add_device};
+pub use delegation::{DeviceDelegationResult, add_device, remove_device};
 pub use error::*;
 pub use types::*;
