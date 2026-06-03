@@ -263,8 +263,11 @@ pub async fn verify_device_link(
     let current_pk = match key_state.current_keys.first() {
         Some(encoded) => match auths_keri::KeriPublicKey::parse(encoded.as_str()) {
             Ok(keri_pk) => {
+                // Curve travels with the key (CESR prefix) — never hardcode it; P-256
+                // device keys must verify too (the workspace default curve).
+                let curve = keri_pk.curve();
                 let bytes = keri_pk.into_bytes().to_vec();
-                match DevicePublicKey::try_new(auths_crypto::CurveType::Ed25519, &bytes) {
+                match DevicePublicKey::try_new(curve, &bytes) {
                     Ok(dpk) => dpk,
                     Err(e) => {
                         return DeviceLinkVerification::failure(format!(
