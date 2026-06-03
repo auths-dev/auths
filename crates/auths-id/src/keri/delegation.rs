@@ -77,14 +77,87 @@ pub fn incept_delegated_device(
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
 ) -> Result<DelegatedDevice, InitError> {
-    // 1. Generate the device's own current + next keypair.
+    // Local add = build the device dip here (we generate the key) + anchor it +
+    // store the keys. The remote path (pairing) calls the two halves separately.
+    let bundle = build_device_dip(root_prefix, device_curve)?;
+    let device_did = bundle.device_did.clone();
+    let device_prefix = bundle.device_prefix.clone();
+
+    anchor_received_dip(
+        backend.as_ref(),
+        root_prefix,
+        root_alias,
+        root_curve,
+        &bundle.dip,
+        &bundle.attachment,
+        passphrase_provider,
+        keychain,
+    )?;
+
+    let pass = passphrase_provider
+        .get_passphrase(&format!("Create passphrase for device key '{}':", device_alias))?;
+    let enc_cur = encrypt_keypair(bundle.current_pkcs8.as_ref(), &pass)?;
+    keychain.store_key(device_alias, &device_did, KeyRole::Primary, &enc_cur)?;
+    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", device_alias));
+    let enc_next = encrypt_keypair(bundle.next_pkcs8.as_ref(), &pass)?;
+    keychain.store_key(&next_alias, &device_did, KeyRole::NextRotation, &enc_next)?;
+
+    Ok(DelegatedDevice {
+        device_did,
+        device_prefix,
+        device_alias: device_alias.clone(),
+    })
+}
+
+/// The joiner-side product of [`build_device_dip`]: a signed device `dip` plus the
+/// device's own keys, ready to be anchored by the root — locally (same host) or
+/// after transport (remote pairing). The dip names the root as delegator but is
+/// not yet on any KEL and not yet anchored.
+pub struct DeviceDipBundle {
+    /// The finalized, device-signed delegated-inception event.
+    pub dip: DipEvent,
+    /// CESR attachment carrying the device's signature over the dip.
+    pub attachment: Vec<u8>,
+    /// The device's KEL prefix (self-addressing — equals the dip SAID).
+    pub device_prefix: Prefix,
+    /// The device's `did:keri:`.
+    pub device_did: IdentityDID,
+    /// The device's current private key (PKCS#8 DER) — the joiner stores this.
+    pub current_pkcs8: Pkcs8Der,
+    /// The device's pre-committed next private key (PKCS#8 DER).
+    pub next_pkcs8: Pkcs8Der,
+    /// Curve of the device's keys.
+    pub device_curve: CurveType,
+}
+
+/// Build + sign a device's delegated-inception (`dip`) without touching any KEL.
+///
+/// This is the **joiner** half of delegation: the joining device generates its own
+/// key, builds a `dip` naming `root_prefix` as delegator, and self-signs it. The
+/// result is pure — no backend, no keychain — so it can be produced on a device
+/// that has no registry and transmitted to the root for anchoring (see
+/// [`anchor_received_dip`]). For same-host adds, [`incept_delegated_device`]
+/// composes this with `anchor_received_dip` directly.
+///
+/// Args:
+/// * `root_prefix`: The root identity's KEL prefix (becomes the dip's `di`).
+/// * `device_curve`: Curve for the new device key.
+///
+/// Usage:
+/// ```ignore
+/// let bundle = build_device_dip(&root_prefix, CurveType::Ed25519)?;
+/// // transmit bundle.dip + bundle.attachment to the root; store the keys locally
+/// ```
+pub fn build_device_dip(
+    root_prefix: &Prefix,
+    device_curve: CurveType,
+) -> Result<DeviceDipBundle, InitError> {
     let device_cur =
         generate_keypair_for_init(device_curve).map_err(|e| InitError::Crypto(e.to_string()))?;
     let device_next =
         generate_keypair_for_init(device_curve).map_err(|e| InitError::Crypto(e.to_string()))?;
     let device_next_commitment = compute_next_commitment(&device_next.verkey());
 
-    // 2. Build + finalize the dip (self-addressing prefix), delegated by the root.
     let dip = finalize_dip_event(DipEvent::new(DipEventInit {
         v: VersionString::placeholder(),
         d: Said::default(),
@@ -103,26 +176,75 @@ pub fn incept_delegated_device(
     .map_err(|e| InitError::Keri(e.to_string()))?;
 
     let device_prefix = dip.i.clone();
-    let dip_said = dip.d.clone();
-
-    // 3. Sign the dip with the device key; append it to the device KEL.
     let dip_canonical =
         serialize_for_signing(&Event::Dip(dip.clone())).map_err(|e| InitError::Keri(e.to_string()))?;
     let dip_sig = sign_with_pkcs8_for_init(device_curve, &device_cur.pkcs8, &dip_canonical)
         .map_err(|e| InitError::Crypto(e.to_string()))?;
-    let dip_attachment = serialize_attachment(&[IndexedSignature {
+    let attachment = serialize_attachment(&[IndexedSignature {
         index: 0,
         prior_index: None,
         sig: dip_sig,
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
+
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: device_prefix is from finalize_dip_event, a valid did:keri prefix.
+    let device_did = IdentityDID::new_unchecked(format!("did:keri:{}", device_prefix));
+
+    Ok(DeviceDipBundle {
+        dip,
+        attachment,
+        device_prefix,
+        device_did,
+        current_pkcs8: device_cur.pkcs8,
+        next_pkcs8: device_next.pkcs8,
+        device_curve,
+    })
+}
+
+/// Anchor a received device `dip` on the root's registry: append the (already
+/// device-signed) dip to the device KEL, then author the root's anchoring `ixn`.
+///
+/// This is the **initiator** half of delegation. The dip is taken as-is — its
+/// signature is the device's, validated by the backend on append — so this never
+/// needs the device's private key. The returned DID identifies the now-delegated
+/// device.
+///
+/// Args:
+/// * `backend`: Registry holding the root KEL; the dip is appended to the device KEL here.
+/// * `root_prefix`: The root identity's KEL prefix (the delegator).
+/// * `root_alias`: Keychain alias of the root's current signing key.
+/// * `root_curve`: Curve of the root's current key (for the anchoring signature).
+/// * `dip`: The device-signed delegated-inception event (from [`build_device_dip`]).
+/// * `dip_attachment`: The device's CESR signature attachment over the dip.
+/// * `passphrase_provider`: Passphrase source for the root key.
+/// * `keychain`: Key storage (the root's signing key).
+///
+/// Usage:
+/// ```ignore
+/// let device_did = anchor_received_dip(backend.as_ref(), &root_prefix, &root_alias,
+///     CurveType::Ed25519, &bundle.dip, &bundle.attachment, &provider, &keychain)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn anchor_received_dip(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    dip: &DipEvent,
+    dip_attachment: &[u8],
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<IdentityDID, InitError> {
+    let device_prefix = dip.i.clone();
+    let dip_said = dip.d.clone();
+
     backend
-        .append_signed_event(&device_prefix, &Event::Dip(dip), &dip_attachment)
+        .append_signed_event(&device_prefix, &Event::Dip(dip.clone()), dip_attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    // 4. Author the root's anchoring ixn (a KeyEvent seal for the dip).
     author_root_anchor_ixn(
-        backend.as_ref(),
+        backend,
         root_prefix,
         root_alias,
         root_curve,
@@ -135,23 +257,10 @@ pub fn incept_delegated_device(
         keychain,
     )?;
 
-    // 5. Persist the device's keys under its own alias (current + pre-committed next).
     #[allow(clippy::disallowed_methods)]
-    // INVARIANT: device_prefix is from finalize_dip_event, a valid did:keri prefix.
+    // INVARIANT: device_prefix is from a validated dip, a valid did:keri prefix.
     let device_did = IdentityDID::new_unchecked(format!("did:keri:{}", device_prefix));
-    let pass = passphrase_provider
-        .get_passphrase(&format!("Create passphrase for device key '{}':", device_alias))?;
-    let enc_cur = encrypt_keypair(device_cur.pkcs8.as_ref(), &pass)?;
-    keychain.store_key(device_alias, &device_did, KeyRole::Primary, &enc_cur)?;
-    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", device_alias));
-    let enc_next = encrypt_keypair(device_next.pkcs8.as_ref(), &pass)?;
-    keychain.store_key(&next_alias, &device_did, KeyRole::NextRotation, &enc_next)?;
-
-    Ok(DelegatedDevice {
-        device_did,
-        device_prefix,
-        device_alias: device_alias.clone(),
-    })
+    Ok(device_did)
 }
 
 /// Author an `ixn` on the root KEL anchoring the given seals, signed by the root's
