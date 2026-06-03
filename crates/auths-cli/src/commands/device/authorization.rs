@@ -70,8 +70,27 @@ pub enum DeviceSubcommand {
         include_revoked: bool,
     },
 
-    /// Authorize a new device to act on behalf of the identity.
-    #[command(visible_alias = "add")]
+    /// Add a device as a delegated identifier of the identity.
+    ///
+    /// The new device gets its own KERI KEL (a delegated inception) that the
+    /// root identity anchors — the keripy-native, device-bound way to grant a
+    /// device signing authority. (Use `link` for the legacy attestation flow.)
+    Add {
+        #[arg(long, help = "Your identity's signing key name.")]
+        key: String,
+
+        #[arg(long, help = "Keychain alias to store the new device's key under.")]
+        device_key: String,
+
+        #[arg(
+            long,
+            default_value = "p256",
+            help = "Curve for the new device key (p256 or ed25519)."
+        )]
+        curve: String,
+    },
+
+    /// Authorize a new device to act on behalf of the identity (legacy attestation).
     Link {
         #[arg(long, help = "Your identity's key name.")]
         key: String,
@@ -287,6 +306,25 @@ pub fn handle_device(
             display_link_result(&result, &device_did)
         }
 
+        DeviceSubcommand::Add {
+            key,
+            device_key,
+            curve,
+        } => {
+            let curve = parse_curve(&curve)?;
+            let ctx = build_auths_context(
+                &repo_path,
+                env_config,
+                Some(Arc::clone(&passphrase_provider)),
+            )?;
+            let root_alias = KeyAlias::new_unchecked(key);
+            let device_alias = KeyAlias::new_unchecked(device_key);
+            let result =
+                auths_sdk::domains::device::add_device(&ctx, &root_alias, &device_alias, curve)
+                    .map_err(anyhow::Error::new)?;
+            display_add_result(&result.device_did, &repo_path)
+        }
+
         DeviceSubcommand::Remove { device_did, key } => {
             // Remove = revoke the device's KERI delegation: the root anchors a
             // revocation marker so verifiers stop honouring the device. Single-
@@ -403,6 +441,29 @@ fn display_dry_run_revoke(device_did: &str, identity_key_alias: &str) -> Result<
         out.println("  3. Store revocation in Git repository");
         Ok(())
     }
+}
+
+fn parse_curve(s: &str) -> Result<auths_crypto::CurveType> {
+    match s.to_ascii_lowercase().as_str() {
+        "p256" | "p-256" => Ok(auths_crypto::CurveType::P256),
+        "ed25519" => Ok(auths_crypto::CurveType::Ed25519),
+        other => Err(anyhow::anyhow!(
+            "unknown curve {:?}: expected p256 or ed25519",
+            other
+        )),
+    }
+}
+
+fn display_add_result(device_did: &str, repo_path: &Path) -> Result<()> {
+    let identity_storage = RegistryIdentityStorage::new(repo_path.to_path_buf());
+    let identity: ManagedIdentity = identity_storage
+        .load_identity()
+        .context("Failed to load identity")?;
+    println!(
+        "\n✅ Delegated device {} added to identity {}",
+        device_did, identity.controller_did
+    );
+    Ok(())
 }
 
 fn display_revoke_result(device_did: &str, repo_path: &Path) -> Result<()> {
