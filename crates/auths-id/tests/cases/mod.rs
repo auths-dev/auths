@@ -9,3 +9,4 @@ mod registry_contract;
 mod rotation_edge_cases;
 mod serialization_pinning;
 mod shared_kel_removal;
+mod witness_convergence;
