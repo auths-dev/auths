@@ -20,7 +20,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::witness::SignedReceipt;
+use crate::witness::StoredReceipt;
+use crate::witness::agreement::{AgreementStatus, WitnessAgreement};
 use crate::{CesrKey, KeyState};
 
 /// Current KSN schema version.
@@ -133,10 +134,13 @@ pub struct SignedKsn {
     /// JSON.
     #[serde(with = "hex::serde")]
     pub signature: Vec<u8>,
-    /// Reserved for Epic D witness receipts. NOT covered by the controller
-    /// signature; empty (and omitted) in v1 (trust-on-first-sight).
+    /// Witness receipts over the noticed establishment event (Epic D), each
+    /// carrying its **witness AID** ([`StoredReceipt`]). NOT covered by the
+    /// controller signature — witnesses receipt the signed notice after the fact,
+    /// so populating this slot never invalidates the controller signature. Empty
+    /// (and omitted) leaves the verdict at trust-on-first-sight.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub receipts: Vec<SignedReceipt>,
+    pub receipts: Vec<StoredReceipt>,
 }
 
 impl SignedKsn {
@@ -170,6 +174,37 @@ impl SignedKsn {
         })
     }
 
+    /// Attach witness receipts to a signed notice, admitting only those that are
+    /// cryptographically valid for *this* notice.
+    ///
+    /// A candidate is kept only if it (a) receipts the noticed establishment event
+    /// (`state.last_event_said`), (b) is from a witness in `state.backers`, and
+    /// (c) carries a signature that verifies against that witness's pinned key.
+    /// The slot is outside the controller-signed bytes, so attaching never
+    /// invalidates the controller signature.
+    ///
+    /// Args:
+    /// * `candidates`: Collected receipts to vet and attach.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let published = signed.with_receipts(collected);
+    /// ```
+    pub fn with_receipts(mut self, candidates: Vec<StoredReceipt>) -> Self {
+        let state = &self.notice.state;
+        let said = state.last_event_said.clone();
+        let valid: Vec<StoredReceipt> = candidates
+            .into_iter()
+            .filter(|r| {
+                r.signed.receipt.d == said
+                    && state.backers.iter().any(|b| b == &r.witness)
+                    && receipt_signature_valid(r)
+            })
+            .collect();
+        self.receipts = valid;
+        self
+    }
+
     /// Verify a KSN and return its (trust-on-first-sight) verdict.
     ///
     /// The full forgery-rejection checklist:
@@ -195,8 +230,52 @@ impl SignedKsn {
             .map_err(|_| KsnError::BadSignature)?;
         Ok(VerifiedKsn {
             state: self.notice.state.clone(),
-            trust: KsnTrust::TrustOnFirstSight,
+            trust: self.witness_trust(),
         })
+    }
+
+    /// The witness-quorum trust upgrade over the slot's receipts.
+    ///
+    /// Runs KAWA ([`WitnessAgreement`]) over the receipts that attest the noticed
+    /// establishment event (`state.last_event_said`) from witnesses in
+    /// `state.backers`, deduped by witness AID. M-of-N (`state.backer_threshold`)
+    /// met → [`KsnTrust::Witnessed`]; otherwise [`KsnTrust::TrustOnFirstSight`].
+    /// A `bt=0` / backerless KSN stays trust-on-first-sight.
+    fn witness_trust(&self) -> KsnTrust {
+        let state = &self.notice.state;
+        let required = state.backer_threshold.simple_value().unwrap_or(0) as usize;
+        if state.backers.is_empty() || required == 0 {
+            return KsnTrust::TrustOnFirstSight;
+        }
+
+        let said = &state.last_event_said;
+        let sn = state.sequence as u64;
+        let agreement = WitnessAgreement::new(1);
+        agreement.submit_event(
+            &state.prefix,
+            sn,
+            said,
+            &state.backer_threshold,
+            &state.backers,
+        );
+
+        let mut distinct = std::collections::HashSet::new();
+        for r in &self.receipts {
+            // Only correct-SAID, designated-witness receipts count toward quorum;
+            // KAWA additionally dedupes and ignores non-designated witnesses.
+            if &r.signed.receipt.d == said && state.backers.iter().any(|b| b == &r.witness) {
+                agreement.add_receipt(&state.prefix, sn, said, r.witness.as_str());
+                distinct.insert(r.witness.as_str());
+            }
+        }
+
+        match agreement.status(&state.prefix, sn, said) {
+            AgreementStatus::Accepted => KsnTrust::Witnessed {
+                receipts: distinct.len(),
+                threshold: required,
+            },
+            AgreementStatus::Pending { .. } => KsnTrust::TrustOnFirstSight,
+        }
     }
 
     /// Monotonicity guard: reject a notice older than a previously-trusted
@@ -216,6 +295,19 @@ impl SignedKsn {
     }
 }
 
+/// Verify a stored receipt's detached signature against its pinned witness key
+/// (curve-correct via the AID's CESR tag). Reused by attach-time vetting.
+fn receipt_signature_valid(stored: &StoredReceipt) -> bool {
+    let Ok(key) = crate::KeriPublicKey::parse(stored.witness.as_str()) else {
+        return false;
+    };
+    let Ok(payload) = serde_json::to_vec(&stored.signed.receipt) else {
+        return false;
+    };
+    key.verify_signature(&payload, &stored.signed.signature)
+        .is_ok()
+}
+
 /// The trust level a verified KSN confers.
 ///
 /// Under `kt=1` with no witnesses, a controller-signed KSN is only
@@ -228,6 +320,17 @@ pub enum KsnTrust {
     /// current asserts this state" — circular under `kt=1`. A latency
     /// optimization, never a trust upgrade.
     TrustOnFirstSight,
+    /// Controller-signed **and** witness-receipted: M-of-N designated witnesses
+    /// (`state.backers`/`backer_threshold`) receipted the noticed establishment
+    /// event. No longer trust-on-first-sight — but still never authoritative over
+    /// a resolvable KEL, and a delegated-device KSN still cannot prove
+    /// non-revocation (a root-KEL fact). See [`VerifiedKsn`].
+    Witnessed {
+        /// Distinct, designated, correct-SAID witness receipts counted.
+        receipts: usize,
+        /// The required backer threshold (`bt`).
+        threshold: usize,
+    },
 }
 
 /// A verified Key-State Notice and the trust it confers.
@@ -241,15 +344,18 @@ pub struct VerifiedKsn {
 
 impl VerifiedKsn {
     /// Whether this KSN may be trusted **over** a resolvable full KEL. Always
-    /// `false`: when the KEL is available, replay it — a KSN is only a shortcut
-    /// for clients that cannot.
+    /// `false`, even when [`KsnTrust::Witnessed`]: when the KEL is available,
+    /// replay it — a KSN (witnessed or not) is only a shortcut for clients that
+    /// cannot. Witnessing changes the trust level consumers gate on, not this
+    /// invariant.
     pub fn is_authoritative_over_kel(&self) -> bool {
         false
     }
 
-    /// Whether this KSN may satisfy a revocation check. Always `false` in v1:
-    /// revocation is anchored in the root KEL, not a device's self-asserted
-    /// key-state, and a TOFU notice cannot prove non-revocation.
+    /// Whether this KSN may satisfy a revocation check. Always `false`, even when
+    /// [`KsnTrust::Witnessed`]: revocation is anchored in the root KEL as an
+    /// `ixn` fact, not a device's self-asserted key-state, and witness receipts
+    /// attest the *establishment event*, not non-revocation.
     pub fn satisfies_revocation_check(&self) -> bool {
         false
     }
@@ -413,5 +519,183 @@ mod tests {
         ));
         assert!(signed.check_not_stale(2).is_ok());
         assert!(signed.check_not_stale(1).is_ok());
+    }
+
+    // ── D.13: KSN witness-hardening ──────────────────────────────────────────
+
+    use crate::witness::{Receipt, ReceiptTag, SignedReceipt};
+    use crate::{KeriSequence, VersionString};
+
+    /// A witness keypair and its CESR AID (`D…`).
+    fn witness_kp_and_aid() -> (Ed25519KeyPair, String) {
+        let kp = real_keypair();
+        let aid = KeriPublicKey::ed25519(kp.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
+        (kp, aid)
+    }
+
+    /// A stored receipt by `witness_kp` (AID `witness_aid`) over `(controller, seq, event_said)`.
+    fn witness_receipt(
+        witness_kp: &Ed25519KeyPair,
+        witness_aid: &str,
+        controller: &str,
+        seq: u128,
+        event_said: &str,
+    ) -> StoredReceipt {
+        let receipt = Receipt {
+            v: VersionString::placeholder(),
+            t: ReceiptTag,
+            d: Said::new_unchecked(event_said.to_string()),
+            i: Prefix::new_unchecked(controller.to_string()),
+            s: KeriSequence::new(seq),
+        };
+        let payload = serde_json::to_vec(&receipt).unwrap();
+        let signature = witness_kp.sign(&payload).as_ref().to_vec();
+        StoredReceipt {
+            signed: SignedReceipt { receipt, signature },
+            witness: Prefix::new_unchecked(witness_aid.to_string()),
+        }
+    }
+
+    /// A controller key-state at `seq` designating `backers` with threshold `bt`.
+    fn witnessed_state(
+        controller_kp: &Ed25519KeyPair,
+        seq: u128,
+        backers: &[&str],
+        bt: u64,
+        delegated: bool,
+    ) -> KeyState {
+        let mut state = state_for_key(controller_kp, seq);
+        state.backers = backers
+            .iter()
+            .map(|a| Prefix::new_unchecked(a.to_string()))
+            .collect();
+        state.backer_threshold = Threshold::Simple(bt);
+        if delegated {
+            state.delegator = Some(Prefix::new_unchecked(
+                "ERootDelegator00000000000000000000000000000".to_string(),
+            ));
+        }
+        state
+    }
+
+    #[test]
+    fn ksn_witnessed_when_quorum_met() {
+        let ckp = real_keypair();
+        let (w1kp, w1) = witness_kp_and_aid();
+        let (w2kp, w2) = witness_kp_and_aid();
+        let state = witnessed_state(&ckp, 1, &[&w1, &w2], 2, false);
+        let controller = state.prefix.as_str().to_string();
+        let said = state.last_event_said.as_str().to_string();
+        let signed = sign_ksn(&ckp, KeyStateNotice::new(state, "t")).with_receipts(vec![
+            witness_receipt(&w1kp, &w1, &controller, 1, &said),
+            witness_receipt(&w2kp, &w2, &controller, 1, &said),
+        ]);
+        assert_eq!(
+            signed.verify().unwrap().trust,
+            KsnTrust::Witnessed {
+                receipts: 2,
+                threshold: 2
+            }
+        );
+    }
+
+    #[test]
+    fn ksn_stays_tofu_under_quorum() {
+        let ckp = real_keypair();
+        let (w1kp, w1) = witness_kp_and_aid();
+        let (_w2kp, w2) = witness_kp_and_aid();
+        let state = witnessed_state(&ckp, 1, &[&w1, &w2], 2, false);
+        let controller = state.prefix.as_str().to_string();
+        let said = state.last_event_said.as_str().to_string();
+        let signed = sign_ksn(&ckp, KeyStateNotice::new(state, "t"))
+            .with_receipts(vec![witness_receipt(&w1kp, &w1, &controller, 1, &said)]);
+        assert_eq!(signed.verify().unwrap().trust, KsnTrust::TrustOnFirstSight);
+    }
+
+    #[test]
+    fn ksn_ignores_duplicate_witness_receipts() {
+        let ckp = real_keypair();
+        let (w1kp, w1) = witness_kp_and_aid();
+        let (_w2kp, w2) = witness_kp_and_aid();
+        let (_w3kp, w3) = witness_kp_and_aid();
+        let state = witnessed_state(&ckp, 1, &[&w1, &w2, &w3], 2, false);
+        let controller = state.prefix.as_str().to_string();
+        let said = state.last_event_said.as_str().to_string();
+        // The same witness twice must not satisfy a threshold of 2.
+        let signed = sign_ksn(&ckp, KeyStateNotice::new(state, "t")).with_receipts(vec![
+            witness_receipt(&w1kp, &w1, &controller, 1, &said),
+            witness_receipt(&w1kp, &w1, &controller, 1, &said),
+        ]);
+        assert_eq!(signed.verify().unwrap().trust, KsnTrust::TrustOnFirstSight);
+    }
+
+    #[test]
+    fn ksn_ignores_receipt_for_wrong_said() {
+        let ckp = real_keypair();
+        let (w1kp, w1) = witness_kp_and_aid();
+        let (w2kp, w2) = witness_kp_and_aid();
+        let state = witnessed_state(&ckp, 1, &[&w1, &w2], 2, false);
+        let controller = state.prefix.as_str().to_string();
+        // Receipts for a different event SAID must not count — set directly to
+        // exercise verify()'s own filtering (not just attach-time vetting).
+        let mut signed = sign_ksn(&ckp, KeyStateNotice::new(state, "t"));
+        let wrong = "EWrongEventSaid0000000000000000000000000000";
+        signed.receipts = vec![
+            witness_receipt(&w1kp, &w1, &controller, 1, wrong),
+            witness_receipt(&w2kp, &w2, &controller, 1, wrong),
+        ];
+        assert_eq!(signed.verify().unwrap().trust, KsnTrust::TrustOnFirstSight);
+    }
+
+    #[test]
+    fn ksn_bt_zero_stays_tofu() {
+        // A backerless (bt=0) KSN has no witnesses to satisfy.
+        let ckp = real_keypair();
+        let signed = sign_ksn(&ckp, KeyStateNotice::new(state_for_key(&ckp, 1), "t"));
+        assert_eq!(signed.verify().unwrap().trust, KsnTrust::TrustOnFirstSight);
+    }
+
+    #[test]
+    fn witnessed_device_ksn_still_refuses_revocation() {
+        let ckp = real_keypair();
+        let (w1kp, w1) = witness_kp_and_aid();
+        let (w2kp, w2) = witness_kp_and_aid();
+        let state = witnessed_state(&ckp, 1, &[&w1, &w2], 2, true); // delegated device
+        let controller = state.prefix.as_str().to_string();
+        let said = state.last_event_said.as_str().to_string();
+        let signed = sign_ksn(&ckp, KeyStateNotice::new(state, "t")).with_receipts(vec![
+            witness_receipt(&w1kp, &w1, &controller, 1, &said),
+            witness_receipt(&w2kp, &w2, &controller, 1, &said),
+        ]);
+        let v = signed.verify().unwrap();
+        assert!(matches!(v.trust, KsnTrust::Witnessed { .. }));
+        // Witnessed, but a device KSN still cannot prove non-revocation or override the KEL.
+        assert!(!v.satisfies_revocation_check());
+        assert!(!v.is_authoritative_over_kel());
+    }
+
+    #[test]
+    fn populating_receipts_preserves_controller_signature() {
+        let ckp = real_keypair();
+        let (w1kp, w1) = witness_kp_and_aid();
+        let (w2kp, w2) = witness_kp_and_aid();
+        let state = witnessed_state(&ckp, 1, &[&w1, &w2], 2, false);
+        let controller = state.prefix.as_str().to_string();
+        let said = state.last_event_said.as_str().to_string();
+        let signed = sign_ksn(&ckp, KeyStateNotice::new(state, "t"));
+        assert!(signed.verify().is_ok()); // controller sig valid before receipts
+
+        let published = signed.with_receipts(vec![
+            witness_receipt(&w1kp, &w1, &controller, 1, &said),
+            witness_receipt(&w2kp, &w2, &controller, 1, &said),
+        ]);
+        // Attaching receipts (outside canonical_bytes) does not break the controller signature.
+        let v = published
+            .verify()
+            .expect("controller signature must still verify after attaching receipts");
+        assert!(matches!(v.trust, KsnTrust::Witnessed { .. }));
     }
 }
