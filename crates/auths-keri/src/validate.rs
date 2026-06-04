@@ -10,6 +10,8 @@ use crate::keys::KeriPublicKey;
 use crate::said::compute_said;
 use crate::state::KeyState;
 use crate::types::{CesrKey, ConfigTrait, Prefix, Said, Threshold};
+use crate::witness::WitnessReceiptLookup;
+use crate::witness::agreement::{AgreementStatus, WitnessAgreement};
 
 /// Errors specific to KEL validation.
 ///
@@ -348,6 +350,86 @@ pub fn validate_kel_with_lookup(
     events: &[Event],
     lookup: Option<&dyn DelegatorKelLookup>,
 ) -> Result<KeyState, ValidationError> {
+    match replay_kel_gated(events, lookup, None)? {
+        WitnessedReplay::Accepted(state) => Ok(state),
+        // With no receipt lookup the gate never runs, so `Pending` is
+        // unreachable; returning the structural state preserves the
+        // no-receipt contract (advance regardless of receipts).
+        WitnessedReplay::Pending { state, .. } => Ok(state),
+    }
+}
+
+/// The outcome of replaying a KEL through the witness-receipt gate.
+///
+/// Unlike [`validate_kel`] (structural only), [`validate_kel_with_receipts`]
+/// will not silently advance past an establishment event that lacks M-of-N
+/// witness agreement — it reports [`WitnessedReplay::Pending`] so the caller
+/// (verifier policy, D.7) can warn or refuse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WitnessedReplay {
+    /// Every `bt>0` establishment event reached witness quorum; the key-state
+    /// is witness-authoritative.
+    Accepted(KeyState),
+    /// The KEL is structurally valid, but the establishment event at `sequence`
+    /// did not reach quorum. `state` is the structural replay through that event;
+    /// the caller must not treat key-state at or after `sequence` as
+    /// witness-authoritative.
+    Pending {
+        /// Structural replay result through the under-quorum event.
+        state: KeyState,
+        /// Sequence of the first under-quorum establishment event.
+        sequence: u128,
+        /// SAID of that event.
+        said: Said,
+        /// The backer threshold that was required.
+        required: Threshold,
+        /// Distinct, in-force witness receipts collected for it.
+        collected: usize,
+    },
+}
+
+/// Validate a KEL and gate each establishment event on M-of-N witness receipts.
+///
+/// Extends [`validate_kel_with_lookup`] with receipt-gated replay: a `bt>0`
+/// establishment event advances `KeyState` only when KAWA
+/// ([`WitnessAgreement`](crate::witness::agreement::WitnessAgreement)) reports
+/// agreement over receipts from **distinct** witnesses in the `b[]` set **in
+/// force at that sequence**. `bt=0` events accept without receipts (the
+/// zero-witness path). Receipts are matched by `(controller, sn, said)` via
+/// `receipt_lookup` and deduped by witness AID; a receipt from a non-designated
+/// witness never counts.
+///
+/// Args:
+/// * `events`: The ordered KEL to replay.
+/// * `delegator_lookup`: Cross-KEL seal lookup for delegated events (`dip`/`drt`).
+/// * `receipt_lookup`: Source of witness receipts per event.
+///
+/// Usage:
+/// ```ignore
+/// match validate_kel_with_receipts(&events, None, &receipts)? {
+///     WitnessedReplay::Accepted(state) => trust(state),
+///     WitnessedReplay::Pending { sequence, .. } => warn_or_refuse(sequence),
+/// }
+/// ```
+pub fn validate_kel_with_receipts(
+    events: &[Event],
+    delegator_lookup: Option<&dyn DelegatorKelLookup>,
+    receipt_lookup: &dyn WitnessReceiptLookup,
+) -> Result<WitnessedReplay, ValidationError> {
+    replay_kel_gated(events, delegator_lookup, Some(receipt_lookup))
+}
+
+/// Shared structural replay with an optional witness-receipt gate.
+///
+/// With `receipt_lookup = None` this is pure structural replay (the
+/// [`validate_kel`] contract). With `Some(_)` each establishment event is gated
+/// on witness quorum; the first under-quorum event short-circuits to
+/// [`WitnessedReplay::Pending`].
+fn replay_kel_gated(
+    events: &[Event],
+    lookup: Option<&dyn DelegatorKelLookup>,
+    receipt_lookup: Option<&dyn WitnessReceiptLookup>,
+) -> Result<WitnessedReplay, ValidationError> {
     if events.is_empty() {
         return Err(ValidationError::EmptyKel);
     }
@@ -366,6 +448,15 @@ pub fn validate_kel_with_lookup(
         ),
         _ => return Err(ValidationError::NotInception),
     };
+
+    let controller = state.prefix.clone();
+
+    // Gate the inception establishment event on witness quorum.
+    if let Some(rl) = receipt_lookup
+        && let Some(pending) = gate_establishment(&controller, &state, 0, events[0].said(), rl)
+    {
+        return Ok(pending);
+    }
 
     // Non-transferable identities (inception n is empty) cannot have subsequent events
     if inception_n_is_empty && events.len() > 1 {
@@ -401,9 +492,56 @@ pub fn validate_kel_with_lookup(
                 validate_delegated_rotation(drt, expected_seq, &mut state, lookup)?;
             }
         }
+
+        // Gate establishment events (rot/drt) on witness quorum; ixn never gates.
+        if let Some(rl) = receipt_lookup
+            && matches!(event, Event::Rot(_) | Event::Drt(_))
+            && let Some(pending) =
+                gate_establishment(&controller, &state, expected_seq, event.said(), rl)
+        {
+            return Ok(pending);
+        }
     }
 
-    Ok(state)
+    Ok(WitnessedReplay::Accepted(state))
+}
+
+/// Gate one establishment event on M-of-N witness agreement.
+///
+/// Returns `Some(WitnessedReplay::Pending)` when the in-force backer threshold
+/// is not met by distinct designated-witness receipts, or `None` when the event
+/// is witness-accepted (including the `bt=0` zero-witness path). KAWA does the
+/// M-of-N math and the AID dedupe / non-designated-witness filtering.
+fn gate_establishment(
+    controller: &Prefix,
+    state: &KeyState,
+    sequence: u128,
+    event_said: &Said,
+    receipt_lookup: &dyn WitnessReceiptLookup,
+) -> Option<WitnessedReplay> {
+    let sn = sequence as u64;
+    let agreement = WitnessAgreement::new(1);
+    agreement.submit_event(
+        controller,
+        sn,
+        event_said,
+        &state.backer_threshold,
+        &state.backers,
+    );
+    for receipt in receipt_lookup.receipts_for(controller, KeriSequence::new(sequence), event_said)
+    {
+        agreement.add_receipt(controller, sn, event_said, receipt.witness.as_str());
+    }
+    match agreement.status(controller, sn, event_said) {
+        AgreementStatus::Accepted => None,
+        AgreementStatus::Pending { collected } => Some(WitnessedReplay::Pending {
+            state: state.clone(),
+            sequence,
+            said: event_said.clone(),
+            required: state.backer_threshold.clone(),
+            collected,
+        }),
+    }
 }
 
 fn validate_backer_uniqueness(backers: &[Prefix]) -> Result<(), ValidationError> {
@@ -1854,6 +1992,183 @@ mod tests {
         // Empty c[] inherits the role -> ok even though the backer survives.
         let inherit = make_rot(vec![], vec![], vec![]);
         assert!(validate_rotation(&inherit, 1, &mut nrb_state()).is_ok());
+    }
+
+    // ── D.6: receipt-gated replay ────────────────────────────────────────────
+
+    use crate::witness::WitnessReceipt;
+
+    /// Said-keyed witness-receipt source for replay-gate tests.
+    struct MapReceipts {
+        by_said: std::collections::HashMap<String, Vec<WitnessReceipt>>,
+    }
+
+    impl WitnessReceiptLookup for MapReceipts {
+        fn receipts_for(
+            &self,
+            _controller: &Prefix,
+            _sn: KeriSequence,
+            said: &Said,
+        ) -> Vec<WitnessReceipt> {
+            self.by_said.get(said.as_str()).cloned().unwrap_or_default()
+        }
+    }
+
+    fn witness_aid(aid: &str) -> Prefix {
+        Prefix::new_unchecked(aid.to_string())
+    }
+
+    fn receipt_from(aid: &str) -> WitnessReceipt {
+        WitnessReceipt {
+            witness: witness_aid(aid),
+            signature: vec![],
+        }
+    }
+
+    fn receipts_under(said: &Said, aids: &[&str]) -> MapReceipts {
+        let mut by_said = std::collections::HashMap::new();
+        by_said.insert(
+            said.as_str().to_string(),
+            aids.iter().map(|a| receipt_from(a)).collect(),
+        );
+        MapReceipts { by_said }
+    }
+
+    /// A finalized inception designating `aids` as backers with threshold `bt`.
+    fn icp_with_backers(aids: &[&str], bt: u64) -> IcpEvent {
+        let backers: Vec<Prefix> = aids.iter().map(|a| witness_aid(a)).collect();
+        let (icp, _kp) = make_custom_signed_icp(|icp| {
+            icp.b = backers.clone();
+            icp.bt = Threshold::Simple(bt);
+        });
+        icp
+    }
+
+    #[test]
+    fn replay_bt_zero_accepts_without_receipts() {
+        let (icp, _kp) = make_signed_icp(); // bt=0, b=[]
+        let events = vec![Event::Icp(icp)];
+        let lookup = MapReceipts {
+            by_said: std::collections::HashMap::new(),
+        };
+        let outcome = validate_kel_with_receipts(&events, None, &lookup).unwrap();
+        assert!(matches!(outcome, WitnessedReplay::Accepted(_)));
+    }
+
+    #[test]
+    fn replay_at_quorum_accepts() {
+        let icp = icp_with_backers(&["BWit1", "BWit2"], 2);
+        let said = icp.d.clone();
+        let lookup = receipts_under(&said, &["BWit1", "BWit2"]);
+        let events = vec![Event::Icp(icp)];
+        let outcome = validate_kel_with_receipts(&events, None, &lookup).unwrap();
+        assert!(matches!(outcome, WitnessedReplay::Accepted(_)));
+    }
+
+    #[test]
+    fn replay_under_quorum_is_pending() {
+        let icp = icp_with_backers(&["BWit1", "BWit2"], 2);
+        let said = icp.d.clone();
+        let lookup = receipts_under(&said, &["BWit1"]); // only 1 of 2 required
+        let events = vec![Event::Icp(icp)];
+        match validate_kel_with_receipts(&events, None, &lookup).unwrap() {
+            WitnessedReplay::Pending {
+                sequence,
+                collected,
+                ..
+            } => {
+                assert_eq!(sequence, 0);
+                assert_eq!(collected, 1);
+            }
+            WitnessedReplay::Accepted(_) => panic!("expected Pending under quorum"),
+        }
+    }
+
+    #[test]
+    fn replay_ignores_duplicate_witness_receipts() {
+        let icp = icp_with_backers(&["BWit1", "BWit2", "BWit3"], 2);
+        let said = icp.d.clone();
+        let lookup = receipts_under(&said, &["BWit1", "BWit1"]); // same witness twice
+        let events = vec![Event::Icp(icp)];
+        assert!(matches!(
+            validate_kel_with_receipts(&events, None, &lookup).unwrap(),
+            WitnessedReplay::Pending { .. }
+        ));
+    }
+
+    #[test]
+    fn replay_ignores_receipt_for_wrong_said() {
+        let icp = icp_with_backers(&["BWit1", "BWit2"], 2);
+        // Receipts stored under a different event SAID must never satisfy this event.
+        let wrong = Said::new_unchecked("EWrongEventSaid".to_string());
+        let lookup = receipts_under(&wrong, &["BWit1", "BWit2"]);
+        let events = vec![Event::Icp(icp)];
+        match validate_kel_with_receipts(&events, None, &lookup).unwrap() {
+            WitnessedReplay::Pending { collected, .. } => assert_eq!(collected, 0),
+            WitnessedReplay::Accepted(_) => panic!("wrong-SAID receipts must not count"),
+        }
+    }
+
+    #[test]
+    fn replay_uses_witness_set_in_force_at_seq() {
+        // icp designates {BWit1} bt=1; rot at seq 1 cuts BWit1, adds BWit2, bt=1.
+        // The seq-1 gate must use the post-rotation set {BWit2}.
+        let kp2 = gen_keypair();
+        let kp3 = gen_keypair();
+        let commitment2 = crate::crypto::compute_next_commitment(
+            &crate::keys::KeriPublicKey::ed25519(kp2.public_key().as_ref()).unwrap(),
+        );
+        let commitment3 = crate::crypto::compute_next_commitment(
+            &crate::keys::KeriPublicKey::ed25519(kp3.public_key().as_ref()).unwrap(),
+        );
+        let (icp, _kp1) = make_custom_signed_icp(|icp| {
+            icp.b = vec![witness_aid("BWit1")];
+            icp.bt = Threshold::Simple(1);
+            icp.n = vec![commitment2.clone()];
+        });
+        let prefix = icp.i.clone();
+        let icp_said = icp.d.clone();
+
+        let mut rot = RotEvent {
+            v: VersionString::placeholder(),
+            d: Said::default(),
+            i: prefix.clone(),
+            s: KeriSequence::new(1),
+            p: icp_said.clone(),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(encode_pubkey(&kp2))],
+            nt: Threshold::Simple(1),
+            n: vec![commitment3.clone()],
+            bt: Threshold::Simple(1),
+            br: vec![witness_aid("BWit1")],
+            ba: vec![witness_aid("BWit2")],
+            c: vec![],
+            a: vec![],
+        };
+        let val = serde_json::to_value(Event::Rot(rot.clone())).unwrap();
+        rot.d = compute_said(&val).unwrap();
+        let rot_said = rot.d.clone();
+
+        let mut by_said = std::collections::HashMap::new();
+        by_said.insert(icp_said.as_str().to_string(), vec![receipt_from("BWit1")]);
+        by_said.insert(rot_said.as_str().to_string(), vec![receipt_from("BWit2")]);
+        let lookup = MapReceipts { by_said };
+
+        let events = vec![Event::Icp(icp), Event::Rot(rot)];
+        // BWit2 is only in the post-rotation set; acceptance proves the in-force
+        // set (not the stale {BWit1}) gated the rotation.
+        assert!(matches!(
+            validate_kel_with_receipts(&events, None, &lookup).unwrap(),
+            WitnessedReplay::Accepted(_)
+        ));
+    }
+
+    #[test]
+    fn validate_kel_advances_without_receipt_gate() {
+        // Back-compat: plain validate_kel ignores receipts and advances a bt>0 KEL.
+        let icp = icp_with_backers(&["BWit1", "BWit2"], 2);
+        let events = vec![Event::Icp(icp)];
+        assert!(validate_kel(&events).is_ok());
     }
 }
 
