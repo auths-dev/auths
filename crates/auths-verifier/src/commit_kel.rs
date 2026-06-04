@@ -8,9 +8,10 @@
 //! distinguishable [`CommitVerdict`], never a bare "invalid signature".
 
 use auths_crypto::CryptoProvider;
+use auths_keri::witness::{NoWitnessReceipts, WitnessReceiptLookup};
 use auths_keri::{
     CesrKey, DelegatorKelLookup, Event, KeriPublicKey, KeriSequence, Prefix, Said, Seal,
-    validate_delegation, validate_kel, validate_kel_with_lookup,
+    WitnessedReplay, validate_delegation, validate_kel_with_lookup, validate_kel_with_receipts,
 };
 
 use crate::commit::{extract_ssh_signature, verify_commit_signature};
@@ -62,6 +63,55 @@ pub enum CommitVerdict {
     SignerKeyMismatch,
     /// The SSH signer key is a *superseded* device key (the device rotated since signing).
     SignedBySupersededKey,
+    /// Under `--require-witnesses`, the signer's root KEL did not reach M-of-N
+    /// witness quorum for an establishment event (fail-closed).
+    WitnessQuorumNotMet {
+        /// The root `did:keri:` whose KEL is under-quorum.
+        root_did: String,
+        /// Distinct valid witness receipts collected.
+        collected: usize,
+        /// Receipts required by the in-force backer threshold.
+        required: usize,
+    },
+}
+
+/// Verifier-side witness policy — independent of the signer's own `WitnessPolicy`.
+///
+/// A verifier cannot trust the signer's self-declared policy (it lives in the
+/// signer's config), so it sets its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VerifierWitnessPolicy {
+    /// Under-quorum signer key-state is a non-fatal warning (preserves the
+    /// Stage-1 trust-on-first-sight caveat during rollout). The default.
+    #[default]
+    Warn,
+    /// Under-quorum signer key-state fails verification (fail-closed).
+    RequireWitnesses,
+}
+
+/// Witness-quorum status of a verified signer KEL, surfaced for CLI display (D.9).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WitnessGateStatus {
+    /// The signer KEL designates no witnesses (`bt=0`); none required.
+    NotRequired,
+    /// Witness quorum was met.
+    Met,
+    /// Quorum was not met but accepted anyway under [`VerifierWitnessPolicy::Warn`].
+    UnderQuorum {
+        /// Distinct valid receipts collected.
+        collected: usize,
+        /// Receipts required by the in-force backer threshold.
+        required: usize,
+    },
+}
+
+/// A commit verdict paired with the signer KEL's witness-quorum status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WitnessedVerdict {
+    /// The commit authorization verdict.
+    pub verdict: CommitVerdict,
+    /// Witness-quorum status of the signer's (root) KEL.
+    pub witness: WitnessGateStatus,
 }
 
 impl CommitVerdict {
@@ -151,11 +201,126 @@ pub async fn verify_commit_against_kel(
     pinned_roots: &[String],
     provider: &dyn CryptoProvider,
 ) -> CommitVerdict {
-    // 1. Replay the root KEL (validates SAIDs incl. the self-addressing icp prefix).
-    let root_state = match validate_kel(root_kel) {
-        Ok(s) => s,
-        Err(e) => return CommitVerdict::RootKelInvalid(e.to_string()),
+    verify_commit_against_kel_witnessed(
+        commit_bytes,
+        device_kel,
+        root_kel,
+        pinned_roots,
+        provider,
+        &NoWitnessReceipts,
+        VerifierWitnessPolicy::Warn,
+    )
+    .await
+    .verdict
+}
+
+/// Verify a commit and gate the signer's root KEL on M-of-N witness receipts.
+///
+/// Like [`verify_commit_against_kel`] but resolves the root KEL's witness
+/// receipts through `receipt_lookup` and applies a verifier-side `policy`:
+/// under [`VerifierWitnessPolicy::Warn`] an under-quorum root is a non-fatal
+/// [`WitnessGateStatus::UnderQuorum`]; under
+/// [`VerifierWitnessPolicy::RequireWitnesses`] it is a fatal
+/// [`CommitVerdict::WitnessQuorumNotMet`]. A `bt=0` root verifies unchanged.
+///
+/// Args:
+/// * `commit_bytes`: The raw git commit object.
+/// * `device_kel`: The signer device's KEL events.
+/// * `root_kel`: The root (delegator) KEL events.
+/// * `pinned_roots`: Trusted root `did:keri:` strings.
+/// * `provider`: Crypto provider for signature verification.
+/// * `receipt_lookup`: Source of the root KEL's witness receipts.
+/// * `policy`: The verifier's witness policy (independent of the signer's).
+///
+/// Usage:
+/// ```ignore
+/// let wv = verify_commit_against_kel_witnessed(c, &dk, &rk, &pinned, &p, &lookup, policy).await;
+/// assert!(wv.verdict.is_valid());
+/// ```
+pub async fn verify_commit_against_kel_witnessed(
+    commit_bytes: &[u8],
+    device_kel: &[Event],
+    root_kel: &[Event],
+    pinned_roots: &[String],
+    provider: &dyn CryptoProvider,
+    receipt_lookup: &dyn WitnessReceiptLookup,
+    policy: VerifierWitnessPolicy,
+) -> WitnessedVerdict {
+    // 1. Replay + witness-gate the root KEL (validates SAIDs incl. the
+    //    self-addressing icp prefix, then checks M-of-N witness agreement).
+    let replay = match validate_kel_with_receipts(root_kel, None, receipt_lookup) {
+        Ok(r) => r,
+        Err(e) => {
+            return WitnessedVerdict {
+                verdict: CommitVerdict::RootKelInvalid(e.to_string()),
+                witness: WitnessGateStatus::NotRequired,
+            };
+        }
     };
+    let root_state = replay.state().clone();
+    let root_did = format!("did:keri:{}", root_state.prefix);
+
+    let witness = match &replay {
+        WitnessedReplay::Accepted(s) => {
+            if s.backers.is_empty() {
+                WitnessGateStatus::NotRequired
+            } else {
+                WitnessGateStatus::Met
+            }
+        }
+        WitnessedReplay::Pending {
+            collected,
+            required,
+            state,
+            ..
+        } => {
+            let required = required
+                .simple_value()
+                .map(|v| v as usize)
+                .unwrap_or(state.backers.len());
+            let status = WitnessGateStatus::UnderQuorum {
+                collected: *collected,
+                required,
+            };
+            // The verifier's own policy decides fail-open vs fail-closed —
+            // never the signer's self-declared WitnessPolicy.
+            if matches!(policy, VerifierWitnessPolicy::RequireWitnesses) {
+                return WitnessedVerdict {
+                    verdict: CommitVerdict::WitnessQuorumNotMet {
+                        root_did,
+                        collected: *collected,
+                        required,
+                    },
+                    witness: status,
+                };
+            }
+            status
+        }
+    };
+
+    let verdict = authorize_commit(
+        commit_bytes,
+        device_kel,
+        root_kel,
+        pinned_roots,
+        provider,
+        root_state,
+    )
+    .await;
+    WitnessedVerdict { verdict, witness }
+}
+
+/// Steps 2–6 of commit authorization, given an already replayed `root_state`:
+/// pinned-root + abandonment checks, device-KEL replay, delegation/revocation,
+/// duplicity warning, and the in-process SSH-signature binding.
+async fn authorize_commit(
+    commit_bytes: &[u8],
+    device_kel: &[Event],
+    root_kel: &[Event],
+    pinned_roots: &[String],
+    provider: &dyn CryptoProvider,
+    root_state: auths_keri::KeyState,
+) -> CommitVerdict {
     let root_prefix = root_state.prefix.clone();
     let root_did = format!("did:keri:{root_prefix}");
 

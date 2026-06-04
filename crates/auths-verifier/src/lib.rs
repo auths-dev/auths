@@ -128,7 +128,10 @@ pub use auths_keri::{
 
 // Re-export commit verification types
 pub use commit::VerifiedCommit;
-pub use commit_kel::{CommitVerdict, verify_commit_against_kel};
+pub use commit_kel::{
+    CommitVerdict, VerifierWitnessPolicy, WitnessGateStatus, WitnessedVerdict,
+    verify_commit_against_kel, verify_commit_against_kel_witnessed,
+};
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};
 
 // Re-export crypto provider trait for downstream consumers

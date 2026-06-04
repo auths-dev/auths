@@ -5,6 +5,8 @@
 
 use crate::error::StorageError;
 use auths_core::witness::{Receipt, SignedReceipt, StoredReceipt};
+use auths_keri::KeriSequence;
+use auths_keri::witness::{WitnessReceipt, WitnessReceiptLookup};
 use git2::{ErrorCode, Repository, Signature};
 use log::debug;
 use std::path::PathBuf;
@@ -188,6 +190,57 @@ impl ReceiptStorage for GitReceiptStorage {
         }
 
         Ok(saids)
+    }
+}
+
+/// A [`WitnessReceiptLookup`] backed by [`GitReceiptStorage`].
+///
+/// Bridges the stored, provenance-carrying `EventReceipts` to the witness-attributed
+/// `(witness, signature)` pairs the receipt-gated replay
+/// (`auths_keri::validate_kel_with_receipts`) consumes. Returning an empty vector
+/// for an unknown event means "no receipts known" — the replay gate then decides
+/// whether that meets the in-force `bt`-of-`b` threshold.
+#[derive(Debug, Clone)]
+pub struct GitWitnessReceiptLookup {
+    storage: GitReceiptStorage,
+}
+
+impl GitWitnessReceiptLookup {
+    /// Create a lookup over the receipt store at `repo_path`.
+    ///
+    /// Args:
+    /// * `repo_path`: Path to the Git repository holding the receipt refs.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let lookup = GitWitnessReceiptLookup::new(repo_path);
+    /// let replay = validate_kel_with_receipts(&kel, None, &lookup)?;
+    /// ```
+    pub fn new(repo_path: impl Into<PathBuf>) -> Self {
+        Self {
+            storage: GitReceiptStorage::new(repo_path),
+        }
+    }
+}
+
+impl WitnessReceiptLookup for GitWitnessReceiptLookup {
+    fn receipts_for(
+        &self,
+        controller: &Prefix,
+        _sn: KeriSequence,
+        event_said: &Said,
+    ) -> Vec<WitnessReceipt> {
+        match self.storage.get_receipts(controller, event_said) {
+            Ok(Some(event_receipts)) => event_receipts
+                .receipts
+                .iter()
+                .map(|stored| WitnessReceipt {
+                    witness: stored.witness.clone(),
+                    signature: stored.signed.signature.clone(),
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
     }
 }
 

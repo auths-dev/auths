@@ -137,6 +137,11 @@ pub struct UnifiedVerifyCommand {
     /// precedence over `--remote`.
     #[arg(long)]
     pub oobi: Option<String>,
+
+    /// Fail verification when the signer's root KEL has not reached witness
+    /// quorum (fail-closed). Default: warn and continue.
+    #[arg(long = "require-witnesses")]
+    pub require_witnesses: bool,
 }
 
 /// Handle the unified verify command.
@@ -155,6 +160,7 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
                 witness_keys: cmd.witness_keys,
                 remote: cmd.remote,
                 oobi: cmd.oobi,
+                require_witnesses: cmd.require_witnesses,
             };
             handle_verify_commit(commit_cmd).await
         }

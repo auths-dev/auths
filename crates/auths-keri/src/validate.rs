@@ -388,6 +388,15 @@ pub enum WitnessedReplay {
     },
 }
 
+impl WitnessedReplay {
+    /// The replayed key-state, regardless of the witness-quorum outcome.
+    pub fn state(&self) -> &KeyState {
+        match self {
+            WitnessedReplay::Accepted(state) | WitnessedReplay::Pending { state, .. } => state,
+        }
+    }
+}
+
 /// Validate a KEL and gate each establishment event on M-of-N witness receipts.
 ///
 /// Extends [`validate_kel_with_lookup`] with receipt-gated replay: a `bt>0`

@@ -2,12 +2,16 @@
 //! binding logic against constructed KELs and the real signed-commit fixture.
 
 use auths_crypto::RingCryptoProvider;
+use auths_keri::witness::{WitnessReceipt, WitnessReceiptLookup};
 use auths_keri::{
     CesrKey, DipEvent, DipEventInit, Event, IcpEvent, IcpEventInit, IxnEvent, KeriPublicKey,
     KeriSequence, Prefix, Said, Seal, Threshold, VersionString, compute_next_commitment,
     finalize_dip_event, finalize_icp_event, finalize_ixn_event,
 };
-use auths_verifier::{CommitVerdict, verify_commit_against_kel};
+use auths_verifier::{
+    CommitVerdict, VerifierWitnessPolicy, WitnessGateStatus, verify_commit_against_kel,
+    verify_commit_against_kel_witnessed,
+};
 
 const FIXTURE_COMMIT: &str = include_str!("../fixtures/signed_commit.txt");
 const FIXTURE_PUBKEY_HEX: &str = include_str!("../fixtures/pubkey.hex");
@@ -219,4 +223,193 @@ async fn delegated_by_a_different_root_fails() {
         verdict,
         CommitVerdict::NotDelegatedByClaimedRoot { .. }
     ));
+}
+
+// ── D.7: verifier-side witness gate ──────────────────────────────────────────
+
+/// Said-keyed receipt source for verify-gate tests.
+struct MapReceipts {
+    by_said: std::collections::HashMap<String, Vec<WitnessReceipt>>,
+}
+
+impl WitnessReceiptLookup for MapReceipts {
+    fn receipts_for(
+        &self,
+        _controller: &Prefix,
+        _sn: KeriSequence,
+        said: &Said,
+    ) -> Vec<WitnessReceipt> {
+        self.by_said.get(said.as_str()).cloned().unwrap_or_default()
+    }
+}
+
+fn wreceipt(aid: &str) -> WitnessReceipt {
+    WitnessReceipt {
+        witness: Prefix::new_unchecked(aid.to_string()),
+        signature: vec![],
+    }
+}
+
+/// Like `build`, but the root `icp` designates `backers` with threshold `bt`.
+/// Returns the fixture and the root inception SAID (the gated establishment event).
+fn build_witnessed(device_key: &KeriPublicKey, bt: u64, backers: &[&str]) -> (Fixture, Said) {
+    let b: Vec<Prefix> = backers
+        .iter()
+        .map(|a| Prefix::new_unchecked(a.to_string()))
+        .collect();
+    let root_icp = finalize_icp_event(IcpEvent::new(IcpEventInit {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: Prefix::default(),
+        s: KeriSequence::new(0),
+        kt: Threshold::Simple(1),
+        k: vec![cesr(&dummy_key(1))],
+        nt: Threshold::Simple(1),
+        n: vec![compute_next_commitment(&dummy_key(2))],
+        bt: Threshold::Simple(bt),
+        b,
+        c: vec![],
+        a: vec![],
+    }))
+    .expect("root icp");
+    let root_prefix = root_icp.i.clone();
+    let root_said = root_icp.d.clone();
+
+    let dip = finalize_dip_event(DipEvent::new(DipEventInit {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: Prefix::default(),
+        s: KeriSequence::new(0),
+        kt: Threshold::Simple(1),
+        k: vec![cesr(device_key)],
+        nt: Threshold::Simple(1),
+        n: vec![compute_next_commitment(&dummy_key(3))],
+        bt: Threshold::Simple(0),
+        b: vec![],
+        c: vec![],
+        a: vec![],
+        di: root_prefix.clone(),
+    }))
+    .expect("device dip");
+    let device_prefix = dip.i.clone();
+    let dip_said = dip.d.clone();
+
+    let ixn = finalize_ixn_event(IxnEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: root_prefix.clone(),
+        s: KeriSequence::new(1),
+        p: root_icp.d.clone(),
+        a: vec![Seal::KeyEvent {
+            i: device_prefix.clone(),
+            s: KeriSequence::new(0),
+            d: dip_said.clone(),
+        }],
+    })
+    .expect("anchor ixn");
+
+    let fixture = Fixture {
+        root_kel: vec![Event::Icp(root_icp), Event::Ixn(ixn)],
+        device_kel: vec![Event::Dip(dip)],
+        root_did: format!("did:keri:{root_prefix}"),
+    };
+    (fixture, root_said)
+}
+
+fn receipts_under(said: &Said, aids: &[&str]) -> MapReceipts {
+    let mut by_said = std::collections::HashMap::new();
+    by_said.insert(
+        said.as_str().to_string(),
+        aids.iter().map(|a| wreceipt(a)).collect(),
+    );
+    MapReceipts { by_said }
+}
+
+#[tokio::test]
+async fn verify_passes_with_quorum() {
+    let (f, root_said) = build_witnessed(&fixture_device_key(), 2, &["BWit1", "BWit2"]);
+    let lookup = receipts_under(&root_said, &["BWit1", "BWit2"]);
+    let wv = verify_commit_against_kel_witnessed(
+        FIXTURE_COMMIT.as_bytes(),
+        &f.device_kel,
+        &f.root_kel,
+        std::slice::from_ref(&f.root_did),
+        &RingCryptoProvider,
+        &lookup,
+        VerifierWitnessPolicy::Warn,
+    )
+    .await;
+    assert!(wv.verdict.is_valid(), "verdict: {:?}", wv.verdict);
+    assert_eq!(wv.witness, WitnessGateStatus::Met);
+}
+
+#[tokio::test]
+async fn verify_warns_under_quorum_by_default() {
+    let (f, root_said) = build_witnessed(&fixture_device_key(), 2, &["BWit1", "BWit2"]);
+    let lookup = receipts_under(&root_said, &["BWit1"]); // 1 of 2
+    let wv = verify_commit_against_kel_witnessed(
+        FIXTURE_COMMIT.as_bytes(),
+        &f.device_kel,
+        &f.root_kel,
+        std::slice::from_ref(&f.root_did),
+        &RingCryptoProvider,
+        &lookup,
+        VerifierWitnessPolicy::Warn,
+    )
+    .await;
+    // Warn: still authorized, but the under-quorum status is surfaced.
+    assert!(wv.verdict.is_valid(), "verdict: {:?}", wv.verdict);
+    assert_eq!(
+        wv.witness,
+        WitnessGateStatus::UnderQuorum {
+            collected: 1,
+            required: 2
+        }
+    );
+}
+
+#[tokio::test]
+async fn verify_fails_under_quorum_when_required() {
+    let (f, root_said) = build_witnessed(&fixture_device_key(), 2, &["BWit1", "BWit2"]);
+    let lookup = receipts_under(&root_said, &["BWit1"]); // 1 of 2
+    let wv = verify_commit_against_kel_witnessed(
+        FIXTURE_COMMIT.as_bytes(),
+        &f.device_kel,
+        &f.root_kel,
+        std::slice::from_ref(&f.root_did),
+        &RingCryptoProvider,
+        &lookup,
+        VerifierWitnessPolicy::RequireWitnesses,
+    )
+    .await;
+    assert!(!wv.verdict.is_valid());
+    assert!(matches!(
+        wv.verdict,
+        CommitVerdict::WitnessQuorumNotMet {
+            collected: 1,
+            required: 2,
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn verify_bt_zero_kel_unaffected() {
+    // A bt=0 root verifies identically with or without the gate, even fail-closed.
+    let f = build(&fixture_device_key(), true, false, None);
+    let lookup = MapReceipts {
+        by_said: std::collections::HashMap::new(),
+    };
+    let wv = verify_commit_against_kel_witnessed(
+        FIXTURE_COMMIT.as_bytes(),
+        &f.device_kel,
+        &f.root_kel,
+        std::slice::from_ref(&f.root_did),
+        &RingCryptoProvider,
+        &lookup,
+        VerifierWitnessPolicy::RequireWitnesses,
+    )
+    .await;
+    assert!(wv.verdict.is_valid(), "verdict: {:?}", wv.verdict);
+    assert_eq!(wv.witness, WitnessGateStatus::NotRequired);
 }

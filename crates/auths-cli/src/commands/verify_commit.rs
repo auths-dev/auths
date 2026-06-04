@@ -1,14 +1,15 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
 use auths_id::ports::registry::RegistryBackend;
+use auths_id::storage::GitWitnessReceiptLookup;
 use auths_infra_http::HttpOobiResolver;
 use auths_keri::Event;
-use auths_keri::witness::SignedReceipt;
+use auths_keri::witness::{SignedReceipt, WitnessReceiptLookup};
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
-    Attestation, CommitVerdict, IdentityBundle, VerificationReport, verify_chain_with_witnesses,
-    verify_commit_against_kel,
+    Attestation, CommitVerdict, IdentityBundle, VerificationReport, VerifierWitnessPolicy,
+    WitnessGateStatus, verify_chain_with_witnesses, verify_commit_against_kel_witnessed,
 };
 use clap::Parser;
 use serde::Serialize;
@@ -51,6 +52,11 @@ pub struct VerifyCommitCommand {
     /// `--remote`; the resolved KEL is still prefix-bound + replayed locally.
     #[arg(long)]
     pub oobi: Option<String>,
+
+    /// Fail verification when the signer's root KEL has not reached witness
+    /// quorum (fail-closed). Default: warn and continue (trust-on-first-sight).
+    #[arg(long = "require-witnesses")]
+    pub require_witnesses: bool,
 }
 
 #[derive(Serialize)]
@@ -128,6 +134,9 @@ pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&auths_home));
     let pinned_roots = load_project_pinned_roots();
     let provider = auths_crypto::RingCryptoProvider;
+    // Stored witness receipts live in the identity repo; the gate reads them
+    // through this lookup (D.7). Empty store → under-quorum for witnessed roots.
+    let receipt_lookup = GitWitnessReceiptLookup::new(&auths_home);
 
     let commits = match resolve_commits(&cmd.commit) {
         Ok(c) => c,
@@ -135,8 +144,17 @@ pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
     };
     let mut results = Vec::with_capacity(commits.len());
     for commit_ref in &commits {
-        results
-            .push(verify_one_commit(&registry, &pinned_roots, &provider, &cmd, commit_ref).await);
+        results.push(
+            verify_one_commit(
+                &registry,
+                &pinned_roots,
+                &provider,
+                &receipt_lookup,
+                &cmd,
+                commit_ref,
+            )
+            .await,
+        );
     }
     output_results(&results)
 }
@@ -290,6 +308,7 @@ async fn verify_one_commit(
     registry: &dyn RegistryBackend,
     pinned_roots: &[String],
     provider: &dyn auths_crypto::CryptoProvider,
+    receipt_lookup: &dyn WitnessReceiptLookup,
     cmd: &VerifyCommitCommand,
     commit_ref: &str,
 ) -> VerifyCommitResult {
@@ -343,15 +362,32 @@ async fn verify_one_commit(
         }
     };
 
-    let verdict = verify_commit_against_kel(
+    let policy = if cmd.require_witnesses {
+        VerifierWitnessPolicy::RequireWitnesses
+    } else {
+        VerifierWitnessPolicy::Warn
+    };
+    let witnessed = verify_commit_against_kel_witnessed(
         raw_commit.as_bytes(),
         &device_kel,
         &root_kel,
         pinned_roots,
         provider,
+        receipt_lookup,
+        policy,
     )
     .await;
-    let mut result = verdict_to_result(sha.clone(), verdict);
+    let mut result = verdict_to_result(sha.clone(), witnessed.verdict);
+    if let WitnessGateStatus::UnderQuorum {
+        collected,
+        required,
+    } = witnessed.witness
+    {
+        result.warnings.push(format!(
+            "Witness quorum not met for the signer's root KEL: {collected} of {required} \
+             receipts (verifying anyway; pass --require-witnesses to fail closed)."
+        ));
+    }
 
     if let Ok(Some(quorum)) = verify_witnesses(cmd, None).await {
         if quorum.verified < quorum.required {
@@ -482,6 +518,16 @@ fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResu
                 "Commit was signed by a superseded device key (the device has since rotated)"
                     .to_string(),
             );
+        }
+        CommitVerdict::WitnessQuorumNotMet {
+            root_did,
+            collected,
+            required,
+        } => {
+            result.error = Some(format!(
+                "Witness quorum not met for root {root_did}: {collected} of {required} required \
+                 receipts. Drop --require-witnesses to verify with a warning instead."
+            ));
         }
     }
     result
