@@ -83,5 +83,6 @@ class TestRotationWithMultipleAgents:
 
             # Must NOT fail with "pre-committed next key '...-agent--next-0' not found"
             result = auths.identities.rotate(operator.did)
-            assert result.sequence == 1
+            # operator KEL: icp(0) + an anchoring ixn per delegated agent (1, 2) + rot(3)
+            assert result.sequence == 3
             assert result.controller_did == operator.did

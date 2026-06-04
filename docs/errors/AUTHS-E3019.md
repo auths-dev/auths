@@ -1,6 +1,6 @@
 # AUTHS-E3019
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::AgentLocked`
 
 ## Message

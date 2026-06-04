@@ -2,20 +2,15 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole};
+use auths_core::storage::keychain::{IdentityDID, KeyRole};
 use auths_id::storage::identity::IdentityStorage;
 use auths_pairing_daemon::{
     MockNetworkDiscovery, MockNetworkInterfaces, PairingDaemonBuilder, PairingDaemonHandle,
     RateLimiter,
 };
-use auths_sdk::pairing::{
-    PairingAttestationParams, PairingSessionParams, build_pairing_session_request,
-    create_pairing_attestation,
-};
-use auths_storage::git::RegistryAttestationStorage;
+use auths_sdk::pairing::{PairingSessionParams, build_pairing_session_request};
 use auths_storage::git::RegistryIdentityStorage;
 use chrono::Utc;
 
@@ -384,88 +379,5 @@ pub fn join_pairing_session_ffi(
         })?;
 
         Ok((device_did.to_string(), device_name))
-    }
-}
-
-#[pyfunction]
-#[pyo3(signature = (device_did, device_public_key_hex, repo_path, capabilities_json=None, passphrase=None))]
-pub fn complete_pairing_ffi(
-    _py: Python<'_>,
-    device_did: &str,
-    device_public_key_hex: &str,
-    repo_path: &str,
-    capabilities_json: Option<String>,
-    passphrase: Option<String>,
-) -> PyResult<(String, Option<String>, String)> {
-    let passphrase_str = resolve_passphrase(passphrase);
-    let repo = resolve_repo(repo_path);
-    let repo_path_str = repo_path.to_string();
-    let device_did = device_did.to_string();
-    let device_pk_hex = device_public_key_hex.to_string();
-    let capabilities: Vec<String> = if let Some(json) = capabilities_json {
-        serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign:commit".to_string()])
-    } else {
-        vec!["sign:commit".to_string()]
-    };
-
-    {
-        let device_pubkey = hex::decode(&device_pk_hex).map_err(|e| {
-            PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] Invalid public key hex: {e}"))
-        })?;
-
-        let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
-            Arc::new(RegistryIdentityStorage::new(repo.clone()));
-
-        let managed = identity_storage
-            .load_identity()
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
-        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
-        let controller_identity_did =
-            IdentityDID::new_unchecked(managed.controller_did.to_string());
-
-        let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
-        let aliases = keychain
-            .list_aliases_for_identity_with_role(&controller_identity_did, KeyRole::Primary)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
-        let identity_key_alias_str = aliases.into_iter().next().ok_or_else(|| {
-            PyRuntimeError::new_err("[AUTHS_PAIRING_ERROR] No primary signing key found")
-        })?;
-        #[allow(clippy::disallowed_methods)] // INVARIANT: alias from keychain storage
-        let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
-
-        let key_storage: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
-            Arc::from(keychain);
-        let provider = Arc::new(auths_core::signing::PrefilledPassphraseProvider::new(
-            &passphrase_str,
-        ));
-
-        #[allow(clippy::disallowed_methods)] // Presentation boundary
-        let now = Utc::now();
-        let curve = auths_crypto::did_key_decode(&device_did)
-            .map(|d| d.curve())
-            .unwrap_or_default();
-        let params = PairingAttestationParams {
-            identity_storage: identity_storage.clone(),
-            key_storage: key_storage.clone(),
-            device_pubkey: &device_pubkey,
-            curve,
-            device_did_str: &device_did,
-            capabilities: &capabilities,
-            identity_key_alias: &identity_key_alias,
-            passphrase_provider: provider,
-        };
-
-        let attestation = create_pairing_attestation(&params, now)
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
-
-        let attestation_storage = RegistryAttestationStorage::new(&repo);
-        use auths_id::attestation::AttestationSink;
-        attestation_storage
-            .export(
-                &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation.clone()),
-            )
-            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
-
-        Ok((device_did, None, attestation.rid.to_string()))
     }
 }

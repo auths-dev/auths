@@ -10,7 +10,7 @@
 use auths_crypto::CryptoProvider;
 use auths_keri::witness::{NoWitnessReceipts, WitnessReceiptLookup};
 use auths_keri::{
-    CesrKey, DelegatorKelLookup, Event, KeriPublicKey, KeriSequence, Prefix, Said, Seal,
+    CesrKey, DelegatorKelLookup, Event, KeriPublicKey, Prefix, Said, Seal, SourceSeal,
     WitnessedReplay, validate_delegation, validate_kel_with_lookup, validate_kel_with_receipts,
 };
 
@@ -57,8 +57,42 @@ pub enum CommitVerdict {
     },
     /// The root never anchored the device's delegated inception.
     DelegationSealNotFound,
-    /// The root has revoked this device's delegation.
+    /// The root has revoked this device/agent's delegation and the commit carries
+    /// no in-band signing position, so it cannot be ordered against the revocation
+    /// (conservative flat rejection — preserves the no-position default).
     DeviceRevoked,
+    /// The commit was signed **at or after** the delegator anchored the revocation
+    /// (its in-band `Auths-Anchor-Seq` is ≥ the revocation's KEL position). Distinct
+    /// from [`CommitVerdict::DeviceRevoked`]: a commit signed *before* the revocation
+    /// stays [`CommitVerdict::Valid`] — revocation is ordered by KEL position, never
+    /// wall-clock, so legitimate prior history is not retroactively invalidated.
+    SignedAfterRevocation {
+        /// The signer's `did:keri:`.
+        signer_did: String,
+        /// The signing position claimed in-band (`Auths-Anchor-Seq`).
+        signed_at: u128,
+        /// The KEL position at which the delegator anchored the revocation.
+        revoked_at: u128,
+    },
+    /// The agent signed exercising a capability outside its delegator-anchored
+    /// scope (the delegator never granted it). Scope is advisory authorization
+    /// anchored by the delegator (the ACDC upgrade is Epic F).
+    OutsideAgentScope {
+        /// The signer's `did:keri:`.
+        signer_did: String,
+        /// The capability the commit claimed that the scope does not grant.
+        capability: String,
+    },
+    /// The agent signed at/after its delegator-anchored expiry. Checked against the
+    /// signing time via an injected `now` (no wall-clock in the verifier).
+    AgentExpired {
+        /// The signer's `did:keri:`.
+        signer_did: String,
+        /// The expiry instant (Unix epoch seconds) the delegator anchored.
+        expired_at: i64,
+        /// The signing time the commit was checked against (injected `now`).
+        signed_at: i64,
+    },
     /// The SSH signer key is not the device's current key (and not a known prior key).
     SignerKeyMismatch,
     /// The SSH signer key is a *superseded* device key (the device rotated since signing).
@@ -129,13 +163,16 @@ struct RootKelLookup<'a> {
 }
 
 impl DelegatorKelLookup for RootKelLookup<'_> {
-    fn find_seal(&self, _delegator_aid: &Prefix, seal_said: &Said) -> Option<KeriSequence> {
+    fn find_seal(&self, _delegator_aid: &Prefix, seal_said: &Said) -> Option<SourceSeal> {
         for event in self.root_kel {
             for seal in event.anchors() {
                 if let Seal::KeyEvent { d, .. } = seal
                     && d == seal_said
                 {
-                    return Some(event.sequence());
+                    return Some(SourceSeal {
+                        s: event.sequence(),
+                        d: event.said().clone(),
+                    });
                 }
             }
         }
@@ -143,15 +180,154 @@ impl DelegatorKelLookup for RootKelLookup<'_> {
     }
 }
 
-/// Whether the root KEL has anchored a revocation (`Seal::Digest{d == device_prefix}`)
-/// for the device. Stateless twin of the backend-bound `delegation_status`.
-fn revocation_status(root_kel: &[Event], device_prefix: &Prefix) -> bool {
-    root_kel.iter().any(|event| {
-        event
+/// The KEL position (root sequence) at which the delegator anchored a revocation
+/// (`Seal::Digest{d == device_prefix}`) for the device/agent, or `None` if not
+/// revoked. KERI carries no wall-clock, so revocation is ordered by this position.
+///
+/// Args:
+/// * `root_kel`: The delegator's KEL.
+/// * `device_prefix`: The delegated identifier's prefix.
+fn revocation_position(root_kel: &[Event], device_prefix: &Prefix) -> Option<u128> {
+    root_kel.iter().find_map(|event| {
+        let revokes = event
             .anchors()
             .iter()
-            .any(|seal| matches!(seal, Seal::Digest { d } if d.as_str() == device_prefix.as_str()))
+            .any(|seal| matches!(seal, Seal::Digest { d } if d.as_str() == device_prefix.as_str()));
+        revokes.then(|| event.sequence().value())
     })
+}
+
+/// The CESR commit trailer key carrying the signer's in-band KEL position — the
+/// delegator-anchoring sequence in force when the commit was signed. Lets the
+/// verifier order a commit against a later revocation by KEL position.
+pub const ANCHOR_SEQ_TRAILER: &str = "Auths-Anchor-Seq";
+
+/// Format the signing-position commit trailer (`Auths-Anchor-Seq: <seq>`).
+///
+/// Args:
+/// * `seq`: The delegator-anchoring sequence in force at signing.
+///
+/// Usage:
+/// ```
+/// use auths_verifier::anchor_seq_trailer;
+/// assert_eq!(anchor_seq_trailer(7), "Auths-Anchor-Seq: 7");
+/// ```
+pub fn anchor_seq_trailer(seq: u128) -> String {
+    format!("{ANCHOR_SEQ_TRAILER}: {seq}")
+}
+
+/// Parse the signer's in-band KEL position from a commit's `Auths-Anchor-Seq`
+/// trailer, or `None` if absent/unparseable.
+///
+/// Args:
+/// * `commit_bytes`: The raw signed commit content.
+fn parse_anchor_seq(commit_bytes: &[u8]) -> Option<u128> {
+    let text = std::str::from_utf8(commit_bytes).ok()?;
+    text.lines().find_map(|line| {
+        let rest = line.trim().strip_prefix(ANCHOR_SEQ_TRAILER)?;
+        rest.trim_start()
+            .strip_prefix(':')?
+            .trim()
+            .parse::<u128>()
+            .ok()
+    })
+}
+
+/// The CESR commit trailer key carrying the capability the commit exercises, checked
+/// against the agent's delegator-anchored scope.
+pub const SCOPE_TRAILER: &str = "Auths-Scope";
+
+/// Format a scope-claim commit trailer (`Auths-Scope: <cap>[,<cap>…]`).
+///
+/// Args:
+/// * `capabilities`: The capabilities the commit exercises.
+///
+/// Usage:
+/// ```
+/// use auths_verifier::scope_trailer;
+/// assert_eq!(scope_trailer(&["sign_commit".into()]), "Auths-Scope: sign_commit");
+/// ```
+pub fn scope_trailer(capabilities: &[String]) -> String {
+    format!("{SCOPE_TRAILER}: {}", capabilities.join(","))
+}
+
+/// Parse the capabilities a commit claims from its `Auths-Scope` trailer.
+fn parse_scope_claim(commit_bytes: &[u8]) -> Vec<String> {
+    let Ok(text) = std::str::from_utf8(commit_bytes) else {
+        return Vec::new();
+    };
+    text.lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix(SCOPE_TRAILER)?
+                .trim_start()
+                .strip_prefix(':')
+                .map(|rest| {
+                    rest.trim()
+                        .split(',')
+                        .filter(|c| !c.is_empty())
+                        .map(|c| c.trim().to_string())
+                        .collect::<Vec<_>>()
+                })
+        })
+        .unwrap_or_default()
+}
+
+/// The agent's latest delegator-anchored scope in `root_kel`, or `None`.
+fn read_agent_scope_from_kel(
+    root_kel: &[Event],
+    agent_prefix: &Prefix,
+) -> Option<auths_keri::AgentScope> {
+    let mut found = None;
+    for event in root_kel {
+        for seal in event.anchors() {
+            if let Seal::Digest { d } = seal
+                && let Some((prefix, scope)) = auths_keri::decode_agent_scope(d.as_str())
+                && prefix == agent_prefix.as_str()
+            {
+                found = Some(scope);
+            }
+        }
+    }
+    found
+}
+
+/// How a commit's signing position orders against a revocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RevocationOrdering {
+    /// The delegation was never revoked.
+    NotRevoked,
+    /// The commit was signed strictly before the revocation's KEL position — valid.
+    SignedBefore,
+    /// The commit was signed at/after the revocation's KEL position — rejected.
+    SignedAfter {
+        /// The signing position claimed in-band.
+        signed_at: u128,
+        /// The revocation's KEL position.
+        revoked_at: u128,
+    },
+    /// Revoked, but the commit carries no in-band position — cannot be ordered.
+    RevokedUnknownPosition,
+}
+
+/// Order a commit's in-band signing position against the revocation position.
+///
+/// A commit signed *before* the revocation stays valid (legitimate prior history is
+/// not retroactively invalidated); one signed *at or after* it is rejected. Without
+/// an in-band position, the result is conservative ([`RevocationOrdering::RevokedUnknownPosition`]).
+fn classify_revocation(
+    signing_anchor: Option<u128>,
+    revocation: Option<u128>,
+) -> RevocationOrdering {
+    match (revocation, signing_anchor) {
+        (None, _) => RevocationOrdering::NotRevoked,
+        (Some(_), None) => RevocationOrdering::RevokedUnknownPosition,
+        (Some(rev), Some(sign)) if sign < rev => RevocationOrdering::SignedBefore,
+        (Some(rev), Some(sign)) => RevocationOrdering::SignedAfter {
+            signed_at: sign,
+            revoked_at: rev,
+        },
+    }
 }
 
 /// The establishment keys (`k[]`) across a device KEL, parsed to device pubkeys —
@@ -305,14 +481,60 @@ pub async fn verify_commit_against_kel_witnessed(
         pinned_roots,
         provider,
         root_state,
+        None,
     )
     .await;
     WitnessedVerdict { verdict, witness }
 }
 
+/// Verify a commit and additionally enforce the agent's delegator-anchored
+/// scope/expiry against an injected signing time `now` (Unix epoch seconds).
+///
+/// Identical to [`verify_commit_against_kel`] plus: a delegated signer whose
+/// delegator anchored a scope seal is rejected when the commit exercises a capability
+/// outside that scope ([`CommitVerdict::OutsideAgentScope`]) or signs at/after the
+/// anchored expiry ([`CommitVerdict::AgentExpired`], checked against `now`).
+///
+/// Args:
+/// * `commit_bytes`: The signed commit.
+/// * `device_kel`: The signer's KEL.
+/// * `root_kel`: The delegator's KEL (carries the scope seal).
+/// * `pinned_roots`: Trusted root DIDs.
+/// * `provider`: Crypto provider for signature verification.
+/// * `now`: The signing time to check expiry against (injected at the boundary).
+///
+/// Usage:
+/// ```ignore
+/// let verdict = verify_commit_against_kel_scoped(commit, &device_kel, &root_kel, &pinned, &provider, now).await;
+/// ```
+pub async fn verify_commit_against_kel_scoped(
+    commit_bytes: &[u8],
+    device_kel: &[Event],
+    root_kel: &[Event],
+    pinned_roots: &[String],
+    provider: &dyn CryptoProvider,
+    now: i64,
+) -> CommitVerdict {
+    let root_state = match auths_keri::validate_kel(root_kel) {
+        Ok(state) => state,
+        Err(e) => return CommitVerdict::RootKelInvalid(e.to_string()),
+    };
+    authorize_commit(
+        commit_bytes,
+        device_kel,
+        root_kel,
+        pinned_roots,
+        provider,
+        root_state,
+        Some(now),
+    )
+    .await
+}
+
 /// Steps 2–6 of commit authorization, given an already replayed `root_state`:
 /// pinned-root + abandonment checks, device-KEL replay, delegation/revocation,
 /// duplicity warning, and the in-process SSH-signature binding.
+#[allow(clippy::too_many_arguments)]
 async fn authorize_commit(
     commit_bytes: &[u8],
     device_kel: &[Event],
@@ -320,6 +542,7 @@ async fn authorize_commit(
     pinned_roots: &[String],
     provider: &dyn CryptoProvider,
     root_state: auths_keri::KeyState,
+    now: Option<i64>,
 ) -> CommitVerdict {
     let root_prefix = root_state.prefix.clone();
     let root_did = format!("did:keri:{root_prefix}");
@@ -351,23 +574,19 @@ async fn authorize_commit(
     let device_prefix = device_state.prefix.clone();
     let device_did = format!("did:keri:{device_prefix}");
 
-    // 4. Authorization: the pinned root signing directly, or a non-revoked delegate.
-    // Replay already confirmed the dip is anchored by *a* delegator (via the lookup);
-    // here we confirm that delegator is THIS root and the delegation is still live.
-    let root_signs_directly = device_prefix == root_prefix && device_state.delegator.is_none();
-    if !root_signs_directly {
-        match &device_state.delegator {
-            Some(delegator) if *delegator == root_prefix => {}
-            _ => {
-                return CommitVerdict::NotDelegatedByClaimedRoot {
-                    device_did,
-                    root_did,
-                };
-            }
-        }
-        if revocation_status(root_kel, &device_prefix) {
-            return CommitVerdict::DeviceRevoked;
-        }
+    // 4. Authorization: the pinned root signing directly, or a non-revoked, in-scope
+    // delegate. Replay already confirmed the dip is anchored by *a* delegator (via the
+    // lookup); this confirms that delegator is THIS root and the delegation is live.
+    if let Some(verdict) = reject_unauthorized_delegate(
+        commit_bytes,
+        root_kel,
+        &root_prefix,
+        &device_state,
+        &device_did,
+        &root_did,
+        now,
+    ) {
+        return verdict;
     }
 
     // 5. Non-fatal duplicity warning on the root KEL (trust-on-first-sight, fail-open).
@@ -418,6 +637,84 @@ async fn authorize_commit(
     }
 }
 
+/// Step 4 of [`authorize_commit`]: reject a delegate that is not authorized by this
+/// root. Returns `Some(verdict)` to reject, `None` when the signer is the pinned root
+/// signing directly or a live, in-scope delegate.
+///
+/// Checks (in order): the delegation names THIS root; the delegate is not revoked
+/// (ordered by KEL position, KERI carries no wall-clock — signed-before stays valid,
+/// signed-at/after fails, unknown position is the conservative flat rejection); and
+/// the commit stays within the delegator-anchored scope and before any anchored
+/// expiry (only enforced when a signing time is injected and the delegator anchored a
+/// scope seal — never agent-self-asserted).
+fn reject_unauthorized_delegate(
+    commit_bytes: &[u8],
+    root_kel: &[Event],
+    root_prefix: &Prefix,
+    device_state: &auths_keri::KeyState,
+    device_did: &str,
+    root_did: &str,
+    now: Option<i64>,
+) -> Option<CommitVerdict> {
+    let device_prefix = device_state.prefix.clone();
+    let root_signs_directly = device_prefix == *root_prefix && device_state.delegator.is_none();
+    if root_signs_directly {
+        return None;
+    }
+
+    match &device_state.delegator {
+        Some(delegator) if *delegator == *root_prefix => {}
+        _ => {
+            return Some(CommitVerdict::NotDelegatedByClaimedRoot {
+                device_did: device_did.to_string(),
+                root_did: root_did.to_string(),
+            });
+        }
+    }
+
+    let revocation = revocation_position(root_kel, &device_prefix);
+    match classify_revocation(parse_anchor_seq(commit_bytes), revocation) {
+        RevocationOrdering::NotRevoked | RevocationOrdering::SignedBefore => {}
+        RevocationOrdering::RevokedUnknownPosition => return Some(CommitVerdict::DeviceRevoked),
+        RevocationOrdering::SignedAfter {
+            signed_at,
+            revoked_at,
+        } => {
+            return Some(CommitVerdict::SignedAfterRevocation {
+                signer_did: device_did.to_string(),
+                signed_at,
+                revoked_at,
+            });
+        }
+    }
+
+    if let Some(now) = now
+        && let Some(scope) = read_agent_scope_from_kel(root_kel, &device_prefix)
+    {
+        if let Some(expires_at) = scope.expires_at
+            && now >= expires_at
+        {
+            return Some(CommitVerdict::AgentExpired {
+                signer_did: device_did.to_string(),
+                expired_at: expires_at,
+                signed_at: now,
+            });
+        }
+        if !scope.capabilities.is_empty() {
+            for claimed in parse_scope_claim(commit_bytes) {
+                if !scope.capabilities.contains(&claimed) {
+                    return Some(CommitVerdict::OutsideAgentScope {
+                        signer_did: device_did.to_string(),
+                        capability: claimed,
+                    });
+                }
+            }
+        }
+    }
+
+    None
+}
+
 /// The SSH signer key isn't the current key — distinguish a *superseded* device key
 /// (rotated away) from an unrelated one for a clearer verdict.
 fn classify_unknown_signer(
@@ -440,4 +737,71 @@ fn classify_unknown_signer(
         return CommitVerdict::SignedBySupersededKey;
     }
     CommitVerdict::SignerKeyMismatch
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trailer_round_trips_signing_sequence() {
+        assert_eq!(anchor_seq_trailer(7), "Auths-Anchor-Seq: 7");
+        // Parses out of a realistic multi-line commit body.
+        let commit =
+            "fix: a thing\n\nbody line\n\nAuths-Id: did:keri:Eroot\nAuths-Anchor-Seq: 42\n";
+        assert_eq!(parse_anchor_seq(commit.as_bytes()), Some(42));
+        assert_eq!(parse_anchor_seq(b"no trailer here"), None);
+    }
+
+    #[test]
+    fn commit_before_revocation_still_valid() {
+        // Signed at KEL position 1, revoked at 2 → before → not rejected.
+        assert_eq!(
+            classify_revocation(Some(1), Some(2)),
+            RevocationOrdering::SignedBefore
+        );
+    }
+
+    #[test]
+    fn commit_after_revocation_rejected_by_position() {
+        // Signed at position 3, revoked at 2 → at/after → rejected with both positions.
+        assert_eq!(
+            classify_revocation(Some(3), Some(2)),
+            RevocationOrdering::SignedAfter {
+                signed_at: 3,
+                revoked_at: 2
+            }
+        );
+        // Signed exactly at the revocation position is also rejected.
+        assert!(matches!(
+            classify_revocation(Some(2), Some(2)),
+            RevocationOrdering::SignedAfter { .. }
+        ));
+    }
+
+    #[test]
+    fn revocation_ordering_is_kel_position_not_wallclock() {
+        // Ordering depends only on KEL positions — no clock is consulted.
+        // Not revoked → always valid regardless of any position.
+        assert_eq!(
+            classify_revocation(Some(99), None),
+            RevocationOrdering::NotRevoked
+        );
+        // Revoked but the commit carries no position → conservative (cannot order).
+        assert_eq!(
+            classify_revocation(None, Some(5)),
+            RevocationOrdering::RevokedUnknownPosition
+        );
+        // The same revocation position yields opposite verdicts purely by the
+        // signing position — proving it is positional, not temporal.
+        assert_eq!(
+            classify_revocation(Some(4), Some(5)),
+            RevocationOrdering::SignedBefore
+        );
+        assert!(matches!(
+            classify_revocation(Some(6), Some(5)),
+            RevocationOrdering::SignedAfter { .. }
+        ));
+    }
 }

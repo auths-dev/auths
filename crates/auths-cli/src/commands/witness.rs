@@ -7,10 +7,10 @@ use anyhow::{Result, anyhow};
 use auths_utils::path::expand_tilde;
 use clap::{Parser, Subcommand};
 
-use auths_core::witness::AsyncWitnessProvider;
 use auths_infra_http::HttpAsyncWitnessClient;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::storage::RegistryIdentityStorage;
+use auths_sdk::witness::AsyncWitnessProvider;
 use auths_sdk::witness::{WitnessConfig, WitnessRef};
 use auths_sdk::witness::{WitnessServerConfig, WitnessServerState, run_server};
 

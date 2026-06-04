@@ -1,6 +1,6 @@
 # AUTHS-E2103
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `CommitVerificationError::SshSigParseFailed`
 
 ## Message

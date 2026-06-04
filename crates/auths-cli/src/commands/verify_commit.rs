@@ -1,11 +1,10 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
-use auths_id::ports::registry::RegistryBackend;
-use auths_id::storage::GitWitnessReceiptLookup;
 use auths_infra_http::HttpOobiResolver;
 use auths_keri::Event;
 use auths_keri::witness::{SignedReceipt, WitnessReceiptLookup};
-use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
+use auths_sdk::ports::RegistryBackend;
+use auths_sdk::storage::{GitRegistryBackend, GitWitnessReceiptLookup, RegistryConfig};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     Attestation, CommitVerdict, IdentityBundle, VerificationReport, VerifierWitnessPolicy,
@@ -286,13 +285,13 @@ async fn resolve_signer_kel(
     did: &str,
 ) -> Result<Vec<Event>, String> {
     if let Some(oobi_base) = &cmd.oobi {
-        let prefix = auths_id::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
+        let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
         let resolver = HttpOobiResolver::new(oobi_base.clone()).map_err(|e| e.to_string())?;
         let events = resolver
             .fetch_kel(&prefix)
             .await
             .map_err(|e| e.to_string())?;
-        auths_id::keri::verify_prefix_binding(&prefix, &events).map_err(|e| e.to_string())?;
+        auths_sdk::keri::verify_prefix_binding(&prefix, &events).map_err(|e| e.to_string())?;
         Ok(events)
     } else {
         let chain = match &cmd.remote {
@@ -439,7 +438,7 @@ fn commit_signer_trailers(raw_commit: &str) -> Option<(String, String)> {
         .split_once("\n\n")
         .map(|(_, m)| m)
         .unwrap_or(raw_commit);
-    let trailers = auths_id::trailer::parse_trailers(message);
+    let trailers = auths_sdk::keri::parse_trailers(message);
     let find = |key: &str| {
         trailers
             .iter()
@@ -516,6 +515,29 @@ fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResu
         }
         CommitVerdict::DeviceRevoked => {
             result.error = Some("Device delegation has been revoked by the root".to_string());
+        }
+        CommitVerdict::SignedAfterRevocation {
+            signed_at,
+            revoked_at,
+            ..
+        } => {
+            result.error = Some(format!(
+                "Commit was signed at/after the delegator revoked it (signed at KEL position {signed_at}, revoked at {revoked_at})"
+            ));
+        }
+        CommitVerdict::OutsideAgentScope { capability, .. } => {
+            result.error = Some(format!(
+                "Agent signed exercising capability '{capability}', outside its delegator-anchored scope"
+            ));
+        }
+        CommitVerdict::AgentExpired {
+            expired_at,
+            signed_at,
+            ..
+        } => {
+            result.error = Some(format!(
+                "Agent delegation expired (expired at {expired_at}, signed at {signed_at})"
+            ));
         }
         CommitVerdict::SignerKeyMismatch => {
             result.ssh_valid = Some(false);

@@ -1,6 +1,6 @@
 # AUTHS-E4805
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ResolveError::InvalidKeyEncoding`
 
 ## Message

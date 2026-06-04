@@ -1,6 +1,6 @@
 # AUTHS-E4510
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ValidationError::MalformedSequence`
 
 ## Message

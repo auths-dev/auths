@@ -1,6 +1,6 @@
 # AUTHS-E5306
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `RotationError::PartialRotation`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E4407
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IdentityError::KeyRetrieval`
 
 ## Message

@@ -142,6 +142,7 @@ fn sample_dip() -> DipEvent {
         c: vec![],
         a: vec![],
         di: delegator(),
+        source_seal: None,
     }
 }
 
@@ -162,6 +163,7 @@ fn sample_drt() -> DrtEvent {
         c: vec![],
         a: vec![],
         di: delegator(),
+        source_seal: None,
     }
 }
 

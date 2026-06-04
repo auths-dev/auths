@@ -62,14 +62,20 @@ const ARTIFACT_EXTENSIONS: &[&str] = &[
     ".pkg", ".nupkg",
 ];
 
-/// Build the in-band signer trailers (`Auths-Id` = root identity, `Auths-Device` =
-/// signing device) for the local machine's signing identity. The trailer rides in
-/// the commit message body, so it is covered by the SSH signature.
-fn commit_trailer_args(signer: &LocalSigner) -> [String; 2] {
-    [
+/// Build the in-band signer trailers for the local machine's signing identity:
+/// `Auths-Id` = root identity, `Auths-Device` = signing device, and (when the root
+/// KEL tip is known) `Auths-Anchor-Seq` = the delegator-anchoring position at
+/// signing, so a verifier can order this commit against a later revocation by KEL
+/// position. The trailers ride in the commit message body, covered by the signature.
+fn commit_trailer_args(signer: &LocalSigner) -> Vec<String> {
+    let mut trailers = vec![
         format!("Auths-Id: {}", signer.root_did),
         format!("Auths-Device: {}", signer.signer_did),
-    ]
+    ];
+    if let Some(seq) = signer.anchor_seq {
+        trailers.push(auths_verifier::anchor_seq_trailer(seq));
+    }
+    trailers
 }
 
 /// Resolve the local signing identity → the trailer values to embed in-band.
@@ -95,12 +101,14 @@ fn resolve_signer_trailer(
 /// Args:
 /// * `base` - The exclusive base ref (commits after this ref will be re-signed).
 /// * `trailers` - The `Auths-Id` / `Auths-Device` trailer strings.
-fn execute_git_rebase(base: &str, trailers: &[String; 2]) -> Result<()> {
-    // did:keri values are `[A-Za-z0-9_-]`, safe to single-quote in the exec shell.
-    let exec_cmd = format!(
-        "git commit --amend --no-edit --no-verify --trailer '{}' --trailer '{}'",
-        trailers[0], trailers[1]
-    );
+fn execute_git_rebase(base: &str, trailers: &[String]) -> Result<()> {
+    // did:keri values and integer sequences are `[A-Za-z0-9_:.\- ]`, safe to
+    // single-quote in the exec shell.
+    let trailer_flags: String = trailers
+        .iter()
+        .map(|t| format!(" --trailer '{}'", t))
+        .collect();
+    let exec_cmd = format!("git commit --amend --no-edit --no-verify{trailer_flags}");
     let output = crate::subprocess::git_command(&["rebase", "--exec", &exec_cmd, base])
         .output()
         .context("Failed to spawn git rebase")?;
@@ -130,18 +138,14 @@ fn sign_commit_range(range: &str, signer: &LocalSigner) -> Result<()> {
         let base = parts[0];
         execute_git_rebase(base, &trailers)?;
     } else {
-        let output = crate::subprocess::git_command(&[
-            "commit",
-            "--amend",
-            "--no-edit",
-            "--no-verify",
-            "--trailer",
-            &trailers[0],
-            "--trailer",
-            &trailers[1],
-        ])
-        .output()
-        .context("Failed to spawn git commit --amend")?;
+        let mut args: Vec<&str> = vec!["commit", "--amend", "--no-edit", "--no-verify"];
+        for trailer in &trailers {
+            args.push("--trailer");
+            args.push(trailer);
+        }
+        let output = crate::subprocess::git_command(&args)
+            .output()
+            .context("Failed to spawn git commit --amend")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow!(
@@ -270,10 +274,28 @@ mod tests {
         let signer = LocalSigner {
             signer_did: "did:keri:Edevice".to_string(),
             root_did: "did:keri:Eroot".to_string(),
+            anchor_seq: None,
         };
         let trailers = commit_trailer_args(&signer);
         assert_eq!(trailers[0], "Auths-Id: did:keri:Eroot");
         assert_eq!(trailers[1], "Auths-Device: did:keri:Edevice");
+        assert_eq!(
+            trailers.len(),
+            2,
+            "no anchor seq → no Auths-Anchor-Seq trailer"
+        );
+    }
+
+    #[test]
+    fn trailer_carries_signing_sequence() {
+        let signer = LocalSigner {
+            signer_did: "did:keri:Edevice".to_string(),
+            root_did: "did:keri:Eroot".to_string(),
+            anchor_seq: Some(7),
+        };
+        let trailers = commit_trailer_args(&signer);
+        assert_eq!(trailers.len(), 3);
+        assert_eq!(trailers[2], "Auths-Anchor-Seq: 7");
     }
 
     #[test]
@@ -282,6 +304,7 @@ mod tests {
         let signer = LocalSigner {
             signer_did: "did:keri:Eroot".to_string(),
             root_did: "did:keri:Eroot".to_string(),
+            anchor_seq: None,
         };
         let trailers = commit_trailer_args(&signer);
         assert_eq!(trailers[0], "Auths-Id: did:keri:Eroot");

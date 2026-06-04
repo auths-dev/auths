@@ -37,7 +37,7 @@
 //! ```
 
 use auths_core::witness::{EventHash, WitnessProvider};
-use auths_policy::{CanonicalCapability, DidParseError, evaluate_strict};
+use auths_policy::{CanonicalCapability, DidParseError};
 use auths_verifier::core::Attestation;
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
@@ -51,7 +51,7 @@ use crate::storage::receipts::{check_receipt_consistency, verify_receipt_signatu
 // Re-export policy types for convenience
 pub use auths_policy::{
     CompileError, CompiledPolicy, Decision, EvalContext, Expr, Outcome, PolicyBuilder,
-    PolicyLimits, ReasonCode, compile, compile_from_json,
+    PolicyLimits, ReasonCode, compile, compile_from_json, evaluate_strict,
 };
 
 /// Convert an attestation to an evaluation context.
@@ -108,6 +108,62 @@ pub fn context_from_attestation(
             _ => auths_policy::SignerType::Workload,
         };
         ctx = ctx.signer_type(policy_st);
+    }
+
+    Ok(ctx)
+}
+
+/// Build an evaluation context from a delegator-anchored (KEL-authoritative) org
+/// membership, fail-closed.
+///
+/// This is the KERI-native counterpart to [`context_from_attestation`]: org
+/// authority is read from the org's KEL (the member is a `dip` the org anchored;
+/// role/capabilities ride a delegator-anchored scope seal), **never** from an
+/// attestation `delegated_by` field. The caller resolves the membership against the
+/// KEL — a revoked-on-KEL member yields `revoked = true` here, so policy denies it
+/// even if a stale attestation says otherwise.
+///
+/// Args:
+/// * `org_did`: The delegating org's `did:keri:` — populates both `issuer` and `delegated_by`.
+/// * `member_did`: The member's `did:keri:` (derived from its `dip` SAID).
+/// * `revoked`: Whether the org has revoked the member on its KEL.
+/// * `role`: The member's role string from the scope seal (if any).
+/// * `capabilities`: Capability strings granted by the scope seal.
+/// * `expires_at`: Optional delegator-anchored expiry.
+/// * `now`: The current time (injected for determinism).
+///
+/// Usage:
+/// ```ignore
+/// let ctx = context_from_delegated_member(&org_did, &member_did, revoked, role, &caps, expires, now)?;
+/// let decision = evaluate_strict(&policy, &ctx);
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn context_from_delegated_member(
+    org_did: &str,
+    member_did: &str,
+    revoked: bool,
+    role: Option<&str>,
+    capabilities: &[String],
+    expires_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> Result<EvalContext, DidParseError> {
+    let mut ctx = EvalContext::try_from_strings(now, org_did, member_did)?;
+    ctx = ctx.revoked(revoked);
+
+    let caps: Vec<CanonicalCapability> = capabilities
+        .iter()
+        .filter_map(|c| CanonicalCapability::parse(c).ok())
+        .collect();
+    ctx = ctx.capabilities(caps);
+
+    if let Some(role) = role {
+        ctx = ctx.role(role.to_string());
+    }
+    if let Some(expires_at) = expires_at {
+        ctx = ctx.expires_at(expires_at);
+    }
+    if let Ok(did) = auths_policy::CanonicalDid::parse(org_did) {
+        ctx = ctx.delegated_by(did);
     }
 
     Ok(ctx)

@@ -1,6 +1,6 @@
 # AUTHS-E3903
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `SshAgentError::IoError`
 
 ## Message

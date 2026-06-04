@@ -1,6 +1,6 @@
 # AUTHS-E4876
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::NotImplemented`
 
 ## Message

@@ -29,8 +29,9 @@ use crate::keri::{
 };
 use crate::storage::registry::RegistryBackend;
 use auths_keri::{
-    DipEvent, DipEventInit, DrtEvent, DrtEventInit, IndexedSignature, IxnEvent, KeriPublicKey,
-    finalize_ixn_event, serialize_attachment,
+    AgentScope, DipEvent, DipEventInit, DrtEvent, DrtEventInit, IndexedSignature, IxnEvent,
+    KeriPublicKey, SourceSeal, decode_agent_scope, encode_agent_scope, finalize_ixn_event,
+    serialize_attachment, serialize_source_seal_couples,
 };
 
 /// A device incepted as a delegated identifier of a root identity.
@@ -242,10 +243,10 @@ pub fn anchor_received_dip(
     let device_prefix = dip.i.clone();
     let dip_said = dip.d.clone();
 
-    backend
-        .append_signed_event(&device_prefix, &Event::Dip(dip.clone()), dip_attachment)
-        .map_err(|e| InitError::Registry(e.to_string()))?;
-
+    // Cooperative double-anchor: author the root's anchoring `ixn` FIRST so we
+    // know its (sequence, SAID). Only then can the delegate's `-G` source seal
+    // point back at the exact anchoring event (the dip's own SAID doesn't depend
+    // on the anchor, so authoring the anchor before appending the dip is sound).
     let anchor_ixn = author_root_anchor_ixn(
         backend,
         root_prefix,
@@ -259,6 +260,23 @@ pub fn anchor_received_dip(
         passphrase_provider,
         keychain,
     )?;
+
+    // Attach the delegate-side source seal (`-G`) and append the dip carrying it:
+    // combined attachment = device signature group (`-A`) ++ source-seal group (`-G`).
+    let source_seal = SourceSeal {
+        s: anchor_ixn.s,
+        d: anchor_ixn.d.clone(),
+    };
+    let mut anchored_dip = dip.clone();
+    anchored_dip.source_seal = Some(source_seal.clone());
+    let mut attachment = dip_attachment.to_vec();
+    attachment.extend_from_slice(
+        &serialize_source_seal_couples(&[source_seal])
+            .map_err(|e| InitError::Keri(format!("source seal serialization: {e}")))?,
+    );
+    backend
+        .append_signed_event(&device_prefix, &Event::Dip(anchored_dip), &attachment)
+        .map_err(|e| InitError::Registry(e.to_string()))?;
 
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: device_prefix is from a validated dip, a valid did:keri prefix.
@@ -317,12 +335,137 @@ pub fn author_root_anchor_ixn(
     Ok(ixn)
 }
 
-/// One device the root has delegated, with its current revocation status.
+/// The role a delegated identifier plays.
+///
+/// Agents and devices share the exact same `dip`/`drt` delegation mechanism; the
+/// role is a presentation distinction so `agent list` and `device list` don't
+/// intermix. It is carried by an `agent:{prefix}` `Seal::Digest` marker in the root
+/// KEL (no new seal type) — devices are the unmarked default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DelegatedRole {
+    /// A device — the default delegated identifier (carries no role marker).
+    Device,
+    /// An AI agent — carries an `agent:{prefix}` role marker in the root KEL.
+    Agent,
+}
+
+/// One identifier the root has delegated, with its role and revocation status.
 pub struct DelegatedDeviceInfo {
-    /// The delegated device's KEL prefix.
+    /// The delegated identifier's KEL prefix.
     pub device_prefix: Prefix,
     /// Whether the root has anchored a revocation for it.
     pub revoked: bool,
+    /// Whether this delegation is an agent or a device.
+    pub role: DelegatedRole,
+}
+
+/// The role-marker digest value for an agent prefix (`agent:{prefix}`).
+fn agent_role_marker(agent_prefix: &Prefix) -> String {
+    format!("agent:{}", agent_prefix.as_str())
+}
+
+/// Anchor an agent role marker for `agent_prefix` on the root KEL (single-author).
+///
+/// Anchors a `Seal::Digest{d: "agent:{prefix}"}` so [`list_delegated_devices`] can
+/// classify this delegated identifier as an agent — distinguishing it from devices
+/// without a new seal type. Distinct from the exact-prefix revocation digest, so it
+/// never reads as a revocation.
+///
+/// Args:
+/// * `backend`: Registry backend holding the root KEL.
+/// * `root_prefix` / `root_alias` / `root_curve`: the delegator authoring the marker.
+/// * `agent_prefix`: The agent's KEL prefix to mark.
+/// * `passphrase_provider` / `keychain`: root key custody.
+///
+/// Usage:
+/// ```ignore
+/// mark_delegated_agent(&*backend, &root_prefix, &root_alias, curve, &agent_prefix, &provider, &keychain)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn mark_delegated_agent(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    agent_prefix: &Prefix,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<(), InitError> {
+    author_root_anchor_ixn(
+        backend,
+        root_prefix,
+        root_alias,
+        root_curve,
+        vec![Seal::Digest {
+            d: Said::new_unchecked(agent_role_marker(agent_prefix)),
+        }],
+        passphrase_provider,
+        keychain,
+    )
+    .map(|_| ())
+}
+
+/// Anchor a delegator-anchored scope/expiry seal for an agent on the root KEL.
+///
+/// Authority comes from the party that controls the delegator key — the scope rides
+/// in the delegator's own `ixn`, never in the agent's KEL (a compromised agent must
+/// not widen its own scope). Advisory authorization (ACDC is the Epic-F upgrade).
+///
+/// Args:
+/// * `backend`: Registry backend holding the root KEL.
+/// * `root_prefix` / `root_alias` / `root_curve`: the delegator authoring the seal.
+/// * `agent_prefix`: The agent's KEL prefix the scope applies to.
+/// * `scope`: The granted capabilities + optional expiry.
+/// * `passphrase_provider` / `keychain`: root key custody.
+///
+/// Usage:
+/// ```ignore
+/// mark_agent_scope(&*backend, &root_prefix, &root_alias, curve, &agent_prefix, &scope, &provider, &keychain)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn mark_agent_scope(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    agent_prefix: &Prefix,
+    scope: &AgentScope,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<(), InitError> {
+    author_root_anchor_ixn(
+        backend,
+        root_prefix,
+        root_alias,
+        root_curve,
+        vec![Seal::Digest {
+            d: Said::new_unchecked(encode_agent_scope(agent_prefix.as_str(), scope)),
+        }],
+        passphrase_provider,
+        keychain,
+    )
+    .map(|_| ())
+}
+
+/// Read the latest delegator-anchored scope for `agent_prefix` from a KEL slice,
+/// or `None` if the delegator never anchored one. Pure — used by the verifier.
+///
+/// Args:
+/// * `events`: The delegator's KEL events.
+/// * `agent_prefix`: The agent prefix to resolve scope for.
+pub fn read_agent_scope(events: &[Event], agent_prefix: &Prefix) -> Option<AgentScope> {
+    let mut found: Option<AgentScope> = None;
+    for event in events {
+        for seal in event.anchors() {
+            if let Seal::Digest { d } = seal
+                && let Some((prefix, scope)) = decode_agent_scope(d.as_str())
+                && prefix == agent_prefix.as_str()
+            {
+                found = Some(scope);
+            }
+        }
+    }
+    found
 }
 
 /// List every device the root has delegated, each tagged with whether the root
@@ -344,6 +487,7 @@ pub fn list_delegated_devices(
 ) -> Result<Vec<DelegatedDeviceInfo>, InitError> {
     let mut delegated: Vec<String> = Vec::new();
     let mut revoked: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut agents: std::collections::HashSet<String> = std::collections::HashSet::new();
     backend
         .visit_events(root_prefix, 0, &mut |event| {
             for seal in event.anchors() {
@@ -354,9 +498,16 @@ pub fn list_delegated_devices(
                             delegated.push(p);
                         }
                     }
-                    Seal::Digest { d } => {
-                        revoked.insert(d.as_str().to_string());
-                    }
+                    // An `agent:{prefix}` digest is a role marker; a bare-prefix
+                    // digest is a revocation.
+                    Seal::Digest { d } => match d.as_str().strip_prefix("agent:") {
+                        Some(prefix) => {
+                            agents.insert(prefix.to_string());
+                        }
+                        None => {
+                            revoked.insert(d.as_str().to_string());
+                        }
+                    },
                     _ => {}
                 }
             }
@@ -367,6 +518,11 @@ pub fn list_delegated_devices(
         .into_iter()
         .map(|p| DelegatedDeviceInfo {
             revoked: revoked.contains(&p),
+            role: if agents.contains(&p) {
+                DelegatedRole::Agent
+            } else {
+                DelegatedRole::Device
+            },
             device_prefix: Prefix::new_unchecked(p),
         })
         .collect())
@@ -458,6 +614,40 @@ pub fn revoke_delegated_device(
     .map(|_| ())
 }
 
+/// Reveal and validate a delegated device's pre-committed next key (its new current
+/// key) for a `drt`: loads `{device_alias}--next-{establishment_seq}`, decrypts it,
+/// and checks it against the prior next-key commitment. Returns the next-key alias (so
+/// the caller can retire it), the revealed PKCS#8, and its verkey.
+fn reveal_pre_committed_next_key(
+    keychain: &(dyn KeyStorage + Send + Sync),
+    passphrase_provider: &dyn PassphraseProvider,
+    device_alias: &KeyAlias,
+    device_state: &auths_keri::KeyState,
+) -> Result<(KeyAlias, Pkcs8Der, KeriPublicKey), InitError> {
+    let next_alias = KeyAlias::new_unchecked(format!(
+        "{}--next-{}",
+        device_alias, device_state.last_establishment_sequence
+    ));
+    let (_did, _role, encrypted) = keychain.load_key(&next_alias)?;
+    let pass = passphrase_provider.get_passphrase(&format!(
+        "Enter passphrase for device next key '{}':",
+        next_alias
+    ))?;
+    let revealed_pkcs8 = Pkcs8Der::new(decrypt_keypair(&encrypted, &pass)?.to_vec());
+    let revealed_keypair = load_keypair_from_der_or_seed(revealed_pkcs8.as_ref())?;
+    #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+    let revealed_verkey = KeriPublicKey::ed25519(revealed_keypair.public_key().as_ref())
+        .expect("ring Ed25519 public key is 32 bytes");
+    if device_state.next_commitment.is_empty()
+        || !verify_commitment(&revealed_verkey, &device_state.next_commitment[0])
+    {
+        return Err(InitError::InvalidData(
+            "device next key does not match its prior commitment".to_string(),
+        ));
+    }
+    Ok((next_alias, revealed_pkcs8, revealed_verkey))
+}
+
 /// Rotate a delegated device's own key (`drt`), anchored by the root.
 ///
 /// The device reveals its pre-committed next key (its new current key), signs a
@@ -497,27 +687,8 @@ pub fn rotate_delegated_device(
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
     // Reveal the device's pre-committed next key (its new current key).
-    let next_alias = KeyAlias::new_unchecked(format!(
-        "{}--next-{}",
-        device_alias, device_state.last_establishment_sequence
-    ));
-    let (_did, _role, encrypted) = keychain.load_key(&next_alias)?;
-    let pass = passphrase_provider.get_passphrase(&format!(
-        "Enter passphrase for device next key '{}':",
-        next_alias
-    ))?;
-    let revealed_pkcs8 = Pkcs8Der::new(decrypt_keypair(&encrypted, &pass)?.to_vec());
-    let revealed_keypair = load_keypair_from_der_or_seed(revealed_pkcs8.as_ref())?;
-    #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
-    let revealed_verkey = KeriPublicKey::ed25519(revealed_keypair.public_key().as_ref())
-        .expect("ring Ed25519 public key is 32 bytes");
-    if device_state.next_commitment.is_empty()
-        || !verify_commitment(&revealed_verkey, &device_state.next_commitment[0])
-    {
-        return Err(InitError::InvalidData(
-            "device next key does not match its prior commitment".to_string(),
-        ));
-    }
+    let (next_alias, revealed_pkcs8, revealed_verkey) =
+        reveal_pre_committed_next_key(keychain, passphrase_provider, device_alias, &device_state)?;
 
     // Commit a fresh next key for the device's subsequent rotation.
     let fresh_next =
@@ -548,23 +719,23 @@ pub fn rotate_delegated_device(
     .map_err(|e| InitError::Keri(e.to_string()))?;
     let drt_said = drt.d.clone();
 
-    // The device signs the drt with its revealed (new current) key.
+    // The device signs the drt with its revealed (new current) key. The signature
+    // is over the event body only; the `-G` source seal is an attachment added
+    // after anchoring and never affects the SAID or the signed bytes.
     let canonical = serialize_for_signing(&Event::Drt(drt.clone()))
         .map_err(|e| InitError::Keri(e.to_string()))?;
     let sig = sign_with_pkcs8_for_init(device_curve, &revealed_pkcs8, &canonical)
         .map_err(|e| InitError::Crypto(e.to_string()))?;
-    let attachment = serialize_attachment(&[IndexedSignature {
+    let mut attachment = serialize_attachment(&[IndexedSignature {
         index: 0,
         prior_index: None,
         sig,
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
-    backend
-        .append_signed_event(device_prefix, &Event::Drt(drt), &attachment)
-        .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    // The root anchors the drt.
-    author_root_anchor_ixn(
+    // Cooperative double-anchor (as in `anchor_received_dip`): the root anchors
+    // the drt first, then the delegate's `-G` source seal points back at it.
+    let anchor_ixn = author_root_anchor_ixn(
         backend,
         root_prefix,
         root_alias,
@@ -577,6 +748,20 @@ pub fn rotate_delegated_device(
         passphrase_provider,
         keychain,
     )?;
+
+    let source_seal = SourceSeal {
+        s: anchor_ixn.s,
+        d: anchor_ixn.d.clone(),
+    };
+    let mut anchored_drt = drt;
+    anchored_drt.source_seal = Some(source_seal.clone());
+    attachment.extend_from_slice(
+        &serialize_source_seal_couples(&[source_seal])
+            .map_err(|e| InitError::Keri(format!("source seal serialization: {e}")))?,
+    );
+    backend
+        .append_signed_event(device_prefix, &Event::Drt(anchored_drt), &attachment)
+        .map_err(|e| InitError::Registry(e.to_string()))?;
 
     // Persist the device's new current (the revealed key) + fresh next.
     #[allow(clippy::disallowed_methods)]

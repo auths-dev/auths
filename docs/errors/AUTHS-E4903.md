@@ -1,6 +1,6 @@
 # AUTHS-E4903
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `InceptionError::Storage`
 
 ## Message

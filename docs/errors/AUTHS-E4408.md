@@ -1,6 +1,6 @@
 # AUTHS-E4408
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IdentityError::RingError`
 
 ## Message

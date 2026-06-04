@@ -1,5 +1,6 @@
 //! Re-exports of witness server and config types.
 
+pub use auths_core::witness::AsyncWitnessProvider;
 pub use auths_id::witness_config::{WitnessConfig, WitnessParams, WitnessRef};
 
 #[cfg(feature = "witness-server")]

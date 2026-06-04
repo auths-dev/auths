@@ -74,11 +74,9 @@ export {
   PairingService,
   type PairingSession,
   type PairingResponse,
-  type PairingResult,
   type CreatePairingSessionOptions,
   type WaitForPairingResponseOptions,
   type JoinPairingOptions,
-  type CompletePairingOptions,
 } from './pairing'
 export {
   verifyAttestation,

@@ -1,6 +1,6 @@
 # AUTHS-E4707
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RotationError::Serialization`
 
 ## Message

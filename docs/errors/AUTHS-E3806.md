@@ -1,6 +1,6 @@
 # AUTHS-E3806
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `PlatformError::Platform`
 
 ## Message

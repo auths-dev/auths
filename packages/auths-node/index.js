@@ -587,6 +587,7 @@ module.exports.delegateAgent = nativeBinding.delegateAgent
 module.exports.evaluatePolicy = nativeBinding.evaluatePolicy
 module.exports.extendDeviceAuthorization = nativeBinding.extendDeviceAuthorization
 module.exports.generateAuditReport = nativeBinding.generateAuditReport
+module.exports.generateInmemoryKeypair = nativeBinding.generateInmemoryKeypair
 module.exports.getIdentityPublicKey = nativeBinding.getIdentityPublicKey
 module.exports.getLatestAttestation = nativeBinding.getLatestAttestation
 module.exports.getPinnedIdentity = nativeBinding.getPinnedIdentity

@@ -1,6 +1,6 @@
 # AUTHS-E4302
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `AgentProvisioningError::IdentityCreation`
 
 ## Message

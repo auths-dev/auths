@@ -37,15 +37,15 @@ class OrgMember:
     """A member within an organization."""
 
     member_did: str
-    """DID of the member."""
+    """Delegated `did:keri:` AID minted by the org for this member."""
     role: str
     """Member role: `"admin"`, `"member"`, or `"readonly"`."""
     capabilities: list[str]
     """Capabilities granted to this member."""
-    issuer_did: str
-    """DID of the identity that issued the membership attestation."""
-    attestation_rid: str
-    """RID of the membership attestation."""
+    org_did: str
+    """DID of the organization that owns this membership."""
+    member_prefix: str
+    """KERI prefix of the member's delegated identity."""
     revoked: bool
     """Whether this membership has been revoked."""
     expires_at: Optional[str]
@@ -103,50 +103,49 @@ class OrgService:
     def add_member(
         self,
         org_did: str,
-        member_did: str,
+        member_label: str,
         role: str = "member",
         capabilities: list[str] | None = None,
-        note: str | None = None,
         repo_path: str | None = None,
         passphrase: str | None = None,
-        member_public_key_hex: str | None = None,
+        expires_at: int | None = None,
     ) -> OrgMember:
         """Add a member to an organization.
 
+        The organization mints a fresh delegated key for the member from the
+        given label; the returned `member_did` is the new delegated AID.
+
         Args:
             org_did: The organization's DID (`did:keri:...`).
-            member_did: The member's DID to add.
+            member_label: Human-readable alias for the minted member key.
             role: One of `"admin"`, `"member"`, `"readonly"`.
             capabilities: Explicit capability list. If None, uses role defaults.
-            note: Optional human-readable note for the attestation.
-            member_public_key_hex: Member's Ed25519 public key hex. Required when
-                the member's identity is in a different registry.
+            expires_at: Optional Unix timestamp at which the membership expires.
 
         Returns:
-            OrgMember with the membership attestation details.
+            OrgMember with the minted member DID and membership details.
 
         Raises:
             OrgError: If the member cannot be added.
 
         Examples:
             ```python
-            member = client.orgs.add_member(org.did, dev.did, role="member")
+            member = client.orgs.add_member(org.did, "alice", role="member")
             ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
         caps_json = json.dumps(capabilities) if capabilities else None
         try:
-            m_did, r, caps_str, issuer, rid, revoked, expires = _add_org_member(
-                org_did, member_did, role, rp, caps_json, pp, note,
-                member_public_key_hex,
+            m_did, r, caps_str, o_did, prefix, revoked, expires = _add_org_member(
+                org_did, member_label, role, rp, caps_json, pp, expires_at,
             )
             return OrgMember(
                 member_did=m_did,
                 role=r,
                 capabilities=json.loads(caps_str) if caps_str else [],
-                issuer_did=issuer,
-                attestation_rid=rid,
+                org_did=o_did,
+                member_prefix=prefix,
                 revoked=revoked,
                 expires_at=expires,
             )
@@ -157,19 +156,14 @@ class OrgService:
         self,
         org_did: str,
         member_did: str,
-        note: str | None = None,
         repo_path: str | None = None,
         passphrase: str | None = None,
-        member_public_key_hex: str | None = None,
     ) -> OrgMember:
         """Revoke a member's authorization.
 
         Args:
             org_did: The organization's DID.
-            member_did: The member's DID to revoke.
-            note: Optional human-readable note.
-            member_public_key_hex: Member's Ed25519 public key hex. Required when
-                the member's identity is in a different registry.
+            member_did: The member's delegated DID to revoke.
 
         Returns:
             OrgMember with revoked status.
@@ -179,21 +173,21 @@ class OrgService:
 
         Examples:
             ```python
-            revoked = client.orgs.revoke_member(org.did, dev.did)
+            revoked = client.orgs.revoke_member(org.did, member.member_did)
             ```
         """
         rp = repo_path or self._client.repo_path
         pp = passphrase or self._client._passphrase
         try:
-            m_did, r, caps_str, issuer, rid, revoked, expires = _revoke_org_member(
-                org_did, member_did, rp, pp, note, member_public_key_hex,
+            m_did, r, caps_str, o_did, prefix, revoked, expires = _revoke_org_member(
+                org_did, member_did, rp, pp,
             )
             return OrgMember(
                 member_did=m_did,
                 role=r,
                 capabilities=json.loads(caps_str) if caps_str else [],
-                issuer_did=issuer,
-                attestation_rid=rid,
+                org_did=o_did,
+                member_prefix=prefix,
                 revoked=revoked,
                 expires_at=expires,
             )
@@ -204,45 +198,45 @@ class OrgService:
         self,
         org_did: str,
         member_did: str,
+        member_label: str,
         role: str | None = None,
         capabilities: list[str] | None = None,
-        note: str | None = None,
         repo_path: str | None = None,
         passphrase: str | None = None,
-        member_public_key_hex: str | None = None,
     ) -> OrgMember:
-        """Update a member's role or capabilities.
+        """Update a member by revoking the old delegation and minting a new one.
+
+        Because the organization mints member keys, an update revokes the
+        existing delegated DID and adds a fresh member under `member_label`.
 
         Args:
             org_did: The organization's DID.
-            member_did: The member's DID to update.
-            role: New role. If None, keeps current.
+            member_did: The existing delegated DID to revoke.
+            member_label: Alias for the newly minted member key.
+            role: New role. If None, defaults to `"member"`.
             capabilities: New capabilities. If None, uses role defaults.
-            note: Optional note.
-            member_public_key_hex: Member's Ed25519 public key hex. Required when
-                the member's identity is in a different registry.
 
         Returns:
-            OrgMember with the updated role and capabilities.
+            OrgMember for the freshly minted member.
 
         Raises:
             OrgError: If the member cannot be updated.
 
         Examples:
             ```python
-            updated = client.orgs.update_member(org.did, dev.did, role="admin")
+            updated = client.orgs.update_member(
+                org.did, member.member_did, "alice", role="admin"
+            )
             ```
         """
         self.revoke_member(
-            org_did, member_did, note="superseded by update",
+            org_did, member_did,
             repo_path=repo_path, passphrase=passphrase,
-            member_public_key_hex=member_public_key_hex,
         )
         return self.add_member(
-            org_did, member_did, role=role or "member",
-            capabilities=capabilities, note=note,
+            org_did, member_label, role=role or "member",
+            capabilities=capabilities,
             repo_path=repo_path, passphrase=passphrase,
-            member_public_key_hex=member_public_key_hex,
         )
 
     def list_members(
@@ -275,10 +269,10 @@ class OrgService:
             return [
                 OrgMember(
                     member_did=m["member_did"],
-                    role=m["role"],
-                    capabilities=m["capabilities"],
-                    issuer_did=m["issuer_did"],
-                    attestation_rid=m["attestation_rid"],
+                    role=m.get("role") or "member",
+                    capabilities=m.get("capabilities") or [],
+                    org_did=org_did,
+                    member_prefix=m.get("member_prefix", ""),
                     revoked=m["revoked"],
                     expires_at=m.get("expires_at"),
                 )

@@ -1,6 +1,6 @@
 # AUTHS-E5807
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `AllowedSignersError::AttestationEntryProtected`
 
 ## Message

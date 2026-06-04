@@ -1,6 +1,6 @@
 # AUTHS-E4405
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IdentityError::InvalidKeyLength`
 
 ## Message

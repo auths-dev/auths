@@ -1,6 +1,6 @@
 # AUTHS-E5804
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `AllowedSignersError::FileWrite`
 
 ## Message

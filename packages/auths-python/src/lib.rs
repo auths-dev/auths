@@ -14,7 +14,6 @@ pub mod commit_sign;
 pub mod commit_verify;
 pub mod device_ext;
 pub mod diagnostics;
-pub mod git_integration;
 pub mod identity;
 pub mod identity_sign;
 pub mod org;
@@ -99,11 +98,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<commit_verify::PyCommitVerificationResult>()?;
     m.add_function(wrap_pyfunction!(commit_verify::verify_commit_native, m)?)?;
 
-    m.add_function(wrap_pyfunction!(
-        git_integration::generate_allowed_signers_file,
-        m
-    )?)?;
-
     m.add_class::<attestation_query::PyAttestation>()?;
     m.add_function(wrap_pyfunction!(attestation_query::list_attestations, m)?)?;
     m.add_function(wrap_pyfunction!(
@@ -136,7 +130,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<pairing::PyPairingHandle>()?;
     m.add_function(wrap_pyfunction!(pairing::create_pairing_session_ffi, m)?)?;
     m.add_function(wrap_pyfunction!(pairing::join_pairing_session_ffi, m)?)?;
-    m.add_function(wrap_pyfunction!(pairing::complete_pairing_ffi, m)?)?;
 
     Ok(())
 }

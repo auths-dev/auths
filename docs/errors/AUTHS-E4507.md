@@ -1,6 +1,6 @@
 # AUTHS-E4507
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ValidationError::EmptyKel`
 
 ## Message

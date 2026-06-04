@@ -1,6 +1,6 @@
 # AUTHS-E3021
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::HsmPinLocked`
 
 ## Message

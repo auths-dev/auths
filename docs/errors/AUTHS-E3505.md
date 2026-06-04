@@ -1,6 +1,6 @@
 # AUTHS-E3505
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `StorageError::Internal`
 
 ## Message

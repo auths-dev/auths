@@ -1,6 +1,6 @@
 # AUTHS-E4705
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RotationError::IdentityAbandoned`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E4301
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `AgentProvisioningError::RepoCreation`
 
 ## Message

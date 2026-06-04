@@ -1,6 +1,6 @@
 # AUTHS-E3022
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::HsmDeviceRemoved`
 
 ## Message

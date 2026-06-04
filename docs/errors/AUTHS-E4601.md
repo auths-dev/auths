@@ -1,6 +1,6 @@
 # AUTHS-E4601
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `KelError::Git`
 
 ## Message

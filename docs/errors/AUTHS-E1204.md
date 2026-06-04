@@ -1,6 +1,6 @@
 # AUTHS-E1204
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `KeriDecodeError::InvalidLength`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E4992
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `HookError::NotGitRepo`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E4202
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `InitError::Keri`
 
 ## Message

@@ -1,23 +1,31 @@
+use axum::routing::get;
 use axum::Router;
-use std::sync::Arc;
 
-use crate::domains::agents::routes as agent_routes;
-use crate::persistence::AgentPersistence;
-use auths_sdk::domains::agents::AgentRegistry;
+/// Application state shared across handlers.
+///
+/// Empty until a domain is mounted — the legacy bearer-token agent state
+/// (registry + Redis persistence) was removed in Epic E.
+#[derive(Clone, Default)]
+pub struct AppState {}
 
-/// Application state shared across all handlers
-#[derive(Clone)]
-pub struct AppState {
-    pub registry: Arc<AgentRegistry>,
-    pub persistence: Arc<AgentPersistence>,
+/// Build the API router.
+///
+/// Currently exposes only a `/health` probe. The legacy `/v1/agents` routes were
+/// removed in Epic E (the agent surface is the SDK/CLI); future domains mount here.
+///
+/// Args:
+/// * `_state`: Shared application state (unused until a stateful domain is mounted).
+///
+/// Usage:
+/// ```
+/// use auths_api::app::{AppState, build_router};
+/// let _router = build_router(AppState::default());
+/// ```
+pub fn build_router(_state: AppState) -> Router {
+    Router::new().route("/health", get(health))
 }
 
-/// Build the complete API router
-/// Composes routes from all domains
-pub fn build_router(state: AppState) -> Router {
-    Router::new().nest("/v1", agent_routes(state.clone()))
-    // Future domains will be nested here:
-    // .nest("/v1", developer_routes(state.clone()))
-    // .nest("/v1", organization_routes(state.clone()))
-    // .nest("/v1", verification_routes(state.clone()))
+/// Liveness probe.
+async fn health() -> &'static str {
+    "ok"
 }

@@ -1,6 +1,6 @@
 # AUTHS-E4972
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `WitnessIntegrationError::Storage`
 
 ## Message

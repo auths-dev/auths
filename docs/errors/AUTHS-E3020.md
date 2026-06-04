@@ -1,6 +1,6 @@
 # AUTHS-E3020
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::WeakPassphrase`
 
 ## Message

@@ -11,12 +11,15 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_core::testing::{IsolatedKeychainHandle, TestPassphraseProvider};
 use auths_crypto::CurveType;
 use auths_id::identity::initialize::initialize_registry_identity;
-use auths_id::keri::delegation::{anchor_received_dip, build_device_dip, incept_delegated_device};
+use auths_id::keri::delegation::{
+    anchor_received_dip, build_device_dip, incept_delegated_device, rotate_delegated_device,
+};
 use auths_id::keri::types::Prefix;
-use auths_id::keri::{Event, serialize_for_signing, validate_delegation};
+use auths_id::keri::{Event, Seal, serialize_for_signing, validate_delegation};
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
-use auths_keri::parse_attachment;
+use auths_keri::{SourceSeal, parse_attachment};
+use std::ops::ControlFlow;
 
 const TEST_PASSPHRASE: &str = "Test-passphrase1!";
 
@@ -27,6 +30,35 @@ fn prefix_of(did: &IdentityDID) -> Prefix {
             .expect("did:keri prefix")
             .to_string(),
     )
+}
+
+/// Walk a KEL into a `Vec<Event>` (oldest first).
+fn collect_kel(backend: &(dyn RegistryBackend + Send + Sync), prefix: &Prefix) -> Vec<Event> {
+    let mut events = Vec::new();
+    backend
+        .visit_events(prefix, 0, &mut |e| {
+            events.push(e.clone());
+            ControlFlow::Continue(())
+        })
+        .expect("walk KEL");
+    events
+}
+
+/// The `SourceSeal` for whichever root event anchors `device_prefix` at `seq`.
+fn anchor_seal_for(root_kel: &[Event], device_prefix: &Prefix, seq: u128) -> SourceSeal {
+    root_kel
+        .iter()
+        .find_map(|e| {
+            let anchors = e.anchors().iter().any(|s| {
+                matches!(s, Seal::KeyEvent { i, s: es, .. }
+                    if i.as_str() == device_prefix.as_str() && es.value() == seq)
+            });
+            anchors.then(|| SourceSeal {
+                s: e.sequence(),
+                d: e.said().clone(),
+            })
+        })
+        .expect("an anchoring event for the delegated event")
 }
 
 #[test]
@@ -142,13 +174,20 @@ fn build_device_dip_is_backend_free_and_anchor_received_dip_delegates() {
     // The returned ixn is the root's anchor — it authors over the root prefix and
     // carries the delegation seal for this dip.
     assert_eq!(anchor_ixn.i, root_prefix);
-    validate_delegation(&Event::Dip(bundle.dip.clone()), &[Event::Ixn(anchor_ixn)])
-        .expect("the returned ixn alone proves the delegation");
 
-    // Same outcome as a same-host add: the root anchored the delegation.
+    // The pre-anchor joiner dip carries NO source seal — it can't, the anchoring
+    // event didn't exist when it was built. So it is (correctly) not yet a valid
+    // bilateral delegation on its own.
+    assert!(bundle.dip.source_seal.is_none());
+
+    // Same outcome as a same-host add: the root anchored the delegation, and the
+    // STORED dip now carries the `-G` back-reference to the anchoring ixn — so the
+    // returned ixn alone proves the (now bilateral) delegation.
     let dip = backend
         .get_event(&bundle.device_prefix, 0)
         .expect("device dip stored");
+    validate_delegation(&dip, &[Event::Ixn(anchor_ixn)])
+        .expect("the returned ixn alone proves the delegation");
     let root_kel = vec![
         backend.get_event(&root_prefix, 0).expect("root icp"),
         backend
@@ -156,4 +195,105 @@ fn build_device_dip_is_backend_free_and_anchor_received_dip_delegates() {
             .expect("root anchoring ixn"),
     ];
     validate_delegation(&dip, &root_kel).expect("root must have anchored the split delegation");
+}
+
+#[test]
+fn dip_carries_source_seal_back_ref() {
+    let backend: Arc<dyn RegistryBackend + Send + Sync> = Arc::new(FakeRegistryBackend::new());
+    let keychain = IsolatedKeychainHandle::new();
+    let provider = TestPassphraseProvider::new(TEST_PASSPHRASE);
+
+    let root_alias = KeyAlias::new_unchecked("root");
+    let (root_did, _) = initialize_registry_identity(
+        backend.clone(),
+        &root_alias,
+        &provider,
+        &keychain,
+        None,
+        CurveType::Ed25519,
+    )
+    .expect("root inception");
+    let root_prefix = prefix_of(&root_did);
+
+    let device_alias = KeyAlias::new_unchecked("device-laptop");
+    let dev = incept_delegated_device(
+        backend.clone(),
+        &root_prefix,
+        &root_alias,
+        CurveType::Ed25519,
+        &device_alias,
+        CurveType::Ed25519,
+        &provider,
+        &keychain,
+    )
+    .expect("delegate a device");
+
+    let dip = backend
+        .get_event(&dev.device_prefix, 0)
+        .expect("device dip stored");
+    let root_kel = collect_kel(backend.as_ref(), &root_prefix);
+    let expected = anchor_seal_for(&root_kel, &dev.device_prefix, 0);
+    assert_eq!(
+        dip.source_seal(),
+        Some(&expected),
+        "the dip must carry a -G back-reference to its anchoring ixn"
+    );
+    validate_delegation(&dip, &root_kel).expect("bilateral binding holds for the dip");
+}
+
+#[test]
+fn drt_carries_source_seal() {
+    let backend: Arc<dyn RegistryBackend + Send + Sync> = Arc::new(FakeRegistryBackend::new());
+    let keychain = IsolatedKeychainHandle::new();
+    let provider = TestPassphraseProvider::new(TEST_PASSPHRASE);
+
+    let root_alias = KeyAlias::new_unchecked("root");
+    let (root_did, _) = initialize_registry_identity(
+        backend.clone(),
+        &root_alias,
+        &provider,
+        &keychain,
+        None,
+        CurveType::Ed25519,
+    )
+    .expect("root inception");
+    let root_prefix = prefix_of(&root_did);
+
+    let device_alias = KeyAlias::new_unchecked("device-laptop");
+    let dev = incept_delegated_device(
+        backend.clone(),
+        &root_prefix,
+        &root_alias,
+        CurveType::Ed25519,
+        &device_alias,
+        CurveType::Ed25519,
+        &provider,
+        &keychain,
+    )
+    .expect("delegate a device");
+
+    rotate_delegated_device(
+        backend.as_ref(),
+        &root_prefix,
+        &root_alias,
+        CurveType::Ed25519,
+        &dev.device_prefix,
+        &device_alias,
+        CurveType::Ed25519,
+        &provider,
+        &keychain,
+    )
+    .expect("rotate the delegated device");
+
+    let drt = backend
+        .get_event(&dev.device_prefix, 1)
+        .expect("device drt stored");
+    let root_kel = collect_kel(backend.as_ref(), &root_prefix);
+    let expected = anchor_seal_for(&root_kel, &dev.device_prefix, 1);
+    assert_eq!(
+        drt.source_seal(),
+        Some(&expected),
+        "the drt must carry a -G back-reference to its anchoring ixn"
+    );
+    validate_delegation(&drt, &root_kel).expect("bilateral binding holds for the drt");
 }

@@ -622,6 +622,13 @@ pub struct DipEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix
     pub di: Prefix,
+    /// Delegate-side source seal (`-G` `SealSourceCouple`): a back-reference to
+    /// the delegator's anchoring event. Carried in the CESR **attachment**, never
+    /// in the event body — so it is `#[serde(skip)]` (absent from the JSON and from
+    /// SAID computation) and populated after the delegator anchors (the cooperative
+    /// double-anchor). `None` until/unless the anchoring event is known.
+    #[serde(skip)]
+    pub source_seal: Option<SourceSeal>,
 }
 
 /// Parameter struct for [`DipEvent::new`].
@@ -671,6 +678,7 @@ impl DipEvent {
             c: init.c,
             a: init.a,
             di: init.di,
+            source_seal: None,
         }
     }
 }
@@ -740,6 +748,11 @@ pub struct DrtEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix (KERI §11).
     pub di: Prefix,
+    /// Delegate-side source seal (`-G` `SealSourceCouple`) — see
+    /// [`DipEvent::source_seal`]. Carried in the attachment, set after the
+    /// delegator anchors this rotation.
+    #[serde(skip)]
+    pub source_seal: Option<SourceSeal>,
 }
 
 /// Parameter struct for [`DrtEvent::new`].
@@ -795,6 +808,7 @@ impl DrtEvent {
             c: init.c,
             a: init.a,
             di: init.di,
+            source_seal: None,
         }
     }
 }
@@ -961,6 +975,16 @@ impl Event {
     pub fn is_delegated(&self) -> bool {
         matches!(self, Event::Dip(_) | Event::Drt(_))
     }
+
+    /// Get the delegate-side source seal (`-G` back-reference to the delegator's
+    /// anchoring event), if this is a delegated event that has been anchored.
+    pub fn source_seal(&self) -> Option<&SourceSeal> {
+        match self {
+            Event::Dip(e) => e.source_seal.as_ref(),
+            Event::Drt(e) => e.source_seal.as_ref(),
+            _ => None,
+        }
+    }
 }
 
 // ── Signed Event (externalized signatures) ──────────────────────────────────
@@ -992,6 +1016,241 @@ pub struct IndexedSignature {
     /// Raw signature bytes (64 bytes for Ed25519).
     #[serde(with = "hex::serde")]
     pub sig: Vec<u8>,
+}
+
+/// A delegate-side source seal — the parsed form of a CESR `-G` `SealSourceCouple`.
+///
+/// A delegated event (`dip`/`drt`) carries one of these as an **attachment** (never
+/// in the body) to bind itself back to the *specific* delegator event that anchored
+/// it: `s` is that anchoring event's sequence number (CESR `Seqner`), `d` is its
+/// SAID (CESR `Saider`). Together with the delegator-side `Seal::KeyEvent` (which
+/// points the other way) this forms the **bilateral** delegation binding keripy
+/// requires. Byte-aligned with keripy 1.3.4's `-G` couple.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct SourceSeal {
+    /// Sequence number of the delegator's anchoring event.
+    pub s: KeriSequence,
+    /// SAID of the delegator's anchoring event.
+    pub d: Said,
+}
+
+/// Delegator-anchored scope/expiry for a delegated agent (Epic E.7).
+///
+/// Carried as a `Seal::Digest` in the **delegator's** anchoring `ixn` — authority
+/// comes from the party that controls the delegator key, never agent-self-asserted.
+/// The digest value is a structured marker string (not a SAID) namespaced under
+/// `agentscope:`, so it never collides with a real digest, a revocation (bare
+/// prefix), or an `agent:` role marker. Advisory authorization; the principled
+/// upgrade is a targeted ACDC (Epic F).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct AgentScope {
+    /// Capabilities granted to the agent (empty = unrestricted). Capability strings
+    /// may contain `:` (e.g. `repo:foo`) but not `,` (the list separator).
+    pub capabilities: Vec<String>,
+    /// Expiry as Unix epoch seconds; `None` = never expires.
+    pub expires_at: Option<i64>,
+}
+
+/// Marker prefix for an agent-scope `Seal::Digest` value.
+const AGENT_SCOPE_MARKER: &str = "agentscope:";
+
+/// Encode an agent-scope seal value: `agentscope:{prefix}:{expires_or_0}:{caps_csv}`.
+///
+/// Args:
+/// * `agent_prefix`: The agent's KEL prefix the scope applies to.
+/// * `scope`: The granted capabilities + optional expiry.
+///
+/// Usage:
+/// ```
+/// use auths_keri::{AgentScope, encode_agent_scope};
+/// let s = AgentScope { capabilities: vec!["sign_commit".into()], expires_at: Some(99) };
+/// assert_eq!(encode_agent_scope("Eabc", &s), "agentscope:Eabc:99:sign_commit");
+/// ```
+pub fn encode_agent_scope(agent_prefix: &str, scope: &AgentScope) -> String {
+    let expires = scope.expires_at.unwrap_or(0);
+    let caps = scope.capabilities.join(",");
+    format!("{AGENT_SCOPE_MARKER}{agent_prefix}:{expires}:{caps}")
+}
+
+/// Decode an agent-scope seal value into `(agent_prefix, AgentScope)`, or `None` if
+/// the value is not an `agentscope:` marker. Inverse of [`encode_agent_scope`].
+///
+/// Args:
+/// * `value`: A `Seal::Digest` value to interpret.
+pub fn decode_agent_scope(value: &str) -> Option<(String, AgentScope)> {
+    // {prefix}:{expires}:{caps_csv} — prefix is a `:`-free KERI prefix; caps may
+    // contain `:`, so the 3-way split keeps the caps tail intact.
+    let rest = value.strip_prefix(AGENT_SCOPE_MARKER)?;
+    let mut parts = rest.splitn(3, ':');
+    let prefix = parts.next()?.to_string();
+    let expires: i64 = parts.next()?.parse().ok()?;
+    let caps_csv = parts.next().unwrap_or("");
+    let capabilities = if caps_csv.is_empty() {
+        Vec::new()
+    } else {
+        caps_csv.split(',').map(|c| c.to_string()).collect()
+    };
+    Some((
+        prefix,
+        AgentScope {
+            capabilities,
+            expires_at: (expires != 0).then_some(expires),
+        },
+    ))
+}
+
+/// Serialize source seals to a CESR text-domain `-G##<Seqner><Saider>…`
+/// `SealSourceCouples` group, byte-aligned with keripy 1.3.4.
+///
+/// Each couple is a `Seqner` (`0A`-coded 128-bit sequence) followed by a `Saider`
+/// (the anchoring event's SAID). Reads back via [`parse_source_seal_couples`].
+///
+/// Args:
+/// * `couples`: The delegate-side source seals to encode.
+///
+/// Usage:
+/// ```ignore
+/// let bytes = serialize_source_seal_couples(&[SourceSeal { s, d }])?;
+/// ```
+pub fn serialize_source_seal_couples(couples: &[SourceSeal]) -> Result<Vec<u8>, AttachmentError> {
+    use cesride::{Counter, Matter, Saider, Seqner, counter};
+
+    let count = u32::try_from(couples.len())
+        .map_err(|_| AttachmentError::Encode("too many source seal couples".into()))?;
+    let mut out = Counter::new_with_code_and_count(counter::Codex::SealSourceCouples, count)
+        .and_then(|c| c.qb64())
+        .map_err(|e| AttachmentError::Encode(e.to_string()))?;
+
+    for couple in couples {
+        let seqner = Seqner::new_with_sn(couple.s.value())
+            .and_then(|s| s.qb64())
+            .map_err(|e| AttachmentError::Encode(e.to_string()))?;
+        let saider = Saider::new_with_qb64(couple.d.as_str())
+            .and_then(|s| s.qb64())
+            .map_err(|e| AttachmentError::Encode(e.to_string()))?;
+        out.push_str(&seqner);
+        out.push_str(&saider);
+    }
+
+    Ok(out.into_bytes())
+}
+
+/// Parse a CESR `-G##` `SealSourceCouples` group into [`SourceSeal`]s.
+///
+/// Inverse of [`serialize_source_seal_couples`]; code-directed so each `Seqner`
+/// and `Saider` width is read from its CESR hard code.
+///
+/// Args:
+/// * `bytes`: The `-G`-prefixed couple-group bytes (e.g. from an attachment tail).
+pub fn parse_source_seal_couples(bytes: &[u8]) -> Result<Vec<SourceSeal>, AttachmentError> {
+    let s = std::str::from_utf8(bytes)
+        .map_err(|e| AttachmentError::Decode(format!("non-utf8 source-seal group: {e}")))?;
+    let (couples, rest) = parse_source_seal_group(s)?;
+    if !rest.is_empty() {
+        return Err(AttachmentError::Decode(format!(
+            "trailing bytes after source-seal group: {rest:?}"
+        )));
+    }
+    Ok(couples)
+}
+
+/// Parse one `-G` `SealSourceCouples` group at the head of `s`, returning the
+/// couples and the unconsumed remainder.
+fn parse_source_seal_group(s: &str) -> Result<(Vec<SourceSeal>, &str), AttachmentError> {
+    use cesride::{Matter, Saider, Seqner};
+
+    let rest = s.strip_prefix("-G").ok_or_else(|| {
+        AttachmentError::Decode("source-seal group must start with -G counter code".into())
+    })?;
+    if rest.len() < 2 {
+        return Err(AttachmentError::Decode(
+            "truncated -G counter header".into(),
+        ));
+    }
+    let (count_b64, mut cursor) = rest.split_at(2);
+    let count = decode_count_b64(count_b64)?;
+
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
+        // Seqner is fixed-width (`0A` + 22 base64 = 24 chars; a 128-bit number).
+        if cursor.len() < SEQNER_QB64_LEN {
+            return Err(AttachmentError::Decode(
+                "truncated Seqner in -G couple".into(),
+            ));
+        }
+        let (seqner_qb64, after_seqner) = cursor.split_at(SEQNER_QB64_LEN);
+        let seqner = Seqner::new_with_qb64(seqner_qb64)
+            .map_err(|e| AttachmentError::Decode(format!("Seqner: {e}")))?;
+        let sn = seqner
+            .sn()
+            .map_err(|e| AttachmentError::Decode(format!("Seqner sn: {e}")))?;
+
+        // Saider is code-directed; the leading char fixes its full width.
+        let first = *after_seqner.as_bytes().first().ok_or_else(|| {
+            AttachmentError::Decode("truncated -G couple: expected a Saider".into())
+        })?;
+        let fs = saider_qb64_len(first).ok_or_else(|| {
+            AttachmentError::Decode(format!("unsupported Saider code byte {first:?}"))
+        })?;
+        if after_seqner.len() < fs {
+            return Err(AttachmentError::Decode(
+                "truncated Saider in -G couple".into(),
+            ));
+        }
+        let (saider_qb64, remainder) = after_seqner.split_at(fs);
+        let saider = Saider::new_with_qb64(saider_qb64)
+            .and_then(|s| s.qb64())
+            .map_err(|e| AttachmentError::Decode(format!("Saider: {e}")))?;
+        cursor = remainder;
+
+        out.push(SourceSeal {
+            s: KeriSequence::new(sn),
+            d: Said::new_unchecked(saider),
+        });
+    }
+    Ok((out, cursor))
+}
+
+/// Parse a delegated event's combined attachment — the controller signature group
+/// (`-A`) followed by an optional source-seal group (`-G`).
+///
+/// Returns the indexed signatures and any source seals. Used by storage read paths
+/// to re-attach a delegated event's `-G` back-reference after a JSON round-trip.
+///
+/// Args:
+/// * `bytes`: The full attachment bytes (`-A…` then optional `-G…`).
+pub fn parse_delegated_attachment(
+    bytes: &[u8],
+) -> Result<(Vec<IndexedSignature>, Vec<SourceSeal>), AttachmentError> {
+    let s = std::str::from_utf8(bytes)
+        .map_err(|e| AttachmentError::Decode(format!("non-utf8 attachment: {e}")))?;
+    if s.is_empty() {
+        return Ok((vec![], vec![]));
+    }
+    let (sigs, rest) = parse_sig_group(s)?;
+    if rest.is_empty() {
+        return Ok((sigs, vec![]));
+    }
+    let (couples, tail) = parse_source_seal_group(rest)?;
+    if !tail.is_empty() {
+        return Err(AttachmentError::Decode(format!(
+            "trailing bytes after delegated attachment: {tail:?}"
+        )));
+    }
+    Ok((sigs, couples))
+}
+
+/// CESR `Seqner` qb64 width: `0A` hard code (2) + 22 base64 chars = 24.
+const SEQNER_QB64_LEN: usize = 24;
+
+/// qb64 full width of a 32-byte digest `Saider` from its leading code char.
+/// Blake3-256 (`E`), Blake2b-256 (`F`), Blake2s-256 (`G`), SHA3-256 (`H`),
+/// SHA2-256 (`I`) are all single-char-coded 44-char primitives. Mirrors cesride
+/// `matter` sizage for the digest family auths emits.
+fn saider_qb64_len(first: u8) -> Option<usize> {
+    matches!(first, b'E' | b'F' | b'G' | b'H' | b'I').then_some(44)
 }
 
 /// An event paired with its detached signature(s).
@@ -1111,14 +1370,27 @@ fn indexer_sizage(code: &str) -> Option<(usize, usize)> {
 /// may mix single-index `A` (88 ch) and dual-index `2A` (92 ch), or curves). A
 /// signature under a dual-index code populates `prior_index` from its ondex.
 pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, AttachmentError> {
-    use cesride::{Indexer, Siger};
-
     let s = std::str::from_utf8(bytes)
         .map_err(|e| AttachmentError::Decode(format!("non-utf8 attachment: {e}")))?;
 
     if s.is_empty() {
         return Ok(vec![]);
     }
+
+    let (sigs, rest) = parse_sig_group(s)?;
+    if !rest.is_empty() {
+        return Err(AttachmentError::Decode(format!(
+            "trailing bytes after signature group: {rest:?}"
+        )));
+    }
+    Ok(sigs)
+}
+
+/// Parse one `-A` indexed-signature group at the head of `s`, returning the
+/// signatures and the unconsumed remainder (e.g. a trailing `-G` source-seal
+/// group on a delegated event).
+fn parse_sig_group(s: &str) -> Result<(Vec<IndexedSignature>, &str), AttachmentError> {
+    use cesride::{Indexer, Siger};
 
     let rest = s.strip_prefix("-A").ok_or_else(|| {
         AttachmentError::Decode("attachment must start with -A counter code".into())
@@ -1164,7 +1436,7 @@ pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, Attachmen
         });
     }
 
-    Ok(out)
+    Ok((out, cursor))
 }
 
 /// Error shape for attachment encode/decode.

@@ -1,6 +1,6 @@
 # AUTHS-E3104
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `TrustError::Serialization`
 
 ## Message

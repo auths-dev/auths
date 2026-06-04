@@ -1,6 +1,6 @@
 # AUTHS-E5608
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `OrgError::Identity`
 
 ## Message

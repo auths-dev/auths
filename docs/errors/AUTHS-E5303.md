@@ -1,6 +1,6 @@
 # AUTHS-E5303
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `RotationError::KeyDecryptionFailed`
 
 ## Message

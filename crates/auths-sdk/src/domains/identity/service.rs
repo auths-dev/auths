@@ -137,9 +137,9 @@ fn initialize_ci(
 
 fn initialize_agent(
     config: CreateAgentIdentityConfig,
-    ctx: &AuthsContext,
-    keychain: Arc<dyn KeyStorage + Send + Sync>,
-    passphrase_provider: &dyn PassphraseProvider,
+    _ctx: &AuthsContext,
+    _keychain: Arc<dyn KeyStorage + Send + Sync>,
+    _passphrase_provider: &dyn PassphraseProvider,
 ) -> Result<AgentIdentityResult, SetupError> {
     use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode};
 
@@ -158,26 +158,18 @@ fn initialize_agent(
         },
     };
 
+    // Dry run previews the delegated agent. Standalone-`icp` agent provisioning was
+    // retired in Epic E: an agent is a KERI delegated identifier, created against an
+    // existing root via `auths id agent add` (SDK `agents::add`), not initialized
+    // standalone.
     let proposed = build_agent_identity_proposal(&provisioning_config, &config)?;
-
     if !config.dry_run {
-        let bundle = auths_id::agent_identity::provision_agent_identity(
-            ctx.clock.now(),
-            std::sync::Arc::clone(&ctx.registry),
-            provisioning_config,
-            passphrase_provider,
-            keychain,
-            &ctx.witness_params(),
-        )
-        .map_err(|e| SetupError::StorageError(e.into()))?;
-
-        return Ok(AgentIdentityResult {
-            agent_did: Some(bundle.agent_did),
-            parent_did: config
-                .parent_identity_did
-                .and_then(|s| IdentityDID::parse(&s).ok()),
-            capabilities: config.capabilities,
-        });
+        return Err(SetupError::InvalidSetupConfig(
+            "standalone agent initialization is retired — an agent is a KERI delegated \
+             identifier. Run `auths init` for your root identity, then \
+             `auths id agent add --label <name>` to delegate an agent."
+                .to_string(),
+        ));
     }
 
     Ok(proposed)

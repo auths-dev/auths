@@ -1,6 +1,6 @@
 # AUTHS-E3207
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `PairingError::LanTimeout`
 
 ## Message

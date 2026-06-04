@@ -1,6 +1,6 @@
 # AUTHS-E4852
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `TenantIdError::InvalidCharacter`
 
 ## Message

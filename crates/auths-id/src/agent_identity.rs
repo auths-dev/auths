@@ -1,66 +1,31 @@
-//! Headless agent identity provisioning API.
+//! Agent identity config + TOML preview types.
 //!
-//! Provides a library-level API for creating AI agent identities without
-//! interactive prompts. Designed for CI/CD pipelines, orchestration systems,
-//! and daemon processes.
-//!
-//! # Storage Modes
-//!
-//! - [`AgentStorageMode::Persistent`]: Disk-based storage (default: `~/.auths-agent`).
-//!   Agent identity survives process restarts.
-//! - [`AgentStorageMode::InMemory`]: Ephemeral storage for stateless containers
-//!   (Fargate, Docker). Agent identity lives only for the process lifetime.
-//!   Explicitly trades persistence for statelessness.
-//!
-//! # Usage
-//!
-//! ```rust,ignore
-//! use auths_id::agent_identity::{provision_agent_identity, AgentProvisioningConfig, AgentStorageMode};
-//!
-//! let config = AgentProvisioningConfig {
-//!     agent_name: "ci-bot".to_string(),
-//!     capabilities: vec!["sign_commit".to_string()],
-//!     expires_in: Some(86400),
-//!     delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eabc123")),
-//!     storage_mode: AgentStorageMode::Persistent { repo_path: None },
-//! };
-//!
-//! let keychain = auths_core::storage::keychain::get_platform_keychain()?;
-//! let bundle = provision_agent_identity(config, &my_passphrase_provider, keychain)?;
-//! println!("Agent DID: {}", bundle.agent_did);
-//! ```
+//! The standalone-`icp` agent provisioning (`provision_agent_identity`) was retired
+//! in Epic E: an agent is now a KERI **delegated identifier** (`dip` delegated by a
+//! root/org, anchored by the root's `ixn`), created with `auths id agent add`
+//! (SDK `agents::add`) — not a standalone root identity stamped with an `Agent`
+//! attestation. What remains here is the configuration shape and the
+//! `auths-agent.toml` formatter still used by the `init` dry-run preview.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use chrono::{DateTime, Utc};
+use auths_core::storage::keychain::IdentityDID;
 
-use auths_core::signing::{PassphraseProvider, StorageSigner};
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage, extract_public_key_bytes};
-use auths_verifier::core::{Attestation, SignerType};
-use auths_verifier::error::AttestationError;
-use auths_verifier::types::CanonicalDid;
-use std::sync::Arc;
-
-use crate::attestation::core::resign_attestation;
-use crate::attestation::create::create_signed_attestation;
-use crate::identity::initialize::initialize_registry_identity;
-use crate::storage::git_refs::AttestationMetadata;
-use crate::storage::registry::RegistryBackend;
-
-// ── Public Types ────────────────────────────────────────────────────────────
-
-/// Storage mode for agent identity.
+/// Storage mode for an agent identity.
 #[derive(Debug, Clone)]
 pub enum AgentStorageMode {
     /// Persistent storage at a filesystem path.
     /// Defaults to `~/.auths-agent` if `repo_path` is `None`.
-    Persistent { repo_path: Option<PathBuf> },
+    Persistent {
+        /// Repository path; `None` selects the default `~/.auths-agent`.
+        repo_path: Option<PathBuf>,
+    },
     /// In-memory storage for ephemeral/stateless containers (Fargate, Docker).
     /// Agent identity lives only for the process lifetime.
     InMemory,
 }
 
-/// Configuration for provisioning an agent identity.
+/// Configuration describing an agent identity (for previews / config files).
 #[derive(Debug, Clone)]
 pub struct AgentProvisioningConfig {
     /// Human-readable agent name (e.g., "ci-bot", "release-agent").
@@ -69,324 +34,23 @@ pub struct AgentProvisioningConfig {
     pub capabilities: Vec<String>,
     /// Duration in seconds until expiration (per RFC 6749).
     pub expires_in: Option<u64>,
-    /// DID of the human who authorized this agent.
+    /// DID of the root/org that delegates this agent.
     pub delegated_by: Option<IdentityDID>,
     /// Storage mode (persistent or ephemeral).
     pub storage_mode: AgentStorageMode,
 }
 
-/// Result of a successful agent provisioning.
-#[derive(Debug, Clone)]
-pub struct AgentIdentityBundle {
-    /// The agent's `did:keri:E...` identity.
-    pub agent_did: IdentityDID,
-    /// The key alias used for signing.
-    pub key_alias: KeyAlias,
-    /// The agent's attestation (with `signer_type: Agent`).
-    pub attestation: Attestation,
-    /// Path to the agent repo (`None` for `InMemory` mode).
-    pub repo_path: Option<PathBuf>,
-}
-
-/// Errors that can occur during agent provisioning.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum AgentProvisioningError {
-    #[error("repository creation failed: {0}")]
-    RepoCreation(#[from] git2::Error),
-    #[error("identity creation failed: {0}")]
-    IdentityCreation(#[from] crate::error::InitError),
-    #[error("attestation creation failed: {0}")]
-    AttestationCreation(#[from] AttestationError),
-    #[error("keychain access failed: {0}")]
-    KeychainAccess(String),
-    #[error("config write failed: {0}")]
-    ConfigWrite(#[from] std::io::Error),
-}
-
-impl auths_core::error::AuthsErrorInfo for AgentProvisioningError {
-    fn error_code(&self) -> &'static str {
-        match self {
-            Self::RepoCreation(_) => "AUTHS-E4301",
-            Self::IdentityCreation(_) => "AUTHS-E4302",
-            Self::AttestationCreation(_) => "AUTHS-E4303",
-            Self::KeychainAccess(_) => "AUTHS-E4304",
-            Self::ConfigWrite(_) => "AUTHS-E4305",
-        }
-    }
-
-    fn suggestion(&self) -> Option<&'static str> {
-        match self {
-            Self::RepoCreation(_) => Some("Check that the agent repo path is writable"),
-            Self::IdentityCreation(_) => {
-                Some("Identity creation failed; check keychain and backend")
-            }
-            Self::AttestationCreation(_) => Some("Attestation signing failed; verify key access"),
-            Self::KeychainAccess(_) => Some("Check keychain permissions and passphrase"),
-            Self::ConfigWrite(_) => Some("Check file permissions and disk space"),
-        }
-    }
-}
-
-// ── Public API ──────────────────────────────────────────────────────────────
-
-/// Provision a new agent identity.
-///
-/// Creates a KERI identity, signs an attestation with `signer_type: Agent`,
-/// and optionally writes an `auths-agent.toml` config file.
+/// Render an `auths-agent.toml` preview for the given agent config.
 ///
 /// Args:
-/// * `backend` - The registry backend for KEL storage. Must be pre-initialized.
-/// * `config` - Provisioning configuration (name, capabilities, storage mode).
-/// * `passphrase_provider` - Plugin point for passphrase retrieval.
-/// * `keychain` - Key storage backend.
+/// * `did`: The agent's `did:keri:` (or a `<pending>` placeholder in a dry run).
+/// * `key_alias`: The keychain alias the agent key is stored under.
+/// * `config`: The agent configuration to render.
 ///
 /// Usage:
 /// ```ignore
-/// let bundle = provision_agent_identity(Arc::new(my_backend), config, &provider, keychain)?;
+/// let toml = format_agent_toml("did:keri:E...", "agent-key", &config);
 /// ```
-pub fn provision_agent_identity(
-    now: DateTime<Utc>,
-    backend: Arc<dyn RegistryBackend + Send + Sync>,
-    config: AgentProvisioningConfig,
-    passphrase_provider: &dyn PassphraseProvider,
-    keychain: Arc<dyn KeyStorage + Send + Sync>,
-    witness_params: &crate::witness_config::WitnessParams<'_>,
-) -> Result<AgentIdentityBundle, AgentProvisioningError> {
-    let (repo_path, ephemeral) = resolve_repo_path(&config.storage_mode)?;
-    ensure_git_repo(&repo_path)?;
-
-    let key_alias = key_alias_for(&config.storage_mode);
-    let backend_for_anchor = Arc::clone(&backend);
-    let agent_did = get_or_create_identity(
-        backend,
-        &key_alias,
-        &config,
-        passphrase_provider,
-        &*keychain,
-    )?;
-
-    let attestation = sign_agent_attestation(
-        now,
-        &agent_did,
-        &key_alias,
-        &config,
-        passphrase_provider,
-        Arc::clone(&keychain),
-    )?;
-
-    if !ephemeral {
-        write_agent_toml(&repo_path, agent_did.as_str(), key_alias.as_str(), &config)?;
-    }
-
-    if let Ok(prefix) = crate::keri::parse_did_keri(agent_did.as_str()) {
-        let signer = StorageSigner::new(keychain);
-        let mut batch = crate::storage::registry::backend::AtomicWriteBatch::new();
-        batch.stage_attestation(attestation.clone());
-        crate::keri::anchor_and_persist_via_backend(
-            backend_for_anchor.as_ref(),
-            &signer,
-            &key_alias,
-            passphrase_provider,
-            &prefix,
-            &attestation,
-            &mut batch,
-            witness_params,
-            now,
-        )
-        .map_err(|e| {
-            AgentProvisioningError::IdentityCreation(crate::error::InitError::Registry(
-                e.to_string(),
-            ))
-        })?;
-    }
-
-    Ok(AgentIdentityBundle {
-        agent_did,
-        key_alias,
-        attestation,
-        repo_path: if ephemeral { None } else { Some(repo_path) },
-    })
-}
-
-// ── Repo Setup ──────────────────────────────────────────────────────────────
-
-/// Resolve the repo path from storage mode. Returns `(path, is_ephemeral)`.
-fn resolve_repo_path(mode: &AgentStorageMode) -> Result<(PathBuf, bool), AgentProvisioningError> {
-    match mode {
-        AgentStorageMode::Persistent { repo_path } => {
-            let path = match repo_path {
-                Some(p) => p.clone(),
-                None => default_agent_repo_path()?,
-            };
-            Ok((path, false))
-        }
-        AgentStorageMode::InMemory => {
-            // Leak the tempdir so it persists for the process lifetime.
-            let tmp = tempfile::tempdir().map_err(AgentProvisioningError::ConfigWrite)?;
-            let path = tmp.path().to_path_buf();
-            // Leak the tempdir so cleanup doesn't run — ephemeral agents persist for process lifetime.
-            std::mem::forget(tmp);
-            Ok((path, true))
-        }
-    }
-}
-
-#[allow(clippy::disallowed_methods)] // INVARIANT: agent repo setup — directory creation before git init
-fn ensure_git_repo(path: &Path) -> Result<(), AgentProvisioningError> {
-    if !path.exists() {
-        std::fs::create_dir_all(path)?;
-    }
-    if git2::Repository::open(path).is_err() {
-        let repo = git2::Repository::init(path)?;
-        // KELs are stored as Git objects; an automatic `git gc` that prunes an
-        // unreferenced object is silent identity loss. Disable GC + pruning.
-        let mut cfg = repo.config()?;
-        cfg.set_i32("gc.auto", 0)?;
-        cfg.set_str("gc.pruneExpire", "never")?;
-    }
-    Ok(())
-}
-
-#[allow(clippy::disallowed_methods)] // INVARIANT: designated home-dir resolution for agent repo default path
-fn default_agent_repo_path() -> Result<PathBuf, AgentProvisioningError> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        AgentProvisioningError::ConfigWrite(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "could not determine home directory",
-        ))
-    })?;
-    Ok(home.join(".auths-agent"))
-}
-
-fn key_alias_for(mode: &AgentStorageMode) -> KeyAlias {
-    match mode {
-        AgentStorageMode::Persistent { .. } => KeyAlias::new_unchecked("agent-key"),
-        AgentStorageMode::InMemory => KeyAlias::new_unchecked("agent-key-ephemeral"),
-    }
-}
-
-// ── Identity ────────────────────────────────────────────────────────────────
-
-/// Return the existing identity DID or create a new one.
-fn get_or_create_identity(
-    backend: Arc<dyn RegistryBackend + Send + Sync>,
-    key_alias: &KeyAlias,
-    _config: &AgentProvisioningConfig,
-    passphrase_provider: &dyn PassphraseProvider,
-    keychain: &(dyn KeyStorage + Send + Sync),
-) -> Result<IdentityDID, AgentProvisioningError> {
-    let mut existing_did: Option<IdentityDID> = None;
-    let _ = backend.visit_identities(&mut |prefix| {
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: visit_identities yields KERI prefixes from the registry, format! produces a valid did:keri string
-        {
-            existing_did = Some(IdentityDID::new_unchecked(format!("did:keri:{}", prefix)));
-        }
-        std::ops::ControlFlow::Break(())
-    });
-    if let Some(did) = existing_did {
-        return Ok(did);
-    }
-
-    let (did, _) = initialize_registry_identity(
-        backend,
-        key_alias,
-        passphrase_provider,
-        keychain,
-        None,
-        auths_crypto::CurveType::default(),
-    )?;
-
-    Ok(did)
-}
-
-// ── Attestation ─────────────────────────────────────────────────────────────
-
-/// Create and sign an attestation with `signer_type: Agent`.
-///
-/// The flow:
-/// 1. Decrypt the key to extract the device public key
-/// 2. Create a base attestation via `create_signed_attestation`
-/// 3. Stamp `signer_type` and `delegated_by`
-/// 4. Re-sign so the canonical data covers the new fields
-fn sign_agent_attestation(
-    now: DateTime<Utc>,
-    controller_did: &IdentityDID,
-    key_alias: &KeyAlias,
-    config: &AgentProvisioningConfig,
-    passphrase_provider: &dyn PassphraseProvider,
-    keychain: Arc<dyn KeyStorage + Send + Sync>,
-) -> Result<Attestation, AgentProvisioningError> {
-    let (device_pk, curve) = extract_public_key_bytes(&*keychain, key_alias, passphrase_provider)
-        .map_err(|e| AgentProvisioningError::KeychainAccess(e.to_string()))?;
-    let device_did = CanonicalDid::from_public_key_did_key(&device_pk, curve);
-    let meta = build_attestation_meta(now, config);
-    let signer = StorageSigner::new(keychain);
-
-    let rid = format!("agent:{}", config.agent_name);
-    let mut att = create_signed_attestation(
-        now,
-        crate::attestation::create::AttestationInput {
-            rid: &rid,
-            identity_did: controller_did,
-            subject: &device_did,
-            device_public_key: &device_pk,
-            device_curve: curve,
-            payload: None,
-            meta: &meta,
-            identity_alias: Some(key_alias),
-            device_alias: Some(key_alias),
-            capabilities: vec![],
-            role: None,
-            delegated_by: config.delegated_by.clone(),
-            commit_sha: None,
-            signer_type: Some(SignerType::Agent),
-        },
-        &signer,
-        passphrase_provider,
-    )?;
-
-    resign_attestation(
-        &mut att,
-        &signer,
-        passphrase_provider,
-        Some(key_alias),
-        key_alias,
-    )?;
-
-    Ok(att)
-}
-
-fn build_attestation_meta(
-    now: DateTime<Utc>,
-    config: &AgentProvisioningConfig,
-) -> AttestationMetadata {
-    let expires_at = config
-        .expires_in
-        .map(|s| now + chrono::Duration::seconds(s as i64));
-
-    AttestationMetadata {
-        note: Some(format!("Agent: {}", config.agent_name)),
-        timestamp: Some(now),
-        expires_at,
-    }
-}
-
-// ── Config File ─────────────────────────────────────────────────────────────
-
-#[allow(clippy::disallowed_methods)] // INVARIANT: agent config file write — one-shot file creation during provisioning
-fn write_agent_toml(
-    repo_path: &Path,
-    did: &str,
-    key_alias: &str,
-    config: &AgentProvisioningConfig,
-) -> Result<(), AgentProvisioningError> {
-    let content = format_agent_toml(did, key_alias, config);
-    std::fs::write(repo_path.join("auths-agent.toml"), content)?;
-    Ok(())
-}
-
 pub fn format_agent_toml(did: &str, key_alias: &str, config: &AgentProvisioningConfig) -> String {
     let caps = config
         .capabilities
@@ -397,7 +61,7 @@ pub fn format_agent_toml(did: &str, key_alias: &str, config: &AgentProvisioningC
 
     let mut out = format!(
         "# Auths Agent Configuration\n\
-         # Generated by provision_agent_identity()\n\n\
+         # An agent is a KERI delegated identifier (dip) — create with `auths id agent add`\n\n\
          [agent]\n\
          name = \"{}\"\n\
          did = \"{}\"\n\
@@ -419,10 +83,8 @@ pub fn format_agent_toml(did: &str, key_alias: &str, config: &AgentProvisioningC
     out
 }
 
-// ── Tests ───────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
+#[allow(clippy::disallowed_methods)] // INVARIANT: tests construct IdentityDID via new_unchecked with literal DIDs
 mod tests {
     use super::*;
 
@@ -458,20 +120,25 @@ mod tests {
     }
 
     #[test]
-    fn key_alias_persistent_vs_ephemeral() {
-        assert_eq!(
-            key_alias_for(&AgentStorageMode::Persistent { repo_path: None }).as_str(),
-            "agent-key"
+    fn init_dryrun_shows_delegated_agent() {
+        // The `init --agent` dry-run renders this preview; after Epic E it must
+        // present a *delegated* identifier (not a standalone identity) and name the
+        // delegating root when one is supplied.
+        let config = AgentProvisioningConfig {
+            agent_name: "deploy-bot".to_string(),
+            capabilities: vec!["sign_commit".to_string()],
+            expires_in: None,
+            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eroot")),
+            storage_mode: AgentStorageMode::Persistent { repo_path: None },
+        };
+        let toml = format_agent_toml("did:keri:E<pending>", "agent-key", &config);
+        assert!(
+            toml.contains("delegated identifier"),
+            "dry-run must frame the agent as a delegated identifier"
         );
-        assert_eq!(
-            key_alias_for(&AgentStorageMode::InMemory).as_str(),
-            "agent-key-ephemeral"
+        assert!(
+            toml.contains("delegated_by = \"did:keri:Eroot\""),
+            "dry-run must name the delegating root"
         );
-    }
-
-    #[test]
-    fn default_repo_path_ends_with_auths_agent() {
-        let path = default_agent_repo_path().unwrap();
-        assert!(path.ends_with(".auths-agent"));
     }
 }

@@ -1,6 +1,6 @@
 # AUTHS-E4502
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ValidationError::BrokenChain`
 
 ## Message

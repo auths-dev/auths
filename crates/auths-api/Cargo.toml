@@ -20,19 +20,15 @@ auths-core = { workspace = true }
 auths-policy = { workspace = true }
 auths-storage = { workspace = true }
 
-# Domain services
-async-trait = "0.1"
-
 # HTTP & async
 axum = "0.8"
 tokio = { workspace = true, features = ["full"] }
-tower = "0.5"
+tower = { version = "0.5", features = ["util"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { workspace = true, features = ["serde"] }
 
 # Crypto & hashing
 ring = { workspace = true }
@@ -42,12 +38,6 @@ subtle = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
-
-# Concurrency
-dashmap = "6"
-
-# Persistence
-redis = { version = "0.26", features = ["aio", "tokio-comp"] }
 
 # Telemetry
 tracing = "0.1"

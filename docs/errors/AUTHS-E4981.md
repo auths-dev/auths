@@ -1,6 +1,6 @@
 # AUTHS-E4981
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `CacheError::Io`
 
 ## Message

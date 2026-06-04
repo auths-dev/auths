@@ -1,6 +1,6 @@
 # AUTHS-E4505
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ValidationError::SignatureFailed`
 
 ## Message

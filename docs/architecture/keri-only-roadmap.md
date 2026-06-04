@@ -61,7 +61,7 @@ service; ACDC/TEL credential layer.
 | Signer identity on a commit | `did:keri` in-band (`Auths-Id` + `Auths-Device`) | `did:keri` in-band | ✅ (Epic B) |
 | Third-party gets the KEL | trust-on-first-sight / bundle | native git-remote fetch + OOBI | ❌ (Epic C) |
 | Duplicity / ordering | local first-seen | witness receipts (KAWA) | **receipt-gated replay + verify wired** (Epic D); CESR interop (D.10) + e2e (D.12) remain |
-| Agent identity | attestation `delegated_by` | delegated KEL (`dip`/`drt`) | events built, **unwired** (Epic E) |
+| Agent identity | attestation `delegated_by` | delegated KEL (`dip`/`drt`) | ✅ delivered (Epic E — agents & org members are `dip`-delegated AIDs; [ADR 007](ADRs/007-agent-identity-via-delegation.md)) |
 | Capabilities / roles / OIDC | attestation fields | ACDC + TEL | ❌ deferred (Epic F) |
 
 ## Critical path
@@ -352,36 +352,44 @@ duplicity is detected, not silently accepted.
 
 ---
 
-## Epic E — Agent identity via delegation (the AI-agent audience)
+## Epic E — Agent identity via delegation (the AI-agent audience) ✅ delivered
 
 **Goal:** an AI agent has its own KERI identity, **delegated** from a human/org identity, scoped and
 revocable by the delegator through the KEL.
 
 **Why it matters:** the second adoption wave. KERI delegated identifiers are the right primitive, and
-the events already exist — agents shouldn't be modeled as attestations.
+agents must not be modeled as attestations or bearer-token sessions.
 
-**Already exists:** `dip`/`drt` events (`events.rs:632`, replay in `keri/kel.rs`). Org delegation
-currently mis-modeled as attestation `delegated_by` (`org/service.rs:376`).
+**Delivered state:** the `dip`/`drt`/anchor/revoke/list/validate engine in `auths-id/keri/delegation.rs`
+was already built and **generic** (not device-specific). Epic E wired an agent + org-member surface onto
+it, deleted two legacy "agent" models (a bearer-token session model and a standalone-`icp` +
+attestation `delegated_by` model), and fixed one shared correctness gap (the reciprocal source seal). The
+eight load-bearing decisions are recorded in
+[ADR 007](ADRs/007-agent-identity-via-delegation.md).
 
-- **E1 — delegated inception (`dip`) for an agent identity.**
-  - *Files:* `events.rs:632` (`DipEvent`); new SDK agent-provision path under `domains/agents/`.
-  - *Do:* author a `dip` whose delegator is the human/org KEL; anchor the delegation seal in the
-    delegator's KEL.
-  - *Verify:* the agent KEL chains to the delegator; replay validates the delegation.
-  - *Depends:* A1.
+- **E1 — reciprocal source seal + bilateral `validate_delegation`.** ✅ `dip`/`drt` carry the delegate-side
+  `-G` `SealSourceCouple`; `validate_delegation` enforces both directions; round-trips a keripy 1.3.4
+  fixture.
+- **E2 — legacy bearer-token agents model deleted** (+ `auths-api /v1/agents` removed). ✅
+- **E3 — SDK `agents::add` + CLI `auths id agent add` (agent as a `dip` delegated by the root).** ✅
+  Thin wrapper over the generic `incept_delegated_device`; retired the standalone-`icp` provisioning.
+- **E4 — SDK `agents::rotate` + CLI `auths id agent rotate` (`drt`).** ✅
+- **E5 — `agents::revoke`/`list` + CLI; agents distinguishable from devices.** ✅
+- **E6 — verifier orders the signing event vs the revocation seal by KEL position** (`Auths-Anchor-Seq`
+  trailer; `SignedAfterRevocation` verdict). ✅
+- **E7 — agent scope/expiry via a delegator-anchored scope seal**; verifier `OutsideAgentScope` /
+  `AgentExpired` verdicts (expiry via injected `now`). ✅
+- **E8 — KERI-native org members via `dip` delegated by the org AID (`kt=1`)** + `delegated_by` readers
+  migrated fail-closed (KEL authoritative, never OR-fallback to a stale attestation); `kt≥2` orgs →
+  typed `OrgThresholdDelegationUnsupported`. ✅
+- **E9 — docs, ADR 007, legacy-doc rewrite, deferred-issue tracking.** ✅
 
-- **E2 — delegated rotation (`drt`) for agent key rotation.** *Verify:* agent rotates; chain holds.
-  *Depends:* E1.
+**Acceptance (met):** an agent (and an org member) is a delegated KEL — verifiable and revocable by its
+delegator purely by KEL replay, scoped by a delegator-anchored seal, with no bearer tokens anywhere.
 
-- **E3 — migrate org/team delegation off attestation `delegated_by` onto `dip`/`drt`.**
-  - *Files:* `org/service.rs:376`. *Verify:* org membership/authority is provable by KEL replay.
-  *Depends:* E1.
-
-- **E4 — minimal agent scope/expiry** ("may sign for repo X until T"). Decide: attestation-carried
-  (interim) vs ACDC (Epic F). *Depends:* E1.
-
-**Acceptance:** an agent identity is a delegated KEL, verifiable and revocable by its delegator via the
-KEL.
+**Deferred (tracked in [ADR 007](ADRs/007-agent-identity-via-delegation.md)):** multi-sig (`kt≥2`) org
+anchoring; ACDC/TEL scope (Epic F); **remote/CI headless provisioning** (priority follow-on); cascade
+revocation; a signer-type trailer discriminator; delegation depth cap + sub-agent delegators.
 
 ---
 

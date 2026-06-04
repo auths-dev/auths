@@ -1,6 +1,6 @@
 # AUTHS-E1102
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `DidKeyError::Base58DecodeFailed`
 
 ## Message

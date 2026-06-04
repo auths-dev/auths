@@ -33,7 +33,7 @@ use auths_crypto::CurveType;
 use auths_id::keri::delegation::{DeviceDipBundle, anchor_received_dip, build_device_dip};
 use auths_id::keri::types::Prefix;
 use auths_id::keri::{Event, parse_did_keri, validate_delegation};
-use auths_keri::{DipEvent, IxnEvent};
+use auths_keri::{DipEvent, IxnEvent, SourceSeal, serialize_source_seal_couples};
 use auths_verifier::types::CanonicalDid;
 
 use crate::context::AuthsContext;
@@ -253,14 +253,29 @@ pub fn finalize_delegated_join(
     }
 
     let JoinerPending {
-        bundle,
+        mut bundle,
         device_alias,
         ..
     } = pending;
 
+    // Cooperative double-anchor (joiner half): the relayed `ixn` IS the delegator's
+    // anchoring event, so the joiner reconstructs the delegate-side `-G` source seal
+    // from it, completing the bilateral binding before validating and persisting.
+    let source_seal = SourceSeal {
+        s: anchor_ixn.s,
+        d: anchor_ixn.d.clone(),
+    };
+    bundle.dip.source_seal = Some(source_seal.clone());
+
     validate_delegation(&Event::Dip(bundle.dip.clone()), &[Event::Ixn(anchor_ixn)]).map_err(
         |e| PairingError::AttestationFailed(format!("delegation not anchored by the root: {e}")),
     )?;
+
+    let mut attachment = bundle.attachment.clone();
+    attachment.extend_from_slice(
+        &serialize_source_seal_couples(&[source_seal])
+            .map_err(|e| PairingError::AttestationFailed(format!("encode source seal: {e}")))?,
+    );
 
     // A fresh device's registry may not be initialized yet — this is its first event.
     ctx.registry
@@ -270,7 +285,7 @@ pub fn finalize_delegated_join(
         .append_signed_event(
             &bundle.device_prefix,
             &Event::Dip(bundle.dip.clone()),
-            &bundle.attachment,
+            &attachment,
         )
         .map_err(|e| PairingError::StorageError(format!("persist device dip: {e}")))?;
 

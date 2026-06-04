@@ -1,6 +1,6 @@
 # AUTHS-E4704
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RotationError::Validation`
 
 ## Message

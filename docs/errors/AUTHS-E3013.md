@@ -1,6 +1,6 @@
 # AUTHS-E3013
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::StorageError`
 
 ## Message

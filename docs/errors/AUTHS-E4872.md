@@ -1,6 +1,6 @@
 # AUTHS-E4872
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::Internal`
 
 ## Message

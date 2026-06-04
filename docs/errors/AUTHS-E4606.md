@@ -1,6 +1,6 @@
 # AUTHS-E4606
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `KelError::ChainIntegrity`
 
 ## Message

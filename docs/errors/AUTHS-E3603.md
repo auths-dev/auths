@@ -1,6 +1,6 @@
 # AUTHS-E3603
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `NetworkError::NotFound`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E3101
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `TrustError::Io`
 
 ## Message

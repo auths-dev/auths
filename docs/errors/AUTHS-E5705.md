@@ -1,6 +1,6 @@
 # AUTHS-E5705
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `ApprovalError::PartialApproval`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E4404
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IdentityError::EmptyPassphrase`
 
 ## Message

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use auths_core::storage::keychain::{KeyAlias, extract_public_key_bytes};
 use auths_id::keri::delegation::{
-    incept_delegated_device, list_delegated_devices as id_list_delegated_devices,
+    DelegatedRole, incept_delegated_device, list_delegated_devices as id_list_delegated_devices,
     revoke_delegated_device,
 };
 use auths_id::keri::parse_did_keri;
@@ -176,6 +176,8 @@ pub fn list_delegated_devices(
         .map_err(DeviceError::DelegationError)?;
     Ok(devices
         .into_iter()
+        // Devices only — agents (role-marked delegations) belong to `agent list`.
+        .filter(|d| d.role == DelegatedRole::Device)
         .map(|d| DeviceDelegationInfo {
             device_did: format!("did:keri:{}", d.device_prefix),
             revoked: d.revoked,

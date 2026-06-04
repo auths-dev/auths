@@ -1,6 +1,6 @@
 # AUTHS-E3102
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `TrustError::InvalidData`
 
 ## Message

@@ -7,7 +7,6 @@ use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{
     IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
 };
-use auths_id::identity::helpers::encode_seed_as_pkcs8;
 use auths_id::identity::helpers::extract_seed_bytes;
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::storage::attestation::AttestationSource;
@@ -380,14 +379,11 @@ pub fn delegate_agent(
         PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key load failed: {e}"))
     })?;
 
-    // Encrypt and store the agent key
-    let seed = extract_seed_bytes(pkcs8.as_ref()).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
-    })?;
-    let seed_pkcs8 = encode_seed_as_pkcs8(seed).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] PKCS8 encoding failed: {e}"))
-    })?;
-    let encrypted = encrypt_keypair(&seed_pkcs8, &passphrase_str).map_err(|e| {
+    // Encrypt and store the agent key. Store the PKCS#8 blob directly — it is already
+    // curve-aware from `generate_keypair_for_init`; Ed25519-only seed extraction would
+    // reject a P-256 key (the default curve). Mirrors the shared engine
+    // (`incept_delegated_device`) and the Node binding.
+    let encrypted = encrypt_keypair(pkcs8.as_ref(), &passphrase_str).map_err(|e| {
         PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key encryption failed: {e}"))
     })?;
     keychain

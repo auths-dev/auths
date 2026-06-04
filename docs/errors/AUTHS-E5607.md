@@ -1,6 +1,6 @@
 # AUTHS-E5607
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `OrgError::Signing`
 
 ## Message

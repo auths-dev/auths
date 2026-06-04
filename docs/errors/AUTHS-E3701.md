@@ -1,6 +1,6 @@
 # AUTHS-E3701
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `ResolutionError::DidNotFound`
 
 ## Message

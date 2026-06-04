@@ -1,6 +1,6 @@
 # AUTHS-E5301
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `RotationError::IdentityNotFound`
 
 ## Message

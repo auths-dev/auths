@@ -1,6 +1,6 @@
 # AUTHS-E4207
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `InitError::Crypto`
 
 ## Message

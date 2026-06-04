@@ -5,7 +5,7 @@
 //! is cryptographically valid and properly chained.
 
 use crate::crypto::verify_commitment;
-use crate::events::{Event, IcpEvent, IxnEvent, KeriSequence, RotEvent, Seal};
+use crate::events::{Event, IcpEvent, IxnEvent, KeriSequence, RotEvent, Seal, SourceSeal};
 use crate::keys::KeriPublicKey;
 use crate::said::compute_said;
 use crate::state::KeyState;
@@ -123,6 +123,30 @@ pub enum ValidationError {
         sequence: u128,
         /// Delegator AID the event referenced (dip.di / drt.di).
         delegator_aid: String,
+    },
+
+    /// A delegated event (`dip` / `drt`) has no delegate-side source seal
+    /// (`-G` couple). The delegator anchored it, but the event itself doesn't
+    /// point back at that anchoring event — a one-directional (and therefore
+    /// non-keripy-interoperable, weakly-bound) delegation. Bilateral required.
+    #[error(
+        "Delegate source seal missing at sequence {sequence}: delegated event carries no -G back-reference to its anchoring event"
+    )]
+    DelegateSourceSealMissing {
+        /// Zero-based position of the delegated event.
+        sequence: u128,
+    },
+
+    /// A delegated event's source seal (`-G` couple) points at a different
+    /// delegator event than the one that actually anchored it. The bilateral
+    /// binding is broken: the delegate claims anchoring location L while the
+    /// delegator's `Seal::KeyEvent` lives at L′ ≠ L.
+    #[error(
+        "Delegation source seal back-reference mismatch at sequence {sequence}: delegate points at a different anchoring event than the delegator's seal"
+    )]
+    SealBackRefMismatch {
+        /// Zero-based position of the delegated event.
+        sequence: u128,
     },
 
     /// A delegated event was submitted but no `DelegatorKelLookup` was
@@ -281,9 +305,10 @@ pub fn validate_delegation(
         ));
     }
 
-    // Search delegator's KEL for an anchoring seal
-    let found = delegator_kel.iter().any(|event| {
-        event.anchors().iter().any(|seal| {
+    // Delegator side: find the anchoring event whose a[] carries a KeyEvent seal
+    // for this delegated event, and capture that event's own (sequence, SAID).
+    let anchor = delegator_kel.iter().find_map(|event| {
+        let anchors = event.anchors().iter().any(|seal| {
             matches!(
                 seal,
                 Seal::KeyEvent { i, s, d }
@@ -291,19 +316,40 @@ pub fn validate_delegation(
                     && s.value() == event_seq.value()
                     && d == event_said
             )
+        });
+        anchors.then(|| SourceSeal {
+            s: event.sequence(),
+            d: event.said().clone(),
         })
     });
 
-    if !found {
+    let Some(anchor) = anchor else {
         return Err(ValidationError::Serialization(format!(
             "No delegation seal found in delegator KEL for prefix={}, sn={}, said={}",
             delegated_event.prefix(),
             event_seq,
             event_said
         )));
-    }
+    };
 
-    Ok(())
+    // Delegate side: the event's -G source seal must point back at that exact
+    // anchoring event. A missing or mismatched back-reference is rejected.
+    enforce_source_seal(delegated_event.source_seal(), &anchor, event_seq.value())
+}
+
+/// Enforce the delegate side of the bilateral delegation binding: the delegated
+/// event's `-G` source seal must be present and equal the delegator's anchoring
+/// event `(sequence, SAID)`.
+fn enforce_source_seal(
+    source_seal: Option<&SourceSeal>,
+    anchor: &SourceSeal,
+    sequence: u128,
+) -> Result<(), ValidationError> {
+    match source_seal {
+        None => Err(ValidationError::DelegateSourceSealMissing { sequence }),
+        Some(seal) if seal == anchor => Ok(()),
+        Some(_) => Err(ValidationError::SealBackRefMismatch { sequence }),
+    }
 }
 
 /// Validate a KEL and return the resulting KeyState.
@@ -325,9 +371,12 @@ pub fn validate_delegation(
 /// delegator have a seal for this event?" without depending on any
 /// particular KEL storage backend.
 pub trait DelegatorKelLookup {
-    /// Return the sequence of the delegator's `ixn` event that anchors the
-    /// given seal SAID, or `None` if the delegator's KEL doesn't contain one.
-    fn find_seal(&self, delegator_aid: &Prefix, seal_said: &Said) -> Option<KeriSequence>;
+    /// Return the delegator's anchoring event — its sequence **and** SAID — whose
+    /// `a[]` carries a `Seal::KeyEvent` for `seal_said`, or `None` if the
+    /// delegator's KEL contains none. The returned [`SourceSeal`] is exactly what
+    /// the delegated event's `-G` back-reference must equal for the bilateral
+    /// binding to hold.
+    fn find_seal(&self, delegator_aid: &Prefix, seal_said: &Said) -> Option<SourceSeal>;
 }
 
 /// Validate a KEL with no delegator lookup.
@@ -834,13 +883,16 @@ fn validate_delegated_inception(
     let sequence = dip.s.value();
     let lookup = lookup.ok_or(ValidationError::DelegatorLookupMissing { sequence })?;
 
-    // Delegator seal check.
-    if lookup.find_seal(&dip.di, &dip.d).is_none() {
-        return Err(ValidationError::DelegatorSealNotFound {
+    // Bilateral delegation binding: the delegator anchored this dip (delegator
+    // side) AND the dip's -G source seal points back at that exact anchoring
+    // event (delegate side).
+    let anchor = lookup.find_seal(&dip.di, &dip.d).ok_or_else(|| {
+        ValidationError::DelegatorSealNotFound {
             sequence,
             delegator_aid: dip.di.as_str().to_string(),
-        });
-    }
+        }
+    })?;
+    enforce_source_seal(dip.source_seal.as_ref(), &anchor, sequence)?;
 
     // Structural checks mirrored from `validate_inception` — backers, threshold.
     validate_backer_uniqueness(&dip.b)?;
@@ -885,14 +937,15 @@ fn validate_delegated_rotation(
 ) -> Result<(), ValidationError> {
     let lookup = lookup.ok_or(ValidationError::DelegatorLookupMissing { sequence })?;
 
-    // Delegator must match the state's recorded delegator AID and anchor
-    // via a seal.
-    if lookup.find_seal(&drt.di, &drt.d).is_none() {
-        return Err(ValidationError::DelegatorSealNotFound {
+    // Bilateral delegation binding (as for dip): delegator-anchored seal AND the
+    // drt's -G source seal pointing back at that anchoring event.
+    let anchor = lookup.find_seal(&drt.di, &drt.d).ok_or_else(|| {
+        ValidationError::DelegatorSealNotFound {
             sequence,
             delegator_aid: drt.di.as_str().to_string(),
-        });
-    }
+        }
+    })?;
+    enforce_source_seal(drt.source_seal.as_ref(), &anchor, sequence)?;
 
     // Standard rotation commitment/backer checks applied to drt fields.
     if !state.next_commitment.is_empty()

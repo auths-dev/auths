@@ -4,13 +4,12 @@ export declare class NapiPairingHandle {
   static createSession(repoPath: string, capabilitiesJson?: string | undefined | null, timeoutSecs?: number | undefined | null, bindAddress?: string | undefined | null, enableMdns?: boolean | undefined | null, passphrase?: string | undefined | null): Promise<NapiPairingHandle>
   get session(): NapiPairingSession
   waitForResponse(timeoutSecs?: number | undefined | null): Promise<NapiPairingResponse>
-  complete(deviceDid: string, devicePublicKeyHex: string, repoPath: string, capabilitiesJson?: string | undefined | null, passphrase?: string | undefined | null): Promise<NapiPairingResult>
   stop(): Promise<void>
 }
 
-export declare function addOrgMember(orgDid: string, memberDid: string, role: string, repoPath: string, capabilitiesJson?: string | undefined | null, passphrase?: string | undefined | null, note?: string | undefined | null, memberPublicKeyHex?: string | undefined | null): NapiOrgMember
+export declare function addOrgMember(orgDid: string, memberLabel: string, role: string, repoPath: string, capabilitiesJson?: string | undefined | null, passphrase?: string | undefined | null, expiresAt?: number | undefined | null): NapiOrgMember
 
-export declare function addWitness(urlStr: string, repoPath: string, label?: string | undefined | null): NapiWitnessResult
+export declare function addWitness(urlStr: string, aid: string, repoPath: string, label?: string | undefined | null): NapiWitnessResult
 
 export declare function compilePolicy(policyJson: string): string
 
@@ -20,13 +19,27 @@ export declare function createIdentity(keyAlias: string, repoPath: string, passp
 
 export declare function createOrg(label: string, repoPath: string, passphrase?: string | undefined | null): NapiOrgResult
 
-export declare function delegateAgent(agentName: string, capabilities: Array<string>, parentRepoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, identityDid?: string | undefined | null): NapiDelegatedAgentBundle
+export declare function delegateAgent(agentName: string, capabilities: Array<string>, parentRepoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, identityDid?: string | undefined | null, curve?: string | undefined | null): NapiDelegatedAgentBundle
 
 export declare function evaluatePolicy(policyJson: string, issuer: string, subject: string, capabilities?: Array<string> | undefined | null, role?: string | undefined | null, revoked?: boolean | undefined | null, expiresAt?: string | undefined | null, repo?: string | undefined | null, environment?: string | undefined | null, signerType?: string | undefined | null, delegatedBy?: string | undefined | null, chainDepth?: number | undefined | null): NapiPolicyDecision
 
 export declare function extendDeviceAuthorization(deviceDid: string, identityKeyAlias: string, expiresIn: number, repoPath: string, passphrase?: string | undefined | null): NapiExtensionResult
 
 export declare function generateAuditReport(targetRepoPath: string, authsRepoPath: string, since?: string | undefined | null, until?: string | undefined | null, author?: string | undefined | null, limit?: number | undefined | null): string
+
+/**
+ * Generate an in-memory Ed25519 keypair without keychain, Git, or filesystem access.
+ *
+ * Args:
+ * (no arguments)
+ *
+ * Usage:
+ * ```ignore
+ * let kp = generate_inmemory_keypair()?;
+ * // kp.private_key_hex, kp.public_key_hex, kp.did
+ * ```
+ */
+export declare function generateInmemoryKeypair(curve?: string | undefined | null): NapiInMemoryKeypair
 
 export declare function getIdentityPublicKey(identityDid: string, repoPath: string, passphrase?: string | undefined | null): string
 
@@ -42,7 +55,7 @@ export declare function listAttestations(repoPath: string): Array<NapiAttestatio
 
 export declare function listAttestationsByDevice(repoPath: string, deviceDid: string): Array<NapiAttestation>
 
-export declare function listOrgMembers(orgDid: string, includeRevoked: boolean, repoPath: string): string
+export declare function listOrgMembers(orgDid: string, includeRevoked: boolean, repoPath: string, passphrase?: string | undefined | null): string
 
 export declare function listPinnedIdentities(repoPath: string): string
 
@@ -121,6 +134,12 @@ export interface NapiIdentityResult {
   publicKeyHex: string
 }
 
+export interface NapiInMemoryKeypair {
+  privateKeyHex: string
+  publicKeyHex: string
+  did: string
+}
+
 export interface NapiLinkResult {
   deviceDid: string
   attestationId: string
@@ -147,12 +166,6 @@ export interface NapiPairingResponse {
   deviceDid: string
   deviceName?: string
   devicePublicKeyHex: string
-}
-
-export interface NapiPairingResult {
-  deviceDid: string
-  deviceName?: string
-  attestationRid: string
 }
 
 export interface NapiPairingSession {
@@ -220,7 +233,7 @@ export declare function removeWitness(urlStr: string, repoPath: string): void
 
 export declare function revokeDeviceFromIdentity(deviceDid: string, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, note?: string | undefined | null): void
 
-export declare function revokeOrgMember(orgDid: string, memberDid: string, repoPath: string, passphrase?: string | undefined | null, note?: string | undefined | null, memberPublicKeyHex?: string | undefined | null): NapiOrgMember
+export declare function revokeOrgMember(orgDid: string, memberDid: string, repoPath: string, passphrase?: string | undefined | null): NapiOrgMember
 
 export declare function rotateIdentityKeys(repoPath: string, identityKeyAlias?: string | undefined | null, nextKeyAlias?: string | undefined | null, passphrase?: string | undefined | null): NapiRotationResult
 
@@ -231,20 +244,24 @@ export declare function signActionAsAgent(actionType: string, payloadJson: strin
 export declare function signActionAsIdentity(actionType: string, payloadJson: string, identityDid: string, repoPath: string, passphrase?: string | undefined | null): NapiActionEnvelope
 
 /**
- * Sign an action envelope with a hex-encoded Ed25519 private key.
+ * Sign an action envelope with a hex-encoded signing seed.
+ *
+ * Curve is dispatched via the `curve` argument (defaults to P-256 per the
+ * workspace wire-format curve-tagging rule).
  *
  * Args:
- * * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+ * * `private_key_hex`: 32-byte signing seed as hex string (64 chars).
  * * `action_type`: Application-defined action type (e.g. "tool_call").
  * * `payload_json`: JSON string for the payload field.
  * * `identity_did`: Signer's identity DID (e.g. "did:keri:E...").
+ * * `curve`: Optional curve hint (`"Ed25519"` / `"P256"`). Absent → P-256.
  *
  * Usage:
  * ```ignore
- * let envelope = sign_action_raw("deadbeef...".into(), "tool_call".into(), "{}".into(), "did:keri:E...".into())?;
+ * let envelope = sign_action_raw("deadbeef...".into(), "tool_call".into(), "{}".into(), "did:keri:E...".into(), Some("P256".into()))?;
  * ```
  */
-export declare function signActionRaw(privateKeyHex: string, actionType: string, payloadJson: string, identityDid: string): string
+export declare function signActionRaw(privateKeyHex: string, actionType: string, payloadJson: string, identityDid: string, curve?: string | undefined | null): string
 
 export declare function signArtifact(filePath: string, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, note?: string | undefined | null, commitSha?: string | undefined | null): NapiArtifactResult
 
@@ -274,34 +291,42 @@ export declare function signAsAgent(message: Buffer, keyAlias: string, repoPath:
 export declare function signAsIdentity(message: Buffer, identityDid: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignResult
 
 /**
- * Sign raw bytes with a hex-encoded Ed25519 private key.
+ * Sign raw bytes with a hex-encoded signing seed.
+ *
+ * Curve is dispatched via the `curve` argument (defaults to P-256 per the
+ * workspace wire-format curve-tagging rule).
  *
  * Args:
- * * `private_key_hex`: Ed25519 seed as hex string (64 chars = 32 bytes).
+ * * `private_key_hex`: 32-byte signing seed as hex string (64 chars).
  * * `message`: The bytes to sign.
+ * * `curve`: Optional curve hint (`"Ed25519"` / `"P256"`). Absent → P-256.
  *
  * Usage:
  * ```ignore
- * let sig = sign_bytes_raw("deadbeef...".into(), buffer)?;
+ * let sig = sign_bytes_raw("deadbeef...".into(), buffer, Some("P256".into()))?;
  * ```
  */
-export declare function signBytesRaw(privateKeyHex: string, message: Buffer): string
+export declare function signBytesRaw(privateKeyHex: string, message: Buffer, curve?: string | undefined | null): string
 
 export declare function signCommit(data: Buffer, identityKeyAlias: string, repoPath: string, passphrase?: string | undefined | null): NapiCommitSignPemResult
 
 /**
- * Verify an action envelope's Ed25519 signature with a raw public key.
+ * Verify an action envelope's signature with a raw public key.
+ * Curve dispatched via the `curve` argument; supports Ed25519 and P-256.
  *
  * Args:
  * * `envelope_json`: The complete action envelope as a JSON string.
- * * `public_key_hex`: The signer's Ed25519 public key in hex format (64 chars).
+ * * `public_key_hex`: The signer's public key in hex format
+ *   (64 chars for Ed25519, 66 or 130 chars for P-256).
+ * * `curve`: Optional curve hint (`"Ed25519"` / `"P256"`). Absent → P-256
+ *   default per the workspace wire-format curve-tagging rule.
  *
  * Usage:
  * ```ignore
- * let result = verify_action_envelope("{...}".into(), "abcd1234...".into())?;
+ * let result = verify_action_envelope("{...}".into(), "abcd1234...".into(), Some("P256".into()))?;
  * ```
  */
-export declare function verifyActionEnvelope(envelopeJson: string, publicKeyHex: string): NapiVerificationResult
+export declare function verifyActionEnvelope(envelopeJson: string, publicKeyHex: string, curve?: string | undefined | null): NapiVerificationResult
 
 export declare function verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
 

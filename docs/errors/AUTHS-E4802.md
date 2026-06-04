@@ -1,6 +1,6 @@
 # AUTHS-E4802
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ResolveError::NotFound`
 
 ## Message

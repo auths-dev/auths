@@ -1,6 +1,6 @@
 # AUTHS-E4956
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IncrementalError::NonLinearHistory`
 
 ## Message

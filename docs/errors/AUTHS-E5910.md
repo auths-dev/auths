@@ -1,6 +1,6 @@
 # AUTHS-E5910
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SigningError::KeyDecryptionFailed`
 
 ## Message

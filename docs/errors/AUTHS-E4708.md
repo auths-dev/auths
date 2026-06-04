@@ -1,6 +1,6 @@
 # AUTHS-E4708
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RotationError::InvalidKey`
 
 ## Message

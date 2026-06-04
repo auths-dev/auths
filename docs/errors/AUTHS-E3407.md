@@ -1,6 +1,6 @@
 # AUTHS-E3407
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `WitnessError::SaidMismatch`
 
 ## Message

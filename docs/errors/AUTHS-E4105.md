@@ -1,6 +1,6 @@
 # AUTHS-E4105
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `StorageError::InvalidData`
 
 ## Message

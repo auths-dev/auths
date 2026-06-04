@@ -23,7 +23,6 @@ for _name in (
     "sign_commit", "sign_artifact", "sign_artifact_bytes",
     "publish_artifact",
     "get_token",
-    "generate_allowed_signers_file",
     "verify_commit_native",
     "create_identity", "create_agent_identity", "delegate_agent",
     "link_device_to_identity", "revoke_device_from_identity",
@@ -47,7 +46,6 @@ from auths.git import (  # noqa: E402
     LayoutInfo,
     VerifyResult,
     discover_layout,
-    generate_allowed_signers,
     verify_commit_range,
 )
 
@@ -304,20 +302,3 @@ class TestAttestationExpired:
         mock_native.return_value = _FakeNativeResult(valid=True, signer_hex=DEVICE_PK_HEX)
         result = verify_commit_range("HEAD~1..HEAD", identity_bundle=bundle_path)
         assert result.commits[0].error_code == ErrorCode.DEVICE_EXPIRED
-
-
-class TestGenerateAllowedSigners:
-
-    def test_import(self):
-        from auths.git import generate_allowed_signers  # noqa: F401
-
-    def test_top_level_export(self):
-        from auths import generate_allowed_signers as _gs
-        assert callable(_gs)
-
-    def test_nonexistent_repo_raises(self):
-        native = sys.modules.get("auths._native")
-        if isinstance(getattr(native, "generate_allowed_signers_file", None), MagicMock):
-            pytest.skip("requires compiled native extension")
-        with pytest.raises(RuntimeError):
-            generate_allowed_signers("/nonexistent/path/auths_xyz_does_not_exist")

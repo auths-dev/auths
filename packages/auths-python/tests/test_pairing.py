@@ -109,13 +109,11 @@ def test_pairing_roundtrip(tmp_path):
     response = session.wait_for_response(timeout_secs=10)
     assert response.device_did.startswith("did:key:")
 
-    result = controller.pairing.complete(session, response)
-    assert result.attestation_rid is not None
-    assert isinstance(result, PairingResult)
-
     t.join(timeout=10)
     assert join_error[0] is None
     assert join_result[0] is not None
+    assert isinstance(join_result[0], PairingResult)
+    assert join_result[0].device_did.startswith("did:key:")
 
     session.stop()
 
@@ -156,8 +154,7 @@ def test_pairing_with_scoped_capabilities(tmp_path):
     t.start()
 
     response = session.wait_for_response(timeout_secs=10)
-    result = controller.pairing.complete(session, response)
-    assert result.attestation_rid is not None
+    assert response.device_did.startswith("did:key:")
 
     t.join(timeout=10)
     session.stop()

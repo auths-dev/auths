@@ -1,5 +1,4 @@
 mod agent;
-mod agent_persistence;
 mod artifact;
 mod diagnostics;
 mod git;
@@ -9,7 +8,6 @@ mod signer;
 mod transparency_log;
 
 pub use agent::FakeAgentProvider;
-pub use agent_persistence::FakeAgentPersistence;
 pub use artifact::FakeArtifactSource;
 pub use diagnostics::{FakeCryptoDiagnosticProvider, FakeGitDiagnosticProvider};
 pub use git::FakeGitLogProvider;

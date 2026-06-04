@@ -1,6 +1,6 @@
 # AUTHS-E5103
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `DeviceError::AttestationError`
 
 ## Message

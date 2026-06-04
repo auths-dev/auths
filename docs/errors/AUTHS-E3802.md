@@ -1,6 +1,6 @@
 # AUTHS-E3802
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `PlatformError::SlowDown`
 
 ## Message

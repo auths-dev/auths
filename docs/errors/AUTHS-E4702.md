@@ -1,6 +1,6 @@
 # AUTHS-E4702
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RotationError::Kel`
 
 ## Message

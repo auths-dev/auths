@@ -1,6 +1,6 @@
 # AUTHS-E4875
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::StaleAttestation`
 
 ## Message

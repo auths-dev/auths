@@ -1,24 +1,20 @@
-//! Agent provisioning and authorization domain
+//! Agent identity domain.
 //!
-//! Provides services for agent identity management, including provisioning,
-//! authorization, and revocation with delegation support.
+//! The legacy bearer-token session model (UUID `did:keri`, random `bearer_token`,
+//! in-memory `AgentRegistry`) was removed in Epic E — it violated the project rule
+//! "bearer tokens are a red flag; default to DeviceDID signatures." The real agent
+//! surface — agents as KERI `dip`-delegated identifiers — lands in E.3+ (CLI/SDK).
+//!
+//! For now this module carries only the reusable scope-constraint rules that E.7's
+//! delegator-anchored scope seal builds on.
 
-/// Delegation constraints and validation
+/// Agent delegation workflow — add an agent as a KERI `dip`-delegated identifier.
 pub mod delegation;
-/// Storage abstraction for agent sessions
-pub mod persistence;
-/// In-memory registry for agent sessions with indexing
-pub mod registry;
-/// Agent lifecycle and authorization service
-pub mod service;
-/// Types for agent sessions and requests
-pub mod types;
+/// Agent delegation error type.
+pub mod error;
+/// Reusable capability-subset / TTL / depth scope constraints.
+pub mod scope;
 
-pub use delegation::{DelegationError, validate_delegation_constraints};
-pub use persistence::AgentPersistencePort;
-pub use registry::AgentRegistry;
-pub use service::AgentService;
-pub use types::{
-    AgentSession, AgentStatus, AuthorizeRequest, AuthorizeResponse, ProvisionRequest,
-    ProvisionResponse,
-};
+pub use delegation::{AgentDelegationResult, AgentInfo, add, add_scoped, list, revoke, rotate};
+pub use error::AgentError;
+pub use scope::{DelegationError, DelegatorScope, RequestedScope, validate_delegation_constraints};

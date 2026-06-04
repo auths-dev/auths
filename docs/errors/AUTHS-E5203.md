@@ -1,6 +1,6 @@
 # AUTHS-E5203
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `DeviceExtensionError::AlreadyRevoked`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E3003
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::MissingPassphrase`
 
 ## Message

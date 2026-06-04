@@ -74,6 +74,33 @@ pub enum OrgError {
     /// KEL anchoring failed.
     #[error("anchor error: {0}")]
     Anchor(#[from] auths_id::keri::AnchorError),
+
+    /// The organization's controller threshold is `kt≥2` (multi-signature).
+    /// KERI-native member delegation currently anchors single-author (`kt=1`)
+    /// interaction events only; multi-sig org anchoring is a tracked follow-up.
+    #[error(
+        "organization '{org}' uses a multi-signature controller (kt≥2); KERI-native member delegation requires a single-signature (kt=1) org"
+    )]
+    OrgThresholdDelegationUnsupported {
+        /// The organization identifier.
+        org: String,
+    },
+
+    /// A key already exists under the requested member alias — minting a member
+    /// there would clobber an existing delegated key. Choose a fresh alias.
+    #[error("a member key already exists under alias '{alias}'")]
+    MemberKeyExists {
+        /// The keychain alias already in use.
+        alias: String,
+    },
+
+    /// A cryptographic operation failed (e.g. resolving the org key's curve).
+    #[error("crypto error: {0}")]
+    CryptoError(#[source] auths_core::AgentError),
+
+    /// Authoring or anchoring the member's delegated identifier failed.
+    #[error("member delegation failed: {0}")]
+    Delegation(#[source] auths_id::error::InitError),
 }
 
 impl AuthsErrorInfo for OrgError {
@@ -90,6 +117,10 @@ impl AuthsErrorInfo for OrgError {
             Self::KeyStorage(_) => "AUTHS-E5609",
             Self::Storage(_) => "AUTHS-E5610",
             Self::Anchor(_) => "AUTHS-E5611",
+            Self::OrgThresholdDelegationUnsupported { .. } => "AUTHS-E5612",
+            Self::MemberKeyExists { .. } => "AUTHS-E5613",
+            Self::CryptoError(e) => e.error_code(),
+            Self::Delegation(_) => "AUTHS-E5614",
         }
     }
 
@@ -122,6 +153,16 @@ impl AuthsErrorInfo for OrgError {
                 Some("Failed to access organization storage; check repository permissions")
             }
             Self::Anchor(_) => Some("KEL anchoring failed; check identity and registry state"),
+            Self::OrgThresholdDelegationUnsupported { .. } => Some(
+                "Multi-signature org anchoring is not yet supported; use a single-signature (kt=1) org",
+            ),
+            Self::MemberKeyExists { .. } => Some(
+                "Choose a different member alias; run `auths org list-members` to see existing members",
+            ),
+            Self::CryptoError(e) => e.suggestion(),
+            Self::Delegation(_) => Some(
+                "The member delegation could not be authored or anchored; check the org identity",
+            ),
         }
     }
 }

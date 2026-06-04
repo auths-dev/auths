@@ -1,6 +1,6 @@
 # AUTHS-E4204
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `InitError::InvalidData`
 
 ## Message

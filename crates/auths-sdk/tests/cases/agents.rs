@@ -1,307 +1,339 @@
+//! Epic E.3 — agent as a KERI `dip`-delegated identifier (SDK `agents::add`).
+
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
-use auths_sdk::domains::agents::registry::AgentRegistry;
-use auths_sdk::domains::agents::service::AgentService;
-use auths_sdk::domains::agents::types::{AgentSession, AgentStatus, ProvisionRequest};
-use auths_sdk::testing::fakes::FakeAgentPersistence;
-use chrono::Utc;
-use uuid::Uuid;
+use auths_core::PrefilledPassphraseProvider;
+use auths_core::signing::{PassphraseProvider, StorageSigner};
+use auths_core::storage::keychain::{KeyAlias, extract_public_key_bytes};
+use auths_core::testing::IsolatedKeychainHandle;
+use auths_crypto::CurveType;
+use auths_id::keri::Event;
+use auths_id::keri::delegation::mark_agent_scope;
+use auths_id::keri::types::Prefix;
+use auths_id::keri::validate_delegation;
+use auths_id::storage::registry::backend::RegistryBackend;
+use auths_keri::AgentScope;
+use auths_sdk::context::AuthsContext;
+use auths_sdk::domains::agents::{AgentError, add, add_scoped, list, revoke, rotate};
+use auths_sdk::domains::device::{add_device, list_delegated_devices, remove_device};
+use auths_sdk::domains::identity::service::initialize;
+use auths_sdk::domains::identity::types::{
+    CreateDeveloperIdentityConfig, IdentityConfig, InitializeResult,
+};
+use auths_sdk::domains::signing::types::GitSigningScope;
 
-fn make_service() -> AgentService {
-    let registry = Arc::new(AgentRegistry::new());
-    let persistence = Arc::new(FakeAgentPersistence::new());
-    AgentService::new(registry, persistence)
-}
+use crate::cases::helpers::{build_test_context, build_test_context_with_provider};
 
-fn make_service_with_registry(registry: Arc<AgentRegistry>) -> AgentService {
-    let persistence = Arc::new(FakeAgentPersistence::new());
-    AgentService::new(registry, persistence)
-}
+const PASS: &str = "Test-passphrase1!";
 
-// ── provision ───────────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[allow(clippy::disallowed_methods)]
-async fn provision_root_agent_succeeds() {
-    let service = make_service();
-    let now = Utc::now();
-
-    let req = ProvisionRequest {
-        delegator_did: String::new(),
-        agent_name: "test-agent".into(),
-        capabilities: vec!["sign_commit".into()],
-        ttl_seconds: 3600,
-        max_delegation_depth: Some(1),
-        signature: String::new(),
-        timestamp: now,
+fn setup_test_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKeychainHandle) {
+    let keychain = IsolatedKeychainHandle::new();
+    let signer = StorageSigner::new(keychain.clone());
+    let provider = PrefilledPassphraseProvider::new(PASS);
+    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("test-key"))
+        .with_git_signing_scope(GitSigningScope::Skip)
+        .build();
+    let ctx = build_test_context(registry_path, Arc::new(keychain.clone()));
+    let result = match initialize(
+        IdentityConfig::Developer(config),
+        &ctx,
+        Arc::new(keychain.clone()),
+        &signer,
+        &provider,
+        None,
+    )
+    .unwrap()
+    {
+        InitializeResult::Developer(r) => r,
+        _ => unreachable!(),
     };
-
-    let result = service.provision(req, now).await;
-    assert!(result.is_ok(), "provision failed: {:?}", result.err());
-
-    let resp = result.unwrap();
-    assert!(resp.agent_did.starts_with("did:keri:"));
-    assert!(resp.bearer_token.is_some());
-    assert!(resp.expires_at > now);
+    (result.key_alias, keychain)
 }
 
-#[tokio::test]
-#[allow(clippy::disallowed_methods)]
-async fn provision_rejects_large_clock_skew() {
-    let service = make_service();
-    let now = Utc::now();
-
-    let req = ProvisionRequest {
-        delegator_did: String::new(),
-        agent_name: "test-agent".into(),
-        capabilities: vec!["sign_commit".into()],
-        ttl_seconds: 3600,
-        max_delegation_depth: None,
-        signature: String::new(),
-        timestamp: now - chrono::Duration::seconds(600), // 10 min ago
-    };
-
-    let result = service.provision(req, now).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Clock skew"));
+/// (ctx, root signing alias, root prefix) for a fresh delegating identity.
+fn setup() -> (AuthsContext, KeyAlias, Prefix, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().unwrap();
+    let (root_alias, keychain) = setup_test_identity(tmp.path());
+    let provider: Arc<dyn PassphraseProvider + Send + Sync> =
+        Arc::new(PrefilledPassphraseProvider::new(PASS));
+    let ctx =
+        build_test_context_with_provider(tmp.path(), Arc::new(keychain.clone()), Some(provider));
+    let managed = ctx.identity_storage.load_identity().expect("root identity");
+    let root_prefix = Prefix::new_unchecked(
+        managed
+            .controller_did
+            .as_str()
+            .strip_prefix("did:keri:")
+            .unwrap()
+            .to_string(),
+    );
+    (ctx, root_alias, root_prefix, tmp)
 }
 
-#[tokio::test]
-#[allow(clippy::disallowed_methods)]
-async fn provision_delegated_agent_fails_when_delegator_not_found() {
-    let service = make_service();
-    let now = Utc::now();
-
-    let req = ProvisionRequest {
-        delegator_did: "did:keri:ENotInRegistry".into(),
-        agent_name: "child-agent".into(),
-        capabilities: vec!["read".into()],
-        ttl_seconds: 1800,
-        max_delegation_depth: None,
-        signature: String::new(),
-        timestamp: now,
-    };
-
-    let result = service.provision(req, now).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Delegator not found"));
-}
-
-// ── authorize ───────────────────────────────────────────────────────────────
-
-#[test]
-#[allow(clippy::disallowed_methods)]
-fn authorize_grants_matching_capability() {
-    let registry = Arc::new(AgentRegistry::new());
-    let now = Utc::now();
-
-    let session = AgentSession {
-        session_id: Uuid::new_v4(),
-        agent_did: "did:keri:EAgent001".into(),
-        agent_name: "test-agent".into(),
-        delegator_did: None,
-        capabilities: vec!["sign_commit".into(), "sign_release".into()],
-        status: AgentStatus::Active,
-        created_at: now,
-        expires_at: now + chrono::Duration::hours(1),
-        delegation_depth: 0,
-        max_delegation_depth: 0,
-    };
-    registry.insert(session);
-
-    let service = make_service_with_registry(registry);
-    let result = service.authorize("did:keri:EAgent001", "sign_commit", now, now);
-
-    assert!(result.is_ok());
-    let resp = result.unwrap();
-    assert!(resp.authorized);
-    assert!(resp.matched_capabilities.contains(&"sign_commit".into()));
+fn collect_kel(backend: &(dyn RegistryBackend + Send + Sync), prefix: &Prefix) -> Vec<Event> {
+    let mut events = Vec::new();
+    backend
+        .visit_events(prefix, 0, &mut |e| {
+            events.push(e.clone());
+            ControlFlow::Continue(())
+        })
+        .expect("walk KEL");
+    events
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)]
-fn authorize_grants_wildcard_capability() {
-    let registry = Arc::new(AgentRegistry::new());
-    let now = Utc::now();
+fn agents_add_returns_anchored_dip() {
+    let (ctx, root_alias, root_prefix, _tmp) = setup();
+    let agent_alias = KeyAlias::new_unchecked("deploy-bot");
 
-    let session = AgentSession {
-        session_id: Uuid::new_v4(),
-        agent_did: "did:keri:EWildcard".into(),
-        agent_name: "super-agent".into(),
-        delegator_did: None,
-        capabilities: vec!["*".into()],
-        status: AgentStatus::Active,
-        created_at: now,
-        expires_at: now + chrono::Duration::hours(1),
-        delegation_depth: 0,
-        max_delegation_depth: 0,
-    };
-    registry.insert(session);
+    let agent = add(&ctx, &root_alias, &agent_alias, CurveType::Ed25519).expect("delegate agent");
+    assert!(agent.agent_did.starts_with("did:keri:"));
 
-    let service = make_service_with_registry(registry);
-    let result = service.authorize("did:keri:EWildcard", "anything_at_all", now, now);
-
-    assert!(result.is_ok());
-    assert!(result.unwrap().authorized);
+    // The root anchored the agent's dip → validate_delegation confirms it bilaterally.
+    let agent_prefix = Prefix::new_unchecked(agent.agent_prefix.clone());
+    let dip = ctx
+        .registry
+        .get_event(&agent_prefix, 0)
+        .expect("agent dip stored");
+    let root_kel = collect_kel(ctx.registry.as_ref(), &root_prefix);
+    validate_delegation(&dip, &root_kel).expect("root anchored the agent bilaterally");
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)]
-fn authorize_denies_unmatched_capability() {
-    let registry = Arc::new(AgentRegistry::new());
-    let now = Utc::now();
+fn agent_did_derives_from_dip_said() {
+    let (ctx, root_alias, _root_prefix, _tmp) = setup();
+    let agent_alias = KeyAlias::new_unchecked("derive-bot");
 
-    let session = AgentSession {
-        session_id: Uuid::new_v4(),
-        agent_did: "did:keri:ELimited".into(),
-        agent_name: "limited-agent".into(),
-        delegator_did: None,
-        capabilities: vec!["sign_commit".into()],
-        status: AgentStatus::Active,
-        created_at: now,
-        expires_at: now + chrono::Duration::hours(1),
-        delegation_depth: 0,
-        max_delegation_depth: 0,
-    };
-    registry.insert(session);
+    let agent = add(&ctx, &root_alias, &agent_alias, CurveType::Ed25519).expect("delegate agent");
+    let agent_prefix = Prefix::new_unchecked(agent.agent_prefix.clone());
+    let dip = ctx
+        .registry
+        .get_event(&agent_prefix, 0)
+        .expect("agent dip stored");
 
-    let service = make_service_with_registry(registry);
-    let result = service.authorize("did:keri:ELimited", "manage_members", now, now);
-
-    assert!(result.is_ok());
-    assert!(!result.unwrap().authorized);
+    // A dip is self-addressing: prefix == SAID, and the did:keri wraps that prefix.
+    assert_eq!(agent.agent_prefix, dip.said().as_str());
+    assert_eq!(agent.agent_did, format!("did:keri:{}", dip.said()));
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)]
-fn authorize_rejects_unknown_agent() {
-    let service = make_service();
-    let now = Utc::now();
+fn agents_add_rejects_duplicate_key() {
+    let (ctx, root_alias, _root_prefix, _tmp) = setup();
+    let agent_alias = KeyAlias::new_unchecked("dup-bot");
 
-    let result = service.authorize("did:keri:ENonexistent", "sign_commit", now, now);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("not found"));
+    add(&ctx, &root_alias, &agent_alias, CurveType::Ed25519).expect("first delegation");
+    let err = add(&ctx, &root_alias, &agent_alias, CurveType::Ed25519)
+        .expect_err("re-delegating an existing alias must be rejected");
+    assert!(
+        matches!(err, AgentError::AlreadyDelegated { .. }),
+        "expected AlreadyDelegated, got {err:?}"
+    );
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)]
-fn authorize_rejects_large_clock_skew() {
-    let service = make_service();
-    let now = Utc::now();
-    let stale = now - chrono::Duration::seconds(600);
+fn agents_rotate_advances_kel() {
+    let (ctx, root_alias, _root, _tmp) = setup();
+    let agent_alias = KeyAlias::new_unchecked("rot-bot");
+    let agent = add(&ctx, &root_alias, &agent_alias, CurveType::Ed25519).expect("delegate agent");
+    let agent_prefix = Prefix::new_unchecked(agent.agent_prefix.clone());
 
-    let result = service.authorize("did:keri:EAgent001", "sign_commit", now, stale);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Clock skew"));
+    rotate(&ctx, &root_alias, &agent.agent_did).expect("rotate agent");
+
+    let drt = ctx
+        .registry
+        .get_event(&agent_prefix, 1)
+        .expect("drt at sequence 1");
+    assert!(matches!(drt, Event::Drt(_)), "rotation authors a drt");
+    assert_eq!(drt.sequence().value(), 1);
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)]
-fn authorize_rejects_revoked_agent() {
-    let registry = Arc::new(AgentRegistry::new());
-    let now = Utc::now();
+fn old_key_stops_verifying_after_rotate() {
+    let (ctx, root_alias, _root, _tmp) = setup();
+    let agent_alias = KeyAlias::new_unchecked("oldkey-bot");
+    let agent = add(&ctx, &root_alias, &agent_alias, CurveType::Ed25519).expect("delegate agent");
+    let agent_prefix = Prefix::new_unchecked(agent.agent_prefix.clone());
 
-    let session = AgentSession {
-        session_id: Uuid::new_v4(),
-        agent_did: "did:keri:ERevoked".into(),
-        agent_name: "revoked-agent".into(),
-        delegator_did: None,
-        capabilities: vec!["sign_commit".into()],
-        status: AgentStatus::Revoked,
-        created_at: now,
-        expires_at: now + chrono::Duration::hours(1),
-        delegation_depth: 0,
-        max_delegation_depth: 0,
-    };
-    registry.insert(session);
+    let dip = ctx.registry.get_event(&agent_prefix, 0).expect("dip");
+    let old_key = dip.keys().expect("dip keys")[0].clone();
 
-    let service = make_service_with_registry(registry);
-    let result = service.authorize("did:keri:ERevoked", "sign_commit", now, now);
+    rotate(&ctx, &root_alias, &agent.agent_did).expect("rotate agent");
 
-    // Revoked agents should not be found by registry.get() (which filters by is_active)
-    assert!(result.is_err());
+    let drt = ctx.registry.get_event(&agent_prefix, 1).expect("drt");
+    let new_key = drt.keys().expect("drt keys")[0].clone();
+    assert_ne!(
+        old_key, new_key,
+        "rotation must replace the agent's current key (the old key no longer verifies)"
+    );
 }
 
-// ── revoke ──────────────────────────────────────────────────────────────────
+#[test]
+fn rotate_revoked_agent_rejected() {
+    let (ctx, root_alias, _root, _tmp) = setup();
+    let agent_alias = KeyAlias::new_unchecked("rev-bot");
+    let agent = add(&ctx, &root_alias, &agent_alias, CurveType::Ed25519).expect("delegate agent");
 
-#[tokio::test]
-#[allow(clippy::disallowed_methods)]
-async fn revoke_marks_agent_as_revoked() {
-    let registry = Arc::new(AgentRegistry::new());
-    let now = Utc::now();
+    // Revoke via the shared delegation engine (revoking a delegated AID is curve-
+    // and role-agnostic — agents and devices share it).
+    remove_device(&ctx, &root_alias, &agent.agent_did).expect("revoke agent");
 
-    let session = AgentSession {
-        session_id: Uuid::new_v4(),
-        agent_did: "did:keri:EToRevoke".into(),
-        agent_name: "doomed-agent".into(),
-        delegator_did: None,
-        capabilities: vec!["sign_commit".into()],
-        status: AgentStatus::Active,
-        created_at: now,
-        expires_at: now + chrono::Duration::hours(1),
-        delegation_depth: 0,
-        max_delegation_depth: 0,
-    };
-    registry.insert(session);
-
-    let service = make_service_with_registry(registry.clone());
-    let result = service.revoke("did:keri:EToRevoke", now).await;
-    assert!(result.is_ok());
-
-    // Agent should no longer be findable (revoked)
-    assert!(registry.get("did:keri:EToRevoke", now).is_none());
+    let err =
+        rotate(&ctx, &root_alias, &agent.agent_did).expect_err("a revoked agent must not rotate");
+    assert!(
+        matches!(err, AgentError::Revoked { .. }),
+        "expected Revoked, got {err:?}"
+    );
 }
 
-#[tokio::test]
-#[allow(clippy::disallowed_methods)]
-async fn revoke_cascades_to_children() {
-    let registry = Arc::new(AgentRegistry::new());
-    let now = Utc::now();
+#[test]
+fn drt_chain_validates_after_rotate() {
+    let (ctx, root_alias, root_prefix, _tmp) = setup();
+    let agent_alias = KeyAlias::new_unchecked("chain-bot");
+    let agent = add(&ctx, &root_alias, &agent_alias, CurveType::Ed25519).expect("delegate agent");
+    let agent_prefix = Prefix::new_unchecked(agent.agent_prefix.clone());
 
-    // Insert parent
-    registry.insert(AgentSession {
-        session_id: Uuid::new_v4(),
-        agent_did: "did:keri:EParent".into(),
-        agent_name: "parent".into(),
-        delegator_did: None,
-        capabilities: vec!["*".into()],
-        status: AgentStatus::Active,
-        created_at: now,
-        expires_at: now + chrono::Duration::hours(1),
-        delegation_depth: 0,
-        max_delegation_depth: 2,
-    });
+    rotate(&ctx, &root_alias, &agent.agent_did).expect("rotate agent");
 
-    // Insert child delegated by parent
-    registry.insert(AgentSession {
-        session_id: Uuid::new_v4(),
-        agent_did: "did:keri:EChild".into(),
-        agent_name: "child".into(),
-        delegator_did: Some("did:keri:EParent".into()),
-        capabilities: vec!["sign_commit".into()],
-        status: AgentStatus::Active,
-        created_at: now,
-        expires_at: now + chrono::Duration::hours(1),
-        delegation_depth: 1,
-        max_delegation_depth: 0,
-    });
-
-    let service = make_service_with_registry(registry.clone());
-    let result = service.revoke("did:keri:EParent", now).await;
-    assert!(result.is_ok());
-
-    // Both parent and child should be revoked
-    assert!(registry.get("did:keri:EParent", now).is_none());
-    assert!(registry.get("did:keri:EChild", now).is_none());
+    let dip = ctx.registry.get_event(&agent_prefix, 0).expect("dip");
+    let drt = ctx.registry.get_event(&agent_prefix, 1).expect("drt");
+    // The drt chains onto the dip, and is bilaterally anchored by the delegator.
+    assert_eq!(
+        drt.previous().expect("drt has prior").as_str(),
+        dip.said().as_str()
+    );
+    let root_kel = collect_kel(ctx.registry.as_ref(), &root_prefix);
+    validate_delegation(&dip, &root_kel).expect("dip bilateral binding holds");
+    validate_delegation(&drt, &root_kel)
+        .expect("drt bilateral binding holds against the delegator");
 }
 
-#[tokio::test]
-#[allow(clippy::disallowed_methods)]
-async fn revoke_nonexistent_agent_returns_error() {
-    let service = make_service();
-    let now = Utc::now();
+#[test]
+fn agents_revoke_marks_revoked() {
+    let (ctx, root_alias, _root, _tmp) = setup();
+    let agent = add(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("revoke-bot"),
+        CurveType::Ed25519,
+    )
+    .expect("delegate agent");
 
-    let result = service.revoke("did:keri:EGhost", now).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("not found"));
+    revoke(&ctx, &root_alias, &agent.agent_did).expect("revoke agent");
+
+    let agents = list(&ctx).expect("list agents");
+    let entry = agents
+        .iter()
+        .find(|a| a.agent_did == agent.agent_did)
+        .expect("agent still in the full set");
+    assert!(entry.revoked, "revoked agent must be flagged revoked");
+}
+
+#[test]
+fn revoked_agent_excluded_from_list() {
+    let (ctx, root_alias, _root, _tmp) = setup();
+    let agent = add(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("excluded-bot"),
+        CurveType::Ed25519,
+    )
+    .expect("delegate agent");
+
+    revoke(&ctx, &root_alias, &agent.agent_did).expect("revoke agent");
+
+    // The live set (non-revoked) excludes it.
+    let live = list(&ctx)
+        .expect("list agents")
+        .into_iter()
+        .filter(|a| !a.revoked)
+        .count();
+    assert_eq!(live, 0, "revoked agent must drop out of the live set");
+}
+
+#[test]
+fn agent_list_excludes_devices() {
+    let (ctx, root_alias, _root, _tmp) = setup();
+    let agent = add(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("only-agent"),
+        CurveType::Ed25519,
+    )
+    .expect("delegate agent");
+    let device = add_device(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("only-device"),
+        CurveType::Ed25519,
+    )
+    .expect("delegate device");
+
+    // `agent list` shows the agent, never the device.
+    let agents = list(&ctx).expect("list agents");
+    assert_eq!(agents.len(), 1, "exactly one agent");
+    assert_eq!(agents[0].agent_did, agent.agent_did);
+
+    // `device list` shows the device, never the agent.
+    let devices = list_delegated_devices(&ctx).expect("list devices");
+    assert_eq!(devices.len(), 1, "exactly one device");
+    assert_eq!(devices[0].device_did, device.device_did);
+}
+
+#[test]
+fn revoke_already_revoked_idempotent() {
+    let (ctx, root_alias, _root, _tmp) = setup();
+    let agent = add(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("idem-bot"),
+        CurveType::Ed25519,
+    )
+    .expect("delegate agent");
+
+    revoke(&ctx, &root_alias, &agent.agent_did).expect("first revoke");
+    revoke(&ctx, &root_alias, &agent.agent_did).expect("re-revoking is idempotent (Ok)");
+}
+
+#[test]
+fn scope_cannot_exceed_delegator() {
+    let (ctx, root_alias, root_prefix, _tmp) = setup();
+
+    // Give the delegator (root) a scope of [read, write] (using its actual curve).
+    let (_pk, root_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        &root_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .expect("root curve");
+    mark_agent_scope(
+        ctx.registry.as_ref(),
+        &root_prefix,
+        &root_alias,
+        root_curve,
+        &root_prefix,
+        &AgentScope {
+            capabilities: vec!["read".to_string(), "write".to_string()],
+            expires_at: None,
+        },
+        ctx.passphrase_provider.as_ref(),
+        ctx.key_storage.as_ref(),
+    )
+    .expect("anchor delegator scope");
+
+    // Delegating an agent with [read, admin] must be rejected — admin exceeds the
+    // delegator's own scope (a delegate can only narrow, never widen).
+    let err = add_scoped(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("scoped-bot"),
+        CurveType::Ed25519,
+        &["read".to_string(), "admin".to_string()],
+        None,
+    )
+    .expect_err("scope exceeding the delegator must be rejected");
+    assert!(
+        matches!(err, AgentError::OutsideDelegatorScope { ref capability } if capability == "admin"),
+        "got {err:?}"
+    );
 }

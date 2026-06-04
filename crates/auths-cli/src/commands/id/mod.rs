@@ -1,9 +1,11 @@
+pub mod agent;
 pub mod bind_idp;
 pub mod claim;
 pub mod identity;
 pub mod migrate;
 pub mod register;
 
+pub use agent::{AgentCommand, handle_agent};
 pub use identity::{IdCommand, IdSubcommand, LayoutPreset, handle_id};
 pub use migrate::{MigrateCommand, handle_migrate};
 pub use register::DEFAULT_REGISTRY_URL;

@@ -1,6 +1,6 @@
 # AUTHS-E2106
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `CommitVerificationError::HashAlgorithmUnsupported`
 
 ## Message

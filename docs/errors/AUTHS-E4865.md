@@ -1,6 +1,6 @@
 # AUTHS-E4865
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::SequenceGap`
 
 ## Message

@@ -63,7 +63,6 @@ from auths.git import (
     LayoutInfo,
     VerifyResult,
     discover_layout,
-    generate_allowed_signers,
     verify_commit_range,
 )
 

@@ -1,6 +1,6 @@
 # AUTHS-E5806
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `AllowedSignersError::DuplicatePrincipal`
 
 ## Message

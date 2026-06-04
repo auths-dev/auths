@@ -1,6 +1,6 @@
 # AUTHS-E3024
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::HsmUnsupportedMechanism`
 
 ## Message

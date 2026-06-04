@@ -1,6 +1,6 @@
 # AUTHS-E2104
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `CommitVerificationError::UnsupportedKeyType`
 
 ## Message

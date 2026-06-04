@@ -29,22 +29,12 @@ def test_org_debug(tmp_path):
     for m in members:
         print(f"  - did={m['member_did']}, role={m['role']}, revoked={m['revoked']}")
         print(f"    caps={m['capabilities']}")
-        print(f"    issuer={m['issuer_did']}")
+        print(f"    prefix={m.get('member_prefix')}")
 
-    # Step 4: Create dev identity in separate repo
-    dev_home = tmp_path / "dev"
-    dev_home.mkdir()
-    dev_client = Auths(repo_path=str(dev_home / ".auths"), passphrase="Test-pass-123")
-    dev_id = dev_client.identities.create(label="dev")
-    print(f"[DEBUG] Dev DID: {dev_id.did}")
-    print(f"[DEBUG] Dev PK:  {dev_id.public_key}")
-
-    # Step 5: Add member
+    # Step 4: Add member (org mints the member key from a label)
     try:
         member = client.orgs.add_member(
-            org.did, dev_id.did, role="member",
-            repo_path=repo,
-            member_public_key_hex=dev_id.public_key,
+            org.did, "alice", role="member", repo_path=repo,
         )
         print(f"[DEBUG] add_member succeeded: {member}")
     except Exception as e:

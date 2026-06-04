@@ -1,6 +1,6 @@
 # AUTHS-E2010
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `AttestationError::InputTooLarge`
 
 ## Message

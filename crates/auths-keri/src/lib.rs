@@ -68,9 +68,11 @@ mod version;
 pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::KeriTranslationError;
 pub use events::{
-    DipEvent, DipEventInit, DrtEvent, DrtEventInit, Event, IcpEvent, IcpEventInit,
+    AgentScope, DipEvent, DipEventInit, DrtEvent, DrtEventInit, Event, IcpEvent, IcpEventInit,
     IndexedSignature, IxnEvent, KERI_VERSION_PREFIX, KeriSequence, RotEvent, Seal, SignedEvent,
-    parse_attachment, serialize_attachment,
+    SourceSeal, decode_agent_scope, encode_agent_scope, parse_attachment,
+    parse_delegated_attachment, parse_source_seal_couples, serialize_attachment,
+    serialize_source_seal_couples,
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use ksn::{KSN_TYPE, KSN_VERSION, KeyStateNotice, KsnError, SignedKsn};

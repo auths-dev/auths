@@ -1,6 +1,6 @@
 # AUTHS-E5907
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SigningError::AgentSigningFailed`
 
 ## Message

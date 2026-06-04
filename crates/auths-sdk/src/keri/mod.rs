@@ -15,7 +15,9 @@ pub use auths_id::keri::shared_kel::{
     rot_remove_controller, rot_swap_controller,
 };
 pub use auths_id::keri::try_stage_anchor;
+pub use auths_id::keri::verify_prefix_binding;
 pub use auths_id::storage::keri::KeriGitStorage;
 pub use auths_id::storage::registry::backend::AtomicWriteBatch;
+pub use auths_id::trailer::parse_trailers;
 #[cfg(feature = "backend-git")]
 pub use resolver::KelResolverChain;

@@ -1,6 +1,6 @@
 # AUTHS-E5905
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SigningError::PemEncoding`
 
 ## Message

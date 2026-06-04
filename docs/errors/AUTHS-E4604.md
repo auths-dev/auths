@@ -1,6 +1,6 @@
 # AUTHS-E4604
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `KelError::InvalidOperation`
 
 ## Message

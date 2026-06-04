@@ -1,6 +1,6 @@
 # AUTHS-E4957
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IncrementalError::MissingParent`
 
 ## Message

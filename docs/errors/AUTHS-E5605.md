@@ -1,6 +1,6 @@
 # AUTHS-E5605
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `OrgError::InvalidDid`
 
 ## Message

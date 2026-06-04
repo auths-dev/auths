@@ -1,6 +1,6 @@
 # AUTHS-E4506
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ValidationError::NotInception`
 
 ## Message

@@ -129,8 +129,9 @@ pub use auths_keri::{
 // Re-export commit verification types
 pub use commit::VerifiedCommit;
 pub use commit_kel::{
-    CommitVerdict, VerifierWitnessPolicy, WitnessGateStatus, WitnessedVerdict,
-    verify_commit_against_kel, verify_commit_against_kel_witnessed,
+    ANCHOR_SEQ_TRAILER, CommitVerdict, SCOPE_TRAILER, VerifierWitnessPolicy, WitnessGateStatus,
+    WitnessedVerdict, anchor_seq_trailer, scope_trailer, verify_commit_against_kel,
+    verify_commit_against_kel_scoped, verify_commit_against_kel_witnessed,
 };
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};
 

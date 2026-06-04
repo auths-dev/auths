@@ -924,6 +924,36 @@ impl GitRegistryBackend {
     }
 }
 
+/// Re-attach a delegated event's `-G` source seal from its stored CESR attachment.
+///
+/// A `dip`/`drt` JSON body carries no source seal (it lives in the attachment), so
+/// a fresh JSON round-trip loses it. This restores it from the event's stored
+/// attachment bytes so the bilateral delegation binding can be validated after read.
+/// Non-delegated events, missing attachments, and sig-only attachments pass through
+/// unchanged.
+fn rehydrate_source_seal(event: Event, attachment: Option<Vec<u8>>) -> Event {
+    let Some(att) = attachment else {
+        return event;
+    };
+    let Ok((_, couples)) = auths_keri::parse_delegated_attachment(&att) else {
+        return event;
+    };
+    let Some(seal) = couples.into_iter().next() else {
+        return event;
+    };
+    match event {
+        Event::Dip(mut e) => {
+            e.source_seal = Some(seal);
+            Event::Dip(e)
+        }
+        Event::Drt(mut e) => {
+            e.source_seal = Some(seal);
+            Event::Drt(e)
+        }
+        other => other,
+    }
+}
+
 impl RegistryBackend for GitRegistryBackend {
     fn append_event(&self, prefix: &Prefix, event: &Event) -> Result<(), RegistryError> {
         self.write_event_tree(prefix, event, &[])
@@ -962,7 +992,13 @@ impl RegistryBackend for GitRegistryBackend {
             .read_blob_path(&event_path)
             .map_err(|_| RegistryError::event_not_found(prefix, seq))?;
 
-        serde_json::from_slice(&bytes).map_err(Into::into)
+        let event: Event = serde_json::from_slice(&bytes)?;
+        if event.is_delegated() {
+            let att_path = paths::event_attachment_file(&base_path, seq);
+            let attachment = navigator.read_blob_path(&att_path).ok();
+            return Ok(rehydrate_source_seal(event, attachment));
+        }
+        Ok(event)
     }
 
     fn visit_events(
@@ -985,7 +1021,12 @@ impl RegistryBackend for GitRegistryBackend {
             let bytes = navigator
                 .read_blob_path(&event_path)
                 .map_err(|_| RegistryError::event_not_found(prefix, seq))?;
-            let event: Event = serde_json::from_slice(&bytes)?;
+            let mut event: Event = serde_json::from_slice(&bytes)?;
+            if event.is_delegated() {
+                let att_path = paths::event_attachment_file(&base_path, seq);
+                let attachment = navigator.read_blob_path(&att_path).ok();
+                event = rehydrate_source_seal(event, attachment);
+            }
 
             if visitor(&event).is_break() {
                 break;

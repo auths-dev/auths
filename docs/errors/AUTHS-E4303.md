@@ -1,6 +1,6 @@
 # AUTHS-E4303
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `AgentProvisioningError::AttestationCreation`
 
 ## Message

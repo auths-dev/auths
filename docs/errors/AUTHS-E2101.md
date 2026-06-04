@@ -1,6 +1,6 @@
 # AUTHS-E2101
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `CommitVerificationError::UnsignedCommit`
 
 ## Message

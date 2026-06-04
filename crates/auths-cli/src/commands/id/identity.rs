@@ -256,6 +256,9 @@ pub enum IdSubcommand {
         #[arg(help = "Platform name (currently supports 'github')")]
         platform: String,
     },
+
+    /// Manage AI agents delegated by this identity (KERI delegated identifiers).
+    Agent(super::agent::AgentCommand),
 }
 
 fn display_dry_run_rotate(
@@ -935,6 +938,10 @@ pub fn handle_id(
 
             out.print_success("Scope update complete");
             Ok(())
+        }
+
+        IdSubcommand::Agent(agent_cmd) => {
+            super::agent::handle_agent(agent_cmd, repo_path, env_config, passphrase_provider)
         }
     }
 }

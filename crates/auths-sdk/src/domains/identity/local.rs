@@ -28,6 +28,11 @@ pub struct LocalSigner {
     /// The root identity `did:keri:`. Equals `signer_did` when the root signs
     /// directly; on a delegate it is the delegator (`dip.di`).
     pub root_did: String,
+    /// The delegator (root) KEL tip sequence observed at resolution — the in-band
+    /// `Auths-Anchor-Seq` signing position. Lets a verifier order a commit against a
+    /// later revocation by KEL position (a commit signed before the revocation stays
+    /// valid). `None` if the root KEL tip can't be read.
+    pub anchor_seq: Option<u128>,
 }
 
 impl LocalSigner {
@@ -51,9 +56,11 @@ pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupErro
     // Root machine: the icp-rooted controller is the signer (signs directly).
     if let Ok(managed) = ctx.identity_storage.load_identity() {
         let did = managed.controller_did.to_string();
+        let anchor_seq = root_tip_seq(ctx, &did);
         return Ok(LocalSigner {
             signer_did: did.clone(),
             root_did: did,
+            anchor_seq,
         });
     }
 
@@ -73,9 +80,12 @@ pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupErro
     for prefix_str in prefixes {
         let prefix = Prefix::new_unchecked(prefix_str);
         if let Ok(Event::Dip(dip)) = ctx.registry.get_event(&prefix, 0) {
+            let root_did = format!("did:keri:{}", dip.di);
+            let anchor_seq = root_tip_seq(ctx, &root_did);
             return Ok(LocalSigner {
                 signer_did: format!("did:keri:{}", dip.i),
-                root_did: format!("did:keri:{}", dip.di),
+                root_did,
+                anchor_seq,
             });
         }
     }
@@ -88,4 +98,13 @@ pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupErro
         )
         .into(),
     ))
+}
+
+/// The delegator (root) KEL tip sequence for `root_did`, or `None` if unreadable.
+fn root_tip_seq(ctx: &AuthsContext, root_did: &str) -> Option<u128> {
+    let prefix = root_did.strip_prefix("did:keri:")?;
+    ctx.registry
+        .get_tip(&Prefix::new_unchecked(prefix.to_string()))
+        .ok()
+        .map(|tip| tip.sequence)
 }
