@@ -25,7 +25,8 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use auths_id::ports::registry::{RegistryBackend, RegistryError};
-use auths_keri::{Event, Prefix};
+use auths_keri::witness::{encode_nontrans_receipt_couples, parse_nontrans_receipt_couples};
+use auths_keri::{Event, Prefix, Said};
 
 /// The file name served at each AID's OOBI path.
 pub const OOBI_KEL_FILE: &str = "keri.cesr";
@@ -49,6 +50,10 @@ pub enum OobiExportError {
     /// Writing the OOBI files failed.
     #[error("writing OOBI files failed: {0}")]
     Io(#[source] std::io::Error),
+
+    /// Encoding/parsing a CESR receipt couplet group failed.
+    #[error("CESR receipt couplet failed: {0}")]
+    Cesr(String),
 }
 
 /// The relative OOBI path for an AID under a static-hosting root:
@@ -108,6 +113,89 @@ pub fn export_identity_oobi(
 /// * `body`: The `keri.cesr` file contents (a JSON array of events).
 pub fn parse_oobi_kel(body: &[u8]) -> Result<Vec<Event>, OobiExportError> {
     serde_json::from_slice(body).map_err(OobiExportError::Serialize)
+}
+
+/// The file name serving an AID's witness receipts alongside its `keri.cesr` KEL.
+pub const OOBI_RECEIPTS_FILE: &str = "receipts.cesr";
+
+/// One witness receipt couplet: `(witness_aid, signature)`.
+pub type ReceiptCouple = (Prefix, Vec<u8>);
+
+/// Witness receipts for a single event: its SAID and its couples.
+pub type EventReceiptGroup = (Said, Vec<ReceiptCouple>);
+
+/// The relative OOBI receipts path for an AID:
+/// `.well-known/keri/oobi/<aid>/receipts.cesr`.
+///
+/// Args:
+/// * `prefix`: The `did:keri:` prefix (AID).
+pub fn oobi_receipts_relative_path(prefix: &Prefix) -> PathBuf {
+    Path::new(".well-known")
+        .join("keri")
+        .join("oobi")
+        .join(prefix.as_str())
+        .join(OOBI_RECEIPTS_FILE)
+}
+
+/// Export witness receipts to the OOBI layout as keripy-aligned CESR `-L`
+/// NonTransReceiptCouples, keyed by the receipted event SAID.
+///
+/// Written as a sibling `receipts.cesr` next to `keri.cesr` so the KEL stream
+/// (consumed by the OOBI resolver) is unchanged; a client that wants witness
+/// proofs fetches this file and feeds the couplets to the receipt-gated replay.
+///
+/// Args:
+/// * `out_root`: The static-hosting root directory.
+/// * `prefix`: The AID whose receipts are exported.
+/// * `receipts`: `(event_said, [(witness_aid, signature)])` groups.
+///
+/// Usage:
+/// ```ignore
+/// let path = export_receipts_oobi(Path::new("./public"), &prefix, &groups)?;
+/// ```
+pub fn export_receipts_oobi(
+    out_root: &Path,
+    prefix: &Prefix,
+    receipts: &[EventReceiptGroup],
+) -> Result<PathBuf, OobiExportError> {
+    let mut map = serde_json::Map::new();
+    for (said, couples) in receipts {
+        let refs: Vec<(&Prefix, &[u8])> = couples.iter().map(|(w, s)| (w, s.as_slice())).collect();
+        let group = encode_nontrans_receipt_couples(&refs)
+            .map_err(|e| OobiExportError::Cesr(e.to_string()))?;
+        map.insert(said.as_str().to_string(), serde_json::Value::String(group));
+    }
+
+    let path = out_root.join(oobi_receipts_relative_path(prefix));
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(OobiExportError::Io)?;
+    }
+    let body = serde_json::to_vec_pretty(&serde_json::Value::Object(map))
+        .map_err(OobiExportError::Serialize)?;
+    std::fs::write(&path, body).map_err(OobiExportError::Io)?;
+    Ok(path)
+}
+
+/// Parse a `receipts.cesr` OOBI body back into `(event_said, couples)` groups.
+///
+/// The reader half of [`export_receipts_oobi`]: decodes each event's `-L`
+/// NonTransReceiptCouples group into `(witness_aid, signature)` pairs.
+///
+/// Args:
+/// * `body`: The `receipts.cesr` file contents.
+pub fn parse_oobi_receipts(body: &[u8]) -> Result<Vec<EventReceiptGroup>, OobiExportError> {
+    let map: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_slice(body).map_err(OobiExportError::Serialize)?;
+    let mut out = Vec::with_capacity(map.len());
+    for (said, group) in map {
+        let g = group.as_str().ok_or_else(|| {
+            OobiExportError::Cesr(format!("receipt group for {said} is not a string"))
+        })?;
+        let couples =
+            parse_nontrans_receipt_couples(g).map_err(|e| OobiExportError::Cesr(e.to_string()))?;
+        out.push((Said::new_unchecked(said), couples));
+    }
+    Ok(out)
 }
 
 /// Read a prefix's full KEL (events from seq 0); empty / not-found → `NotFound`.
@@ -212,5 +300,46 @@ mod tests {
             Prefix::new_unchecked("ENotProvisioned00000000000000000000000000000".to_string());
         let err = export_identity_oobi(&backend, &missing, out.path()).unwrap_err();
         assert!(matches!(err, OobiExportError::NotFound(_)));
+    }
+
+    #[test]
+    fn oobi_keri_cesr_carries_receipts() {
+        let out = TempDir::new().unwrap();
+        let prefix =
+            Prefix::new_unchecked("EAidForReceipts00000000000000000000000000000".to_string());
+        let said = Said::new_unchecked("EEventReceipted0000000000000000000000000000".to_string());
+        let w1 = Prefix::new_unchecked(
+            KeriPublicKey::ed25519(&[0x11u8; 32])
+                .unwrap()
+                .to_qb64()
+                .unwrap(),
+        );
+        let w2 = Prefix::new_unchecked(
+            KeriPublicKey::ed25519(&[0x33u8; 32])
+                .unwrap()
+                .to_qb64()
+                .unwrap(),
+        );
+        let groups = vec![(
+            said.clone(),
+            vec![
+                (w1.clone(), vec![0x22u8; 64]),
+                (w2.clone(), vec![0x44u8; 64]),
+            ],
+        )];
+
+        let path = export_receipts_oobi(out.path(), &prefix, &groups).unwrap();
+        assert!(path.ends_with("receipts.cesr"));
+
+        let body = std::fs::read(&path).unwrap();
+        let parsed = parse_oobi_receipts(&body).unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].0, said);
+        assert_eq!(parsed[0].1.len(), 2);
+        assert_eq!(parsed[0].1[0].0.as_str(), w1.as_str());
+        assert_eq!(parsed[0].1[0].1, vec![0x22u8; 64]);
+        assert_eq!(parsed[0].1[1].0.as_str(), w2.as_str());
+        assert_eq!(parsed[0].1[1].1, vec![0x44u8; 64]);
     }
 }
