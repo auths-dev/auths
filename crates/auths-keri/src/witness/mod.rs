@@ -12,7 +12,7 @@ mod receipt_lookup;
 
 pub use async_provider::{AsyncWitnessProvider, NoOpAsyncWitness};
 pub use cesr_receipt::{
-    encode_ed25519_sig, encode_nontrans_receipt_couples, parse_nontrans_receipt_couples,
+    encode_nontrans_receipt_couples, encode_sig, parse_nontrans_receipt_couples,
     witness_idx_sigs_counter,
 };
 pub use error::{DuplicityEvidence, WitnessError, WitnessReport};

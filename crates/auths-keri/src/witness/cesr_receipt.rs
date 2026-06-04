@@ -18,6 +18,7 @@
 //! remains the convenience encoding for the git-commit surface only; these CESR
 //! couplets are the canonical interop form.
 
+use auths_crypto::CurveType;
 use cesride::{Cigar, Matter, Verfer, matter};
 
 use crate::keys::KeriDecodeError;
@@ -60,19 +61,39 @@ fn decode_counter<'a>(s: &'a str, code: &str) -> Result<(usize, &'a str), KeriDe
     Ok((count, &rest[2..]))
 }
 
-/// Encode an Ed25519 signature (64 raw bytes) as CESR qb64 (`0B…`).
+/// Encode a witness signature as CESR qb64, dispatching the matter code on the
+/// signing curve (Ed25519 → `0B…`, P-256 → `0I…`).
 ///
 /// Args:
-/// * `sig`: The 64-byte Ed25519 signature.
+/// * `curve`: The witness key's curve (taken from its in-band CESR tag).
+/// * `sig`: The raw signature bytes (64 for Ed25519 / P-256).
 ///
 /// Usage:
 /// ```ignore
-/// let qb64 = encode_ed25519_sig(&sig)?; // "0B…", 88 chars
+/// let qb64 = encode_sig(CurveType::Ed25519, &sig)?; // "0B…", 88 chars
 /// ```
-pub fn encode_ed25519_sig(sig: &[u8]) -> Result<String, KeriDecodeError> {
-    Cigar::new_with_raw(sig, None, Some(matter::Codex::Ed25519_Sig))
+pub fn encode_sig(curve: CurveType, sig: &[u8]) -> Result<String, KeriDecodeError> {
+    let code = match curve {
+        CurveType::Ed25519 => matter::Codex::Ed25519_Sig,
+        CurveType::P256 => matter::Codex::ECDSA_256r1_Sig,
+    };
+    Cigar::new_with_raw(sig, None, Some(code))
         .and_then(|c| c.qb64())
         .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))
+}
+
+/// The signing curve a witness AID names, from its in-band CESR verkey code.
+fn curve_of_aid(aid: &str) -> Result<CurveType, KeriDecodeError> {
+    let (_raw, code) = crate::cesr_encode::decode_verkey(aid)?;
+    if code == matter::Codex::Ed25519 || code == matter::Codex::Ed25519N {
+        Ok(CurveType::Ed25519)
+    } else if code == matter::Codex::ECDSA_256r1 || code == matter::Codex::ECDSA_256r1N {
+        Ok(CurveType::P256)
+    } else {
+        Err(KeriDecodeError::DecodeError(format!(
+            "unsupported witness verkey code {code}"
+        )))
+    }
 }
 
 /// The qb64 length a parsed primitive consumed (cesride tolerates trailing stream
@@ -102,7 +123,7 @@ pub fn encode_nontrans_receipt_couples(
     let mut out = counter(NONTRANS_RECEIPT_COUPLES, couples.len());
     for (aid, sig) in couples {
         out.push_str(aid.as_str());
-        out.push_str(&encode_ed25519_sig(sig)?);
+        out.push_str(&encode_sig(curve_of_aid(aid.as_str())?, sig)?);
     }
     Ok(out)
 }
@@ -168,7 +189,10 @@ mod tests {
         let sig = sig_raw();
 
         // Signature encodes byte-for-byte to keripy's Cigar(0B…).
-        assert_eq!(encode_ed25519_sig(&sig).unwrap(), SIG_QB64);
+        assert_eq!(
+            encode_sig(auths_crypto::CurveType::Ed25519, &sig).unwrap(),
+            SIG_QB64
+        );
 
         // The full -L couple group matches keripy's attachment bytes.
         let attach = encode_nontrans_receipt_couples(&[(&witness, &sig)]).unwrap();
