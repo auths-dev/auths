@@ -14,11 +14,14 @@
 //!   accepted (a legitimate rotation/anchor the local cache hasn't seen); an
 //!   equal-or-shorter remote leaves local authoritative (prefer-local).
 //!
-//! Same-sequence forks (the `kt=1` duplicity case) are surfaced downstream as a
-//! non-fatal warning by `verify_commit_against_kel`'s `detect_duplicity` — the
-//! chosen "warn, prefer local" policy. Cross-source fork *detection* and hard
-//! rejection are Epic D (witnessing). This layer only sequences sources and
-//! enforces the rollback floor; `auths-id` implements each read + the guard.
+//! Same-sequence forks (the `kt=1` duplicity case) are detected **across
+//! sources** here (Epic D): if the local and remote streams present different
+//! event SAIDs at the same sequence, resolution refuses with
+//! [`KelResolveError::Diverging`] rather than silently picking a side. Within a
+//! single stream, the non-fatal "warn, prefer local" duplicity signal is still
+//! surfaced downstream by `verify_commit_against_kel`'s `detect_duplicity`. This
+//! layer sequences sources, enforces the rollback floor, and refuses cross-source
+//! forks; `auths-id` implements each read + the prefix-binding guard.
 
 use auths_id::keri::{
     Event, KelResolveError, KelResolver, LocalKelResolver, Prefix, parse_did_keri,
@@ -26,6 +29,7 @@ use auths_id::keri::{
 };
 use auths_id::ports::registry::RegistryBackend;
 use auths_storage::git::{RemoteKelError, RemoteKelSource};
+use auths_verifier::duplicity::{DuplicityReport, KelEventRef, detect_duplicity};
 
 /// Resolves a signer's KEL through an ordered set of sources (local, then an
 /// optional git remote), enforcing the prefix-binding guard and the rollback
@@ -96,7 +100,15 @@ impl<'a> KelResolverChain<'a> {
             parse_did_keri(did).map_err(|_| KelResolveError::InvalidDid(did.to_string()))?;
         let remote = fetch_remote_guarded(remote, &prefix);
         match (local, remote) {
-            (Ok(local_kel), Ok(remote_kel)) => choose_newer_no_rollback(local_kel, remote_kel),
+            (Ok(local_kel), Ok(remote_kel)) => {
+                // Cross-source fork: same `(i,s)` with different SAIDs across the
+                // local and remote streams → refuse, do not silently pick a side.
+                if let Some((sequence, saids)) = cross_source_fork(&prefix, &local_kel, &remote_kel)
+                {
+                    return Err(KelResolveError::Diverging { sequence, saids });
+                }
+                choose_newer_no_rollback(local_kel, remote_kel)
+            }
             // Local present, remote failed: a remote hiccup is non-fatal when we
             // already hold a locally-trusted KEL.
             (Ok(local_kel), Err(_)) => Ok(local_kel),
@@ -150,6 +162,32 @@ fn tip_seq(events: &[Event]) -> u128 {
     events.last().map(|e| e.sequence().value()).unwrap_or(0)
 }
 
+/// Detect a cross-source fork: the same `(i,s)` carrying different event SAIDs
+/// across the local and remote streams. Reuses the verifier's `detect_duplicity`
+/// over the union of both sources. Returns `(sequence, conflicting_saids)` on a
+/// fork, or `None` when the sources agree on every shared sequence.
+fn cross_source_fork(
+    prefix: &Prefix,
+    local: &[Event],
+    remote: &[Event],
+) -> Option<(u128, Vec<String>)> {
+    let refs: Vec<KelEventRef> = local
+        .iter()
+        .chain(remote.iter())
+        .map(|e| KelEventRef {
+            prefix: prefix.as_str(),
+            seq: e.sequence().value() as u64,
+            said: e.said().as_str(),
+        })
+        .collect();
+    match detect_duplicity(&refs) {
+        DuplicityReport::Clean => None,
+        DuplicityReport::Diverging {
+            seq, event_saids, ..
+        } => Some((seq as u128, event_saids)),
+    }
+}
+
 /// Map a transport-specific [`RemoteKelError`] into the unified resolver taxonomy.
 fn map_remote_err(err: RemoteKelError) -> KelResolveError {
     match err {
@@ -177,8 +215,8 @@ mod tests {
     use super::*;
     use auths_id::testing::fakes::FakeRegistryBackend;
     use auths_keri::{
-        CesrKey, IcpEvent, IxnEvent, KeriPublicKey, KeriSequence, Said, Threshold, VersionString,
-        compute_next_commitment, finalize_icp_event, finalize_ixn_event,
+        CesrKey, IcpEvent, IxnEvent, KeriPublicKey, KeriSequence, Said, Seal, Threshold,
+        VersionString, compute_next_commitment, finalize_icp_event, finalize_ixn_event,
     };
     use auths_storage::git::{GitRegistryBackend, RegistryConfig};
     use tempfile::TempDir;
@@ -308,5 +346,58 @@ mod tests {
             map_remote_err(RemoteKelError::Oversized { what: "big".into() }),
             KelResolveError::Oversized(_)
         ));
+    }
+
+    /// A distinct seq-1 event (different anchors → different SAID) for fork tests.
+    fn conflicting_ixn_at(prefix: &Prefix, seq: u128, prev: &Said) -> Event {
+        let ixn = IxnEvent {
+            v: VersionString::placeholder(),
+            d: Said::default(),
+            i: prefix.clone(),
+            s: KeriSequence::new(seq),
+            p: prev.clone(),
+            a: vec![Seal::digest("EConflictingAnchor")],
+        };
+        Event::Ixn(finalize_ixn_event(ixn).unwrap())
+    }
+
+    #[test]
+    fn cross_source_fork_flagged() {
+        let (icp, prefix) = icp_and_prefix(7);
+        let icp_said = match &icp {
+            Event::Icp(e) => e.d.clone(),
+            _ => unreachable!(),
+        };
+        let local = vec![icp.clone(), ixn_at(&prefix, 1, &icp_said)];
+        let remote = vec![icp, conflicting_ixn_at(&prefix, 1, &icp_said)];
+
+        let fork = cross_source_fork(&prefix, &local, &remote);
+        assert!(fork.is_some(), "a same-seq SAID mismatch must be flagged");
+        let (seq, saids) = fork.unwrap();
+        assert_eq!(seq, 1);
+        assert_eq!(saids.len(), 2);
+    }
+
+    #[test]
+    fn clean_multi_source_resolves() {
+        let (icp, prefix) = icp_and_prefix(8);
+        let icp_said = match &icp {
+            Event::Icp(e) => e.d.clone(),
+            _ => unreachable!(),
+        };
+        let local = vec![icp.clone(), ixn_at(&prefix, 1, &icp_said)];
+        let remote = local.clone(); // identical streams — no fork
+        assert!(cross_source_fork(&prefix, &local, &remote).is_none());
+    }
+
+    #[test]
+    fn first_seen_retained_without_conflict() {
+        // No fork → first-seen (local) is retained at an equal tip.
+        let (icp, prefix) = icp_and_prefix(9);
+        let local = vec![icp.clone()];
+        let remote = vec![icp];
+        assert!(cross_source_fork(&prefix, &local, &remote).is_none());
+        let chosen = choose_newer_no_rollback(local.clone(), remote).unwrap();
+        assert_eq!(chosen, local);
     }
 }

@@ -80,6 +80,17 @@ pub enum KelResolveError {
     /// The underlying source (registry/transport) failed.
     #[error("KEL source error: {0}")]
     Backend(String),
+
+    /// Two sources presented different events at the same sequence — a
+    /// cross-source fork (`kt=1` duplicity). Trust is refused rather than
+    /// silently picking a side.
+    #[error("cross-source KEL fork at sequence {sequence}: conflicting event SAIDs {saids:?}")]
+    Diverging {
+        /// The sequence number where the sources diverge.
+        sequence: u128,
+        /// The conflicting event SAIDs observed across sources.
+        saids: Vec<String>,
+    },
 }
 
 /// Resolves a `did:keri:` to its raw KEL events (no replay).

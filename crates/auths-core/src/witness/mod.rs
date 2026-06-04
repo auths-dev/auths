@@ -96,7 +96,7 @@ pub use noop::NoOpWitness;
 
 // Collection and duplicity detection
 pub use collector::{CollectionError, ReceiptCollector, ReceiptCollectorBuilder};
-pub use duplicity::DuplicityDetector;
+pub use duplicity::{DuplicityDetector, detect_receipt_conflict};
 
 // Witness server (feature-gated)
 #[cfg(feature = "witness-server")]
