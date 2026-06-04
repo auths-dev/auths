@@ -63,6 +63,18 @@ pub struct IdentityStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alias: Option<String>,
     pub key_aliases: Vec<String>,
+    /// The identity's designated witness set (D.9), when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub witnesses: Option<WitnessSummary>,
+}
+
+/// Designated witness set for the identity (presentation of `WitnessConfig`).
+#[derive(Debug, Serialize)]
+pub struct WitnessSummary {
+    /// Number of designated witnesses (`b[]` size).
+    pub designated: usize,
+    /// Required receipts threshold (`bt`).
+    pub threshold: usize,
 }
 
 /// Agent status information.
@@ -157,6 +169,13 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
             out.println(&format!("Key aliases: {}", out.dim("none")));
         } else {
             out.println(&format!("Key aliases: {}", id.key_aliases.join(", ")));
+        }
+        match &id.witnesses {
+            Some(w) => out.println(&format!(
+                "Witnesses:   {} designated, threshold {}",
+                w.designated, w.threshold
+            )),
+            None => out.println(&format!("Witnesses:   {}", out.dim("none designated"))),
         }
     } else {
         out.println(&format!("Identity:    {}", out.dim("not initialized")));
@@ -386,10 +405,24 @@ fn load_identity_status(
                 .map(|aliases| aliases.iter().map(|a| a.as_str().to_string()).collect())
                 .unwrap_or_default();
 
+            let witnesses = identity
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("witness_config"))
+                .and_then(|wc| {
+                    serde_json::from_value::<auths_sdk::witness::WitnessConfig>(wc.clone()).ok()
+                })
+                .filter(|c| !c.witnesses.is_empty())
+                .map(|c| WitnessSummary {
+                    designated: c.witnesses.len(),
+                    threshold: c.threshold,
+                });
+
             Some(IdentityStatus {
                 controller_did: identity.controller_did.to_string(),
                 alias: None,
                 key_aliases,
+                witnesses,
             })
         }
         Err(_) => None,
@@ -577,6 +610,7 @@ mod tests {
                 controller_did: "did:keri:ETestController123".to_string(),
                 alias: Some("dev-machine".to_string()),
                 key_aliases: vec!["main".to_string()],
+                witnesses: None,
             }),
             agent: AgentStatusInfo {
                 running: true,
@@ -622,5 +656,21 @@ mod tests {
         };
 
         insta::assert_json_snapshot!(report);
+    }
+
+    #[test]
+    fn status_shows_witness_set() {
+        let id = IdentityStatus {
+            controller_did: "did:keri:E1".to_string(),
+            alias: None,
+            key_aliases: vec![],
+            witnesses: Some(WitnessSummary {
+                designated: 3,
+                threshold: 2,
+            }),
+        };
+        let json = serde_json::to_string(&id).unwrap();
+        assert!(json.contains("\"designated\":3"));
+        assert!(json.contains("\"threshold\":2"));
     }
 }

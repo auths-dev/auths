@@ -71,6 +71,10 @@ struct VerifyCommitResult {
     chain_report: Option<VerificationReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     witness_quorum: Option<WitnessQuorum>,
+    /// Receipt-gated witness quorum status for the signer's root KEL (D.7/D.9):
+    /// `"met"`, or `"N of M (under quorum)"`. Absent when no witnesses are designated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    witness_gate: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     signer: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,6 +114,7 @@ impl VerifyCommitResult {
             chain_valid: None,
             chain_report: None,
             witness_quorum: None,
+            witness_gate: None,
             signer: None,
             oidc_binding: None,
             error: Some(error),
@@ -378,15 +383,19 @@ async fn verify_one_commit(
     )
     .await;
     let mut result = verdict_to_result(sha.clone(), witnessed.verdict);
-    if let WitnessGateStatus::UnderQuorum {
-        collected,
-        required,
-    } = witnessed.witness
-    {
-        result.warnings.push(format!(
-            "Witness quorum not met for the signer's root KEL: {collected} of {required} \
-             receipts (verifying anyway; pass --require-witnesses to fail closed)."
-        ));
+    match witnessed.witness {
+        WitnessGateStatus::NotRequired => {}
+        WitnessGateStatus::Met => result.witness_gate = Some("met".to_string()),
+        WitnessGateStatus::UnderQuorum {
+            collected,
+            required,
+        } => {
+            result.witness_gate = Some(format!("{collected} of {required} (under quorum)"));
+            result.warnings.push(format!(
+                "Witness quorum not met for the signer's root KEL: {collected} of {required} \
+                 receipts (verifying anyway; pass --require-witnesses to fail closed)."
+            ));
+        }
     }
 
     if let Ok(Some(quorum)) = verify_witnesses(cmd, None).await {
@@ -653,6 +662,10 @@ fn format_result_text(result: &VerifyCommitResult) -> String {
         parts.push(format!("witnesses: {}/{}", q.verified, q.required));
     }
 
+    if let Some(ref gate) = result.witness_gate {
+        parts.push(format!("witness-gate: {gate}"));
+    }
+
     if let Some(ref binding) = result.oidc_binding {
         parts.push(format!("oidc: {}", binding.issuer));
     }
@@ -709,6 +722,10 @@ fn print_chain_witness_summary(r: &VerifyCommitResult) {
 
     if let Some(ref q) = r.witness_quorum {
         parts.push(format!("witnesses: {}/{}", q.verified, q.required));
+    }
+
+    if let Some(ref gate) = r.witness_gate {
+        parts.push(format!("witness-gate: {gate}"));
     }
 
     if let Some(ref binding) = r.oidc_binding {
@@ -785,6 +802,7 @@ mod tests {
                 verified: 2,
                 receipts: vec![],
             }),
+            witness_gate: Some("met".into()),
             signer: Some("did:keri:test".into()),
             oidc_binding: None,
             error: None,
@@ -817,6 +835,7 @@ mod tests {
             chain_valid: None,
             chain_report: None,
             witness_quorum: None,
+            witness_gate: None,
             signer: Some("did:keri:test".into()),
             oidc_binding: None,
             error: None,
@@ -840,6 +859,7 @@ mod tests {
                 verified: 2,
                 receipts: vec![],
             }),
+            witness_gate: Some("met".into()),
             signer: Some("did:keri:test".into()),
             oidc_binding: None,
             error: None,
@@ -848,6 +868,42 @@ mod tests {
         let text = format_result_text(&r);
         assert!(text.contains("chain: valid"));
         assert!(text.contains("witnesses: 2/2"));
+        assert!(text.contains("witness-gate: met"));
+    }
+
+    #[test]
+    fn verify_output_shows_quorum() {
+        let mut r = VerifyCommitResult::failure("abc".into(), String::new());
+        r.valid = true;
+        r.error = None;
+        r.witness_gate = Some("2 of 3 (under quorum)".into());
+
+        let text = format_result_text(&r);
+        assert!(text.contains("witness-gate: 2 of 3 (under quorum)"));
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"witness_gate\":\"2 of 3 (under quorum)\""));
+    }
+
+    #[test]
+    fn verify_output_flags_fork() {
+        // A Valid verdict on a duplicitous root must surface a non-fatal fork warning.
+        let result = verdict_to_result(
+            "sha".into(),
+            CommitVerdict::Valid {
+                signer_did: "did:keri:dev".into(),
+                root_did: "did:keri:root".into(),
+                duplicitous_root: true,
+            },
+        );
+        assert!(result.valid);
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("fork") || w.contains("duplicity")),
+            "expected a fork/duplicity warning, got {:?}",
+            result.warnings
+        );
     }
 
     #[test]
