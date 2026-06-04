@@ -60,7 +60,7 @@ service; ACDC/TEL credential layer.
 | Commit trust | KEL replay → key authorized? (in-process SSHSIG) | KEL replay → key authorized? | ✅ (Epic B); artifact-path → [#206](https://github.com/bordumb/auths/issues/206) |
 | Signer identity on a commit | `did:keri` in-band (`Auths-Id` + `Auths-Device`) | `did:keri` in-band | ✅ (Epic B) |
 | Third-party gets the KEL | trust-on-first-sight / bundle | native git-remote fetch + OOBI | ❌ (Epic C) |
-| Duplicity / ordering | local first-seen | witness receipts (KAWA) | algorithm built, **no service** (Epic D) |
+| Duplicity / ordering | local first-seen | witness receipts (KAWA) | **receipt-gated replay + verify wired** (Epic D); CESR interop (D.10) + e2e (D.12) remain |
 | Agent identity | attestation `delegated_by` | delegated KEL (`dip`/`drt`) | events built, **unwired** (Epic E) |
 | Capabilities / roles / OIDC | attestation fields | ACDC + TEL | ❌ deferred (Epic F) |
 
@@ -201,7 +201,7 @@ that holds its own key (proven by `validate_delegation` against a key the initia
 > root-anchored delegation** (`validate_delegation`) **minus revocation** — not membership in a shared
 > `k[]`. This is issue #200. Depends on Epic A2 (delegated devices must exist to verify them).
 
-> **✅ Done (2026-06-03, fn-145):** `Auths-Id` + `Auths-Device` in-band `did:keri:` trailers (B1);
+> **✅ Done (2026-06-03, Epic B):** `Auths-Id` + `Auths-Device` in-band `did:keri:` trailers (B1);
 > `verify_commit_against_kel` in `auths-verifier/src/commit_kel.rs` resolving device KEL →
 > `validate_delegation` against the root → not-revoked → signing key is current (B2); `allowed_signers`
 > **dropped entirely** — Option B, not demoted to a cache (B3); local-refs KEL source (B4, remote fetch
@@ -301,11 +301,26 @@ concurrent `kt=1` forks are detected, not silently accepted.
 **Why it matters:** this is the high-assurance line. Without it, an attacker who forks a `kt=1` KEL can
 present a divergent key-state to a verifier. Required for "trust this at supply-chain scale."
 
-**Already exists:** KAWA agreement (`witness/agreement.rs` — receipt collection, M-of-N
-`AgreementStatus`); provider traits; `NoOpAsyncWitness`; `Receipt`/`rct`; `detect_duplicity` (verifier).
-The `b[]` (backers) / `bt` (backer threshold) fields already exist in `icp`/`rot`.
+> **Delivered (status correction).** The framing below — "D1, a real witness service, *largest build /
+> unbuilt*" — was **wrong**: the witness *service* (axum server, SQLite receipt store, parallel collector,
+> HTTP client, KAWA engine, `rct` type) was already built. The real work was **closing the trust loop**, not
+> building a server. What Epic D actually delivered (see the epic plan and
+> `ADRs/006-witness-receipting-and-duplicity.md`):
+> witness identity as a pinned AID (D.1); receipt **signing** + provenance + collection-time signature
+> verification (D.2); `b[]`/`bt`/`br`/`ba` designation on `icp`/`rot` (D.3/D.4); a sync `WitnessReceiptLookup`
+> seam (D.5); **receipt-gated replay** `validate_kel_with_receipts` (M-of-N → KeyState) (D.6); verify-path
+> wiring with a verifier-side warn/`--require-witnesses` policy (D.7); cross-source + conflicting-receipt
+> duplicity refusal in the resolver (D.8); CLI surfacing of quorum + fork status (D.9); KSN
+> `Witnessed` trust level (D.13). Remaining at time of writing: CESR `-C`/`-B` receipt-couplet interop
+> (D.10) and the end-to-end convergence integration test (D.12). Treat the per-`Dn` bullets below as the
+> *original* sketch, superseded by the epic plan.
 
-- **D1 — a real witness service.** *(largest build)*
+**Already existed (reused, not re-derived):** KAWA agreement (`witness/agreement.rs` — receipt collection,
+M-of-N `AgreementStatus`); provider traits; `NoOpAsyncWitness`; `Receipt`/`rct`; `detect_duplicity`
+(verifier); the witness server + receipt store + collector + HTTP client. The `b[]` (backers) / `bt`
+(backer threshold) fields already exist in `icp`/`rot`.
+
+- **D1 — a real witness service.** *(already built before Epic D — see the status note above)*
   - *Do:* replace the doc-stub `HttpWitness` with a service that accepts events, validates, stores, and
     issues signed receipts; expose submit/get-receipt endpoints matching `AsyncWitnessProvider`
     (`async_provider.rs:68`). New crate (e.g. `auths-witness-server`).

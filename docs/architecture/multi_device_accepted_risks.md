@@ -65,15 +65,40 @@ trusted device. The detector is fail-open — duplicitous shared KELs do not
 invalidate signatures whose signers are current controllers on their own
 device KELs.
 
-#### No witnesses → closed by Epic 3
+#### No witnesses → addressed by Epic 3 (≡ roadmap "Epic D")
 
-Verifiers trust "first valid event seen locally" — no network-wide source of
-truth for ordering KEL events. A compromised controller that signs a
-rotation before a verifier learns of the authoritative one can present the
-wrong controller set until out-of-band repair. Blast radius is bounded
-because each controller device replicates the full shared KEL locally;
-verifiers are limited to controllers' devices rather than arbitrary third
-parties. `detect_duplicity` flags divergence on reconnect.
+> "Epic 3" here and "Epic D" in `keri-only-roadmap.md` are the **same** witnessing
+> epic. See `ADRs/006-witness-receipting-and-duplicity.md` for the decisions.
+
+Historically verifiers trusted "first valid event seen locally" — no source of
+truth for ordering. Epic D wires witness receipting into the trust path; the
+assurance story is now graded, and it is worth stating **precisely what
+witnessing removes and what it does not**:
+
+- **`bt=0` (no witnesses) = trust-on-first-sight.** This remains the baseline for
+  identities that designate no backers. `detect_duplicity` still flags same-`(i,s)`
+  divergence locally and across sources (local vs remote), and the resolver now
+  *refuses* a cross-source fork rather than silently picking a side.
+- **`N=1` witness tolerates `F=0`** faulty witnesses and **does not** stop
+  controller+witness collusion: a single operator can still equivocate with a
+  colluding controller. One witness buys accountability against a passive/absent
+  observer, not against collusion.
+- **`N=3, bt=2`** is the smallest real BFT-flavored config: it tolerates one bad
+  or unavailable witness. A forged, duplicate-witness, or wrong-SAID receipt does
+  not count toward quorum.
+- **No global ordering / consensus.** KAWA gives *accountability* (M-of-N distinct
+  witnesses attested this establishment event), not a chain or network-wide
+  ordering. A witness-receipted key-state is **never** authoritative over a
+  resolvable KEL (replay the log), and a delegated-device witnessed KSN still
+  cannot prove non-revocation (a root-KEL `ixn` fact).
+
+Blast radius remains bounded: each controller device replicates the full shared
+KEL locally, so verifiers are limited to controllers' devices rather than
+arbitrary third parties.
+
+**Out of scope (deferred):** Annex-A superseding recovery
+(rotation-supersedes-interaction; toad-vs-first-seen tiebreak) — Epic D *detects
+and refuses*, it does not *auto-recover*. Tracked in ADR 006.
 
 #### Pure removal blocked → closed by Epic 1
 
