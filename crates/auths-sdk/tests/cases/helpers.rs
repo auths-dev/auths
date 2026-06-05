@@ -61,7 +61,8 @@ pub fn build_test_context_with_provider(
         .clock(Arc::new(SystemClock))
         .identity_storage(identity_storage)
         .attestation_sink(attestation_sink)
-        .attestation_source(attestation_source);
+        .attestation_source(attestation_source)
+        .repo_path(registry_path.to_path_buf());
 
     if let Some(pp) = passphrase_provider.into() {
         builder = builder.passphrase_provider(pp);

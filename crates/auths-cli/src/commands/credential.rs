@@ -1,0 +1,356 @@
+//! `auths credential …` — issue / revoke / list / verify capability credentials.
+//!
+//! A credential is an ACDC anchored to the issuer's KEL via a backerless TEL. This is
+//! the thin presentation layer; all orchestration (issuee guard, registry, issuer-sign,
+//! `iss`/`rev` anchor, the verify resolution + freshness layer) lives in
+//! `auths_sdk::domains::credentials`. The clock (`Utc::now()`) is read only here.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use serde::Serialize;
+
+use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::domains::credentials::{
+    CredentialVerdict, VerifierWitnessPolicy, issue, list, revoke, verify_by_said,
+};
+use auths_sdk::keychain::KeyAlias;
+use auths_sdk::signing::PassphraseProvider;
+use auths_sdk::storage_layout::layout;
+
+use crate::commands::executable::ExecutableCommand;
+use crate::config::CliConfig;
+use crate::factories::storage::build_auths_context;
+use crate::ux::format::{JsonResponse, is_json_mode};
+
+/// Issue, revoke, list, and verify capability credentials (ACDCs).
+#[derive(Parser, Debug, Clone)]
+#[command(
+    about = "Issue, revoke, list, and verify capability credentials (ACDCs).",
+    after_help = "Examples:
+  auths credential issue --issuer my-key --to did:keri:E… --cap sign --role deployer
+  auths credential revoke ECred… --issuer my-key
+  auths credential list --issuer my-key
+  auths credential verify ECred… --issuer my-key --require-witnesses"
+)]
+pub struct CredentialCommand {
+    #[clap(subcommand)]
+    pub subcommand: CredentialSubcommand,
+}
+
+/// Credential subcommands.
+#[derive(Subcommand, Debug, Clone)]
+pub enum CredentialSubcommand {
+    /// Issue a capability credential to an issuee (its KEL must already exist).
+    Issue {
+        /// The issuer's signing key name (your identity's key).
+        #[arg(long, help = "The issuer's signing key name (your identity's key).")]
+        issuer: String,
+
+        /// The issuee/subject `did:keri:` to credential.
+        #[arg(long = "to", help = "The issuee/subject did:keri to credential.")]
+        to: String,
+
+        /// Capability to grant (repeatable).
+        #[arg(long = "cap", help = "Capability to grant (repeatable).")]
+        cap: Vec<String>,
+
+        /// Informational role claim.
+        #[arg(long, help = "Informational role claim (e.g. deployer).")]
+        role: Option<String>,
+
+        /// Expire the credential this many seconds from now.
+        #[arg(long = "expires-in", help = "Expire the credential after N seconds.")]
+        expires_in: Option<i64>,
+    },
+
+    /// Revoke a credential (anchors a `rev` in the issuer's KEL). Idempotent.
+    Revoke {
+        /// The credential SAID to revoke.
+        #[arg(help = "The credential SAID to revoke.")]
+        credential_said: String,
+
+        /// The issuer's signing key name.
+        #[arg(long, help = "The issuer's signing key name.")]
+        issuer: String,
+    },
+
+    /// List the issuer's live credentials (issued − revoked).
+    List {
+        /// The issuer's signing key name.
+        #[arg(long, help = "The issuer's signing key name.")]
+        issuer: Option<String>,
+
+        /// Include revoked credentials in the listing.
+        #[arg(long, help = "Include revoked credentials.")]
+        include_revoked: bool,
+    },
+
+    /// Verify a credential, resolving the issuer KEL/TEL + witness receipts.
+    Verify {
+        /// The credential SAID to verify.
+        #[arg(help = "The credential SAID to verify.")]
+        credential_said: String,
+
+        /// The issuer's signing key name (whose namespace holds the credential).
+        #[arg(long, help = "The issuer's signing key name.")]
+        issuer: String,
+
+        /// Fail closed unless every lifecycle anchor reaches witness quorum.
+        #[arg(
+            long = "require-witnesses",
+            help = "Fail closed unless every lifecycle anchor reaches witness quorum."
+        )]
+        require_witnesses: bool,
+    },
+}
+
+/// JSON response for `credential issue`.
+#[derive(Debug, Serialize)]
+struct IssueResponse {
+    credential_said: String,
+    registry_said: String,
+    issuer_did: String,
+    issuee_did: String,
+}
+
+impl ExecutableCommand for CredentialCommand {
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
+        handle_credential(
+            self.clone(),
+            repo_path,
+            &ctx.env_config,
+            ctx.passphrase_provider.clone(),
+        )
+    }
+}
+
+/// Dispatch an `auths credential …` subcommand.
+///
+/// Args:
+/// * `cmd`: The parsed credential command.
+/// * `repo_path`: Resolved registry repository path.
+/// * `env_config`: Environment configuration for context building.
+/// * `passphrase_provider`: Passphrase source for issuer key access.
+///
+/// Usage:
+/// ```ignore
+/// handle_credential(cmd, repo_path, &env_config, passphrase_provider)?;
+/// ```
+pub fn handle_credential(
+    cmd: CredentialCommand,
+    repo_path: PathBuf,
+    env_config: &EnvironmentConfig,
+    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
+) -> Result<()> {
+    match cmd.subcommand {
+        CredentialSubcommand::Issue {
+            issuer,
+            to,
+            cap,
+            role,
+            expires_in,
+        } => {
+            let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
+            let issuer_alias = KeyAlias::new_unchecked(issuer);
+            // Clock at the presentation boundary (the SDK/core never call Utc::now()).
+            #[allow(clippy::disallowed_methods)]
+            let expires_at =
+                expires_in.map(|secs| chrono::Utc::now() + chrono::Duration::seconds(secs));
+            let issued = issue(&ctx, &issuer_alias, &to, &cap, role.as_deref(), expires_at)
+                .map_err(anyhow::Error::new)?;
+
+            if is_json_mode() {
+                JsonResponse::success(
+                    "credential issue",
+                    IssueResponse {
+                        credential_said: issued.credential_said.clone(),
+                        registry_said: issued.registry_said.clone(),
+                        issuer_did: issued.issuer_did.clone(),
+                        issuee_did: issued.issuee_did.clone(),
+                    },
+                )
+                .print()?;
+            } else {
+                println!("✓ Credential issued and anchored to the issuer KEL:");
+                println!("  credential: {}", issued.credential_said);
+                println!("  issuee:     {}", issued.issuee_did);
+            }
+            Ok(())
+        }
+
+        CredentialSubcommand::Revoke {
+            credential_said,
+            issuer,
+        } => {
+            let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
+            let issuer_alias = KeyAlias::new_unchecked(issuer);
+            revoke(&ctx, &issuer_alias, &credential_said).map_err(anyhow::Error::new)?;
+
+            if is_json_mode() {
+                JsonResponse::success(
+                    "credential revoke",
+                    serde_json::json!({ "credential_said": credential_said, "revoked": true }),
+                )
+                .print()?;
+            } else {
+                println!(
+                    "✓ Credential revoked (rev anchored in the issuer KEL): {credential_said}"
+                );
+            }
+            Ok(())
+        }
+
+        CredentialSubcommand::List {
+            issuer,
+            include_revoked,
+        } => {
+            let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
+            let issuer_alias = KeyAlias::new_unchecked(issuer.unwrap_or_default());
+            let credentials = list(&ctx, &issuer_alias).map_err(anyhow::Error::new)?;
+            let shown: Vec<_> = credentials
+                .into_iter()
+                .filter(|c| include_revoked || !c.revoked)
+                .collect();
+
+            if is_json_mode() {
+                let data: Vec<_> = shown
+                    .iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "credential_said": c.credential_said,
+                            "subject_did": c.subject_did,
+                            "capabilities": c.capabilities,
+                            "revoked": c.revoked,
+                        })
+                    })
+                    .collect();
+                JsonResponse::success(
+                    "credential list",
+                    serde_json::json!({ "credentials": data }),
+                )
+                .print()?;
+            } else if shown.is_empty() {
+                println!("No credentials issued by this identity.");
+            } else {
+                println!("Issued credentials:");
+                for c in &shown {
+                    let status = if c.revoked { " (revoked)" } else { "" };
+                    println!(
+                        "  {} → {} [{}]{}",
+                        c.credential_said,
+                        c.subject_did,
+                        c.capabilities.join(","),
+                        status
+                    );
+                }
+            }
+            Ok(())
+        }
+
+        CredentialSubcommand::Verify {
+            credential_said,
+            issuer,
+            require_witnesses,
+        } => {
+            let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
+            let issuer_alias = KeyAlias::new_unchecked(issuer);
+            let policy = if require_witnesses {
+                VerifierWitnessPolicy::RequireWitnesses
+            } else {
+                VerifierWitnessPolicy::Warn
+            };
+            // Clock at the presentation boundary.
+            #[allow(clippy::disallowed_methods)]
+            let now = chrono::Utc::now();
+            let rt = tokio::runtime::Runtime::new()?;
+            let verdict = rt
+                .block_on(verify_by_said(
+                    &ctx,
+                    &issuer_alias,
+                    &credential_said,
+                    policy,
+                    now,
+                ))
+                .map_err(anyhow::Error::new)?;
+            print_verdict(&credential_said, &verdict)
+        }
+    }
+}
+
+/// Render a verification verdict to stdout (JSON or human-readable).
+fn print_verdict(credential_said: &str, verdict: &CredentialVerdict) -> Result<()> {
+    let valid = verdict.is_valid();
+    let (status, detail, as_of) = describe(verdict);
+
+    if is_json_mode() {
+        JsonResponse::success(
+            "credential verify",
+            serde_json::json!({
+                "credential_said": credential_said,
+                "valid": valid,
+                "status": status,
+                "detail": detail,
+                "as_of": as_of,
+            }),
+        )
+        .print()?;
+    } else if valid {
+        println!("✓ Credential is valid: {credential_said}");
+        if let Some(seq) = as_of {
+            println!("  as-of issuer KEL seq {seq}");
+        }
+    } else {
+        println!("✗ Credential did not verify: {credential_said}");
+        println!("  status: {status}");
+        if let Some(d) = detail {
+            println!("  detail: {d}");
+        }
+    }
+    Ok(())
+}
+
+/// A `(status, detail, as_of_seq)` summary of a verdict for presentation.
+fn describe(verdict: &CredentialVerdict) -> (&'static str, Option<String>, Option<u128>) {
+    use auths_verifier::CredentialVerdict as Inner;
+    match verdict {
+        CredentialVerdict::StaleOrUnresolvable { as_of, reason } => (
+            "stale_or_unresolvable",
+            Some(reason.clone()),
+            Some(as_of.seq),
+        ),
+        CredentialVerdict::Resolved { verdict, as_of } => {
+            let seq = Some(as_of.seq);
+            match verdict {
+                Inner::Valid { .. } => ("valid", None, seq),
+                Inner::SaidMismatch => ("said_mismatch", None, seq),
+                Inner::SchemaInvalid => ("schema_invalid", None, seq),
+                Inner::IssuerSignatureInvalid => ("issuer_signature_invalid", None, seq),
+                Inner::RegistryNotEstablished => ("registry_not_established", None, seq),
+                Inner::CredentialRevoked { revoked_at } => (
+                    "revoked",
+                    Some(format!("revoked at issuer KEL seq {revoked_at}")),
+                    seq,
+                ),
+                Inner::Expired { expired_at, .. } => {
+                    ("expired", Some(format!("expired at {expired_at}")), seq)
+                }
+                Inner::WitnessQuorumNotMet {
+                    event,
+                    collected,
+                    required,
+                } => (
+                    "witness_quorum_not_met",
+                    Some(format!(
+                        "{event} anchor: {collected}/{required} witness receipts"
+                    )),
+                    seq,
+                ),
+                Inner::IssuerKelDuplicitous => ("issuer_kel_duplicitous", None, seq),
+            }
+        }
+    }
+}

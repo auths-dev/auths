@@ -2,6 +2,7 @@ mod agents;
 mod artifact;
 mod audit;
 
+mod credentials;
 mod device;
 mod diagnostics;
 mod ephemeral_signing;

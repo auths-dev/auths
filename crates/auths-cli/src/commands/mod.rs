@@ -12,6 +12,7 @@ pub mod cache;
 pub mod commit;
 pub mod completions;
 pub mod config;
+pub mod credential;
 pub mod debug;
 pub mod demo;
 pub mod device;

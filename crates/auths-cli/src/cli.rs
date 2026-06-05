@@ -13,6 +13,7 @@ use crate::commands::auth::AuthCommand;
 use crate::commands::commit::CommitCmd;
 use crate::commands::completions::CompletionsCommand;
 use crate::commands::config::ConfigCommand;
+use crate::commands::credential::CredentialCommand;
 use crate::commands::debug::DebugCmd;
 use crate::commands::demo::DemoCommand;
 use crate::commands::device::DeviceCommand;
@@ -127,6 +128,8 @@ pub enum RootCommand {
     Namespace(NamespaceCommand),
     #[command(hide = true)]
     Org(OrgCommand),
+    #[command(hide = true)]
+    Credential(CredentialCommand),
     #[command(hide = true)]
     Audit(AuditCommand),
     #[command(hide = true)]
