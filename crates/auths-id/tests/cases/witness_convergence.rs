@@ -100,6 +100,96 @@ fn icp_parts(icp: &Event) -> (Prefix, String) {
     }
 }
 
+/// An anchoring `ixn` at seq 1 carrying a `Seal::KeyEvent` — the exact shape a TEL
+/// `vcp`/`iss`/`rev` anchor uses (Epic F). Chains onto `icp_said`.
+fn anchoring_ixn(controller: &Prefix, icp_said: &str) -> IxnEvent {
+    finalize_ixn_event(IxnEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: controller.clone(),
+        s: KeriSequence::new(1),
+        p: Said::new_unchecked(icp_said.to_string()),
+        a: vec![Seal::KeyEvent {
+            i: Prefix::new_unchecked("ECredentialRegistryOrTelEvent".to_string()),
+            s: KeriSequence::new(0),
+            d: Said::new_unchecked("ETelEventSaidAnchoredHere".to_string()),
+        }],
+    })
+    .unwrap()
+}
+
+// ── Epic F pre-flight (F.9): does the Epic-D witness gate cover the TEL-anchoring
+// `ixn`? ──────────────────────────────────────────────────────────────────────
+//
+// FINDING: `validate_kel_with_receipts` gates ESTABLISHMENT events (icp/rot/drt) on
+// witness quorum but, by design (`auths-keri/src/validate.rs` "ixn never gates"),
+// does NOT quorum-gate interaction events. TEL revocation (F.5/D2) anchors `rev` via
+// an `ixn`, so the "verifier enforces witness quorum on the anchoring ixn" sub-claim
+// is NOT delivered by reusing the gate as-is. What DOES hold: (a) establishment-event
+// witnessing is real + fail-closed (proved below + in the e2e tests above), and (b)
+// `detect_duplicity` catches an `ixn`-level fork (revocation-hiding-via-equivocation
+// is detectable — see `two_diverging_views_converge_with_witness`). The decision this
+// forces on F.5 is recorded in the F.9 done-summary + the F.7 threat model.
+
+#[test]
+fn anchoring_ixn_is_not_witness_quorum_gated() {
+    // A fully witnessed inception (quorum met), then a TEL-style anchoring `ixn` at
+    // seq 1 with NO receipts of its own. If the gate covered ixn this would be
+    // `Pending`; it is `Accepted` — documenting that ixn is not quorum-gated.
+    let (dir, _repo) = auths_test_utils::git::init_test_repo();
+    let w1 = witness_aid(51);
+    let icp = icp_with_backers(&[&w1], 1);
+    let (controller, said) = icp_parts(&icp);
+    let lookup = store_and_lookup(
+        dir.path(),
+        &controller,
+        &said,
+        vec![stored_receipt(&w1, controller.as_str(), &said)],
+    );
+
+    let ixn = anchoring_ixn(&controller, &said);
+    let outcome = validate_kel_with_receipts(&[icp, Event::Ixn(ixn)], None, &lookup).unwrap();
+    assert!(
+        matches!(outcome, WitnessedReplay::Accepted(_)),
+        "ixn is NOT witness-quorum-gated: an anchoring ixn with no receipts of its own \
+         still yields Accepted once the establishment event meets quorum. Got {outcome:?}. \
+         F.5 must EXTEND gating to the TEL-anchoring ixn (or rest revocation robustness on \
+         establishment-witnessing + duplicity-detection — recorded in the F.9 finding)."
+    );
+}
+
+#[test]
+fn under_quorum_establishment_still_fails_closed_with_anchoring_ixn() {
+    // The establishment-event protection holds even when an anchoring ixn follows:
+    // under-quorum icp short-circuits to Pending before the ixn is reached.
+    let (dir, _repo) = auths_test_utils::git::init_test_repo();
+    let (w1, w2) = (witness_aid(61), witness_aid(62));
+    let icp = icp_with_backers(&[&w1, &w2], 2); // needs 2
+    let (controller, said) = icp_parts(&icp);
+    let lookup = store_and_lookup(
+        dir.path(),
+        &controller,
+        &said,
+        vec![stored_receipt(&w1, controller.as_str(), &said)], // only 1
+    );
+
+    let ixn = anchoring_ixn(&controller, &said);
+    match validate_kel_with_receipts(&[icp, Event::Ixn(ixn)], None, &lookup).unwrap() {
+        WitnessedReplay::Pending {
+            sequence,
+            collected,
+            ..
+        } => {
+            assert_eq!(
+                sequence, 0,
+                "fails closed at the under-quorum establishment event"
+            );
+            assert_eq!(collected, 1);
+        }
+        other => panic!("expected Pending at the under-quorum icp, got {other:?}"),
+    }
+}
+
 #[test]
 fn witness_quorum_end_to_end_verifies() {
     let (dir, _repo) = auths_test_utils::git::init_test_repo();
