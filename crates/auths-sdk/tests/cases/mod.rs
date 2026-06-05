@@ -2,6 +2,7 @@ mod agents;
 mod artifact;
 mod audit;
 
+mod credential_present;
 mod credentials;
 mod device;
 mod diagnostics;

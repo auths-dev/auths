@@ -14,6 +14,8 @@
 pub mod error;
 /// Issuance, revocation, and listing workflows.
 pub mod issue;
+/// Holder-binding presentation + challenge issuance (F.8).
+pub mod present;
 /// The persisted credential envelope (`{acdc, signature}`).
 pub mod stored;
 /// Verification — the resolution + freshness layer.
@@ -21,5 +23,6 @@ pub mod verify;
 
 pub use error::CredentialError;
 pub use issue::{CredentialIssuance, CredentialSummary, issue, list, revoke};
+pub use present::{ChallengeSession, PresentationChallenge, present_credential};
 pub use stored::StoredCredential;
 pub use verify::{CredentialVerdict, ResolvedAsOf, VerifierWitnessPolicy, verify, verify_by_said};

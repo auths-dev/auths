@@ -61,6 +61,7 @@ pub mod error;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
 pub mod ffi;
+pub mod presentation;
 pub mod ssh_sig;
 pub mod types;
 pub mod verifier;
@@ -138,6 +139,11 @@ pub use ssh_sig::{SshKeyType, SshSigEnvelope};
 
 // Re-export ACDC credential verification (Epic F.5)
 pub use credential::{CredentialVerdict, LifecycleEvent, SignedAcdc, verify_credential};
+
+// Re-export holder-binding presentation verification (Epic F.8)
+pub use presentation::{
+    PresentationBinding, PresentationEnvelope, PresentationVerdict, verify_presentation,
+};
 
 // Re-export crypto provider trait for downstream consumers
 pub use auths_crypto::CryptoProvider;

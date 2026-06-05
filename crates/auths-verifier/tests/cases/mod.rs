@@ -8,6 +8,7 @@ mod expiration_skew;
 mod ffi_smoke;
 mod kel_verification;
 mod newtypes;
+mod presentation;
 mod proptest_core;
 mod revocation_adversarial;
 mod serialization_pinning;
