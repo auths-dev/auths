@@ -168,6 +168,80 @@ pub fn keri_document_ref(did_prefix: &Prefix) -> String {
     )
 }
 
+/// Constructs the Git reference path for a single TEL event of a credential.
+///
+/// A TEL (Transaction Event Log) is the KERI-native credential-status registry.
+/// Each event is stored under the issuer's namespace, keyed by registry SAID,
+/// credential SAID, and the event's TEL sequence number.
+///
+/// Example: `refs/did/keri/<issuer>/tel/<reg_said>/<cred_said>/<sn>`
+///
+/// Args:
+/// * `issuer`: The issuing AID (the KERI prefix controlling the registry).
+/// * `registry_said`: The registry SAID (`vcp.d`).
+/// * `credential_said`: The credential SAID (`iss.i`).
+/// * `sn`: The TEL event sequence number (`0` for `iss`, `1` for `rev`).
+///
+/// Usage:
+/// ```ignore
+/// let r = keri_tel_event_ref(&issuer, &reg, &cred, 0);
+/// ```
+pub fn keri_tel_event_ref(
+    issuer: &Prefix,
+    registry_said: &Said,
+    credential_said: &Said,
+    sn: u128,
+) -> String {
+    format!(
+        "{}/{}/tel/{}/{}/{}",
+        KERI_DID_REF_NAMESPACE_PREFIX.trim_end_matches('/'),
+        issuer.as_str(),
+        registry_said.as_str(),
+        credential_said.as_str(),
+        sn
+    )
+}
+
+/// Constructs the Git reference path for the registry inception (`vcp`) event.
+///
+/// The registry SAID is self-addressing (`vcp.i == vcp.d`), so the credential
+/// segment reuses the registry SAID and the sequence number is always `0`.
+///
+/// Example: `refs/did/keri/<issuer>/tel/<reg_said>/<reg_said>/0`
+///
+/// Args:
+/// * `issuer`: The issuing AID.
+/// * `registry_said`: The registry SAID (`vcp.d`).
+///
+/// Usage:
+/// ```ignore
+/// let r = keri_tel_registry_ref(&issuer, &reg);
+/// ```
+pub fn keri_tel_registry_ref(issuer: &Prefix, registry_said: &Said) -> String {
+    keri_tel_event_ref(issuer, registry_said, registry_said, 0)
+}
+
+/// Constructs the Git reference path for a credential's ACDC blob.
+///
+/// Example: `refs/did/keri/<issuer>/credentials/<cred_said>`
+///
+/// Args:
+/// * `issuer`: The issuing AID.
+/// * `credential_said`: The credential SAID (`acdc.d`).
+///
+/// Usage:
+/// ```ignore
+/// let r = keri_credential_ref(&issuer, &cred);
+/// ```
+pub fn keri_credential_ref(issuer: &Prefix, credential_said: &Said) -> String {
+    format!(
+        "{}/{}/credentials/{}",
+        KERI_DID_REF_NAMESPACE_PREFIX.trim_end_matches('/'),
+        issuer.as_str(),
+        credential_said.as_str()
+    )
+}
+
 /// Extracts the KERI prefix (AID) from a full `did:keri:` identifier string.
 pub fn did_keri_to_prefix(did: &str) -> Option<Prefix> {
     did.strip_prefix("did:keri:")

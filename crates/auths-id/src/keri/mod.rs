@@ -101,6 +101,7 @@ pub mod anchor;
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 // INVARIANT: file-based KEL cache — entire module is an I/O adapter
 pub mod cache;
+pub mod credential_registry;
 pub mod delegation;
 pub mod device_kel;
 pub mod event;
@@ -131,6 +132,10 @@ pub use anchor::{
     try_stage_anchor, verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
 };
 pub use auths_keri::KERI_VERSION_PREFIX;
+pub use credential_registry::{
+    CredentialRegistryError, anchor_seal_for, anchor_tel_event, build_iss, build_rev,
+    ensure_registry, find_registry, read_credential_tel,
+};
 pub use event::{
     CesrKey, ConfigTrait, Event, EventReceipts, IcpEvent, IxnEvent, KeriSequence, RotEvent,
     Threshold, VersionString,

@@ -167,3 +167,68 @@ pub fn members_dir(org_base: &str) -> String {
 pub fn member_file(org_base: &str, sanitized_member_did: &str) -> String {
     format!("{}/members/{}.json", org_base, sanitized_member_did)
 }
+
+// ── TEL / credential paths ───────────────────────────────────────────────────
+
+/// Path to the directory holding a credential's TEL events.
+///
+/// Mirrors the `refs/did/keri/<issuer>/tel/<reg>/<cred>` layout inside the packed
+/// registry tree.
+///
+/// Args:
+/// * `issuer`: The issuing AID.
+/// * `registry_said`: The registry SAID (`vcp.d`).
+/// * `credential_said`: The credential SAID.
+///
+/// Usage:
+/// ```ignore
+/// let dir = tel_dir("EIss…", "EReg…", "ECred…"); // "v1/tel/EIss…/EReg…/ECred…"
+/// ```
+pub fn tel_dir(issuer: &str, registry_said: &str, credential_said: &str) -> String {
+    format!(
+        "{}/tel/{}/{}/{}",
+        STORAGE_SCHEMA_VERSION, issuer, registry_said, credential_said
+    )
+}
+
+/// Path to a single TEL event file (keyed by sequence number).
+///
+/// Args:
+/// * `issuer`: The issuing AID.
+/// * `registry_said`: The registry SAID.
+/// * `credential_said`: The credential SAID.
+/// * `sn`: The TEL event sequence number.
+///
+/// Usage:
+/// ```ignore
+/// let p = tel_event_file("EIss…", "EReg…", "ECred…", 0); // ".../00000000.json"
+/// ```
+pub fn tel_event_file(
+    issuer: &str,
+    registry_said: &str,
+    credential_said: &str,
+    sn: u128,
+) -> String {
+    format!(
+        "{}/{:08}.json",
+        tel_dir(issuer, registry_said, credential_said),
+        sn
+    )
+}
+
+/// Path to an ACDC credential blob.
+///
+/// Args:
+/// * `issuer`: The issuing AID.
+/// * `credential_said`: The credential SAID (`acdc.d`).
+///
+/// Usage:
+/// ```ignore
+/// let p = credential_file("EIss…", "ECred…"); // "v1/credentials/EIss…/ECred….json"
+/// ```
+pub fn credential_file(issuer: &str, credential_said: &str) -> String {
+    format!(
+        "{}/credentials/{}/{}.json",
+        STORAGE_SCHEMA_VERSION, issuer, credential_said
+    )
+}

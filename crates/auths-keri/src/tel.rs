@@ -544,6 +544,26 @@ fn apply_rev(
     Ok(())
 }
 
+/// Encodes 16 random bytes as a CESR `Salt_128` (`0A…`) registry nonce (`vcp.n`).
+///
+/// The caller supplies the randomness (the clock/RNG boundary lives above this
+/// pure crate); this only performs the byte-deterministic CESR encoding, so the
+/// same 16 bytes always produce the same nonce — keypy-byte-identical to
+/// `coring.Salter(raw=…).qb64`.
+///
+/// Args:
+/// * `raw`: The 16 random salt bytes.
+///
+/// Usage:
+/// ```ignore
+/// let nonce = encode_nonce(&random_16_bytes)?;
+/// let vcp = Vcp::new(issuer, nonce).saidify()?;
+/// ```
+pub fn encode_nonce(raw: &[u8; 16]) -> Result<String, TelError> {
+    crate::cesr_encode::encode_salt_128(raw)
+        .map_err(|e| TelError::Said(format!("nonce encoding failed: {e}")))
+}
+
 /// Serializes a serializable TEL event to its canonical insertion-order JSON bytes.
 ///
 /// Args:

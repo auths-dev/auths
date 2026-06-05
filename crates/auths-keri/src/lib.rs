@@ -92,7 +92,7 @@ pub use said::{
 pub use state::{AnchorStatus, KeyState};
 pub use tel::{
     Iss, Rev, TEL_KERIPY_REVISION, TRAIT_NO_BACKERS, TelAnchorSeal, TelEvent, TelState, Vcp,
-    to_wire_bytes as tel_to_wire_bytes, validate_tel,
+    encode_nonce as encode_tel_nonce, to_wire_bytes as tel_to_wire_bytes, validate_tel,
 };
 pub use types::{
     CesrKey, ConfigTrait, Fraction, FractionError, KeriTypeError, Prefix, Said, Threshold,

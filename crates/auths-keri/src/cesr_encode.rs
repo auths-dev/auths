@@ -7,9 +7,29 @@
 //! `cesride` is a non-optional dependency, so unlike the feature-gated `codec` module these
 //! helpers are always available — they are the default encoding for verkeys, digests, and SAIDs.
 
-use cesride::{Diger, Matter, Verfer, matter};
+use cesride::{Diger, Matter, Salter, Verfer, matter};
 
 use crate::keys::KeriDecodeError;
+
+/// CESR-encode a 16-byte salt as a qb64 `Salt_128` (`0A…`) primitive.
+///
+/// This is the nonce encoding keripy uses for a registry's `vcp.n` — a
+/// 128-bit salt under the `0A` matter code, byte-identical to
+/// `coring.Salter(raw=…).qb64`.
+///
+/// Args:
+/// * `raw`: The 16 random salt bytes.
+///
+/// Usage:
+/// ```ignore
+/// let nonce = encode_salt_128(&[0u8; 16])?;
+/// assert!(nonce.starts_with("0A"));
+/// ```
+pub fn encode_salt_128(raw: &[u8; 16]) -> Result<String, KeriDecodeError> {
+    Salter::new_with_raw(raw, Some(matter::Codex::Salt_128), None)
+        .and_then(|s| s.qb64())
+        .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))
+}
 
 /// Encode raw verkey bytes as a CESR-qualified qb64 string under the given matter code.
 ///

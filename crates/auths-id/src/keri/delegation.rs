@@ -284,11 +284,32 @@ pub fn anchor_received_dip(
     Ok((device_did, anchor_ixn))
 }
 
-/// Author an `ixn` on the root KEL anchoring the given seals, signed by the root's
-/// current key. Single-author — no other identity's key is required. Returns the
-/// finalized, signed `ixn` (callers that relay the anchor — e.g. remote pairing —
-/// need its bytes; same-host callers may ignore it).
-pub fn author_root_anchor_ixn(
+/// Build + sign an `ixn` on the root KEL anchoring the given seals, **staging** it
+/// into `batch` rather than committing. Single-author — signed by the root's
+/// current key. The caller commits the batch (alone or alongside other staged
+/// writes that must land atomically with the anchor, e.g. a TEL event + ACDC blob).
+///
+/// Returns the finalized, signed `ixn` and its CESR signature attachment so callers
+/// that relay the anchor (or need its `(sequence, SAID)`) can.
+///
+/// Args:
+/// * `backend`: Registry holding the root KEL (read for the current key state).
+/// * `root_prefix`: The root identity's KEL prefix (the anchoring controller).
+/// * `root_alias`: Keychain alias of the root's current signing key.
+/// * `root_curve`: Curve of the root's current key.
+/// * `anchors`: The seals to carry in the `ixn`'s `a[]`.
+/// * `passphrase_provider`: Passphrase source for the root key.
+/// * `keychain`: Key storage (the root's signing key).
+/// * `batch`: The atomic write batch the `ixn` is staged into.
+///
+/// Usage:
+/// ```ignore
+/// let mut batch = AtomicWriteBatch::new();
+/// let ixn = stage_root_anchor_ixn(backend, &root, &alias, curve, seals, &provider, &keychain, &mut batch)?;
+/// backend.commit_batch(&batch)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn stage_root_anchor_ixn(
     backend: &(dyn RegistryBackend + Send + Sync),
     root_prefix: &Prefix,
     root_alias: &KeyAlias,
@@ -296,6 +317,7 @@ pub fn author_root_anchor_ixn(
     anchors: Vec<Seal>,
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
+    batch: &mut crate::storage::registry::backend::AtomicWriteBatch,
 ) -> Result<IxnEvent, InitError> {
     let root_state = backend
         .get_key_state(root_prefix)
@@ -329,8 +351,39 @@ pub fn author_root_anchor_ixn(
         sig,
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
+    batch.stage_event(root_prefix.clone(), Event::Ixn(ixn.clone()), attachment);
+    Ok(ixn)
+}
+
+/// Author an `ixn` on the root KEL anchoring the given seals, signed by the root's
+/// current key, and commit it immediately. Single-author — no other identity's key
+/// is required. Returns the finalized, signed `ixn` (callers that relay the anchor —
+/// e.g. remote pairing — need its bytes; same-host callers may ignore it).
+///
+/// Thin wrapper over [`stage_root_anchor_ixn`] + `commit_batch` — use the staging
+/// form directly when the anchor must commit atomically with other writes.
+pub fn author_root_anchor_ixn(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    anchors: Vec<Seal>,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<IxnEvent, InitError> {
+    let mut batch = crate::storage::registry::backend::AtomicWriteBatch::new();
+    let ixn = stage_root_anchor_ixn(
+        backend,
+        root_prefix,
+        root_alias,
+        root_curve,
+        anchors,
+        passphrase_provider,
+        keychain,
+        &mut batch,
+    )?;
     backend
-        .append_signed_event(root_prefix, &Event::Ixn(ixn.clone()), &attachment)
+        .commit_batch(&batch)
         .map_err(|e| InitError::Registry(e.to_string()))?;
     Ok(ixn)
 }

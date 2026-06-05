@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use std::sync::Mutex;
 
 use auths_core::storage::keychain::IdentityDID;
-use auths_keri::Prefix;
+use auths_keri::{Prefix, Said};
 use auths_verifier::core::Attestation;
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
@@ -14,12 +14,21 @@ use crate::storage::registry::backend::{RegistryBackend, RegistryError};
 use crate::storage::registry::org_member::{MemberInvalidReason, OrgMemberEntry};
 use crate::storage::registry::schemas::{RegistryMetadata, TipInfo};
 
+/// TEL log key: `(issuer, registry_said, credential_said)`.
+type TelKey = (String, String, String);
+/// One persisted TEL event: `(sequence_number, canonical_json_bytes)`.
+type TelEntry = (u128, Vec<u8>);
+
 struct FakeState {
     events: HashMap<String, Vec<Event>>,
     key_states: HashMap<String, KeyState>,
     attestations: HashMap<CanonicalDid, Attestation>,
     attestation_history: HashMap<CanonicalDid, Vec<Attestation>>,
     org_members: HashMap<(String, String), Attestation>,
+    /// TEL events per credential, append-only and ascending by sequence number.
+    tel_events: HashMap<TelKey, Vec<TelEntry>>,
+    /// ACDC credential blobs keyed by `(issuer, credential_said)`.
+    credentials: HashMap<(String, String), Vec<u8>>,
 }
 
 /// In-memory `RegistryBackend` for use in tests.
@@ -40,6 +49,8 @@ impl FakeRegistryBackend {
                 attestations: HashMap::new(),
                 attestation_history: HashMap::new(),
                 org_members: HashMap::new(),
+                tel_events: HashMap::new(),
+                credentials: HashMap::new(),
             }),
         }
     }
@@ -303,6 +314,83 @@ impl RegistryBackend for FakeRegistryBackend {
             }
         }
         Ok(())
+    }
+
+    fn append_tel_event(
+        &self,
+        issuer: &Prefix,
+        registry_said: &Said,
+        credential_said: &Said,
+        sn: u128,
+        event_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        let mut state = self.state.lock().unwrap();
+        let key = (
+            issuer.as_str().to_string(),
+            registry_said.as_str().to_string(),
+            credential_said.as_str().to_string(),
+        );
+        let log = state.tel_events.entry(key).or_default();
+        if log.iter().any(|(existing_sn, _)| *existing_sn == sn) {
+            return Err(RegistryError::EventExists {
+                prefix: credential_said.as_str().to_string(),
+                seq: sn,
+            });
+        }
+        log.push((sn, event_bytes.to_vec()));
+        log.sort_by_key(|(s, _)| *s);
+        Ok(())
+    }
+
+    fn visit_tel_events(
+        &self,
+        issuer: &Prefix,
+        registry_said: &Said,
+        credential_said: &Said,
+        visitor: &mut dyn FnMut(&[u8]) -> ControlFlow<()>,
+    ) -> Result<(), RegistryError> {
+        let state = self.state.lock().unwrap();
+        let key = (
+            issuer.as_str().to_string(),
+            registry_said.as_str().to_string(),
+            credential_said.as_str().to_string(),
+        );
+        if let Some(log) = state.tel_events.get(&key) {
+            for (_, bytes) in log {
+                if visitor(bytes).is_break() {
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn store_credential(
+        &self,
+        issuer: &Prefix,
+        credential_said: &Said,
+        credential_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        let mut state = self.state.lock().unwrap();
+        let key = (
+            issuer.as_str().to_string(),
+            credential_said.as_str().to_string(),
+        );
+        state.credentials.insert(key, credential_bytes.to_vec());
+        Ok(())
+    }
+
+    fn load_credential(
+        &self,
+        issuer: &Prefix,
+        credential_said: &Said,
+    ) -> Result<Option<Vec<u8>>, RegistryError> {
+        let state = self.state.lock().unwrap();
+        let key = (
+            issuer.as_str().to_string(),
+            credential_said.as_str().to_string(),
+        );
+        Ok(state.credentials.get(&key).cloned())
     }
 
     fn init_if_needed(&self) -> Result<bool, RegistryError> {

@@ -1,5 +1,6 @@
 mod anchor_lifecycle;
 mod attestation_input_golden;
+mod credential_registry;
 mod delegation;
 mod keri;
 mod lifecycle;

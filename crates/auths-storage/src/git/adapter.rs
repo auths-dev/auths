@@ -55,7 +55,7 @@ use auths_id::keri::state::KeyState;
 use auths_id::keri::validate::{
     ValidationError, validate_for_append, verify_event_crypto, verify_event_said,
 };
-use auths_keri::Prefix;
+use auths_keri::{Prefix, Said};
 
 use super::paths;
 use super::vfs::{OsVfs, Vfs};
@@ -922,6 +922,35 @@ impl GitRegistryBackend {
 
         Ok(())
     }
+
+    /// Stage a TEL event blob into a tree mutator (append-only at its `(reg, cred, sn)` slot).
+    ///
+    /// Refuses to overwrite an existing TEL event at the same coordinate so the
+    /// log stays immutable, mirroring the KEL `append_event` append-only rule.
+    fn stage_tel_event(
+        navigator: &TreeNavigator,
+        mutator: &mut TreeMutator,
+        issuer: &Prefix,
+        registry_said: &Said,
+        credential_said: &Said,
+        sn: u128,
+        event_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        let path = paths::tel_event_file(
+            issuer.as_str(),
+            registry_said.as_str(),
+            credential_said.as_str(),
+            sn,
+        );
+        if navigator.exists_path(&path) {
+            return Err(RegistryError::EventExists {
+                prefix: credential_said.as_str().to_string(),
+                seq: sn,
+            });
+        }
+        mutator.write_blob(&path, event_bytes.to_vec());
+        Ok(())
+    }
 }
 
 /// Re-attach a delegated event's `-G` source seal from its stored CESR attachment.
@@ -1630,6 +1659,122 @@ impl RegistryBackend for GitRegistryBackend {
         Ok(members)
     }
 
+    fn append_tel_event(
+        &self,
+        issuer: &Prefix,
+        registry_said: &Said,
+        credential_said: &Said,
+        sn: u128,
+        event_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        let _lock = AdvisoryLock::acquire(&self.repo_path)?;
+        let repo = self.open_repo()?;
+        let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, base_tree.clone());
+        let mut mutator = TreeMutator::new();
+
+        Self::stage_tel_event(
+            &navigator,
+            &mut mutator,
+            issuer,
+            registry_said,
+            credential_said,
+            sn,
+            event_bytes,
+        )?;
+
+        let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
+        self.create_commit_unlocked(
+            &repo,
+            new_tree_oid,
+            Some(&parent),
+            &format!("Append TEL event {} seq {}", credential_said.as_str(), sn),
+        )?;
+        Ok(())
+    }
+
+    fn visit_tel_events(
+        &self,
+        issuer: &Prefix,
+        registry_said: &Said,
+        credential_said: &Said,
+        visitor: &mut dyn FnMut(&[u8]) -> ControlFlow<()>,
+    ) -> Result<(), RegistryError> {
+        let repo = self.open_repo()?;
+        let tree = self.current_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, tree);
+
+        let dir = paths::tel_dir(
+            issuer.as_str(),
+            registry_said.as_str(),
+            credential_said.as_str(),
+        );
+        let dir_parts = path_parts(&dir);
+        if !navigator.exists(&dir_parts) {
+            return Ok(());
+        }
+
+        // Filenames are zero-padded sequence numbers, so lexicographic = ascending sn.
+        let mut filenames = Vec::new();
+        navigator.visit_dir(&dir_parts, |name| {
+            if name.ends_with(".json") {
+                filenames.push(name.to_string());
+            }
+            ControlFlow::Continue(())
+        })?;
+        filenames.sort();
+
+        for filename in filenames {
+            let full_path = paths::child(&dir, &filename);
+            let bytes = navigator.read_blob_path(&full_path)?;
+            if visitor(&bytes).is_break() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn store_credential(
+        &self,
+        issuer: &Prefix,
+        credential_said: &Said,
+        credential_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        let _lock = AdvisoryLock::acquire(&self.repo_path)?;
+        let repo = self.open_repo()?;
+        let (parent, base_tree) = self.current_commit_and_tree(&repo)?;
+        let mut mutator = TreeMutator::new();
+
+        let path = paths::credential_file(issuer.as_str(), credential_said.as_str());
+        mutator.write_blob(&path, credential_bytes.to_vec());
+
+        let new_tree_oid = mutator.build_tree(&repo, Some(&base_tree))?;
+        self.create_commit_unlocked(
+            &repo,
+            new_tree_oid,
+            Some(&parent),
+            &format!("Store credential {}", credential_said.as_str()),
+        )?;
+        Ok(())
+    }
+
+    fn load_credential(
+        &self,
+        issuer: &Prefix,
+        credential_said: &Said,
+    ) -> Result<Option<Vec<u8>>, RegistryError> {
+        let repo = self.open_repo()?;
+        let tree = self.current_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, tree);
+
+        let path = paths::credential_file(issuer.as_str(), credential_said.as_str());
+        match navigator.read_blob_path(&path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(RegistryError::NotFound { .. }) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     fn commit_batch(&self, batch: &AtomicWriteBatch) -> Result<(), RegistryError> {
         if batch.is_empty() {
             return Ok(());
@@ -1697,6 +1842,31 @@ impl RegistryBackend for GitRegistryBackend {
                         &mut tip_overlay,
                         &mut identity_delta,
                     )?;
+                }
+                AtomicWriteOp::AppendTelEvent {
+                    issuer,
+                    registry_said,
+                    credential_said,
+                    sn,
+                    event_bytes,
+                } => {
+                    Self::stage_tel_event(
+                        &navigator,
+                        &mut mutator,
+                        issuer,
+                        registry_said,
+                        credential_said,
+                        *sn,
+                        event_bytes,
+                    )?;
+                }
+                AtomicWriteOp::StoreCredential {
+                    issuer,
+                    credential_said,
+                    credential_bytes,
+                } => {
+                    let path = paths::credential_file(issuer.as_str(), credential_said.as_str());
+                    mutator.write_blob(&path, credential_bytes.clone());
                 }
             }
         }
