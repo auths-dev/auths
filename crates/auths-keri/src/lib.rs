@@ -34,6 +34,9 @@
 //! let cesr_stream = export_kel_as_cesr(&codec, &events)?;
 //! ```
 
+/// ACDC (Authentic Chained Data Container) credential type, SAID-ification, and
+/// the pinned v1 capability schema.
+pub mod acdc;
 mod crypto;
 mod error;
 mod events;
@@ -65,6 +68,10 @@ mod stream;
 #[cfg(feature = "cesr")]
 mod version;
 
+pub use acdc::{
+    ACDC_KERIPY_REVISION, ACDC_VERSION_PREFIX, Acdc, AcdcError, Attributes, CAPABILITY_SCHEMA,
+    compute_capability_schema_said, compute_schema_said,
+};
 pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::KeriTranslationError;
 pub use events::{
@@ -76,7 +83,10 @@ pub use events::{
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use ksn::{KSN_TYPE, KSN_VERSION, KeyStateNotice, KsnError, SignedKsn};
-pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};
+pub use said::{
+    Protocol, SAID_PLACEHOLDER, compute_said, compute_said_with_protocol, compute_section_said,
+    verify_said,
+};
 pub use state::{AnchorStatus, KeyState};
 pub use types::{
     CesrKey, ConfigTrait, Fraction, FractionError, KeriTypeError, Prefix, Said, Threshold,

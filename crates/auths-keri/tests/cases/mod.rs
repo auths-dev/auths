@@ -1,3 +1,4 @@
+mod acdc;
 #[cfg(feature = "cesr")]
 mod codec;
 mod dual_index;
