@@ -93,23 +93,6 @@ export async function verifyAttestation(attestationJson: string, issuerPkHex: st
 }
 
 /**
- * Verifies a single attestation with a required capability check.
- *
- * @param attestationJson - JSON-serialized attestation.
- * @param issuerPkHex - Hex-encoded Ed25519 public key of the issuer.
- * @param requiredCapability - Capability the attestation must grant.
- * @returns The verification result.
- * @throws {@link VerificationError} if verification fails.
- */
-export async function verifyAttestationWithCapability(attestationJson: string, issuerPkHex: string, requiredCapability: string): Promise<VerificationResult> {
-  try {
-    return await native.verifyAttestationWithCapability(attestationJson, issuerPkHex, requiredCapability)
-  } catch (err) {
-    throw mapNativeError(err, VerificationError)
-  }
-}
-
-/**
  * Verifies an attestation chain from leaf to root.
  *
  * @param attestationsJson - Array of JSON-serialized attestations (leaf to root).
@@ -128,23 +111,6 @@ export async function verifyAttestationWithCapability(attestationJson: string, i
 export async function verifyChain(attestationsJson: string[], rootPkHex: string): Promise<VerificationReport> {
   try {
     return await native.verifyChain(attestationsJson, rootPkHex)
-  } catch (err) {
-    throw mapNativeError(err, VerificationError)
-  }
-}
-
-/**
- * Verifies an attestation chain with a required capability at the leaf.
- *
- * @param attestationsJson - Array of JSON-serialized attestations (leaf to root).
- * @param rootPkHex - Hex-encoded Ed25519 public key of the root identity.
- * @param requiredCapability - Capability the leaf attestation must grant.
- * @returns The verification report.
- * @throws {@link VerificationError} if verification fails.
- */
-export async function verifyChainWithCapability(attestationsJson: string[], rootPkHex: string, requiredCapability: string): Promise<VerificationReport> {
-  try {
-    return await native.verifyChainWithCapability(attestationsJson, rootPkHex, requiredCapability)
   } catch (err) {
     throw mapNativeError(err, VerificationError)
   }
@@ -180,24 +146,6 @@ export async function verifyDeviceAuthorization(identityDid: string, deviceDid: 
 export async function verifyAtTime(attestationJson: string, issuerPkHex: string, atRfc3339: string): Promise<VerificationResult> {
   try {
     return await native.verifyAtTime(attestationJson, issuerPkHex, atRfc3339)
-  } catch (err) {
-    throw mapNativeError(err, VerificationError)
-  }
-}
-
-/**
- * Verifies an attestation at a specific time with a required capability.
- *
- * @param attestationJson - JSON-serialized attestation.
- * @param issuerPkHex - Hex-encoded Ed25519 public key of the issuer.
- * @param atRfc3339 - RFC 3339 timestamp to verify at.
- * @param requiredCapability - Capability the attestation must grant.
- * @returns The verification result.
- * @throws {@link VerificationError} if verification fails.
- */
-export async function verifyAtTimeWithCapability(attestationJson: string, issuerPkHex: string, atRfc3339: string, requiredCapability: string): Promise<VerificationResult> {
-  try {
-    return await native.verifyAtTimeWithCapability(attestationJson, issuerPkHex, atRfc3339, requiredCapability)
   } catch (err) {
     throw mapNativeError(err, VerificationError)
   }

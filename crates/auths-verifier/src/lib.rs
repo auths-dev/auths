@@ -36,14 +36,12 @@
 //! }
 //! ```
 //!
-//! ## With Capability Checking
+//! ## Authority via Credentials
 //!
-//! ```rust,ignore
-//! use auths_verifier::{verify_with_capability, Capability};
-//!
-//! // Verify device has sign-commit permission
-//! let report = verify_with_capability(&chain, Capability::SignCommit)?;
-//! ```
+//! The verifier checks **authenticity** only — signatures, chain linkage, expiry,
+//! and witness quorum. Capability/role **authority** is no longer read from the
+//! attestation; it flows exclusively through a holder-verified ACDC credential
+//! presentation (see `auths_id::policy::context_from_credential`).
 //!
 //! ## Feature Flags
 //!
@@ -109,8 +107,8 @@ pub use verifier::Verifier;
 // Re-export verification functions (native-only, async)
 #[cfg(feature = "native")]
 pub use verify::{
-    verify_at_time, verify_chain, verify_chain_with_capability, verify_chain_with_witnesses,
-    verify_device_authorization, verify_with_capability, verify_with_keys,
+    verify_at_time, verify_chain, verify_chain_with_witnesses, verify_device_authorization,
+    verify_with_keys,
 };
 
 // Re-export sync utility functions (always available)

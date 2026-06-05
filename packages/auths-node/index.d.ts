@@ -330,15 +330,9 @@ export declare function verifyActionEnvelope(envelopeJson: string, publicKeyHex:
 
 export declare function verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
 
-export declare function verifyAttestationWithCapability(attestationJson: string, issuerPkHex: string, requiredCapability: string): Promise<NapiVerificationResult>
-
 export declare function verifyAtTime(attestationJson: string, issuerPkHex: string, atRfc3339: string): Promise<NapiVerificationResult>
 
-export declare function verifyAtTimeWithCapability(attestationJson: string, issuerPkHex: string, atRfc3339: string, requiredCapability: string): Promise<NapiVerificationResult>
-
 export declare function verifyChain(attestationsJson: Array<string>, rootPkHex: string): Promise<NapiVerificationReport>
-
-export declare function verifyChainWithCapability(attestationsJson: Array<string>, rootPkHex: string, requiredCapability: string): Promise<NapiVerificationReport>
 
 export declare function verifyChainWithWitnesses(attestationsJson: Array<string>, rootPkHex: string, receiptsJson: Array<string>, witnessKeysJson: Array<string>, threshold: number): Promise<NapiVerificationReport>
 

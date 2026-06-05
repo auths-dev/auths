@@ -246,10 +246,7 @@ export interface NativeBindings {
   verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
   verifyChain(attestationsJson: string[], rootPkHex: string): Promise<NapiVerificationReport>
   verifyDeviceAuthorization(identityDid: string, deviceDid: string, attestationsJson: string[], identityPkHex: string): Promise<NapiVerificationReport>
-  verifyAttestationWithCapability(attestationJson: string, issuerPkHex: string, requiredCapability: string): Promise<NapiVerificationResult>
-  verifyChainWithCapability(attestationsJson: string[], rootPkHex: string, requiredCapability: string): Promise<NapiVerificationReport>
   verifyAtTime(attestationJson: string, issuerPkHex: string, atRfc3339: string): Promise<NapiVerificationResult>
-  verifyAtTimeWithCapability(attestationJson: string, issuerPkHex: string, atRfc3339: string, requiredCapability: string): Promise<NapiVerificationResult>
   verifyChainWithWitnesses(attestationsJson: string[], rootPkHex: string, receiptsJson: string[], witnessKeysJson: string[], threshold: number): Promise<NapiVerificationReport>
 }
 

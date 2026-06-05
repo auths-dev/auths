@@ -3623,34 +3623,39 @@ mod tests {
     }
 
     #[test]
-    fn list_org_members_filters_by_role() {
+    fn list_org_members_does_not_surface_attestation_role_or_caps() {
+        // Role/caps authority is KEL-native (delegator-anchored scope seal), never the
+        // attestation. `list_org_members` therefore leaves MemberView role/caps empty
+        // even when the stored attestation names them, and its role/caps filters are
+        // inert (no attestation-borne authority reader remains).
         use auths_id::storage::registry::org_member::MemberFilter;
+        use auths_verifier::core::Capability;
         use std::collections::HashSet;
 
         let (_dir, backend) = setup_test_repo();
         let org = "EOrg1234567890";
 
-        // Store admin
         let admin_did = CanonicalDid::new_unchecked("did:key:z6MkAdminUser");
         let admin_att = AttestationBuilder::default()
             .rid("admin")
             .issuer(&format!("did:keri:{}", org))
             .subject(admin_did.as_ref())
             .role(Some(Role::Admin))
+            .capabilities(vec![Capability::manage_members()])
             .build();
         backend.store_org_member(org, &admin_att).unwrap();
 
-        // Store member
         let member_did = CanonicalDid::new_unchecked("did:key:z6MkMemberUser");
         let member_att = AttestationBuilder::default()
             .rid("member")
             .issuer(&format!("did:keri:{}", org))
             .subject(member_did.as_ref())
             .role(Some(Role::Member))
+            .capabilities(vec![Capability::sign_commit()])
             .build();
         backend.store_org_member(org, &member_att).unwrap();
 
-        // Filter by admin role
+        // A role/caps filter is inert: every valid member is returned, with empty role/caps.
         let mut roles = HashSet::new();
         roles.insert(Role::Admin);
         let filter = MemberFilter {
@@ -3659,96 +3664,14 @@ mod tests {
         };
         let members = backend.list_org_members(org, &filter).unwrap();
 
-        assert_eq!(members.len(), 1);
-        assert_eq!(members[0].did.to_string(), admin_did.to_string());
-    }
-
-    #[test]
-    fn list_org_members_filters_by_capability_any() {
-        use auths_id::storage::registry::org_member::MemberFilter;
-        use auths_verifier::core::Capability;
-        use std::collections::HashSet;
-
-        let (_dir, backend) = setup_test_repo();
-        let org = "EOrg1234567890";
-
-        // Store member with sign_commit capability
-        let signer_did = CanonicalDid::new_unchecked("did:key:z6MkSigner1");
-        let signer_att = AttestationBuilder::default()
-            .rid("signer")
-            .issuer(&format!("did:keri:{}", org))
-            .subject(signer_did.as_ref())
-            .role(Some(Role::Member))
-            .capabilities(vec![Capability::sign_commit()])
-            .build();
-        backend.store_org_member(org, &signer_att).unwrap();
-
-        // Store member without capabilities
-        let nocap_did = CanonicalDid::new_unchecked("did:key:z6MkNoCaps1");
-        let nocap_att = AttestationBuilder::default()
-            .rid("nocap")
-            .issuer(&format!("did:keri:{}", org))
-            .subject(nocap_did.as_ref())
-            .role(Some(Role::Member))
-            .build();
-        backend.store_org_member(org, &nocap_att).unwrap();
-
-        // Filter by sign_commit capability
-        let mut caps = HashSet::new();
-        caps.insert(Capability::sign_commit());
-        let filter = MemberFilter {
-            capabilities_any: Some(caps),
-            ..Default::default()
-        };
-        let members = backend.list_org_members(org, &filter).unwrap();
-
-        assert_eq!(members.len(), 1);
-        assert_eq!(members[0].did.to_string(), signer_did.to_string());
-    }
-
-    #[test]
-    fn list_org_members_filters_by_capability_all() {
-        use auths_id::storage::registry::org_member::MemberFilter;
-        use auths_verifier::core::Capability;
-        use std::collections::HashSet;
-
-        let (_dir, backend) = setup_test_repo();
-        let org = "EOrg1234567890";
-
-        // Store member with both capabilities
-        let both_did = CanonicalDid::new_unchecked("did:key:z6MkBothCaps");
-        let both_att = AttestationBuilder::default()
-            .rid("both")
-            .issuer(&format!("did:keri:{}", org))
-            .subject(both_did.as_ref())
-            .role(Some(Role::Member))
-            .capabilities(vec![Capability::sign_commit(), Capability::sign_release()])
-            .build();
-        backend.store_org_member(org, &both_att).unwrap();
-
-        // Store member with only sign_commit
-        let one_did = CanonicalDid::new_unchecked("did:key:z6MkOneCap1");
-        let one_att = AttestationBuilder::default()
-            .rid("one")
-            .issuer(&format!("did:keri:{}", org))
-            .subject(one_did.as_ref())
-            .role(Some(Role::Member))
-            .capabilities(vec![Capability::sign_commit()])
-            .build();
-        backend.store_org_member(org, &one_att).unwrap();
-
-        // Filter requires both capabilities
-        let mut caps = HashSet::new();
-        caps.insert(Capability::sign_commit());
-        caps.insert(Capability::sign_release());
-        let filter = MemberFilter {
-            capabilities_all: Some(caps),
-            ..Default::default()
-        };
-        let members = backend.list_org_members(org, &filter).unwrap();
-
-        assert_eq!(members.len(), 1);
-        assert_eq!(members[0].did.to_string(), both_did.to_string());
+        assert_eq!(members.len(), 2, "role filter must not drop members");
+        for m in &members {
+            assert_eq!(m.role, None, "attestation role must not be surfaced");
+            assert!(
+                m.capabilities.is_empty(),
+                "attestation caps must not be surfaced"
+            );
+        }
     }
 
     #[test]

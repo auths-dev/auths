@@ -3,10 +3,7 @@ import {
   verifyAttestation,
   verifyChain,
   verifyDeviceAuthorization,
-  verifyAttestationWithCapability,
-  verifyChainWithCapability,
   verifyAtTime,
-  verifyAtTimeWithCapability,
 } from '../lib/verify'
 import type { VerificationResult, VerificationReport } from '../lib/verify'
 
@@ -59,30 +56,9 @@ describe('verifyDeviceAuthorization', () => {
   })
 })
 
-describe('verifyAttestationWithCapability', () => {
-  it('invalid attestation returns error', async () => {
-    const result = await verifyAttestationWithCapability('{}', 'a'.repeat(64), 'sign')
-    expect(result.valid).toBe(false)
-  })
-})
-
-describe('verifyChainWithCapability', () => {
-  it('empty chain returns report', async () => {
-    const report = await verifyChainWithCapability([], 'a'.repeat(64), 'sign')
-    expect(report.status).toBeDefined()
-  })
-})
-
 describe('verifyAtTime', () => {
   it('invalid attestation returns error', async () => {
     const result = await verifyAtTime('{}', 'a'.repeat(64), '2025-01-01T00:00:00Z')
-    expect(result.valid).toBe(false)
-  })
-})
-
-describe('verifyAtTimeWithCapability', () => {
-  it('invalid attestation returns error', async () => {
-    const result = await verifyAtTimeWithCapability('{}', 'a'.repeat(64), '2025-01-01T00:00:00Z', 'sign')
     expect(result.valid).toBe(false)
   })
 })

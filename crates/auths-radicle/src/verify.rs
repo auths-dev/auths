@@ -277,27 +277,13 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
             }
         })?;
 
-        // Step 7: Capability check
-        if let Some(required_cap) = request.required_capability
-            && decision.outcome == Outcome::Allow
-        {
-            let has_cap = attestation
-                .capabilities
-                .iter()
-                .any(|c| c.to_string() == required_cap);
-            if !has_cap && !attestation.capabilities.is_empty() {
-                return Ok(apply_mode(
-                    request.mode,
-                    VerifyResult::Rejected {
-                        reason: RejectReason::MissingCapability {
-                            capability: required_cap.to_string(),
-                        },
-                    },
-                ));
-            }
-        }
+        // Capability authority is no longer read from the attestation (caps/role →
+        // ACDC migration). auths-radicle is deprecated; this path verifies authenticity
+        // and revocation/expiry only. `request.required_capability` is retained on the
+        // request type but is intentionally not consulted here.
+        let _ = &request.required_capability;
 
-        // Step 8: Map decision to VerifyResult with mode
+        // Map decision to VerifyResult with mode
         let result = decision_to_verify_result(decision);
         Ok(apply_mode(request.mode, result))
     }

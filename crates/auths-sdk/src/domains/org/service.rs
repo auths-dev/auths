@@ -79,8 +79,14 @@ pub fn member_role_order(role: &Option<Role>) -> u8 {
     }
 }
 
-/// Find the first org-member attestation whose device public key matches `public_key_hex`
-/// and which holds the `manage_members` capability.
+/// Find the org-member attestation whose device public key matches `public_key_hex`.
+///
+/// Locates the candidate admin's *active* membership record so its identity facts can
+/// be re-used. The `manage_members` **grant** is no longer read from the attestation:
+/// org authority is resolved KEL-natively from the delegator-anchored scope seal (see
+/// [`crate::domains::org::delegation::resolve_member_authority`]), never from
+/// `Attestation.capabilities`. This lookup is therefore presence-only — it returns the
+/// matching, non-revoked membership without making an authority decision.
 ///
 /// Args:
 /// * `backend`: Registry backend to query.
@@ -113,7 +119,6 @@ pub(crate) fn find_admin(
                     )
                 }
                 && !att.is_revoked()
-                && att.capabilities.contains(&Capability::manage_members())
             {
                 found = Some(att.clone());
                 return ControlFlow::Break(());

@@ -1,17 +1,13 @@
 use auths_crypto::CurveType;
 use auths_verifier::DevicePublicKey;
 use auths_verifier::action::ActionEnvelope;
-use auths_verifier::core::{
-    Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
-};
+use auths_verifier::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use auths_verifier::error::AuthsErrorInfo;
 use auths_verifier::types::CanonicalDid;
 use auths_verifier::verify::{
     verify_at_time as rust_verify_at_time, verify_chain as rust_verify_chain,
-    verify_chain_with_capability as rust_verify_chain_with_capability,
     verify_chain_with_witnesses as rust_verify_chain_with_witnesses,
-    verify_device_authorization as rust_verify_device_authorization,
-    verify_with_capability as rust_verify_with_capability, verify_with_keys,
+    verify_device_authorization as rust_verify_device_authorization, verify_with_keys,
 };
 use auths_verifier::witness::WitnessVerifyConfig;
 use chrono::{DateTime, Utc};
@@ -167,83 +163,6 @@ pub async fn verify_device_authorization(
     }
 }
 
-#[napi]
-pub async fn verify_attestation_with_capability(
-    attestation_json: String,
-    issuer_pk_hex: String,
-    required_capability: String,
-) -> napi::Result<NapiVerificationResult> {
-    if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
-        return Err(format_error(
-            "AUTHS_INVALID_INPUT",
-            format!(
-                "Attestation JSON too large: {} bytes, max {}",
-                attestation_json.len(),
-                MAX_ATTESTATION_JSON_SIZE
-            ),
-        ));
-    }
-
-    let issuer_pk = decode_device_public_key(&issuer_pk_hex, "issuer public key")?;
-
-    let att: Attestation = match serde_json::from_str(&attestation_json) {
-        Ok(att) => att,
-        Err(e) => {
-            return Ok(NapiVerificationResult {
-                valid: false,
-                error: Some(format!("Failed to parse attestation JSON: {e}")),
-                error_code: Some("AUTHS_SERIALIZATION_ERROR".to_string()),
-            });
-        }
-    };
-
-    let cap = Capability::parse(&required_capability).map_err(|e| {
-        format_error(
-            "AUTHS_INVALID_INPUT",
-            format!("Invalid capability '{required_capability}': {e}"),
-        )
-    })?;
-
-    match rust_verify_with_capability(&att, &cap, &issuer_pk).await {
-        Ok(_) => Ok(NapiVerificationResult {
-            valid: true,
-            error: None,
-            error_code: None,
-        }),
-        Err(e) => Ok(NapiVerificationResult {
-            valid: false,
-            error_code: Some(e.error_code().to_string()),
-            error: Some(e.to_string()),
-        }),
-    }
-}
-
-#[napi]
-pub async fn verify_chain_with_capability(
-    attestations_json: Vec<String>,
-    root_pk_hex: String,
-    required_capability: String,
-) -> napi::Result<NapiVerificationReport> {
-    check_batch_size(&attestations_json)?;
-    let root_pk = decode_device_public_key(&root_pk_hex, "root public key")?;
-    let attestations = parse_attestations(&attestations_json)?;
-
-    let cap = Capability::parse(&required_capability).map_err(|e| {
-        format_error(
-            "AUTHS_INVALID_INPUT",
-            format!("Invalid capability '{required_capability}': {e}"),
-        )
-    })?;
-
-    match rust_verify_chain_with_capability(&attestations, &cap, &root_pk).await {
-        Ok(report) => Ok(report.into()),
-        Err(e) => Err(format_error(
-            e.error_code(),
-            format!("Chain verification with capability failed: {e}"),
-        )),
-    }
-}
-
 fn parse_rfc3339_timestamp(at_rfc3339: &str) -> napi::Result<DateTime<Utc>> {
     let at: DateTime<Utc> = at_rfc3339.parse::<DateTime<Utc>>().map_err(|_| {
         if at_rfc3339.contains(' ') && !at_rfc3339.contains('T') {
@@ -317,71 +236,6 @@ pub async fn verify_at_time(
             error: None,
             error_code: None,
         }),
-        Err(e) => Ok(NapiVerificationResult {
-            valid: false,
-            error_code: Some(e.error_code().to_string()),
-            error: Some(e.to_string()),
-        }),
-    }
-}
-
-#[napi]
-pub async fn verify_at_time_with_capability(
-    attestation_json: String,
-    issuer_pk_hex: String,
-    at_rfc3339: String,
-    required_capability: String,
-) -> napi::Result<NapiVerificationResult> {
-    if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
-        return Err(format_error(
-            "AUTHS_INVALID_INPUT",
-            format!(
-                "Attestation JSON too large: {} bytes, max {}",
-                attestation_json.len(),
-                MAX_ATTESTATION_JSON_SIZE
-            ),
-        ));
-    }
-
-    let at = parse_rfc3339_timestamp(&at_rfc3339)?;
-    let issuer_pk = decode_device_public_key(&issuer_pk_hex, "issuer public key")?;
-
-    let att: Attestation = match serde_json::from_str(&attestation_json) {
-        Ok(att) => att,
-        Err(e) => {
-            return Ok(NapiVerificationResult {
-                valid: false,
-                error: Some(format!("Failed to parse attestation JSON: {e}")),
-                error_code: Some("AUTHS_SERIALIZATION_ERROR".to_string()),
-            });
-        }
-    };
-
-    let cap = Capability::parse(&required_capability).map_err(|e| {
-        format_error(
-            "AUTHS_INVALID_INPUT",
-            format!("Invalid capability '{required_capability}': {e}"),
-        )
-    })?;
-
-    match rust_verify_at_time(&att, &issuer_pk, at).await {
-        Ok(_) => {
-            if att.capabilities.contains(&cap) {
-                Ok(NapiVerificationResult {
-                    valid: true,
-                    error: None,
-                    error_code: None,
-                })
-            } else {
-                Ok(NapiVerificationResult {
-                    valid: false,
-                    error: Some(format!(
-                        "Attestation does not grant required capability '{required_capability}'"
-                    )),
-                    error_code: Some("AUTHS_MISSING_CAPABILITY".to_string()),
-                })
-            }
-        }
         Err(e) => Ok(NapiVerificationResult {
             valid: false,
             error_code: Some(e.error_code().to_string()),

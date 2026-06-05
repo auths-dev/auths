@@ -207,24 +207,6 @@ pub fn compute_status(att: &Attestation, now: DateTime<Utc>) -> MemberStatus {
     }
 }
 
-/// Convert a Capability to its canonical string representation.
-///
-/// This delegates to `Capability::to_string()` which is the authoritative
-/// string form. Used for both filtering and display.
-pub fn capability_to_string(cap: &auths_verifier::core::Capability) -> String {
-    cap.to_string()
-}
-
-/// Get capability strings from an attestation as a HashSet (for filtering).
-pub fn attestation_capability_strings(att: &Attestation) -> HashSet<String> {
-    att.capabilities.iter().map(capability_to_string).collect()
-}
-
-/// Get capability strings from an attestation as a Vec (for display).
-pub fn attestation_capability_vec(att: &Attestation) -> Vec<String> {
-    att.capabilities.iter().map(capability_to_string).collect()
-}
-
 /// Compute the expected issuer DID for an org.
 pub fn expected_org_issuer(org: &str) -> String {
     format!("did:keri:{}", org)
@@ -339,49 +321,10 @@ mod tests {
     }
 
     #[test]
-    fn capability_to_string_works() {
-        assert_eq!(
-            capability_to_string(&Capability::sign_commit()),
-            "sign_commit"
-        );
-        assert_eq!(
-            capability_to_string(&Capability::sign_release()),
-            "sign_release"
-        );
-        assert_eq!(
-            capability_to_string(&Capability::manage_members()),
-            "manage_members"
-        );
-        assert_eq!(
-            capability_to_string(&Capability::parse("acme:deploy").unwrap()),
-            "acme:deploy"
-        );
-    }
-
-    #[test]
     fn expected_org_issuer_formats_correctly() {
         assert_eq!(
             expected_org_issuer("EOrg1234567890"),
             "did:keri:EOrg1234567890"
         );
-    }
-
-    #[test]
-    fn attestation_capability_vec_matches_set() {
-        let att = AttestationBuilder::default()
-            .rid("test")
-            .issuer("did:keri:Eissuer")
-            .subject("did:key:zSubject")
-            .capabilities(vec![Capability::sign_commit(), Capability::sign_release()])
-            .build();
-
-        let vec = attestation_capability_vec(&att);
-        let set = attestation_capability_strings(&att);
-
-        // Same elements
-        assert_eq!(vec.len(), set.len());
-        for cap in &vec {
-            assert!(set.contains(cap));
-        }
     }
 }

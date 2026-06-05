@@ -1340,7 +1340,7 @@ pub enum SignerType {
 ///
 /// This type enforces at compile time that an attestation's signatures were verified
 /// before it can be stored. It can only be constructed by:
-/// - Verification functions (`verify_with_keys`, `verify_with_capability`)
+/// - Verification functions (`verify_with_keys`, `verify_chain`)
 /// - The `dangerous_from_unchecked` escape hatch (for self-signed attestations)
 ///
 /// Does NOT implement `Deserialize` to prevent bypassing verification by

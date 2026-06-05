@@ -171,7 +171,6 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
                 issuer_did: cmd.issuer_did,
                 trust: None,
                 roots_file: None,
-                require_capability: None,
                 witness_receipts: cmd.witness_receipts,
                 witness_threshold: cmd.witness_threshold,
                 witness_keys: cmd.witness_keys,

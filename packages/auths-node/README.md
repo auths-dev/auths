@@ -108,7 +108,7 @@ const members = auths.orgs.listMembers({ orgDid: org.orgDid })
 import {
   verifyAttestation,
   verifyChain,
-  verifyAttestationWithCapability,
+  verifyAtTime,
 } from '@auths-dev/sdk'
 
 // Single attestation
@@ -118,11 +118,12 @@ const result = verifyAttestation(attestationJson, issuerPublicKeyHex)
 const report = verifyChain(attestationChain, rootPublicKeyHex)
 console.log(report.status.statusType) // 'Valid' | 'Invalid' | ...
 
-// Capability-scoped verification
-const capResult = verifyAttestationWithCapability(
-  attestationJson, issuerPublicKeyHex, 'sign_commit'
-)
+// Time-pinned verification
+const atResult = verifyAtTime(attestationJson, issuerPublicKeyHex, '2024-06-15T00:00:00Z')
 ```
+
+> Capability/role authority is no longer checked at verification time. A capability
+> grant comes from a holder-verified ACDC credential, not the attestation.
 
 ## Error handling
 

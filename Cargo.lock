@@ -982,6 +982,7 @@ dependencies = [
  "json-canon",
  "libc",
  "log",
+ "p256 0.13.2",
  "pkcs8 0.10.2",
  "proptest",
  "ring",

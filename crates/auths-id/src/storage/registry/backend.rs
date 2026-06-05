@@ -34,12 +34,11 @@
 //! The "latest-view" pattern means the current file represents only the latest state.
 //! Historical data is preserved separately for audit purposes.
 
-use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use auths_core::storage::keychain::IdentityDID;
-use auths_verifier::core::{Attestation, Capability, ResourceId};
+use auths_verifier::core::{Attestation, ResourceId};
 use auths_verifier::types::CanonicalDid;
 use thiserror::Error;
 
@@ -717,16 +716,19 @@ pub trait RegistryBackend: Send + Sync {
     /// let actual_status = compute_status_from_view(&view, now);
     /// ```
     ///
-    /// The `include_statuses` filter is ignored (status filtering is policy).
+    /// The `include_statuses` filter is ignored (status filtering is policy). The
+    /// `roles_any`/`capabilities_*` filters are also inert: role/caps authority is
+    /// KEL-native (delegator-anchored scope seal), not the attestation, so this method
+    /// no longer reads attestation role/caps to filter or populate views.
     ///
     /// # Arguments
     ///
     /// * `org` - The org DID prefix
-    /// * `filter` - Filter criteria for members (role, capabilities)
+    /// * `_filter` - Filter criteria (retained for API stability; role/caps filters are inert)
     fn list_org_members(
         &self,
         org: &str,
-        filter: &MemberFilter,
+        _filter: &MemberFilter,
     ) -> Result<Vec<MemberView>, RegistryError> {
         let mut members = Vec::new();
 
@@ -742,37 +744,23 @@ pub trait RegistryBackend: Send + Sync {
                 ),
             };
 
-            // For valid attestations, apply data filters (role, capabilities)
-            // Note: Status filtering removed - that's policy layer responsibility
+            // For valid attestations, surface identity facts only.
+            //
+            // Role/capabilities authority is KEL-native (the delegator-anchored scope
+            // seal — see `crate::storage::registry::org_member` and the SDK org
+            // delegation path), NOT the attestation. The scope-seal-derived values are
+            // not available at this storage seam, so `MemberView.role`/`.capabilities`
+            // are left empty here (display-only, fail-closed): a consumer that needs
+            // authority must resolve it from the KEL, never from these fields.
+            // The `roles_any`/`capabilities_*` filters are no longer applied for the
+            // same reason — filtering on attestation-borne role/caps would re-introduce
+            // the retired authority reader.
             if let Some(att) = att_opt {
-                // Role filter: include if member.role is in set
-                if let Some(ref roles) = filter.roles_any {
-                    match &att.role {
-                        Some(role) if roles.contains(role) => {}
-                        _ => return ControlFlow::Continue(()),
-                    }
-                }
-
-                // Capabilities any: intersection non-empty
-                let member_caps: HashSet<&Capability> = att.capabilities.iter().collect();
-                if let Some(ref caps_any) = filter.capabilities_any
-                    && !member_caps.iter().any(|c| caps_any.contains(*c))
-                {
-                    return ControlFlow::Continue(());
-                }
-
-                // Capabilities all: filter_caps ⊆ member_caps
-                if let Some(ref caps_all) = filter.capabilities_all
-                    && !caps_all.iter().all(|c| member_caps.contains(c))
-                {
-                    return ControlFlow::Continue(());
-                }
-
                 members.push(MemberView {
                     did: entry.did.clone(),
                     status,
-                    role: att.role,
-                    capabilities: att.capabilities.clone(),
+                    role: None,
+                    capabilities: vec![],
                     #[allow(clippy::disallowed_methods)] // INVARIANT: att.issuer is a CanonicalDid parsed from validated attestation JSON
                     issuer: IdentityDID::new_unchecked(att.issuer.as_str()),
                     rid: att.rid.clone(),

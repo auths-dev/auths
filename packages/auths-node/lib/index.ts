@@ -80,12 +80,9 @@ export {
 } from './pairing'
 export {
   verifyAttestation,
-  verifyAttestationWithCapability,
   verifyChain,
-  verifyChainWithCapability,
   verifyDeviceAuthorization,
   verifyAtTime,
-  verifyAtTimeWithCapability,
   verifyChainWithWitnesses,
   type VerificationResult,
   type VerificationReport,
