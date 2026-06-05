@@ -48,6 +48,8 @@ pub mod ksn;
 pub mod messages;
 mod said;
 mod state;
+/// Backerless TEL (Transaction Event Log) credential-status events: `vcp`/`iss`/`rev`.
+pub mod tel;
 mod types;
 mod validate;
 /// Witness protocol types: receipts, providers, and error reporting for split-view defense.
@@ -73,7 +75,7 @@ pub use acdc::{
     compute_capability_schema_said, compute_schema_said,
 };
 pub use crypto::{compute_next_commitment, verify_commitment};
-pub use error::KeriTranslationError;
+pub use error::{KeriTranslationError, TelError};
 pub use events::{
     AgentScope, DipEvent, DipEventInit, DrtEvent, DrtEventInit, Event, IcpEvent, IcpEventInit,
     IndexedSignature, IxnEvent, KERI_VERSION_PREFIX, KeriSequence, RotEvent, Seal, SignedEvent,
@@ -88,6 +90,10 @@ pub use said::{
     verify_said,
 };
 pub use state::{AnchorStatus, KeyState};
+pub use tel::{
+    Iss, Rev, TEL_KERIPY_REVISION, TRAIT_NO_BACKERS, TelAnchorSeal, TelEvent, TelState, Vcp,
+    to_wire_bytes as tel_to_wire_bytes, validate_tel,
+};
 pub use types::{
     CesrKey, ConfigTrait, Fraction, FractionError, KeriTypeError, Prefix, Said, Threshold,
     VersionString,

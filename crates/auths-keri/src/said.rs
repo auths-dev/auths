@@ -44,9 +44,10 @@ impl Protocol {
 
     /// Whether the `i` field is self-addressing (blanked during SAID-ification).
     ///
-    /// KERI inception events (`icp`/`dip`) derive their prefix from the SAID, so
-    /// `i` is blanked. ACDC `i` is the *issuer* AID (an external reference), so it
-    /// is never blanked — only event protocols consult the `t` field.
+    /// KERI inception events (`icp`/`dip`) and backerless TEL registry inception
+    /// (`vcp`) derive their prefix from the SAID, so `i` is blanked. ACDC `i` is
+    /// the *issuer* AID (an external reference), so it is never blanked — only
+    /// event protocols consult the `t` field.
     fn blanks_inception_prefix(self) -> bool {
         matches!(self, Protocol::Keri)
     }
@@ -59,7 +60,8 @@ impl Protocol {
 ///
 /// The algorithm (Trust over IP KERI v0.9):
 /// 1. Set `d` to the 44-char `#` placeholder.
-/// 2. For inception events (`t == "icp"`), also set `i` to the placeholder.
+/// 2. For self-addressing inception events (`t` in `icp`/`dip`/`vcp`), also set
+///    `i` to the placeholder.
 /// 3. Remove the `x` field entirely (signatures are detached from the digest).
 /// 4. Serialize with `serde_json::to_vec` (insertion-order, NOT json-canon).
 /// 5. Blake3-256 hash the bytes.
@@ -110,7 +112,7 @@ pub fn compute_said_with_protocol(
     let placeholder = serde_json::Value::String(SAID_PLACEHOLDER.to_string());
     let event_type = obj.get("t").and_then(|v| v.as_str()).unwrap_or("");
     let blank_prefix =
-        protocol.blanks_inception_prefix() && (event_type == "icp" || event_type == "dip");
+        protocol.blanks_inception_prefix() && matches!(event_type, "icp" | "dip" | "vcp");
 
     // Rebuild the map with spec-compliant placeholders and field ordering.
     let mut new_obj = serde_json::Map::new();
@@ -123,8 +125,9 @@ pub fn compute_said_with_protocol(
             new_obj.insert("d".to_string(), placeholder.clone());
         } else if k == "i" && blank_prefix {
             // Inception events are self-addressing (prefix == SAID), including
-            // delegated inception (`dip`): blank `i` so the digest is computed
-            // over the placeholder, not the derived prefix.
+            // delegated inception (`dip`) and backerless TEL registry inception
+            // (`vcp`): blank `i` so the digest is computed over the placeholder,
+            // not the derived prefix.
             new_obj.insert("i".to_string(), placeholder.clone());
         } else {
             new_obj.insert(k.clone(), v.clone());

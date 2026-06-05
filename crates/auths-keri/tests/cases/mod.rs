@@ -13,5 +13,6 @@ mod sequence_hex;
 mod source_seal;
 #[cfg(feature = "cesr")]
 mod stream;
+mod tel;
 mod wire_requires_d;
 mod witness_flows;
