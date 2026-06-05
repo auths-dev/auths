@@ -42,6 +42,14 @@ use chrono::{DateTime, Utc};
 
 use crate::credential::{CredentialVerdict, SignedAcdc, verify_credential};
 
+/// The optional informational role claim in the ACDC attributes (`a.role`),
+/// written by the F.4 issuance path. Surfaced on a `Valid` verdict for the F.6 bridge.
+const ROLE_FIELD: &str = "role";
+
+/// The optional ISO-8601 expiry claim in the ACDC attributes (`a.expiry`), written by
+/// the F.4 issuance path. Surfaced on a `Valid` verdict for the F.6 bridge.
+const EXPIRY_FIELD: &str = "expiry";
+
 /// `DelegatorKelLookup` over an in-memory delegator KEL slice — answers "did the
 /// delegator anchor a seal for this delegated subject event?" by scanning its seals.
 ///
@@ -160,13 +168,19 @@ impl PresentationEnvelope {
 pub enum PresentationVerdict {
     /// Holder-binding proven: the credential is valid (F.5) AND the presentation was
     /// signed by the subject AID's current signing-time key for the expected audience
-    /// and nonce/TTL. Carries the subject AID so the F.6 authority bridge can require
-    /// holder proof from the *verified presentation*, never from a raw ACDC.
+    /// and nonce/TTL. Carries the grant facts so the F.6 authority bridge can build a
+    /// policy context from the *verified presentation*, never from a raw ACDC.
     Valid {
+        /// The issuer AID (`did:keri:`) that granted the now-bound credential.
+        issuer: String,
         /// The subject (holder) AID (`did:keri:`) whose current key signed the presentation.
         subject: String,
         /// The capabilities the now-bound credential grants (`a.capability`).
         caps: Vec<String>,
+        /// The optional informational role claim (`a.role`).
+        role: Option<String>,
+        /// The optional credential expiry (`a.expiry`), as carried in the ACDC attributes.
+        expires_at: Option<DateTime<Utc>>,
     },
     /// The presentation signature did not verify against the subject KEL's current key —
     /// the presenter does not currently control `a.i` (bearer / stale-key rejection).
@@ -270,10 +284,17 @@ pub async fn verify_presentation(
         return verdict;
     }
 
-    let caps = match credential_verdict {
-        CredentialVerdict::Valid { caps, .. } => caps,
+    let (issuer, caps) = match credential_verdict {
+        CredentialVerdict::Valid { issuer, caps, .. } => (issuer, caps),
         // Unreachable: `is_valid()` above guarantees the `Valid` arm.
-        _ => Vec::new(),
+        _ => (String::new(), Vec::new()),
+    };
+
+    let grant = GrantFacts {
+        issuer,
+        caps,
+        role: read_attribute(signed, ROLE_FIELD),
+        expires_at: read_expiry(signed),
     };
 
     verify_holder_signature(
@@ -281,10 +302,41 @@ pub async fn verify_presentation(
         signed,
         subject_kel,
         subject_delegator_kel,
-        &caps,
+        grant,
         provider,
     )
     .await
+}
+
+/// The credential grant facts surfaced on a `Valid` presentation verdict.
+///
+/// Assembled from the inner F.5 [`CredentialVerdict::Valid`] (`issuer`/`caps`) and the
+/// verified `acdc.a` (`role`/`expiry`) once both the credential and the holder proof
+/// have passed, so they can never be read off an un-presented ACDC.
+struct GrantFacts {
+    issuer: String,
+    caps: Vec<String>,
+    role: Option<String>,
+    expires_at: Option<DateTime<Utc>>,
+}
+
+/// Read an optional string claim from the verified ACDC attributes (`a.<field>`).
+fn read_attribute(signed: &SignedAcdc, field: &str) -> Option<String> {
+    signed
+        .acdc
+        .a
+        .data
+        .get(field)
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+/// Read and parse the optional `a.expiry` claim into a UTC instant (RFC-3339), as F.4 wrote it.
+fn read_expiry(signed: &SignedAcdc) -> Option<DateTime<Utc>> {
+    let raw = read_attribute(signed, EXPIRY_FIELD)?;
+    DateTime::parse_from_rfc3339(&raw)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
 }
 
 /// Enforce the nonce/TTL binding; `None` means the binding passed.
@@ -327,7 +379,7 @@ async fn verify_holder_signature(
     signed: &SignedAcdc,
     subject_kel: &[Event],
     subject_delegator_kel: &[Event],
-    caps: &[String],
+    grant: GrantFacts,
     provider: &dyn CryptoProvider,
 ) -> PresentationVerdict {
     let Some(state) = replay_subject(subject_kel, subject_delegator_kel) else {
@@ -345,8 +397,11 @@ async fn verify_holder_signature(
             && verify_with_key(&key, &message, &envelope.signature, provider).await
         {
             return PresentationVerdict::Valid {
+                issuer: grant.issuer,
                 subject: format!("did:keri:{}", signed.acdc.a.i),
-                caps: caps.to_vec(),
+                caps: grant.caps,
+                role: grant.role,
+                expires_at: grant.expires_at,
             };
         }
     }

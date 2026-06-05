@@ -394,9 +394,22 @@ async fn valid_challenge_presentation_verifies() {
 
         let verdict = verify(&envelope, &cred, &subject.kel, AUDIENCE, Some(&nonce)).await;
         match verdict {
-            PresentationVerdict::Valid { subject: s, caps } => {
+            PresentationVerdict::Valid {
+                issuer,
+                subject: s,
+                caps,
+                role,
+                expires_at,
+            } => {
                 assert_eq!(s, format!("did:keri:{}", subject.aid));
                 assert_eq!(caps, vec!["sign".to_string()]);
+                assert!(
+                    issuer.starts_with("did:keri:"),
+                    "issuer carried on Valid, got {issuer}"
+                );
+                // The F.8 fixture writes only `a.capability` (no role/expiry claims).
+                assert_eq!(role, None);
+                assert_eq!(expires_at, None);
             }
             other => panic!("expected Valid on {curve:?}, got {other:?}"),
         }
