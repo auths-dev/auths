@@ -55,6 +55,7 @@ pub mod commit;
 pub mod commit_error;
 pub mod commit_kel;
 pub mod core;
+pub mod credential;
 pub mod duplicity;
 pub mod error;
 /// C-compatible FFI bindings for attestation and chain verification.
@@ -134,6 +135,9 @@ pub use commit_kel::{
     verify_commit_against_kel_scoped, verify_commit_against_kel_witnessed,
 };
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};
+
+// Re-export ACDC credential verification (Epic F.5)
+pub use credential::{CredentialVerdict, LifecycleEvent, SignedAcdc, verify_credential};
 
 // Re-export crypto provider trait for downstream consumers
 pub use auths_crypto::CryptoProvider;

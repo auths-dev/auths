@@ -78,8 +78,8 @@ pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::{KeriTranslationError, TelError};
 pub use events::{
     AgentScope, DipEvent, DipEventInit, DrtEvent, DrtEventInit, Event, IcpEvent, IcpEventInit,
-    IndexedSignature, IxnEvent, KERI_VERSION_PREFIX, KeriSequence, RotEvent, Seal, SignedEvent,
-    SourceSeal, decode_agent_scope, encode_agent_scope, parse_attachment,
+    IndexedSignature, IxnEvent, KERI_VERSION_PREFIX, KeriSequence, RotEvent, RotEventInit, Seal,
+    SignedEvent, SourceSeal, decode_agent_scope, encode_agent_scope, parse_attachment,
     parse_delegated_attachment, parse_source_seal_couples, serialize_attachment,
     serialize_source_seal_couples,
 };

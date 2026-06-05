@@ -1,6 +1,7 @@
 mod capability_fromstr;
 mod commit_kel;
 mod commit_verify;
+mod credential;
 mod did_parsing;
 mod expiration_skew;
 #[cfg(feature = "ffi")]

@@ -452,19 +452,33 @@ pub struct RotEvent {
 /// Parameter struct for [`RotEvent::new`]. See [`IcpEventInit`] for
 /// the pattern rationale.
 pub struct RotEventInit {
+    /// Version string (`KERI10JSON…`); a placeholder until finalized.
     pub v: VersionString,
+    /// Self-addressing identifier (the event SAID); blank until finalized.
     pub d: Said,
+    /// Identifier prefix of the rotating identity.
     pub i: Prefix,
+    /// Sequence number (strictly greater than the prior event's).
     pub s: KeriSequence,
+    /// Prior event SAID (the back-link establishing the chain).
     pub p: Said,
+    /// Signing threshold over the new current keys `k`.
     pub kt: Threshold,
+    /// New current signing keys (CESR-encoded verkeys) revealed by this rotation.
     pub k: Vec<CesrKey>,
+    /// Next-key threshold over the new pre-rotation commitments `n`.
     pub nt: Threshold,
+    /// New pre-rotation commitments (digests of the next keys).
     pub n: Vec<Said>,
+    /// Backer (witness) threshold after applying the backer deltas.
     pub bt: Threshold,
+    /// Backer (witness) prefixes to remove.
     pub br: Vec<Prefix>,
+    /// Backer (witness) prefixes to add.
     pub ba: Vec<Prefix>,
+    /// Configuration traits (e.g. `RB`/`NRB`) updated by this rotation.
     pub c: Vec<ConfigTrait>,
+    /// Anchored seals carried in this event's `a[]`.
     pub a: Vec<Seal>,
 }
 
