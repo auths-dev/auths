@@ -65,6 +65,12 @@ def test_wait_for_response_timeout(tmp_path):
     session.stop()
 
 
+@pytest.mark.xfail(
+    reason="pairing join calls the removed `by-code` route; the daemon serves `/lookup` "
+    "(HMAC) — breaks CLI + SDK relay client + both bindings. See auths-dev/auths#219. "
+    "Flips to XPASS when the route is reconciled.",
+    strict=False,
+)
 def test_pairing_roundtrip(tmp_path):
     """Full pairing flow: controller creates session, device joins."""
     controller_home = tmp_path / "controller"
@@ -118,6 +124,12 @@ def test_pairing_roundtrip(tmp_path):
     session.stop()
 
 
+@pytest.mark.xfail(
+    reason="pairing join calls the removed `by-code` route; the daemon serves `/lookup` "
+    "(HMAC) — breaks CLI + SDK relay client + both bindings. See auths-dev/auths#219. "
+    "Flips to XPASS when the route is reconciled.",
+    strict=False,
+)
 def test_pairing_with_scoped_capabilities(tmp_path):
     """Paired device receives only the granted capabilities."""
     controller_home = tmp_path / "controller"

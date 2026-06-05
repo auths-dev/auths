@@ -129,3 +129,26 @@ class TestVerifyActionEnvelope:
         result = verify_action_envelope(envelope, "a" * 64)
         assert not result.valid
         assert "version" in result.error.lower()
+
+
+class TestGenerateInmemoryKeypair:
+    """Regression: the in-memory keypair must work for the default P-256 curve,
+    not just Ed25519 (the private key is a 32-byte scalar for both)."""
+
+    def test_default_p256_seed_is_usable(self):
+        from auths import generate_inmemory_keypair
+
+        priv, pub, did = generate_inmemory_keypair()  # default = P-256
+        assert len(bytes.fromhex(priv)) == 32, "private key is a 32-byte scalar"
+        assert did.startswith("did:key:")
+        # the returned scalar must reconstruct a working P-256 signer
+        sig = sign_bytes(priv, b"hello")  # default curve = P-256
+        assert len(sig) == 128
+
+    def test_ed25519_seed_is_usable(self):
+        from auths import generate_inmemory_keypair
+
+        priv, pub, did = generate_inmemory_keypair("ed25519")
+        assert len(bytes.fromhex(priv)) == 32
+        sig = sign_bytes(priv, b"hello", "ed25519")
+        assert len(sig) == 128

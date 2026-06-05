@@ -7,7 +7,6 @@ use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{
     IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
 };
-use auths_id::identity::helpers::extract_seed_bytes;
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::storage::attestation::AttestationSource;
 use auths_sdk::context::AuthsContext;
@@ -656,11 +655,15 @@ pub fn generate_inmemory_keypair(curve: Option<String>) -> PyResult<(String, Str
         &generated.public_key,
         curve_type,
     );
-    let seed = extract_seed_bytes(generated.pkcs8.as_ref()).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
-    })?;
+    // Curve-aware 32-byte private key: Ed25519 seed or P-256 scalar (both 32 bytes,
+    // and both consumed by `sign_bytes`/`sign_action` as a 32-byte `TypedSeed`).
+    // `extract_seed_bytes` is Ed25519-only and rejects a P-256 PKCS#8.
+    let signer =
+        auths_crypto::TypedSignerKey::from_pkcs8(generated.pkcs8.as_ref()).map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
+        })?;
     Ok((
-        hex::encode(seed),
+        hex::encode(signer.seed().as_bytes()),
         hex::encode(&generated.public_key),
         did.to_string(),
     ))
