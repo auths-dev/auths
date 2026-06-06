@@ -699,6 +699,8 @@ version = "0.0.1-rc.12"
 dependencies = [
  "anyhow",
  "auths-jwt",
+ "auths-rp",
+ "auths-sdk",
  "auths-telemetry",
  "auths-verifier",
  "axum",
