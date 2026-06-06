@@ -3241,7 +3241,6 @@ mod tests {
             .rid("org-member")
             .issuer(&format!("did:keri:{}", org))
             .subject(member_did.as_ref())
-            .role(Some(Role::Member))
             .build();
 
         backend.store_org_member(org, &member_att).unwrap();
@@ -3271,7 +3270,6 @@ mod tests {
             .rid("org-keri-member")
             .issuer(&format!("did:keri:{}", org))
             .subject(keri_did)
-            .role(Some(Role::Member))
             .build();
 
         backend.store_org_member(org, &member_att).unwrap();
@@ -3303,7 +3301,6 @@ mod tests {
             .rid("org-underscore-member")
             .issuer(&format!("did:keri:{}", org))
             .subject(did_with_underscore)
-            .role(Some(Role::Member))
             .build();
 
         backend.store_org_member(org, &member_att).unwrap();
@@ -3474,7 +3471,6 @@ mod tests {
             .rid("active")
             .issuer(&format!("did:keri:{}", org))
             .subject(active_did.as_ref())
-            .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &active_att).unwrap();
 
@@ -3485,7 +3481,6 @@ mod tests {
             .issuer(&format!("did:keri:{}", org))
             .subject(revoked_did.as_ref())
             .revoked_at(Some(Utc::now()))
-            .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &revoked_att).unwrap();
 
@@ -3519,7 +3514,6 @@ mod tests {
             .issuer(&format!("did:keri:{}", org))
             .subject(revoked_did.as_ref())
             .revoked_at(Some(Utc::now()))
-            .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &revoked_att).unwrap();
 
@@ -3549,7 +3543,6 @@ mod tests {
             .issuer(&format!("did:keri:{}", org))
             .subject(expired_did.as_ref())
             .expires_at(Some(past))
-            .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &expired_att).unwrap();
 
@@ -3581,7 +3574,6 @@ mod tests {
             .rid("org")
             .issuer(&org_issuer)
             .subject(org_member_did.as_ref())
-            .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &org_att).unwrap();
 
@@ -3591,7 +3583,6 @@ mod tests {
             .rid("wrong")
             .issuer("did:keri:EDifferentIssuer") // WRONG!
             .subject(wrong_did.as_ref())
-            .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &wrong_att).unwrap();
 
@@ -3625,11 +3616,10 @@ mod tests {
     #[test]
     fn list_org_members_does_not_surface_attestation_role_or_caps() {
         // Role/caps authority is KEL-native (delegator-anchored scope seal), never the
-        // attestation. `list_org_members` therefore leaves MemberView role/caps empty
-        // even when the stored attestation names them, and its role/caps filters are
-        // inert (no attestation-borne authority reader remains).
+        // attestation — the attestation no longer carries role/caps at all.
+        // `list_org_members` therefore leaves MemberView role/caps empty, and its
+        // role/caps filters are inert (no attestation-borne authority reader remains).
         use auths_id::storage::registry::org_member::MemberFilter;
-        use auths_verifier::core::Capability;
         use std::collections::HashSet;
 
         let (_dir, backend) = setup_test_repo();
@@ -3640,8 +3630,6 @@ mod tests {
             .rid("admin")
             .issuer(&format!("did:keri:{}", org))
             .subject(admin_did.as_ref())
-            .role(Some(Role::Admin))
-            .capabilities(vec![Capability::manage_members()])
             .build();
         backend.store_org_member(org, &admin_att).unwrap();
 
@@ -3650,8 +3638,6 @@ mod tests {
             .rid("member")
             .issuer(&format!("did:keri:{}", org))
             .subject(member_did.as_ref())
-            .role(Some(Role::Member))
-            .capabilities(vec![Capability::sign_commit()])
             .build();
         backend.store_org_member(org, &member_att).unwrap();
 
@@ -3687,7 +3673,6 @@ mod tests {
             .rid("valid")
             .issuer(&format!("did:keri:{}", org))
             .subject(valid_did.as_ref())
-            .role(Some(Role::Member))
             .build();
         backend.store_org_member(org, &valid_att).unwrap();
 
@@ -3762,7 +3747,6 @@ mod tests {
                 .subject(did.as_ref())
                 .revoked_at(*revoked_at)
                 .expires_at(*expires_at)
-                .role(Some(Role::Member))
                 .build();
             backend.store_org_member(org, &att).unwrap();
         }
@@ -4190,8 +4174,6 @@ mod index_consistency_tests {
             commit_message: None,
             author: None,
             oidc_binding: None,
-            role: None,
-            capabilities: vec![],
             delegated_by: None,
             signer_type: None,
             environment_claim: None,
@@ -4439,8 +4421,6 @@ mod tenant_isolation_tests {
             commit_message: None,
             author: None,
             oidc_binding: None,
-            role: None,
-            capabilities: vec![],
             delegated_by: None,
             signer_type: None,
             environment_claim: None,

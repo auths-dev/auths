@@ -579,7 +579,6 @@ mod tests {
         issuer: &Did,
         device_did: &Did,
         revoked_at: Option<DateTime<Utc>>,
-        capabilities: Vec<String>,
     ) -> Attestation {
         use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
 
@@ -600,11 +599,6 @@ mod tests {
             commit_message: None,
             author: None,
             oidc_binding: None,
-            role: None,
-            capabilities: capabilities
-                .into_iter()
-                .filter_map(|c| c.parse().ok())
-                .collect(),
             delegated_by: None,
             signer_type: None,
             environment_claim: None,
@@ -622,7 +616,7 @@ mod tests {
         storage.add_attestation(
             device_did.clone(),
             identity_did.clone(),
-            make_attestation(&identity_did, &device_did, None, vec![]),
+            make_attestation(&identity_did, &device_did, None),
         );
         storage.link_device_to_identity(device_did.clone(), identity_did.clone(), repo_id);
         storage.set_identity_tip(identity_did.clone(), [0xAA; 20]);

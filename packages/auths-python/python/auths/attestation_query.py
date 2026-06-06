@@ -31,8 +31,6 @@ class Attestation:
     """DID of the entity this attestation authorizes."""
     device_did: str
     """DID of the device key bound by this attestation."""
-    capabilities: list[str]
-    """Granted capabilities (e.g. `["sign", "verify"]`)."""
     signer_type: str | None
     """Signer classification: `"Human"`, `"Agent"`, or `"Workload"`."""
     expires_at: str | None
@@ -57,15 +55,12 @@ class Attestation:
 
     def __repr__(self) -> str:
         status = "revoked" if self.is_revoked else "active"
-        caps = ", ".join(self.capabilities[:3])
-        if len(self.capabilities) > 3:
-            caps += f" +{len(self.capabilities) - 3} more"
         rid_short = self.rid[:16] if len(self.rid) > 16 else self.rid
         subject_short = self.subject[:20] if len(self.subject) > 20 else self.subject
         return (
             f"Attestation(rid='{rid_short}...', "
             f"subject='{subject_short}...', "
-            f"caps=[{caps}], status={status})"
+            f"status={status})"
         )
 
 
@@ -75,7 +70,6 @@ def _convert(py_att) -> Attestation:
         issuer=py_att.issuer,
         subject=py_att.subject,
         device_did=py_att.device_did,
-        capabilities=list(py_att.capabilities),
         signer_type=py_att.signer_type,
         expires_at=py_att.expires_at,
         revoked_at=py_att.revoked_at,

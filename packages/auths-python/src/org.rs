@@ -16,7 +16,6 @@ use auths_sdk::workflows::org::{add_member, list_members, revoke_member};
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
-use auths_verifier::Capability;
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Role;
 use auths_verifier::types::CanonicalDid;
@@ -154,12 +153,6 @@ pub fn create_org(
 
         #[allow(clippy::disallowed_methods)] // Presentation boundary
         let now = Utc::now();
-        let admin_capabilities = vec![
-            Capability::sign_commit(),
-            Capability::sign_release(),
-            Capability::manage_members(),
-            Capability::rotate_keys(),
-        ];
 
         let meta = AttestationMetadata {
             note: Some(format!("Organization '{}' root admin", label)),
@@ -186,8 +179,6 @@ pub fn create_org(
                 meta: &meta,
                 identity_alias: Some(&alias),
                 device_alias: None,
-                capabilities: admin_capabilities,
-                role: Some(Role::Admin),
                 delegated_by: None,
                 commit_sha: None,
                 signer_type: None,

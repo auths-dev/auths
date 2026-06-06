@@ -28,16 +28,8 @@ fn multi_device_authorized_group() {
         &controller_did,
         &repo_id,
         false,
-        vec![],
     );
-    register_device(
-        &mut storage,
-        &alice_phone,
-        &controller_did,
-        &repo_id,
-        false,
-        vec![],
-    );
+    register_device(&mut storage, &alice_phone, &controller_did, &repo_id, false);
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -101,30 +93,9 @@ fn mixed_human_and_node_group() {
     storage.add_identity(alice_did.clone(), make_key_state("EAlice", 1));
     storage.add_identity(bob_did.clone(), make_key_state("EBob", 1));
 
-    register_device(
-        &mut storage,
-        &alice_phone,
-        &alice_did,
-        &repo_id,
-        false,
-        vec![],
-    );
-    register_device(
-        &mut storage,
-        &alice_laptop,
-        &alice_did,
-        &repo_id,
-        false,
-        vec![],
-    );
-    register_device(
-        &mut storage,
-        &bob_desktop,
-        &bob_did,
-        &repo_id,
-        false,
-        vec![],
-    );
+    register_device(&mut storage, &alice_phone, &alice_did, &repo_id, false);
+    register_device(&mut storage, &alice_laptop, &alice_did, &repo_id, false);
+    register_device(&mut storage, &bob_desktop, &bob_did, &repo_id, false);
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -167,16 +138,8 @@ fn mixed_keri_and_legacy_delegates() {
         &controller_did,
         &repo_id,
         false,
-        vec![],
     );
-    register_device(
-        &mut storage,
-        &bob_desktop,
-        &controller_did,
-        &repo_id,
-        false,
-        vec![],
-    );
+    register_device(&mut storage, &bob_desktop, &controller_did, &repo_id, false);
 
     let bridge = DefaultBridge::with_storage(storage);
 
@@ -227,22 +190,8 @@ fn find_identity_for_device() {
     let device_b = DeviceFixture::new(2);
     let unregistered = DeviceFixture::new(3);
 
-    register_device(
-        &mut storage,
-        &device_a,
-        &controller_did,
-        &repo_id,
-        false,
-        vec![],
-    );
-    register_device(
-        &mut storage,
-        &device_b,
-        &controller_did,
-        &repo_id,
-        false,
-        vec![],
-    );
+    register_device(&mut storage, &device_a, &controller_did, &repo_id, false);
+    register_device(&mut storage, &device_b, &controller_did, &repo_id, false);
 
     let bridge = DefaultBridge::with_storage(storage);
 

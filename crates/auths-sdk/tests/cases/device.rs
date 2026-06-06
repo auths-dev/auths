@@ -314,7 +314,6 @@ fn link_test_device(
         identity_key_alias: key_alias.clone(),
         device_key_alias: Some(KeyAlias::new_unchecked("device-key")),
         device_did: None,
-        capabilities: vec![],
         expires_in: Some(2_592_000),
         note: Some("test device".into()),
         payload: None,

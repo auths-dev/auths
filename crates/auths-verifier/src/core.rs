@@ -1270,14 +1270,6 @@ pub struct Attestation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_binding: Option<OidcBinding>,
 
-    /// Role for org membership attestations.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<Role>,
-
-    /// Capabilities this attestation grants.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capabilities: Vec<Capability>,
-
     /// DID of the attestation that delegated authority (for chain tracking).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delegated_by: Option<CanonicalDid>,
@@ -1407,12 +1399,6 @@ pub struct CanonicalAttestationData<'a> {
     /// Optional human-readable note.
     pub note: &'a Option<String>,
 
-    /// Org membership role (included in signed envelope).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<&'a str>,
-    /// Capabilities granted by this attestation (included in signed envelope).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub capabilities: Option<&'a Vec<Capability>>,
     /// DID of the delegating attestation (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delegated_by: Option<&'a CanonicalDid>,
@@ -1484,12 +1470,6 @@ impl Attestation {
             expires_at: &self.expires_at,
             revoked_at: &self.revoked_at,
             note: &self.note,
-            role: self.role.as_ref().map(|r| r.as_str()),
-            capabilities: if self.capabilities.is_empty() {
-                None
-            } else {
-                Some(&self.capabilities)
-            },
             delegated_by: self.delegated_by.as_ref(),
             signer_type: self.signer_type.as_ref(),
             commit_sha: self.commit_sha.as_deref(),
@@ -2178,11 +2158,11 @@ mod tests {
         }
     }
 
-    // Tests for Attestation org fields (fn-6.2)
+    // Tests for Attestation delegation field
 
     #[test]
-    fn attestation_old_json_without_org_fields_deserializes() {
-        // Simulates an old attestation JSON without role, capabilities, delegated_by
+    fn attestation_old_json_without_delegated_by_deserializes() {
+        // Simulates an attestation JSON without the delegated_by field.
         let old_json = r#"{
             "version": 1,
             "rid": "test-rid",
@@ -2197,37 +2177,26 @@ mod tests {
 
         let att: Attestation = serde_json::from_str(old_json).unwrap();
 
-        // New fields should have defaults
-        assert_eq!(att.role, None);
-        assert!(att.capabilities.is_empty());
         assert_eq!(att.delegated_by, None);
     }
 
     #[test]
-    fn attestation_with_org_fields_serializes_correctly() {
+    fn attestation_delegated_by_serializes_correctly() {
         let att = AttestationBuilder::default()
             .rid("test-rid")
             .issuer("did:keri:Eissuer")
             .subject("did:key:zSubject")
-            .role(Some(Role::Admin))
-            .capabilities(vec![
-                Capability::sign_commit(),
-                Capability::manage_members(),
-            ])
             .delegated_by(Some(CanonicalDid::new_unchecked("did:keri:Edelegator")))
             .build();
 
         let json = serde_json::to_string(&att).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(parsed["role"], "admin");
-        assert_eq!(parsed["capabilities"][0], "sign_commit");
-        assert_eq!(parsed["capabilities"][1], "manage_members");
         assert_eq!(parsed["delegated_by"], "did:keri:Edelegator");
     }
 
     #[test]
-    fn attestation_without_org_fields_omits_them_in_json() {
+    fn attestation_omits_delegated_by_when_absent() {
         let att = AttestationBuilder::default()
             .rid("test-rid")
             .issuer("did:keri:Eissuer")
@@ -2237,28 +2206,21 @@ mod tests {
         let json = serde_json::to_string(&att).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        // These fields should not be present in JSON
-        assert!(parsed.get("role").is_none());
-        assert!(parsed.get("capabilities").is_none());
         assert!(parsed.get("delegated_by").is_none());
     }
 
     #[test]
-    fn attestation_with_org_fields_roundtrips() {
+    fn attestation_delegated_by_roundtrips() {
         let original = AttestationBuilder::default()
             .rid("test-rid")
             .issuer("did:keri:Eissuer")
             .subject("did:key:zSubject")
-            .role(Some(Role::Member))
-            .capabilities(vec![Capability::sign_commit(), Capability::sign_release()])
             .delegated_by(Some(CanonicalDid::new_unchecked("did:keri:Eadmin")))
             .build();
 
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: Attestation = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(original.role, deserialized.role);
-        assert_eq!(original.capabilities, deserialized.capabilities);
         assert_eq!(original.delegated_by, deserialized.delegated_by);
     }
 

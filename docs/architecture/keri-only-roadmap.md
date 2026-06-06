@@ -62,7 +62,7 @@ service; ACDC/TEL credential layer.
 | Third-party gets the KEL | trust-on-first-sight / bundle | native git-remote fetch + OOBI | ❌ (Epic C) |
 | Duplicity / ordering | local first-seen | witness receipts (KAWA) | **receipt-gated replay + verify wired** (Epic D); CESR interop (D.10) + e2e (D.12) remain |
 | Agent identity | attestation `delegated_by` | delegated KEL (`dip`/`drt`) | ✅ delivered (Epic E — agents & org members are `dip`-delegated AIDs; [ADR 007](ADRs/007-agent-identity-via-delegation.md)) |
-| Capabilities / roles / OIDC | attestation fields | ACDC + TEL | ❌ deferred (Epic F) |
+| Capabilities / roles | attestation fields | ACDC + TEL | ✅ delivered (Epic F — holder-bound, lifecycle-witnessed, fresh, dual-curve; [ADR 008](ADRs/008-acdc-tel-credentials.md)). OIDC binding stays on the attestation (deferred). |
 
 ## Critical path
 
@@ -75,7 +75,7 @@ Epic B (KEL-native verify) ─┘        │  honest caveat: ordering = trust-on
                                      ▼
                   Epic D (witness receipting + duplicity)  ─► no trust-on-first-sight (high assurance)
                                      ▼
-            Epic E (agent delegation)        Epic F (ACDC/TEL — only if credentials are promised)
+            Epic E (agent delegation)        Epic F (ACDC/TEL credentials — delivered)
 ```
 
 **MVP cut line:** Epics **A + B** + a KEL source for the verifier (the existing `--identity-bundle`,
@@ -393,19 +393,60 @@ revocation; a signer-type trailer discriminator; delegation depth cap + sub-agen
 
 ---
 
-## Epic F — ACDC + TEL (deferred; only if credential-grade features are promised)
+## Epic F — ACDC + TEL credentials ✅ delivered (v1 robust slice)
 
-**Goal:** capabilities, roles, OIDC bindings, and fine-grained agent scopes become verifiable
-credentials (ACDC) with KERI-native revocation (TEL).
+**Goal:** capabilities and roles become verifiable credentials (ACDC) with KERI-native per-credential
+revocation (TEL), anchored to the issuer's KEL.
 
-**Not required for the core thesis.** Device-bound artifact signing needs none of it. Pull in only when
-the product advertises credential-grade authorization.
+**Not required for the core thesis.** Device-bound artifact signing needs none of it — but when shipped it
+was built **first-class, robust**: minimal trust surface, maximal trust guarantees. The eight load-bearing
+decisions (D1–D8), the RegistryBackend freeze-touch resolution, the `agentscope:`-vs-ACDC caps precedence,
+the full threat model, and the composed witness claim are recorded in
+[ADR 008](ADRs/008-acdc-tel-credentials.md).
 
-- **F1 — ACDC credential type + issuance/verification.**
-- **F2 — TEL (transaction event log) registry for issuance + revocation.**
-- **F3 — migrate attestation-borne capabilities/roles/OIDC → ACDC.**
+**Delivered v1 robust slice** — the non-negotiable security properties shipped, not just the happy path:
 
-**Acceptance:** capabilities are issued/verified/revoked as ACDCs anchored to KELs.
+- **F.1 — holder-bound ACDC `{v,d,i,ri,s,a}`** (subject `a.i` = KERI AID) + forward-compatible most-compact
+  SAID (parameterized `ACDC10JSON` protocol tag; all KEL SAIDs unchanged) + pinned embedded JSON-Schema-2020-12;
+  keripy 1.3.4 byte-equal fixtures, **both curves**. ✅
+- **F.2 — backerless (`NB`) TEL `vcp`/`iss`/`rev`** + insertion-order SAID + chain validation; keripy
+  byte-interop, both curves. ✅
+- **F.3 — TEL storage + KEL anchoring** (lazy `vcp`); the frozen `RegistryBackend` was extended with the
+  documented atomicity justification (ACDC blob + TEL event + KEL `ixn` land in one commit); `kt≥2` issuer →
+  typed error. ✅
+- **F.4 — SDK `credentials::issue/revoke/list/verify` + CLI** (`auths credential …`). `verify` is the
+  resolution + **freshness** layer the pure verifier can't be: resolves to the witnessed tip and owns
+  `StaleOrUnresolvable` (fail-closed). ✅
+- **F.5 — pure WASM-safe ACDC verification + lifecycle witness-quorum.** SAID + embedded schema +
+  issuer signing-time key + TEL status by KEL position + **witness-quorum over the `vcp`/`iss`/`rev`
+  anchoring ixns** (the F.9 finding: ixns aren't gated by the core, so the verifier quorum-checks them via
+  KAWA) + `detect_duplicity`. Both curves. ✅
+- **F.6 — `context_from_credential` holder-proof policy bridge.** Authority enters a decision **only** from a
+  holder-verified presentation, never a raw ACDC; documents the `CapsSource` precedence (ACDC authoritative,
+  `agentscope:` seal advisory). ✅
+- **F.8 — holder-binding + presentation signature** (no bearer tokens). Proof of current subject-key control
+  via challenge-response (single-use nonce) over `(cred-SAID, audience, nonce)`; non-interactive short-TTL
+  path with a documented residual. ✅
+- **F.9 — Epic-D witness pre-flight** proving the composed witness claim is achievable (establishment events
+  gate + fail closed; ixns don't, so F.5 quorum-checks the lifecycle anchors). ✅
+- **F.10 — migrate caps/role authority readers off attestations** (single authority source: ACDC via the F.6
+  bridge; `agentscope:` advisory fast path kept). ✅
+- **F.11 — remove caps/role from the attestation write path.** ✅
+- **F.7 — ADR 008 (threat model + composed witness claim + Epic-D dependency), docs, deferred-issue filing.** ✅
+
+**Acceptance (met):** a capability is issued as a holder-bound ACDC anchored to the issuer KEL via a
+backerless TEL, verified purely by replay (SAID + schema + signing-time key + KEL-position TEL status +
+witness-quorum), honored only against a holder-verified presentation, and revoked per-credential via a
+KEL-anchored `rev` ordered by KEL position. Both curves pass issue → verify → revoke.
+
+**NOT deferred — shipped:** holder-binding, lifecycle witness-quorum, and revocation freshness.
+
+**Deferred (tracked in [ADR 008](ADRs/008-acdc-tel-credentials.md), issues filed):** backed registries
+(`bis`/`brv`/`vrt`); ACDC edge (`e`) + rule (`r`) **content** (additive — SAID stays forward-compatible);
+selective/graduated disclosure (`u`/`A`) **content** (a **SAID-breaking v2**, not additive); full IPEX
+grant/admit (the v1 presentation *signature* shipped in F.8); TEL escrow; `Auths-Credential` commit trailer;
+OIDC→ACDC; dynamic/`oneOf` schema registry; `delegated_by`→ACDC edge; and re-introducing an ACDC-sourced
+capability gate for artifact/device verification ([#220](https://github.com/auths-dev/auths/issues/220)).
 
 ---
 
@@ -418,7 +459,7 @@ the product advertises credential-grade authorization.
 | C | strangers can resolve KELs | C1 small (lift logic); C2/C3 real builds | yes — for adoption |
 | D | no trust-on-first-sight | large (witness service) | high-assurance; required at scale |
 | E | agent identities | moderate (events exist) | second wave |
-| F | credentials | large | only if promised |
+| F | credentials | large | delivered (holder-bound, witnessed, fresh) |
 
 **Recommended order:** A → B (in parallel where possible) → C1 → ship MVP with the duplicity caveat →
 D (and C2/C3) → E → F if needed. D1 can start any time (independent service).

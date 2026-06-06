@@ -87,7 +87,6 @@ export interface NapiAttestation {
   issuer: string
   subject: string
   deviceDid: string
-  capabilities: Array<string>
   signerType?: string
   expiresAt?: string
   revokedAt?: string

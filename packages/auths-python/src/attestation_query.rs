@@ -21,8 +21,6 @@ pub struct PyAttestation {
     #[pyo3(get)]
     pub device_did: String,
     #[pyo3(get)]
-    pub capabilities: Vec<String>,
-    #[pyo3(get)]
     pub signer_type: Option<String>,
     #[pyo3(get)]
     pub expires_at: Option<String>,
@@ -63,7 +61,6 @@ fn attestation_to_py(att: &Attestation) -> PyAttestation {
         issuer: att.issuer.to_string(),
         subject: att.subject.to_string(),
         device_did: att.subject.to_string(),
-        capabilities: att.capabilities.iter().map(|c| c.to_string()).collect(),
         signer_type: att.signer_type.as_ref().map(|s| format!("{s:?}")),
         expires_at: att.expires_at.map(|t| t.to_rfc3339()),
         revoked_at: att.revoked_at.map(|t| t.to_rfc3339()),

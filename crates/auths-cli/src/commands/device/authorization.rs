@@ -128,13 +128,6 @@ pub enum DeviceSubcommand {
             help = "Optional description/note for this device authorization."
         )]
         note: Option<String>,
-
-        #[arg(
-            long,
-            value_delimiter = ',',
-            help = "Permissions to grant this device (comma-separated)"
-        )]
-        capabilities: Option<Vec<String>>,
     },
 
     /// Remove a device from the shared identity's controller set by
@@ -258,22 +251,14 @@ pub fn handle_device(
             schema: schema_path_opt,
             expires_in,
             note,
-            capabilities,
         } => {
             let payload = read_payload_file(payload_path_opt.as_deref())?;
             validate_payload_schema(schema_path_opt.as_deref(), &payload)?;
-
-            let caps: Vec<auths_verifier::Capability> = capabilities
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|s| auths_verifier::Capability::parse(&s).ok())
-                .collect();
 
             let link_config = auths_sdk::types::DeviceLinkConfig {
                 identity_key_alias: KeyAlias::new_unchecked(key),
                 device_key_alias: Some(KeyAlias::new_unchecked(device_key)),
                 device_did: Some(device_did.clone()),
-                capabilities: caps,
                 expires_in,
                 note,
                 payload,

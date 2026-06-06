@@ -95,8 +95,6 @@ pub fn test_attestation(device_did: &CanonicalDid, issuer: &str) -> Attestation 
         commit_message: None,
         author: None,
         oidc_binding: None,
-        role: None,
-        capabilities: vec![],
         delegated_by: None,
         signer_type: None,
         environment_claim: None,

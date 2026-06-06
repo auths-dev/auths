@@ -2,9 +2,8 @@ use crate::storage::git_refs::AttestationMetadata;
 
 use auths_core::signing::{PassphraseProvider, SecureSigner};
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
-use auths_verifier::Capability;
 use auths_verifier::core::{
-    Attestation, Ed25519Signature, ResourceId, Role, SignerType, canonicalize_attestation_data,
+    Attestation, Ed25519Signature, ResourceId, SignerType, canonicalize_attestation_data,
 };
 use auths_verifier::error::AttestationError;
 use auths_verifier::types::CanonicalDid;
@@ -63,10 +62,6 @@ pub struct AttestationInput<'a> {
     pub identity_alias: Option<&'a KeyAlias>,
     /// Device-key alias; `None` = no device signature.
     pub device_alias: Option<&'a KeyAlias>,
-    /// Capabilities to grant (included in the signed envelope).
-    pub capabilities: Vec<Capability>,
-    /// Optional org role included in the signed envelope.
-    pub role: Option<Role>,
     /// Optional delegator DID included in the signed envelope.
     pub delegated_by: Option<IdentityDID>,
     /// Git commit SHA this attestation anchors, if any.
@@ -107,8 +102,6 @@ pub fn create_signed_attestation(
         meta,
         identity_alias,
         device_alias,
-        capabilities,
-        role,
         delegated_by,
         commit_sha,
         signer_type,
@@ -162,8 +155,6 @@ pub fn create_signed_attestation(
         .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
         identity_signature: Ed25519Signature::empty(),
         device_signature: Ed25519Signature::empty(),
-        role,
-        capabilities,
         delegated_by: delegated_canonical,
         signer_type,
         environment_claim: None,

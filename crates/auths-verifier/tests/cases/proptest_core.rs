@@ -1,6 +1,6 @@
 use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{
-    Attestation, Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role, ThresholdPolicy,
+    Attestation, Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, ThresholdPolicy,
 };
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, TimeZone, Utc};
@@ -95,16 +95,6 @@ fn arb_rid() -> impl Strategy<Value = ResourceId> {
         .prop_map(|s| ResourceId::new(format!("rid-{}", s)))
 }
 
-/// Generate arbitrary optional Role
-fn arb_optional_role() -> impl Strategy<Value = Option<Role>> {
-    prop_oneof![
-        Just(None),
-        Just(Some(Role::Admin)),
-        Just(Some(Role::Member)),
-        Just(Some(Role::Readonly)),
-    ]
-}
-
 /// Generate arbitrary Attestation
 fn arb_attestation() -> impl Strategy<Value = Attestation> {
     // Split into two tuples to stay under 12-element limit
@@ -119,12 +109,10 @@ fn arb_attestation() -> impl Strategy<Value = Attestation> {
     );
 
     let optional_fields = (
-        arb_optional_datetime(),                           // expires_at
-        arb_optional_datetime(),                           // timestamp
-        arb_optional_note(),                               // note
-        arb_optional_role(),                               // role
-        proptest::collection::vec(arb_capability(), 0..4), // capabilities
-        proptest::option::of(arb_canonical_did()),         // delegated_by
+        arb_optional_datetime(),                   // expires_at
+        arb_optional_datetime(),                   // timestamp
+        arb_optional_note(),                       // note
+        proptest::option::of(arb_canonical_did()), // delegated_by
     );
 
     (core_fields, optional_fields).prop_map(
@@ -138,7 +126,7 @@ fn arb_attestation() -> impl Strategy<Value = Attestation> {
                 device_signature,
                 revoked_at,
             ),
-            (expires_at, timestamp, note, role, capabilities, delegated_by),
+            (expires_at, timestamp, note, delegated_by),
         )| {
             AttestationBuilder::default()
                 .rid(rid.as_str())
@@ -151,8 +139,6 @@ fn arb_attestation() -> impl Strategy<Value = Attestation> {
                 .expires_at(expires_at)
                 .timestamp(timestamp)
                 .note(note)
-                .role(role)
-                .capabilities(capabilities)
                 .delegated_by(delegated_by)
                 .build()
         },
@@ -194,8 +180,6 @@ proptest! {
         prop_assert_eq!(att.expires_at, parsed.expires_at);
         prop_assert_eq!(att.timestamp, parsed.timestamp);
         prop_assert_eq!(att.note, parsed.note);
-        prop_assert_eq!(att.role, parsed.role);
-        prop_assert_eq!(att.capabilities, parsed.capabilities);
         prop_assert_eq!(att.delegated_by, parsed.delegated_by);
     }
 

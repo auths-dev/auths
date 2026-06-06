@@ -1,22 +1,9 @@
-use auths_core::ports::id::UuidProvider;
-use auths_core::signing::{PassphraseProvider, PrefilledPassphraseProvider, SecureSigner};
-use auths_core::storage::keychain::KeyAlias;
-use auths_core::testing::DeterministicUuidProvider;
 use auths_id::ports::registry::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
 use auths_sdk::domains::org::error::OrgError;
-use auths_sdk::testing::fakes::FakeSecureSigner;
-use auths_sdk::workflows::org::{
-    OrgContext, OrgIdentifier, Role, UpdateCapabilitiesCommand, UpdateMemberCommand,
-    get_organization_member, member_role_order, update_member_capabilities,
-    update_organization_member,
-};
+use auths_sdk::workflows::org::{OrgIdentifier, Role, get_organization_member, member_role_order};
 use auths_verifier::AttestationBuilder;
-use auths_verifier::Capability;
-use auths_verifier::PublicKeyHex;
-use auths_verifier::clock::ClockProvider;
 use auths_verifier::core::{Attestation, Ed25519PublicKey};
-use auths_verifier::testing::MockClock;
 use auths_verifier::types::{CanonicalDid, IdentityDID};
 
 const ORG: &str = "ETestOrg0001";
@@ -31,10 +18,6 @@ const MEMBER_PUBKEY: [u8; 32] = [
     0, 0, 0, 0,
 ];
 
-fn admin_pubkey_hex() -> PublicKeyHex {
-    PublicKeyHex::new_unchecked(hex::encode(ADMIN_PUBKEY))
-}
-
 fn org_issuer() -> IdentityDID {
     IdentityDID::new_unchecked(format!("did:keri:{ORG}"))
 }
@@ -45,11 +28,6 @@ fn base_admin_attestation() -> Attestation {
         .issuer(org_issuer().as_ref())
         .subject(ADMIN_DID)
         .device_public_key(Ed25519PublicKey::from_bytes(ADMIN_PUBKEY))
-        .role(Some(Role::Admin))
-        .capabilities(vec![
-            Capability::sign_commit(),
-            Capability::manage_members(),
-        ])
         .build()
 }
 
@@ -59,8 +37,6 @@ fn base_member_attestation() -> Attestation {
         .issuer(org_issuer().as_ref())
         .subject(MEMBER_DID)
         .device_public_key(Ed25519PublicKey::from_bytes(MEMBER_PUBKEY))
-        .role(Some(Role::Member))
-        .capabilities(vec![Capability::sign_commit()])
         .delegated_by(Some(CanonicalDid::new_unchecked(ADMIN_DID)))
         .build()
 }
@@ -108,23 +84,6 @@ fn seed_member(backend: &FakeRegistryBackend) {
         .expect("seed member");
 }
 
-fn make_ctx<'a>(
-    backend: &'a dyn RegistryBackend,
-    clock: &'a dyn ClockProvider,
-    uuid_provider: &'a dyn UuidProvider,
-    signer: &'a dyn SecureSigner,
-    passphrase_provider: &'a dyn PassphraseProvider,
-) -> OrgContext<'a> {
-    OrgContext {
-        registry: backend,
-        clock,
-        uuid_provider,
-        signer,
-        passphrase_provider,
-        witness_params: auths_id::witness_config::WitnessParams::Disabled,
-    }
-}
-
 // ── Regression: identity DID (did:keri:) as member DID ──────────────────────
 // Storage must round-trip member DIDs whose KERI prefix contains underscores
 // (Base64url) through the sanitize/unsanitize path without corruption.
@@ -142,8 +101,6 @@ fn member_with_underscore_in_keri_prefix_roundtrips() {
         .issuer(org_issuer().as_ref())
         .subject(did_with_underscore)
         .device_public_key(Ed25519PublicKey::from_bytes(MEMBER_PUBKEY))
-        .role(Some(Role::Member))
-        .capabilities(vec![Capability::sign_commit()])
         .build();
 
     backend.store_org_member(ORG, &att).unwrap();
@@ -163,62 +120,6 @@ fn member_with_underscore_in_keri_prefix_roundtrips() {
         Some(did_with_underscore),
         "DID with underscore in KERI prefix must round-trip through sanitize/unsanitize"
     );
-}
-
-// ── update_member_capabilities ───────────────────────────────────────────────
-
-#[test]
-fn update_capabilities_stores_new_capabilities() {
-    let backend = FakeRegistryBackend::new();
-    seed_admin(&backend);
-    seed_member(&backend);
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_member_capabilities(
-        &ctx,
-        UpdateCapabilitiesCommand {
-            org_prefix: ORG.to_string(),
-            member_did: MEMBER_DID.to_string(),
-            capabilities: vec!["sign_commit".to_string(), "sign_release".to_string()],
-            public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(result.is_ok(), "unexpected error: {:?}", result.err());
-    let att = result.unwrap();
-    assert_eq!(att.capabilities.len(), 2);
-    assert!(att.capabilities.contains(&Capability::sign_commit()));
-    assert!(att.capabilities.contains(&Capability::sign_release()));
-}
-
-#[test]
-fn update_capabilities_fails_with_invalid_capability() {
-    let backend = FakeRegistryBackend::new();
-    seed_admin(&backend);
-    seed_member(&backend);
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_member_capabilities(
-        &ctx,
-        UpdateCapabilitiesCommand {
-            org_prefix: ORG.to_string(),
-            member_did: MEMBER_DID.to_string(),
-            capabilities: vec!["invalid cap!@#".to_string()],
-            public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(matches!(result, Err(OrgError::InvalidCapability { .. })));
 }
 
 // ── get_organization_member ─────────────────────────────────────────────────
@@ -253,206 +154,6 @@ fn get_member_returns_admin_too() {
     assert!(result.is_ok());
     let att = result.unwrap();
     assert_eq!(att.subject.as_str(), ADMIN_DID);
-}
-
-// ── update_organization_member ──────────────────────────────────────────────
-
-#[test]
-fn update_member_changes_role() {
-    let backend = FakeRegistryBackend::new();
-    seed_admin(&backend);
-    seed_member(&backend);
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_organization_member(
-        &ctx,
-        UpdateMemberCommand {
-            org_prefix: ORG.to_string(),
-            member_did: MEMBER_DID.to_string(),
-            role: Some(Role::Readonly),
-            capabilities: None,
-            admin_public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(result.is_ok(), "unexpected error: {:?}", result.err());
-    let att = result.unwrap();
-    assert_eq!(att.role, Some(Role::Readonly));
-    assert!(att.capabilities.contains(&Capability::sign_commit()));
-}
-
-#[test]
-fn update_member_changes_capabilities() {
-    let backend = FakeRegistryBackend::new();
-    seed_admin(&backend);
-    seed_member(&backend);
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_organization_member(
-        &ctx,
-        UpdateMemberCommand {
-            org_prefix: ORG.to_string(),
-            member_did: MEMBER_DID.to_string(),
-            role: None,
-            capabilities: Some(vec!["sign_commit".to_string(), "sign_release".to_string()]),
-            admin_public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(result.is_ok(), "unexpected error: {:?}", result.err());
-    let att = result.unwrap();
-    assert_eq!(att.role, Some(Role::Member));
-    assert_eq!(att.capabilities.len(), 2);
-    assert!(att.capabilities.contains(&Capability::sign_release()));
-}
-
-#[test]
-fn update_member_changes_both_role_and_capabilities() {
-    let backend = FakeRegistryBackend::new();
-    seed_admin(&backend);
-    seed_member(&backend);
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_organization_member(
-        &ctx,
-        UpdateMemberCommand {
-            org_prefix: ORG.to_string(),
-            member_did: MEMBER_DID.to_string(),
-            role: Some(Role::Admin),
-            capabilities: Some(vec![
-                "sign_commit".to_string(),
-                "manage_members".to_string(),
-            ]),
-            admin_public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(result.is_ok(), "unexpected error: {:?}", result.err());
-    let att = result.unwrap();
-    assert_eq!(att.role, Some(Role::Admin));
-    assert!(att.capabilities.contains(&Capability::manage_members()));
-}
-
-#[test]
-fn update_member_fails_when_admin_not_found() {
-    let backend = FakeRegistryBackend::new();
-    seed_member(&backend);
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_organization_member(
-        &ctx,
-        UpdateMemberCommand {
-            org_prefix: ORG.to_string(),
-            member_did: MEMBER_DID.to_string(),
-            role: Some(Role::Readonly),
-            capabilities: None,
-            admin_public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(matches!(result, Err(OrgError::AdminNotFound { .. })));
-}
-
-#[test]
-fn update_member_fails_when_member_not_found() {
-    let backend = FakeRegistryBackend::new();
-    seed_admin(&backend);
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_organization_member(
-        &ctx,
-        UpdateMemberCommand {
-            org_prefix: ORG.to_string(),
-            member_did: "did:key:z6MkNonexistent".to_string(),
-            role: Some(Role::Readonly),
-            capabilities: None,
-            admin_public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(matches!(result, Err(OrgError::MemberNotFound { .. })));
-}
-
-#[test]
-fn update_member_fails_when_already_revoked() {
-    let backend = FakeRegistryBackend::new();
-    seed_admin(&backend);
-
-    let mut att = base_member_attestation();
-    att.revoked_at = Some(chrono::Utc::now());
-    backend
-        .store_org_member(ORG, &att)
-        .expect("seed revoked member");
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_organization_member(
-        &ctx,
-        UpdateMemberCommand {
-            org_prefix: ORG.to_string(),
-            member_did: MEMBER_DID.to_string(),
-            role: Some(Role::Admin),
-            capabilities: None,
-            admin_public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(matches!(result, Err(OrgError::AlreadyRevoked { .. })));
-}
-
-#[test]
-fn update_member_fails_with_invalid_capability() {
-    let backend = FakeRegistryBackend::new();
-    seed_admin(&backend);
-    seed_member(&backend);
-
-    let clock = MockClock(chrono::Utc::now());
-    let signer = FakeSecureSigner;
-    let pp = PrefilledPassphraseProvider::new("");
-    let uuid = DeterministicUuidProvider::new();
-    let ctx = make_ctx(&backend, &clock, &uuid, &signer, &pp);
-    let result = update_organization_member(
-        &ctx,
-        UpdateMemberCommand {
-            org_prefix: ORG.to_string(),
-            member_did: MEMBER_DID.to_string(),
-            role: None,
-            capabilities: Some(vec!["not a valid cap!!!".to_string()]),
-            admin_public_key_hex: admin_pubkey_hex(),
-            signer_alias: KeyAlias::new_unchecked("test-admin"),
-        },
-    );
-
-    assert!(matches!(result, Err(OrgError::InvalidCapability { .. })));
 }
 
 // ── member_role_order ───────────────────────────────────────────────────────

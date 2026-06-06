@@ -167,7 +167,6 @@ class Attestation:
     issuer: str
     subject: str
     device_did: str
-    capabilities: list[str]
     signer_type: str | None
     expires_at: str | None
     revoked_at: str | None

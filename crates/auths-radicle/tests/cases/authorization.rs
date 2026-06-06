@@ -4,7 +4,6 @@ use std::str::FromStr;
 use auths_id::policy::PolicyBuilder;
 use auths_radicle::bridge::{EnforcementMode, RadicleAuthsBridge, VerifyRequest};
 use auths_radicle::verify::DefaultBridge;
-use auths_verifier::core::Capability;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 
@@ -27,23 +26,11 @@ fn authorized_device_verified() {
 
     storage.attestations.insert(
         (did_a.clone(), identity_did.clone()),
-        make_test_attestation(
-            &identity_did,
-            &did_a,
-            &repo_id,
-            false,
-            vec![Capability::sign_commit()],
-        ),
+        make_test_attestation(&identity_did, &did_a, &repo_id, false),
     );
     storage.attestations.insert(
         (did_b.clone(), identity_did.clone()),
-        make_test_attestation(
-            &identity_did,
-            &did_b,
-            &repo_id,
-            false,
-            vec![Capability::sign_commit()],
-        ),
+        make_test_attestation(&identity_did, &did_b, &repo_id, false),
     );
     storage
         .device_to_identity

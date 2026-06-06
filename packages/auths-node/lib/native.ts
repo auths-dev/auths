@@ -114,7 +114,6 @@ export interface NapiAttestation {
   issuer: string
   subject: string
   deviceDid: string
-  capabilities: string[]
   signerType?: string | null
   expiresAt?: string | null
   revokedAt?: string | null

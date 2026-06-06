@@ -25,6 +25,23 @@ use crate::types::{
     NapiRotationResult,
 };
 
+/// Validate capability strings without stamping them onto an attestation.
+///
+/// Authority capabilities are resolved KEL-natively from the delegator-anchored
+/// scope seal (ACDC), never from the attestation. This rejects malformed input
+/// at the binding boundary while keeping the attestation caps-free.
+fn validate_capabilities(capabilities: &[String]) -> napi::Result<()> {
+    for c in capabilities {
+        Capability::parse(c).map_err(|e| {
+            format_error(
+                "AUTHS_INVALID_INPUT",
+                format!("Invalid capability '{c}': {e}"),
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn init_backend(repo: &PathBuf) -> napi::Result<Arc<GitRegistryBackend>> {
     let config = RegistryConfig::single_tenant(repo);
     let backend = GitRegistryBackend::from_config_unchecked(config);
@@ -121,17 +138,7 @@ pub fn create_agent_identity(
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
 
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                format_error(
-                    "AUTHS_INVALID_INPUT",
-                    format!("Invalid capability '{c}': {e}"),
-                )
-            })
-        })
-        .collect::<napi::Result<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let (identity_did, result_alias) = initialize_registry_identity(
         backend.clone(),
@@ -166,7 +173,6 @@ pub fn create_agent_identity(
         identity_key_alias: result_alias.clone(),
         device_key_alias: Some(result_alias.clone()),
         device_did: None,
-        capabilities: parsed_caps,
         expires_in: None,
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,
@@ -294,23 +300,12 @@ pub fn delegate_agent(
         )
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Key storage failed: {e}")))?;
 
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                format_error(
-                    "AUTHS_INVALID_INPUT",
-                    format!("Invalid capability '{c}': {e}"),
-                )
-            })
-        })
-        .collect::<napi::Result<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: parent_alias,
         device_key_alias: Some(agent_alias.clone()),
         device_did: None,
-        capabilities: parsed_caps,
         expires_in: expires_in.map(|s| s as u64),
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,

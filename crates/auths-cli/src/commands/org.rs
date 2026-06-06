@@ -22,8 +22,8 @@ use auths_sdk::storage::{
 use auths_sdk::workflows::org::{Role, add_member, list_members, member_role_order, revoke_member};
 
 use crate::factories::storage::build_auths_context;
+use auths_verifier::Prefix;
 use auths_verifier::types::CanonicalDid;
-use auths_verifier::{Capability, Prefix};
 
 use clap::ValueEnum;
 
@@ -394,13 +394,6 @@ pub fn handle_org(
             let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
             let org_curve = org_resolved.curve();
 
-            let admin_capabilities = vec![
-                Capability::sign_commit(),
-                Capability::sign_release(),
-                Capability::manage_members(),
-                Capability::rotate_keys(),
-            ];
-
             let meta = AttestationMetadata {
                 note: Some(format!("Organization '{}' root admin", name)),
                 timestamp: Some(now),
@@ -426,8 +419,6 @@ pub fn handle_org(
                     meta: &meta,
                     identity_alias: Some(&alias),
                     device_alias: None, // Self-attestation, no device signature
-                    capabilities: admin_capabilities,
-                    role: Some(Role::Admin),
                     delegated_by: None,
                     commit_sha: None,
                     signer_type: None,
@@ -559,8 +550,6 @@ pub fn handle_org(
                     meta: &meta,
                     identity_alias: Some(&signer_alias),
                     device_alias: None, // No device signature for org attestations
-                    capabilities: vec![],
-                    role: None,
                     delegated_by: None,
                     commit_sha: None,
                     signer_type: None,

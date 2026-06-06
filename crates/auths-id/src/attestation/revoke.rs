@@ -127,8 +127,6 @@ pub fn create_signed_revocation(
             .map_err(|e| AttestationError::InvalidInput(e.to_string()))?,
         identity_signature,
         device_signature: Ed25519Signature::empty(),
-        role: None,
-        capabilities: vec![],
         delegated_by: None,
         signer_type: None,
         environment_claim: None,

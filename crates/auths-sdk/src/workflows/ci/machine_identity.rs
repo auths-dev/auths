@@ -281,8 +281,6 @@ pub fn sign_commit_with_identity(
         timestamp: Some(params.timestamp),
         note: None,
         payload: None,
-        role: None,
-        capabilities: vec![],
         delegated_by: None,
         signer_type: None,
         environment_claim: None,

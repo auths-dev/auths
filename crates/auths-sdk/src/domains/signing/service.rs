@@ -15,7 +15,7 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::core::resign_attestation;
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::storage::git_refs::AttestationMetadata;
-use auths_verifier::core::{Capability, ResourceId, SignerType};
+use auths_verifier::core::{ResourceId, SignerType};
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
@@ -657,8 +657,6 @@ fn create_and_sign_attestation(
             meta,
             identity_alias,
             device_alias: Some(device_alias),
-            capabilities: vec![Capability::sign_release()],
-            role: None,
             delegated_by: None,
             commit_sha,
             signer_type: None,
@@ -790,8 +788,6 @@ pub fn sign_artifact_ephemeral(
             meta: &meta,
             identity_alias: Some(&identity_alias),
             device_alias: Some(&device_alias),
-            capabilities: vec![Capability::sign_release()],
-            role: None,
             delegated_by: None,
             commit_sha: Some(validated_sha),
             signer_type: Some(SignerType::Workload),
@@ -910,8 +906,6 @@ pub fn sign_artifact_raw(
             meta: &meta,
             identity_alias: Some(&identity_alias),
             device_alias: Some(&device_alias),
-            capabilities: vec![Capability::sign_release()],
-            role: None,
             delegated_by: None,
             commit_sha: validated_commit_sha,
             signer_type: None,

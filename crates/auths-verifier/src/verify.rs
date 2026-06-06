@@ -522,7 +522,7 @@ async fn verify_single_attestation(
 mod tests {
     use super::*;
     use crate::clock::ClockProvider;
-    use crate::core::{Capability, Ed25519PublicKey, Ed25519Signature, ResourceId, Role};
+    use crate::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
     use crate::types::CanonicalDid;
     use crate::verifier::Verifier;
     use auths_crypto::RingCryptoProvider;
@@ -584,8 +584,6 @@ mod tests {
             timestamp: Some(fixed_now()),
             note: None,
             payload: None,
-            role: None,
-            capabilities: vec![],
             delegated_by: None,
             signer_type: None,
             environment_claim: None,
@@ -1155,14 +1153,13 @@ mod tests {
         ));
     }
 
-    /// Helper to create a signed attestation with org fields
-    fn create_signed_attestation_with_org_fields(
+    /// Helper to create a signed attestation carrying a `delegated_by` link.
+    fn create_signed_attestation_with_delegation(
         issuer_kp: &Ed25519KeyPair,
         device_kp: &Ed25519KeyPair,
         issuer_did: &str,
         subject_did: &str,
-        role: Option<Role>,
-        capabilities: Vec<Capability>,
+        delegated_by: Option<CanonicalDid>,
     ) -> Attestation {
         let device_pk: [u8; 32] = device_kp.public_key().as_ref().try_into().unwrap();
 
@@ -1179,9 +1176,7 @@ mod tests {
             timestamp: Some(fixed_now()),
             note: None,
             payload: None,
-            role,
-            capabilities: capabilities.clone(),
-            delegated_by: None,
+            delegated_by,
             signer_type: None,
             environment_claim: None,
             commit_sha: None,
@@ -1201,79 +1196,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn verify_attestation_rejects_tampered_role() {
-        let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = ed25519_did(&root_pk);
-        let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = ed25519_did(&device_pk);
-
-        let mut att = create_signed_attestation_with_org_fields(
-            &root_kp,
-            &device_kp,
-            &root_did,
-            &device_did,
-            Some(Role::Member),
-            vec![Capability::sign_commit()],
-        );
-
-        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
-        assert!(result.is_ok(), "Attestation should verify before tampering");
-
-        att.role = Some(Role::Admin);
-        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
-        assert!(result.is_err(), "Attestation should reject tampered role");
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("signature"),
-            "Error should mention signature failure: {}",
-            err_msg
-        );
-    }
-
-    #[tokio::test]
-    async fn verify_attestation_rejects_tampered_capabilities() {
-        let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
-        let root_did = ed25519_did(&root_pk);
-        let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
-        let device_did = ed25519_did(&device_pk);
-
-        let mut att = create_signed_attestation_with_org_fields(
-            &root_kp,
-            &device_kp,
-            &root_did,
-            &device_did,
-            Some(Role::Member),
-            vec![Capability::sign_commit()],
-        );
-        assert!(
-            test_verifier()
-                .verify_with_keys(&att, &ed(&root_pk))
-                .await
-                .is_ok()
-        );
-
-        att.capabilities.push(Capability::manage_members());
-        let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
-        assert!(
-            result.is_err(),
-            "Attestation should reject tampered capabilities"
-        );
-    }
-
-    #[tokio::test]
     async fn verify_attestation_rejects_tampered_delegated_by() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did = ed25519_did(&device_pk);
 
-        let mut att = create_signed_attestation_with_org_fields(
+        let mut att = create_signed_attestation_with_delegation(
             &root_kp,
             &device_kp,
             &root_did,
             &device_did,
-            Some(Role::Member),
-            vec![Capability::sign_commit()],
+            Some(CanonicalDid::new_unchecked("did:keri:Eadmin")),
         );
         assert!(
             test_verifier()
@@ -1291,25 +1225,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn verify_attestation_valid_with_org_fields() {
+    async fn verify_attestation_valid_with_delegation() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
         let root_did = ed25519_did(&root_pk);
         let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
         let device_did = ed25519_did(&device_pk);
 
-        let att = create_signed_attestation_with_org_fields(
+        let att = create_signed_attestation_with_delegation(
             &root_kp,
             &device_kp,
             &root_did,
             &device_did,
-            Some(Role::Admin),
-            vec![Capability::sign_commit(), Capability::manage_members()],
+            Some(CanonicalDid::new_unchecked("did:keri:Eadmin")),
         );
 
         let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(
             result.is_ok(),
-            "Attestation with org fields should verify: {:?}",
+            "Attestation with delegation should verify: {:?}",
             result.err()
         );
     }
@@ -1336,8 +1269,6 @@ mod tests {
             timestamp,
             note: None,
             payload: None,
-            role: None,
-            capabilities: vec![],
             delegated_by: None,
             signer_type: None,
             environment_claim: None,
@@ -1760,8 +1691,6 @@ mod tests {
             timestamp: Some(fixed_now()),
             note: None,
             payload: None,
-            role: None,
-            capabilities: vec![],
             delegated_by: None,
             signer_type: None,
             environment_claim: None,

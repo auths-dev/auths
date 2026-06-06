@@ -303,8 +303,6 @@ fn bind_device(
             meta: &meta,
             identity_alias: Some(key_alias),
             device_alias: Some(key_alias),
-            capabilities: vec![],
-            role: None,
             delegated_by: None,
             commit_sha: None,
             signer_type: None,

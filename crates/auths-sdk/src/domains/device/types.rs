@@ -1,5 +1,4 @@
 use auths_core::storage::keychain::KeyAlias;
-use auths_verifier::Capability;
 use auths_verifier::core::ResourceId;
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
@@ -50,7 +49,6 @@ pub struct DeviceExtensionConfig {
 ///     identity_key_alias: "my-identity".into(),
 ///     device_key_alias: Some("macbook-pro".into()),
 ///     device_did: None,
-///     capabilities: vec!["sign-commit".into()],
 ///     expires_in: Some(31_536_000),
 ///     note: Some("Work laptop".into()),
 ///     payload: None,
@@ -64,8 +62,6 @@ pub struct DeviceLinkConfig {
     pub device_key_alias: Option<KeyAlias>,
     /// Optional pre-existing device DID (not yet supported).
     pub device_did: Option<String>,
-    /// Capabilities to grant to the linked device.
-    pub capabilities: Vec<Capability>,
     /// Duration in seconds until expiration (per RFC 6749).
     pub expires_in: Option<u64>,
     /// Optional human-readable note for the attestation.

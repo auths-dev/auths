@@ -599,7 +599,6 @@ mod tests {
     use auths_core::witness::NoOpWitness;
     use auths_keri::{CesrKey, Prefix, Said, Threshold};
     use auths_verifier::AttestationBuilder;
-    use auths_verifier::core::Capability;
     use chrono::Duration;
 
     /// Mock witness for testing
@@ -662,11 +661,11 @@ mod tests {
     }
 
     #[test]
-    fn context_from_attestation_ignores_capabilities() {
-        // Caps no longer flow from the attestation — credential-grade authority comes
-        // only from `context_from_credential` (a holder-verified ACDC presentation).
-        let mut att = make_attestation("did:keri:ETest", None, None);
-        att.capabilities = vec![Capability::sign_commit()];
+    fn context_from_attestation_has_no_capabilities_or_role() {
+        // The attestation no longer carries caps/role at all — credential-grade
+        // authority comes only from `context_from_credential` (a holder-verified
+        // ACDC presentation), org role from `context_from_delegated_member`.
+        let att = make_attestation("did:keri:ETest", None, None);
         let now = Utc::now();
         let ctx = context_from_attestation(&att, now).unwrap();
 
@@ -674,17 +673,6 @@ mod tests {
             ctx.capabilities.is_empty(),
             "attestation caps must not enter the policy context"
         );
-    }
-
-    #[test]
-    fn context_from_attestation_ignores_role() {
-        // Role no longer flows from the attestation — org role comes from the
-        // delegator-anchored scope seal (`context_from_delegated_member`).
-        let mut att = make_attestation("did:keri:ETest", None, None);
-        att.role = Some(auths_verifier::core::Role::Member);
-        let now = Utc::now();
-        let ctx = context_from_attestation(&att, now).unwrap();
-
         assert_eq!(
             ctx.role, None,
             "attestation role must not enter the policy context"
@@ -693,11 +681,9 @@ mod tests {
 
     #[test]
     fn caps_absent_without_valid_credential() {
-        // Fail-closed: an attestation that names capabilities yields NO caps in the
-        // policy context, so a capability-gated policy denies — authority can only
-        // arrive via a holder-verified credential.
-        let mut att = make_attestation("did:keri:ETestPrefix", None, None);
-        att.capabilities = vec![Capability::sign_commit()];
+        // Fail-closed: with no holder-verified credential, a capability-gated policy
+        // denies — authority can only arrive via a credential, never the attestation.
+        let att = make_attestation("did:keri:ETestPrefix", None, None);
         let policy = PolicyBuilder::new()
             .not_revoked()
             .require_capability("sign_commit")

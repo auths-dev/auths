@@ -10,7 +10,7 @@ use auths_id::keri::{anchor_and_persist_via_backend, parse_did_keri};
 use auths_id::storage::attestation::AttestationSource;
 use auths_id::storage::git_refs::AttestationMetadata;
 use auths_id::storage::identity::IdentityStorage;
-use auths_verifier::core::{Capability, ResourceId};
+use auths_verifier::core::ResourceId;
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 
@@ -26,7 +26,6 @@ struct AttestationParams {
     device_public_key: auths_verifier::DevicePublicKey,
     payload: Option<serde_json::Value>,
     meta: AttestationMetadata,
-    capabilities: Vec<Capability>,
     identity_alias: KeyAlias,
     device_alias: Option<KeyAlias>,
 }
@@ -50,7 +49,6 @@ fn build_attestation_params(
                 .map(|s| now + chrono::Duration::seconds(s as i64)),
             note: config.note.clone(),
         },
-        capabilities: config.capabilities.clone(),
         identity_alias: config.identity_key_alias.clone(),
         device_alias: config.device_key_alias.clone(),
     }
@@ -253,8 +251,6 @@ pub fn extend_device(
             meta: &meta,
             identity_alias: Some(&config.identity_key_alias),
             device_alias: config.device_key_alias.as_ref(),
-            capabilities: vec![],
-            role: None,
             delegated_by: None,
             commit_sha: None,
             signer_type: None,
@@ -359,8 +355,6 @@ fn sign_attestation(
             meta: &params.meta,
             identity_alias: Some(&params.identity_alias),
             device_alias: params.device_alias.as_ref(),
-            capabilities: params.capabilities.clone(),
-            role: None,
             delegated_by: None,
             commit_sha: None,
             signer_type: None,

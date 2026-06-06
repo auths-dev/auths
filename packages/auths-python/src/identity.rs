@@ -27,6 +27,22 @@ pub(crate) fn resolve_passphrase(passphrase: Option<String>) -> String {
     passphrase.unwrap_or_else(|| std::env::var("AUTHS_PASSPHRASE").unwrap_or_default())
 }
 
+/// Validate capability strings without stamping them onto an attestation.
+///
+/// Authority capabilities are resolved KEL-natively from the delegator-anchored
+/// scope seal (ACDC), never from the attestation. This rejects malformed input
+/// at the binding boundary while keeping the attestation caps-free.
+pub(crate) fn validate_capabilities(capabilities: &[String]) -> PyResult<()> {
+    for c in capabilities {
+        Capability::parse(c).map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
+            ))
+        })?;
+    }
+    Ok(())
+}
+
 pub(crate) fn make_keychain_config(passphrase: &str, repo_path: &str) -> EnvironmentConfig {
     EnvironmentConfig {
         auths_home: Some(repo_path.into()),
@@ -227,21 +243,9 @@ pub fn create_agent_identity(
         PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
     })?;
 
-    // Validate capabilities
-    let _parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
-                ))
-            })
-        })
-        .collect::<PyResult<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
-    let parsed_caps_for_att = _parsed_caps;
-
-    #[allow(clippy::disallowed_methods)] // Presentation boundary
+    #[allow(clippy::disallowed_methods)] // Presentation boundary: standalone agent attestation
     let now = chrono::Utc::now();
 
     {
@@ -280,7 +284,6 @@ pub fn create_agent_identity(
                 "issuer": identity_did.to_string(),
                 "subject": device_did.to_string(),
                 "device_public_key": hex::encode(&pub_bytes),
-                "capabilities": parsed_caps_for_att.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
                 "timestamp": now.to_rfc3339(),
                 "note": format!("Agent: {}", alias),
             });
@@ -396,23 +399,12 @@ pub fn delegate_agent(
             PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Key storage failed: {e}"))
         })?;
 
-    // Parse capabilities
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
-                ))
-            })
-        })
-        .collect::<PyResult<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: parent_alias,
         device_key_alias: Some(agent_alias.clone()),
         device_did: None,
-        capabilities: parsed_caps,
         expires_in,
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,
@@ -517,22 +509,12 @@ pub fn link_device_to_identity(
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
 
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
-                ))
-            })
-        })
-        .collect::<PyResult<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: alias,
         device_key_alias: None,
         device_did: None,
-        capabilities: parsed_caps,
         expires_in,
         note: None,
         payload: None,

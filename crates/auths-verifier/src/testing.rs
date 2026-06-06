@@ -2,7 +2,7 @@
 
 use crate::clock::ClockProvider;
 use crate::core::{Attestation, Ed25519PublicKey, Ed25519Signature, ResourceId};
-use crate::core::{Capability, OidcBinding, Role, SignerType};
+use crate::core::{OidcBinding, SignerType};
 use crate::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -18,7 +18,6 @@ use serde_json::Value;
 ///     .issuer("did:keri:EOrg123")
 ///     .subject("did:key:zDevice456")
 ///     .expires_at(Some(Utc::now() + chrono::Duration::hours(1)))
-///     .capabilities(vec![Capability::sign_commit()])
 ///     .build();
 /// ```
 #[derive(Debug, Clone)]
@@ -39,8 +38,6 @@ pub struct AttestationBuilder {
     commit_message: Option<String>,
     author: Option<String>,
     oidc_binding: Option<OidcBinding>,
-    role: Option<Role>,
-    capabilities: Vec<Capability>,
     delegated_by: Option<CanonicalDid>,
     signer_type: Option<SignerType>,
     environment_claim: Option<Value>,
@@ -69,8 +66,6 @@ impl Default for AttestationBuilder {
             commit_message: None,
             author: None,
             oidc_binding: None,
-            role: None,
-            capabilities: vec![],
             delegated_by: None,
             signer_type: None,
             environment_claim: None,
@@ -183,18 +178,6 @@ impl AttestationBuilder {
         self
     }
 
-    /// Set the org membership role.
-    pub fn role(mut self, role: Option<Role>) -> Self {
-        self.role = role;
-        self
-    }
-
-    /// Set the capabilities.
-    pub fn capabilities(mut self, caps: Vec<Capability>) -> Self {
-        self.capabilities = caps;
-        self
-    }
-
     /// Set the delegating attestation DID.
     pub fn delegated_by(mut self, did: Option<CanonicalDid>) -> Self {
         self.delegated_by = did;
@@ -232,8 +215,6 @@ impl AttestationBuilder {
             commit_message: self.commit_message,
             author: self.author,
             oidc_binding: self.oidc_binding,
-            role: self.role,
-            capabilities: self.capabilities,
             delegated_by: self.delegated_by,
             signer_type: self.signer_type,
             environment_claim: self.environment_claim,

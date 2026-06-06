@@ -128,8 +128,6 @@ fn create_test_attestation(
             meta: &meta,
             identity_alias: Some(&identity_alias),
             device_alias: device_alias.as_ref(),
-            capabilities: vec![],
-            role: None,
             delegated_by: None,
             commit_sha: None,
             signer_type: None,

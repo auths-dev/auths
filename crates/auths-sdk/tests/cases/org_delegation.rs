@@ -29,7 +29,6 @@ use auths_sdk::domains::org::{
 };
 use auths_sdk::domains::signing::types::GitSigningScope;
 use auths_verifier::AttestationBuilder;
-use auths_verifier::Capability;
 use auths_verifier::core::{Ed25519PublicKey, Role};
 use auths_verifier::types::CanonicalDid;
 
@@ -163,8 +162,6 @@ fn revoked_org_member_unauthorized_despite_stale_attestation() {
         .issuer(org_did.as_str())
         .subject(member.member_did.as_str())
         .device_public_key(Ed25519PublicKey::from_bytes([7u8; 32]))
-        .role(Some(Role::Member))
-        .capabilities(vec![Capability::sign_commit()])
         .delegated_by(Some(CanonicalDid::new_unchecked(org_did.clone())))
         .build();
     ctx.registry
