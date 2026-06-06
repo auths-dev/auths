@@ -400,6 +400,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-rp"
+version = "0.0.1-rc.12"
+dependencies = [
+ "auths-verifier",
+ "base64",
+ "chrono",
+ "parking_lot",
+ "ring",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "auths-sdk"
 version = "0.0.1-rc.12"
 dependencies = [
@@ -411,6 +425,7 @@ dependencies = [
  "auths-keri",
  "auths-oidc-port",
  "auths-policy",
+ "auths-rp",
  "auths-telemetry",
  "auths-transparency",
  "auths-verifier",

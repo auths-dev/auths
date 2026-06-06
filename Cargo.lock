@@ -859,6 +859,7 @@ dependencies = [
  "auths-oidc-port",
  "auths-pairing-daemon",
  "auths-policy",
+ "auths-rp",
  "auths-sdk",
  "auths-storage",
  "auths-telemetry",

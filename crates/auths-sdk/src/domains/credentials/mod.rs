@@ -10,6 +10,8 @@
 //!   plus the lifecycle-anchor witness receipts to the witnessed tip, hands them to
 //!   the pure verifier, and owns the fail-closed freshness decision.
 
+/// Relying-party presentation authentication (the full verify flow).
+pub mod authenticate;
 /// Credential error type (`thiserror`, no `anyhow`).
 pub mod error;
 /// Issuance, revocation, and listing workflows.
@@ -23,6 +25,7 @@ pub mod stored;
 /// Verification — the resolution + freshness layer.
 pub mod verify;
 
+pub use authenticate::{PresentationAuthError, authenticate_presentation};
 pub use error::CredentialError;
 pub use issue::{CredentialIssuance, CredentialSummary, issue, list, revoke};
 pub use present::{ChallengeSession, PresentationChallenge, present_credential};

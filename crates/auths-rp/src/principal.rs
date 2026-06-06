@@ -1,4 +1,4 @@
-//! Verified principal + denial mapping (Epic D1 / fn-151.5).
+//! Verified principal + denial mapping.
 //!
 //! Turns a shipped `auths_verifier::PresentationVerdict` into a [`VerifiedPrincipal`] —
 //! constructible ONLY from a `Valid` verdict, so *possessing one is proof* of current key
@@ -12,9 +12,7 @@
 
 use std::collections::HashSet;
 
-use auths_verifier::{
-    CanonicalDid, Capability, CapabilityError, DidParseError, PresentationVerdict,
-};
+use auths_verifier::{CanonicalDid, Capability, DidParseError, PresentationVerdict};
 
 /// A principal obtainable ONLY from a successful presentation verdict.
 ///
@@ -43,11 +41,13 @@ impl VerifiedPrincipal {
         match verdict {
             PresentationVerdict::Valid { subject, caps, .. } => {
                 let subject = CanonicalDid::parse(&subject).map_err(Denied::MalformedSubject)?;
+                // Caps come from an already-verified credential; an unparseable cap string is a
+                // data issue, not a security hole — skip it (fail-safe: the principal simply does
+                // not hold that capability). A malformed subject, by contrast, is fatal.
                 let capabilities = caps
                     .iter()
-                    .map(|cap| Capability::parse(cap))
-                    .collect::<Result<HashSet<Capability>, CapabilityError>>()
-                    .map_err(Denied::MalformedCapability)?;
+                    .filter_map(|cap| Capability::parse(cap).ok())
+                    .collect();
                 Ok(Self {
                     subject,
                     capabilities,
@@ -137,9 +137,6 @@ pub enum Denied {
     /// The verdict's subject string was not a well-formed DID.
     #[error("malformed subject DID: {0}")]
     MalformedSubject(DidParseError),
-    /// The verdict carried a malformed capability string.
-    #[error("malformed capability: {0}")]
-    MalformedCapability(CapabilityError),
     /// The principal lacks the capability the route/tool requires (403, not 401).
     #[error("missing capability: {needed:?}")]
     MissingCapability {
@@ -159,8 +156,7 @@ impl Denied {
             | Denied::NotCurrentKey
             | Denied::SubjectKelInvalid
             | Denied::CredentialInvalid
-            | Denied::MalformedSubject(_)
-            | Denied::MalformedCapability(_) => 401,
+            | Denied::MalformedSubject(_) => 401,
         }
     }
 }

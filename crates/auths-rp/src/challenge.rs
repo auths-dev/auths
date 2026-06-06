@@ -1,4 +1,4 @@
-//! Single-use challenge store for the interactive presentation path (Epic D1 / fn-151.4).
+//! Single-use challenge store for the interactive presentation path.
 //!
 //! `/v1/auth/challenge` mints a fresh CSPRNG [`Nonce`] bound to an [`Audience`]; the client
 //! signs over it and presents. [`ChallengeStore::consume`] is remove-on-read, so a nonce

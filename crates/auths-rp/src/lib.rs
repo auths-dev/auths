@@ -1,4 +1,4 @@
-//! Auths relying-party transport — agent-passport request authentication (Epic D1 / fn-151).
+//! Auths relying-party transport — agent-passport request authentication.
 //!
 //! A client (an AI agent, a CI job, a service) authenticates an HTTP request by presenting
 //! proof-of-control of a delegated KERI credential, instead of a bearer API key. This crate

@@ -1,6 +1,7 @@
 mod agents;
 mod artifact;
 mod audit;
+mod authenticate;
 
 mod credential_present;
 mod credentials;
