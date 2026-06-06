@@ -147,7 +147,7 @@ Anchors data in the KEL without changing keys. Used to link attestations, delega
 | `p` | string | Previous event SAID |
 | `a` | Seal[] | Anchored seals (the primary purpose of IXN events) |
 
-> KEL events carry **no in-body signature** and **no in-body timestamp**. Signatures attach out-of-band as CESR indexed-signature groups; see [SPEC.md](../../SPEC.md) §1 for the normative per-type field sets.
+> KEL events carry **no in-body signature** and **no in-body timestamp**. Signatures attach out-of-band as CESR indexed-signature groups; see [SPEC.md] §1 for the normative per-type field sets.
 
 ## Key Event Log (KEL)
 
@@ -230,7 +230,7 @@ A seal anchors external data or another event in the `a[]` field. Seals are stru
 | Event location | `{"i","s","p","t","d"}` | KERI v1.1 §7 location seal; anchors a delegated event. |
 | Latest establishment | `{"i"}` | Reference an identifier's latest establishment event. |
 
-Extended shapes (`MerkleRoot`, `RegistrarBacker`) are gated behind the `seal-extensions` feature and are not part of the default wire surface. The canonical field sets are normative in [SPEC.md](../../SPEC.md) §6.
+Extended shapes (`MerkleRoot`, `RegistrarBacker`) are gated behind the `seal-extensions` feature and are not part of the default wire surface. The canonical field sets are normative in [SPEC.md] §6.
 
 ## KERI Key Encoding
 
