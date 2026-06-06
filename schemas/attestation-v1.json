@@ -19,13 +19,6 @@
         "null"
       ]
     },
-    "capabilities": {
-      "description": "Capabilities this attestation grants.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/Capability"
-      }
-    },
     "commit_message": {
       "description": "Git commit message (for commit signing attestations).",
       "type": [
@@ -119,17 +112,6 @@
       "description": "Record identifier linking this attestation to its storage ref.",
       "type": "string"
     },
-    "role": {
-      "description": "Role for org membership attestations.",
-      "anyOf": [
-        {
-          "$ref": "#/definitions/Role"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
     "signer_type": {
       "description": "The type of entity that produced this signature (human, agent, workload). Included in the canonical JSON before signing — the signature covers this field.",
       "anyOf": [
@@ -144,13 +126,6 @@
     "subject": {
       "description": "DID of the attested subject (device `did:key:` or identity `did:keri:`).",
       "type": "string"
-    },
-    "supersedes_attestation_rid": {
-      "description": "Identifier of the prior attestation this one supersedes (device-key rotation). Holds the *subject DID* of the predecessor — that's the unique-per-device anchor the attestation storage is keyed by; `Attestation::rid` is repo-scoped (shared across every attestation under one identity) and doesn't disambiguate on its own.\n\nAbsent on non-rotation attestations. Included in the canonical JSON before signing, so a malicious intermediary cannot strip it to make a superseded attestation look current.",
-      "type": [
-        "string",
-        "null"
-      ]
     },
     "timestamp": {
       "description": "Creation timestamp.",
@@ -168,10 +143,6 @@
     }
   },
   "definitions": {
-    "Capability": {
-      "description": "A validated capability identifier.\n\nCapabilities are the atomic unit of authorization in Auths. They follow a namespace convention:\n\n- Well-known capabilities: `sign_commit`, `sign_release`, `manage_members`, `rotate_keys` - Custom capabilities: any valid string (alphanumeric + `:` + `-` + `_`, max 64 chars)\n\nThe `auths:` prefix is reserved for future well-known capabilities and cannot be used in custom capabilities created via `parse()`.\n\n# Examples\n\n``` use auths_verifier::Capability;\n\n// Well-known capabilities let cap = Capability::sign_commit(); assert_eq!(cap.as_str(), \"sign_commit\");\n\n// Custom capabilities let custom = Capability::parse(\"acme:deploy\").unwrap(); assert_eq!(custom.as_str(), \"acme:deploy\");\n\n// Reserved namespace is rejected assert!(Capability::parse(\"auths:custom\").is_err()); ```",
-      "type": "string"
-    },
     "DevicePublicKey": {
       "description": "A device public key carrying its curve type explicitly.\n\nCurve is stored alongside the raw key bytes so dispatch never relies on key length — adding a new curve that shares a byte length (e.g. secp256k1, also 33 bytes compressed) won't break existing match arms.\n\nAccepted byte lengths per curve: - Ed25519: 32 - P-256: 33 (compressed SEC1) or 65 (uncompressed SEC1)",
       "type": "object",
@@ -234,32 +205,6 @@
           "format": "int64"
         }
       }
-    },
-    "Role": {
-      "description": "Role classification for organization members.\n\nGoverns the default capability set assigned at member authorization time. Serializes as lowercase strings: `\"admin\"`, `\"member\"`, `\"readonly\"`.",
-      "oneOf": [
-        {
-          "description": "Full admin access with all capabilities.",
-          "type": "string",
-          "enum": [
-            "admin"
-          ]
-        },
-        {
-          "description": "Standard member with signing capabilities.",
-          "type": "string",
-          "enum": [
-            "member"
-          ]
-        },
-        {
-          "description": "Read-only access; no signing capabilities.",
-          "type": "string",
-          "enum": [
-            "readonly"
-          ]
-        }
-      ]
     },
     "SignerType": {
       "description": "The type of entity that produced a signature.\n\nDuplicated here (also in `auths-policy`) because `auths-verifier` is a standalone minimal-dependency crate that cannot depend on `auths-policy`.",
