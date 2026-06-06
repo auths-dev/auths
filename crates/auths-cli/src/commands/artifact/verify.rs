@@ -448,11 +448,12 @@ fn output_result(exit_code: i32, result: VerifyArtifactResult) -> Result<()> {
     Ok(())
 }
 
-/// Verify a commit signature in-process using `auths-verifier`.
+/// Verify the commit an ephemeral attestation is bound to, KEL-natively.
 ///
-/// Reads the commit content via git2, loads allowed signer keys from
-/// `.auths/allowed_signers`, and verifies using the native Rust verifier.
-/// No `git verify-commit --raw` shell-out.
+/// Reads the raw commit via git2, then delegates trust to the SDK commit-trust
+/// resolver: the signer must be a device delegated under a root pinned in
+/// `.auths/roots`. No `.auths/allowed_signers`, no `ssh-keygen` allowlist, no
+/// `git verify-commit --raw` shell-out.
 fn verify_commit_in_process(sha: &str) -> bool {
     // Open the repository
     let repo = match git2::Repository::discover(".") {
@@ -519,34 +520,23 @@ fn verify_commit_in_process(sha: &str) -> bool {
         }
     };
 
-    // Load allowed signer keys from .auths/allowed_signers
-    let allowed_signers_path = std::path::Path::new(".auths/allowed_signers");
-    let allowed_keys = if allowed_signers_path.exists() {
-        match std::fs::read_to_string(allowed_signers_path) {
-            Ok(content) => parse_allowed_signer_keys(&content),
-            Err(e) => {
-                if !is_json_mode() {
-                    eprintln!("Failed to read .auths/allowed_signers: {e}");
-                }
-                return false;
-            }
-        }
-    } else {
-        if !is_json_mode() {
-            eprintln!("No .auths/allowed_signers file found. Create one with: auths signers sync");
-        }
-        return false;
-    };
-
-    if allowed_keys.is_empty() {
-        if !is_json_mode() {
-            eprintln!("No signing keys found in .auths/allowed_signers");
-        }
-        return false;
-    }
-
-    // Verify using in-process verifier
+    // KEL-native trust: the commit's signer must be a device delegated under a root
+    // pinned in `.auths/roots`. The verdict logic lives in the SDK commit-trust resolver.
     let provider = auths_crypto::RingCryptoProvider;
+    let auths_home = match auths_sdk::paths::auths_home() {
+        Ok(h) => h,
+        Err(e) => {
+            if !is_json_mode() {
+                eprintln!("Could not locate ~/.auths: {e}");
+            }
+            return false;
+        }
+    };
+    let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
+    );
+    let pinned_roots = crate::commands::verify_helpers::load_project_pinned_roots();
+
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -557,92 +547,25 @@ fn verify_commit_in_process(sha: &str) -> bool {
         }
     };
 
-    match rt.block_on(auths_verifier::commit::verify_commit_signature(
+    let short = &sha[..8.min(sha.len())];
+    match rt.block_on(auths_sdk::workflows::commit_trust::verify_commit_local(
+        &registry,
+        &pinned_roots,
         commit_content.as_bytes(),
-        &allowed_keys,
         &provider,
-        Some(repo.path().parent().unwrap_or(std::path::Path::new("."))),
     )) {
-        Ok(_verified) => true,
+        Ok(verdict) if verdict.is_valid() => true,
+        Ok(verdict) => {
+            if !is_json_mode() {
+                eprintln!("Commit {short} is not authorized by a pinned trusted root: {verdict:?}");
+            }
+            false
+        }
         Err(e) => {
             if !is_json_mode() {
-                eprintln!(
-                    "Commit {} signature verification failed: {e}",
-                    &sha[..8.min(sha.len())]
-                );
+                eprintln!("Commit {short} trust could not be resolved: {e}");
             }
             false
         }
     }
-}
-
-/// Parse public keys from an allowed_signers file.
-///
-/// Format: `email namespaces key-type base64-key`
-/// Supports both `ssh-ed25519` and `ecdsa-sha2-nistp256` key types.
-fn parse_allowed_signer_keys(content: &str) -> Vec<auths_verifier::DevicePublicKey> {
-    content
-        .lines()
-        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            // Find supported key type and extract the base64 key
-            let key_idx = parts
-                .iter()
-                .position(|&p| p == "ssh-ed25519" || p == "ecdsa-sha2-nistp256")?;
-            let key_type = parts[key_idx];
-            let b64_key = parts.get(key_idx + 1)?;
-
-            use base64::Engine;
-            let key_bytes = base64::engine::general_purpose::STANDARD
-                .decode(b64_key)
-                .ok()?;
-            // SSH key format: 4-byte type-length + type-string + 4-byte key-length + key-data
-            if key_bytes.len() < 4 {
-                return None;
-            }
-            let type_len = u32::from_be_bytes(key_bytes[..4].try_into().ok()?) as usize;
-            let after_type = 4 + type_len;
-
-            match key_type {
-                "ssh-ed25519" => {
-                    let key_start = after_type + 4;
-                    if key_bytes.len() < key_start + 32 {
-                        return None;
-                    }
-                    auths_verifier::DevicePublicKey::try_new(
-                        auths_crypto::CurveType::Ed25519,
-                        &key_bytes[key_start..key_start + 32],
-                    )
-                    .ok()
-                }
-                "ecdsa-sha2-nistp256" => {
-                    // ECDSA SSH format: type + curve-name-string + ec-point-string
-                    if key_bytes.len() < after_type + 4 {
-                        return None;
-                    }
-                    let curve_len =
-                        u32::from_be_bytes(key_bytes[after_type..after_type + 4].try_into().ok()?)
-                            as usize;
-                    let after_curve = after_type + 4 + curve_len;
-                    if key_bytes.len() < after_curve + 4 {
-                        return None;
-                    }
-                    let point_len = u32::from_be_bytes(
-                        key_bytes[after_curve..after_curve + 4].try_into().ok()?,
-                    ) as usize;
-                    let point_start = after_curve + 4;
-                    if key_bytes.len() < point_start + point_len {
-                        return None;
-                    }
-                    auths_verifier::DevicePublicKey::try_new(
-                        auths_crypto::CurveType::P256,
-                        &key_bytes[point_start..point_start + point_len],
-                    )
-                    .ok()
-                }
-                _ => None,
-            }
-        })
-        .collect()
 }

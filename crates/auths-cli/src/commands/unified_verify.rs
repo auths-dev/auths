@@ -161,6 +161,9 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
                 remote: cmd.remote,
                 oobi: cmd.oobi,
                 require_witnesses: cmd.require_witnesses,
+                // Honor --identity-bundle for commit/git-ref targets (previously dropped
+                // here, silently verifying against the wrong/default trust root).
+                identity_bundle: cmd.identity_bundle,
             };
             handle_verify_commit(commit_cmd).await
         }
