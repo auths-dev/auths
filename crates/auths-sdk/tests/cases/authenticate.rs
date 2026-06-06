@@ -187,3 +187,31 @@ async fn revoked_credential_presentation_rejected() {
         "a presentation of a revoked credential must be rejected"
     );
 }
+
+#[tokio::test]
+async fn valid_then_revoked_presentation_transition() {
+    let h = setup();
+    let (subject_alias, _subject_prefix, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+    let audience = Audience::parse(AUDIENCE).unwrap();
+    let store = ChallengeStore::new(16);
+    let now = chrono::Utc::now();
+
+    // Before revocation: a fresh presentation authenticates.
+    let wire_before = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+    authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire_before, now)
+        .await
+        .expect("presentation authenticates before revocation");
+
+    // Revoke the credential (anchors a `rev` in the issuer KEL).
+    revoke(&h.ctx, &h.issuer_alias, &cred).expect("revoke credential");
+
+    // After revocation: a fresh presentation of the same credential is rejected.
+    let wire_after = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+    let after =
+        authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire_after, now)
+            .await;
+    assert!(
+        after.is_err(),
+        "after revocation, a fresh presentation of the same credential must be rejected"
+    );
+}
