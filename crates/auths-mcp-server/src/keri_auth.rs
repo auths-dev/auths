@@ -150,13 +150,16 @@ fn granted_caps(principal: &VerifiedPrincipal) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_verifier::PresentationVerdict;
+    use auths_verifier::{CanonicalDid, Capability, IdentityDID, PresentationVerdict};
 
     fn principal_with(caps: &[&str]) -> VerifiedPrincipal {
         let verdict = PresentationVerdict::Valid {
-            issuer: "did:keri:Eissuer".to_string(),
-            subject: "did:keri:Eagent".to_string(),
-            caps: caps.iter().map(|c| c.to_string()).collect(),
+            issuer: IdentityDID::parse("did:keri:Eissuer").expect("valid test issuer"),
+            subject: CanonicalDid::parse("did:keri:Eagent").expect("valid test subject"),
+            caps: caps
+                .iter()
+                .map(|c| Capability::parse(c).expect("valid test capability"))
+                .collect(),
             role: None,
             expires_at: None,
         };

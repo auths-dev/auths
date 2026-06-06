@@ -12,7 +12,7 @@
 
 use std::collections::HashSet;
 
-use auths_verifier::{CanonicalDid, Capability, DidParseError, PresentationVerdict};
+use auths_verifier::{CanonicalDid, Capability, PresentationVerdict};
 
 /// A principal obtainable ONLY from a successful presentation verdict.
 ///
@@ -39,20 +39,13 @@ impl VerifiedPrincipal {
     /// * `verdict`: The outcome of `auths_verifier::verify_presentation`.
     pub fn from_verdict(verdict: PresentationVerdict) -> Result<Self, Denied> {
         match verdict {
-            PresentationVerdict::Valid { subject, caps, .. } => {
-                let subject = CanonicalDid::parse(&subject).map_err(Denied::MalformedSubject)?;
-                // Caps come from an already-verified credential; an unparseable cap string is a
-                // data issue, not a security hole — skip it (fail-safe: the principal simply does
-                // not hold that capability). A malformed subject, by contrast, is fatal.
-                let capabilities = caps
-                    .iter()
-                    .filter_map(|cap| Capability::parse(cap).ok())
-                    .collect();
-                Ok(Self {
-                    subject,
-                    capabilities,
-                })
-            }
+            // The verifier already parsed `subject`/`caps` into their typed forms (fn-153.2),
+            // so the verdict carries validated values — move them through with no re-parse and
+            // no silent capability drop. A malformed cap now fails the verdict in the verifier.
+            PresentationVerdict::Valid { subject, caps, .. } => Ok(Self {
+                subject,
+                capabilities: caps.into_iter().collect(),
+            }),
             PresentationVerdict::WrongAudience => Err(Denied::WrongAudience),
             PresentationVerdict::NonceMismatchOrConsumed => Err(Denied::Replayed),
             PresentationVerdict::Expired => Err(Denied::Expired),
@@ -134,9 +127,6 @@ pub enum Denied {
     /// The presented credential itself was not valid (revoked, expired, unanchored, …).
     #[error("credential not valid")]
     CredentialInvalid,
-    /// The verdict's subject string was not a well-formed DID.
-    #[error("malformed subject DID: {0}")]
-    MalformedSubject(DidParseError),
     /// The principal lacks the capability the route/tool requires (403, not 401).
     #[error("missing capability: {needed:?}")]
     MissingCapability {
@@ -155,21 +145,25 @@ impl Denied {
             | Denied::Expired
             | Denied::NotCurrentKey
             | Denied::SubjectKelInvalid
-            | Denied::CredentialInvalid
-            | Denied::MalformedSubject(_) => 401,
+            | Denied::CredentialInvalid => 401,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use auths_verifier::IdentityDID;
+
     use super::*;
 
     fn valid_verdict(subject: &str, caps: &[&str]) -> PresentationVerdict {
         PresentationVerdict::Valid {
-            issuer: "did:keri:Eissuer".to_string(),
-            subject: subject.to_string(),
-            caps: caps.iter().map(|c| c.to_string()).collect(),
+            issuer: IdentityDID::parse("did:keri:Eissuer").expect("valid test issuer"),
+            subject: CanonicalDid::parse(subject).expect("valid test subject"),
+            caps: caps
+                .iter()
+                .map(|c| Capability::parse(c).expect("valid test capability"))
+                .collect(),
             role: None,
             expires_at: None,
         }
@@ -226,15 +220,6 @@ mod tests {
         assert!(matches!(
             VerifiedPrincipal::from_verdict(PresentationVerdict::NonceMismatchOrConsumed),
             Err(Denied::Replayed)
-        ));
-    }
-
-    #[test]
-    fn malformed_subject_rejected() {
-        let verdict = valid_verdict("not-a-did", &["acme:read"]);
-        assert!(matches!(
-            VerifiedPrincipal::from_verdict(verdict),
-            Err(Denied::MalformedSubject(_))
         ));
     }
 }

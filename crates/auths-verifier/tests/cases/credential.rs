@@ -356,9 +356,15 @@ async fn valid_credential_verifies() {
                 caps,
                 as_of,
             } => {
-                assert_eq!(issuer, format!("did:keri:{}", f.issuer_aid));
-                assert_eq!(subject, format!("did:keri:{}", self_addressing_subject()));
-                assert_eq!(caps, vec!["sign".to_string()]);
+                assert_eq!(issuer.as_str(), format!("did:keri:{}", f.issuer_aid));
+                assert_eq!(
+                    subject.as_str(),
+                    format!("did:keri:{}", self_addressing_subject())
+                );
+                assert_eq!(
+                    caps.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
+                    ["sign"]
+                );
                 assert_eq!(as_of, 2, "as_of is the tip of the given KEL ({curve:?})");
             }
             other => panic!("expected Valid on {curve:?}, got {other:?}"),

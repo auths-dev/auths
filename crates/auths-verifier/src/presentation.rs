@@ -41,6 +41,7 @@ use auths_keri::{
 use chrono::{DateTime, Utc};
 
 use crate::credential::{CredentialVerdict, SignedAcdc, verify_credential};
+use crate::{CanonicalDid, Capability, IdentityDID};
 
 /// The optional informational role claim in the ACDC attributes (`a.role`),
 /// written by the F.4 issuance path. Surfaced on a `Valid` verdict for the F.6 bridge.
@@ -172,11 +173,11 @@ pub enum PresentationVerdict {
     /// policy context from the *verified presentation*, never from a raw ACDC.
     Valid {
         /// The issuer AID (`did:keri:`) that granted the now-bound credential.
-        issuer: String,
+        issuer: IdentityDID,
         /// The subject (holder) AID (`did:keri:`) whose current key signed the presentation.
-        subject: String,
+        subject: CanonicalDid,
         /// The capabilities the now-bound credential grants (`a.capability`).
-        caps: Vec<String>,
+        caps: Vec<Capability>,
         /// The optional informational role claim (`a.role`).
         role: Option<String>,
         /// The optional credential expiry (`a.expiry`), as carried in the ACDC attributes.
@@ -286,8 +287,9 @@ pub async fn verify_presentation(
 
     let (issuer, caps) = match credential_verdict {
         CredentialVerdict::Valid { issuer, caps, .. } => (issuer, caps),
-        // Unreachable: `is_valid()` above guarantees the `Valid` arm.
-        _ => (String::new(), Vec::new()),
+        // `is_valid()` above guarantees `Valid`; on the impossible arm return a credential
+        // failure rather than panicking or fabricating an identity (keeps this WASM/FFI-safe).
+        other => return PresentationVerdict::CredentialNotValid(other),
     };
 
     let grant = GrantFacts {
@@ -314,8 +316,8 @@ pub async fn verify_presentation(
 /// verified `acdc.a` (`role`/`expiry`) once both the credential and the holder proof
 /// have passed, so they can never be read off an un-presented ACDC.
 struct GrantFacts {
-    issuer: String,
-    caps: Vec<String>,
+    issuer: IdentityDID,
+    caps: Vec<Capability>,
     role: Option<String>,
     expires_at: Option<DateTime<Utc>>,
 }
@@ -385,6 +387,11 @@ async fn verify_holder_signature(
     let Some(state) = replay_subject(subject_kel, subject_delegator_kel) else {
         return PresentationVerdict::SubjectKelInvalid;
     };
+    // The subject AID is the holder we just replayed; a DID that fails to parse means the
+    // subject is unusable as an identity (treated as an invalid subject KEL).
+    let Ok(subject) = CanonicalDid::parse(&format!("did:keri:{}", signed.acdc.a.i)) else {
+        return PresentationVerdict::SubjectKelInvalid;
+    };
 
     let message = PresentationEnvelope::signed_message(
         &envelope.credential_said,
@@ -398,7 +405,7 @@ async fn verify_holder_signature(
         {
             return PresentationVerdict::Valid {
                 issuer: grant.issuer,
-                subject: format!("did:keri:{}", signed.acdc.a.i),
+                subject,
                 caps: grant.caps,
                 role: grant.role,
                 expires_at: grant.expires_at,

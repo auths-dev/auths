@@ -276,12 +276,12 @@ pub fn context_from_credential(
         return Err(PolicyBridgeError::NoHolderProof);
     };
 
-    let mut ctx = EvalContext::try_from_strings(now, issuer, subject)?;
+    let mut ctx = EvalContext::try_from_strings(now, issuer.as_str(), subject.as_str())?;
     ctx = ctx.revoked(false);
 
     let caps: Vec<CanonicalCapability> = caps
         .iter()
-        .filter_map(|c| CanonicalCapability::parse(c).ok())
+        .filter_map(|c| CanonicalCapability::parse(c.as_str()).ok())
         .collect();
     ctx = ctx.capabilities(caps);
 
@@ -291,7 +291,7 @@ pub fn context_from_credential(
     if let Some(expires_at) = expires_at {
         ctx = ctx.expires_at(*expires_at);
     }
-    if let Ok(did) = CanonicalDid::parse(issuer) {
+    if let Ok(did) = CanonicalDid::parse(issuer.as_str()) {
         ctx = ctx.delegated_by(did);
     }
 
@@ -709,9 +709,12 @@ mod tests {
         expires_at: Option<DateTime<Utc>>,
     ) -> PresentationVerdict {
         PresentationVerdict::Valid {
-            issuer: CRED_ISSUER.to_string(),
-            subject: CRED_SUBJECT.to_string(),
-            caps: caps.iter().map(|c| c.to_string()).collect(),
+            issuer: auths_verifier::IdentityDID::parse(CRED_ISSUER).expect("valid test issuer"),
+            subject: auths_verifier::CanonicalDid::parse(CRED_SUBJECT).expect("valid test subject"),
+            caps: caps
+                .iter()
+                .map(|c| auths_verifier::Capability::parse(c).expect("valid test capability"))
+                .collect(),
             role: role.map(str::to_string),
             expires_at,
         }

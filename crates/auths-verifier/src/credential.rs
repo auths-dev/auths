@@ -24,6 +24,8 @@
 use auths_crypto::{CryptoProvider, CurveType};
 use auths_keri::witness::StoredReceipt;
 use auths_keri::witness::agreement::WitnessAgreement;
+
+use crate::{CanonicalDid, Capability, IdentityDID};
 use auths_keri::{
     Acdc, CesrKey, Event, KeriPublicKey, KeyState, Prefix, Said, TelEvent, Threshold,
     compute_capability_schema_said, validate_kel,
@@ -78,12 +80,13 @@ pub enum CredentialVerdict {
     /// The credential is authentic, anchored, witnessed (per policy), unexpired,
     /// and not revoked at/before the presentation position.
     Valid {
-        /// Issuer AID (`did:keri:`).
-        issuer: String,
-        /// Subject (holder) AID (`did:keri:`).
-        subject: String,
-        /// The capability the credential grants (`a.capability`).
-        caps: Vec<String>,
+        /// Issuer AID (`did:keri:`), parsed once at construction.
+        issuer: IdentityDID,
+        /// Subject (holder) AID (`did:keri:`), parsed once at construction.
+        subject: CanonicalDid,
+        /// The capabilities the credential grants (`a.capability`), parsed once — a
+        /// capability that does not parse fails the verdict closed (never silently dropped).
+        caps: Vec<Capability>,
         /// The KEL position the verdict is as-of: the tip `(seq)` of the given issuer KEL.
         as_of: u128,
     },
@@ -234,10 +237,28 @@ pub async fn verify_credential(
         return CredentialVerdict::CredentialRevoked { revoked_at };
     }
 
+    // Parse the validated identity/capability claims into their typed forms once, here.
+    // These are derived from already-replayed prefixes and schema-checked attributes, so a
+    // parse failure is a data-integrity violation — fail closed rather than carry a bad
+    // value or silently drop it.
+    let (Ok(issuer), Ok(subject)) = (
+        IdentityDID::parse(&format!("did:keri:{}", acdc.i)),
+        CanonicalDid::parse(&format!("did:keri:{}", acdc.a.i)),
+    ) else {
+        return CredentialVerdict::SchemaInvalid;
+    };
+    let Ok(caps) = capability_claims(acdc)
+        .iter()
+        .map(|c| Capability::parse(c))
+        .collect::<Result<Vec<_>, _>>()
+    else {
+        return CredentialVerdict::SchemaInvalid;
+    };
+
     CredentialVerdict::Valid {
-        issuer: format!("did:keri:{}", acdc.i),
-        subject: format!("did:keri:{}", acdc.a.i),
-        caps: capability_claims(acdc),
+        issuer,
+        subject,
+        caps,
         as_of: issuer_state.sequence,
     }
 }

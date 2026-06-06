@@ -401,11 +401,15 @@ async fn valid_challenge_presentation_verifies() {
                 role,
                 expires_at,
             } => {
-                assert_eq!(s, format!("did:keri:{}", subject.aid));
-                assert_eq!(caps, vec!["sign".to_string()]);
+                assert_eq!(s.as_str(), format!("did:keri:{}", subject.aid));
+                assert_eq!(
+                    caps.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
+                    ["sign"]
+                );
                 assert!(
-                    issuer.starts_with("did:keri:"),
-                    "issuer carried on Valid, got {issuer}"
+                    issuer.as_str().starts_with("did:keri:"),
+                    "issuer carried on Valid, got {}",
+                    issuer.as_str()
                 );
                 // The F.8 fixture writes only `a.capability` (no role/expiry claims).
                 assert_eq!(role, None);
