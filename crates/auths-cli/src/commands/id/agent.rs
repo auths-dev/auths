@@ -44,11 +44,11 @@ pub enum AgentSubcommand {
         #[arg(long, help = "Your root identity's signing key name (the delegator).")]
         key: String,
 
-        /// Curve for the new agent key.
+        /// Curve for the new agent key (defaults to P-256, the project default).
         #[arg(
             long,
-            default_value = "ed25519",
-            help = "Curve for the new agent key (ed25519 or p256)."
+            default_value = "p256",
+            help = "Curve for the new agent key (p256 or ed25519)."
         )]
         curve: String,
 

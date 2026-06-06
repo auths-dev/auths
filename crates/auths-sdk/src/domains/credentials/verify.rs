@@ -197,8 +197,11 @@ pub async fn verify_by_said(
     verify(ctx, &stored, witness_policy, now).await
 }
 
-/// Resolve the issuer's full KEL (oldest first) via the registry.
-fn resolve_kel(ctx: &AuthsContext, prefix: &Prefix) -> Result<Vec<Event>, CredentialError> {
+/// Resolve a full KEL (oldest first) for any prefix via the registry.
+pub(crate) fn resolve_kel(
+    ctx: &AuthsContext,
+    prefix: &Prefix,
+) -> Result<Vec<Event>, CredentialError> {
     let mut events = Vec::new();
     ctx.registry
         .visit_events(prefix, 0, &mut |e| {
@@ -212,7 +215,7 @@ fn resolve_kel(ctx: &AuthsContext, prefix: &Prefix) -> Result<Vec<Event>, Creden
 }
 
 /// Resolve the credential's TEL (`vcp` + the `iss`/`rev` chain) under its registry.
-fn resolve_tel(
+pub(crate) fn resolve_tel(
     ctx: &AuthsContext,
     issuer_prefix: &Prefix,
     registry_said: &Said,
@@ -231,7 +234,7 @@ fn resolve_tel(
 }
 
 /// The tip position of the resolved KEL (the as-of the verdict is reported against).
-fn tip_as_of(issuer_kel: &[Event]) -> ResolvedAsOf {
+pub(crate) fn tip_as_of(issuer_kel: &[Event]) -> ResolvedAsOf {
     match issuer_kel.last() {
         Some(tip) => ResolvedAsOf {
             seq: tip.sequence().value(),
@@ -259,7 +262,7 @@ fn declares_backers(ctx: &AuthsContext, issuer_prefix: &Prefix) -> bool {
 /// gathers, for each establishment-event SAID and each TEL-event SAID, the stored
 /// receipts and returns the de-duplicated union — exactly the set the pure verifier's
 /// per-anchor quorum math (KAWA) filters against the in-force backer set.
-fn collect_lifecycle_receipts(
+pub(crate) fn collect_lifecycle_receipts(
     ctx: &AuthsContext,
     issuer_prefix: &Prefix,
     issuer_kel: &[Event],

@@ -385,6 +385,7 @@ dependencies = [
  "auths-pairing-daemon",
  "auths-pairing-protocol",
  "auths-policy",
+ "auths-rp",
  "auths-sdk",
  "auths-telemetry",
  "auths-transparency",
@@ -818,6 +819,20 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "auths-rp"
+version = "0.0.1-rc.12"
+dependencies = [
+ "auths-verifier",
+ "base64",
+ "chrono",
+ "parking_lot",
+ "ring",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
